@@ -551,15 +551,17 @@ pub(super) fn read_same_name_as_filter_predicate(
         tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
         relation: TaggedOpbjectRelation::SameNameAsTagged,
     });
-    let shares_name = PredicateAst::CountComparison {
-        count: ironsmith_core::AnthemCountExpression::MatchingFilter(filter),
-        comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
-        display: Some(crate::lexer::render_token_slice(predicate_tokens)),
-    };
-    Ok(Some(if negated {
-        PredicateAst::Not(Box::new(shares_name))
+    // The authored surface already carries the negation, so state it as a
+    // zero count rather than wrapping the comparison in `Not`.
+    let comparison = if negated {
+        crate::effect::Comparison::Equal(0)
     } else {
-        shares_name
+        crate::effect::Comparison::GreaterThanOrEqual(1)
+    };
+    Ok(Some(PredicateAst::CountComparison {
+        count: ironsmith_core::AnthemCountExpression::MatchingFilter(filter),
+        comparison,
+        display: Some(crate::lexer::render_token_slice(predicate_tokens)),
     }))
 }
 
@@ -1035,6 +1037,7 @@ pub(super) const READINGS: &[Reading] = &[
                     .is_some_and(|_| !is_article(token.parser_text()))
             }))
                 // Readings ranked above this one that read the input read it.
+                && !input.read_by("same-name-as-filter-predicate")
                 && !input.read_by("phase-step-gate-predicate")
                 && !input.read_by("rule")
                 && !input.read_by("some")

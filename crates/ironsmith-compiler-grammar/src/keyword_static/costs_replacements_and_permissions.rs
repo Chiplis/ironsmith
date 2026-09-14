@@ -604,6 +604,15 @@ pub fn parse_spells_cost_modifier_line(
     };
     let is_life_cost_modifier =
         crate::word_primitives::sequence_occurs(&remaining_words, &["life"]);
+    if is_life_cost_modifier && direction == CostModifierDirection::More {
+        // "cost an additional 3 life to cast" (Terror of the Peaks): the
+        // runtime cost increase adds generic mana only, so a life surcharge
+        // must not silently become mana.
+        return Err(CardTextError::ParseError(format!(
+            "unsupported life cost increase for spells (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
     let per_target = !is_life_cost_modifier && is_exact_per_target_cost_modifier(&remaining_words);
     let per_additional_target = cost_words_contain_phrase(
         &remaining_words,
@@ -2774,6 +2783,27 @@ pub fn parse_double_counters_replacement_line(
     }))
 }
 
+/// Token descriptor words ("creature", "Food") as a token filter; `None`
+/// for an empty descriptor (every token), `Some(None)` never, and an outer
+/// `None` when a word is neither a card type nor a subtype.
+fn token_descriptor_filter(descriptor_tokens: &[OwnedLexToken]) -> Option<Option<ObjectFilter>> {
+    let words = parser_token_word_refs(descriptor_tokens);
+    if words.is_empty() {
+        return Some(None);
+    }
+    let mut token_filter = ObjectFilter::default().token();
+    for word in words {
+        if let Some(card_type) = parse_card_type(word) {
+            token_filter = token_filter.with_type(card_type);
+        } else if let Some(subtype) = parse_subtype_flexible(word) {
+            token_filter = token_filter.with_subtype(subtype);
+        } else {
+            return None;
+        }
+    }
+    Some(Some(token_filter))
+}
+
 pub fn parse_double_token_creation_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -2784,6 +2814,53 @@ pub fn parse_double_token_creation_replacement_line(
         keyword_static_lines::TokenCreationReplacementShape::GenericUnderYourControl => {
             StaticAbility::double_token_creation_replacement(
                 PlayerFilter::You,
+                display_text_for_tokens(tokens, true),
+            )
+        }
+        keyword_static_lines::TokenCreationReplacementShape::GenericMultiplied {
+            descriptor_tokens,
+            under_your_control,
+            factor,
+        } => {
+            let controller = if under_your_control {
+                PlayerFilter::You
+            } else {
+                PlayerFilter::Any
+            };
+            let Some(token_filter) = token_descriptor_filter(descriptor_tokens) else {
+                return Ok(None);
+            };
+            if factor == 2 && token_filter.is_none() {
+                StaticAbility::double_token_creation_replacement(
+                    controller,
+                    display_text_for_tokens(tokens, true),
+                )
+            } else {
+                StaticAbility::multiply_token_creation_replacement(
+                    controller,
+                    token_filter,
+                    factor,
+                    display_text_for_tokens(tokens, true),
+                )
+            }
+        }
+        keyword_static_lines::TokenCreationReplacementShape::AddNamedToken {
+            descriptor_tokens,
+            additional_kind_word,
+        } => {
+            let Some(token_filter) = token_descriptor_filter(descriptor_tokens) else {
+                return Ok(None);
+            };
+            let additional_token = match additional_kind_word {
+                "food" => ironsmith_core::AdditionalTokenKind::Food,
+                "treasure" => ironsmith_core::AdditionalTokenKind::Treasure,
+                _ => return Ok(None),
+            };
+            StaticAbility::add_token_creation_replacement(
+                PlayerFilter::You,
+                token_filter.unwrap_or_else(|| ObjectFilter::default().token()),
+                additional_token,
+                1,
                 display_text_for_tokens(tokens, true),
             )
         }
@@ -3736,6 +3813,34 @@ pub fn parse_attacks_each_combat_if_able_line(
             condition: PredicateAst::Not(Box::new(condition)),
         }));
     }
+    // "Creatures your opponents control attack each combat if able and attack
+    // a player other than you if able." (Kardur, Doomscourge) is the goad
+    // requirement stated in full.
+    if let Some(goad_tail) = crate::slice_primitives::find_window_by(tokens, 10, |window| {
+        window[0].is_word("and")
+            && window[1].is_word("attack")
+            && window[2].is_word("a")
+            && window[3].is_word("player")
+            && window[4].is_word("other")
+            && window[5].is_word("than")
+            && window[6].is_word("you")
+            && window[7].is_word("if")
+            && window[8].is_word("able")
+            && window[9].kind == crate::lexer::TokenKind::Period
+    }) {
+        let head = &tokens[..goad_tail];
+        if let Some(late_static_facts::AttackEachCombatFact::Subject(subject_tokens)) =
+            late_static_facts::parse_attack_each_combat_if_able_tokens(head)
+        {
+            let subject_tokens = trim_commas(subject_tokens);
+            if !subject_tokens.is_empty() {
+                let filter = parse_object_filter_lexed(&subject_tokens, false)?;
+                return Ok(Some(StaticAbilityAst::Static(StaticAbility::goad_matching(
+                    filter,
+                ))));
+            }
+        }
+    }
     let Some(fact) = late_static_facts::parse_attack_each_combat_if_able_tokens(tokens) else {
         return Ok(None);
     };
@@ -4068,8 +4173,13 @@ pub fn parse_draw_extra_cards_replacement_line(
     let Some(fact) = late_static_facts::parse_draw_extra_cards_replacement_tokens(tokens) else {
         return Ok(None);
     };
-    Ok(Some(StaticAbility::draw_extra_cards_replacement(
+    if fact.extra == 0 {
+        return Ok(None);
+    }
+    Ok(Some(StaticAbility::draw_extra_cards_replacement_with_options(
         fact.extra,
+        fact.except_first_of_draw_step,
+        fact.per_instruction,
         render_token_slice(tokens),
     )))
 }
@@ -4747,6 +4857,32 @@ pub fn parse_choose_basic_land_type_then_pay_life_line(
         return Ok(None);
     };
     Ok(Some(vec![choice, gate]))
+}
+
+/// "If you would gain life, you gain twice that much life instead." (Boon
+/// Reflection) / "If an opponent would lose life during your turn, they lose
+/// twice that much life instead." (Bloodletter of Aclazotz)
+pub fn parse_if_player_would_change_life_double_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(fact) = late_static_facts::parse_double_life_change_tokens(tokens) else {
+        return Ok(None);
+    };
+    let player = match fact.player {
+        late_static_facts::LifeChangePlayerFact::You => PlayerFilter::You,
+        late_static_facts::LifeChangePlayerFact::Opponent => PlayerFilter::Opponent,
+        late_static_facts::LifeChangePlayerFact::Any => PlayerFilter::Any,
+    };
+    let ability = StaticAbility::double_life_change_replacement(
+        player,
+        fact.loss,
+        render_token_slice(tokens),
+    );
+    Ok(Some(if fact.during_your_turn {
+        ability.with_condition(PredicateAst::YourTurn)
+    } else {
+        ability
+    }))
 }
 
 /// "If a land is tapped for two or more mana, it produces {C} instead of any

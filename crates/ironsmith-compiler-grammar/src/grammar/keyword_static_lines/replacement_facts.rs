@@ -27,8 +27,27 @@ pub enum CounterReplacementShape<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenCreationReplacementShape<'a> {
     GenericUnderYourControl,
+    /// "If one or more tokens would be created [under your control], <factor>
+    /// that many of those tokens are created instead." (Primal Vigor, Ojer
+    /// Taq, Deepest Foundation)
+    GenericMultiplied {
+        /// Words between "one or more" and "tokens" ("creature" for Ojer
+        /// Taq); empty when every token is multiplied.
+        descriptor_tokens: &'a [OwnedLexToken],
+        under_your_control: bool,
+        factor: u32,
+    },
     AddTreasure {
         descriptor_tokens: &'a [OwnedLexToken],
+    },
+    /// "If one or more tokens would be created under your control, those
+    /// tokens plus an additional Food token are created instead." (Peregrin
+    /// Took). `descriptor_tokens` narrows the replaced creation ("Food
+    /// tokens") and is empty when every token creation qualifies;
+    /// `additional_kind_word` is the added token's name ("food", "treasure").
+    AddNamedToken {
+        descriptor_tokens: &'a [OwnedLexToken],
+        additional_kind_word: &'static str,
     },
 }
 
@@ -99,11 +118,114 @@ pub fn parse_token_creation_replacement_tokens(
     if parse_generic_token_replacement(tokens) {
         return Some(TokenCreationReplacementShape::GenericUnderYourControl);
     }
+    if let Some(shape) = crate::grammar::primitives::probe_all(
+        tokens,
+        parse_multiplied_token_replacement_lexed,
+        "multiplied token replacement",
+    ) {
+        return Some(shape);
+    }
+    if let Some(shape) = crate::grammar::primitives::probe_all(
+        tokens,
+        parse_add_named_token_replacement_lexed,
+        "additional named token replacement",
+    ) {
+        return Some(shape);
+    }
     crate::grammar::primitives::probe_all(
         tokens,
         parse_add_treasure_token_replacement_lexed,
         "additional treasure token replacement",
     )
+}
+
+fn parse_multiplied_token_replacement_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<TokenCreationReplacementShape<'a>> {
+    primitives::phrase(&["if", "one", "or", "more"]).parse_next(input)?;
+    let descriptor_tokens = repeat_till::<_, _, (), _, _, _, _>(
+        0..,
+        any.void(),
+        peek(primitives::kw("tokens")),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    primitives::phrase(&["tokens", "would", "be", "created"]).parse_next(input)?;
+    let under_your_control = opt(primitives::phrase(&["under", "your", "control"]))
+        .parse_next(input)?
+        .is_some();
+    opt(primitives::comma()).parse_next(input)?;
+    let factor = alt((
+        primitives::kw("twice").value(2),
+        primitives::phrase(&["two", "times"]).value(2),
+        primitives::phrase(&["three", "times"]).value(3),
+        primitives::kw("thrice").value(3),
+    ))
+    .parse_next(input)?;
+    primitives::phrase(&[
+        "that", "many", "of", "those", "tokens", "are", "created", "instead",
+    ])
+    .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(TokenCreationReplacementShape::GenericMultiplied {
+        descriptor_tokens: trim_lexed_commas(descriptor_tokens),
+        under_your_control,
+        factor,
+    })
+}
+
+fn parse_add_named_token_replacement_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<TokenCreationReplacementShape<'a>> {
+    primitives::phrase(&["if", "one", "or", "more"]).parse_next(input)?;
+    let descriptor_tokens = repeat_till::<_, _, (), _, _, _, _>(
+        0..,
+        any.void(),
+        peek(alt((primitives::kw("token"), primitives::kw("tokens")))),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    alt((primitives::kw("token"), primitives::kw("tokens"))).parse_next(input)?;
+    primitives::phrase(&["would", "be", "created", "under", "your", "control"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["those", "tokens", "plus"]).parse_next(input)?;
+    opt(alt((primitives::kw("a"), primitives::kw("an")))).parse_next(input)?;
+    primitives::kw("additional").parse_next(input)?;
+    let repeated_descriptor = repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        peek(alt((primitives::kw("token"), primitives::kw("tokens")))),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    alt((primitives::kw("token"), primitives::kw("tokens"))).parse_next(input)?;
+    primitives::phrase(&["are", "created", "instead"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    let descriptor_words = TokenWordView::new(descriptor_tokens).word_refs();
+    let repeated_words = TokenWordView::new(repeated_descriptor).word_refs();
+    let additional_kind_word = match repeated_words.as_slice() {
+        ["food"] => "food",
+        ["treasure"] => "treasure",
+        _ => {
+            return Err(primitives::backtrack_err(
+                "additional named token replacement",
+                "a Food or Treasure token",
+            ));
+        }
+    };
+    if !descriptor_words.is_empty() && descriptor_words != repeated_words {
+        return Err(primitives::backtrack_err(
+            "additional named token replacement",
+            "a repeated token descriptor",
+        ));
+    }
+    Ok(TokenCreationReplacementShape::AddNamedToken {
+        descriptor_tokens: trim_lexed_commas(descriptor_tokens),
+        additional_kind_word,
+    })
 }
 
 pub fn parse_keyword_action_replacement_tokens(

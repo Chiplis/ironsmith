@@ -1648,15 +1648,22 @@ impl StaticAbilityModelInterpreter {
                 target_object_filter,
                 factor,
                 combat_only,
+                noncombat_only,
                 display,
-            } => StaticAbility::multiply_damage_amount_replacement(
-                source_filter.clone(),
-                target_player_filter.clone(),
-                target_object_filter.clone(),
-                *factor,
-                *combat_only,
-                display.clone(),
-            ),
+            } => {
+                let mut replacement = crate::static_abilities::DoubleDamageAmountReplacement::new(
+                    source_filter.clone(),
+                    target_player_filter.clone(),
+                    target_object_filter.clone(),
+                    *factor,
+                    *combat_only,
+                    display.clone(),
+                );
+                if *noncombat_only {
+                    replacement = replacement.noncombat_only();
+                }
+                StaticAbility::new(replacement)
+            }
             ironsmith_core::StaticAbilityPayload::DoubleCountersReplacement {
                 filter,
                 player_filter,
@@ -1732,9 +1739,17 @@ impl StaticAbilityModelInterpreter {
                 *optional,
                 display.clone(),
             ),
-            ironsmith_core::StaticAbilityPayload::DrawExtraCardsReplacement { extra, display } => {
-                StaticAbility::draw_extra_cards_replacement(*extra, display.clone())
-            }
+            ironsmith_core::StaticAbilityPayload::DrawExtraCardsReplacement {
+                extra,
+                except_first_of_draw_step,
+                per_instruction,
+                display,
+            } => StaticAbility::draw_extra_cards_replacement_with_options(
+                *extra,
+                *except_first_of_draw_step,
+                *per_instruction,
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::ConditionalDrawReplacement {
                 condition,
                 replacement_effects,
@@ -1815,6 +1830,26 @@ impl StaticAbilityModelInterpreter {
                 source_filter.clone(),
                 *minimum_amount,
                 replacement_mana.clone(),
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::MultiplyTokenCreationReplacement {
+                controller,
+                token_filter,
+                factor,
+                display,
+            } => StaticAbility::multiply_token_creation_replacement(
+                controller.clone(),
+                token_filter.clone(),
+                *factor,
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::DoubleLifeChangeReplacement {
+                player,
+                loss,
+                display,
+            } => StaticAbility::double_life_change_replacement(
+                player.clone(),
+                *loss,
                 display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::ManaSpendPermission {

@@ -806,6 +806,43 @@ fn activated_resolution_has_explicit_it_damage_source(
         .any(effect_has_explicit_it_damage_source)
 }
 
+/// "Put Derevi onto the battlefield from the command zone" / "Put your
+/// commander into your hand from the command zone": the origin is recorded as
+/// the ability's functional zone, so the moved object's text has no zone of
+/// its own to render.
+fn restore_command_zone_origin(
+    effects: String,
+    ability: &Ability,
+    activated: &crate::ability::ActivatedAbility,
+) -> String {
+    if ability.functional_zones.as_slice() != [Zone::Command]
+        || effects.contains("command zone")
+    {
+        return effects;
+    }
+    let moves_from_command_zone = activated
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .any(|effect| {
+            effect
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                .is_some_and(|move_to_zone| {
+                    matches!(move_to_zone.zone, Zone::Battlefield | Zone::Hand)
+                        && match move_to_zone.target.base() {
+                            ChooseSpec::Source => true,
+                            ChooseSpec::Object(filter) => filter.is_commander,
+                            _ => false,
+                        }
+                })
+        });
+    if !moves_from_command_zone {
+        return effects;
+    }
+    let trimmed = effects.trim_end_matches('.');
+    format!("{trimmed} from the command zone")
+}
+
 fn graveyard_self_exile_damage_uses_it_subject(
     ability: &Ability,
     activated: &crate::ability::ActivatedAbility,
@@ -1722,6 +1759,7 @@ pub(crate) fn describe_ability(
                 if subject != "This spell" {
                     effects = replace_this_spell_self_reference(effects, subject);
                 }
+                effects = restore_command_zone_origin(effects, ability, activated);
                 line.push_str(&effects);
             }
             if let Some(x_definition) = trailing_x_definition {

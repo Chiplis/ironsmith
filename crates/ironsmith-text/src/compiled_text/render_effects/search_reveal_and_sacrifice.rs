@@ -3634,10 +3634,16 @@ pub(super) fn describe_attack_block_if_able_grant(
         }
     }
 
+    let plural = crate::compiled_text::merge_passes::subject_is_plural(subject);
+    let (attack, block) = if plural {
+        ("attack", "block")
+    } else {
+        ("attacks", "blocks")
+    };
     match (has_must_attack, has_must_block) {
-        (true, true) => Some(format!("{subject} attacks or blocks {scope} if able")),
-        (true, false) => Some(format!("{subject} attacks {scope} if able")),
-        (false, true) => Some(format!("{subject} blocks {scope} if able")),
+        (true, true) => Some(format!("{subject} {attack} or {block} {scope} if able")),
+        (true, false) => Some(format!("{subject} {attack} {scope} if able")),
+        (false, true) => Some(format!("{subject} {block} {scope} if able")),
         (false, false) => None,
     }
 }

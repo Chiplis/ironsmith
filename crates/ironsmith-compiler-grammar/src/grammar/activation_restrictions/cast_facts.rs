@@ -248,7 +248,7 @@ fn parse_cast_spells_from_zones_words(words: &[&str]) -> Option<ObjectFilter> {
             &["anywhere", "other", "than", "your", "hand"],
         ],
     ) {
-        base.set_excluded_cast_origin_zone(Zone::Hand);
+        base.excluded_cast_origin_zone = Some(Zone::Hand);
         return Some(base);
     }
     let mut filters = Vec::new();

@@ -30,6 +30,8 @@ pub struct DamageMultiplierSpec<'a> {
     pub damaged_tokens: Option<&'a [OwnedLexToken]>,
     pub factor: u32,
     pub combat_only: bool,
+    /// "would deal noncombat damage" (Solphim, Mayhem Dominus).
+    pub noncombat_only: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -130,7 +132,13 @@ fn parse_imperative_damage_multiplier_lexed<'a>(
     let source = parse_explicit_damage_source_shape_lexed(input)?;
     primitives::phrase(&["would", "deal"]).parse_next(input)?;
     opt(primitives::period()).parse_next(input)?;
-    Ok(DamageMultiplierSpec { source, damaged_tokens: None, factor, combat_only: false })
+    Ok(DamageMultiplierSpec {
+        source,
+        damaged_tokens: None,
+        factor,
+        combat_only: false,
+        noncombat_only: false,
+    })
 }
 
 fn parse_damage_multiplier_lexed<'a>(
@@ -138,9 +146,10 @@ fn parse_damage_multiplier_lexed<'a>(
 ) -> WResult<DamageMultiplierSpec<'a>> {
     primitives::kw("if").parse_next(input)?;
     let source = parse_damage_source_shape_lexed(input)?;
-    let combat_only = alt((
-        primitives::phrase(&["would", "deal", "combat", "damage", "to"]).value(true),
-        primitives::phrase(&["would", "deal", "damage", "to"]).value(false),
+    let (combat_only, noncombat_only) = alt((
+        primitives::phrase(&["would", "deal", "combat", "damage", "to"]).value((true, false)),
+        primitives::phrase(&["would", "deal", "noncombat", "damage", "to"]).value((false, true)),
+        primitives::phrase(&["would", "deal", "damage", "to"]).value((false, false)),
     ))
     .parse_next(input)?;
     let damaged_tokens = repeat_till::<_, _, (), _, _, _, _>(
@@ -175,6 +184,7 @@ fn parse_damage_multiplier_lexed<'a>(
         damaged_tokens: Some(trim_lexed_commas(damaged_tokens)),
         factor,
         combat_only,
+        noncombat_only,
     })
 }
 

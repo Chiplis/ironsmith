@@ -142,6 +142,7 @@ pub enum CounterRemovalPreventionSurface {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum AdditionalTokenKind {
     Treasure,
+    Food,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -906,6 +907,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         target_object_filter: Option<ObjectFilter>,
         factor: u32,
         combat_only: bool,
+        #[cfg_attr(feature = "serde", serde(default))]
+        noncombat_only: bool,
         display: String,
     },
     DoubleCountersReplacement {
@@ -929,6 +932,14 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     },
     DoubleTokenCreationReplacement {
         controller: PlayerFilter,
+        display: String,
+    },
+    /// "three times that many of those tokens are created instead" (Ojer Taq,
+    /// Deepest Foundation): a token-creation multiplier other than two.
+    MultiplyTokenCreationReplacement {
+        controller: PlayerFilter,
+        token_filter: Option<ObjectFilter>,
+        factor: u32,
         display: String,
     },
     AddTokenCreationReplacement {
@@ -959,6 +970,15 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     /// one instead." (Quantum Riddler). Applies once per draw instruction.
     DrawExtraCardsReplacement {
         extra: u32,
+        /// "except the first one you draw in each of your draw steps"
+        /// (Alhammarret's Archive, Teferi's Ageless Insight).
+        #[cfg_attr(feature = "serde", serde(default))]
+        except_first_of_draw_step: bool,
+        /// "if you would draw one or more cards, ... that many plus one"
+        /// applies once per draw instruction; "if you would draw a card, draw
+        /// two cards instead" applies to every card drawn (CR 121.2).
+        #[cfg_attr(feature = "serde", serde(default))]
+        per_instruction: bool,
         display: String,
     },
     LoseGameReplacement {
@@ -1013,6 +1033,14 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         source_filter: ObjectFilter,
         minimum_amount: u32,
         replacement_mana: Vec<crate::ManaSymbol>,
+        display: String,
+    },
+    /// "If you would gain life, you gain twice that much life instead." (Boon
+    /// Reflection) / "If an opponent would lose life ..., they lose twice that
+    /// much life instead." (Bloodletter of Aclazotz).
+    DoubleLifeChangeReplacement {
+        player: PlayerFilter,
+        loss: bool,
         display: String,
     },
     ManaSpendPermission {
@@ -2258,6 +2286,7 @@ where
                 target_object_filter,
                 factor,
                 combat_only,
+                noncombat_only,
                 display,
             } => StaticAbilityPayload::DoubleDamageAmountReplacement {
                 source_filter,
@@ -2265,6 +2294,7 @@ where
                 target_object_filter,
                 factor,
                 combat_only,
+                noncombat_only,
                 display,
             },
             StaticAbilityPayload::DoubleCountersReplacement {
@@ -2309,6 +2339,17 @@ where
                 controller,
                 display,
             },
+            StaticAbilityPayload::MultiplyTokenCreationReplacement {
+                controller,
+                token_filter,
+                factor,
+                display,
+            } => StaticAbilityPayload::MultiplyTokenCreationReplacement {
+                controller,
+                token_filter,
+                factor,
+                display,
+            },
             StaticAbilityPayload::AddTokenCreationReplacement {
                 controller,
                 token_filter,
@@ -2340,9 +2381,17 @@ where
                 optional,
                 display,
             },
-            StaticAbilityPayload::DrawExtraCardsReplacement { extra, display } => {
-                StaticAbilityPayload::DrawExtraCardsReplacement { extra, display }
-            }
+            StaticAbilityPayload::DrawExtraCardsReplacement {
+                extra,
+                except_first_of_draw_step,
+                per_instruction,
+                display,
+            } => StaticAbilityPayload::DrawExtraCardsReplacement {
+                extra,
+                except_first_of_draw_step,
+                per_instruction,
+                display,
+            },
             StaticAbilityPayload::ConditionalDrawReplacement {
                 condition,
                 replacement_effects,
@@ -2431,6 +2480,15 @@ where
                 source_filter,
                 minimum_amount,
                 replacement_mana,
+                display,
+            },
+            StaticAbilityPayload::DoubleLifeChangeReplacement {
+                player,
+                loss,
+                display,
+            } => StaticAbilityPayload::DoubleLifeChangeReplacement {
+                player,
+                loss,
                 display,
             },
             StaticAbilityPayload::ManaSpendPermission {
@@ -5466,11 +5524,24 @@ impl<
     }
 
     pub fn draw_extra_cards_replacement(extra: u32, display: impl Into<String>) -> Self {
+        Self::draw_extra_cards_replacement_with_options(extra, false, true, display)
+    }
+    pub fn draw_extra_cards_replacement_with_options(
+        extra: u32,
+        except_first_of_draw_step: bool,
+        per_instruction: bool,
+        display: impl Into<String>,
+    ) -> Self {
         let display = display.into();
         Self {
             id: Some(StaticAbilityId::DrawExtraCardsReplacement),
             label: display.clone(),
-            payload: StaticAbilityPayload::DrawExtraCardsReplacement { extra, display },
+            payload: StaticAbilityPayload::DrawExtraCardsReplacement {
+                extra,
+                except_first_of_draw_step,
+                per_instruction,
+                display,
+            },
         }
     }
     pub fn conditional_draw_replacement(
@@ -5759,6 +5830,16 @@ impl<
             },
         }
     }
+    /// Restrict a multiplied-damage replacement to noncombat damage
+    /// ("would deal noncombat damage", Solphim, Mayhem Dominus).
+    pub fn with_noncombat_only_damage_multiplier(mut self) -> Self {
+        if let StaticAbilityPayload::DoubleDamageAmountReplacement { noncombat_only, .. } =
+            &mut self.payload
+        {
+            *noncombat_only = true;
+        }
+        self
+    }
     pub fn minimum_damage_amount_replacement(
         source_filter: ObjectFilter,
         target_player_filter: Option<PlayerFilter>,
@@ -5815,6 +5896,7 @@ impl<
                 target_object_filter,
                 factor,
                 combat_only,
+                noncombat_only: false,
                 display,
             },
         }
@@ -5910,6 +5992,24 @@ impl<
         }
     }
 
+    pub fn multiply_token_creation_replacement(
+        controller: PlayerFilter,
+        token_filter: Option<ObjectFilter>,
+        factor: u32,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::MultiplyTokenCreationReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::MultiplyTokenCreationReplacement {
+                controller,
+                token_filter,
+                factor,
+                display,
+            },
+        }
+    }
     pub fn double_token_creation_replacement(
         controller: PlayerFilter,
         display: impl Into<String>,
@@ -6025,6 +6125,22 @@ impl<
                 source_filter,
                 minimum_amount,
                 replacement_mana,
+                display,
+            },
+        }
+    }
+    pub fn double_life_change_replacement(
+        player: PlayerFilter,
+        loss: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::DoubleLifeChangeReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::DoubleLifeChangeReplacement {
+                player,
+                loss,
                 display,
             },
         }

@@ -20,6 +20,10 @@ pub struct DrawEvent {
     /// "if you would draw one or more cards" replacements apply to this
     /// event only.
     pub first_of_instruction: bool,
+    /// Whether this is the first card the player draws during their own draw
+    /// step this turn ("except the first one you draw in each of your draw
+    /// steps").
+    pub first_of_draw_step: bool,
 }
 
 impl DrawEvent {
@@ -30,7 +34,14 @@ impl DrawEvent {
             count,
             is_first_this_turn,
             first_of_instruction: true,
+            first_of_draw_step: false,
         }
+    }
+
+    /// Mark whether this event is the first card of the player's draw step.
+    pub fn with_first_of_draw_step(mut self, first_of_draw_step: bool) -> Self {
+        self.first_of_draw_step = first_of_draw_step;
+        self
     }
 
     /// Mark whether this event is the first card of its draw instruction.

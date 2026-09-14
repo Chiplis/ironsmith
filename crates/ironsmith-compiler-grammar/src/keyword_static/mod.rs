@@ -464,6 +464,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Pair("if", "this"),
         ],
         "parse_damage_prevention_with_owner_shuffle_line" => vec![StaticAbilityLineHeadHint::Single("if")],
+        "parse_damage_amount_replacement_line" => vec![StaticAbilityLineHeadHint::Single("if")],
         "parse_players_skip_extra_turns_line" => vec![
             StaticAbilityLineHeadHint::Single("if"),
             StaticAbilityLineHeadHint::Pair("if", "an"),
@@ -1284,6 +1285,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_exile_would_die_instead_line),
         single_static_ability_ast_rule!(parse_redirect_would_enter_line),
         single_static_ability_ast_rule!(parse_if_source_tapped_for_mana_replacement_line),
+        single_static_ability_ast_rule!(parse_if_player_would_change_life_double_line),
         single_static_ability_ast_rule!(parse_discard_or_redirect_replacement_line),
         single_static_ability_ast_rule!(parse_sacrifice_or_redirect_replacement_line),
         multi_static_ability_ast_rule!(parse_choose_basic_land_type_then_pay_life_line),
@@ -4113,12 +4115,26 @@ pub fn parse_damage_amount_replacement_line(
     }
     if let Some(repeated_target_tokens) = spec.repeated_target_tokens {
         let repeated_words = parser_token_word_refs(repeated_target_tokens);
-        let (repeated_player_filter, repeated_object_filter) =
-            parse_damage_amount_replacement_target_filters(&repeated_words)?;
-        if repeated_player_filter.as_ref() != target_player_filter.as_ref()
-            || repeated_object_filter.as_ref() != target_object_filter.as_ref()
-        {
-            return Ok(None);
+        // "to that permanent or player" (Torbran, Thane of Red Fell) only
+        // points back at the damaged object; it repeats no filter of its own.
+        let demonstrative_only = matches!(
+            repeated_words.as_slice(),
+            ["permanent", "or", "player"]
+                | ["player", "or", "permanent"]
+                | ["permanent"]
+                | ["player"]
+                | ["creature"]
+                | ["creature", "or", "player"]
+                | ["player", "or", "creature"]
+        );
+        if !demonstrative_only {
+            let (repeated_player_filter, repeated_object_filter) =
+                parse_damage_amount_replacement_target_filters(&repeated_words)?;
+            if repeated_player_filter.as_ref() != target_player_filter.as_ref()
+                || repeated_object_filter.as_ref() != target_object_filter.as_ref()
+            {
+                return Ok(None);
+            }
         }
     }
     let source_filter = damage_source_filter_from_shape(spec.source)?;
@@ -4164,14 +4180,19 @@ pub fn parse_double_damage_amount_replacement_line(
         display.push('.');
     }
 
-    Ok(Some(StaticAbility::multiply_damage_amount_replacement(
+    let ability = StaticAbility::multiply_damage_amount_replacement(
         source_filter,
         target_player_filter,
         target_object_filter,
         spec.factor,
         spec.combat_only,
         display,
-    )))
+    );
+    Ok(Some(if spec.noncombat_only {
+        ability.with_noncombat_only_damage_multiplier()
+    } else {
+        ability
+    }))
 }
 
 fn damage_source_filter_from_shape(

@@ -110,6 +110,44 @@ pub fn parse_sentence_pump_creature_type_of_choice(
     ]))
 }
 
+/// "Creatures your opponents control attack this turn if able." (Bident of
+/// Thassa): a plain filtered attack requirement until end of turn.
+pub fn parse_sentence_must_attack_filter_this_turn(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::effect::Until;
+
+    let tokens = clause.tokens();
+    let Some((suffix_start, (), suffix_rest)) = crate::grammar::primitives::find_prefix(tokens, || {
+        winnow::combinator::alt((
+            crate::grammar::primitives::phrase(&["attack", "this", "turn", "if", "able"]),
+            crate::grammar::primitives::phrase(&["attacks", "this", "turn", "if", "able"]),
+        ))
+    }) else {
+        return Ok(None);
+    };
+    if !crate::lexer::trim_lexed_commas(suffix_rest).is_empty() {
+        return Ok(None);
+    }
+    let subject_tokens = crate::lexer::trim_lexed_commas(&tokens[..suffix_start]);
+    if subject_tokens.is_empty()
+        || subject_tokens
+            .iter()
+            .any(|token| token.is_any_word(&["target", "chosen", "choice"]))
+    {
+        return Ok(None);
+    }
+    let filter = parse_object_filter(subject_tokens, false)?;
+    if !iter_contains(filter.card_types.iter(), &CardType::Creature) {
+        return Ok(None);
+    }
+    Ok(Some(vec![EffectAst::subject_verb_grant_abilities_all(
+        filter,
+        vec![crate::cards::builders::GrantedAbilityAst::MustAttack],
+        Until::EndOfTurn,
+    )]))
+}
+
 pub fn parse_sentence_must_attack_creature_type_of_choice(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

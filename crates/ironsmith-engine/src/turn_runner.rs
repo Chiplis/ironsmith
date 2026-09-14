@@ -1861,9 +1861,17 @@ impl TurnRunner {
                 }
             } else {
                 game.update_replacement_effects();
+                let (in_draw_step, drawn_this_draw_step) =
+                    game.draw_step_context_for_player(active_player);
                 Some(process_trait_event(
                     game,
-                    crate::events::Event::draw(active_player, 1, is_first_draw),
+                    crate::events::Event::draw_in_instruction(
+                        active_player,
+                        1,
+                        is_first_draw,
+                        true,
+                        in_draw_step && drawn_this_draw_step == 0,
+                    ),
                 ))
             };
 

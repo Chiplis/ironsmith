@@ -454,10 +454,12 @@ impl Event {
         count: u32,
         is_first_this_turn: bool,
         first_of_instruction: bool,
+        first_of_draw_step: bool,
     ) -> Self {
         Self::new_with_provenance(
             DrawEvent::new(player, count, is_first_this_turn)
-                .with_first_of_instruction(first_of_instruction),
+                .with_first_of_instruction(first_of_instruction)
+                .with_first_of_draw_step(first_of_draw_step),
             ProvNodeId::default(),
         )
     }

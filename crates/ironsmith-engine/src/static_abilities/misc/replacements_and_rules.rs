@@ -441,6 +441,7 @@ pub struct DoubleDamageAmountReplacement {
     pub target_object_filter: Option<ObjectFilter>,
     pub factor: u32,
     pub combat_only: bool,
+    pub noncombat_only: bool,
     pub display: String,
 }
 
@@ -459,8 +460,14 @@ impl DoubleDamageAmountReplacement {
             target_object_filter,
             factor,
             combat_only,
+            noncombat_only: false,
             display: display.into(),
         }
+    }
+
+    pub fn noncombat_only(mut self) -> Self {
+        self.noncombat_only = true;
+        self
     }
 }
 
@@ -487,7 +494,7 @@ impl StaticAbilityKind for DoubleDamageAmountReplacement {
                 target_object_filter: self.target_object_filter.clone(),
                 condition: None,
                 combat_only: self.combat_only,
-                noncombat_only: false,
+                noncombat_only: self.noncombat_only,
                 amount_less_than: None,
             },
             ReplacementAction::Modify(EventModification::Multiply(self.factor)),
@@ -792,6 +799,61 @@ impl StaticAbilityKind for DoubleTokenCreationReplacement {
                 self.controller.clone(),
             ),
             ReplacementAction::Double,
+        ))
+    }
+}
+
+/// "If one or more tokens would be created under your control, three times
+/// that many of those tokens are created instead." (Ojer Taq)
+#[derive(Debug, Clone, PartialEq)]
+pub struct MultiplyTokenCreationReplacement {
+    pub controller: PlayerFilter,
+    pub token_filter: Option<ObjectFilter>,
+    pub factor: u32,
+    pub display: String,
+}
+
+impl MultiplyTokenCreationReplacement {
+    pub fn new(
+        controller: PlayerFilter,
+        token_filter: Option<ObjectFilter>,
+        factor: u32,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            controller,
+            token_filter,
+            factor,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for MultiplyTokenCreationReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::MultiplyTokenCreationReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        let mut matcher = crate::events::tokens::matchers::WouldCreateTokensUnderControlMatcher::new(
+            self.controller.clone(),
+        );
+        if let Some(token_filter) = &self.token_filter {
+            matcher = matcher.with_token_filter(token_filter.clone());
+        }
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            matcher,
+            ReplacementAction::Modify(EventModification::Multiply(self.factor)),
         ))
     }
 }
@@ -1881,6 +1943,10 @@ impl ReplacementMatcher for ConditionalWouldDrawCardMatcher {
 pub struct DrawExtraCardsReplacement {
     pub condition: Option<Condition>,
     pub extra: u32,
+    /// Skip the first card drawn in each of the player's own draw steps.
+    pub except_first_of_draw_step: bool,
+    /// Apply once per draw instruction rather than to every card drawn.
+    pub per_instruction: bool,
     pub display: String,
 }
 
@@ -1889,8 +1955,20 @@ impl DrawExtraCardsReplacement {
         Self {
             condition: None,
             extra,
+            except_first_of_draw_step: false,
+            per_instruction: true,
             display: display.into(),
         }
+    }
+
+    pub fn except_first_of_draw_step(mut self) -> Self {
+        self.except_first_of_draw_step = true;
+        self
+    }
+
+    pub fn per_card(mut self) -> Self {
+        self.per_instruction = false;
+        self
     }
 }
 
@@ -1922,6 +2000,8 @@ impl StaticAbilityKind for DrawExtraCardsReplacement {
             controller,
             WouldDrawInstructionMatcher {
                 condition: self.condition.clone(),
+                except_first_of_draw_step: self.except_first_of_draw_step,
+                per_instruction: self.per_instruction,
                 display: self.display.clone(),
             },
             ReplacementAction::Modify(crate::replacement::EventModification::Add(
@@ -1936,6 +2016,8 @@ impl StaticAbilityKind for DrawExtraCardsReplacement {
 #[derive(Debug, Clone)]
 struct WouldDrawInstructionMatcher {
     condition: Option<Condition>,
+    except_first_of_draw_step: bool,
+    per_instruction: bool,
     display: String,
 }
 
@@ -1944,9 +2026,12 @@ impl ReplacementMatcher for WouldDrawInstructionMatcher {
         if !WouldDrawCardMatcher::you().matches_event(event, ctx) {
             return false;
         }
-        let first_of_instruction = crate::events::downcast_event::<crate::events::DrawEvent>(event)
-            .is_some_and(|draw| draw.first_of_instruction);
-        if !first_of_instruction {
+        let Some(draw) = crate::events::downcast_event::<crate::events::DrawEvent>(event) else {
+            return false;
+        };
+        if (self.per_instruction && !draw.first_of_instruction)
+            || (self.except_first_of_draw_step && draw.first_of_draw_step)
+        {
             return false;
         }
         let Some(condition) = &self.condition else {
@@ -3069,6 +3154,113 @@ impl ReplacementMatcher for TappedForMinimumManaMatcher {
 
     fn display(&self) -> String {
         self.inner.display()
+    }
+}
+
+/// "If you would gain life, you gain twice that much life instead." (Boon
+/// Reflection); `loss` selects the life-loss form (Bloodletter of Aclazotz).
+/// A leading "as long as" / "during your turn" condition gates it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DoubleLifeChangeReplacement {
+    pub player: PlayerFilter,
+    pub loss: bool,
+    pub condition: Option<Condition>,
+    pub display: String,
+}
+
+impl DoubleLifeChangeReplacement {
+    pub fn new(player: PlayerFilter, loss: bool, display: impl Into<String>) -> Self {
+        Self {
+            player,
+            loss,
+            condition: None,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for DoubleLifeChangeReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DoubleLifeChangeReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        let mut combined = self.clone();
+        combined.condition = Some(match combined.condition.take() {
+            Some(existing) => Condition::And(Box::new(condition), Box::new(existing)),
+            None => condition,
+        });
+        Some(StaticAbility::new(combined))
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            ConditionalWouldChangeLifeMatcher {
+                player: self.player.clone(),
+                loss: self.loss,
+                condition: self.condition.clone(),
+                display: self.display.clone(),
+            },
+            ReplacementAction::Double,
+        ))
+    }
+}
+
+/// A life-gain or life-loss event for the matching player, optionally gated
+/// by a static condition evaluated for the replacement's source.
+#[derive(Debug, Clone)]
+struct ConditionalWouldChangeLifeMatcher {
+    player: PlayerFilter,
+    loss: bool,
+    condition: Option<Condition>,
+    display: String,
+}
+
+impl ReplacementMatcher for ConditionalWouldChangeLifeMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        let matches_change = if self.loss {
+            crate::events::life::matchers::WouldLoseLifeMatcher::new(self.player.clone())
+                .matches_event(event, ctx)
+        } else {
+            crate::events::life::matchers::WouldGainLifeMatcher::new(self.player.clone())
+                .matches_event(event, ctx)
+        };
+        if !matches_change {
+            return false;
+        }
+        let Some(condition) = &self.condition else {
+            return true;
+        };
+        let Some(source) = ctx.source else {
+            return false;
+        };
+        let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
+            controller: ctx.controller,
+            source,
+            defending_player: None,
+            attacking_player: None,
+            filter_source: None,
+            iterated_player: None,
+            triggering_event: None,
+            trigger_identity: None,
+            ability_index: None,
+            options: Default::default(),
+        };
+        crate::condition_eval::evaluate_condition_external(ctx.game, condition, &eval_ctx)
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
     }
 }
 

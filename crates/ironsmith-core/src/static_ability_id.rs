@@ -288,6 +288,7 @@ pub enum StaticAbilityId {
     AddCountersPlacementReplacement,
     PlayerCounterPerTurnLimitReplacement,
     DoubleTokenCreationReplacement,
+    MultiplyTokenCreationReplacement,
     AddTokenCreationReplacement,
     CreaturesEnteringDontCauseAbilitiesToTrigger,
     DuplicateMatchingTriggeredAbilities,
@@ -310,6 +311,7 @@ pub enum StaticAbilityId {
     RevealCardOrEnterTappedReplacement,
     RedirectWouldEnterReplacement,
     ManaProductionReplacement,
+    DoubleLifeChangeReplacement,
     PregameAction,
     DeckConstructionRuleText,
     DraftRuleText,
@@ -610,6 +612,7 @@ impl StaticAbilityId {
             | AddCountersPlacementReplacement
             | PlayerCounterPerTurnLimitReplacement
             | DoubleTokenCreationReplacement
+            | MultiplyTokenCreationReplacement
             | AddTokenCreationReplacement
             | CreaturesEnteringDontCauseAbilitiesToTrigger
             | DuplicateMatchingTriggeredAbilities
@@ -632,6 +635,7 @@ impl StaticAbilityId {
             | RevealCardOrEnterTappedReplacement
             | RedirectWouldEnterReplacement
             | ManaProductionReplacement
+            | DoubleLifeChangeReplacement
             | PregameAction
             | DeckConstructionRuleText
             | DraftRuleText

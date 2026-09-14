@@ -1082,6 +1082,10 @@ fn apply_trait_double(event: &Event) -> Option<Event> {
             let life_gain = downcast_event::<LifeGainEvent>(event.inner())?;
             Some(event.rewrap(life_gain.doubled()))
         }
+        EventKind::LifeLoss => {
+            let life_loss = downcast_event::<crate::events::LifeLossEvent>(event.inner())?;
+            Some(event.rewrap(life_loss.with_amount(life_loss.amount.saturating_mul(2))))
+        }
         EventKind::PutCounters => {
             let put_counters = downcast_event::<PutCountersEvent>(event.inner())?;
             Some(event.rewrap(put_counters.doubled()))

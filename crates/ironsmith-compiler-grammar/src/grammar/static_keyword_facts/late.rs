@@ -244,6 +244,29 @@ pub struct ConditionalDrawReplacementFact<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DrawExtraCardsReplacementFact {
     pub extra: u32,
+    /// "except the first one you draw in each of your draw steps"
+    pub except_first_of_draw_step: bool,
+    /// "one or more cards ... that many" applies per draw instruction;
+    /// "a card ... two cards" applies to each card drawn.
+    pub per_instruction: bool,
+}
+
+/// The player whose life change a doubling replacement watches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LifeChangePlayerFact {
+    You,
+    Opponent,
+    Any,
+}
+
+/// "If you would gain life, you gain twice that much life instead." /
+/// "If an opponent would lose life during your turn, they lose twice that
+/// much life instead."
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DoubleLifeChangeFact {
+    pub player: LifeChangePlayerFact,
+    pub loss: bool,
+    pub during_your_turn: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -562,16 +585,84 @@ fn parse_draw_extra_cards_replacement_lexed(
     input: &mut LexStream<'_>,
 ) -> WResult<DrawExtraCardsReplacementFact> {
     semantic_phrase(&["if", "you", "would", "draw"]).parse_next(input)?;
-    alt((
-        semantic_phrase(&["one", "or", "more", "cards"]),
-        semantic_phrase(&["a", "card"]),
+    let per_instruction = alt((
+        semantic_phrase(&["one", "or", "more", "cards"]).value(true),
+        semantic_phrase(&["a", "card"]).value(false),
     ))
     .parse_next(input)?;
+    let except_first_of_draw_step = opt(semantic_phrase(&[
+        "except", "the", "first", "one", "you", "draw", "in", "each", "of", "your", "draw",
+        "steps",
+    ]))
+    .parse_next(input)?
+    .is_some();
     opt(semantic_kw("you")).parse_next(input)?;
-    semantic_phrase(&["draw", "that", "many", "cards", "plus"]).parse_next(input)?;
-    let extra = semantic_number_token.parse_next(input)?;
+    semantic_kw("draw").parse_next(input)?;
+    let extra = alt((
+        // "that many cards plus one instead" adds to the instruction.
+        (
+            semantic_phrase(&["that", "many", "cards", "plus"]),
+            semantic_number_token,
+        )
+            .map(|(_, extra)| extra),
+        // "two cards instead" replaces a single-card draw, so the extra is
+        // the difference from one.
+        (
+            semantic_number_token,
+            alt((semantic_kw("cards"), semantic_kw("card"))),
+        )
+            .map(|(count, _)| count.saturating_sub(1)),
+    ))
+    .parse_next(input)?;
     semantic_kw("instead").parse_next(input)?;
-    Ok(DrawExtraCardsReplacementFact { extra })
+    Ok(DrawExtraCardsReplacementFact {
+        extra,
+        except_first_of_draw_step,
+        per_instruction,
+    })
+}
+
+pub fn parse_double_life_change_tokens(tokens: &[OwnedLexToken]) -> Option<DoubleLifeChangeFact> {
+    parse_semantic_all(tokens, parse_double_life_change_lexed)
+}
+
+fn parse_double_life_change_lexed(input: &mut LexStream<'_>) -> WResult<DoubleLifeChangeFact> {
+    semantic_kw("if").parse_next(input)?;
+    let player = alt((
+        semantic_kw("you").value(LifeChangePlayerFact::You),
+        semantic_phrase(&["an", "opponent"]).value(LifeChangePlayerFact::Opponent),
+        semantic_phrase(&["a", "player"]).value(LifeChangePlayerFact::Any),
+    ))
+    .parse_next(input)?;
+    semantic_kw("would").parse_next(input)?;
+    let loss = alt((
+        semantic_kw("gain").value(false),
+        semantic_kw("lose").value(true),
+    ))
+    .parse_next(input)?;
+    semantic_kw("life").parse_next(input)?;
+    let during_your_turn = opt(semantic_phrase(&["during", "your", "turn"]))
+        .parse_next(input)?
+        .is_some();
+    alt((
+        semantic_kw("you"),
+        semantic_kw("they"),
+        semantic_phrase(&["that", "player"]),
+    ))
+    .parse_next(input)?;
+    alt((
+        semantic_kw("gain"),
+        semantic_kw("gains"),
+        semantic_kw("lose"),
+        semantic_kw("loses"),
+    ))
+    .parse_next(input)?;
+    semantic_phrase(&["twice", "that", "much", "life", "instead"]).parse_next(input)?;
+    Ok(DoubleLifeChangeFact {
+        player,
+        loss,
+        during_your_turn,
+    })
 }
 
 pub fn parse_pay_life_or_enter_tapped_tokens(

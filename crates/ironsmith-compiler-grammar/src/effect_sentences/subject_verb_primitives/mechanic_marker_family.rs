@@ -370,6 +370,17 @@ pub const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
         parse_sentence_must_attack_creature_type_of_choice
     ),
     primitive!(
+        "must-attack-filter-this-turn",
+        66,
+        PostDiagnostic,
+        &[
+            LexRuleHeadHint::Single("creatures"),
+            LexRuleHeadHint::Single("each"),
+            LexRuleHeadHint::Single("all"),
+        ],
+        parse_sentence_must_attack_filter_this_turn
+    ),
+    primitive!(
         "return-multiple-targets",
         70,
         PostDiagnostic,

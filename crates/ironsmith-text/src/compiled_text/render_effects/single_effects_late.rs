@@ -1679,6 +1679,7 @@ pub(super) fn describe_mana_usage_ability_source_filter(filter: &ObjectFilter) -
     remainder.subtypes.clear();
     remainder.supertypes.clear();
     remainder.colorless = false;
+    remainder.chosen_creature_type = false;
     if remainder != ObjectFilter::default() {
         return None;
     }
@@ -1707,11 +1708,24 @@ pub(super) fn describe_mana_usage_ability_source_filter(filter: &ObjectFilter) -
         return Some("a source".to_string());
     }
 
-    let described = if filter.colorless {
+    let mut described = if filter.colorless {
         descriptors.join(" ")
     } else {
         join_with_or(&descriptors)
     };
+    // "a creature source of the chosen type" (Secluded Courtyard)
+    if filter.chosen_creature_type {
+        described.push_str(" source of the chosen type");
+        let article = if matches!(
+            described.chars().next().map(|ch| ch.to_ascii_lowercase()),
+            Some('a' | 'e' | 'i' | 'o' | 'u')
+        ) {
+            "an"
+        } else {
+            "a"
+        };
+        return Some(format!("{article} {described}"));
+    }
     let article = if matches!(
         described.chars().next().map(|ch| ch.to_ascii_lowercase()),
         Some('a' | 'e' | 'i' | 'o' | 'u')

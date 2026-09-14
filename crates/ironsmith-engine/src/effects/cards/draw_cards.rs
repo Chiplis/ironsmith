@@ -328,7 +328,13 @@ impl EffectExecutor for DrawCardsEffect {
                 game.update_replacement_effects();
             }
 
-            let draw_event = Event::draw_in_instruction(player_id, 1, is_first, index == 0);
+            let draw_event = Event::draw_in_instruction(
+                player_id,
+                1,
+                is_first,
+                index == 0,
+                is_during_players_draw_step && cards_previously_drawn_this_draw_step == 0,
+            );
             match process_trait_event_with_dm_and_applied_effects(
                 game,
                 draw_event,

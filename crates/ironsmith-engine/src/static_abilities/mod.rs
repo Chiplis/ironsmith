@@ -3923,6 +3923,24 @@ impl StaticAbility {
         Self::new(DrawExtraCardsReplacement::new(extra, display))
     }
 
+    /// "If you would draw a card except the first one you draw in each of
+    /// your draw steps, draw two cards instead." (Alhammarret's Archive)
+    pub fn draw_extra_cards_replacement_with_options(
+        extra: u32,
+        except_first_of_draw_step: bool,
+        per_instruction: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        let mut replacement = DrawExtraCardsReplacement::new(extra, display);
+        if except_first_of_draw_step {
+            replacement = replacement.except_first_of_draw_step();
+        }
+        if !per_instruction {
+            replacement = replacement.per_card();
+        }
+        Self::new(replacement)
+    }
+
     pub fn conditional_draw_replacement(
         condition: crate::effect::Condition,
         replacement_effects: Vec<crate::effect::Effect>,
@@ -4207,6 +4225,30 @@ impl StaticAbility {
     /// you may pay 2 life. If you don't, it enters the battlefield tapped."
     pub fn pay_life_or_enter_tapped(life_cost: u32) -> Self {
         Self::new(PayLifeOrEnterTappedReplacement::new(life_cost))
+    }
+
+    /// "three times that many of those tokens are created instead" (Ojer Taq)
+    pub fn multiply_token_creation_replacement(
+        controller: crate::target::PlayerFilter,
+        token_filter: Option<crate::target::ObjectFilter>,
+        factor: u32,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(MultiplyTokenCreationReplacement::new(
+            controller,
+            token_filter,
+            factor,
+            display,
+        ))
+    }
+
+    /// "If you would gain life, you gain twice that much life instead."
+    pub fn double_life_change_replacement(
+        player: crate::target::PlayerFilter,
+        loss: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(DoubleLifeChangeReplacement::new(player, loss, display))
     }
 
     /// "If a land is tapped for two or more mana, it produces {C} instead of
