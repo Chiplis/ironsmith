@@ -204,6 +204,7 @@ pub fn parse_has_base_power_clause(
         let target = parse_target_phrase(shape.target_tokens)?;
         return Ok(Some(EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseOneOf {
+                chooser: crate::target::PlayerFilter::You,
                 modes: vec![
                     crate::cards::builders::ChooseOneModeAst {
                         description: String::new(),

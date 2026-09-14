@@ -363,7 +363,7 @@ pub fn for_each_nested_effects(
             visit(if_true);
             visit(if_false);
         }
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
             for mode in modes {
                 visit(&mode.effects);
@@ -434,7 +434,7 @@ pub fn for_each_nested_effects_mut(
             visit(if_true);
             visit(if_false);
         }
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
             for mode in modes {
                 visit(&mut mode.effects);
@@ -518,7 +518,7 @@ pub fn for_each_nested_effect_vec_mut(
                 visit(if_true);
                 visit(if_false);
             }
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
                 for mode in modes {
                     visit(&mut mode.effects);
@@ -594,7 +594,7 @@ pub fn try_for_each_nested_effects_mut<E>(
             visit(if_true)?;
             visit(if_false)?;
         }
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
             for mode in modes {
                 visit(&mut mode.effects)?;

@@ -151,6 +151,9 @@ fn describe_protection_permanent_filter(filter: &ObjectFilter) -> String {
     if *filter == ObjectFilter::spell() {
         return "spells".to_string();
     }
+    if *filter == ObjectFilter::default().multicolored() {
+        return "multicolored".to_string();
+    }
     let mut cast_this_turn_permanent_filter = ObjectFilter::permanent();
     cast_this_turn_permanent_filter.cast_this_turn = true;
     if *filter == cast_this_turn_permanent_filter {

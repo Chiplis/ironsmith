@@ -60,6 +60,58 @@ fn parse_mana_replacement_clause<'a>(
     Ok(ManaReplacementClauseSpec { replacement_mana })
 }
 
+/// "If a land is tapped for two or more mana, it produces {C} instead of any
+/// other type and amount." (Damping Sphere)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TappedForAmountManaReplacementSpec<'a> {
+    pub source_tokens: &'a [OwnedLexToken],
+    pub minimum_amount: u32,
+    pub replacement_mana: ManaSymbol,
+}
+
+fn parse_tapped_for_amount_mana_replacement<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<TappedForAmountManaReplacementSpec<'a>, ErrMode<ContextError>> {
+    primitives::kw("if").parse_next(input)?;
+    opt(winnow::combinator::alt((
+        primitives::kw("a"),
+        primitives::kw("an"),
+    )))
+    .parse_next(input)?;
+    let source_tokens: &'a [OwnedLexToken] = winnow::combinator::repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        winnow::token::any.void(),
+        winnow::combinator::peek(primitives::phrase(&["is", "tapped", "for"])),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    primitives::phrase(&["is", "tapped", "for"]).parse_next(input)?;
+    let minimum_amount = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    primitives::phrase(&["or", "more", "mana"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["it", "produces"]).parse_next(input)?;
+    let replacement_mana = parse_replacement_mana_symbol(input)?;
+    primitives::phrase(&["instead", "of", "any", "other", "type", "and", "amount"])
+        .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(TappedForAmountManaReplacementSpec {
+        source_tokens: crate::lexer::trim_lexed_commas(source_tokens),
+        minimum_amount,
+        replacement_mana,
+    })
+}
+
+pub fn parse_tapped_for_amount_mana_replacement_spec_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<TappedForAmountManaReplacementSpec<'_>> {
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_tapped_for_amount_mana_replacement,
+        "tapped-for-amount mana replacement",
+    )
+}
+
 pub fn parse_mana_replacement_clause_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaReplacementClauseSpec> {

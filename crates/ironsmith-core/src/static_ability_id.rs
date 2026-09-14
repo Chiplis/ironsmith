@@ -206,6 +206,7 @@ pub enum StaticAbilityId {
     VoteAdditionalTimeWhileVoting,
     VoteAdditionalVoteWhileVoting,
     EnchantedLandIsChosenType,
+    SourceLandIsChosenType,
     AddChosenCreatureType,
     AddChosenBasicLandType,
     AddChosenColor,
@@ -276,6 +277,7 @@ pub enum StaticAbilityId {
     DrawReplacementDouble,
     DrawReplacementSkipEmptyLibrary,
     ConditionalDrawReplacement,
+    DrawExtraCardsReplacement,
     LoseGameReplacement,
     KeywordActionReplacement,
     ExileToCounteredExileInsteadOfGraveyard,
@@ -305,6 +307,9 @@ pub enum StaticAbilityId {
     DiscardOrRedirectReplacement,
     SacrificeOrRedirectReplacement,
     PayLifeOrEnterTappedReplacement,
+    RevealCardOrEnterTappedReplacement,
+    RedirectWouldEnterReplacement,
+    ManaProductionReplacement,
     PregameAction,
     DeckConstructionRuleText,
     DraftRuleText,
@@ -523,6 +528,7 @@ impl StaticAbilityId {
             | VoteAdditionalTimeWhileVoting
             | VoteAdditionalVoteWhileVoting
             | EnchantedLandIsChosenType
+            | SourceLandIsChosenType
             | AddChosenCreatureType
             | AddChosenBasicLandType
             | AddChosenColor
@@ -593,6 +599,7 @@ impl StaticAbilityId {
             | DrawReplacementDouble
             | DrawReplacementSkipEmptyLibrary
             | ConditionalDrawReplacement
+            | DrawExtraCardsReplacement
             | LoseGameReplacement
             | KeywordActionReplacement
             | ExileToCounteredExileInsteadOfGraveyard
@@ -622,6 +629,9 @@ impl StaticAbilityId {
             | DiscardOrRedirectReplacement
             | SacrificeOrRedirectReplacement
             | PayLifeOrEnterTappedReplacement
+            | RevealCardOrEnterTappedReplacement
+            | RedirectWouldEnterReplacement
+            | ManaProductionReplacement
             | PregameAction
             | DeckConstructionRuleText
             | DraftRuleText

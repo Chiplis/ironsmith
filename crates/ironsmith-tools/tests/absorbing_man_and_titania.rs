@@ -53,7 +53,7 @@ fn canonical_multiplier_uses_current_source_characteristics_and_departed_source_
     let creature=CardDefinitionBuilder::new(CardId::new(),"Changing damage source fixture").card_types(vec![CardType::Creature]).power_toughness(ironsmith::card::PowerToughness::fixed(3,3)).build();
     let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
     // unchanged, control changes, type changes, leaves, doubler leaves.
-    for change in 0..5 {
+    for change in 0..7 {
         let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);
         let doubler=game.create_object_from_definition(&definition,alice,Zone::Battlefield);
         let source=game.create_object_from_definition(&creature,alice,Zone::Battlefield);
@@ -66,6 +66,8 @@ fn canonical_multiplier_uses_current_source_characteristics_and_departed_source_
             2=>{ironsmith::effects::ApplyContinuousEffect::new(ironsmith::continuous::EffectTarget::Specific(source),ironsmith::continuous::Modification::SetCardTypes(vec![CardType::Artifact]),ironsmith::effect::Until::EndOfTurn).execute(&mut game,&mut ironsmith::effects::EffectContext::new(doubler,alice,&mut dm)).unwrap();},
             3=>{game.move_object_by_effect(source,Zone::Graveyard).unwrap();},
             4=>{game.move_object_by_effect(doubler,Zone::Graveyard).unwrap();},
+            5=>{game.set_current_controller(source,bob);game.move_object_by_effect(source,Zone::Graveyard).unwrap();},
+            6=>{ironsmith::effects::ApplyContinuousEffect::new(ironsmith::continuous::EffectTarget::Specific(source),ironsmith::continuous::Modification::SetCardTypes(vec![CardType::Artifact]),ironsmith::effect::Until::EndOfTurn).execute(&mut game,&mut ironsmith::effects::EffectContext::new(doubler,alice,&mut dm)).unwrap();game.move_object_by_effect(source,Zone::Graveyard).unwrap();},
             _=>{}
         }
         ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();
@@ -110,6 +112,7 @@ fn canonical_multiplier_structure_has_source_filter_and_no_recipient_restriction
     assert_eq!(definition.abilities.len(),1);
     let ironsmith::ability::AbilityKind::Static(ability)=&definition.abilities[0].kind else {panic!("expected static replacement")};
     let ironsmith_core::StaticAbilityPayload::DoubleDamageAmountReplacement{source_filter,target_player_filter,target_object_filter,factor,combat_only,..}=&ability.compiled_model().unwrap().payload else {panic!("expected typed multiplier")};
+    assert_eq!(source_filter.zone,None,"source noun is not limited to battlefield");
     assert_eq!(source_filter.card_types,vec![ironsmith::CardType::Creature]);
     assert_eq!(source_filter.controller,Some(ironsmith::target::PlayerFilter::You));
     assert_eq!(target_player_filter,&Some(ironsmith::target::PlayerFilter::Any));

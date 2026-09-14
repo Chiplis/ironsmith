@@ -1183,6 +1183,41 @@ fn exact_attachment_state_reference(
     (states.contains(&"enchanted") && states.contains(&"equipped")).then_some(states)
 }
 
+/// Render the attachment relation from the source's side, as in Springheart
+/// Nantuko's "if this permanent is attached to a creature you control".
+///
+/// The attachment tag names the object this permanent is attached to, so the
+/// filter is a predicate over that object. The bare attached-object describers
+/// above already claim the characteristic surfaces ("enchanted creature is a
+/// Wolf"); what reaches here is a qualified object the authored text can only
+/// have named through the relation itself.
+fn describe_source_attachment_target_condition(
+    tag: &TagKey,
+    filter: &ObjectFilter,
+) -> Option<String> {
+    if !matches!(tag.as_str(), "equipped" | "enchanted") {
+        return None;
+    }
+    // Only a controller- or owner-qualified object names the relation rather
+    // than a characteristic of the attached object.
+    if filter.controller.is_none() && filter.owner.is_none() {
+        return None;
+    }
+    let mut bare = filter.clone();
+    bare.controller = None;
+    bare.owner = None;
+    bare.card_types.clear();
+    bare.subtypes.clear();
+    bare.zone = None;
+    if bare != ObjectFilter::default() {
+        return None;
+    }
+    Some(format!(
+        "this permanent is attached to {}",
+        ensure_indefinite_article(&filter.description())
+    ))
+}
+
 fn describe_attachment_state_disjunction(condition: &Condition) -> Option<String> {
     fn branch(condition: &Condition) -> Option<(bool, &TagKey, &'static str)> {
         let (past, tag, filter) = match condition {
@@ -2696,6 +2731,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 return condition;
             }
             if let Some(condition) = describe_attached_object_type_condition(tag, filter) {
+                return condition;
+            }
+            if let Some(condition) = describe_source_attachment_target_condition(tag, filter) {
                 return condition;
             }
             if let Some(condition) = describe_sacrifice_cost_object_condition(tag, filter) {

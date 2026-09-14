@@ -75,6 +75,17 @@ fn parses_modal_result_predicates() {
             "no counters were removed this way",
             IfResultPredicate::DidNot,
         ),
+        // Springheart Nantuko gates its consolation token on whether the
+        // antecedent token creation happened.
+        (
+            "you didn't create a token this way",
+            IfResultPredicate::DidNot,
+        ),
+        ("you create a token this way", IfResultPredicate::Did),
+        (
+            "you didn't create tokens this way",
+            IfResultPredicate::DidNot,
+        ),
     ] {
         let tokens = lex_line(raw, 0).unwrap();
         let actual = parse_if_result_predicate_lexed_tokens(&tokens);

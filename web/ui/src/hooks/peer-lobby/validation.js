@@ -403,6 +403,10 @@ export function usePeerLobbyValidation(base, servicesRef) {
       }
       if (isTrustedMultiplayerSecurityMode(localSecurityMode)) {
         applyPhase = markApplyPhase("pre_apply_checks");
+        // Reject a transcript gap or prefix mismatch before the engine mutates
+        // anything: a failure here must leave the local state exactly as it was so
+        // the host checkpoint resync that follows starts from a consistent seat.
+        if (!dryRun) servicesRef.current.assertAcceptedActionExtendsTranscript(message);
         const liveStateForClock = gameRef.current
           ? await gameRef.current.uiState()
           : stateRef.current;

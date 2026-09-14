@@ -134,12 +134,33 @@ impl GameState {
     /// check it before proposing ETB replacements or collecting entry choices.
     pub(crate) fn card_cannot_enter_battlefield(&self, object_id: ObjectId) -> bool {
         self.object(object_id).is_some_and(|object| {
-            object.kind == crate::object::ObjectKind::Card
+            (object.kind == crate::object::ObjectKind::Card
                 && object
                     .card_types
                     .iter()
-                    .any(|card_type| matches!(card_type, CardType::Instant | CardType::Sorcery))
+                    .any(|card_type| matches!(card_type, CardType::Instant | CardType::Sorcery)))
+                || self.entry_prohibited_by_cant_effect(object)
         })
+    }
+
+    /// CR 614.17-style prohibitions such as Grafdigger's Cage: the filter is
+    /// matched against the card where it currently is, so zone-bearing
+    /// filters only stop entries from the named zones.
+    fn entry_prohibited_by_cant_effect(&self, object: &crate::object::Object) -> bool {
+        if object.zone == Zone::Battlefield {
+            return false;
+        }
+        self.effect_store
+            .cant_effects
+            .cant_enter_battlefield
+            .iter()
+            .any(|restriction| {
+                let mut ctx = crate::target::FilterContext::default();
+                if let Some(source) = restriction.source {
+                    ctx = ctx.with_source(source);
+                }
+                restriction.filter.matches(object, &ctx, self)
+            })
     }
 
     fn execute_immediate_effect_programs(

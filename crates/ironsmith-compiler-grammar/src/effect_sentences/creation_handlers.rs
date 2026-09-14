@@ -2076,6 +2076,7 @@ fn parse_direct_token_creation_alternative(
 
     Some(EffectAst::ObjectChoices(
         ObjectChoiceEffectAst::ChooseOneOf {
+            chooser: crate::target::PlayerFilter::You,
             modes: vec![
                 ChooseOneModeAst {
                     description: String::new(),
@@ -2458,7 +2459,7 @@ mod tests {
         let tokens = lex_line("Create a Food token or a Treasure token.", 0)
             .expect("token alternative should lex");
         let parsed = parse_create(&tokens, None).expect("token creation alternative should parse");
-        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) = parsed else {
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. }) = parsed else {
             panic!("expected a typed token-creation choice, got {parsed:#?}");
         };
         assert_eq!(modes.len(), 2);

@@ -3571,6 +3571,10 @@ impl StaticAbility {
         Self::new(EnchantedLandIsChosenType::new(display))
     }
 
+    pub fn source_land_is_chosen_type(display: String) -> Self {
+        Self::new(SourceLandIsChosenType::new(display))
+    }
+
     pub fn add_chosen_creature_type(filter: crate::target::ObjectFilter, display: String) -> Self {
         Self::new(AddChosenCreatureTypeForFilter::new(filter, display))
     }
@@ -3913,6 +3917,12 @@ impl StaticAbility {
         Self::new(DrawReplacementSkipEmptyLibrary)
     }
 
+    /// "If you would draw one or more cards, you draw that many cards plus
+    /// one instead." (Quantum Riddler)
+    pub fn draw_extra_cards_replacement(extra: u32, display: impl Into<String>) -> Self {
+        Self::new(DrawExtraCardsReplacement::new(extra, display))
+    }
+
     pub fn conditional_draw_replacement(
         condition: crate::effect::Condition,
         replacement_effects: Vec<crate::effect::Effect>,
@@ -4197,6 +4207,52 @@ impl StaticAbility {
     /// you may pay 2 life. If you don't, it enters the battlefield tapped."
     pub fn pay_life_or_enter_tapped(life_cost: u32) -> Self {
         Self::new(PayLifeOrEnterTappedReplacement::new(life_cost))
+    }
+
+    /// "If a land is tapped for two or more mana, it produces {C} instead of
+    /// any other type and amount." (Damping Sphere)
+    pub fn mana_production_replacement(
+        source_filter: crate::target::ObjectFilter,
+        minimum_amount: u32,
+        replacement_mana: Vec<crate::mana::ManaSymbol>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(ManaProductionReplacement::new(
+            source_filter,
+            minimum_amount,
+            replacement_mana,
+            display,
+        ))
+    }
+
+    /// "If a nontoken creature would enter and it wasn't cast, exile it
+    /// instead." (Containment Priest).
+    pub fn redirect_would_enter(
+        filter: crate::target::ObjectFilter,
+        not_cast: bool,
+        destination: crate::zone::Zone,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(RedirectWouldEnterReplacement::new(
+            filter,
+            not_cast,
+            destination,
+            display,
+        ))
+    }
+
+    /// "As this land enters, you may reveal a <type> card from your hand. If
+    /// you don't, this land enters tapped." (shadow lands, snarls).
+    pub fn reveal_card_or_enter_tapped(
+        filter: crate::target::ObjectFilter,
+        subject: impl Into<String>,
+        tail_subject: impl Into<String>,
+    ) -> Self {
+        Self::new(RevealCardOrEnterTappedReplacement::new(
+            filter,
+            subject,
+            tail_subject,
+        ))
     }
 
     pub fn die_roll_result_adjustment(

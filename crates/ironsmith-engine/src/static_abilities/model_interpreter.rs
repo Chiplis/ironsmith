@@ -636,7 +636,10 @@ impl StaticAbilityModelInterpreter {
                         *non_mana_only,
                     )
                 } else {
-                    super::ActivatedAbilityCostIncrease::new(filter.clone(), increase.clone())
+                    let mut increase_model =
+                        super::ActivatedAbilityCostIncrease::new(filter.clone(), increase.clone());
+                    increase_model.non_mana_only = *non_mana_only;
+                    increase_model
                 };
                 if let Some(condition) = condition.clone() {
                     parsed = parsed.with_condition(condition);
@@ -1240,6 +1243,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::EnchantedLandIsChosenType(display) => {
                 StaticAbility::enchanted_land_is_chosen_type(display.clone())
             }
+            ironsmith_core::StaticAbilityPayload::SourceLandIsChosenType(display) => {
+                StaticAbility::source_land_is_chosen_type(display.clone())
+            }
             ironsmith_core::StaticAbilityPayload::AddChosenCreatureType { filter, display } => {
                 StaticAbility::add_chosen_creature_type(filter.clone(), display.clone())
             }
@@ -1726,6 +1732,9 @@ impl StaticAbilityModelInterpreter {
                 *optional,
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::DrawExtraCardsReplacement { extra, display } => {
+                StaticAbility::draw_extra_cards_replacement(*extra, display.clone())
+            }
             ironsmith_core::StaticAbilityPayload::ConditionalDrawReplacement {
                 condition,
                 replacement_effects,
@@ -1777,6 +1786,37 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::PayLifeOrEnterTapped(value) => {
                 StaticAbility::pay_life_or_enter_tapped(*value)
             }
+            ironsmith_core::StaticAbilityPayload::RevealCardOrEnterTapped {
+                filter,
+                subject,
+                tail_subject,
+            } => StaticAbility::reveal_card_or_enter_tapped(
+                filter.clone(),
+                subject.clone(),
+                tail_subject.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::RedirectWouldEnter {
+                filter,
+                not_cast,
+                destination,
+                display,
+            } => StaticAbility::redirect_would_enter(
+                filter.clone(),
+                *not_cast,
+                *destination,
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::ManaProductionReplacement {
+                source_filter,
+                minimum_amount,
+                replacement_mana,
+                display,
+            } => StaticAbility::mana_production_replacement(
+                source_filter.clone(),
+                *minimum_amount,
+                replacement_mana.clone(),
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::ManaSpendPermission {
                 permission,
                 display,
@@ -2941,6 +2981,7 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         matches!(
             self.payload(),
             ironsmith_core::StaticAbilityPayload::PayLifeOrEnterTapped(_)
+                | ironsmith_core::StaticAbilityPayload::RevealCardOrEnterTapped { .. }
                 | ironsmith_core::StaticAbilityPayload::EntersTappedForFilter(_)
         )
     }

@@ -272,6 +272,11 @@ pub enum ReplacementAction {
     /// Replace the mana produced by a matching mana event.
     ReplaceMana(Vec<crate::mana::ManaSymbol>),
 
+    /// Replace the produced mana with exactly these symbols, changing the
+    /// amount as well as the type ("produces {C} instead of any other type
+    /// and amount", Damping Sphere).
+    ReplaceManaExact(Vec<crate::mana::ManaSymbol>),
+
     /// Skip (for "skip your draw step" etc.)
     Skip,
 
@@ -314,6 +319,21 @@ pub enum ReplacementAction {
     InteractivePayLifeOrEnterTapped {
         /// The amount of life to pay.
         life_cost: u32,
+    },
+
+    /// Interactive: Reveal a matching card from hand or enter tapped.
+    ///
+    /// Used by the SOI shadow lands and STX snarls: "As this land enters, you
+    /// may reveal a Plains or Island card from your hand. If you don't, this
+    /// land enters tapped."
+    ///
+    /// When this applies:
+    /// 1. If the controller has no matching card in hand, the permanent enters tapped
+    /// 2. Otherwise prompt the controller to reveal one matching card
+    /// 3. If they reveal, the permanent enters untapped; if they decline, tapped
+    InteractiveRevealCardOrEnterTapped {
+        /// The hand card that may be revealed.
+        filter: crate::target::ObjectFilter,
     },
 
     /// Interactive: Choose alternate destination for a zone-changing event.

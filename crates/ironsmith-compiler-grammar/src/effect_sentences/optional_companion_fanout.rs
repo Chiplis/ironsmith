@@ -139,7 +139,7 @@ fn combine_shared_keyword_choice(
         })
         .collect();
     Ok(Some(EffectAst::ObjectChoices(
-        ObjectChoiceEffectAst::ChooseOneOf { modes },
+        ObjectChoiceEffectAst::ChooseOneOf { chooser: crate::target::PlayerFilter::You, modes },
     )))
 }
 
@@ -278,7 +278,7 @@ mod tests {
         let parsed = parse_optional_companion_fanout_sentence(&tokens)
             .unwrap()
             .unwrap();
-        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })] =
+        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })] =
             parsed.as_slice()
         else {
             panic!("expected one shared keyword choice: {parsed:#?}");

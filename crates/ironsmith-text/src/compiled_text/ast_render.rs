@@ -2676,6 +2676,22 @@ mod repeated_cascade_grant_tests {
     }
 }
 
+/// Whether a granted static ability is an ability the recipient can be said
+/// to "have" in quotes.
+///
+/// Ability-inheritance rules read as one predicate over the recipients
+/// ("Creatures you control ... have all activated abilities of all creature
+/// cards exiled with this artifact"), not as quoted ability text they gain.
+fn static_grant_renders_as_quoted_ability(
+    granted: &crate::static_abilities::StaticAbility,
+) -> bool {
+    !matches!(
+        granted.id(),
+        crate::static_abilities::StaticAbilityId::CopyActivatedAbilities
+            | crate::static_abilities::StaticAbilityId::CopyStaticAbilityVariants
+    )
+}
+
 /// Render complete nonkeyword static abilities granted to the same filtered
 /// object set as quoted ability text. The executable grants stay independent;
 /// this only restores the single authored `have "..." and "..."` surface.
@@ -2688,6 +2704,7 @@ fn describe_structural_quoted_static_grant_bundle(
         || first_granted.is_keyword()
         || first_granted.id()
             == crate::static_abilities::StaticAbilityId::CanAttackAsThoughNoDefender
+        || !static_grant_renders_as_quoted_ability(&first_granted)
         || is_can_block_additional_each_combat_rule(&first_granted)
     {
         return None;
@@ -2713,6 +2730,7 @@ fn describe_structural_quoted_static_grant_bundle(
             || next_quantifier != set_quantifier
             || granted.is_keyword()
             || granted.id() == crate::static_abilities::StaticAbilityId::CanAttackAsThoughNoDefender
+            || !static_grant_renders_as_quoted_ability(&granted)
             || is_can_block_additional_each_combat_rule(&granted)
         {
             break;
@@ -29758,11 +29776,41 @@ fn describe_structural_ascend_ability(ability: &Ability) -> Option<String> {
     Some("Ascend".to_string())
 }
 
+fn describe_trap_condition(condition: &ironsmith_core::TrapCondition) -> String {
+    use ironsmith_core::TrapCondition;
+    match condition {
+        TrapCondition::OpponentCastSpells { count } => format!(
+            "an opponent cast {} or more spells this turn",
+            number_word(*count as i32).unwrap_or_else(|| count.to_string())
+        ),
+        TrapCondition::OpponentSearchedLibrary => {
+            "an opponent searched their library this turn".to_string()
+        }
+        TrapCondition::OpponentCreatureEntered => {
+            "a creature entered under an opponent's control this turn".to_string()
+        }
+        TrapCondition::CreatureDealtDamageToYou => {
+            "you've been dealt damage by two or more creatures this turn".to_string()
+        }
+    }
+}
+
 pub(super) fn describe_alternative_cast_line(
     method: &AlternativeCastingMethod,
     idx: usize,
 ) -> String {
     match method {
+        method if method.trap_condition().is_some() => {
+            let condition = method.trap_condition().expect("trap condition checked above");
+            let cost = method
+                .mana_cost()
+                .map(|cost| cost.to_oracle())
+                .unwrap_or_else(|| "{0}".to_string());
+            format!(
+                "If {}, you may pay {cost} rather than pay this spell's mana cost",
+                describe_trap_condition(condition)
+            )
+        }
         method if method.is_composed_cost() && method.name().eq_ignore_ascii_case("Evoke") => {
             let mana_cost = method.mana_cost();
             let costs = method.non_mana_costs();

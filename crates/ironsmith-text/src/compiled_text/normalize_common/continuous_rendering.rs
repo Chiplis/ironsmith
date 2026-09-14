@@ -5101,6 +5101,12 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::BeSacrificed(filter) => {
             format!("{} can't be sacrificed", filter.description())
         }
+        crate::effect::Restriction::EnterBattlefield(filter) => {
+            format!(
+                "{} can't enter the battlefield",
+                describe_zone_union_card_set(filter).unwrap_or_else(|| filter.description())
+            )
+        }
         crate::effect::Restriction::HaveCountersPlaced(filter) => {
             format!("counters can't be placed on {}", filter.description())
         }

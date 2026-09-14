@@ -587,7 +587,15 @@ pub fn parse_cost_component_boundary(
     let mut idx = start_token;
     while idx < tokens.len() {
         if tokens[idx].is_word("cost") || tokens[idx].is_word("costs") {
-            let amount = tokens.get(idx + 1..)?;
+            let mut amount = tokens.get(idx + 1..)?;
+            // "cost an additional 3 life to cast" (Terror of the Peaks) states
+            // the surcharge before its amount.
+            if let [first, second, rest @ ..] = amount
+                && first.is_word("an")
+                && second.is_word("additional")
+            {
+                amount = rest;
+            }
             if leaf::parse_leaf_number_or_x_prefix_tokens(amount).is_some()
                 || leaf::parse_leaf_mana_cost_prefix_tokens(amount).is_some()
             {

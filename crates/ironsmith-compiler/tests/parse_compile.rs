@@ -1860,12 +1860,34 @@ fn full_alien_invasion_keeps_nested_token_attack_requirement() {
         debug.contains("CreateTokenEffect") && debug.contains("MustAttack"),
         "full-card production dispatch must retain the Alien attack requirement: {debug}"
     );
+    let mut created_tags = Vec::new();
+    let mut counter_targets = Vec::new();
+    fn collect_links(effect: &Effect, created_tags: &mut Vec<TagKey>, counter_targets: &mut Vec<ChooseSpec>) {
+        if let Some(tagged) = effect.downcast_ref::<ironsmith_compiler::effects::TaggedEffect>()
+            && find_create_token_effect(std::slice::from_ref(&tagged.effect)).is_some()
+        {
+            created_tags.push(tagged.tag.clone());
+        }
+        if let Some(put) = effect.downcast_ref::<ironsmith_compiler::effects::PutCountersEffect>()
+            && put.counter_type == CounterType::PlusOnePlusOne
+        {
+            counter_targets.push(put.target.clone());
+        }
+        effect.visit_child_effects(&mut |child| collect_links(child, created_tags, counter_targets));
+    }
+    for ability in &def.abilities {
+        if let AbilityKind::Triggered(triggered) = &ability.kind {
+            for effect in triggered.effects.all_effects() {
+                collect_links(effect, &mut created_tags, &mut counter_targets);
+            }
+        }
+    }
+    assert!(created_tags.iter().any(|tag| counter_targets.iter().any(|target| target.unhinted() == &ChooseSpec::Tagged(tag.clone()))), "the power/toughness counters must target the created token");
     assert!(
         debug.matches("PutCountersEffect").count() >= 2
             && debug.contains("PlusOnePlusOne")
             && debug.contains("CountersOn")
-            && debug.contains("\"invasion\"")
-            && debug.contains("created_token"),
+            && debug.contains("\"invasion\""),
         "full-card production dispatch must retain both linked counter clauses: {debug}"
     );
 }
@@ -3717,8 +3739,24 @@ fn delegated_choice_from_revealed_top_collection_exiles_exact_other_card() {
         compact.contains("__delegated_subset"),
         "the opponent-selected revealed card needs its own subset tag: {debug}"
     );
+    fn exiles_complement(effect: &Effect) -> bool {
+        if let Some(exile) = effect.downcast_ref::<ironsmith_compiler::effects::ExileEffect>()
+            && let ChooseSpec::Object(filter) = exile.spec.unhinted()
+            && filter.tagged_constraints.iter().any(|constraint| constraint.relation == ironsmith_compiler::target::TaggedOpbjectRelation::IsNotTaggedObject)
+        {
+            return true;
+        }
+        let mut found = false;
+        effect.visit_child_effects(&mut |child| found |= exiles_complement(child));
+        found
+    }
+    let has_complement_exile = definition.abilities.iter().any(|ability| {
+        if let AbilityKind::Activated(activated) = &ability.kind {
+            activated.effects.all_effects().iter().any(|effect| exiles_complement(effect))
+        } else { false }
+    });
     assert!(
-        compact.contains("IsNotTaggedObject") && compact.contains("zone:Exile"),
+        has_complement_exile,
         "the other exact revealed card must be exiled: {debug}"
     );
     assert!(

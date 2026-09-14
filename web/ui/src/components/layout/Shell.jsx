@@ -25,6 +25,7 @@ import TableActionControls from "./TableActionControls";
 import Workspace from "./Workspace";
 import MobileLandscapeGate from "./MobileLandscapeGate";
 import LogDrawer from "@/components/overlays/LogDrawer";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 export default function Shell() {
   const ui = useUiText();
@@ -110,6 +111,54 @@ export default function Shell() {
   const dismissNotice = useCallback((noticeId) => {
     setNotices((current) => current.filter((notice) => notice.id !== noticeId));
   }, []);
+
+  const handleNoticeCopy = useCallback(async (copyTarget) => {
+    if (!copyTarget?.copyText) return;
+    const copied = await copyTextToClipboard(copyTarget.copyText);
+    setStatus(
+      copied
+        ? (copyTarget.copyStatusMessage || "Copied to clipboard")
+        : "Could not copy to clipboard",
+      !copied
+    );
+  }, [setStatus]);
+
+  const topLevelNotices = notices.length > 0 ? (
+    <div className="pointer-events-none fixed inset-x-2 top-2 z-[10000] flex justify-end">
+      <div className="pointer-events-auto flex max-w-[min(460px,calc(100vw-1rem))] flex-col gap-2">
+        {notices.map((notice) => {
+          const toneClasses = notice.tone === "success"
+            ? "workspace-notice workspace-notice--success"
+            : notice.tone === "error"
+              ? "workspace-notice workspace-notice--error"
+              : notice.tone === "warning"
+                ? "workspace-notice workspace-notice--warning"
+                : "workspace-notice workspace-notice--info";
+          const actions = Array.isArray(notice.actions)
+            ? notice.actions.filter((action) => action?.copyText)
+            : [];
+          return (
+            <div key={notice.id} className={`relative overflow-hidden border shadow-[0_10px_26px_rgba(0,0,0,0.45)] ${toneClasses}`}>
+              <div className="workspace-notice-body px-3 py-2 pr-9 text-left">
+                <div className="workspace-notice-title text-[13px] font-bold uppercase tracking-wide">{ui(notice.title)}</div>
+                {notice.body ? <div className="workspace-notice-text mt-1 text-[13px] font-semibold leading-tight">{ui(notice.body)}</div> : null}
+              </div>
+              {actions.length > 0 ? (
+                <div className="flex gap-2 overflow-x-auto px-3 pb-3 pr-9">
+                  {actions.map((action, index) => (
+                    <button key={`${notice.id}:${action.label}:${index}`} type="button" className="workspace-notice-action shrink-0 border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide transition-colors" onClick={() => handleNoticeCopy(action)}>
+                      {ui(action.label)}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <button type="button" className="workspace-notice-dismiss absolute right-1.5 top-1.5 px-1 text-[12px] font-bold text-current opacity-80 transition-opacity hover:opacity-100" onClick={() => dismissNotice(notice.id)} aria-label={ui("Dismiss {0}", { 0: notice.title })}>x</button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  ) : null;
 
   useEffect(() => {
     const handleUiNotice = (event) => {
@@ -595,6 +644,7 @@ export default function Shell() {
       data-borderless-preview={borderlessPreview ? "true" : "false"}
       data-mobile-overlay-shell={landscapeMobileViewport ? "true" : "false"}
     >
+      {topLevelNotices}
       {!deckLoadingMode && !puzzleSetupMode && multiplayer?.rematch?.phase !== "sideboarding" && <MobileLandscapeGate />}
       {(!dockToolbarsInTable || deckLoadingMode || puzzleSetupMode) ? (
         <div className="table-persistent-diagnostics-fallback"><DiagnosticsSheet /></div>
@@ -612,7 +662,7 @@ export default function Shell() {
           () => loadPuzzle(payload, successMessage)
         )}
         onCancelPuzzleSetup={() => setPuzzleSetupMode(false)}
-        notices={notices}
+        notices={[]}
         onDismissNotice={dismissNotice}
         mobileOpponentIndex={mobileOpponentIndex}
         setMobileOpponentIndex={setMobileOpponentIndex}

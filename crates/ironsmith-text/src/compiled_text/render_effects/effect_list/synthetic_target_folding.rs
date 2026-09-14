@@ -298,6 +298,7 @@ fn restriction_references_identity(
         | Restriction::Transform(filter)
         | Restriction::PhaseOut(filter)
         | Restriction::PhaseIn(filter)
+        | Restriction::EnterBattlefield(filter)
         | Restriction::AttackOrBlock(filter)
         | Restriction::AttackOrBlockAlone(filter) => {
             object_filter_references_identity(filter, identity)

@@ -15,6 +15,8 @@ pub enum DamageSourceControllerKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DamageSourceShape<'a> {
+    /// An explicit source noun has any-zone scope (CR 109.2c).
+    pub source_noun: bool,
     pub filter_tokens: &'a [OwnedLexToken],
     pub controller: DamageSourceControllerKind,
     /// Qualifiers that follow the controller ("a source you control with an
@@ -270,6 +272,7 @@ fn parse_explicit_damage_source_shape_lexed<'a>(
         filter_tokens
     };
     Ok(DamageSourceShape {
+        source_noun: true,
         filter_tokens,
         controller,
         trailing_filter_tokens: trim_lexed_commas(trailing_filter_tokens),
@@ -292,6 +295,7 @@ fn parse_object_damage_source_shape_lexed<'a>(
     .take()
     .parse_next(input)?;
     Ok(DamageSourceShape {
+        source_noun: false,
         filter_tokens: trim_lexed_commas(filter_tokens),
         controller: DamageSourceControllerKind::None,
         trailing_filter_tokens: &[],
@@ -529,7 +533,7 @@ mod imperative_multiplier_tests {
         let tokens=crate::lexer::lex_line("Double all damage that creature sources you control would deal.",0).unwrap();
         let spec=parse_damage_multiplier_tokens(&tokens).unwrap();
         assert_eq!(spec.factor,2);assert!(!spec.combat_only);assert!(spec.damaged_tokens.is_none());
-        assert_eq!(spec.source.controller,DamageSourceControllerKind::You);
+        assert_eq!(spec.source.controller,DamageSourceControllerKind::You);assert!(spec.source.source_noun);
         assert_eq!(crate::lexer::parser_token_word_refs(spec.source.filter_tokens),vec!["creature"]);
         for text in ["Double all damage that creature sources you control.","Double all damage that would deal.","Double all damage that creature sources you control would deal and draw a card."] {
             assert!(parse_damage_multiplier_tokens(&crate::lexer::lex_line(text,0).unwrap()).is_none(),"{text}");

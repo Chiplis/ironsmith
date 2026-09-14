@@ -970,6 +970,7 @@ fn parse_minimum_spell_total_mana_three_line<'a>(
         primitives::phrase(&["as", "long", "as"]),
         winnow::combinator::alt((
             primitives::phrase(&["trinisphere", "is", "untapped"]),
+            primitives::phrase(&["this", "artifact", "is", "untapped"]),
             primitives::phrase(&["this", "is", "untapped"]),
         )),
         opt(primitives::comma()),
@@ -2084,6 +2085,17 @@ pub fn parse_source_tap_status_condition_lexed(
     } else {
         None
     }
+}
+
+/// "This land is the chosen type." (Multiversal Passage)
+pub fn is_source_land_is_chosen_type_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+    matches_any_exact_phrase_line_lexed(
+        tokens,
+        &[
+            &["this", "land", "is", "the", "chosen", "type"],
+            &["this", "land", "is", "chosen", "type"],
+        ],
+    )
 }
 
 pub fn is_enchanted_land_is_chosen_type_line_lexed(tokens: &[OwnedLexToken]) -> bool {

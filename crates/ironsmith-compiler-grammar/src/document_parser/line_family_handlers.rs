@@ -2205,6 +2205,15 @@ pub(super) fn run_statement_probe_line_family(
     {
         return ParseOutcome::NoMatch;
     }
+    if line_family_try!(
+        ctx,
+        rule,
+        crate::keyword_static::parse_reveal_card_or_enter_tapped_line(&ctx.line.tokens)
+    )
+    .is_some()
+    {
+        return ParseOutcome::NoMatch;
+    }
     let replacement_sentences = split_lexed_sentences(&ctx.line.tokens);
     let replacement_split_candidate = matches!(
         line_grammar::parse_statement_static_preference(&ctx.line.tokens),

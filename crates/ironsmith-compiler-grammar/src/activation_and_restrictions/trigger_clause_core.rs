@@ -1517,7 +1517,7 @@ const PUT_INTO_OPPONENT_GRAVEYARD_FROM_BATTLEFIELD_SUFFIXES: &[TriggerSuffixShap
                     "battlefield",
                 ]
         ),
-        8,
+        9,
     ),
     trigger_suffix_shape(
         clause_shape!(
@@ -1534,7 +1534,7 @@ const PUT_INTO_OPPONENT_GRAVEYARD_FROM_BATTLEFIELD_SUFFIXES: &[TriggerSuffixShap
                     "battlefield",
                 ]
         ),
-        8,
+        9,
     ),
 ];
 

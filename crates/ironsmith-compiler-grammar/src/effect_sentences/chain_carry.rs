@@ -1048,6 +1048,7 @@ pub fn parse_or_action_clause_lexed(
 
         return Ok(Some(EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseOneOf {
+                chooser: crate::target::PlayerFilter::You,
                 modes: vec![
                     crate::cards::builders::ChooseOneModeAst {
                         description: String::new(),

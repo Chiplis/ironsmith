@@ -443,11 +443,21 @@ impl Event {
     /// Create a draw event.
     pub fn draw(player: PlayerId, count: u32, is_first_this_turn: bool) -> Self {
         Self::new_with_provenance(
-            DrawEvent {
-                player,
-                count,
-                is_first_this_turn,
-            },
+            DrawEvent::new(player, count, is_first_this_turn),
+            ProvNodeId::default(),
+        )
+    }
+
+    /// Create a draw event for one card of a multi-card draw instruction.
+    pub fn draw_in_instruction(
+        player: PlayerId,
+        count: u32,
+        is_first_this_turn: bool,
+        first_of_instruction: bool,
+    ) -> Self {
+        Self::new_with_provenance(
+            DrawEvent::new(player, count, is_first_this_turn)
+                .with_first_of_instruction(first_of_instruction),
             ProvNodeId::default(),
         )
     }

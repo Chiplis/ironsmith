@@ -348,7 +348,7 @@ impl<'a> CanonicalReferenceResolver<'a> {
                     vec![true_env, false_env],
                 )
             }
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
                 let branches = modes
                     .iter()

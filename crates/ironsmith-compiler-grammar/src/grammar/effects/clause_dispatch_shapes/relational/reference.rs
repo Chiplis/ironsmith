@@ -39,7 +39,14 @@ pub fn parse_control_player_shape(tokens: &[OwnedLexToken]) -> Option<ControlPla
     if during == 0 {
         return None;
     }
-    let target_tokens = trim_lexed_commas(after_control.get(..during)?);
+    let mut target_tokens = trim_lexed_commas(after_control.get(..during)?);
+    // "you gain control of target opponent during ..." keeps the "of" of the
+    // gain-control idiom in front of the target phrase.
+    if let Some((first, rest)) = target_tokens.split_first()
+        && first.is_word("of")
+    {
+        target_tokens = trim_lexed_commas(rest);
+    }
     let duration_start = control + 1 + during;
     Some(ControlPlayerShape {
         player,

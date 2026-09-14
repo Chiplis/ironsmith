@@ -23,6 +23,7 @@ pub enum DivvyRestDestinationShape {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DivvySequenceShape {
+    FixedExilePiles { first_count: i32, second_count: i32, first_face_down: bool, second_face_down: bool },
     SearchFourCreatureCards,
     SearchLibraryGraveyardExileRemainderToTop,
     ExchangeCreatureControl,
@@ -51,6 +52,10 @@ pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<Divv
         .map(|tokens| TokenWordView::new(tokens).to_word_refs())
         .collect::<Vec<_>>();
     let first = sentence_words.first().map(Vec::as_slice).unwrap_or(&[]);
+
+    if let Some(shape) = parse_fixed_exile_piles(&sentence_words) {
+        return Some(shape);
+    }
 
     if exact_sequence(
         &sentence_words,
@@ -645,3 +650,47 @@ pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<Divv
 #[cfg(test)]
 #[path = "divvy_shapes_inline_tests.rs"]
 mod tests;
+
+// A pair of fixed, sequential library groups followed by a choice of group.
+// Counts and visibility belong to the two producers, never a partition prompt.
+fn parse_fixed_exile_piles(sentences: &[Vec<&str>]) -> Option<DivvySequenceShape> {
+    fn pile(words: &mut &[&str]) -> Option<(i32, bool)> {
+        *words = words.strip_prefix(&["exile", "the", "top"])?;
+        let (count, used) = crate::grammar::leaf::parse_leaf_number_prefix_words(words)?.into_fixed()?;
+        *words = words.get(used..)?.strip_prefix(&["cards", "of", "your", "library", "in", "a", "face"])?;
+        let down = match words.first()? { &"down" => true, &"up" => false, _ => return None };
+        *words = words.get(1..)?.strip_prefix(&["pile"])?;
+        Some((i32::try_from(count).ok()?, down))
+    }
+    if sentences.len() != 6 { return None; }
+    let mut first = sentences[0].as_slice();
+    let (first_count, first_face_down) = pile(&mut first)?;
+    first = first.strip_prefix(&["then"])?;
+    let (second_count, second_face_down) = pile(&mut first)?;
+    if !first.is_empty() || !exact_sequence(&sentences[1..], &[
+        &["an", "opponent", "chooses", "one", "of", "those", "piles"],
+        &["put", "that", "pile", "into", "your", "graveyard"],
+        &["look", "at", "the", "cards", "in", "the", "other", "pile"],
+        &["you", "may", "cast", "a", "spell", "from", "among", "them", "without", "paying", "its", "mana", "cost"],
+        &["put", "the", "rest", "into", "your", "hand"],
+    ]) { return None; }
+    Some(DivvySequenceShape::FixedExilePiles { first_count, second_count, first_face_down, second_face_down })
+}
+
+#[cfg(test)]
+mod fixed_pile_tests {
+    use super::*;
+    #[test]
+    fn fixed_piles_preserve_counts_visibility_and_complete_tail() {
+        let text = "Exile the top four cards of your library in a face-down pile, then exile the top four cards of your library in a face-up pile. An opponent chooses one of those piles. Put that pile into your graveyard. Look at the cards in the other pile. You may cast a spell from among them without paying its mana cost. Put the rest into your hand.";
+        for (text, first_count, second_count) in [(text.to_string(),4,4), (text.replacen("four", "two", 1).replacen("four", "six", 1),2,6)] {
+            let lexed = crate::lexer::lex_line(&text, 0).unwrap();
+            let sentences = crate::lexer::split_lexed_sentences(&lexed);
+            assert_eq!(parse_divvy_sequence_shape(&sentences), Some(DivvySequenceShape::FixedExilePiles { first_count, second_count, first_face_down:true, second_face_down:false }), "{sentences:?}");
+        }
+        for bad in [text.replace("An opponent", "Each opponent"), text.replace("a spell", "two spells"), text.replace("Put the rest into your hand.", "Draw a card.")] {
+            let lexed = crate::lexer::lex_line(&bad, 0).unwrap();
+            assert!(parse_divvy_sequence_shape(&crate::lexer::split_lexed_sentences(&lexed)).is_none());
+        }
+    }
+}

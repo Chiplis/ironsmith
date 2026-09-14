@@ -1031,9 +1031,71 @@ pub fn parse_enters_prepared_line(
     )
 }
 
+/// "This creature enters tapped if it's not your turn." / "... unless it's
+/// your turn." (Eddymurk Crab): a fixed turn condition gates the tapped entry.
+fn parse_enters_tapped_turn_condition_line(
+    tokens: &[OwnedLexToken],
+) -> Option<StaticAbility> {
+    use crate::grammar::anthem_grants::FixedStaticConditionKind;
+
+    let marker = tokens.iter().position(|token| token.is_any_word(&["if", "unless"]))?;
+    let unless = tokens[marker].is_word("unless");
+    let head = crate::lexer::trim_lexed_commas(&tokens[..marker]);
+    if !matches!(
+        activated_line_grammar::parse_enters_tapped_line_shape(head),
+        EntersTappedLineShape::EntersTapped
+    ) {
+        return None;
+    }
+    let condition_tokens = crate::lexer::trim_lexed_commas(&tokens[marker + 1..]);
+    let condition_tokens = condition_tokens
+        .split_last()
+        .filter(|(last, _)| last.kind == crate::lexer::TokenKind::Period)
+        .map(|(_, rest)| rest)
+        .unwrap_or(condition_tokens);
+    // The runtime ability states the condition under which the permanent
+    // enters untapped; "tapped if it's not your turn" is "unless your turn".
+    let condition = match crate::grammar::anthem_grants::parse_fixed_static_condition_kind(
+        condition_tokens,
+    ) {
+        Some(FixedStaticConditionKind::NotYourTurn) => {
+            if unless {
+                PredicateAst::Not(Box::new(PredicateAst::YourTurn))
+            } else {
+                PredicateAst::YourTurn
+            }
+        }
+        Some(FixedStaticConditionKind::YourTurn) => {
+            if unless {
+                PredicateAst::YourTurn
+            } else {
+                PredicateAst::Not(Box::new(PredicateAst::YourTurn))
+            }
+        }
+        _ => {
+            // "unless your opponents control eight or more lands" (Turbulent
+            // Fen): any static condition clause the anthem grammar reads.
+            let predicate =
+                crate::keyword_static::parse_static_condition_clause(condition_tokens).ok()?;
+            if unless {
+                predicate
+            } else {
+                PredicateAst::Not(Box::new(predicate))
+            }
+        }
+    };
+    Some(StaticAbility::enters_tapped_unless_condition(
+        condition,
+        crate::lexer::render_token_slice(tokens),
+    ))
+}
+
 pub fn parse_enters_tapped_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    if let Some(ability) = parse_enters_tapped_turn_condition_line(tokens) {
+        return Ok(Some(ability));
+    }
     let clause = joined_activation_clause_text(tokens);
     match activated_line_grammar::parse_enters_tapped_line_shape(tokens) {
         EntersTappedLineShape::NoMatch

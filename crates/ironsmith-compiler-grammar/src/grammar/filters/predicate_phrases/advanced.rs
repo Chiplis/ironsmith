@@ -4523,6 +4523,11 @@ pub(super) fn parse_conjoined_cards_in_your_graveyard_predicate(
 pub(super) fn parse_card_in_your_graveyard_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
+    // Counting card types is distinct from finding a card. The broad object
+    // descriptor scanner must not discard the cardinality and "among" scope.
+    if parse_card_types_in_graveyard_predicate(tokens).is_some() {
+        return None;
+    }
     let clause = LexedClause::new(tokens);
     let atoms = [
         WinnowSequence::subject("existential", WinnowCaptureKind::WordCount(2)),

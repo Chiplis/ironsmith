@@ -81,6 +81,7 @@ pub use special_grant_shapes::{
     parse_unblockable_keyword_fragment_tokens,
 };
 pub use static_grant_facts::{
+    parse_every_basic_land_type_tokens,
     GrantedAlternativeCastKeyword, parse_every_subtype_family_tokens,
     parse_granted_alternative_cast_keyword_tokens, parse_static_grant_duration_fact,
 };
@@ -334,6 +335,8 @@ pub struct SubjectEverySubtypeShape<'a> {
     pub condition_tokens: Option<&'a [OwnedLexToken]>,
     pub subject_tokens: &'a [OwnedLexToken],
     pub family: crate::types::SubtypeFamily,
+    /// "every basic land type": only the five basic land types.
+    pub basic_land_types: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1440,11 +1443,17 @@ pub fn parse_subject_every_subtype_shape(
     }
     let subject_tokens = trim_lexed_commas(&clause_tokens[..be_token]);
     let family_tokens = trim_lexed_commas(&clause_tokens[be_token + 1..]);
-    let family = parse_every_subtype_family_tokens(family_tokens)?;
+    let basic_land_types = parse_every_basic_land_type_tokens(family_tokens);
+    let family = if basic_land_types {
+        crate::types::SubtypeFamily::Land
+    } else {
+        parse_every_subtype_family_tokens(family_tokens)?
+    };
     (!subject_tokens.is_empty()).then_some(SubjectEverySubtypeShape {
         condition_tokens,
         subject_tokens,
         family,
+        basic_land_types,
     })
 }
 

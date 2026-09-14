@@ -336,3 +336,5 @@ mod cohort_life_events_and_host_states;
 mod cohort_damage_sources_and_entry_conditions;
 mod cohort_entry_lists_and_payment_actors;
 mod cohort_chapters_levels_and_name_relations;
+
+mod cohort_corpus_filter_regressions;

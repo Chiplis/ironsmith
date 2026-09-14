@@ -701,6 +701,25 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_lose_game_replacement_line" => {
             vec![StaticAbilityLineHeadHint::Single("if")]
         }
+        // "Each nonland permanent you control is all colors." (Leyline of the
+        // Guildpact) and the older "All creatures are ..." lines share one
+        // color-identity grammar whose subject can start with any object noun.
+        "parse_all_creatures_are_color_line" => vec![
+            StaticAbilityLineHeadHint::Single("all"),
+            StaticAbilityLineHeadHint::Single("each"),
+            StaticAbilityLineHeadHint::Single("creatures"),
+            StaticAbilityLineHeadHint::Single("creature"),
+            StaticAbilityLineHeadHint::Single("permanents"),
+            StaticAbilityLineHeadHint::Single("permanent"),
+            StaticAbilityLineHeadHint::Single("nonland"),
+            StaticAbilityLineHeadHint::Single("noncreature"),
+            StaticAbilityLineHeadHint::Single("nontoken"),
+            StaticAbilityLineHeadHint::Single("lands"),
+            StaticAbilityLineHeadHint::Single("artifacts"),
+            StaticAbilityLineHeadHint::Single("enchantments"),
+            StaticAbilityLineHeadHint::Single("spells"),
+            StaticAbilityLineHeadHint::Single("other"),
+        ],
         "parse_shuffle_into_library_from_graveyard_line" => vec![
             StaticAbilityLineHeadHint::Single("if"),
             StaticAbilityLineHeadHint::Pair("if", "this"),
@@ -764,11 +783,12 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Pair("as", "this"),
             StaticAbilityLineHeadHint::Pair("as", "it"),
         ],
-        "parse_copy_activated_abilities_line" => vec![
-            StaticAbilityLineHeadHint::Single("this"),
-            StaticAbilityLineHeadHint::Single("it"),
-            StaticAbilityLineHeadHint::Single("as"),
-        ],
+        // The grant form names its recipients with an open-ended object
+        // filter ("Foods you control", "Creatures you control with +1/+1
+        // counters on them"), so no lexical head enumerates this rule's
+        // subjects. Its own grammar requires the "has/have all activated
+        // abilities of" marker, which guards the whole-line candidacy.
+        "parse_copy_activated_abilities_line" => Vec::new(),
         "parse_attached_has_and_loses_keywords_line"
         | "parse_attached_has_keywords_and_is_goaded_line"
         | "parse_attached_is_goaded_line" => vec![
@@ -1220,6 +1240,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_discard_hand_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_color_as_becomes_attached_line),
         single_static_ability_ast_rule!(parse_enchanted_land_is_chosen_type_line),
+        single_static_ability_ast_rule!(parse_source_land_is_chosen_type_line),
         single_static_ability_ast_rule!(parse_source_is_chosen_type_in_addition_line),
         single_static_ability_ast_rule!(parse_source_is_chosen_color_line),
         single_static_ability_ast_rule!(parse_double_token_creation_replacement_line),
@@ -1255,14 +1276,19 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_draw_replacement_reveal_top_matching_to_hand_rest_bottom_line
         ),
         single_static_ability_ast_rule!(parse_conditional_draw_replacement_line),
+        single_static_ability_ast_rule!(parse_draw_extra_cards_replacement_line),
         single_static_ability_ast_rule!(parse_draw_replacement_double_line),
         single_static_ability_ast_rule!(parse_draw_replacement_skip_empty_library_line),
         single_static_ability_ast_rule!(parse_exile_to_exile_instead_of_graveyard_line),
         single_static_ability_ast_rule!(parse_exile_to_countered_exile_instead_of_graveyard_line),
         single_static_ability_ast_rule!(parse_exile_would_die_instead_line),
+        single_static_ability_ast_rule!(parse_redirect_would_enter_line),
+        single_static_ability_ast_rule!(parse_if_source_tapped_for_mana_replacement_line),
         single_static_ability_ast_rule!(parse_discard_or_redirect_replacement_line),
         single_static_ability_ast_rule!(parse_sacrifice_or_redirect_replacement_line),
+        multi_static_ability_ast_rule!(parse_choose_basic_land_type_then_pay_life_line),
         single_static_ability_ast_rule!(parse_pay_life_or_enter_tapped_line),
+        single_static_ability_ast_rule!(parse_reveal_card_or_enter_tapped_line),
         single_static_ability_ast_passthrough_rule!(parse_copy_activated_abilities_line),
         single_static_ability_ast_passthrough_rule!(parse_spend_mana_as_any_color_line),
         single_static_ability_ast_passthrough_rule!(parse_enchanted_has_activated_ability_line),
@@ -2627,9 +2653,11 @@ pub fn parse_activated_abilities_cost_increase_line(
         )));
     }
 
-    Ok(Some(StaticAbility::increase_activated_ability_costs(
-        filter, total_cost,
-    )))
+    Ok(Some(if spec.non_mana_only {
+        StaticAbility::increase_non_mana_activated_ability_costs(filter, total_cost)
+    } else {
+        StaticAbility::increase_activated_ability_costs(filter, total_cost)
+    }))
 }
 
 pub fn parse_activated_abilities_cant_be_activated_line_lexed(
@@ -3494,6 +3522,19 @@ pub fn parse_choose_basic_land_type_as_enters_line(
     ))))
 }
 
+/// "This land is the chosen type." (Multiversal Passage)
+pub fn parse_source_land_is_chosen_type_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if !crate::grammar::abilities::is_source_land_is_chosen_type_line_lexed(tokens) {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::source_land_is_chosen_type(
+        "This land is the chosen type.".to_string(),
+    )))
+}
+
 pub fn parse_enchanted_land_is_chosen_type_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -4172,6 +4213,18 @@ fn damage_source_filter_from_shape(
             parse_object_filter_lexed(&combined, false)?
         }
     };
+    // "Creature sources" includes creature cards and spells in any zone.
+    // Discard only the battlefield default inferred from a type noun, while
+    // retaining an authored battlefield/permanent restriction.
+    if shape.source_noun && filter.zone == Some(Zone::Battlefield) {
+        let mut source_words = parser_token_word_refs(shape.filter_tokens);
+        source_words.extend(parser_token_word_refs(shape.trailing_filter_tokens));
+        let explicitly_battlefield = source_words.iter()
+            .any(|word| matches!(*word, "battlefield" | "permanent" | "permanents"));
+        if !explicitly_battlefield {
+            filter.zone = None;
+        }
+    }
     match shape.controller {
         keyword_static_lines::DamageSourceControllerKind::None => {}
         keyword_static_lines::DamageSourceControllerKind::You => filter = filter.you_control(),
@@ -5733,3 +5786,22 @@ include!("anthem_grant_lines.rs");
 include!("anthem_grant_conditionals.rs");
 include!("etb_static_lines.rs");
 include!("attached_object_static_lines.rs");
+
+#[cfg(test)]
+mod imperative_multiplier_source_scope_tests {
+    use super::*;
+    #[test]
+    fn imperative_multiplier_source_scope_preserves_explicit_zone_restrictions() {
+        for (text,zone) in [
+            ("Double all damage that creature sources you control would deal.",None),
+            ("If a creature would deal damage to a player, it deals double that damage instead.",Some(Zone::Battlefield)),
+            ("If a creature source on the battlefield would deal damage to a player, it deals double that damage instead.",Some(Zone::Battlefield)),
+        ] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            let ability=parse_double_damage_amount_replacement_line(&tokens).unwrap().expect(text);
+            let ironsmith_core::StaticAbilityPayload::DoubleDamageAmountReplacement{source_filter,..}=ability.payload else {panic!("expected multiplier")};
+            assert_eq!(source_filter.zone,zone,"{text}");
+            assert_eq!(source_filter.card_types,vec![CardType::Creature]);
+        }
+    }
+}

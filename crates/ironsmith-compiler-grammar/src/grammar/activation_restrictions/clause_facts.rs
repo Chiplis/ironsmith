@@ -61,6 +61,8 @@ pub enum SimpleObjectRestrictionKind {
     PhaseOut,
     PhaseIn,
     BeTargeted,
+    /// "... can't enter the battlefield" (Grafdigger's Cage).
+    EnterBattlefield,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -434,6 +436,8 @@ pub fn parse_simple_object_restriction_words(
         SimpleObjectRestrictionKind::PhaseIn
     } else if exact(words, &["be", "targeted"]) {
         SimpleObjectRestrictionKind::BeTargeted
+    } else if exact(words, &["enter", "the", "battlefield"]) {
+        SimpleObjectRestrictionKind::EnterBattlefield
     } else {
         return None;
     };

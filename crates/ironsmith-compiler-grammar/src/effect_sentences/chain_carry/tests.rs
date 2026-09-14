@@ -1317,6 +1317,7 @@ fn multi_mode_choice_does_not_guess_a_comma_then_owner() {
         &tokens,
         vec![EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseOneOf {
+                chooser: crate::target::PlayerFilter::You,
                 modes: vec![
                     ChooseOneModeAst {
                         description: "First".to_string(),
@@ -4089,7 +4090,7 @@ fn or_action_clause_reuses_the_primary_explicit_target_for_a_demonstrative_branc
     let parsed = super::parse_or_action_clause_lexed(&tokens)
         .expect("shared-target action choice should parse")
         .expect("outer action choice should be recognized");
-    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) = parsed else {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. }) = parsed else {
         panic!("expected a typed outer action choice");
     };
     let [first, second] = modes.as_slice() else {

@@ -126,6 +126,57 @@ pub fn parse_object_filter_with_grammar_entrypoint(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if tokens.first().is_some_and(|token| token.is_word("all")) {
+        let mut filter = parse_object_filter_with_grammar_entrypoint(&tokens[1..], other)?;
+        filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::All));
+        return Ok(filter);
+    }
+    if let Some(first) = tokens.first().and_then(OwnedLexToken::as_word)
+        && let Ok((power, toughness)) = crate::keyword_static::parse_pt_modifier(first)
+    {
+        let mut filter = parse_object_filter_with_grammar_entrypoint(&tokens[1..], other)?;
+        filter.power = Some(crate::filter::Comparison::Equal(power));
+        filter.toughness = Some(crate::filter::Comparison::Equal(toughness));
+        return Ok(filter);
+    }
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if words == ["spell", "or", "permanent"] || words == ["permanent", "or", "spell"] {
+        return Ok(ObjectFilter {
+            other,
+            any_of: vec![ObjectFilter::spell(), ObjectFilter::permanent()],
+            ..ObjectFilter::default()
+        });
+    }
+    if let Some((index, introducer_len)) = tokens.iter().enumerate().find_map(|(index, token)| {
+        if token.is_word("that's") || token.is_word("thats") {
+            Some((index, 1))
+        } else if token.is_word("that") && tokens.get(index + 1).is_some_and(|next| next.is_word("is") || next.is_word("are")) {
+            Some((index, 2))
+        } else { None }
+    }) {
+        let tail = &tokens[index + introducer_len..];
+        let mut colors = crate::ColorSet::new();
+        let mut expect_color = true;
+        let complete_colors = !tail.is_empty() && tail.iter().all(|token| {
+            if expect_color {
+                if let Some(color) = crate::util::parse_color(token.parser_text()) {
+                    colors = colors.union(color);
+                    expect_color = false;
+                    true
+                } else { false }
+            } else if token.is_word("or") {
+                expect_color = true;
+                true
+            } else { false }
+        }) && !expect_color;
+        if complete_colors {
+            let mut filter = parse_object_filter_with_grammar_entrypoint(&tokens[..index], other)?;
+            if filter.colors.is_none() {
+                filter.colors = Some(colors);
+                return Ok(filter);
+            }
+        }
+    }
     // An extremum owns the outer comparison and parses its comparison set
     // independently. Preserve that structure before classifying its operands.
     if let Some(mut filter) = parse_extremum_object_filter_lexed(tokens, other)? {
@@ -141,6 +192,14 @@ pub fn parse_object_filter_with_grammar_entrypoint(
     if domain == ObjectFilterGrammarDomain::Relational {
         let mut filter = parse_object_filter(tokens, other)?;
         preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
+        return Ok(filter);
+    }
+
+    // Consume a recognized complete keyword/counter suffix structurally,
+    // leaving the characteristic head subject to the same strict grammar.
+    if let Some(split) = parse_filter_tail_decoration_tokens(tokens) {
+        let mut filter = parse_object_filter_with_grammar_entrypoint(&split.base_tokens, other)?;
+        apply_filter_tail_decoration(&mut filter, split.decoration);
         return Ok(filter);
     }
 

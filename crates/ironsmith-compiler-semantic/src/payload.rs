@@ -489,7 +489,11 @@ impl KeywordAction {
             Self::ProtectionFromChosenPlayer => "Protection from the chosen player".to_string(),
             Self::ProtectionFromChosenColor => "Protection from the chosen color".to_string(),
             Self::ProtectionFromFilter(filter) => {
-                format!("Protection from {}", filter.description())
+                if *filter == ObjectFilter::default().multicolored() {
+                    "Protection from multicolored".to_string()
+                } else {
+                    format!("Protection from {}", filter.description())
+                }
             }
             Self::ProtectionFromEachManaValueAmong(filter) => {
                 format!(

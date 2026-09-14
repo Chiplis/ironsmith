@@ -423,6 +423,9 @@ pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAct
             ProtectionTargetKind::ChosenPlayer => Some(KeywordAction::ProtectionFromChosenPlayer),
             ProtectionTargetKind::ChosenColor => Some(KeywordAction::ProtectionFromChosenColor),
             ProtectionTargetKind::Colorless => Some(KeywordAction::ProtectionFromColorless),
+            ProtectionTargetKind::Multicolored => Some(KeywordAction::ProtectionFromFilter(
+                ObjectFilter::default().multicolored(),
+            )),
             ProtectionTargetKind::Everything => Some(KeywordAction::ProtectionFromEverything),
             ProtectionTargetKind::AllColors => Some(KeywordAction::ProtectionFromAllColors),
             ProtectionTargetKind::Named => parse_color(target.value)

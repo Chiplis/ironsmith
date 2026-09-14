@@ -7743,7 +7743,7 @@ pub fn mark_last_destroy_creature_destroyed_this_way_surface(effects: &mut [Effe
             EffectAst::Coordinated { effects, .. } => effects
                 .iter_mut()
                 .fold(false, |found, effect| mark(effect) || found),
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
                 modes.iter_mut().fold(false, |found, mode| {
                     mode.effects.last_mut().is_some_and(mark) || found
@@ -10443,6 +10443,7 @@ mod tests {
     fn cant_be_regenerated_followup_applies_to_every_choice_mode() {
         let mut effects = vec![EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseOneOf {
+                chooser: crate::target::PlayerFilter::You,
                 modes: vec![
                     crate::cards::builders::ChooseOneModeAst {
                         description: String::new(),
@@ -10464,7 +10465,7 @@ mod tests {
         assert!(super::apply_cant_be_regenerated_to_last_destroy_effect(
             &mut effects
         ));
-        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })] =
+        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })] =
             effects.as_slice()
         else {
             panic!("expected modal destroy");

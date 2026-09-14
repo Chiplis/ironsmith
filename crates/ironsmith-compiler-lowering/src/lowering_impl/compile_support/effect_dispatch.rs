@@ -878,8 +878,7 @@ fn compile_effect_inner(
                     effects,
                 });
             }
-            let choose = crate::effects::ChooseModeEffect::choose_one(lowered_modes)
-                .with_chooser(crate::target::PlayerFilter::You);
+            let choose = crate::effects::ChooseModeEffect::choose_one(lowered_modes);
             return Ok((vec![Effect::new(choose)], choices));
         }
 
@@ -993,7 +992,7 @@ fn compile_effect_inner(
         };
         return Ok((vec![Effect::new(sequence)], choices));
     }
-    if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) = effect {
+    if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { chooser, modes }) = effect {
         use crate::effect::EffectMode;
         let mut lowered_modes = Vec::with_capacity(modes.len());
         let mut choices = Vec::new();
@@ -1014,7 +1013,7 @@ fn compile_effect_inner(
         // chooser explicit here prevents inline "A or B" instructions from
         // being mistaken for casting-time modal choices.
         let choose = crate::effects::ChooseModeEffect::choose_one(lowered_modes)
-            .with_chooser(crate::target::PlayerFilter::You);
+            .with_chooser(chooser.clone());
         return Ok((vec![Effect::new(choose)], choices));
     }
     if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice {

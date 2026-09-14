@@ -944,6 +944,12 @@ pub enum Restriction {
     PhaseIn(ObjectFilter),
     AttackOrBlock(ObjectFilter),
     AttackOrBlockAlone(ObjectFilter),
+    /// "[Cards matching filter] can't enter the battlefield." (Grafdigger's
+    /// Cage). The filter is evaluated against the card in the zone it would
+    /// leave, so a zone-bearing filter such as "creature cards in graveyards
+    /// and libraries" only stops entries from those zones. A prohibited entry
+    /// leaves the card where it is (CR 614.17 style "can't" effect).
+    EnterBattlefield(ObjectFilter),
 }
 
 /// How mana may be spent relative to its produced type.
@@ -1344,6 +1350,10 @@ impl Restriction {
 
     pub fn attack_or_block(filter: ObjectFilter) -> Self {
         Self::AttackOrBlock(filter)
+    }
+
+    pub fn enter_battlefield(filter: ObjectFilter) -> Self {
+        Self::EnterBattlefield(filter)
     }
 
     pub fn attack_or_block_alone(filter: ObjectFilter) -> Self {

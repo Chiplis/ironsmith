@@ -889,6 +889,7 @@ pub(crate) fn parse_get_pump_clause(
         if let (Some(first), Some(second)) = (first, second) {
             return Ok(Some(EffectAst::ObjectChoices(
                 ObjectChoiceEffectAst::ChooseOneOf {
+                    chooser: crate::target::PlayerFilter::You,
                     modes: vec![
                         ChooseOneModeAst {
                             description: String::new(),

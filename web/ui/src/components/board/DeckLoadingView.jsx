@@ -42,6 +42,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
   const [savedPresets, setSavedPresets] = useState(() => listSavedDeckPresets());
   const [selectedPresetName, setSelectedPresetName] = useState("");
   const [presetName, setPresetName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const handleTextChange = (index, value) => {
     setTexts((prev) => {
@@ -76,7 +77,8 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
     setPresetName(selectedPreset.name);
   };
 
-  const handleLoad = () => {
+  const handleLoad = async () => {
+    if (submitting) return;
     const decks = texts.map(parseDeckList);
     const sideboards = texts.map(parseSideboardList);
     const normalizedPresetName = presetName.trim();
@@ -91,7 +93,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
         shouldConfirmOverride
         && !window.confirm(ui('A saved deck named "{0}" already exists. Override it?', { 0: existingPreset.name }))
       ) {
-        onLoad({ decks, sideboards });
+        await onLoad({ decks, sideboards });
         return;
       }
 
@@ -108,7 +110,12 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
       }
     }
 
-    onLoad({ decks, sideboards });
+    setSubmitting(true);
+    try {
+      await onLoad({ decks, sideboards });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -205,9 +212,9 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
             variant="ghost"
             size="sm"
             className="ui-primary-action h-9 border border-[#f2d9a3]/45 bg-[#211a10] px-4 text-[12px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
-            disabled={totalCards === 0}
+            disabled={totalCards === 0 || submitting}
             onClick={handleLoad}
-          >{ui("Load")}{totalCards > 0 ? ui(" ({0} main{1})", { 0: totalCards, 1: totalSideboardCards > 0 ? `, ${totalSideboardCards} sideboard` : "" }) : ""}
+          >{submitting ? ui("Loading…") : ui("Load")}{!submitting && totalCards > 0 ? ui(" ({0} main{1})", { 0: totalCards, 1: totalSideboardCards > 0 ? `, ${totalSideboardCards} sideboard` : "" }) : ""}
           </Button>
           <Button
             type="button"

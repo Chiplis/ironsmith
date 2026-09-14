@@ -893,6 +893,22 @@ fn continue_interactive_replacement(
         );
     }
 
+    // Handle reveal-or-enter-tapped (shadow land / snarl pattern). Its
+    // fallback keeps the permanent on the battlefield, which no
+    // discard-or-redirect gate does.
+    if let Some(filter) = filter
+        && redirect_zone == Zone::Battlefield
+    {
+        return handle_reveal_card_or_enter_tapped(
+            game,
+            response,
+            object_id,
+            controller,
+            filter,
+            provenance,
+        );
+    }
+
     // Handle discard-or-redirect (Mox Diamond pattern)
     if let Some(filter) = filter {
         return handle_discard_or_redirect(
@@ -1023,6 +1039,42 @@ fn handle_discard_or_redirect(
             InteractiveReplacementResult::redirected(redirect_zone)
         }
     }
+}
+
+/// Handle a reveal-card-or-enter-tapped interactive replacement.
+fn handle_reveal_card_or_enter_tapped(
+    game: &mut GameState,
+    response: &InteractiveReplacementResponse,
+    object_id: crate::ids::ObjectId,
+    controller: crate::ids::PlayerId,
+    filter: &crate::target::ObjectFilter,
+    provenance: crate::provenance::ProvNodeId,
+) -> InteractiveReplacementResult {
+    let InteractiveReplacementResponse::Objects(cards) = response else {
+        return InteractiveReplacementResult::enters_tapped();
+    };
+    let Some(&card_id) = cards.first() else {
+        return InteractiveReplacementResult::enters_tapped();
+    };
+    let matching_cards = find_matching_cards_in_hand(game, controller, filter);
+    if !matching_cards.contains(&card_id) {
+        return InteractiveReplacementResult::enters_tapped();
+    }
+    let snapshot = game
+        .object(card_id)
+        .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game));
+    let revealed = crate::events::CardRevealedEvent::new(
+        controller,
+        card_id,
+        Zone::Hand,
+        Some(object_id),
+        snapshot,
+    );
+    game.queue_trigger_event(
+        provenance,
+        crate::triggers::TriggerEvent::new_with_provenance(revealed, provenance),
+    );
+    InteractiveReplacementResult::enters_battlefield()
 }
 
 /// Handle a pay-life-or-enter-tapped interactive replacement.

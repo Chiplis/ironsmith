@@ -309,7 +309,7 @@ impl EffectExecutor for DrawCardsEffect {
         let mut direct_draw_step_context = (false, 0);
         let mut direct_draws_before = 0;
 
-        for _ in 0..count {
+        for index in 0..count {
             if !game.can_draw(player_id) {
                 continue;
             }
@@ -328,7 +328,7 @@ impl EffectExecutor for DrawCardsEffect {
                 game.update_replacement_effects();
             }
 
-            let draw_event = Event::draw(player_id, 1, is_first);
+            let draw_event = Event::draw_in_instruction(player_id, 1, is_first, index == 0);
             match process_trait_event_with_dm_and_applied_effects(
                 game,
                 draw_event,

@@ -458,7 +458,124 @@ pub(super) fn read_or_predicate(
 }
 
 /// This shard's readings, in rank order.
+/// "a card is exiled with this land" (Ugin's Labyrinth): the source has a
+/// linked exiled card.
+pub(super) fn read_source_linked_exiled_card_predicate(
+    input: &Predicate<'_>,
+) -> Result<Option<PredicateAst>, CardTextError> {
+    use winnow::combinator::{alt, opt};
+    use winnow::prelude::*;
+    use winnow::token::any;
+
+    let predicate_tokens = input.predicate_tokens;
+    let shape = |stream: &mut crate::lexer::LexStream<'_>| -> winnow::error::ModalResult<()> {
+        opt(alt((
+            crate::grammar::primitives::kw("a"),
+            crate::grammar::primitives::kw("an"),
+        )))
+        .parse_next(stream)?;
+        alt((
+            crate::grammar::primitives::kw("card"),
+            crate::grammar::primitives::kw("cards"),
+        ))
+        .parse_next(stream)?;
+        alt((
+            crate::grammar::primitives::kw("is"),
+            crate::grammar::primitives::kw("are"),
+        ))
+        .parse_next(stream)?;
+        crate::grammar::primitives::phrase(&["exiled", "with", "this"]).parse_next(stream)?;
+        any.verify(|token: &&OwnedLexToken| token.as_word().is_some())
+            .parse_next(stream)?;
+        Ok(())
+    };
+    if crate::grammar::primitives::probe_all(
+        predicate_tokens,
+        shape,
+        "source-linked exiled card predicate",
+    )
+    .is_none()
+    {
+        return Ok(None);
+    }
+    let exiled_with_source = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())
+        .in_zone(Zone::Exile);
+    Ok(Some(PredicateAst::CountComparison {
+        count: ironsmith_core::AnthemCountExpression::MatchingFilter(exiled_with_source),
+        comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+        display: Some(crate::lexer::render_token_slice(predicate_tokens)),
+    }))
+}
+
+/// "it doesn't have the same name as another creature you control or a
+/// creature card in your graveyard" (Guardian Project): no object matching
+/// the filter shares the tagged object's name.
+pub(super) fn read_same_name_as_filter_predicate(
+    input: &Predicate<'_>,
+) -> Result<Option<PredicateAst>, CardTextError> {
+    use winnow::combinator::{alt, opt};
+    use winnow::prelude::*;
+
+    let predicate_tokens = input.predicate_tokens;
+    let shape = |stream: &mut crate::lexer::LexStream<'_>| -> winnow::error::ModalResult<bool> {
+        crate::grammar::primitives::kw("it").parse_next(stream)?;
+        let negated = alt((
+            crate::grammar::primitives::kw("doesnt").value(true),
+            crate::grammar::primitives::kw("doesn't").value(true),
+            (
+                crate::grammar::primitives::kw("does"),
+                crate::grammar::primitives::kw("not"),
+            )
+                .value(true),
+            crate::grammar::primitives::kw("has").value(false),
+        ))
+        .parse_next(stream)?;
+        if negated {
+            crate::grammar::primitives::kw("have").parse_next(stream)?;
+        }
+        crate::grammar::primitives::phrase(&["the", "same", "name", "as"]).parse_next(stream)?;
+        opt(crate::grammar::primitives::comma()).parse_next(stream)?;
+        Ok(negated)
+    };
+    let Some((negated, filter_tokens)) =
+        crate::grammar::primitives::parse_prefix(predicate_tokens, shape)
+    else {
+        return Ok(None);
+    };
+    let filter_tokens = crate::lexer::trim_lexed_commas(filter_tokens);
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    let mut filter = parse_object_filter(filter_tokens, false)?;
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
+        relation: TaggedOpbjectRelation::SameNameAsTagged,
+    });
+    let shares_name = PredicateAst::CountComparison {
+        count: ironsmith_core::AnthemCountExpression::MatchingFilter(filter),
+        comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+        display: Some(crate::lexer::render_token_slice(predicate_tokens)),
+    };
+    Ok(Some(if negated {
+        PredicateAst::Not(Box::new(shares_name))
+    } else {
+        shares_name
+    }))
+}
+
 pub(super) const READINGS: &[Reading] = &[
+    Reading {
+        id: RuleId::new("same-name-as-filter-predicate"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_same_name_as_filter_predicate(input)),
+    },
+    Reading {
+        id: RuleId::new("source-linked-exiled-card-predicate"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_source_linked_exiled_card_predicate(input)),
+    },
     Reading {
         id: RuleId::new("player-life-change-this-turn-predicate"),
         head: HeadDiscriminator::Any,
@@ -676,6 +793,7 @@ pub(super) const READINGS: &[Reading] = &[
                     .is_some_and(|_| !is_article(token.parser_text()))
             }))
                 // Readings ranked above this one that read the input read it.
+                && !input.read_by("same-name-as-filter-predicate")
                 && !input.read_by("rule")
                 && !input.read_by("source-verbless-counted-counter-predicate")
                 && !input.read_by("stack-object-targets-object-predicate")
@@ -698,6 +816,7 @@ pub(super) const READINGS: &[Reading] = &[
                     .is_some_and(|_| !is_article(token.parser_text()))
             }))
                 // Readings ranked above this one that read the input read it.
+                && !input.read_by("same-name-as-filter-predicate")
                 && !input.read_by("exploited-triggering-object-predicate")
                 && !input.read_by("implicit-subject-and-predicate")
                 && !input.read_by("passive-this-way-tagged-object-predicate")

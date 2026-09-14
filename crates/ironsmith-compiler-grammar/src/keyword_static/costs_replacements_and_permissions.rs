@@ -558,7 +558,17 @@ pub fn parse_spells_cost_modifier_line(
         }
     }
 
-    let amount_tokens = &tokens[cost_token_idx + 1..];
+    let mut amount_start = cost_token_idx + 1;
+    // "cost an additional 3 life to cast": the surcharge direction is stated
+    // ahead of the amount instead of as a trailing "more".
+    let additional_surcharge = matches!(
+        tokens.get(amount_start..amount_start + 2),
+        Some([first, second]) if first.is_word("an") && second.is_word("additional")
+    );
+    if additional_surcharge {
+        amount_start += 2;
+    }
+    let amount_tokens = &tokens[amount_start..];
     let (parsed_amount, mut parsed_mana_cost) = parse_cost_modifier_components(amount_tokens);
     let mut parsed_mana_cost_repetitions = None;
     let (mut amount_value, used) = parsed_amount.clone().unwrap_or({
@@ -583,9 +593,14 @@ pub fn parse_spells_cost_modifier_line(
     let direction_words = condition_boundary
         .map(|boundary| &remaining_words[..boundary])
         .unwrap_or(&remaining_words);
-    let Some(direction) = static_mid_facts::parse_cost_modifier_direction_words(direction_words)
-    else {
-        return Ok(None);
+    let direction = match static_mid_facts::parse_cost_modifier_direction_words(direction_words) {
+        Some(direction) => direction,
+        None if additional_surcharge
+            && crate::word_primitives::sequence_occurs(direction_words, &["to", "cast"]) =>
+        {
+            CostModifierDirection::More
+        }
+        None => return Ok(None),
     };
     let is_life_cost_modifier =
         crate::word_primitives::sequence_occurs(&remaining_words, &["life"]);
@@ -4045,6 +4060,20 @@ pub fn parse_draw_replacement_skip_empty_library_line(
     Ok(None)
 }
 
+/// "If you would draw one or more cards, you draw that many cards plus one
+/// instead." (Quantum Riddler)
+pub fn parse_draw_extra_cards_replacement_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(fact) = late_static_facts::parse_draw_extra_cards_replacement_tokens(tokens) else {
+        return Ok(None);
+    };
+    Ok(Some(StaticAbility::draw_extra_cards_replacement(
+        fact.extra,
+        render_token_slice(tokens),
+    )))
+}
+
 pub fn parse_conditional_draw_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -4182,6 +4211,7 @@ pub fn parse_conditional_draw_replacement_line(
         };
         nonland.set_explicit_card_noun(true);
         let choose_kind = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
+            chooser: crate::target::PlayerFilter::You,
             modes: vec![
                 mode("land", land, "land"),
                 mode("nonland", nonland, "nonland"),
@@ -4681,6 +4711,102 @@ pub fn parse_sacrifice_or_redirect_replacement_line(
     )))
 }
 
+/// "As this land enters, choose a basic land type. Then you may pay 2 life. If
+/// you don't, it enters tapped." (Multiversal Passage): an as-enters land type
+/// choice followed by the shock-land life gate.
+pub fn parse_choose_basic_land_type_then_pay_life_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let sentences = split_lexed_sentences(tokens);
+    let [choice_tokens, then_tokens, tail_tokens] = sentences.as_slice() else {
+        return Ok(None);
+    };
+    let Some((then, after_then)) = then_tokens.split_first() else {
+        return Ok(None);
+    };
+    if !then.is_word("then") {
+        return Ok(None);
+    }
+    let Some(choice) = crate::keyword_static::parse_choose_basic_land_type_as_enters_line(
+        choice_tokens,
+    )?
+    else {
+        return Ok(None);
+    };
+    // The gate shares the choice sentence's "As this land enters" subject.
+    let Some(enters) = choice_tokens
+        .iter()
+        .position(|token| token.is_any_word(&["enters", "enter"]))
+    else {
+        return Ok(None);
+    };
+    let mut gate_tokens = choice_tokens[..=enters].to_vec();
+    gate_tokens.extend(after_then.iter().cloned());
+    gate_tokens.extend(tail_tokens.iter().cloned());
+    let Some(gate) = parse_pay_life_or_enter_tapped_line(&gate_tokens)? else {
+        return Ok(None);
+    };
+    Ok(Some(vec![choice, gate]))
+}
+
+/// "If a land is tapped for two or more mana, it produces {C} instead of any
+/// other type and amount." (Damping Sphere)
+pub fn parse_if_source_tapped_for_mana_replacement_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(spec) =
+        crate::grammar::effects::parse_tapped_for_amount_mana_replacement_spec_lexed(tokens)
+    else {
+        return Ok(None);
+    };
+    let mut source_filter = parse_object_filter(spec.source_tokens, false)?;
+    if source_filter.zone.is_none() {
+        source_filter.zone = Some(Zone::Battlefield);
+    }
+    parser_trace("parse_static:tapped-for-mana-replacement:matched", tokens);
+    Ok(Some(StaticAbility::mana_production_replacement(
+        source_filter,
+        spec.minimum_amount,
+        vec![spec.replacement_mana],
+        render_token_slice(tokens),
+    )))
+}
+
+/// "If a nontoken creature would enter and it wasn't cast, exile it instead."
+/// (Containment Priest)
+pub fn parse_redirect_would_enter_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(spec) = keyword_static_lines::parse_redirect_would_enter_tokens(tokens) else {
+        return Ok(None);
+    };
+    let filter = parse_object_filter(spec.filter_tokens, false)?;
+    parser_trace("parse_static:redirect-would-enter:matched", tokens);
+    Ok(Some(StaticAbility::redirect_would_enter(
+        filter,
+        spec.not_cast,
+        spec.destination,
+        render_token_slice(tokens),
+    )))
+}
+
+/// "As this land enters, you may reveal a Plains or Island card from your
+/// hand. If you don't, this land enters tapped." (Port Town, Frostboil Snarl).
+pub fn parse_reveal_card_or_enter_tapped_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(fact) = late_static_facts::parse_reveal_card_or_enter_tapped_tokens(tokens) else {
+        return Ok(None);
+    };
+    let filter = parse_object_filter(fact.filter_tokens, false)?;
+    parser_trace("parse_static:reveal-card-etb:matched", tokens);
+    Ok(Some(StaticAbility::reveal_card_or_enter_tapped(
+        filter,
+        fact.subject,
+        fact.tail_subject,
+    )))
+}
+
 pub fn parse_pay_life_or_enter_tapped_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -4763,10 +4889,22 @@ pub fn parse_copy_activated_abilities_line(
     };
 
     let display_words = copy_activated_abilities_display_words(&clause_words);
+    // A grant renders its own recipients, so its ability text is only the
+    // half after the `has`/`have` marker. A source-subject line keeps the
+    // complete authored clause.
+    let display_head_start = match &subject {
+        AnthemSubjectAst::Source => 0,
+        AnthemSubjectAst::Filter(_) => copy_activated_display_index_for_original_word(
+            &clause_words,
+            fact.marker_word_start + 1,
+        ),
+    };
+    let display_words = display_words.get(display_head_start..).unwrap_or_default();
     let display = if force_once_each_turn {
         let display_tail_start = fact
             .once_each_turn_word_start
-            .map(|start| copy_activated_display_index_for_original_word(&clause_words, start));
+            .map(|start| copy_activated_display_index_for_original_word(&clause_words, start))
+            .and_then(|start| start.checked_sub(display_head_start));
         if let Some(start) = display_tail_start {
             format!(
                 "{}. You may activate each of those abilities only once each turn",

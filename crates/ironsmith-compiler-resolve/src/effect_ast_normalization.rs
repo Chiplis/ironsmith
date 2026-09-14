@@ -221,7 +221,7 @@ fn bind_typed_where_x_references(effects: &mut [EffectAst], inherited: Option<Va
                 }
                 bind_typed_where_x_references(effects, binding.clone());
             }
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
                 for mode in modes {
                     bind_typed_where_x_references(&mut mode.effects, binding.clone());
@@ -1622,7 +1622,7 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         // resizes/replaces the Vec (retain + whole-Vec rewrites), which the
         // slice-exposing helper cannot express. New wrapper variants must be
         // added here and kept in sync with the traversal macro.
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
             for mode in modes {
                 normalize_effects_vec(&mut mode.effects);

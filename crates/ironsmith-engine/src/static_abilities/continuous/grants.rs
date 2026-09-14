@@ -102,6 +102,49 @@ impl StaticAbilityKind for EnchantedLandIsChosenType {
     }
 }
 
+/// "This land is the chosen type." (Multiversal Passage)
+#[derive(Debug, Clone, PartialEq)]
+pub struct SourceLandIsChosenType {
+    pub display: String,
+}
+
+impl SourceLandIsChosenType {
+    pub fn new(display: String) -> Self {
+        Self { display }
+    }
+}
+
+impl StaticAbilityKind for SourceLandIsChosenType {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::SourceLandIsChosenType
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        let Some(chosen_type) = game.chosen_basic_land_type(source) else {
+            return Vec::new();
+        };
+
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::Specific(source),
+                Modification::SetSubtypes(vec![chosen_type]),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
 /// "This creature is the chosen type in addition to its other types."
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddChosenCreatureTypeForFilter {

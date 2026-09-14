@@ -89,7 +89,7 @@ pub fn parse_destroy_or_exile_all_split_sentence(
                 effects: vec![effect],
             });
         }
-        return Ok(Some(vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })]));
+        return Ok(Some(vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { chooser: crate::target::PlayerFilter::You, modes })]));
     }
 
     // A coordinated all-object clause can carry independent scope on each

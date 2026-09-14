@@ -262,7 +262,9 @@ fn trap_condition_from_this_spell_cost_condition(
         ThisSpellCostCondition::OpponentCastSpellsThisTurnOrMore(count) => {
             Some(crate::TrapCondition::OpponentCastSpells { count: *count })
         }
-        ThisSpellCostCondition::YouWereDealtDamageByCreaturesThisTurnOrMore(_) => {
+        // The runtime trap condition carries no count; only the printed
+        // "two or more creatures" shape (Inferno Trap) renders back exactly.
+        ThisSpellCostCondition::YouWereDealtDamageByCreaturesThisTurnOrMore(2) => {
             Some(crate::TrapCondition::CreatureDealtDamageToYou)
         }
         _ => None,

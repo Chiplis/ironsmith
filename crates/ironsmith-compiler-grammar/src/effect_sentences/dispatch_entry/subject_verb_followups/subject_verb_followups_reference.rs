@@ -762,6 +762,10 @@ pub(super) fn bind_targeted_leaves_filter(
             bind_targeted_leaves_filter(trigger, tag)
         }
         crate::cards::builders::TriggerSpec::LeavesBattlefield(filter) => {
+            filter.tagged_constraints.retain(|constraint| {
+                !(constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                    && constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
+            });
             *filter = filter
                 .clone()
                 .match_tagged(tag.clone(), TaggedOpbjectRelation::IsTaggedObject);

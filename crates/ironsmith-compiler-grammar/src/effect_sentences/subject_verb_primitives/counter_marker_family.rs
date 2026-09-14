@@ -91,6 +91,7 @@ fn retarget_it_restriction_for_counter_followup(
         | Restriction::PhaseIn(filter)
         | Restriction::AttackOrBlock(filter)
         | Restriction::AttackOrBlockAlone(filter)
+        | Restriction::EnterBattlefield(filter)
         | Restriction::ActivateAbilitiesOf(filter)
         | Restriction::ActivateTapAbilitiesOf(filter)
         | Restriction::ActivateNonManaAbilitiesOf(filter) => {

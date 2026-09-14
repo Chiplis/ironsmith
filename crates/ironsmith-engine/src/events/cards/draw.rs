@@ -15,6 +15,11 @@ pub struct DrawEvent {
     pub count: u32,
     /// Whether this is the first card drawn this turn
     pub is_first_this_turn: bool,
+    /// Whether this is the first card of the draw instruction that produced
+    /// it. A multi-card instruction draws one card at a time (CR 121.2), so
+    /// "if you would draw one or more cards" replacements apply to this
+    /// event only.
+    pub first_of_instruction: bool,
 }
 
 impl DrawEvent {
@@ -24,7 +29,14 @@ impl DrawEvent {
             player,
             count,
             is_first_this_turn,
+            first_of_instruction: true,
         }
+    }
+
+    /// Mark whether this event is the first card of its draw instruction.
+    pub fn with_first_of_instruction(mut self, first_of_instruction: bool) -> Self {
+        self.first_of_instruction = first_of_instruction;
+        self
     }
 
     /// Return a new event with doubled draw count.

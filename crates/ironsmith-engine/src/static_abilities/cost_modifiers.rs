@@ -2065,7 +2065,7 @@ impl StaticAbilityKind for ActivatedAbilityCostIncrease {
             return describe_cost_modifier_with_condition(line, &self.condition);
         }
 
-        let line = if self.filter == ObjectFilter::source() {
+        let mut line = if self.filter == ObjectFilter::source() {
             format!("This ability costs an additional {} to activate", increase)
         } else {
             let (subject, _) = super::continuous::grant_subject_with_set_quantifier(
@@ -2078,6 +2078,9 @@ impl StaticAbilityKind for ActivatedAbilityCostIncrease {
                 subject, increase
             )
         };
+        if self.non_mana_only {
+            line.push_str(" unless they're mana abilities");
+        }
         describe_cost_modifier_with_condition(line, &self.condition)
     }
 

@@ -1301,6 +1301,12 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             trigger_word_token_start(tokens, leaves_word_idx).unwrap_or(tokens.len());
         let subject_tokens = &tokens[..leaves_token_idx];
 
+        if subject_tokens.len() > 2 && subject_tokens[0].is_word("the") && subject_tokens[1].is_word("targeted") {
+            let filter = parse_object_filter_lexed(&subject_tokens[2..], false)?
+                .match_tagged(crate::tag::CompilerReferenceTag::It.bind(), TaggedOpbjectRelation::IsTaggedObject);
+            return Ok(TriggerSpec::LeavesBattlefield(filter));
+        }
+
         // This form is destination-sensitive: it fires for battlefield exits
         // to hand, exile, library, and so on, but not for deaths. Keep the
         // exclusion typed instead of compiling a broad leaves trigger and

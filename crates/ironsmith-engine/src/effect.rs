@@ -1518,6 +1518,15 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::EnterBattlefield(filter) => {
+                let restriction = crate::game_state::CastRestrictionFilter {
+                    filter: filter.clone(),
+                    source,
+                };
+                if !tracker.cant_enter_battlefield.contains(&restriction) {
+                    tracker.cant_enter_battlefield.push(restriction);
+                }
+            }
             Restriction::BeSacrificed(filter) => {
                 for &obj_id in &game.battlefield {
                     if let Some(obj) = game.object(obj_id)

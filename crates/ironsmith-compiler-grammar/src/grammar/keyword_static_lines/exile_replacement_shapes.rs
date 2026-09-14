@@ -80,6 +80,64 @@ pub fn parse_exile_to_graveyard_replacement_tokens(
     )
 }
 
+/// "If a nontoken creature would enter and it wasn't cast, exile it instead."
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RedirectWouldEnterSpec<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub not_cast: bool,
+    pub destination: crate::zone::Zone,
+}
+
+pub fn parse_redirect_would_enter_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<RedirectWouldEnterSpec<'_>> {
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_redirect_would_enter_lexed,
+        "redirect would-enter replacement",
+    )
+}
+
+fn parse_redirect_would_enter_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<RedirectWouldEnterSpec<'a>> {
+    primitives::kw("if").parse_next(input)?;
+    opt(alt((primitives::kw("a"), primitives::kw("an")))).parse_next(input)?;
+    let filter_tokens: &'a [OwnedLexToken] = repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        peek(primitives::phrase(&["would", "enter"])),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    primitives::phrase(&["would", "enter"]).parse_next(input)?;
+    opt(primitives::phrase(&["the", "battlefield"])).parse_next(input)?;
+    let not_cast = opt((
+        primitives::kw("and"),
+        primitives::kw("it"),
+        alt((primitives::kw("wasnt"), primitives::kw("wasn't"))),
+        primitives::kw("cast"),
+    ))
+    .map(|tail| tail.is_some())
+    .parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::kw("exile").parse_next(input)?;
+    alt((
+        primitives::kw("it").void(),
+        primitives::phrase(&["that", "permanent"]),
+        primitives::phrase(&["that", "card"]),
+    ))
+    .parse_next(input)?;
+    primitives::kw("instead").parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(RedirectWouldEnterSpec {
+        filter_tokens: trim_lexed_commas(filter_tokens),
+        not_cast,
+        destination: crate::zone::Zone::Exile,
+    })
+}
+
 pub fn parse_exile_would_die_tokens(tokens: &[OwnedLexToken]) -> Option<ExileWouldDieSpec> {
     crate::grammar::primitives::probe_all(
         tokens,

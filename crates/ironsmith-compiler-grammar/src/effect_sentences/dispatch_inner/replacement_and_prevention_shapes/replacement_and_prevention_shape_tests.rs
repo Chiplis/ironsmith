@@ -409,7 +409,7 @@ fn repeated_all_or_branches_remain_a_resolution_choice() {
     let effects = parse_destroy_or_exile_all_split_sentence(&tokens)
         .expect("destroy-all alternative parser should not error")
         .expect("destroy-all alternative parser should match");
-    let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })] = effects.as_slice() else {
+    let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })] = effects.as_slice() else {
         panic!("expected one typed choice, got {effects:#?}");
     };
     assert_eq!(modes.len(), 2, "{modes:#?}");

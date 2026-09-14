@@ -519,9 +519,124 @@ pub(super) fn pluralize_cast_spell_description(description: &str) -> String {
     plural
 }
 
+fn plural_zone_noun(zone: Zone) -> &'static str {
+    match zone {
+        Zone::Graveyard => "graveyards",
+        Zone::Library => "libraries",
+        Zone::Hand => "hands",
+        Zone::Exile => "exile",
+        Zone::Battlefield => "the battlefield",
+        Zone::Stack => "the stack",
+        Zone::Command => "the command zone",
+        Zone::Ante => "the ante zone",
+        Zone::OutsideGame => "outside the game",
+    }
+}
+
+/// The zones of a filter whose only executable content is a zone, or a union
+/// of such zone-only branches ("from graveyards or libraries").
+fn zone_only_union_zones(filter: &ObjectFilter) -> Option<Vec<Zone>> {
+    let branches: &[ObjectFilter] = if filter.any_of.is_empty() {
+        std::slice::from_ref(filter)
+    } else {
+        let mut base = filter.clone();
+        base.any_of.clear();
+        if base != ObjectFilter::default() {
+            return None;
+        }
+        &filter.any_of
+    };
+    let mut zones = Vec::with_capacity(branches.len());
+    for branch in branches {
+        let zone = branch.zone?;
+        let mut probe = ObjectFilter::default();
+        probe.zone = Some(zone);
+        if *branch != probe {
+            return None;
+        }
+        zones.push(zone);
+    }
+    Some(zones)
+}
+
+fn join_zone_nouns(zones: &[Zone], connective: &str) -> String {
+    let nouns = zones
+        .iter()
+        .map(|zone| plural_zone_noun(*zone))
+        .collect::<Vec<_>>();
+    match nouns.as_slice() {
+        [] => String::new(),
+        [only] => (*only).to_string(),
+        [first, second] => format!("{first} {connective} {second}"),
+        [init @ .., last] => format!("{}, {connective} {last}", init.join(", ")),
+    }
+}
+
+/// "creature cards in graveyards and libraries" for a card-type filter whose
+/// zone alternatives are a union of zone-only branches (Grafdigger's Cage).
+pub(super) fn describe_zone_union_card_set(filter: &ObjectFilter) -> Option<String> {
+    if filter.any_of.len() < 2 {
+        return None;
+    }
+    let mut zones = Vec::with_capacity(filter.any_of.len());
+    for branch in &filter.any_of {
+        let zone = branch.zone?;
+        let mut probe = ObjectFilter::default();
+        probe.zone = Some(zone);
+        if *branch != probe {
+            return None;
+        }
+        zones.push(zone);
+    }
+    let mut base = filter.clone();
+    base.any_of.clear();
+    let mut expected = ObjectFilter::default();
+    expected.card_types = base.card_types.clone();
+    if base != expected {
+        return None;
+    }
+    let mut head = base
+        .card_types
+        .iter()
+        .map(|card_type| card_type.to_string().to_lowercase())
+        .collect::<Vec<_>>();
+    head.push("cards".to_string());
+    Some(format!(
+        "{} in {}",
+        head.join(" "),
+        join_zone_nouns(&zones, "and")
+    ))
+}
+
 pub(super) fn describe_cast_ban_spell_filter(filter: &ObjectFilter) -> String {
     if filter == &ObjectFilter::default() {
         return "spells".to_string();
+    }
+    if let Some(zones) = zone_only_union_zones(filter) {
+        return format!("spells from {}", join_zone_nouns(&zones, "or"));
+    }
+    if filter.excluded_cast_origin_zone == Some(Zone::Hand) {
+        let mut base = filter.clone();
+        base.excluded_cast_origin_zone = None;
+        let head = if base == ObjectFilter::default() {
+            "spells".to_string()
+        } else {
+            pluralize_cast_spell_description(&describe_cast_limit_spell_filter(&base))
+        };
+        return format!("{head} from anywhere other than their hands");
+    }
+    if !filter.any_of.is_empty() {
+        let mut branches = ObjectFilter::default();
+        branches.any_of = filter.any_of.clone();
+        if let Some(zones) = zone_only_union_zones(&branches) {
+            let mut base = filter.clone();
+            base.any_of.clear();
+            return format!(
+                "{} from {}",
+                pluralize_cast_spell_description(&describe_cast_limit_spell_filter(&base)),
+                join_zone_nouns(&zones, "or")
+            );
+        }
     }
     if filter == &ObjectFilter::default().with_type(CardType::Creature) {
         return "creature spells".to_string();

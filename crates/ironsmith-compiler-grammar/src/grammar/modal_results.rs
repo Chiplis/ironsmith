@@ -75,6 +75,9 @@ fn parse_result_verb<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         ))
         .void(),
         alt((primitives::kw("mill"), primitives::kw("milled"))).void(),
+        // "If you didn't create a token this way" gates on the antecedent
+        // token-creation action, whose result memory is the created token.
+        alt((primitives::kw("create"), primitives::kw("created"))).void(),
     ))
     .void()
     .parse_next(input)
@@ -113,6 +116,8 @@ fn parse_optional_result_qualifier<'a>(input: &mut LexStream<'a>) -> WResult<()>
         primitives::kw("them").void(),
         primitives::kw("that").void(),
         primitives::kw("card").void(),
+        primitives::kw("token").void(),
+        primitives::kw("tokens").void(),
     )))
     .void()
     .parse_next(input)

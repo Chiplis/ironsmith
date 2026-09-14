@@ -1450,6 +1450,12 @@ pub struct CantEffectTracker {
     /// Object, protected cause, and controller of the restriction's source.
     pub cant_be_sacrificed_by_cause: Vec<(ObjectId, ironsmith_core::CauseFilter, PlayerId)>,
 
+    /// Card filters that can't enter the battlefield, evaluated against the
+    /// card in the zone it would leave.
+    /// Example: Grafdigger's Cage ("Creature cards in graveyards and
+    /// libraries can't enter the battlefield.")
+    pub cant_enter_battlefield: Vec<CastRestrictionFilter>,
+
     /// Per-player spell filters that cannot be cast.
     ///
     /// Examples:
@@ -1877,6 +1883,11 @@ impl CantEffectTracker {
         self.cant_be_sacrificed.extend(other.cant_be_sacrificed);
         self.cant_be_sacrificed_by_cause
             .extend(other.cant_be_sacrificed_by_cause);
+        for restriction in other.cant_enter_battlefield {
+            if !self.cant_enter_battlefield.contains(&restriction) {
+                self.cant_enter_battlefield.push(restriction);
+            }
+        }
         for (player, filters) in other.cant_cast_filters {
             for restriction in filters {
                 self.add_cant_cast_filter_from_source(
@@ -1956,6 +1967,7 @@ impl CantEffectTracker {
         self.cant_be_regenerated.clear();
         self.cant_be_sacrificed.clear();
         self.cant_be_sacrificed_by_cause.clear();
+        self.cant_enter_battlefield.clear();
         self.cant_cast_filters.clear();
         self.cast_spells_only_as_sorcery.clear();
         self.cant_activate_non_mana_abilities.clear();

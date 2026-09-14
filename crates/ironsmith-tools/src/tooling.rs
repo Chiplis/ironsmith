@@ -610,7 +610,14 @@ pub fn compile_authoritative_snapshot_from_payload(payload: &CardPayload) -> Com
                 "generated definition still contains unimplemented content".to_string()
             }),
         );
-    } else if let Some(parse_error) = authoritative_semantic_marker_parse_error(&snapshot) {
+    } else if let Some(mut parse_error) = authoritative_semantic_marker_parse_error(&snapshot) {
+        // Debugging aid: `compile_oracle_text --stacktrace` shows the text
+        // that failed the marker audit, since the snapshot drops it.
+        if std::env::var_os("IRONSMITH_PARSER_STACKTRACE").is_some()
+            && let Some(compiled_text) = snapshot.compiled_text.as_deref()
+        {
+            parse_error = format!("{parse_error}; compiled text: {compiled_text:?}");
+        }
         mark_authoritative_snapshot_parse_failed(&mut snapshot, parse_error);
     }
     snapshot

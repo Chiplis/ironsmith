@@ -1874,6 +1874,107 @@ impl ReplacementMatcher for ConditionalWouldDrawCardMatcher {
     }
 }
 
+/// "If you would draw one or more cards, you draw that many cards plus one
+/// instead." (Quantum Riddler). The extra cards attach to the first card of
+/// each draw instruction; a leading "as long as" condition gates it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DrawExtraCardsReplacement {
+    pub condition: Option<Condition>,
+    pub extra: u32,
+    pub display: String,
+}
+
+impl DrawExtraCardsReplacement {
+    pub fn new(extra: u32, display: impl Into<String>) -> Self {
+        Self {
+            condition: None,
+            extra,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for DrawExtraCardsReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DrawExtraCardsReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        let mut combined = self.clone();
+        combined.condition = Some(match combined.condition.take() {
+            Some(existing) => Condition::And(Box::new(condition), Box::new(existing)),
+            None => condition,
+        });
+        Some(StaticAbility::new(combined))
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            WouldDrawInstructionMatcher {
+                condition: self.condition.clone(),
+                display: self.display.clone(),
+            },
+            ReplacementAction::Modify(crate::replacement::EventModification::Add(
+                i32::try_from(self.extra).unwrap_or(i32::MAX),
+            )),
+        ))
+    }
+}
+
+/// The first card of one of your draw instructions, optionally gated by a
+/// static condition.
+#[derive(Debug, Clone)]
+struct WouldDrawInstructionMatcher {
+    condition: Option<Condition>,
+    display: String,
+}
+
+impl ReplacementMatcher for WouldDrawInstructionMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if !WouldDrawCardMatcher::you().matches_event(event, ctx) {
+            return false;
+        }
+        let first_of_instruction = crate::events::downcast_event::<crate::events::DrawEvent>(event)
+            .is_some_and(|draw| draw.first_of_instruction);
+        if !first_of_instruction {
+            return false;
+        }
+        let Some(condition) = &self.condition else {
+            return true;
+        };
+        let Some(source) = ctx.source else {
+            return false;
+        };
+        let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
+            controller: ctx.controller,
+            source,
+            defending_player: None,
+            attacking_player: None,
+            filter_source: None,
+            iterated_player: None,
+            triggering_event: None,
+            trigger_identity: None,
+            ability_index: None,
+            options: Default::default(),
+        };
+        crate::condition_eval::evaluate_condition_external(ctx.game, condition, &eval_ctx)
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+}
+
 /// "If you would draw a card, exile the top N cards of your library instead. You may play those
 /// cards this turn."
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2728,6 +2829,246 @@ impl StaticAbilityKind for PayLifeOrEnterTappedReplacement {
         // This is conditionally enters tapped, so we return false here
         // The actual tapped state is determined by the replacement effect
         false
+    }
+}
+
+/// "As this land enters, you may reveal a <type> card from your hand. If you
+/// don't, this land enters tapped." (Port Town, Frostboil Snarl, ...)
+///
+/// Interactive replacement effect on the unified replacement system, parallel
+/// to [`PayLifeOrEnterTappedReplacement`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct RevealCardOrEnterTappedReplacement {
+    /// The hand card that may be revealed to enter untapped.
+    pub filter: ObjectFilter,
+    /// Authored subject phrase ("this land").
+    pub subject: String,
+    /// Authored tail subject phrase ("this land" or "it").
+    pub tail_subject: String,
+}
+
+impl RevealCardOrEnterTappedReplacement {
+    pub fn new(
+        filter: ObjectFilter,
+        subject: impl Into<String>,
+        tail_subject: impl Into<String>,
+    ) -> Self {
+        Self {
+            filter,
+            subject: subject.into(),
+            tail_subject: tail_subject.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for RevealCardOrEnterTappedReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::RevealCardOrEnterTappedReplacement
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "As {} enters, you may reveal {} from your hand. If you don't, {} enters tapped.",
+            self.subject,
+            with_indefinite_article(self.filter.description()),
+            self.tail_subject
+        )
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            ThisWouldEnterBattlefieldMatcher,
+            ReplacementAction::InteractiveRevealCardOrEnterTapped {
+                filter: self.filter.clone(),
+            },
+        ))
+    }
+
+    fn enters_tapped(&self) -> bool {
+        // Conditionally enters tapped; the replacement effect decides.
+        false
+    }
+}
+
+/// "If a nontoken creature would enter and it wasn't cast, exile it instead."
+/// (Containment Priest). Matching objects that would enter the battlefield
+/// move to `destination` instead.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RedirectWouldEnterReplacement {
+    pub filter: ObjectFilter,
+    /// Only objects that are not entering from the stack (i.e. weren't cast).
+    pub not_cast: bool,
+    pub destination: Zone,
+    pub display: String,
+}
+
+impl RedirectWouldEnterReplacement {
+    pub fn new(
+        filter: ObjectFilter,
+        not_cast: bool,
+        destination: Zone,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            filter,
+            not_cast,
+            destination,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for RedirectWouldEnterReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::RedirectWouldEnterReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            WouldEnterFromZoneMatcher {
+                enter_matcher: crate::events::zones::matchers::WouldEnterBattlefieldMatcher::new(
+                    self.filter.clone(),
+                ),
+                not_cast: self.not_cast,
+            },
+            ReplacementAction::ChangeDestination(self.destination),
+        ))
+    }
+}
+
+/// A would-enter matcher that can additionally require the object not to be
+/// entering from the stack ("and it wasn't cast").
+#[derive(Debug, Clone)]
+struct WouldEnterFromZoneMatcher {
+    enter_matcher: crate::events::zones::matchers::WouldEnterBattlefieldMatcher,
+    not_cast: bool,
+}
+
+impl WouldEnterFromZoneMatcher {
+    fn origin_allowed(&self, event: &dyn GameEventType) -> bool {
+        if !self.not_cast {
+            return true;
+        }
+        let from = match event.event_kind() {
+            EventKind::ZoneChange => {
+                crate::events::downcast_event::<crate::events::ZoneChangeEvent>(event)
+                    .map(|zone_change| zone_change.from)
+            }
+            EventKind::EnterBattlefield => {
+                crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event)
+                    .map(|etb| etb.from)
+            }
+            _ => None,
+        };
+        from.is_some_and(|from| from != Zone::Stack)
+    }
+}
+
+impl ReplacementMatcher for WouldEnterFromZoneMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        self.enter_matcher.matches_event(event, ctx) && self.origin_allowed(event)
+    }
+
+    fn priority(&self) -> ReplacementPriority {
+        self.enter_matcher.priority()
+    }
+
+    fn display(&self) -> String {
+        self.enter_matcher.display()
+    }
+}
+
+/// "If a land is tapped for two or more mana, it produces {C} instead of any
+/// other type and amount." (Damping Sphere)
+#[derive(Debug, Clone, PartialEq)]
+pub struct ManaProductionReplacement {
+    pub source_filter: ObjectFilter,
+    pub minimum_amount: u32,
+    pub replacement_mana: Vec<crate::mana::ManaSymbol>,
+    pub display: String,
+}
+
+impl ManaProductionReplacement {
+    pub fn new(
+        source_filter: ObjectFilter,
+        minimum_amount: u32,
+        replacement_mana: Vec<crate::mana::ManaSymbol>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            source_filter,
+            minimum_amount,
+            replacement_mana,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for ManaProductionReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ManaProductionReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            TappedForMinimumManaMatcher {
+                inner: crate::events::mana::matchers::ManaProducedBySourceMatcher::tapped_source_for_mana(
+                    self.source_filter.clone(),
+                ),
+                minimum_amount: self.minimum_amount,
+            },
+            ReplacementAction::ReplaceManaExact(self.replacement_mana.clone()),
+        ))
+    }
+}
+
+/// Mana a matching source is tapped for, when the event adds at least
+/// `minimum_amount` mana.
+#[derive(Debug, Clone)]
+struct TappedForMinimumManaMatcher {
+    inner: crate::events::mana::matchers::ManaProducedBySourceMatcher,
+    minimum_amount: u32,
+}
+
+impl ReplacementMatcher for TappedForMinimumManaMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        self.inner.matches_event(event, ctx)
+            && crate::events::downcast_event::<crate::events::ManaAddedEvent>(event)
+                .is_some_and(|added| added.mana.len() >= self.minimum_amount as usize)
+    }
+
+    fn priority(&self) -> ReplacementPriority {
+        self.inner.priority()
+    }
+
+    fn display(&self) -> String {
+        self.inner.display()
     }
 }
 

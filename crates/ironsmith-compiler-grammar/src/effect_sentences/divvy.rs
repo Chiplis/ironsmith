@@ -46,6 +46,43 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         return Ok(None);
     };
 
+    if let DivvySequenceShape::FixedExilePiles { first_count, second_count, first_face_down, second_face_down } = shape {
+        use crate::tag::CompilerReferenceTag;
+        let first = CompilerReferenceTag::DivvySource.bind();
+        let second = CompilerReferenceTag::DivvyPile.bind();
+        let opponent = CompilerReferenceTag::DivvyOpponent.bind();
+        let mut effects = Vec::new();
+        for (count, face_down, tag) in [(first_count, first_face_down, first.clone()), (second_count, second_face_down, second.clone())] {
+            effects.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner, PlayerAst::You,
+                SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
+                    count: Value::Fixed(count), surface: None, tags: vec![tag], accumulated_tags: vec![], face_down,
+                }),
+            ));
+        }
+        effects.push(EffectAst::subject_verb_choose_player(PlayerAst::You, PlayerFilter::Opponent, opponent.clone(), false, 0));
+        let mut modes = Vec::new();
+        for (chosen, other, label) in [(first.clone(), second.clone(), "First pile"), (second, first, "Second pile")] {
+            let mut chosen_filter = ObjectFilter::tagged(chosen);
+            chosen_filter.zone = Some(Zone::Exile);
+            let mut other_filter = ObjectFilter::tagged(other);
+            other_filter.zone = Some(Zone::Exile);
+            modes.push(crate::cards::builders::ChooseOneModeAst {
+                description: label.to_string(),
+                effects: vec![
+                    EffectAst::subject_verb_move_all_to_zone(TargetAst::Object(chosen_filter, None, None), Zone::Graveyard, false, ReturnControllerAst::Preserve, false, None),
+                    EffectAst::subject_verb_look_at_objects(PlayerAst::You, other_filter.clone()),
+                    EffectAst::may_cast_matching_spell_without_paying_mana_cost(PlayerAst::You, other_filter.clone(), Zone::Exile),
+                    EffectAst::subject_verb_move_all_to_zone(TargetAst::Object(other_filter, None, None), Zone::Hand, false, ReturnControllerAst::Preserve, false, None),
+                ],
+            });
+        }
+        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
+            chooser: PlayerFilter::TaggedPlayer(opponent.into()), modes,
+        }));
+        return Ok(Some(effects));
+    }
+
     if shape == DivvySequenceShape::SearchLibraryGraveyardExileRemainderToTop {
         let chosen_tag = crate::tag::CompilerReferenceTag::MultiZoneSearchChosen.bind();
         let mut search_filter = ObjectFilter::default();

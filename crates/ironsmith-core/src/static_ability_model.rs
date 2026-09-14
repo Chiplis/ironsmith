@@ -636,6 +636,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     ChooseBasicLandTypeAsEnters(String),
     ChooseLandTypeAsEnters(String),
     EnchantedLandIsChosenType(String),
+    /// "This land is the chosen type." (Multiversal Passage): the source land's
+    /// subtypes become the basic land type chosen as it entered.
+    SourceLandIsChosenType(String),
     AddChosenCreatureType {
         filter: ObjectFilter,
         display: String,
@@ -952,6 +955,12 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         optional: bool,
         display: String,
     },
+    /// "If you would draw one or more cards, you draw that many cards plus
+    /// one instead." (Quantum Riddler). Applies once per draw instruction.
+    DrawExtraCardsReplacement {
+        extra: u32,
+        display: String,
+    },
     LoseGameReplacement {
         replacement_effects: Vec<E>,
         optional: bool,
@@ -977,6 +986,35 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         redirect_zone: Zone,
     },
     PayLifeOrEnterTapped(u32),
+    /// "As this land enters, you may reveal a Plains or Island card from
+    /// your hand. If you don't, this land enters tapped." (SOI shadow lands,
+    /// STX snarls). `subject` and `tail_subject` keep the authored noun
+    /// phrases ("this land", "it") for rendering.
+    RevealCardOrEnterTapped {
+        filter: ObjectFilter,
+        subject: String,
+        tail_subject: String,
+    },
+    /// "If a nontoken creature would enter and it wasn't cast, exile it
+    /// instead." (Containment Priest). A matching object that would enter the
+    /// battlefield goes to `destination` instead; `not_cast` limits the gate to
+    /// objects not entering from the stack.
+    RedirectWouldEnter {
+        filter: ObjectFilter,
+        not_cast: bool,
+        destination: Zone,
+        display: String,
+    },
+    /// "If a land is tapped for two or more mana, it produces {C} instead of
+    /// any other type and amount." (Damping Sphere). Mana a matching source is
+    /// tapped for, when at least `minimum_amount` mana would be added, becomes
+    /// exactly `replacement_mana`.
+    ManaProductionReplacement {
+        source_filter: ObjectFilter,
+        minimum_amount: u32,
+        replacement_mana: Vec<crate::ManaSymbol>,
+        display: String,
+    },
     ManaSpendPermission {
         permission: ManaSpendPermission,
         display: String,
@@ -1752,6 +1790,9 @@ where
             StaticAbilityPayload::EnchantedLandIsChosenType(display) => {
                 StaticAbilityPayload::EnchantedLandIsChosenType(display)
             }
+            StaticAbilityPayload::SourceLandIsChosenType(display) => {
+                StaticAbilityPayload::SourceLandIsChosenType(display)
+            }
             StaticAbilityPayload::AddChosenCreatureType { filter, display } => {
                 StaticAbilityPayload::AddChosenCreatureType { filter, display }
             }
@@ -2299,6 +2340,9 @@ where
                 optional,
                 display,
             },
+            StaticAbilityPayload::DrawExtraCardsReplacement { extra, display } => {
+                StaticAbilityPayload::DrawExtraCardsReplacement { extra, display }
+            }
             StaticAbilityPayload::ConditionalDrawReplacement {
                 condition,
                 replacement_effects,
@@ -2358,6 +2402,37 @@ where
             StaticAbilityPayload::PayLifeOrEnterTapped(value) => {
                 StaticAbilityPayload::PayLifeOrEnterTapped(value)
             }
+            StaticAbilityPayload::RevealCardOrEnterTapped {
+                filter,
+                subject,
+                tail_subject,
+            } => StaticAbilityPayload::RevealCardOrEnterTapped {
+                filter,
+                subject,
+                tail_subject,
+            },
+            StaticAbilityPayload::RedirectWouldEnter {
+                filter,
+                not_cast,
+                destination,
+                display,
+            } => StaticAbilityPayload::RedirectWouldEnter {
+                filter,
+                not_cast,
+                destination,
+                display,
+            },
+            StaticAbilityPayload::ManaProductionReplacement {
+                source_filter,
+                minimum_amount,
+                replacement_mana,
+                display,
+            } => StaticAbilityPayload::ManaProductionReplacement {
+                source_filter,
+                minimum_amount,
+                replacement_mana,
+                display,
+            },
             StaticAbilityPayload::ManaSpendPermission {
                 permission,
                 display,
@@ -4523,6 +4598,24 @@ impl<
             },
         }
     }
+    /// "Activated abilities of <filter> cost <increase> more to activate
+    /// unless they're mana abilities." (Anointed Peacekeeper)
+    pub fn increase_non_mana_activated_ability_costs(
+        filter: ObjectFilter,
+        increase: TotalCost<C>,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ActivatedAbilityCostIncrease),
+            label: "increase activated ability costs".to_string(),
+            payload: StaticAbilityPayload::ActivatedAbilityCostIncrease {
+                filter,
+                increase,
+                activator: None,
+                non_mana_only: true,
+                condition: None,
+            },
+        }
+    }
     pub fn increase_activated_ability_costs_for_activator(
         activator: PlayerFilter,
         increase: TotalCost<C>,
@@ -4581,6 +4674,14 @@ impl<
             id: Some(StaticAbilityId::ChooseLandTypeAsEnters),
             label: display.clone(),
             payload: StaticAbilityPayload::ChooseLandTypeAsEnters(display),
+        }
+    }
+    pub fn source_land_is_chosen_type(display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::SourceLandIsChosenType),
+            label: display.clone(),
+            payload: StaticAbilityPayload::SourceLandIsChosenType(display),
         }
     }
     pub fn enchanted_land_is_chosen_type(display: impl Into<String>) -> Self {
@@ -5364,6 +5465,14 @@ impl<
         }
     }
 
+    pub fn draw_extra_cards_replacement(extra: u32, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::DrawExtraCardsReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::DrawExtraCardsReplacement { extra, display },
+        }
+    }
     pub fn conditional_draw_replacement(
         condition: ICond,
         replacement_effects: Vec<E>,
@@ -5867,6 +5976,57 @@ impl<
             id: Some(StaticAbilityId::PayLifeOrEnterTappedReplacement),
             label: "pay life or enter tapped".to_string(),
             payload: StaticAbilityPayload::PayLifeOrEnterTapped(value),
+        }
+    }
+    pub fn reveal_card_or_enter_tapped(
+        filter: ObjectFilter,
+        subject: impl Into<String>,
+        tail_subject: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::RevealCardOrEnterTappedReplacement),
+            label: "reveal card or enter tapped".to_string(),
+            payload: StaticAbilityPayload::RevealCardOrEnterTapped {
+                filter,
+                subject: subject.into(),
+                tail_subject: tail_subject.into(),
+            },
+        }
+    }
+    pub fn redirect_would_enter(
+        filter: ObjectFilter,
+        not_cast: bool,
+        destination: Zone,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::RedirectWouldEnterReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::RedirectWouldEnter {
+                filter,
+                not_cast,
+                destination,
+                display,
+            },
+        }
+    }
+    pub fn mana_production_replacement(
+        source_filter: ObjectFilter,
+        minimum_amount: u32,
+        replacement_mana: Vec<crate::ManaSymbol>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ManaProductionReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ManaProductionReplacement {
+                source_filter,
+                minimum_amount,
+                replacement_mana,
+                display,
+            },
         }
     }
     pub fn copy_activated_abilities(copy: CopyActivatedAbilities) -> Self {

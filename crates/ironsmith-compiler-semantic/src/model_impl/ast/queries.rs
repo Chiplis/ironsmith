@@ -288,7 +288,7 @@ pub fn apply_cant_be_regenerated_to_effect(effect: &mut EffectAst) -> bool {
             }
             _ => false,
         },
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
             let mut applied = false;
             for mode in modes {

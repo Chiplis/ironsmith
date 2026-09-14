@@ -10,7 +10,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-const RAYON_WORKER_STACK_SIZE: usize = 16 * 1024 * 1024;
+// Match compile_oracle_text: deeply nested card grammars need the same stack
+// whether compiled individually or during a full status sync.
+const RAYON_WORKER_STACK_SIZE: usize = 64 * 1024 * 1024;
 
 #[derive(Debug)]
 struct Args {

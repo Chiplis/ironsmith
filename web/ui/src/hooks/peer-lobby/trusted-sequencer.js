@@ -1,6 +1,7 @@
 import { recordDiagnosticEvent } from "../../lib/action-diagnostics.js";
 import { useRef, useEffect } from 'react';
 import { relayMatchId } from '../../lib/relay/session.js';
+import { wireStablePayload } from '../../lib/accepted-actions.js';
 import { canonicalMultiplayerPayload, enqueueAsync, safeSend, PROTOCOL_VERSION,
   MULTIPLAYER_SECURITY_TRUSTED, sessionSecurityMode, isTrustedMultiplayerSecurityMode } from './shared.js';
 
@@ -52,19 +53,23 @@ export function useTrustedSequencer(base, servicesRef) {
     const seat = conn ? session.players.find(p => p.peerId === conn.peer || p.currentPeerId === conn.peer)?.index : session.localPlayerIndex;
     if (seat == null || Number(seat) !== Number(intent.actorIndex)) throw new Error('Command seat does not match connection');
     if (typeof intent.commandId !== 'string' || intent.commandId.length > 160 || !intent.commandId) throw new Error('Invalid command ID');
+    // A host-local intent never crosses the wire, so its command may still carry
+    // `undefined` fields that BinaryPack would turn into `null` for every guest.
+    // Hash, apply and publish the wire-stable form so all seats hold one shape.
+    const command = wireStablePayload(intent.command);
     const previous = commandIndex().get(intent.commandId);
     if (previous) {
-      if (previous.actorIndex !== Number(seat) || canonicalMultiplayerPayload(previous.command) !== canonicalMultiplayerPayload(intent.command)) throw new Error('Command ID reused with different content');
+      if (previous.actorIndex !== Number(seat) || canonicalMultiplayerPayload(previous.command) !== canonicalMultiplayerPayload(command)) throw new Error('Command ID reused with different content');
       if (conn) sendAccepted(conn.peer, previous);
       return previous;
     }
     const sequence = Number(session.lastAppliedSequence || 0) + 1;
     if (Number(intent.expectedSequence) !== sequence - 1) throw new Error('Command is based on an outdated prompt');
     const state = await gameRef.current.uiState();
-    const clock = await servicesRef.current.buildMatchClockAuditForCommand({ command: intent.command, seq: sequence, actorIndex: seat, uiState: state });
+    const clock = await servicesRef.current.buildMatchClockAuditForCommand({ command, seq: sequence, actorIndex: seat, uiState: state });
     await servicesRef.current.applySequencedActionMessage(envelope({ type: 'apply_action',
       seq: sequence, actorIndex: Number(seat), commandId: intent.commandId,
-      command: intent.command, label: String(intent.label || ''), clock }),
+      command, label: String(intent.label || ''), clock }),
     { throwOnFailure: true, throwOnOrderMismatch: true });
     const entry = actionHistoryRef.current[sequence - 1];
     if (!entry || entry.commandId !== intent.commandId) throw new Error('Host did not accept command');
@@ -74,7 +79,8 @@ export function useTrustedSequencer(base, servicesRef) {
   function submitTrustedIntent(command, label) {
     const session = multiplayerRef.current;
     const intent = envelope({ type: 'trusted_command', commandId: `${session.localPeerId}:${crypto.randomUUID()}`,
-      expectedSequence: Number(session.lastAppliedSequence || 0), actorIndex: session.localPlayerIndex, command, label });
+      expectedSequence: Number(session.lastAppliedSequence || 0), actorIndex: session.localPlayerIndex,
+      command: wireStablePayload(command), label });
     if (session.role === 'host') return enqueueAsync(clientMessageQueueRef, () => acceptTrustedCommand(null, intent));
     if (pending.current.size) return Promise.reject(new Error('Waiting for host acceptance'));
     return new Promise((resolve, reject) => {

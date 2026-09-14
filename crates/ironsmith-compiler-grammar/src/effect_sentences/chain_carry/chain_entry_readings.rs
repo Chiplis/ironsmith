@@ -387,7 +387,12 @@ fn read_target_player_resource_coordination(
     // chain materializer before whole-sentence primitive registries can treat
     // the leading `target` as an object-selection verb and try to parse the
     // remaining player action as an object filter.
-    if has_target_player_resource_coordination(tokens) {
+    // The outer value-binding reader must remove a trailing X definition
+    // before the inner chain can consume this coordination. Re-entering the
+    // inner reader with that definition still present loops back here.
+    if parse_terminal_where_x_binding(tokens).is_none()
+        && has_target_player_resource_coordination(tokens)
+    {
         return parse_effect_chain_inner_lexed(tokens).map(Some);
     }
     Ok(None)

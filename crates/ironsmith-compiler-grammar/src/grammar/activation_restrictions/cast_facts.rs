@@ -217,7 +217,71 @@ pub fn parse_cast_additional_limit_filter_words(words: &[&str]) -> Option<Object
     exact(input, &["spells"]).then_some(first.filter)
 }
 
+/// "cast spells from graveyards or libraries" (Grafdigger's Cage). Each zone
+/// noun becomes a zone-only branch so the executable filter matches a spell
+/// by the zone it is cast from, and the surface renders back as the same
+/// zone list.
+fn parse_cast_spells_from_zones_words(words: &[&str]) -> Option<ObjectFilter> {
+    let after_cast = prefix_remainder(words, &["cast"])?;
+    let from = after_cast.iter().position(|word| *word == "from")?;
+    let (spell_words, zones) = (&after_cast[..from], &after_cast[from + 1..]);
+    // "spells" alone bans every spell; "noncreature spells" (Soulless Jailer)
+    // keeps the spell descriptor as the executable base filter.
+    let mut base = if exact(spell_words, &["spells"]) {
+        ObjectFilter::default()
+    } else {
+        let mut filter = parse_spell_restriction_subject_filter_words(spell_words)?;
+        filter.zone = None;
+        filter.stack_kind = None;
+        filter
+    };
+    if zones.is_empty() {
+        return None;
+    }
+    // "from anywhere other than their hands" (Drannith Magistrate): every
+    // non-hand origin, kept as an excluded origin rather than a zone list.
+    if exact_any(
+        zones,
+        &[
+            &["anywhere", "other", "than", "their", "hands"],
+            &["anywhere", "other", "than", "their", "hand"],
+            &["anywhere", "other", "than", "your", "hand"],
+        ],
+    ) {
+        base.set_excluded_cast_origin_zone(Zone::Hand);
+        return Some(base);
+    }
+    let mut filters = Vec::new();
+    for word in zones {
+        if matches!(*word, "or" | "and" | "and/or") {
+            continue;
+        }
+        let zone = crate::grammar::primitives::probe_shape(leaf::parse_leaf_zone_complete(word))?;
+        if zone == Zone::Battlefield || zone == Zone::Stack {
+            return None;
+        }
+        let mut filter = ObjectFilter::default();
+        filter.zone = Some(zone);
+        filters.push(filter);
+    }
+    match filters.len() {
+        0 => None,
+        1 => {
+            let zone = filters.pop()?.zone;
+            base.zone = zone;
+            Some(base)
+        }
+        _ => {
+            base.any_of = filters;
+            Some(base)
+        }
+    }
+}
+
 pub fn parse_cast_restriction_tail_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+    if let Some(filter) = parse_cast_spells_from_zones_words(words) {
+        return Some(filter);
+    }
     if let Some(rest) = prefix_remainder(words, &["cast"])
         && let Some(mut filter) = parse_spell_restriction_subject_filter_words(rest)
     {

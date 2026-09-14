@@ -2084,7 +2084,7 @@ fn advance_reference_frame_for_effect(
         EffectAst::ManaRestricted { effects, .. } => {
             advance_reference_frames(effects, id_gen, frame)?;
         }
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
             // Modes are mutually-exclusive branches: resolve references within
             // each in an isolated frame so one mode's bindings don't leak into
@@ -2839,7 +2839,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
         | EffectAst::ForEach(ForEachEffectAst::RepeatEffects { effects, .. }) => {
             effects.iter().any(effect_can_supply_prior_effect_memory)
         }
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
             modes.iter().any(|mode| {
                 mode.effects

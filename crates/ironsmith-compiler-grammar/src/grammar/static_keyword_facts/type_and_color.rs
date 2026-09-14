@@ -484,9 +484,10 @@ fn other_type_addition_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     alt((semantic_kw("its"), semantic_kw("their"))).parse_next(input)?;
     semantic_kw("other").parse_next(input)?;
     // Oracle sometimes names the subtype family explicitly ("their other
-    // creature types"). The qualifier changes only the authored surface, not
-    // the additive type-layer semantics captured by this fact.
-    opt(semantic_kw("creature")).parse_next(input)?;
+    // creature types", "its other land types"). The qualifier changes only the
+    // authored surface, not the additive type-layer semantics captured by
+    // this fact.
+    opt(alt((semantic_kw("creature"), semantic_kw("land")))).parse_next(input)?;
     alt((semantic_kw("type"), semantic_kw("types")))
         .void()
         .parse_next(input)

@@ -2886,6 +2886,31 @@ pub fn parse_subject_is_every_subtype_family_line(
         .map(parse_static_condition_clause)
         .transpose()?;
     let subject = parse_anthem_subject(shape.subject_tokens)?;
+    if shape.basic_land_types {
+        let basic_land_types = vec![
+            crate::types::Subtype::Plains,
+            crate::types::Subtype::Island,
+            crate::types::Subtype::Swamp,
+            crate::types::Subtype::Mountain,
+            crate::types::Subtype::Forest,
+        ];
+        let ability = match &subject {
+            AnthemSubjectAst::Source => {
+                StaticAbility::add_subtypes(ObjectFilter::source(), basic_land_types)
+            }
+            AnthemSubjectAst::Filter(filter) => {
+                StaticAbility::add_subtypes(filter.clone(), basic_land_types)
+            }
+        };
+        let ability = match condition {
+            Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
+                ability: Box::new(StaticAbilityAst::Static(ability)),
+                condition,
+            },
+            None => StaticAbilityAst::Static(ability),
+        };
+        return Ok(Some(ability));
+    }
     Ok(Some(every_subtype_family_for_subject(
         &subject,
         shape.family,

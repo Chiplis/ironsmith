@@ -91,7 +91,13 @@ pub(super) fn parse_ability_source_filter(tokens: &[OwnedLexToken]) -> Option<Ob
 
     let semantic_words = TokenWordView::new(semantic).word_refs();
     let [kind] = semantic_words.as_slice() else {
-        return None;
+        // "colorless Eldrazi" (Eldrazi Temple): a multi-word permanent
+        // descriptor reads through the generic object-filter grammar.
+        let mut filter =
+            crate::grammar::filters::parse_object_filter_with_grammar_entrypoint(semantic, false)
+                .ok()?;
+        filter.zone = None;
+        return (filter != ObjectFilter::default()).then_some(filter);
     };
     match *kind {
         "artifact" | "artifacts" => Some(ObjectFilter::default().with_type(CardType::Artifact)),

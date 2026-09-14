@@ -68,6 +68,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_pay_life_or_enter_tapped_line(input)),
     },
     Reading {
+        id: RuleId::new("reveal-card-or-enter-tapped-line"),
+        head: HeadDiscriminator::Any,
+        admits: |input| !declines_1(input),
+        read: |input| input.outcome(read_reveal_card_or_enter_tapped_line(input)),
+    },
+    Reading {
         id: RuleId::new("first-spell-cost-reduction-and-flash-line"),
         head: HeadDiscriminator::Any,
         admits: |input| !declines_1(input),
@@ -265,7 +271,26 @@ fn read_pay_life_or_enter_tapped_line(
     // Pay-life ETB replacements span two sentences. Parse the complete
     // compound before the generic sentence splitter can reinterpret the
     // "if you don't, it enters tapped" suffix as a standalone static line.
+    if let Some(abilities) = parse_choose_basic_land_type_then_pay_life_line(tokens)? {
+        return Ok(Some(
+            abilities
+                .into_iter()
+                .map(StaticAbilityAst::Static)
+                .collect(),
+        ));
+    }
     if let Some(ability) = parse_pay_life_or_enter_tapped_line(tokens)? {
+        return Ok(Some(vec![StaticAbilityAst::Static(ability)]));
+    }
+    Ok(None)
+}
+fn read_reveal_card_or_enter_tapped_line(
+    input: &StaticLine<'_>,
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let tokens = input.tokens;
+    // Like the pay-life gate, this spans two sentences and must be read whole
+    // before the sentence splitter sees "if you don't, this land enters tapped".
+    if let Some(ability) = parse_reveal_card_or_enter_tapped_line(tokens)? {
         return Ok(Some(vec![StaticAbilityAst::Static(ability)]));
     }
     Ok(None)

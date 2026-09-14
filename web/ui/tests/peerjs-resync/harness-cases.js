@@ -1517,7 +1517,7 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
   }
 });
 
-test("PeerJS Trusted peers import host checkpoints after guest reconnect and host takeover", { timeout: 90000 }, async () => {
+test("PeerJS Trusted peers replay the host transcript after guest reconnect and host takeover", { timeout: 90000 }, async () => {
   const peerPort = await freePort();
   const peerServer = await startPeerServer(peerPort);
   const { vite, baseUrl } = await startHarnessServer(peerPort);
@@ -1618,6 +1618,11 @@ test("PeerJS Trusted peers import host checkpoints after guest reconnect and hos
       0,
       "normal trusted apply_action should not import a host checkpoint",
     );
+    assert.equal(
+      guestAfterAction.statusEvents.some((event) => /Sync failed|prefix mismatch|Resyncing/i.test(event.message)),
+      false,
+      "normal trusted apply_action should not trigger a sync failure",
+    );
 
     await guestPage.close();
     guestPage = null;
@@ -1642,16 +1647,16 @@ test("PeerJS Trusted peers import host checkpoints after guest reconnect and hos
         && snap.multiplayer.securityMode === "trusted"
         && snap.multiplayer.localPlayerIndex === 1
         && snap.multiplayer.lastAppliedSequence === 1
-        && checkpointImportEvents(snap).length >= 1
         && snap.statusEvents.some((event) => event.message.includes("Resynced with trusted host at action 1")),
-      "trusted guest reconnect imports host checkpoint",
+      "trusted guest reconnect replays the host transcript",
     );
     assert.equal(guestResync.visibleState.snapshot_id, 1);
     assert.equal(guestResync.visibleState.perspective, 1);
     assert.equal(guestResync.visibleState.players[0].battlefield.length, 1);
-    assert.ok(
-      checkpointImportEvents(guestResync).length >= 1,
-      "trusted reconnect should import the host checkpoint instead of replaying signed actions",
+    assert.equal(
+      checkpointImportEvents(guestResync).length,
+      0,
+      "trusted reconnect replays the accepted transcript rather than importing a checkpoint",
     );
     const hostAfterGuestResync = await snapshot(hostPage);
     assert.equal(
@@ -1695,18 +1700,13 @@ test("PeerJS Trusted peers import host checkpoints after guest reconnect and hos
         && snap.multiplayer.role === "client"
         && snap.multiplayer.localPlayerIndex === 0
         && snap.multiplayer.lastAppliedSequence === 1
-        && checkpointImportEvents(snap).length >= 1
         && snap.statusEvents.some((event) => event.message.includes("Resynced with trusted host at action 1")),
-      "original host reconnects to trusted promoted host and imports checkpoint",
+      "original host reconnects to trusted promoted host and replays its transcript",
       30000,
     );
     assert.equal(hostResync.visibleState.snapshot_id, 1);
     assert.equal(hostResync.visibleState.perspective, 0);
     assert.equal(hostResync.visibleState.players[0].battlefield.length, 1);
-    assert.ok(
-      checkpointImportEvents(hostResync).length >= 1,
-      "trusted host takeover resync should import the promoted host checkpoint",
-    );
     const promotedGuestAfterHostResync = await snapshot(guestPage);
     assert.equal(
       hostResync.multiplayer.matchClock?.clockHash,
@@ -1754,6 +1754,128 @@ test("PeerJS Trusted peers import host checkpoints after guest reconnect and hos
       ),
     ]);
     assert.equal(afterPromotedGuestAction[0].visibleState.players[0].battlefield.length, 2);
+
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+// Regression for a reported Trusted-mode desync: a host-local command carrying
+// `undefined` fields (GameContext emits e.g. `plan_id: undefined` for mana payments)
+// was hashed by the host with those keys dropped, while PeerJS BinaryPack delivered
+// them to the guest as `null`. The guest then failed "Accepted action prefix
+// mismatch" on the live action and "Accepted transcript prefix mismatch" on every
+// reconnect, so it could never recover.
+test("PeerJS Trusted host command with undefined fields stays in sync and survives guest reconnect", { timeout: 90000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  let hostPage = null;
+  let guestPage = null;
+  const desyncPattern = /Sync failed|prefix mismatch|Resyncing|recovery failed/i;
+  const desynced = (snap) => snap.statusEvents.some((event) => desyncPattern.test(event.message))
+    || (snap.noticeEvents || []).some((notice) => desyncPattern.test(`${notice?.title || ""} ${notice?.body || ""}`));
+  const lastPrefix = (snap) => snap.auditTranscript?.actions?.at(-1)?.prefixHash;
+
+  try {
+    hostPage = await openHarness(hostContext, baseUrl, "undefined-host");
+    guestPage = await openHarness(guestContext, baseUrl, "undefined-guest");
+
+    await hostPage.evaluate((deckText) => {
+      window.__peerHarness.createLobby({
+        name: "Host",
+        desiredPlayers: 2,
+        startingLife: 20,
+        securityMode: "trusted",
+        deckText,
+      });
+    }, HOST_DECK);
+    const hostLobby = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.mode === "lobby" && snap.multiplayer.lobbyId && snap.multiplayer.securityMode === "trusted",
+      "trusted host creates a lobby",
+    );
+    const lobbyId = hostLobby.multiplayer.lobbyId;
+    await guestPage.evaluate(({ lobbyId: targetLobby, deckText }) => {
+      window.__peerHarness.joinLobby({ name: "Guest", lobbyId: targetLobby, deckText });
+    }, { lobbyId, deckText: GUEST_DECK });
+    await waitForSnapshot(
+      hostPage,
+      (snap) => snap.canStartHostedMatch
+        && snap.multiplayer.players.length === 2
+        && snap.multiplayer.players.every((player) => player.connected !== false),
+      "trusted peers join and are ready",
+    );
+    await hostPage.evaluate(() => window.__peerHarness.startHostedMatch());
+    await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "trusted host starts match");
+    await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "trusted guest receives match start");
+
+    // The object literal is built inside the page so `undefined` survives into the
+    // lobby exactly as GameContext's normalizers would hand it over.
+    await hostPage.evaluate(() => window.__peerHarness.submitMultiplayerCommand({
+      type: "priority_action",
+      action_ref: { kind: "test_priority_action", actor: 0, sequence: 0 },
+      object_hidden_ref: undefined,
+      response: { plan_id: undefined, request_hash: undefined },
+    }, "trusted host action with undefined fields"));
+
+    await waitForSnapshot(hostPage, (snap) => snap.multiplayer.lastAppliedSequence === 1, "trusted host applies action 1");
+    const guestAfterAction = await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 1 && syncedCommandEvents(snap).length === 1,
+      "trusted guest applies the host action despite undefined fields",
+    );
+    assert.equal(desynced(guestAfterAction), false, "guest must not report a sync failure");
+    assert.equal(guestAfterAction.visibleState.players[0].battlefield.length, 1);
+    const hostAfterAction = await snapshot(hostPage);
+    assert.ok(lastPrefix(hostAfterAction), "host transcript records a prefix hash");
+    assert.equal(lastPrefix(guestAfterAction), lastPrefix(hostAfterAction), "guest and host must agree on the accepted transcript prefix");
+
+    // The same entry must also replay from the host transcript on reconnect.
+    await guestPage.close();
+    guestPage = null;
+    await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.players.some((player) => Number(player.index) === 1 && player.connected === false),
+      "trusted host marks disconnected guest offline",
+    );
+    guestPage = await openHarness(guestContext, baseUrl, "undefined-guest-reconnect");
+    await guestPage.evaluate(({ lobbyId: targetLobby, deckText }) => {
+      window.__peerHarness.joinLobby({ name: "Guest", lobbyId: targetLobby, deckText });
+    }, { lobbyId, deckText: GUEST_DECK });
+    const guestResync = await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.matchStarted
+        && snap.multiplayer.localPlayerIndex === 1
+        && snap.multiplayer.lastAppliedSequence === 1
+        && snap.statusEvents.some((event) => event.message.includes("Resynced with trusted host at action 1")),
+      "trusted guest reconnect replays the transcript containing the undefined-field action",
+    );
+    assert.equal(desynced(guestResync), false, "reconnected guest must not report a sync failure");
+    assert.equal(guestResync.visibleState.players[0].battlefield.length, 1);
+    assert.equal(lastPrefix(guestResync), lastPrefix(hostAfterAction), "reconnected guest must adopt the host transcript prefix");
+
+    // Play continues from the recovered state.
+    await guestPage.evaluate(async () => {
+      const snap = await window.__peerHarness.snapshot();
+      const action = snap.visibleState?.decision?.actions?.[0];
+      if (!action?.action_ref) throw new Error("reconnected guest has no action available");
+      return window.__peerHarness.submitMultiplayerCommand({ type: "priority_action", action_ref: action.action_ref }, "guest action after reconnect");
+    });
+    await Promise.all([
+      waitForSnapshot(hostPage, (snap) => snap.multiplayer.lastAppliedSequence === 2, "host accepts guest action after reconnect", 30000),
+      waitForSnapshot(guestPage, (snap) => snap.multiplayer.lastAppliedSequence === 2, "guest applies its action after reconnect", 30000),
+    ]);
 
     assertNoPageErrors(hostPage, guestPage);
   } finally {

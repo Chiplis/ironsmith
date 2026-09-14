@@ -239,6 +239,13 @@ pub struct ConditionalDrawReplacementFact<'a> {
     pub life_loss: Option<u32>,
 }
 
+/// "If you would draw one or more cards, you draw that many cards plus one
+/// instead." (Quantum Riddler)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DrawExtraCardsReplacementFact {
+    pub extra: u32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PayLifeOrEnterTappedFact {
     pub amount: u32,
@@ -253,9 +260,24 @@ pub enum PayLifeOrEnterTappedError {
     UnsupportedTail,
 }
 
+/// "As this land enters, you may reveal a Plains or Island card from your
+/// hand. If you don't, this land enters tapped." (shadow lands, snarls).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevealCardOrEnterTappedFact<'a> {
+    /// Authored subject phrase ("this land").
+    pub subject: String,
+    /// The revealed card's filter tokens ("a Plains or Island card").
+    pub filter_tokens: &'a [OwnedLexToken],
+    /// Authored tail subject phrase ("this land" or "it").
+    pub tail_subject: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CopyActivatedAbilitiesFact {
     pub marker_token: usize,
+    /// Word index of the `has`/`have` marker, for callers that render only the
+    /// ability half of a grant ("<subject> have all activated abilities of …").
+    pub marker_word_start: usize,
     pub filter_start_token: usize,
     pub filter_end_token: usize,
     pub only_loyalty: bool,
@@ -530,6 +552,28 @@ fn parse_conditional_draw_replacement_lexed<'a>(
     })
 }
 
+pub fn parse_draw_extra_cards_replacement_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<DrawExtraCardsReplacementFact> {
+    parse_semantic_all(tokens, parse_draw_extra_cards_replacement_lexed)
+}
+
+fn parse_draw_extra_cards_replacement_lexed(
+    input: &mut LexStream<'_>,
+) -> WResult<DrawExtraCardsReplacementFact> {
+    semantic_phrase(&["if", "you", "would", "draw"]).parse_next(input)?;
+    alt((
+        semantic_phrase(&["one", "or", "more", "cards"]),
+        semantic_phrase(&["a", "card"]),
+    ))
+    .parse_next(input)?;
+    opt(semantic_kw("you")).parse_next(input)?;
+    semantic_phrase(&["draw", "that", "many", "cards", "plus"]).parse_next(input)?;
+    let extra = semantic_number_token.parse_next(input)?;
+    semantic_kw("instead").parse_next(input)?;
+    Ok(DrawExtraCardsReplacementFact { extra })
+}
+
 pub fn parse_pay_life_or_enter_tapped_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PayLifeOrEnterTappedFact>, PayLifeOrEnterTappedError> {
@@ -541,6 +585,15 @@ pub fn parse_pay_life_or_enter_tapped_tokens(
         return Err(PayLifeOrEnterTappedError::MissingPay);
     };
     if !shape.saw_enter {
+        return Ok(None);
+    }
+    // A leading sentence before the payment ("As this land enters, choose a
+    // basic land type. Then you may pay 2 life...") carries its own ability;
+    // the compound reading owns that line.
+    if split_lexed_sentences(tokens)
+        .first()
+        .is_some_and(|first| first.len() <= shape.pay.token)
+    {
         return Ok(None);
     }
     if !shape.saw_may {
@@ -569,6 +622,57 @@ pub fn parse_pay_life_or_enter_tapped_tokens(
     }
 
     Ok(Some(PayLifeOrEnterTappedFact { amount }))
+}
+
+pub fn parse_reveal_card_or_enter_tapped_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<RevealCardOrEnterTappedFact<'_>> {
+    if !tokens_have_parser(tokens, || semantic_phrase(&["you", "may", "reveal"])) {
+        return None;
+    }
+    let ((), after_as) = primitives::parse_prefix(tokens, semantic_phrase(&["as", "this"]))?;
+    let noun = after_as.first()?.as_word()?;
+    if matches!(noun, "enters" | "enter") {
+        return None;
+    }
+    let ((), after_enters) = primitives::parse_prefix(
+        after_as.get(1..)?,
+        alt((
+            semantic_phrase(&["enters", "the", "battlefield"]),
+            semantic_phrase(&["enters"]),
+        )),
+    )?;
+    let ((), after_reveal) =
+        primitives::parse_prefix(after_enters, semantic_phrase(&["you", "may", "reveal"]))?;
+    let (from_idx, (), after_from) =
+        primitives::find_prefix(after_reveal, || semantic_phrase(&["from", "your", "hand"]))?;
+    let filter_tokens = trim_lexed_commas(&after_reveal[..from_idx]);
+    if filter_tokens.is_empty() {
+        return None;
+    }
+    let ((), after_if) =
+        primitives::parse_prefix(after_from, semantic_phrase(&["if", "you", "dont"]))?;
+    let (tail_idx, (), after_tail) = primitives::find_prefix(after_if, || {
+        alt((
+            semantic_phrase(&["enters", "the", "battlefield", "tapped"]),
+            semantic_phrase(&["enters", "tapped"]),
+        ))
+    })?;
+    let tail_subject = trim_lexed_commas(&after_if[..tail_idx])
+        .iter()
+        .filter_map(|token| token.as_word())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let subject = format!("this {noun}");
+    if tail_subject != "it" && tail_subject != subject {
+        return None;
+    }
+    primitives::parse_prefix(after_tail, semantic_finish)?;
+    Some(RevealCardOrEnterTappedFact {
+        subject,
+        filter_tokens,
+        tail_subject,
+    })
 }
 
 fn is_pay_life_candidate(tokens: &[OwnedLexToken]) -> bool {
@@ -601,6 +705,7 @@ pub fn parse_copy_activated_abilities_tokens(
 
     Some(CopyActivatedAbilitiesFact {
         marker_token,
+        marker_word_start: semantic_word_count(&tokens[..marker_token])?,
         filter_start_token,
         filter_end_token,
         only_loyalty,

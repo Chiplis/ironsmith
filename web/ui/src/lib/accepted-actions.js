@@ -1,5 +1,11 @@
 import { sha256Bytes } from './sha256.js';
 export const EMPTY_ACTION_PREFIX = '0'.repeat(64);
+// PeerJS BinaryPack encodes an `undefined` object property as `null`, while the
+// JSON canonicalization below (like JSON.stringify) drops it. An entry hashed
+// with an undefined field therefore never recomputes on the receiving peer.
+// Everything that is hashed, stored or sent must first pass through this JSON
+// round trip so the local and transmitted forms are byte-identical.
+export const wireStablePayload = value => (value == null ? value : JSON.parse(JSON.stringify(value)));
 const canonical = value => JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
   ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
 export function actionPrefixHash(previous, entry) {

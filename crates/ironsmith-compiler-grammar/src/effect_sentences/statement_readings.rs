@@ -1005,6 +1005,13 @@ fn read_leading_result_prefix(
 fn read_destroy_single_segment(
     input: &Statement<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if effect_grammar::parse_split_all_shape(input.sentence)
+        .is_some_and(|shape| shape.connective == effect_grammar::SplitAllConnectiveShape::Or)
+    {
+        return super::subject_verb_primitives::parse_sentence_destroy_or_exile_all_split(
+            super::subject_verb_primitives::SubjectVerbPrimitiveClause::new(input.sentence),
+        );
+    }
     if let Some(effects) =
         super::subject_verb_primitives::parse_sentence_destroy_creature_type_of_choice(
             super::subject_verb_primitives::SubjectVerbPrimitiveClause::new(input.sentence),

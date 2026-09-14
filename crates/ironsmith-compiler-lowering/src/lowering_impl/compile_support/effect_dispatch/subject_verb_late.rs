@@ -1062,6 +1062,11 @@ pub(super) fn compile_subject_verb_late(
             if let Some(compiled) = lower_single_non_target_exile_target(target, *face_down, ctx)? {
                 return Ok(Some(compiled));
             }
+            if let Some(compiled) =
+                lower_actor_chosen_exile_target(target, *face_down, role, player, ctx)?
+            {
+                return Ok(Some(compiled));
+            }
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             // Exile retains affected-object LKI for "creatures exiled this way"
@@ -1118,8 +1123,24 @@ pub(super) fn compile_subject_verb_late(
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { filter, face_down }) => {
-            let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            let (mut prelude, choices) = target_context_prelude_for_filter(&resolved_filter);
+            let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            // "Target opponent exiles ... their graveyard": the pronoun names
+            // the announced actor, not a loop variable.
+            let mut subject_choices = Vec::new();
+            if matches!(
+                player,
+                PlayerAst::That | PlayerAst::Target | PlayerAst::TargetOpponent
+            ) && object_filter_mentions_iterated_player(&resolved_filter)
+            {
+                let subject = resolve_subject_verb_subject(role, player, ctx, true, true, false)?;
+                let actor = subject.clone_player_filter();
+                bind_relative_iterated_player_filters_to_chooser(&mut resolved_filter, &actor);
+                subject_choices = subject.into_choices();
+            }
+            let (mut prelude, mut choices) = target_context_prelude_for_filter(&resolved_filter);
+            for choice in subject_choices {
+                push_choice(&mut choices, choice);
+            }
             if let Some(player_filter) = player_filter_from_object_filter(&resolved_filter) {
                 ctx.last_player_filter = Some(player_filter);
             }
@@ -2496,4 +2517,77 @@ pub(super) fn compile_subject_verb_late(
         _ => return Ok(None),
     };
     result.map(Some)
+}
+
+/// "Target opponent exiles a creature they control": an explicitly named
+/// actor chooses the non-target object set and exiles it. The pronoun binds to
+/// that actor (an alias of the announced target), and the actor makes the
+/// choice, mirroring the sacrifice lowering.
+fn lower_actor_chosen_exile_target(
+    target: &TargetAst,
+    face_down: bool,
+    role: SubjectRole,
+    player: PlayerAst,
+    ctx: &mut EffectLoweringContext,
+) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
+    if !matches!(
+        player,
+        PlayerAst::That | PlayerAst::Target | PlayerAst::TargetOpponent
+    ) {
+        return Ok(None);
+    }
+    let (filter, count) = match target {
+        TargetAst::Object(filter, explicit_target_span, _) if explicit_target_span.is_none() => {
+            (filter, ChoiceCount::exactly(1))
+        }
+        TargetAst::WithCount(inner, count) => match inner.as_ref() {
+            TargetAst::Object(filter, explicit_target_span, _)
+                if explicit_target_span.is_none() =>
+            {
+                (filter, *count)
+            }
+            _ => return Ok(None),
+        },
+        _ => return Ok(None),
+    };
+    if !filter.tagged_constraints.is_empty() || filter.source {
+        return Ok(None);
+    }
+
+    let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
+    let chooser = subject.clone_player_filter();
+    if matches!(chooser, PlayerFilter::IteratedPlayer) {
+        // Inside a player loop the generic path already binds the pronoun.
+        return Ok(None);
+    }
+    let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+    let choice_zone = resolved_filter.ensure_zone(Zone::Battlefield);
+    bind_relative_iterated_player_filters_to_chooser(&mut resolved_filter, &chooser);
+    if choice_zone == Zone::Battlefield && resolved_filter.controller.is_none() {
+        resolved_filter.controller = Some(chooser.clone());
+    }
+
+    let mut prelude = subject.target_prelude();
+    let (filter_prelude, mut choices) = target_context_prelude_for_filter(&resolved_filter);
+    prelude.extend(filter_prelude);
+    let tag = ctx.next_tag("exiled");
+    let tag_key: TagKey = tag.as_str().into();
+    ctx.last_object_tag = Some(tag.clone());
+    ctx.last_player_filter = Some(chooser.clone());
+
+    let mut choose =
+        crate::effects::ChooseObjectsEffect::new(resolved_filter, count, chooser, tag_key.clone())
+            .in_zone(choice_zone);
+    if choice_zone == Zone::Library {
+        choose = choose.top_only();
+    }
+    prelude.push(Effect::new(choose));
+    prelude.push(Effect::new(
+        crate::effects::ExileEffect::with_spec(ChooseSpec::Tagged(tag_key))
+            .with_face_down(face_down),
+    ));
+    for choice in subject.into_choices() {
+        push_choice(&mut choices, choice);
+    }
+    Ok(Some((prelude, choices)))
 }

@@ -222,6 +222,19 @@ pub fn parse_cant_conjunction_expansion_tokens(
     }
     let anchor_negation =
         activation_restrictions::parse_activation_negation_span_tokens(segments[negated_anchor])?;
+    // "Creature cards in graveyards and libraries can't enter the
+    // battlefield" conjoins zone nouns inside one subject phrase. A bare zone
+    // noun is never a restriction subject of its own, so distributing the
+    // tail over it would invent "libraries can't enter the battlefield".
+    if negated_anchor > 0
+        && let anchor_subject = trim_lexed_commas(&segments[negated_anchor][..anchor_negation.first])
+        && let [zone_noun] = anchor_subject
+        && zone_noun
+            .as_word()
+            .is_some_and(|word| crate::util::parse_zone_word(word).is_some())
+    {
+        return None;
+    }
     let shared_negated_tail = segments[negated_anchor]
         .get(anchor_negation.first..)?
         .to_vec();

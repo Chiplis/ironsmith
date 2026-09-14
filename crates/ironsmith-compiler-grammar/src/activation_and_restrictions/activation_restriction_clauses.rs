@@ -32,6 +32,9 @@ fn simple_negated_object_restriction(
         SimpleObjectRestrictionKind::PhaseOut => Restriction::phase_out(filter.clone()),
         SimpleObjectRestrictionKind::PhaseIn => Restriction::phase_in(filter.clone()),
         SimpleObjectRestrictionKind::BeTargeted => Restriction::be_targeted(filter.clone()),
+        SimpleObjectRestrictionKind::EnterBattlefield => {
+            Restriction::enter_battlefield(filter.clone())
+        }
     })
 }
 

@@ -318,6 +318,7 @@ pub fn parse_reveal_top_choose_and_or_hand_rest_bottom_with_destination_override
     replacement_effects.extend(choices);
     replacement_effects.push(EffectAst::ObjectChoices(
         ObjectChoiceEffectAst::ChooseOneOf {
+            chooser: crate::target::PlayerFilter::You,
             modes: vec![
                 ChooseOneModeAst {
                     description: "Put the chosen cards onto the battlefield".to_string(),

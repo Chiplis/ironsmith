@@ -1,4 +1,4 @@
-use winnow::combinator::{alt, peek, repeat_till};
+use winnow::combinator::{alt, opt, peek, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
@@ -46,6 +46,8 @@ pub struct AdditionalCostSpellFilter<'a> {
 pub struct ActivatedAbilityCostIncrease<'a> {
     pub subject_tokens: &'a [OwnedLexToken],
     pub additional_cost_tokens: &'a [OwnedLexToken],
+    /// "... unless they're mana abilities" (Anointed Peacekeeper).
+    pub non_mana_only: bool,
 }
 
 pub fn parse_additional_cost_spell_filter(
@@ -143,19 +145,45 @@ fn parse_activated_ability_cost_increase_lexed<'a>(
     .take()
     .parse_next(input)?;
     alt((primitives::kw("cost"), primitives::kw("costs"))).parse_next(input)?;
-    primitives::phrase(&["an", "additional"]).parse_next(input)?;
+    // "cost an additional {2} to activate" and "cost {2} more to activate"
+    // are the same surcharge.
+    let additional = opt(primitives::phrase(&["an", "additional"]))
+        .parse_next(input)?
+        .is_some();
     let additional_cost_tokens = repeat_till(
         1..,
         any.void(),
-        peek(primitives::phrase(&["to", "activate"])),
+        peek(alt((
+            primitives::phrase(&["to", "activate"]),
+            primitives::phrase(&["more", "to", "activate"]),
+        ))),
     )
     .map(|((), _)| ())
     .take()
     .parse_next(input)?;
+    let more = opt(primitives::kw("more")).parse_next(input)?.is_some();
+    if additional == more {
+        return Err(primitives::backtrack_err(
+            "activated-ability cost increase",
+            "either 'an additional <cost>' or '<cost> more'",
+        ));
+    }
     primitives::phrase(&["to", "activate"]).parse_next(input)?;
+    let non_mana_only = opt((
+        primitives::kw("unless"),
+        alt((
+            primitives::kw("theyre").void(),
+            primitives::kw("they're").void(),
+            primitives::phrase(&["they", "are"]),
+        )),
+        primitives::phrase(&["mana", "abilities"]),
+    ))
+    .parse_next(input)?
+    .is_some();
     Ok(ActivatedAbilityCostIncrease {
         subject_tokens,
         additional_cost_tokens,
+        non_mana_only,
     })
 }
 

@@ -379,6 +379,7 @@ pub fn parse_become_clause(
     {
         return Ok(EffectAst::ObjectChoices(
             crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf {
+                chooser: crate::target::PlayerFilter::You,
                 modes: vec![
                     (first_power, first_toughness, become_words[0]),
                     (second_power, second_toughness, become_words[2]),

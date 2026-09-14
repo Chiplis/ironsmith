@@ -1678,11 +1678,17 @@ pub(super) fn describe_mana_usage_ability_source_filter(filter: &ObjectFilter) -
     remainder.card_types.clear();
     remainder.subtypes.clear();
     remainder.supertypes.clear();
+    remainder.colorless = false;
     if remainder != ObjectFilter::default() {
         return None;
     }
 
     let mut descriptors = Vec::new();
+    // "colorless Eldrazi" (Eldrazi Temple): the color adjective precedes the
+    // type words.
+    if filter.colorless {
+        descriptors.push("colorless".to_string());
+    }
     descriptors.extend(
         filter
             .supertypes
@@ -1701,7 +1707,11 @@ pub(super) fn describe_mana_usage_ability_source_filter(filter: &ObjectFilter) -
         return Some("a source".to_string());
     }
 
-    let described = join_with_or(&descriptors);
+    let described = if filter.colorless {
+        descriptors.join(" ")
+    } else {
+        join_with_or(&descriptors)
+    };
     let article = if matches!(
         described.chars().next().map(|ch| ch.to_ascii_lowercase()),
         Some('a' | 'e' | 'i' | 'o' | 'u')

@@ -162,6 +162,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
   const ziffleTokensForPosition = useCallback((...args) => servicesRef.current.ziffleTokensForPosition(...args), [servicesRef]);
   const lastForegroundRecoveryRef = useRef(0);
   const resyncInProgressRef = useRef(false);
+  const resyncRetryRef = useRef({ attempts: 0, timer: null });
   const requestResync = useCallback((reason = "Resyncing with host...", { forceCheckpoint = true } = {}) => {
     const session = multiplayerRef.current;
     if (session.role !== "client" || !session.matchStarted) return false;
@@ -185,11 +186,35 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     return true;
   }, [setStatus, updateMultiplayer]);
 
+  // A failed state recovery pauses play. Retry a bounded number of times on our own
+  // so a transient failure (a stale payload, a host mid-action) heals without the
+  // player having to reconnect; a persistent failure surfaces after the last attempt.
+  const scheduleResyncRetry = useCallback(() => {
+    const retry = resyncRetryRef.current;
+    if (retry.timer) return true;
+    if (retry.attempts >= 3) return false;
+    retry.attempts += 1;
+    retry.timer = window.setTimeout(() => {
+      retry.timer = null;
+      const session = multiplayerRef.current;
+      if (session.role !== "client" || !session.matchStarted || !awaitingStateResyncRef.current) return;
+      if (resyncInProgressRef.current) return;
+      requestResync(`Retrying state recovery (${retry.attempts}/3)...`);
+    }, 4000 * retry.attempts);
+    return true;
+  }, [requestResync]);
+  useEffect(() => () => {
+    if (resyncRetryRef.current.timer) window.clearTimeout(resyncRetryRef.current.timer);
+  }, []);
+
   useEffect(() => {
     const recoverForegroundSession = () => {
       if (document.visibilityState === "hidden") return;
       const session = multiplayerRef.current;
-      if (!session.matchStarted || !isRelayId(session.lobbyId)) return;
+      if (!session.matchStarted) return;
+      // Relay rooms always re-check on foreground; a direct-peer guest does so only
+      // while play is paused on a failed recovery, when it is the way back in.
+      if (!isRelayId(session.lobbyId) && !(session.role === "client" && awaitingStateResyncRef.current)) return;
       if (session.submittingAction || resyncInProgressRef.current) return;
       const now = Date.now();
       if (now - lastForegroundRecoveryRef.current < 1000) return;
@@ -311,6 +336,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           matchClock, actionTimer: actionTimerSnapshotFromMatchClock(matchClock) }));
         matchClockObservationExemptSequenceRef.current = Number(message.lastSequence) + 1;
         awaitingStateResyncRef.current = false;
+        resyncRetryRef.current.attempts = 0;
         safeSend(hostConnectionRef.current, { type: "resync_ack", protocolVersion: PROTOCOL_VERSION, lastSequence: Number(message.lastSequence) });
         setStatus(`Resynced with trusted host at action ${message.lastSequence}`);
         await servicesRef.current.drainPendingSequencedActions();
@@ -322,8 +348,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 	        : [];
 	      const remoteFinalSequence = Number(actionEntries.at(-1)?.seq ?? message?.lastSequence ?? 0);
 	      const localLastSequence = Number(currentSession.lastAppliedSequence || 0);
-      // Only the current trusted host may discard speculative actions it did not accept.
-      // The retained transcript prefix must still match below; Verified never rolls back here.
+      // A resync whose transcript is shorter than ours is normally a stale message
+      // and is acknowledged without replaying. The exception is the current trusted
+      // host explicitly rolling back actions it did not accept; Verified never rolls back.
       const trustedRollback = currentSession.role === "client"
         && isTrustedMultiplayerSecurityMode(sessionSecurityMode(currentSession))
         && isTrustedMultiplayerSecurityMode(matchPayloadSecurityMode(matchPayload))
@@ -346,20 +373,17 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 	        });
 	        return;
 	      }
-	      const continuity = assertResyncActionsExtendLocalTranscript({
-	        actionEntries,
-	        localActions: trustedRollback ? actionHistoryRef.current.filter(entry => Number(entry.seq) <= remoteFinalSequence) : actionHistoryRef.current,
-	        localLastSequence: trustedRollback ? Math.min(localLastSequence, remoteFinalSequence) : currentSession.lastAppliedSequence,
-	      });
-      const messageLastSequence = Number(message?.lastSequence ?? continuity.finalSequence);
-      if (messageLastSequence !== continuity.finalSequence) {
-        throw new Error("Resync message last sequence does not match action transcript");
-      }
       const securityMode = matchPayloadSecurityMode(
         matchPayload,
         sessionSecurityMode(currentSession, MULTIPLAYER_SECURITY_VERIFIED)
       );
       if (isTrustedMultiplayerSecurityMode(securityMode)) {
+        // Trusted mode: the host's accepted transcript is authoritative. The local
+        // transcript is not required to be a prefix of it (a guest that diverged
+        // must be able to recover), so the payload is validated on its own terms
+        // and adopted wholesale. Every check runs before any local state changes,
+        // and the engine replay is wrapped in a savepoint, so a rejected or failed
+        // resync leaves the seat exactly where it was and a retry stays possible.
         const payloadHostPeerId = String(
           matchPayload.currentHostPeerId
           || matchPayload.hostPeerId
@@ -369,6 +393,29 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         if (payloadHostPeerId && expectedHostPeerId && payloadHostPeerId !== expectedHostPeerId) {
           throw new Error("Resync payload was not sent by the current match host");
         }
+        if (
+          matchStartPayloadRef.current
+          && relayMatchId(matchPayload) !== relayMatchId(matchStartPayloadRef.current)
+        ) {
+          throw new Error("Resync payload belongs to a different match");
+        }
+        const acceptedActions = withActionPrefixes(actionEntries.map((entry) => ({
+          ...cloneMultiplayerPayload(entry),
+          securityMode: normalizeMultiplayerSecurityMode(
+            entry.securityMode,
+            MULTIPLAYER_SECURITY_TRUSTED
+          ),
+        })));
+        acceptedActions.forEach((entry, index) => {
+          if (Number(entry.seq) !== index + 1) {
+            throw new Error(`Resync transcript is not contiguous at action ${index + 1}`);
+          }
+        });
+        const finalSequence = Number(acceptedActions.at(-1)?.seq || 0);
+        const messageLastSequence = Number(message?.lastSequence ?? finalSequence);
+        if (messageLastSequence !== finalSequence) {
+          throw new Error("Resync message last sequence does not match action transcript");
+        }
         const currentHostPlayer = (resyncPlayers || []).find(
           (player) => String(player?.peerId || "").trim() === (payloadHostPeerId || expectedHostPeerId)
             || String(player?.currentPeerId || "").trim() === (payloadHostPeerId || expectedHostPeerId)
@@ -376,6 +423,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         const expectedHostSeat = normalizePlayerIndex(matchPayload.currentHostPlayerIndex)
           ?? normalizePlayerIndex(currentHostPlayer?.index)
           ?? 0;
+        const replaySavepoint = await servicesRef.current.createSequencedActionValidationSnapshot();
+        let nextState;
+        try {
         await replayTrustedMatch(currentGame, {
           playerNames: matchPayload.players.map(player => player.name),
           startingLife: matchPayload.startingLife,
@@ -386,16 +436,26 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           commanders: validationCommandersForMatchPayload(matchPayload),
           planarDecks: validationPlanarDecksForMatchPayload(matchPayload),
           openingHandSize: matchPayload.openingHandSize ?? DEFAULT_OPENING_HAND_SIZE,
-        }, actionEntries, localEntry.index ?? currentSession.localPlayerIndex ?? 0);
+        }, acceptedActions, localEntry.index ?? currentSession.localPlayerIndex ?? 0);
         if (typeof currentGame.setPerspective === "function") {
           await currentGame.setPerspective(localEntry.index);
         }
-        const nextState = typeof currentGame.uiState === "function"
+        nextState = typeof currentGame.uiState === "function"
           ? await currentGame.uiState()
           : stateRef.current;
+        } catch (error) {
+          try {
+            await servicesRef.current.restoreSequencedActionValidationSnapshot(replaySavepoint);
+          } catch {
+            // Keep the replay error as the actionable failure.
+          }
+          throw error;
+        } finally {
+          await replaySavepoint.release?.();
+        }
         stateRef.current = nextState;
         setState(nextState);
-        restoreMatchClockRuntimeFromActionTranscript(actionEntries, nextState, matchPayload);
+        restoreMatchClockRuntimeFromActionTranscript(acceptedActions, nextState, matchPayload);
         const matchClock = alignMatchClockObservationFromHostSnapshot(
           matchPayload.currentMatchClock,
           nextState
@@ -422,13 +482,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         acceptedMatchPayload.currentHostPlayerIndex = expectedHostSeat;
         acceptedMatchPayload.currentPlayers = cloneMultiplayerPayload(acceptedSessionPlayers);
         matchStartPayloadRef.current = cloneMultiplayerPayload(acceptedMatchPayload);
-        actionHistoryRef.current = withActionPrefixes(actionEntries.map((entry) => ({
-          ...cloneMultiplayerPayload(entry),
-          securityMode: normalizeMultiplayerSecurityMode(
-            entry.securityMode,
-            MULTIPLAYER_SECURITY_TRUSTED
-          ),
-        })));
+        actionHistoryRef.current = acceptedActions;
         actionCryptoRequirementsRef.current.clear();
         relayedActionIdsRef.current.clear();
         applyingSequencedActionsRef.current.clear();
@@ -488,12 +542,22 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             : "Resynced with trusted host",
         );
         awaitingStateResyncRef.current = false;
+        resyncRetryRef.current.attempts = 0;
         safeSend(hostConnectionRef.current, {
           type: "resync_ack",
           protocolVersion: PROTOCOL_VERSION,
           lastSequence: messageLastSequence,
         });
         return;
+      }
+	      const continuity = assertResyncActionsExtendLocalTranscript({
+	        actionEntries,
+	        localActions: actionHistoryRef.current,
+	        localLastSequence: currentSession.lastAppliedSequence,
+	      });
+      const messageLastSequence = Number(message?.lastSequence ?? continuity.finalSequence);
+      if (messageLastSequence !== continuity.finalSequence) {
+        throw new Error("Resync message last sequence does not match action transcript");
       }
       await verifySignedMatchGenesis(matchPayload);
       const verifyTranscriptShuffleProof = async (proof) => {
@@ -729,10 +793,18 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         protocolVersion: PROTOCOL_VERSION,
         lastSequence,
       });
+      resyncRetryRef.current.attempts = 0;
       } catch (error) {
         awaitingStateResyncRef.current = true;
         updateMultiplayer(prev => ({ ...prev, submittingAction: false }));
-        setStatus("State recovery failed. Play is paused; return to this tab to retry.", true);
+        resyncInProgressRef.current = false;
+        const retrying = scheduleResyncRetry();
+        setStatus(
+          retrying
+            ? "State recovery failed; retrying shortly."
+            : "State recovery failed. Play is paused; return to this tab or reconnect to retry.",
+          true
+        );
         throw error;
       } finally {
         resyncInProgressRef.current = false;
@@ -749,6 +821,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       verifyCurrentPublicCheckpointHash,
       applyMatchStart,
       ensureDirectPeerConnections,
+      scheduleResyncRetry,
     ]
   );
 

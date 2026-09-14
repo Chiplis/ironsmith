@@ -468,6 +468,15 @@ pub(super) fn apply_trait_replacement(
             TraitApplyResult::Modified(event.rewrap(mana_event.clone().with_mana(replacement_mana)))
         }
 
+        ReplacementAction::ReplaceManaExact(mana) => {
+            use crate::events::{ManaAddedEvent, downcast_event};
+
+            let Some(mana_event) = downcast_event::<ManaAddedEvent>(event.inner()) else {
+                return TraitApplyResult::Unchanged(event);
+            };
+            TraitApplyResult::Modified(event.rewrap(mana_event.clone().with_mana(mana.clone())))
+        }
+
         ReplacementAction::EnterAsCopy {
             source,
             enters_tapped,
@@ -667,6 +676,57 @@ pub(super) fn apply_trait_replacement(
                     sacrifice_count: None,
                     destinations: None,
                 }
+            }
+        }
+
+        ReplacementAction::InteractiveRevealCardOrEnterTapped { filter } => {
+            let controller = effect.controller;
+            let matching_cards = find_matching_cards_in_hand(game, controller, filter);
+            if matching_cards.is_empty() {
+                return match apply_trait_enter_tapped(&event) {
+                    Some(modified) => TraitApplyResult::Modified(modified),
+                    None => TraitApplyResult::Unchanged(event),
+                };
+            }
+            let candidates: Vec<crate::decisions::context::SelectableObject> = matching_cards
+                .iter()
+                .map(|&id| {
+                    let name = game
+                        .object(id)
+                        .map(|o| o.name.to_string())
+                        .unwrap_or_else(|| "Unknown".to_string());
+                    crate::decisions::context::SelectableObject::new(id, name)
+                })
+                .collect();
+            let source_name = game
+                .object(effect.source)
+                .map(|o| o.name.to_string())
+                .unwrap_or_else(|| "permanent".to_string());
+            let decision_ctx = crate::decisions::context::DecisionContext::SelectObjects(
+                crate::decisions::context::SelectObjectsContext::new(
+                    controller,
+                    Some(effect.source),
+                    format!(
+                        "Reveal {} from your hand? (If you don't, {} enters tapped)",
+                        describe_discard_filter_card_phrase(filter),
+                        source_name
+                    ),
+                    candidates,
+                    0,
+                    Some(1),
+                ),
+            );
+            // A hand filter whose fallback destination is the battlefield
+            // itself is the reveal-or-enter-tapped gate; see
+            // `continue_interactive_replacement`.
+            TraitApplyResult::NeedsInteraction {
+                decision_ctx,
+                redirect_zone: Zone::Battlefield,
+                effect_id: effect.id,
+                object_id: effect.source,
+                filter: Some(filter.clone()),
+                sacrifice_count: None,
+                destinations: None,
             }
         }
 

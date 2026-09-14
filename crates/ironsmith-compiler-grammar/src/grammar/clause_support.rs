@@ -25,6 +25,8 @@ pub enum ProtectionTargetKind {
     ChosenPlayer,
     ChosenColor,
     Colorless,
+    /// "protection from multicolored" (Argentum Masticore, Stonecoil Serpent).
+    Multicolored,
     Everything,
     AllColors,
     Named,
@@ -377,6 +379,7 @@ fn classify_protection_target(words: &[&str], target_word: usize) -> ProtectionT
     }
     match words.get(target_word).copied() {
         Some("colorless") => ProtectionTargetKind::Colorless,
+        Some("multicolored") => ProtectionTargetKind::Multicolored,
         Some("everything") => ProtectionTargetKind::Everything,
         _ => ProtectionTargetKind::Named,
     }

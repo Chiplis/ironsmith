@@ -400,6 +400,7 @@ pub fn parse_get(
         let second = parse_get(&branch_tokens(&alternative.second_modifier), subject)?;
         return Ok(EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseOneOf {
+                chooser: crate::target::PlayerFilter::You,
                 modes: vec![
                     ChooseOneModeAst {
                         description: String::new(),

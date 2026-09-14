@@ -3974,6 +3974,7 @@ fn try_push_complete_typed_statement(
     // static ability rather than a one-shot resolution program.
     let typed_persistent_anthem =
         crate::keyword_static::parse_enchanted_land_is_chosen_type_line(&line.tokens)?.is_some()
+            || crate::keyword_static::parse_source_land_is_chosen_type_line(&line.tokens)?.is_some()
             || crate::keyword_static::parse_enchanted_creature_has_line(&line.tokens)?.is_some()
             || (line
                 .tokens

@@ -80,6 +80,27 @@ fn first_spell_each_turn_subject(input: &mut LexStream<'_>) -> WResult<FirstSpel
     Ok(FirstSpellEachTurnSubject)
 }
 
+/// "every basic land type [in addition to their other types]" (Dryad of the
+/// Ilysian Grove, Leyline of the Guildpact): the five basic land types, not
+/// the whole land-type family.
+pub fn parse_every_basic_land_type_tokens(tokens: &[OwnedLexToken]) -> bool {
+    let tokens = super::trim_anthem_clause_tokens(tokens);
+    crate::grammar::primitives::probe_all(
+        tokens,
+        (
+            primitives::phrase(&["every", "basic", "land"]),
+            alt((primitives::kw("type"), primitives::kw("types"))),
+            opt((
+                primitives::phrase(&["in", "addition", "to", "their", "other"]),
+                alt((primitives::kw("type"), primitives::kw("types"))),
+            )),
+        )
+            .void(),
+        "every-basic-land-type",
+    )
+    .is_some()
+}
+
 fn every_subtype_family(input: &mut LexStream<'_>) -> WResult<SubtypeFamily> {
     primitives::kw("every").parse_next(input)?;
     let family = alt((

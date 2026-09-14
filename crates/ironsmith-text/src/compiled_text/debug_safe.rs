@@ -354,6 +354,11 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         .replace("enter the battlefield", "enter")
         .replace("Enters the battlefield", "Enters")
         .replace("Enter the battlefield", "Enter")
+        // "can't enter" is never shortened on printed cards (Grafdigger's Cage
+        // keeps "can't enter the battlefield"), so restore the zone after the
+        // generic shortening above.
+        .replace("can't enter.", "can't enter the battlefield.")
+        .replace("can't enter,", "can't enter the battlefield,")
         .replace(
             "had another land enter under",
             "had another land enter the battlefield under",
