@@ -19,6 +19,7 @@ pub(crate) enum NumericProperty {
     Power,
     Toughness,
     ManaValue,
+    ColorCount,
 }
 #[derive(Clone, Copy)]
 pub(super) enum Reduction {
@@ -191,6 +192,31 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
             as i32
     }
 
+    /// Size of the largest group of matching objects sharing one name.
+    pub(super) fn greatest_shared_name_count(&self, filter: &ObjectFilter) -> i32 {
+        let filter_ctx = self.filter_context(self.game);
+        let mut names: Vec<String> = Vec::new();
+        match self.mode {
+            Mode::Execution(ctx) => {
+                for id in value_candidate_ids_for_filter(self.game, filter, ctx) {
+                    if let Some(object) = self.game.object(id)
+                        && filter.matches(object, &filter_ctx, self.game)
+                    {
+                        names.push(object.name.to_string());
+                    }
+                }
+            }
+            Mode::Continuous(layer) => {
+                layer.visit_layered(filter, |object, _| names.push(object.name.to_string()));
+            }
+        }
+        let mut counts: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+        for name in names {
+            *counts.entry(name).or_default() += 1;
+        }
+        counts.into_values().max().unwrap_or(0)
+    }
+
     pub(super) fn greatest_per_controller(
         &self,
         filter: &ObjectFilter,
@@ -267,6 +293,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                                 .mana_cost
                                 .as_ref()
                                 .map(|cost| cost.mana_value() as i32),
+                            NumericProperty::ColorCount => Some(snapshot.colors.count() as i32),
                         });
                     }
                 } else {
@@ -289,6 +316,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                                 .mana_cost
                                 .as_ref()
                                 .map(|cost| cost.mana_value() as i32),
+                            NumericProperty::ColorCount => Some(object.colors().count() as i32),
                         });
                     }
                 }
@@ -304,6 +332,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                             .as_ref()
                             .map_or(0, |cost| cost.mana_value() as i32),
                     ),
+                    NumericProperty::ColorCount => Some(chars.colors.count() as i32),
                 })
             }),
         }
@@ -420,6 +449,7 @@ impl NumericProperty {
             Self::Power => "power",
             Self::Toughness => "toughness",
             Self::ManaValue => "mana value",
+            Self::ColorCount => "colors",
         }
     }
     pub(crate) fn snapshot(self, snapshot: &ObjectSnapshot) -> Option<i32> {
@@ -430,6 +460,7 @@ impl NumericProperty {
                 .mana_cost
                 .as_ref()
                 .map(|cost| cost.mana_value() as i32),
+            Self::ColorCount => Some(snapshot.colors.count() as i32),
         }
     }
     pub(crate) fn raw(self, object: &Object) -> Option<i32> {
@@ -440,6 +471,7 @@ impl NumericProperty {
                 .mana_cost
                 .as_ref()
                 .map(|cost| cost.mana_value() as i32),
+            Self::ColorCount => Some(object.colors().count() as i32),
         }
     }
     pub(crate) fn live(self, game: &GameState, object: &Object) -> Option<i32> {
@@ -448,7 +480,7 @@ impl NumericProperty {
             Self::Toughness => game
                 .calculated_toughness(object.id)
                 .or_else(|| object.toughness()),
-            Self::ManaValue => self.raw(object),
+            Self::ManaValue | Self::ColorCount => self.raw(object),
         }
     }
     pub(crate) fn characteristics(
@@ -458,7 +490,7 @@ impl NumericProperty {
         match self {
             Self::Power => chars.power,
             Self::Toughness => chars.toughness,
-            Self::ManaValue => None,
+            Self::ManaValue | Self::ColorCount => None,
         }
     }
 }

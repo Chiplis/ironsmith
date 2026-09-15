@@ -218,6 +218,7 @@ const SINGLE_WORD_KEYWORD_ACTIONS: &[(&str, KeywordAction)] = &[
     ("demonstrate", KeywordAction::Demonstrate),
     ("rebound", KeywordAction::Rebound),
     ("ascend", KeywordAction::Ascend),
+    ("storied", KeywordAction::Storied),
     ("fuse", KeywordAction::Fuse),
     ("compleated", KeywordAction::StaticMarker("compleated")),
     ("daybound", KeywordAction::Daybound),

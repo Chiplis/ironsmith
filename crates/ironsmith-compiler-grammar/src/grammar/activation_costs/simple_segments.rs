@@ -124,6 +124,7 @@ fn parse_pay_segment_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ActivationC
     primitives::kw("pay").parse_next(input)?;
     alt((
         parse_life_payment,
+        parse_life_equal_payment,
         parse_counted_energy_payment,
         parse_energy_payment,
         parse_bare_symbol_segment_lexed,
@@ -156,6 +157,41 @@ fn parse_life_payment<'a>(input: &mut LexStream<'a>) -> WResult<ActivationCostSe
         }
     } else {
         Value::Fixed(amount as i32)
+    };
+    Ok(ActivationCostSegmentCst::Life(value))
+}
+
+/// "Pay life equal to <value>" (War Room: "the number of colors in your
+/// commanders' color identity").
+fn parse_life_equal_payment<'a>(input: &mut LexStream<'a>) -> WResult<ActivationCostSegmentCst> {
+    primitives::phrase(&["life", "equal", "to"]).parse_next(input)?;
+    let rest: &[OwnedLexToken] = repeat::<_, _, (), _, _>(1.., any.void())
+        .take()
+        .parse_next(input)?;
+    eof.parse_next(input)?;
+    let words = crate::lexer::token_word_refs(rest);
+    // Pronoun-relative amounts ("life equal to its toughness") are resolved by
+    // the target-aware unless-cost grammar; this segment reads only
+    // self-contained value phrases.
+    if words
+        .iter()
+        .any(|word| matches!(*word, "its" | "it" | "it's" | "their" | "that" | "this" | "his" | "her"))
+    {
+        return Err(primitives::backtrack_err("life payment", "self-contained value phrase"));
+    }
+    let value = if matches!(
+        words.as_slice(),
+        ["the", "number", "of", "colors", "in", "your", commanders, "color", "identity"]
+            if commanders.starts_with("commander")
+    ) {
+        Value::CommanderColorIdentityColors(PlayerFilter::You)
+    } else {
+        let (value, used) = crate::grammar::shared_util::value_expr::parse_value_expr_tokens(rest)
+            .ok_or_else(|| primitives::backtrack_err("life payment", "value expression"))?;
+        if used != rest.len() {
+            return Err(primitives::backtrack_err("life payment", "complete value expression"));
+        }
+        value
     };
     Ok(ActivationCostSegmentCst::Life(value))
 }

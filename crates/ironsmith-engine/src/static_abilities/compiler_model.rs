@@ -86,6 +86,7 @@ impl StaticAbility {
             Some(StaticAbilityId::DoctorsCompanion) => Self::doctors_companion(),
             Some(StaticAbilityId::Assist) => Self::assist(),
             Some(StaticAbilityId::Ascend) => Self::ascend(),
+            Some(StaticAbilityId::Storied) => Self::storied(),
             Some(StaticAbilityId::SplitSecond) => Self::split_second(),
             Some(StaticAbilityId::Rebound) => Self::rebound(),
             Some(StaticAbilityId::Cascade) => Self::cascade(),

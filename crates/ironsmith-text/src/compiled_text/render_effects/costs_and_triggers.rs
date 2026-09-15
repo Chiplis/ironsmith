@@ -371,6 +371,9 @@ pub(crate) fn normalize_cost_phrase(text: &str) -> String {
             if let Some(amount) = life_tail.strip_suffix(" lives") {
                 return format!("Pay {} life", amount.trim());
             }
+            if life_tail.starts_with("life equal to ") {
+                return format!("Pay {life_tail}");
+            }
         }
         return normalize_sacrifice_cost_control_phrase(&normalized);
     }
@@ -384,6 +387,9 @@ pub(crate) fn normalize_cost_phrase(text: &str) -> String {
             if let Some(amount) = life_tail.strip_suffix(" lives") {
                 return format!("Pay {} life", amount.trim());
             }
+            if life_tail.starts_with("life equal to ") {
+                return format!("Pay {life_tail}");
+            }
         }
         return normalize_sacrifice_cost_control_phrase(&normalized);
     }
@@ -393,6 +399,9 @@ pub(crate) fn normalize_cost_phrase(text: &str) -> String {
         }
         if let Some(amount) = life_tail.strip_suffix(" lives") {
             return format!("Pay {} life", amount.trim());
+        }
+        if life_tail.starts_with("life equal to ") {
+            return format!("Pay {life_tail}");
         }
     }
     normalize_sacrifice_cost_control_phrase(text)

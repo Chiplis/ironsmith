@@ -187,7 +187,13 @@ const STATEMENT_READINGS: &[Reading] = &[
         head: HeadDiscriminator::Any,
         admits: |input| {
             let sentence = input.sentence;
-            !(effect_grammar::choice_damage_shapes::parse_unless_sentence_shape(sentence).is_some())
+            // A quoted granted ability ("becomes a land and gains "{T}: Add
+            // {U}."") is a coordinated become-plus-gain sentence, never a
+            // single complete become statement (mirrors the document reading).
+            !sentence
+                .iter()
+                .any(|token| token.kind == crate::lexer::TokenKind::Quote)
+                && !(effect_grammar::choice_damage_shapes::parse_unless_sentence_shape(sentence).is_some())
                 && !(sentence
                     .first()
                     .is_some_and(|token| token.is_any_word(&["if", "unless"])))
@@ -206,6 +212,16 @@ const STATEMENT_READINGS: &[Reading] = &[
         },
         read: |input| {
             input.outcome(read_sentence_you_and_attacking_player_each_draw_and_lose(
+                input,
+            ))
+        },
+    },
+    Reading {
+        id: RuleId::new("sentence-each-opponent-draws-then-you-draw-per-opponent"),
+        head: HeadDiscriminator::Any,
+        admits: |input| input.sentence.first().is_some_and(|token| token.is_word("each")),
+        read: |input| {
+            input.outcome(read_sentence_each_opponent_draws_then_you_draw_per_opponent(
                 input,
             ))
         },
@@ -596,6 +612,13 @@ fn read_complete_become(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>,
         return Ok(Some(vec![effect]));
     }
     Ok(None)
+}
+fn read_sentence_each_opponent_draws_then_you_draw_per_opponent(
+    input: &Statement<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    super::subject_verb_primitives::parse_sentence_each_opponent_draws_then_you_draw_per_opponent(
+        SubjectVerbPrimitiveClause::new(input.sentence),
+    )
 }
 fn read_sentence_you_and_attacking_player_each_draw_and_lose(
     input: &Statement<'_>,

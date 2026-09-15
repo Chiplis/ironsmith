@@ -605,19 +605,29 @@ pub(super) fn recognize_static_line(
     )
     .is_some()
     {
+        parse_trace::event("static-line: declined for keyword mechanic clause");
         return Ok(None);
     }
     let is_flash_with_cleanup_sacrifice = super::super::grammar::abilities::is_cast_as_though_flash_with_next_cleanup_sacrifice_line_lexed(
         &parse_tokens,
     );
-    if line_starts_with_effect_statement_sentence(&parse_tokens)
-        && !is_flash_with_cleanup_sacrifice
-        && !matches!(
-            parse_static_ability_ast_line_lexed(&parse_tokens),
-            Ok(Some(_))
-        )
+    if line_starts_with_effect_statement_sentence(&parse_tokens) && !is_flash_with_cleanup_sacrifice
     {
-        return Ok(None);
+        match parse_static_ability_ast_line_lexed(&parse_tokens) {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                parse_trace::event(
+                    "static-line: declined for effect-statement head without a static reading",
+                );
+                return Ok(None);
+            }
+            Err(err) => {
+                parse_trace::event(format!(
+                    "static-line: declined for effect-statement head after static error: {err:?}"
+                ));
+                return Ok(None);
+            }
+        }
     }
     let make_static = |chosen_option: Option<ChosenOptionContext>| RecognizedStaticLine {
         info: line.info.clone(),
@@ -641,6 +651,7 @@ pub(super) fn recognize_static_line(
             | "players can't pay life or sacrifice nonland permanents to cast spells or activate abilities."
             | "creatures you control can boast twice during each of your turns rather than once."
             | "you may activate equip abilities any time you could cast an instant."
+            | "during your turn, you may activate equip abilities any time you could cast an instant."
     ) || keyword_static_lines::parse_additional_vote_tokens(lexed).is_some()
         || is_first_equip_cost_alternative_line(lexed)
         || is_additional_land_play_static_line(lexed)

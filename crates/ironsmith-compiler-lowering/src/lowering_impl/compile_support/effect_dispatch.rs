@@ -2368,6 +2368,7 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
+        | Value::GreatestSharedNameCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
         | Value::TotalManaValue(filter)
@@ -2444,6 +2445,7 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::ColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => collect_choose_spec_player_target_choices(spec, choices),
         _ => {}
@@ -2529,6 +2531,7 @@ fn value_object_target_spec(value: &Value) -> Option<ChooseSpec> {
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::ColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => {
             (spec.is_target() && choose_spec_targets_object(spec)).then(|| (**spec).clone())

@@ -2570,6 +2570,54 @@ fn parse_player_controls_predicate(
     allow_outlaw_shorthand: bool,
     allow_different_powers: bool,
 ) -> Result<Option<PredicateAst>, CardTextError> {
+    // "you control eight or more artifacts with the same name as one another"
+    // (Mechanized Production): the count is the largest same-name group.
+    const SAME_NAME_AS_ONE_ANOTHER: &[&str] =
+        &["with", "the", "same", "name", "as", "one", "another"];
+    {
+        let words = crate::lexer::token_word_refs(tokens);
+        if words.len() > SAME_NAME_AS_ONE_ANOTHER.len()
+            && words.ends_with(SAME_NAME_AS_ONE_ANOTHER)
+        {
+            let view = crate::lexer::TokenWordView::new(tokens);
+            let cut = words.len() - SAME_NAME_AS_ONE_ANOTHER.len();
+            let Some(head_end) = view.token_start_indices().get(cut).copied() else {
+                return Ok(None);
+            };
+            let Some(inner) = parse_player_controls_predicate(
+                &tokens[..head_end],
+                player,
+                controller,
+                prefix_len,
+                allow_outlaw_shorthand,
+                allow_different_powers,
+            )?
+            else {
+                return Ok(None);
+            };
+            let PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
+                player,
+                mut filter,
+                count,
+            }) = inner
+            else {
+                return Ok(None);
+            };
+            if filter.controller.is_none() {
+                filter.controller = Some(match player {
+                    PlayerAst::You => PlayerFilter::You,
+                    PlayerAst::Opponent => PlayerFilter::Opponent,
+                    PlayerAst::That => PlayerFilter::IteratedPlayer,
+                    _ => return Ok(None),
+                });
+            }
+            return Ok(Some(PredicateAst::ValueComparison {
+                left: Value::GreatestSharedNameCount(filter),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(count as i32),
+            }));
+        }
+    }
     let clause = LexedClause::new(tokens);
     let has_power_toughness_relation = TOUGHNESS_GREATER_THAN_POWER_TAIL_PHRASES
         .iter()

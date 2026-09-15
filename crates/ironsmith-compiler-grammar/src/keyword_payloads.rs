@@ -366,6 +366,27 @@ pub(super) fn parse_mutate(
     )))
 }
 
+/// "Teamwork N (As an additional cost to cast this spell, you may tap any
+/// number of creatures you control with total power N or more.)" — an
+/// optional crew-style additional cost (We Say Thee Nay!).
+pub(super) fn parse_teamwork(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+    _full_tokens: &[OwnedLexToken],
+) -> KeywordParseResult {
+    let words = crate::lexer::token_word_refs(tokens);
+    let ["teamwork", amount] = words.as_slice() else {
+        return Ok(None);
+    };
+    let Some(amount) = crate::util::parse_number_word_u32(amount) else {
+        return Ok(None);
+    };
+    let cost = ironsmith_core::TotalCost::from_costs(vec![crate::model::CompilerCost::Crew {
+        amount,
+    }]);
+    Ok(ast(LineAst::OptionalCost(crate::model::CompilerOptionalCost::teamwork(cost))))
+}
+
 pub(super) fn parse_squad(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],

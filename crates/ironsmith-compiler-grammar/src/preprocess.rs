@@ -340,6 +340,19 @@ fn replace_names_with_map(
         preprocess_grammar::parse_keyword_ability_name_tokens(name.tokens()).is_some()
     }
 
+    /// "The flashback cost is equal to its mana cost." on a card named
+    /// Flashback: the keyword's cost, not a self-reference.
+    fn followed_by_cost_word(bytes: &[u8], mut idx: usize) -> bool {
+        while idx < bytes.len() && !bytes[idx].is_ascii_alphanumeric() {
+            idx += 1;
+        }
+        let start = idx;
+        while idx < bytes.len() && bytes[idx].is_ascii_alphanumeric() {
+            idx += 1;
+        }
+        matches!(&bytes[start..idx], b"cost" | b"costs")
+    }
+
     fn preceded_by_named_keyword(bytes: &[u8], mut idx: usize) -> bool {
         while idx > 0 && !bytes[idx - 1].is_ascii_alphanumeric() {
             idx -= 1;
@@ -692,6 +705,8 @@ fn replace_names_with_map(
                 && (is_single_word_keyword_verb(full_name)
                     || starts_with_typed_keyword_action_statement(line_tokens)))
             && !(is_keyword_ability_name(full_name) && preceded_by_ability_grant_word(bytes, idx))
+            && !(is_keyword_ability_name(full_name)
+                && followed_by_cost_word(bytes, idx + full_bytes.len()))
             && !preceded_by_named_keyword(bytes, idx)
             && !appears_to_be_created_token_name(bytes, idx, full_bytes.len())
             && !within_vote_choice_clause(bytes, line_tokens, idx)
@@ -730,6 +745,8 @@ fn replace_names_with_map(
                 && (is_single_word_keyword_verb(short_name)
                     || starts_with_typed_keyword_action_statement(line_tokens)))
             && !(is_keyword_ability_name(short_name) && preceded_by_ability_grant_word(bytes, idx))
+            && !(is_keyword_ability_name(short_name)
+                && followed_by_cost_word(bytes, idx + short_bytes.len()))
             && !preceded_by_named_keyword(bytes, idx)
             && !appears_to_be_created_token_name(bytes, idx, short_bytes.len())
             && !within_vote_choice_clause(bytes, line_tokens, idx)
@@ -995,6 +1012,76 @@ fn rewrite_any_type_cast_rider_line(text: &str) -> String {
 
 /// "you recruit" (The Queen of Dale): the keyword action spelled out as its
 /// reminder text so the ordinary draw/discard/create grammar executes it.
+/// Rewrite gendered personal pronouns that Oracle text uses for named legendary
+/// characters ("he gets +1/+1", "loyalty counters on him") onto the neutral
+/// object pronoun the grammar understands. Possessives ("his", "her") are left
+/// alone: "her" is ambiguous and both carry authored source surfaces elsewhere.
+fn rewrite_personal_pronouns_line(text: &str) -> String {
+    let words: Vec<&str> = text.split(' ').collect();
+    if !words.iter().any(|word| {
+        matches!(
+            word.trim_end_matches(|ch: char| matches!(ch, ',' | '.' | ';' | ':')),
+            "he" | "she" | "him" | "he's" | "she's" | "himself" | "herself"
+        )
+    }) {
+        return text.to_string();
+    }
+    let mut rewritten = Vec::with_capacity(words.len());
+    for word in words {
+        let trailing_len = word.len()
+            - word
+                .trim_end_matches(|ch: char| matches!(ch, ',' | '.' | ';' | ':'))
+                .len();
+        let (core, trailing) = word.split_at(word.len() - trailing_len);
+        let replacement = match core {
+            "he" | "she" | "him" => Some("it"),
+            "he's" | "she's" => Some("it's"),
+            "himself" | "herself" => Some("itself"),
+            _ => None,
+        };
+        match replacement {
+            Some(replacement) => rewritten.push(format!("{replacement}{trailing}")),
+            None => rewritten.push(word.to_string()),
+        }
+    }
+    rewritten.join(" ")
+}
+
+/// "Counter that spell unless its controller pays {4} instead if this spell
+/// was cast using teamwork." names its spell-label condition after the
+/// replacement action. The leading form ("If this spell was cast using
+/// teamwork, counter that spell ... instead.") is the shape the statement
+/// grammar reads as a self replacement of the preceding sentence, so move the
+/// condition to the front of that sentence.
+fn rewrite_trailing_instead_if_spell_label_line(text: &str) -> String {
+    const MARKER: &str = " instead if this spell ";
+    let Some(marker_idx) = text.find(MARKER) else {
+        return text.to_string();
+    };
+    let sentence_start = text[..marker_idx]
+        .rfind(". ")
+        .map_or(0, |idx| idx + 2);
+    let action = text[sentence_start..marker_idx].trim();
+    let after_marker = &text[marker_idx + MARKER.len()..];
+    let Some(period_rel) = after_marker.find('.') else {
+        return text.to_string();
+    };
+    let predicate = after_marker[..period_rel].trim();
+    let rest = &after_marker[period_rel..];
+    if action.is_empty()
+        || predicate.is_empty()
+        || action.starts_with("if ")
+        || action.contains(", ")
+        || predicate.contains(", ")
+    {
+        return text.to_string();
+    }
+    format!(
+        "{}if this spell {predicate}, {action} instead{rest}",
+        &text[..sentence_start]
+    )
+}
+
 fn expand_recruit_keyword_line(text: &str) -> String {
     const KEYWORD: &str = "recruit";
     const EXPANSION: &str = "draw a card, then discard a card. if you discarded a nonland card this way, create a 1/1 white human soldier creature token";
@@ -1290,6 +1377,9 @@ pub fn preprocess_document_with_provenance(
         let expanded_normalized = expand_borrow_ability_line(normalized.normalized.as_str());
         let expanded_normalized = expand_recruit_keyword_line(expanded_normalized.as_str());
         let expanded_normalized = rewrite_any_type_cast_rider_line(expanded_normalized.as_str());
+        let expanded_normalized = rewrite_personal_pronouns_line(expanded_normalized.as_str());
+        let expanded_normalized =
+            rewrite_trailing_instead_if_spell_label_line(expanded_normalized.as_str());
         let rewritten_normalized = rewrite_vote_count_followups_line(expanded_normalized.as_str());
         // Keep explicit exile/return sentences intact. The effect-sequence bundle
         // parser folds them into one source-leaves runtime effect while retaining

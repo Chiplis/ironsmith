@@ -975,12 +975,66 @@ pub(super) fn parse_total_stat_threshold_predicate(tokens: &[OwnedLexToken]) -> 
     })
 }
 
+/// "two or more of those creatures are attacking you [and/or planeswalkers you
+/// control]" (Mangara, the Diplomat). The attacking set at trigger time is the
+/// creatures that just attacked, so the count reads the attacking creatures
+/// whose attack target is you (or your planeswalkers).
+pub(super) fn parse_attacking_you_count_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let [amount, "or", "more", "of", "those", "creatures", "are", "attacking", "you", rest @ ..] =
+        words.as_slice()
+    else {
+        return None;
+    };
+    let count = crate::util::parse_number_word_u32(amount)?;
+    let includes_planeswalkers = match rest {
+        [] => false,
+        ["and", "or", "planeswalkers", "you", "control"]
+        | ["and/or", "planeswalkers", "you", "control"]
+        | ["or", "planeswalkers", "you", "control"] => true,
+        _ => return None,
+    };
+    let mut filter = ObjectFilter::creature();
+    filter.attacking = true;
+    let filter = if includes_planeswalkers {
+        filter.attacking_player_or_planeswalker_controlled_by(PlayerFilter::You)
+    } else {
+        filter.attacking_player(PlayerFilter::You)
+    };
+    Some(PredicateAst::ValueComparison {
+        left: Value::Count(filter),
+        operator: ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(count as i32),
+    })
+}
+
+/// "you haven't added mana with this ability this turn" (Carpet of Flowers):
+/// the ability has not resolved yet this turn.
+pub(super) fn parse_havent_added_mana_with_this_ability_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let matched = matches!(
+        words.as_slice(),
+        ["you", "havent" | "haven't" | "haven’t", "added", "mana", "with", "this", "ability", "this", "turn"]
+            | ["you", "have", "not", "added", "mana", "with", "this", "ability", "this", "turn"]
+    );
+    matched.then(|| PredicateAst::ValueComparison {
+        left: Value::ThisAbilityResolvedThisTurnCount,
+        operator: ValueComparisonOperator::Equal,
+        right: Value::Fixed(0),
+    })
+}
+
 pub(super) fn parse_player_achievement_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let achievement = crate::grammar::conditions::parse_player_achievement_condition(tokens)?;
     let player = achievement.player;
     let predicate = match achievement.achievement {
         crate::grammar::conditions::PlayerAchievementAst::CitysBlessing => Some(
             PredicateAst::Player(PlayerPredicateAst::PlayerHasCitysBlessing { player }),
+        ),
+        crate::grammar::conditions::PlayerAchievementAst::EnduringStory => Some(
+            PredicateAst::Player(PlayerPredicateAst::PlayerHasEnduringStory { player }),
         ),
         crate::grammar::conditions::PlayerAchievementAst::CompletedDungeon { dungeon_name } => {
             Some(PredicateAst::Player(
@@ -2613,6 +2667,7 @@ pub(super) fn parse_this_spell_paid_named_label_shape(
 ) -> Option<PredicateAst> {
     parse_this_spell_was_kicked_with_cost_shape(tokens)
         .or_else(|| parse_this_spell_was_kicked_shape(tokens))
+        .or_else(|| parse_this_spell_was_cast_using_teamwork_shape(tokens))
         .or_else(|| parse_this_spell_was_bargained_shape(tokens))
         .or_else(|| {
             parse_named_spell_label_action_shape(tokens, "Gift", &["was", "promised"], false)
@@ -2728,6 +2783,23 @@ pub(super) fn parse_this_spell_was_bargained_shape(
         return None;
     }
     Some(PredicateAst::ThisSpellPaidLabel("Bargain".into()))
+}
+
+/// "if this spell was cast using teamwork" (We Say Thee Nay!).
+fn parse_this_spell_was_cast_using_teamwork_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let negated = match words.as_slice() {
+        ["this", "spell", "was", "cast", "using", "teamwork"] => false,
+        ["this", "spell", "wasnt" | "wasn't", "cast", "using", "teamwork"]
+        | ["this", "spell", "was", "not", "cast", "using", "teamwork"] => true,
+        _ => return None,
+    };
+    let predicate = PredicateAst::ThisSpellPaidLabel("Teamwork".into());
+    Some(if negated {
+        PredicateAst::Not(Box::new(predicate))
+    } else {
+        predicate
+    })
 }
 
 pub(super) fn parse_named_spell_label_action_shape(

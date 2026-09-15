@@ -146,6 +146,29 @@ pub fn parse_restriction_duration_lexed(
                 return Ok(Some((Until::SourceUntaps, remainder)));
             }
         }
+        // "… can't attack you or planeswalkers you control for as long as it
+        // has a vow counter on it" (Promise of Loyalty): the restriction lasts
+        // while the restricted object keeps the named counter.
+        let suffix_words = token_word_refs(suffix_tokens);
+        if let ["for", "as", "long", "as", "it", "has", article, counter_word, "counter", "on", "it"] =
+            suffix_words.as_slice()
+            && matches!(*article, "a" | "an")
+            && let Some(counter_type) = super::grammar::filters::parse_counter_type_from_tokens(
+                &crate::lexer::synthetic_word_tokens([*counter_word]),
+            )
+        {
+            let remainder = trim_lexed_commas(&tokens[..token_idx]).to_vec();
+            if !remainder.is_empty() {
+                return Ok(Some((
+                    Until::ForAsLongAs(
+                        ironsmith_core::ContinuousDurationPredicate::affected_object_has_counter(
+                            counter_type,
+                        ),
+                    ),
+                    remainder,
+                )));
+            }
+        }
     }
 
     let cleaned_tokens = super::grammar::leaf::strip_leaf_this_turn_tokens(tokens);

@@ -64,6 +64,7 @@ pub(crate) fn resolve(
         Value::GreatestSharedCreatureTypeCount(filter) => {
             Ok(context.greatest_per_controller(filter, true))
         }
+        Value::GreatestSharedNameCount(filter) => Ok(context.greatest_shared_name_count(filter)),
         Value::TotalPower(filter) => {
             Ok(context.aggregate(filter, NumericProperty::Power, Reduction::Sum))
         }
@@ -269,6 +270,9 @@ pub(crate) fn resolve(
         }
         Value::ManaValueOf(target_spec) => {
             context.object_number(target_spec, NumericProperty::ManaValue)
+        }
+        Value::ColorsOf(target_spec) => {
+            context.object_number(target_spec, NumericProperty::ColorCount)
         }
         Value::ManaSymbolsInManaCostOf {
             spec: target_spec,
@@ -633,6 +637,13 @@ pub(crate) fn resolve(
             Ok(player_ids
                 .into_iter()
                 .map(|player_id| game.commander_cast_count_for_player(player_id) as i32)
+                .sum())
+        }
+        Value::CommanderColorIdentityColors(player_spec) => {
+            let player_ids = context.player_ids(value, player_spec)?;
+            Ok(player_ids
+                .into_iter()
+                .map(|player_id| game.get_commander_color_identity(player_id).count() as i32)
                 .sum())
         }
         Value::ThisAbilityResolvedThisTurnCount => {

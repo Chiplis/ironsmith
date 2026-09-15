@@ -2874,6 +2874,38 @@ impl StaticAbilityKind for ThisSpellCostReductionManaCost {
     }
 }
 
+/// "You may activate abilities of <objects> as though those creatures had
+/// haste." (Tyvar, Jubilant Brawler): {T}/{Q} costs of matching summoning-sick
+/// creatures may be paid.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ActivateAbilitiesAsThoughHaste {
+    pub filter: ObjectFilter,
+    pub display: String,
+}
+
+impl ActivateAbilitiesAsThoughHaste {
+    pub fn new(filter: ObjectFilter, display: impl Into<String>) -> Self {
+        Self {
+            filter,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for ActivateAbilitiesAsThoughHaste {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ActivateAbilitiesAsThoughHaste
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn activate_abilities_as_though_haste(&self) -> Option<&ActivateAbilitiesAsThoughHaste> {
+        Some(self)
+    }
+}
+
 /// Life surcharge on matching spells: "Spells your opponents cast that
 /// target this creature cost an additional 3 life to cast." (Terror of the Peaks)
 #[derive(Debug, Clone, PartialEq)]

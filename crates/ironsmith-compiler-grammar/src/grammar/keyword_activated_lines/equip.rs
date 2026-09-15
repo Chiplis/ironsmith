@@ -17,6 +17,8 @@ pub struct EquipQualifierSpec<'a> {
     pub legendary: bool,
     /// "Equip commander {3}" (Commander's Plate).
     pub commander: bool,
+    /// "Equip worthy {1}" (Mjölnir, Hammer of Thor).
+    pub worthy: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,13 +86,14 @@ fn parse_qualified_equip_cost<'a>(input: &mut LexStream<'a>) -> WResult<EquipLin
     let ((mana_prefix, trailing), cost_tokens) = (leaf::parse_leaf_mana_cost_prefix_lexed, rest)
         .with_taken()
         .parse_next(input)?;
-    let (subtypes, legendary, commander) = qualifier;
+    let (subtypes, legendary, commander, worthy) = qualifier;
     Ok(EquipLineSpec::QualifiedCost {
         qualifier: EquipQualifierSpec {
             tokens: trim_lexed_commas(qualifier_tokens),
             subtypes,
             legendary,
             commander,
+            worthy,
         },
         cost_tokens: trim_lexed_commas(cost_tokens),
         mana_prefix: mana_prefix.cost,
@@ -122,10 +125,12 @@ fn parse_general_equip_activation_cost<'a>(
 
 fn parse_equip_qualifier_lexed<'a>(
     input: &mut LexStream<'a>,
-) -> WResult<(Vec<Subtype>, bool, bool)> {
+) -> WResult<(Vec<Subtype>, bool, bool, bool)> {
     // "Equip legendary creature {3}" (Blackblade Reforged), "Equip commander
     // {3}" (Commander's Plate): a supertype or commander qualifier instead of
-    // (or before) a subtype list.
+    // (or before) a subtype list. "Equip worthy {1}" (Mjölnir, Hammer of
+    // Thor): a legendary non-Villain creature that's red and/or white.
+    let worthy = opt(primitives::kw("worthy")).parse_next(input)?.is_some();
     let legendary = opt(primitives::kw("legendary")).parse_next(input)?.is_some();
     let commander = opt(primitives::kw("commander")).parse_next(input)?.is_some();
     let mut subtypes = Vec::new();
@@ -154,10 +159,10 @@ fn parse_equip_qualifier_lexed<'a>(
     }
     opt(primitives::kw("creature")).parse_next(input)?;
     eof.parse_next(input)?;
-    if subtypes.is_empty() && !legendary && !commander {
+    if subtypes.is_empty() && !legendary && !commander && !worthy {
         return Err(primitives::backtrack_err("equip qualifier", "a subtype or qualifier"));
     }
-    Ok((subtypes, legendary, commander))
+    Ok((subtypes, legendary, commander, worthy))
 }
 
 fn parse_equip_subtype_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Subtype> {

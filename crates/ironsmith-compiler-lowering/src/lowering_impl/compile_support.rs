@@ -718,6 +718,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
+        | Value::GreatestSharedNameCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
         | Value::TotalManaValue(filter)
@@ -857,6 +858,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::ColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => {
             bind_relative_iterated_player_in_choose_spec_to_player_filter(spec, player_filter);

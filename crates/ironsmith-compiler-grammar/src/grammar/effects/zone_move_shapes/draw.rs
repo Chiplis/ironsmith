@@ -569,6 +569,19 @@ pub fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Option<Valu
             metric.with_surface_hint(ironsmith_core::ValueSurfaceHint::OpponentsDealtDamageThisWay),
         );
     }
+    if crate::word_primitives::parse_any_sequence_prefix(
+        counter_words,
+        &[
+            &["card", "type", "among", "cards", "discarded", "this", "way"],
+            &["card", "types", "among", "cards", "discarded", "this", "way"],
+        ],
+    ) && counter_words.len() == 7
+    {
+        return Some(Value::PendingEffectMetric {
+            source: ironsmith_core::EffectMetricSource::Outcome,
+            metric: ironsmith_core::EffectMetric::CardTypesAmong,
+        });
+    }
     if contains_word(tokens, "discarded") {
         return Some(
             metric.with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsDiscardedThisWay),

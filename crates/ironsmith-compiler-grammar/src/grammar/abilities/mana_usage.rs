@@ -34,6 +34,8 @@ const SPEND_MANA_RESTRICTION_PREFIXES: &[&[&str]] = &[
     &["this", "mana", "can't", "be", "spent", "to", "cast"],
     &["that", "mana", "cant", "be", "spent", "to", "cast"],
     &["that", "mana", "can't", "be", "spent", "to", "cast"],
+    &["this", "mana", "cant", "be", "spent", "to", "pay"],
+    &["this", "mana", "can't", "be", "spent", "to", "pay"],
 ];
 const SPEND_MANA_CAST_PREFIXES: &[&[&str]] = &[
     &["spend", "this", "mana", "only", "to", "cast"],
@@ -107,7 +109,25 @@ pub fn parse_mana_usage_restriction_sentence_lexed(
         .or_else(|| parse_legacy_restriction(tokens))
         .or_else(|| parse_activate_ability_restriction(tokens))
         .or_else(|| parse_cant_be_spent_restriction(tokens))
+        .or_else(|| parse_cant_pay_generic_restriction(tokens))
         .or_else(|| parse_filter_restriction(tokens))
+}
+
+/// "This mana can't be spent to pay generic mana costs." (Jegantha, the
+/// Wellspring).
+fn parse_cant_pay_generic_restriction(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestriction> {
+    const SHAPES: &[&[&str]] = &[
+        &["this", "mana", "cant", "be", "spent", "to", "pay", "generic", "mana", "costs"],
+        &["this", "mana", "can't", "be", "spent", "to", "pay", "generic", "mana", "costs"],
+        &["that", "mana", "cant", "be", "spent", "to", "pay", "generic", "mana", "costs"],
+        &["that", "mana", "can't", "be", "spent", "to", "pay", "generic", "mana", "costs"],
+    ];
+    matches_any_exact_tokens(tokens, SHAPES).then(|| ManaUsageRestriction::PaymentTransaction {
+        restriction: Some(ManaPaymentPredicate::Not(Box::new(
+            ManaPaymentPredicate::GenericManaCost,
+        ))),
+        on_spend: Vec::new(),
+    })
 }
 
 fn cast_spell_payment_predicate(filter: ObjectFilter) -> ManaPaymentPredicate {

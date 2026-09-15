@@ -292,6 +292,14 @@ pub fn parse_if_result_predicate_lexed_tokens(
     ) {
         return Some(IfResultPredicate::ExcessDamageDealt);
     }
+    // "If the creature the opponent controls is dealt excess damage this way"
+    // (The Last Agni Kai).
+    if has_phrase(&normalized, &["is", "dealt", "excess", "damage"])
+        && has_phrase(&normalized, &["creature"])
+        && ends_with_phrase(&normalized, &["this", "way"])
+    {
+        return Some(IfResultPredicate::ExcessDamageDealt);
+    }
     if word_count == 6
         && (starts_with_phrase(&normalized, &["its", "power", "becomes"])
             || starts_with_phrase(&normalized, &["it", "power", "becomes"]))

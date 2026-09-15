@@ -39,6 +39,18 @@ pub enum AbilityOrigin {
     },
 }
 
+impl AbilityOrigin {
+    /// Return the permanent whose effect supplied this ability, when the
+    /// ability was granted by a continuous effect.
+    pub(crate) fn effect_source(&self) -> Option<ObjectId> {
+        match self {
+            Self::Printed(_) => None,
+            Self::Effect { effect, .. } => Some(effect.source),
+            Self::Borrowed { effect, .. } => Some(effect.source),
+        }
+    }
+}
+
 /// Mutations preserve the origin paired with each definition. There is no
 /// DerefMut: raw Vec edits must not silently detach an ability from its origin.
 #[derive(Debug, Clone, Default)]

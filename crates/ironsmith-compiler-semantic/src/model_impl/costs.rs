@@ -424,6 +424,10 @@ impl CompilerOptionalCost {
         Self::typed(crate::cost::OptionalCostKind::Offspring, "Offspring", cost)
     }
 
+    pub fn teamwork(cost: ironsmith_core::TotalCost<CompilerCost>) -> Self {
+        Self::typed(crate::cost::OptionalCostKind::Teamwork, "Teamwork", cost)
+    }
+
     pub fn repeatable(mut self) -> Self {
         self.repeatable = true;
         self

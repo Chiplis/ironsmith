@@ -6529,3 +6529,104 @@ mod attached_your_untap_tests {
         assert!(text.contains("pupa"), "{text}");
     }
 }
+
+
+/// "You may activate abilities of creatures you control as though those
+/// creatures had haste." (Tyvar, Jubilant Brawler; Thousand-Year Elixir)
+pub fn parse_activate_abilities_as_though_haste_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let Some(rest) = crate::word_primitives::strip_prefix(
+        &words,
+        &["you", "may", "activate", "abilities", "of"],
+    ) else {
+        return Ok(None);
+    };
+    let Some(as_though) = crate::word_primitives::parse_sequence_start(rest, &["as", "though"])
+    else {
+        return Ok(None);
+    };
+    let tail = &rest[as_though + 2..];
+    if !matches!(
+        tail,
+        ["those", "creatures", "had", "haste"]
+            | ["they", "had", "haste"]
+            | ["it", "had", "haste"]
+            | ["those", "permanents", "had", "haste"]
+    ) {
+        return Ok(None);
+    }
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let filter_start_word = 5;
+    let filter_end_word = filter_start_word + as_though;
+    let Some(filter_start) = view.token_start_indices().get(filter_start_word).copied() else {
+        return Ok(None);
+    };
+    let Some(filter_end) = view.token_start_indices().get(filter_end_word).copied() else {
+        return Ok(None);
+    };
+    let filter = parse_object_filter(&tokens[filter_start..filter_end], false)?;
+    let display = crate::lexer::render_token_slice(tokens)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    Ok(Some(StaticAbility::activate_abilities_as_though_haste(filter, display)))
+}
+
+
+/// "You may play lands and cast spells from the top of your library. If you
+/// cast a spell this way, pay life equal to its mana value rather than pay its
+/// mana cost." (Bolas's Citadel): lands are played from the top of the library
+/// normally; spells are cast from there only through the life-payment
+/// alternative cost.
+pub fn parse_play_from_top_pay_life_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let sentences = crate::lexer::split_lexed_sentences(tokens);
+    let [first, second] = sentences.as_slice() else {
+        return Ok(None);
+    };
+    let first_words = crate::lexer::token_word_refs(first);
+    let second_words = crate::lexer::token_word_refs(second);
+    if first_words.as_slice()
+        != [
+            "you", "may", "play", "lands", "and", "cast", "spells", "from", "the", "top", "of",
+            "your", "library",
+        ]
+        || second_words.as_slice()
+            != [
+                "if", "you", "cast", "a", "spell", "this", "way", "pay", "life", "equal", "to",
+                "its", "mana", "value", "rather", "than", "pay", "its", "mana", "cost",
+            ]
+    {
+        return Ok(None);
+    }
+    let land_grant = crate::model::CompilerGrantSpecCore::new(
+        crate::model::CompilerGrantableCore::play_from(),
+        ObjectFilter {
+            card_types: vec![CardType::Land],
+            ..ObjectFilter::default()
+        },
+        Zone::Library,
+    );
+    let mut spell_filter = ObjectFilter::default();
+    spell_filter.excluded_card_types.push(CardType::Land);
+    let spell_grant = crate::model::CompilerGrantSpecCore::new(
+        crate::model::CompilerGrantableCore::DerivedAlternativeCast(
+            ironsmith_core::DerivedAlternativeCast::LifeEqualManaValueFromZone {
+                zone: Zone::Library,
+                usage_limit: None,
+            },
+        ),
+        spell_filter,
+        Zone::Library,
+    );
+    Ok(Some(vec![
+        StaticAbility::grants(land_grant)
+            .with_text("You may play lands from the top of your library"),
+        StaticAbility::grants(spell_grant).with_text(
+            "You may cast spells from the top of your library by paying life equal to their mana value rather than paying their mana costs",
+        ),
+    ]))
+}

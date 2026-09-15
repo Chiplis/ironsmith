@@ -1839,6 +1839,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             let subject = describe_player_filter(player);
             format!("{} {} the initiative", subject, player_verb(&subject, "have", "has"))
         }
+        Condition::PlayerHasEnduringStory { player } => {
+            let subject = describe_player_filter(player);
+            format!(
+                "{} {} an enduring story",
+                subject,
+                player_verb(&subject, "have", "has")
+            )
+        }
         Condition::PlayerHasCitysBlessing { player } => {
             let subject = describe_player_filter(player);
             format!(

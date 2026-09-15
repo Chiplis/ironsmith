@@ -536,6 +536,12 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         amount: u32,
         display: String,
     },
+    /// "You may activate abilities of creatures you control as though those
+    /// creatures had haste." (Tyvar, Jubilant Brawler; Thousand-Year Elixir)
+    ActivateAbilitiesAsThoughHaste {
+        filter: ObjectFilter,
+        display: String,
+    },
     CostIncreaseManaCost(CostIncreaseManaCost<ICond>),
     ThisSpellCostReduction(ThisSpellCostReduction<Cond>),
     ThisSpellCostReductionManaCost(ThisSpellCostReductionManaCost<Cond>),
@@ -1683,6 +1689,9 @@ where
                 amount,
                 display,
             },
+            StaticAbilityPayload::ActivateAbilitiesAsThoughHaste { filter, display } => {
+                StaticAbilityPayload::ActivateAbilitiesAsThoughHaste { filter, display }
+            }
             StaticAbilityPayload::CostIncreaseManaCost(increase) => StaticAbilityPayload::CostIncreaseManaCost(
                 increase.try_map_condition(&mut *map_intervening)?,
             ),
@@ -2236,6 +2245,9 @@ where
                         added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                         set_base_power_toughness_from_self: spec
                             .set_base_power_toughness_from_self,
+                        conditional_additional_counters: spec
+                            .conditional_additional_counters
+                            .clone(),
                     },
                     display,
                 }
@@ -3945,6 +3957,9 @@ impl<
     pub fn ascend() -> Self {
         Self::identified(StaticAbilityId::Ascend, "ascend")
     }
+    pub fn storied() -> Self {
+        Self::identified(StaticAbilityId::Storied, "storied")
+    }
     pub fn split_second() -> Self {
         Self::identified(StaticAbilityId::SplitSecond, "split second")
     }
@@ -5283,6 +5298,17 @@ impl<
             id: Some(StaticAbilityId::CostIncreaseManaCostPerAdditionalTarget),
             label: "mana cost increase per target beyond first".to_string(),
             payload: StaticAbilityPayload::CostIncreaseManaCostPerTargetBeyondFirst(cost),
+        }
+    }
+    pub fn activate_abilities_as_though_haste(
+        filter: ObjectFilter,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ActivateAbilitiesAsThoughHaste),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ActivateAbilitiesAsThoughHaste { filter, display },
         }
     }
     pub fn cost_increase_life(filter: ObjectFilter, amount: u32, display: impl Into<String>) -> Self {

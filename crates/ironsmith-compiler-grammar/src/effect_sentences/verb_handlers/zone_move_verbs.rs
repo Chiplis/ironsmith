@@ -312,14 +312,34 @@ fn parse_draw_for_each_player_condition(
         )));
     }
 
-    let predicate = bind_loop_player_predicate(
-        parse_who_player_predicate_lexed(inner_tokens).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing predicate in draw for-each clause (clause: '{}')",
-                clause_words.join(" ")
-            ))
-        })?,
-    );
+    let tail_words = crate::lexer::token_word_refs(&predicate_tail);
+    // "for each opponent who drew a card this way" refers back to a prior
+    // effect's participants, not to a player predicate; the sentence-level
+    // reading owns that shape.
+    if tail_words.ends_with(&["this", "way"]) {
+        return Ok(None);
+    }
+    // "for each opponent who lost life this turn" (Kaito, Bane of Nightmares).
+    let iterated_life_loss = matches!(
+        tail_words.as_slice(),
+        ["lost", "life", "this", "turn"] | ["has", "lost", "life", "this", "turn"]
+    )
+    .then(|| crate::cards::builders::PredicateAst::ValueComparison {
+        left: Value::LifeLostThisTurn(crate::target::PlayerFilter::IteratedPlayer),
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(1),
+    });
+    let predicate = match iterated_life_loss {
+        Some(predicate) => predicate,
+        None => bind_loop_player_predicate(
+            parse_who_player_predicate_lexed(inner_tokens).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing predicate in draw for-each clause (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?,
+        ),
+    };
 
     let mut draw_effect = draw_effect;
     match &mut draw_effect {

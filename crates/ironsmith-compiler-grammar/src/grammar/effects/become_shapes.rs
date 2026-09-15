@@ -47,6 +47,12 @@ pub struct FilteredObjectAnimationShape<'a> {
     pub descriptor: BecomeCreatureDescriptor,
     pub power: Value,
     pub toughness: Value,
+    /// Keyword words granted alongside the animation ("with indestructible",
+    /// "and has hexproof"). Empty when the line grants nothing.
+    pub granted_keyword_words: Vec<&'a str>,
+    /// `preserve_other_types` came from a "that's still a <type>" rider rather
+    /// than an "in addition to its other types" tail.
+    pub still_other_card_type: bool,
 }
 
 fn possessive_word_stem(input: &mut &str) -> WResult<String> {

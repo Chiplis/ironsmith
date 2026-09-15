@@ -34,6 +34,24 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if let Some(devotion) = parse_devotion_value_words(words) {
         return Some(devotion);
     }
+    // "the number of colors that spell is" (Crystal, Inhuman Princess): the
+    // colors among the referenced object.
+    for phrase in [
+        &["number", "of", "colors", "that", "spell", "is"][..],
+        &["number", "of", "colors", "this", "spell", "is"][..],
+        &["number", "of", "colors", "it", "is"][..],
+        &["number", "of", "colors", "that", "creature", "is"][..],
+        &["number", "of", "colors", "that", "permanent", "is"][..],
+    ] {
+        if permission_shapes::starts_at_words(words, offset, phrase) {
+            return Some((
+                Value::ColorsOf(Box::new(ChooseSpec::Tagged(
+                    (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                ))),
+                offset + phrase.len(),
+            ));
+        }
+    }
     for (phrase, player) in [
         (
             &[

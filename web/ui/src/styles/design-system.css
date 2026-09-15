@@ -4334,17 +4334,17 @@ html[data-hand-pointer-suspended="true"] * {
 }
 
 /* Expanded decisions place their primary submit below the selectable card
-   row. The row is intentionally inset on the Look side so its hover glow and
-   hit target never cover that zone. */
+   row. Keep it the same width and leading edge as the main decision control
+   instead of centering a wider button beneath the choices. */
 .action-strip-submit-row {
   position: relative;
   z-index: 2;
   display: flex;
-  width: min(20vw, calc(100% - 24px));
+  width: min(148px, calc(100% - 24px));
   min-width: 0;
   flex: 0 0 auto;
   align-items: stretch;
-  margin-inline: auto;
+  margin-inline: 0;
   padding: 4px 0 7px;
 }
 
@@ -4357,44 +4357,6 @@ html[data-hand-pointer-suspended="true"] * {
   width: 100% !important;
   min-width: 0 !important;
   flex: 1 1 auto !important;
-  border-radius: 2px !important;
-  border: 0 !important;
-  font-family: var(--font-heading, "Alegreya"), Georgia, serif !important;
-  font-size: clamp(12px, 1vw, 15px) !important;
-  font-weight: 800 !important;
-  letter-spacing: 0.08em !important;
-  text-transform: uppercase !important;
-}
-
-/* The external Submit control deliberately reverses the main decision
-   button's contrast: dark with warm lettering at rest, then warm with dark
-   lettering on hover. */
-.action-strip-submit-row .action-strip-submit-button:not(:disabled):not([aria-disabled="true"]) {
-  border: 0 !important;
-  color: #ffe8a6 !important;
-  -webkit-text-fill-color: #ffe8a6 !important;
-  background: #111314 !important;
-  box-shadow: none !important;
-}
-
-.action-strip-submit-row .action-strip-submit-button:not(:disabled):not([aria-disabled="true"]) > * {
-  color: #ffe8a6 !important;
-  -webkit-text-fill-color: #ffe8a6 !important;
-  text-shadow: 0 0 7px rgba(255, 224, 131, 0.3) !important;
-}
-
-.action-strip-submit-row .action-strip-submit-button:not(:disabled):not([aria-disabled="true"]):hover {
-  border: 0 !important;
-  color: #080a0b !important;
-  -webkit-text-fill-color: #080a0b !important;
-  background: #ffe083 !important;
-  box-shadow: none !important;
-}
-
-.action-strip-submit-row .action-strip-submit-button:not(:disabled):not([aria-disabled="true"]):hover > * {
-  color: #080a0b !important;
-  -webkit-text-fill-color: #080a0b !important;
-  text-shadow: none !important;
 }
 
 /* Submit lives outside the clipped decision overlay so the control can sit
@@ -4423,7 +4385,9 @@ html[data-hand-pointer-suspended="true"] * {
   left: 0;
   display: flex;
   align-items: stretch;
-  padding: 4px 12px 7px;
+  /* The overlay sits three pixels inside the shared control band; offset its
+     row so it shares the main decision control's leading edge. */
+  padding: 4px 12px 7px 9px;
 }
 
 /* Available choices stay in one readable lane: horizontal overflow is the

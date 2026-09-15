@@ -364,6 +364,10 @@ pub fn resolve_condition_from_predicate(
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasCitysBlessing { player }
         }
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasEnduringStory { player }) => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerHasEnduringStory { player }
+        }
         PredicateAst::Source(SourcePredicateAst::SourceIsRingBearer { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::SourceIsRingBearer { player }

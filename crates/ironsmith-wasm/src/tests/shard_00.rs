@@ -497,6 +497,32 @@ pub(super) fn object_details_reports_current_granted_abilities() {
 }
 
 #[test]
+pub(super) fn battlefield_snapshot_reports_current_granted_abilities() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    let ornithopter_id =
+        game.create_object_from_definition(&ornithopter(), alice, Zone::Battlefield);
+    game.effect_store
+        .continuous_effects
+        .add_effect(ContinuousEffect::new(
+            ornithopter_id,
+            alice,
+            EffectTarget::Specific(ornithopter_id),
+            Modification::AddAbility(StaticAbility::lifelink()),
+        ));
+
+    let (battlefield, _) =
+        grouped_battlefield_for_player(&game, alice, &std::collections::HashSet::new());
+    let ornithopter = battlefield
+        .iter()
+        .find(|permanent| permanent.id == ornithopter_id.0)
+        .expect("expected Ornithopter in battlefield snapshot");
+
+    assert_eq!(ornithopter.abilities, vec!["Flying", "Lifelink"]);
+}
+
+#[test]
 pub(super) fn object_details_renders_intrinsic_basic_land_mana_abilities() {
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);

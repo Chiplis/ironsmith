@@ -120,6 +120,7 @@ pub fn apply_keyword_action(
         KeywordAction::AuraSwap(cost) => builder.aura_swap(cost),
         KeywordAction::Ravenous => builder.ravenous(),
         KeywordAction::Ascend => builder.ascend(),
+        KeywordAction::Storied => builder.storied(),
         KeywordAction::Daybound => builder.daybound(),
         KeywordAction::Nightbound => builder.nightbound(),
         KeywordAction::Haunt => builder.haunt(),

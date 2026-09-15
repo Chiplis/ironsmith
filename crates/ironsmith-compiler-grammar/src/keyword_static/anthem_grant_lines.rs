@@ -594,16 +594,19 @@ fn parse_filtered_object_animation_static_line(
     let tokens = split_em_dash_label_prefix_tokens(tokens)
         .map_or(tokens, |(_, body)| body);
     let mut timing_condition = None;
+    // "During your turn, [as long as <condition>,] <subject> is a N/M ...".
+    let mut remaining = tokens;
+    if let Some(remainder) = split_during_your_turn_static_prefix_lexed(remaining) {
+        timing_condition = Some(PredicateAst::ActivationTiming(
+            crate::ability::ActivationTiming::DuringYourTurn,
+        ));
+        remaining = remainder;
+    }
     let (condition_tokens, animation_tokens) =
-        if let Some(prefix) = split_as_long_as_condition_prefix_lexed(tokens) {
+        if let Some(prefix) = split_as_long_as_condition_prefix_lexed(remaining) {
             (Some(prefix.condition_tokens), prefix.remainder_tokens)
-        } else if let Some(remainder) = split_during_your_turn_static_prefix_lexed(tokens) {
-            timing_condition = Some(PredicateAst::ActivationTiming(
-                crate::ability::ActivationTiming::DuringYourTurn,
-            ));
-            (None, remainder)
         } else {
-            (None, tokens)
+            (None, remaining)
         };
     let Some(shape) =
         crate::grammar::effects::become_shapes::parse_filtered_object_animation_tokens(
@@ -612,37 +615,87 @@ fn parse_filtered_object_animation_static_line(
     else {
         return Ok(None);
     };
+    // "… is a 0/0 creature in addition to its other types and it has
+    // annihilator 2": the in-addition-and-has rule owns that pairing.
+    if shape.preserve_other_types
+        && !shape.still_other_card_type
+        && (!shape.granted_keyword_words.is_empty() || shape.dependent_subject)
+    {
+        return Ok(None);
+    }
 
     let attached_subject_filter =
         condition_tokens.and_then(infer_attached_subject_filter_from_condition_tokens);
     let mut subject = if shape.dependent_subject {
-        let Some(filter) = attached_subject_filter else {
-            return Ok(None);
-        };
-        AnthemSubjectAst::Filter(filter)
+        match attached_subject_filter {
+            Some(filter) => AnthemSubjectAst::Filter(filter),
+            // "As long as Kaito has one or more loyalty counters on him, he's a
+            // 3/4 Ninja creature": the dependent pronoun refers back to the
+            // source named in the condition.
+            None if condition_tokens.is_some() || timing_condition.is_some() => {
+                AnthemSubjectAst::Source
+            }
+            None => return Ok(None),
+        }
     } else {
         match parse_anthem_subject(shape.subject_tokens) {
             Ok(subject) => subject,
             Err(_) => return Ok(None),
         }
     };
-    let condition = condition_tokens
+    let parsed_condition = condition_tokens
         .map(parse_static_condition_clause)
-        .transpose()?
-        .or(timing_condition)
-        .map(|condition| bind_attachment_condition_to_subject(condition, &subject));
+        .transpose()?;
+    let condition = match (timing_condition, parsed_condition) {
+        (Some(timing), Some(condition)) => {
+            Some(PredicateAst::And(Box::new(timing), Box::new(condition)))
+        }
+        (timing, condition) => timing.or(condition),
+    }
+    .map(|condition| bind_attachment_condition_to_subject(condition, &subject));
 
     if let AnthemSubjectAst::Filter(filter) = &mut subject {
         filter.set_set_quantifier_surface(leading_set_quantifier_surface(shape.subject_tokens));
     }
     let filter = anthem_subject_filter(&subject);
-    let abilities = filtered_object_animation_abilities(filter, shape);
-    Ok(Some(
-        abilities
-            .into_iter()
-            .map(|ability| conditional_static_ability(ability, condition.clone()))
-            .collect(),
-    ))
+    let granted_keyword_words = shape.granted_keyword_words.clone();
+    let abilities = filtered_object_animation_abilities(filter.clone(), shape);
+    let mut compiled: Vec<StaticAbilityAst> = abilities
+        .into_iter()
+        .map(|ability| conditional_static_ability(ability, condition.clone()))
+        .collect();
+    if !granted_keyword_words.is_empty() {
+        let keyword_tokens = crate::lexer::synthetic_word_tokens(granted_keyword_words.iter());
+        let Some(actions) = parse_ability_line(&keyword_tokens) else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported keyword grant in animation line (clause: '{}')",
+                granted_keyword_words.join(" ")
+            )));
+        };
+        for action in actions {
+            if !action.lowers_to_static_ability() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported keyword grant in animation line (clause: '{}')",
+                    granted_keyword_words.join(" ")
+                )));
+            }
+            compiled.push(match &subject {
+                AnthemSubjectAst::Source => match condition.clone() {
+                    Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
+                        ability: Box::new(StaticAbilityAst::KeywordAction(action)),
+                        condition,
+                    },
+                    None => StaticAbilityAst::KeywordAction(action),
+                },
+                AnthemSubjectAst::Filter(_) => StaticAbilityAst::GrantKeywordAction {
+                    filter: filter.clone(),
+                    action,
+                    condition: condition.clone(),
+                },
+            });
+        }
+    }
+    Ok(Some(compiled))
 }
 
 fn filtered_object_animation_abilities(
@@ -670,11 +723,12 @@ fn filtered_object_animation_abilities(
     if let Some(colors) = shape.descriptor.colors {
         abilities.push(StaticAbility::set_colors(filter.clone(), colors));
     }
-    abilities.push(StaticAbility::set_base_power_toughness_value(
-        filter,
-        shape.power,
-        shape.toughness,
-    ));
+    abilities.push(match (&shape.power, &shape.toughness) {
+        (Value::Fixed(power), Value::Fixed(toughness)) => {
+            StaticAbility::set_base_power_toughness(filter, *power, *toughness)
+        }
+        _ => StaticAbility::set_base_power_toughness_value(filter, shape.power, shape.toughness),
+    });
 
     abilities
 }
@@ -1843,6 +1897,7 @@ pub fn parse_lose_all_abilities_and_base_pt_line(
         crate::grammar::effects::become_shapes::parse_filtered_object_animation_tokens(tokens)
         && animation.removes_all_abilities
         && !animation.dependent_subject
+        && animation.granted_keyword_words.is_empty()
     {
         let mut filter = parse_object_filter(animation.subject_tokens, false).map_err(|_| {
             CardTextError::ParseError(format!(

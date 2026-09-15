@@ -203,3 +203,54 @@ fn parses_filtered_leading_pt_animation_in_addition_to_other_types() {
         "{shape:#?}"
     );
 }
+
+#[test]
+fn parses_dependent_contraction_animation_with_keyword_tail() {
+    for text in ["it's a 3/4 Ninja creature and has hexproof."] {
+        let tokens = lex_line(text, 0).expect("lex animation");
+        let shape = parse_filtered_object_animation_tokens(&tokens)
+            .unwrap_or_else(|| panic!("dependent animation should parse: {text}"));
+        assert!(shape.dependent_subject, "{text}: {shape:#?}");
+        assert_eq!(shape.power, Value::Fixed(3), "{text}");
+        assert_eq!(shape.toughness, Value::Fixed(4), "{text}");
+        assert_eq!(shape.granted_keyword_words, vec!["hexproof"], "{text}");
+        assert!(
+            shape
+                .descriptor
+                .subtypes
+                .contains(&crate::types::Subtype::Ninja),
+            "{text}: {shape:#?}"
+        );
+    }
+}
+
+#[test]
+fn parses_animation_with_indestructible_and_loses_other_abilities_tail() {
+    let text = "Enchanted creature is an Insect artifact creature with base power and toughness 0/1 and has indestructible, and it loses all other abilities, card types, and creature types.";
+    let tokens = lex_line(text, 0).expect("lex animation");
+    let shape = parse_filtered_object_animation_tokens(&tokens)
+        .expect("Darksteel Mutation animation should parse");
+    assert!(shape.removes_all_abilities, "{shape:#?}");
+    assert!(!shape.preserve_other_types, "{shape:#?}");
+    assert_eq!(shape.granted_keyword_words, vec!["indestructible"]);
+    assert_eq!(shape.power, Value::Fixed(0));
+    assert_eq!(shape.toughness, Value::Fixed(1));
+    assert_eq!(
+        shape.descriptor.card_types,
+        vec![crate::types::CardType::Artifact, crate::types::CardType::Creature]
+    );
+}
+
+#[test]
+fn parses_still_a_planeswalker_animation_tail() {
+    let text = "During your turn, this permanent is a 4/4 Human Soldier creature with indestructible that's still a planeswalker.";
+    let tokens = lex_line(text, 0).expect("lex animation");
+    let tokens = &tokens[4..];
+    let shape = parse_filtered_object_animation_tokens(tokens)
+        .expect("Gideon animation should parse");
+    assert!(shape.preserve_other_types, "{shape:#?}");
+    assert_eq!(shape.granted_keyword_words, vec!["indestructible"]);
+}
+
+
+

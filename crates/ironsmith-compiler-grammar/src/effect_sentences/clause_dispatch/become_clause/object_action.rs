@@ -119,7 +119,24 @@ pub fn parse_become_clause(
     let subject = parse_subject(subject_tokens);
     let become_surface = become_grammar::parse_become_body_surface_shape(&become_tokens);
     let become_body_tokens = become_surface.body_tokens;
-    let become_words_vec = crate::lexer::parser_token_word_refs(become_body_tokens);
+    let mut become_words_vec = crate::lexer::parser_token_word_refs(become_body_tokens);
+    // "becomes a creature in addition to its other types and has base power
+    // and base toughness each equal to its mana value" (Zur, Eternal Schemer)
+    // states the base P/T with "and has"; the body grammar reads "with".
+    if let Some(index) = become_words_vec
+        .windows(4)
+        .position(|window| window == ["and", "has", "base", "power"])
+        && !become_body_tokens.windows(5).any(|window| {
+            window[0].is_comma()
+                && window[1].is_word("and")
+                && window[2].is_word("has")
+                && window[3].is_word("base")
+                && window[4].is_word("power")
+        })
+    {
+        become_words_vec.remove(index + 1);
+        become_words_vec[index] = "with";
+    }
     let become_words = &become_words_vec[..];
 
     if let Some(player) = extract_subject_player(Some(subject)) {
@@ -589,9 +606,15 @@ pub fn parse_become_clause(
     }
 
     if let Some(pt) = become_grammar::parse_become_base_pt_words(become_words)
+        && let (descriptor_words, preserve_other_types) =
+            become_grammar::strip_become_addition_tail_words(pt.descriptor_words)
         && let Some(descriptor) =
-            become_grammar::parse_become_creature_descriptor_words(pt.descriptor_words)
+            become_grammar::parse_become_creature_descriptor_words(descriptor_words)
     {
+        // "becomes a creature in addition to its other types and has base
+        // power and base toughness each equal to its mana value" (Zur,
+        // Eternal Schemer) keeps the object's other types.
+        let explicit_creature_noun = descriptor.subtypes.is_empty();
         return Ok(EffectAst::subject_verb_become_base_pt_creature(
             pt.power,
             pt.toughness,
@@ -602,8 +625,12 @@ pub fn parse_become_clause(
             descriptor.colors,
             Vec::new(),
             Vec::new(),
-            false,
-            None,
+            preserve_other_types,
+            preserve_other_types.then_some(if explicit_creature_noun {
+                ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes
+            } else {
+                ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypesImplicitCreature
+            }),
             Some(ironsmith_core::AnimationPtSurface::ExplicitBasePowerToughness),
             animation_duration_surface,
             duration,

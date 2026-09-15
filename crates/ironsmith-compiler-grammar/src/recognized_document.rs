@@ -110,6 +110,7 @@ pub enum KeywordLineKind {
     Reinforce,
     Retrace,
     Squad,
+    Teamwork,
     Splice,
     Transmute,
     Transfigure,

@@ -114,10 +114,6 @@ fn next_static_effect_group_id(
     group
 }
 
-struct GeneratedStaticEffect {
-    effect: ContinuousEffect,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SourceStaticEffectsKey {
     generation_revision: u64,
@@ -132,7 +128,54 @@ struct SourceStaticEffectsKey {
 #[derive(Debug, Clone)]
 struct SourceStaticEffects {
     key: SourceStaticEffectsKey,
-    effects: Arc<Vec<ContinuousEffect>>,
+    abilities: Arc<Vec<crate::ability::Ability>>,
+    direct_effects: Arc<Vec<ContinuousEffect>>,
+}
+
+struct SourceStaticEffectEntry {
+    object_id: ObjectId,
+    abilities: Vec<crate::ability::Ability>,
+    effects: Vec<ContinuousEffect>,
+}
+
+fn append_late_static_effects(
+    game: &GameState,
+    sources: &mut [SourceStaticEffectEntry],
+    mut available_effects: Vec<ContinuousEffect>,
+) {
+    // Grants can add a static ability that emits another continuous effect.
+    // Iterate to a small fixed point so nested grants work without allowing a
+    // cyclic static-ability dependency to recurse indefinitely.
+    for _ in 0..8 {
+        let mut added = Vec::new();
+        for source in sources.iter_mut() {
+            let late = generate_granted_late_static_effects(
+                game,
+                source.object_id,
+                &available_effects,
+                &source.abilities,
+            );
+            for effect in late {
+                if !available_effects.contains(&effect) {
+                    available_effects.push(effect.clone());
+                    source.effects.push(effect.clone());
+                    added.push(effect);
+                }
+            }
+        }
+        if added.is_empty() {
+            break;
+        }
+    }
+
+    for source in sources {
+        let mut next_group_ordinal = 1;
+        assign_inferred_static_effect_groups(
+            &mut source.effects,
+            source.object_id,
+            &mut next_group_ordinal,
+        );
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -140,9 +183,7 @@ pub(crate) struct StaticEffectsCache {
     per_source: crate::game_state::PersistentMap<ObjectId, SourceStaticEffects>,
 }
 
-fn static_effects_share_scope(a: &GeneratedStaticEffect, b: &GeneratedStaticEffect) -> bool {
-    let a_effect = &a.effect;
-    let b_effect = &b.effect;
+fn static_effects_share_scope(a_effect: &ContinuousEffect, b_effect: &ContinuousEffect) -> bool {
     a_effect.source == b_effect.source
         && a_effect.controller == b_effect.controller
         && a_effect.applies_to == b_effect.applies_to
@@ -152,23 +193,20 @@ fn static_effects_share_scope(a: &GeneratedStaticEffect, b: &GeneratedStaticEffe
         && a_effect.source_type == b_effect.source_type
 }
 
-fn should_infer_multilayer_static_group(
-    effects: &[GeneratedStaticEffect],
-    indices: &[usize],
-) -> bool {
+fn should_infer_multilayer_static_group(effects: &[ContinuousEffect], indices: &[usize]) -> bool {
     if indices.len() <= 1 {
         return false;
     }
 
     let has_type_part = indices
         .iter()
-        .any(|&idx| effects[idx].effect.modification.layer() == Layer::Type);
+        .any(|&idx| effects[idx].modification.layer() == Layer::Type);
     let has_later_part = indices
         .iter()
-        .any(|&idx| effects[idx].effect.modification.layer() > Layer::Type);
+        .any(|&idx| effects[idx].modification.layer() > Layer::Type);
     let has_ability_removal = indices.iter().any(|&idx| {
         matches!(
-            effects[idx].effect.modification,
+            effects[idx].modification,
             crate::continuous::Modification::RemoveAbility(_)
                 | crate::continuous::Modification::RemoveAllAbilities
                 | crate::continuous::Modification::RemoveAllAbilitiesExceptMana
@@ -177,7 +215,7 @@ fn should_infer_multilayer_static_group(
     });
     let has_pt_setting = indices.iter().any(|&idx| {
         matches!(
-            effects[idx].effect.modification,
+            effects[idx].modification,
             crate::continuous::Modification::SetPower { .. }
                 | crate::continuous::Modification::SetToughness { .. }
                 | crate::continuous::Modification::SetPowerToughness { .. }
@@ -188,20 +226,20 @@ fn should_infer_multilayer_static_group(
 }
 
 fn assign_inferred_static_effect_groups(
-    effects: &mut [GeneratedStaticEffect],
+    effects: &mut [ContinuousEffect],
     source: ObjectId,
     next_group_ordinal: &mut u16,
 ) {
     let mut assigned = vec![false; effects.len()];
 
     for i in 0..effects.len() {
-        if assigned[i] || effects[i].effect.group.is_some() {
+        if assigned[i] || effects[i].group.is_some() {
             continue;
         }
 
         let mut group_indices = Vec::new();
         for j in i..effects.len() {
-            if assigned[j] || effects[j].effect.group.is_some() {
+            if assigned[j] || effects[j].group.is_some() {
                 continue;
             }
             if static_effects_share_scope(&effects[i], &effects[j]) {
@@ -215,10 +253,78 @@ fn assign_inferred_static_effect_groups(
 
         let group = next_static_effect_group_id(source, next_group_ordinal);
         for idx in group_indices {
-            effects[idx].effect.group = Some(group);
+            effects[idx].group = Some(group);
             assigned[idx] = true;
         }
     }
+}
+
+fn source_abilities(
+    game: &GameState,
+    object_id: ObjectId,
+    registered_effects: &[ContinuousEffect],
+    text_box_scope: &TextBoxQueryScope,
+    text_box_cache: &mut FxMap<ObjectId, TextBoxOverlay>,
+) -> Vec<crate::ability::Ability> {
+    let object = game
+        .object(object_id)
+        .expect("static-effect source should exist");
+    if object.zone == Zone::Battlefield && text_box_scope.includes(object_id) {
+        let overlay = text_box_cache.entry(object_id).or_insert_with(|| {
+            crate::continuous::text_box_characteristics_with_effects(
+                object_id,
+                game.objects_map(),
+                registered_effects,
+                &game.battlefield,
+                game.commander_objects(),
+                game,
+            )
+            .map(|chars| TextBoxOverlay::new(chars.compiled_card_text, chars.abilities))
+            .unwrap_or_else(|| {
+                TextBoxOverlay::new(object.compiled_card_text.clone(), object.abilities_vec())
+            })
+        });
+        overlay.abilities.clone()
+    } else {
+        object.abilities_vec()
+    }
+}
+
+fn generate_direct_static_effects(
+    game: &GameState,
+    object_id: ObjectId,
+    abilities: &[crate::ability::Ability],
+) -> Vec<ContinuousEffect> {
+    let object = game
+        .object(object_id)
+        .expect("static-effect source should exist");
+    let controller = game.controller_of(object);
+    let mut effects = Vec::new();
+    for ability in abilities {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            continue;
+        };
+        if !ability.functions_in(&object.zone) {
+            continue;
+        }
+        let mut ability_effects = static_ability.generate_effects(object_id, controller, game);
+        if let Some(ts) = game
+            .effect_store
+            .continuous_effects
+            .get_object_timestamp(object_id)
+        {
+            for effect in &mut ability_effects {
+                effect.timestamp = ts;
+                effect.originating_static_ability = Some(static_ability.clone());
+            }
+        } else {
+            for effect in &mut ability_effects {
+                effect.originating_static_ability = Some(static_ability.clone());
+            }
+        }
+        effects.extend(ability_effects);
+    }
+    effects
 }
 
 /// Generate all continuous effects from static abilities in zones where they function.
@@ -232,96 +338,50 @@ fn assign_inferred_static_effect_groups(
 pub fn generate_continuous_effects_from_static_abilities(
     game: &GameState,
 ) -> Vec<ContinuousEffect> {
-    let mut effects = Vec::new();
     let registered_effects: Vec<ContinuousEffect> =
         game.effect_store.continuous_effects.effects().to_vec();
     let text_box_scope = text_box_query_scope(&registered_effects);
     let mut text_box_cache: FxMap<ObjectId, TextBoxOverlay> = FxMap::default();
+    let mut sources = Vec::new();
 
     let object_ids = game.object_ids_in_deterministic_order();
     // Iterate over all objects and apply static abilities only in zones where they function.
     for object_id in object_ids {
-        if let Some(object) = game.object(object_id) {
-            if object.zone == crate::zone::Zone::Battlefield && game.is_phased_out(object_id) {
-                continue;
-            }
-            let mut object_effects = Vec::new();
-            let mut next_group_ordinal = 1;
-            let zone = object.zone;
-            let (controller, abilities) =
-                if zone == crate::zone::Zone::Battlefield && text_box_scope.includes(object_id) {
-                    let overlay = text_box_cache.entry(object_id).or_insert_with(|| {
-                        crate::continuous::text_box_characteristics_with_effects(
-                            object_id,
-                            game.objects_map(),
-                            &registered_effects,
-                            &game.battlefield,
-                            game.commander_objects(),
-                            game,
-                        )
-                        .map(|chars| TextBoxOverlay::new(chars.compiled_card_text, chars.abilities))
-                        .unwrap_or_else(|| {
-                            TextBoxOverlay::new(
-                                object.compiled_card_text.clone(),
-                                object.abilities_vec(),
-                            )
-                        })
-                    });
-                    (game.controller_of(object), overlay.abilities.clone())
-                } else {
-                    (game.controller_of(object), object.abilities_vec())
-                };
-
-            // Process each static ability on the object
-            for ability in &abilities {
-                if let AbilityKind::Static(static_ability) = &ability.kind {
-                    if !ability.functions_in(&zone) {
-                        continue;
-                    }
-                    // Generate effects directly from the trait method
-                    let mut ability_effects =
-                        static_ability.generate_effects(object_id, controller, game);
-                    // Static ability effect timestamps come from the source object's
-                    // current timestamp, including attachment and face changes.
-                    if let Some(ts) = game
-                        .effect_store
-                        .continuous_effects
-                        .get_object_timestamp(object_id)
-                    {
-                        for effect in &mut ability_effects {
-                            effect.timestamp = ts;
-                            effect.originating_static_ability = Some(static_ability.clone());
-                        }
-                    } else {
-                        for effect in &mut ability_effects {
-                            effect.originating_static_ability = Some(static_ability.clone());
-                        }
-                    }
-                    object_effects.extend(
-                        ability_effects
-                            .into_iter()
-                            .map(|effect| GeneratedStaticEffect { effect }),
-                    );
-                }
-            }
-            object_effects.extend(
-                generate_granted_late_static_effects(
-                    game,
-                    object_id,
-                    &registered_effects,
-                    &abilities,
-                )
-                .into_iter()
-                .map(|effect| GeneratedStaticEffect { effect }),
-            );
-            assign_inferred_static_effect_groups(
-                &mut object_effects,
-                object_id,
-                &mut next_group_ordinal,
-            );
-            effects.extend(object_effects.into_iter().map(|generated| generated.effect));
+        let Some(object) = game.object(object_id) else {
+            continue;
+        };
+        if object.zone == crate::zone::Zone::Battlefield && game.is_phased_out(object_id) {
+            continue;
         }
+        let abilities = source_abilities(
+            game,
+            object_id,
+            &registered_effects,
+            &text_box_scope,
+            &mut text_box_cache,
+        );
+        let effects = generate_direct_static_effects(game, object_id, &abilities);
+        sources.push(SourceStaticEffectEntry {
+            object_id,
+            abilities,
+            effects,
+        });
     }
+
+    // First expose all direct static grants, then derive effects from static
+    // abilities that those grants added. This matters for nested grants such
+    // as Agatha's Soul Cauldron granting a copied-ability static ability.
+    let mut effects = sources
+        .iter()
+        .flat_map(|source| source.effects.iter().cloned())
+        .collect::<Vec<_>>();
+    let mut available_effects = registered_effects;
+    available_effects.extend(effects.iter().cloned());
+    append_late_static_effects(game, &mut sources, available_effects);
+    effects = sources
+        .iter()
+        .flat_map(|source| source.effects.iter().cloned())
+        .collect();
 
     effects
 }
@@ -337,9 +397,9 @@ pub(crate) fn generate_continuous_effects_from_static_abilities_cached(
     let text_overlay_revision = game.effect_store.continuous_effects.revision();
     let continuous_effect_revision = game.effect_store.continuous_effects.revision();
     let generation_revision = game.mutation_revision();
-    let mut effects = Vec::new();
     let object_ids = game.object_ids_in_deterministic_order();
     let mut seen = std::collections::HashSet::new();
+    let mut sources = Vec::new();
 
     for object_id in object_ids {
         let Some(object) = game.object(object_id) else {
@@ -370,106 +430,56 @@ pub(crate) fn generate_continuous_effects_from_static_abilities_cached(
         if let Some(cached) = cache.per_source.get(&object_id)
             && cached.key == key
         {
-            effects.extend(cached.effects.iter().cloned());
+            sources.push(SourceStaticEffectEntry {
+                object_id,
+                abilities: cached.abilities.as_ref().clone(),
+                effects: cached.direct_effects.as_ref().clone(),
+            });
             continue;
         }
 
-        let source_effects = generate_static_effects_for_source(
+        let abilities = source_abilities(
             game,
             object_id,
             &registered_effects,
             &text_box_scope,
             &mut text_box_cache,
         );
-        effects.extend(source_effects.iter().cloned());
+        let direct_effects = generate_direct_static_effects(game, object_id, &abilities);
+        sources.push(SourceStaticEffectEntry {
+            object_id,
+            abilities: abilities.clone(),
+            effects: direct_effects.clone(),
+        });
         cache.per_source.insert(
             object_id,
             SourceStaticEffects {
                 key,
-                effects: Arc::new(source_effects),
+                abilities: Arc::new(abilities),
+                direct_effects: Arc::new(direct_effects),
             },
         );
     }
 
     cache.per_source.retain(|id, _| seen.contains(id));
+
+    let mut effects = sources
+        .iter()
+        .flat_map(|source| source.effects.iter().cloned())
+        .collect::<Vec<_>>();
+    let mut available_effects = registered_effects;
+    available_effects.extend(effects.iter().cloned());
+    append_late_static_effects(game, &mut sources, available_effects);
+    effects = sources
+        .iter()
+        .flat_map(|source| source.effects.iter().cloned())
+        .collect();
+
     effects
 }
 
-fn generate_static_effects_for_source(
-    game: &GameState,
-    object_id: ObjectId,
-    registered_effects: &[ContinuousEffect],
-    text_box_scope: &TextBoxQueryScope,
-    text_box_cache: &mut FxMap<ObjectId, TextBoxOverlay>,
-) -> Vec<ContinuousEffect> {
-    let Some(object) = game.object(object_id) else {
-        return Vec::new();
-    };
-    let mut object_effects = Vec::new();
-    let mut next_group_ordinal = 1;
-    let zone = object.zone;
-    let (controller, abilities) =
-        if zone == crate::zone::Zone::Battlefield && text_box_scope.includes(object_id) {
-            let overlay = text_box_cache.entry(object_id).or_insert_with(|| {
-                crate::continuous::text_box_characteristics_with_effects(
-                    object_id,
-                    game.objects_map(),
-                    registered_effects,
-                    &game.battlefield,
-                    game.commander_objects(),
-                    game,
-                )
-                .map(|chars| TextBoxOverlay::new(chars.compiled_card_text, chars.abilities))
-                .unwrap_or_else(|| {
-                    TextBoxOverlay::new(object.compiled_card_text.clone(), object.abilities_vec())
-                })
-            });
-            (game.controller_of(object), overlay.abilities.clone())
-        } else {
-            (game.controller_of(object), object.abilities_vec())
-        };
-
-    for ability in &abilities {
-        if let AbilityKind::Static(static_ability) = &ability.kind {
-            if !ability.functions_in(&zone) {
-                continue;
-            }
-            let mut ability_effects = static_ability.generate_effects(object_id, controller, game);
-            if let Some(ts) = game
-                .effect_store
-                .continuous_effects
-                .get_object_timestamp(object_id)
-            {
-                for effect in &mut ability_effects {
-                    effect.timestamp = ts;
-                    effect.originating_static_ability = Some(static_ability.clone());
-                }
-            } else {
-                for effect in &mut ability_effects {
-                    effect.originating_static_ability = Some(static_ability.clone());
-                }
-            }
-            object_effects.extend(
-                ability_effects
-                    .into_iter()
-                    .map(|effect| GeneratedStaticEffect { effect }),
-            );
-        }
-    }
-    object_effects.extend(
-        generate_granted_late_static_effects(game, object_id, registered_effects, &abilities)
-            .into_iter()
-            .map(|effect| GeneratedStaticEffect { effect }),
-    );
-    assign_inferred_static_effect_groups(&mut object_effects, object_id, &mut next_group_ordinal);
-    object_effects
-        .into_iter()
-        .map(|generated| generated.effect)
-        .collect()
-}
-
-/// Resolution-granted static abilities may themselves generate effects in
-/// the ability layer or later layers. Read their recipients after grants/removals without
+/// Granted static abilities may themselves generate effects in the ability
+/// layer or later layers. Read their recipients after grants/removals without
 /// replacing the earlier text-box abilities used for layers before six.
 fn generate_granted_late_static_effects(
     game: &GameState,
@@ -479,23 +489,32 @@ fn generate_granted_late_static_effects(
 ) -> Vec<ContinuousEffect> {
     use crate::continuous::{Modification, PtSublayer};
     let level_grants_continuous = text_abilities.iter().any(|ability| {
-        let AbilityKind::Static(ability) = &ability.kind else { return false; };
-        ability.level_abilities().is_some_and(|levels| levels.iter().any(|tier|
-            tier.abilities.iter().any(|ability| ability.may_generate_continuous_effects())))
+        let AbilityKind::Static(ability) = &ability.kind else {
+            return false;
+        };
+        ability.level_abilities().is_some_and(|levels| {
+            levels.iter().any(|tier| {
+                tier.abilities
+                    .iter()
+                    .any(|ability| ability.may_generate_continuous_effects())
+            })
+        })
     });
-    if !level_grants_continuous && !registered.iter().any(|effect| {
-        // Flag-only keywords and nonstatic abilities cannot emit later-layer
-        // effects. Avoid a full characteristic calculation for every recipient
-        // merely because an ordinary ability grant exists on the battlefield.
-        match &effect.modification {
-            Modification::AddAbility(ability) => ability.may_generate_continuous_effects(),
-            Modification::AddAbilityGeneric(ability) => match &ability.kind {
-                AbilityKind::Static(ability) => ability.may_generate_continuous_effects(),
+    if !level_grants_continuous
+        && !registered.iter().any(|effect| {
+            // Flag-only keywords and nonstatic abilities cannot emit later-layer
+            // effects. Avoid a full characteristic calculation for every recipient
+            // merely because an ordinary ability grant exists on the battlefield.
+            match &effect.modification {
+                Modification::AddAbility(ability) => ability.may_generate_continuous_effects(),
+                Modification::AddAbilityGeneric(ability) => match &ability.kind {
+                    AbilityKind::Static(ability) => ability.may_generate_continuous_effects(),
+                    _ => false,
+                },
                 _ => false,
-            },
-            _ => false,
-        }
-    }) {
+            }
+        })
+    {
         return Vec::new();
     }
     let Some(object) = game.object(object_id) else {
@@ -520,7 +539,7 @@ fn generate_granted_late_static_effects(
         return Vec::new();
     };
     let mut result = Vec::new();
-    for ability in &chars.abilities {
+    for (ability_index, ability) in chars.abilities.iter().enumerate() {
         let AbilityKind::Static(granted) = &ability.kind else {
             continue;
         };
@@ -528,9 +547,23 @@ fn generate_granted_late_static_effects(
             matches!(&original.kind, AbilityKind::Static(original) if original.instance_id() == granted.instance_id())) {
             continue;
         }
+        let originating_source = chars
+            .abilities
+            .origin(ability_index)
+            .and_then(crate::continuous::AbilityOrigin::effect_source);
         for mut effect in granted.generate_effects(object_id, chars.controller, game) {
             if effect.modification.layer() < Layer::Ability {
                 continue;
+            }
+            if let Some(source) = originating_source
+                && matches!(effect.applies_to, EffectTarget::Source)
+            {
+                // A static ability granted by another permanent keeps that
+                // permanent as the source for source-relative filters (for
+                // example, Agatha's "exiled with this" relationship), while
+                // still applying the generated effect to this recipient.
+                effect.source = source;
+                effect.applies_to = EffectTarget::Specific(object_id);
             }
             // An ability acquired through a grant is not an intrinsic CDA.
             if let Modification::SetPowerToughness { sublayer, .. }

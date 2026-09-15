@@ -294,6 +294,7 @@ const LABELED_ABILITY_FIRST_WORDS: &[&str] = &[
     "revolt",
     "suspend",
     "spectacle",
+    "stagger",
     "strive",
     "surge",
     "threshold",
@@ -738,6 +739,15 @@ pub fn should_strip_labeled_ability_prefix_tokens(
     prefix: &[OwnedLexToken],
     remainder: &[OwnedLexToken],
 ) -> bool {
+    // "• Mardu — If a creature attacking causes …" (Windcrag Siege): a bulleted
+    // option label names the chosen mode and must survive normalization even
+    // when the option's body is a conditional static sentence.
+    if prefix
+        .first()
+        .is_some_and(|token| token.kind == TokenKind::Bullet)
+    {
+        return false;
+    }
     !remainder.is_empty()
         && (is_labeled_ability_prefix_tokens(prefix)
             || (starts_with_if_clause_tokens(remainder)

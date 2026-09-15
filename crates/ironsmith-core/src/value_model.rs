@@ -536,6 +536,9 @@ pub enum Value {
     /// A creature with multiple creature types contributes once to each of its
     /// type cohorts; the value is the size of the largest cohort, not the sum.
     GreatestSharedCreatureTypeCount(ObjectFilter),
+    /// Size of the largest group of matching objects that share a name
+    /// ("eight or more artifacts with the same name as one another").
+    GreatestSharedNameCount(ObjectFilter),
     TotalPower(ObjectFilter),
     TotalToughness(ObjectFilter),
     TotalManaValue(ObjectFilter),
@@ -592,6 +595,9 @@ pub enum Value {
     PowerOf(Box<ChooseSpec>),
     ToughnessOf(Box<ChooseSpec>),
     ManaValueOf(Box<ChooseSpec>),
+    /// Number of colors the referenced object is ("the number of colors that
+    /// spell is").
+    ColorsOf(Box<ChooseSpec>),
     /// The number of mana symbols of `color` in the referenced object's
     /// printed mana cost. A hybrid or Phyrexian pip containing that color is
     /// one symbol, regardless of how many payment alternatives it has.
@@ -653,6 +659,8 @@ pub enum Value {
         exclude_source: bool,
     },
     CommanderCastCount(PlayerFilter),
+    /// Number of colors in the combined color identity of the player's commanders.
+    CommanderColorIdentityColors(PlayerFilter),
     ThisAbilityResolvedThisTurnCount,
     SourceRegeneratedThisTurnCount,
     /// Number of times the source permanent has mutated since it entered the battlefield.
@@ -1568,6 +1576,10 @@ pub enum Condition {
         player: PlayerFilter,
     },
     PlayerHasCitysBlessing {
+        player: PlayerFilter,
+    },
+    /// The player has an enduring story (Storied).
+    PlayerHasEnduringStory {
         player: PlayerFilter,
     },
     SourceIsRingBearer {

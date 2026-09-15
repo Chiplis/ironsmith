@@ -163,6 +163,43 @@ pub fn parse_put_counter_choice_sequence(
     };
     let target = parse_target_phrase(shape.target_tokens)?;
     let target_phrase = crate::lexer::render_token_slice(shape.target_tokens);
+    if shape.counter_counts.iter().any(|count| *count != 1) {
+        // "put your choice of a +1/+1 counter or two charge counters on up to
+        // one other target artifact" (Inspirit, Flagship Vessel): one shared
+        // target, then a mode choice whose modes place different counts.
+        let tag = crate::util::helper_tag_for_tokens(clause.tokens(), "counter_choice_target");
+        let modes = shape
+            .counter_types
+            .iter()
+            .zip(shape.counter_counts.iter())
+            .map(|(counter_type, count)| crate::cards::builders::ChooseOneModeAst {
+                description: format!(
+                    "Put {} on {target_phrase}",
+                    super::super::zone_counter_helpers::describe_counter_phrase_for_mode(
+                        *count,
+                        *counter_type,
+                    )
+                ),
+                effects: vec![EffectAst::subject_verb_put_counters(
+                    *counter_type,
+                    Value::Fixed(*count as i32),
+                    TargetAst::Tagged(tag.clone(), None),
+                    None,
+                    false,
+                )],
+            })
+            .collect();
+        return Ok(Some(vec![
+            EffectAst::TagAffected {
+                effect: Box::new(EffectAst::subject_verb_target_only(target)),
+                tag,
+            },
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
+                chooser: crate::target::PlayerFilter::You,
+                modes,
+            }),
+        ]));
+    }
     let mode_texts = shape
         .counter_types
         .iter()

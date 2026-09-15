@@ -130,6 +130,23 @@ fn parse_put_counter_count_value(
     tokens: &[OwnedLexToken],
 ) -> Result<(Value, usize), CardTextError> {
     let clause = render_clause_words(tokens);
+    // "if it had one or more counters on it, you may put that number of +1/+1
+    // counters on target creature" (Yuna, Grand Summoner): the count is the
+    // number of counters the triggering permanent had.
+    if crate::grammar::primitives::parse_prefix(
+        tokens,
+        crate::grammar::primitives::phrase(&["that", "number", "of"]),
+    )
+    .is_some()
+    {
+        let triggering =
+            ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::Triggering.bind()).into());
+        return Ok((
+            Value::CountersOn(Box::new(triggering), None)
+                .with_surface_hint(ValueSurfaceHint::TriggeringObjectCountersItHad),
+            3,
+        ));
+    }
     match shapes::parse_counter_count_prefix_shape(tokens) {
         shapes::CounterCountPrefixShape::UpTo { inner_tokens } => {
             let (value, used) = parse_put_counter_count_value(inner_tokens)?;

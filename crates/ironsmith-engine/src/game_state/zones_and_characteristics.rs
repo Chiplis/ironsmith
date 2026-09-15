@@ -3679,6 +3679,40 @@ impl GameState {
     }
 
     /// Check if an object currently has a static ability with the given ID.
+    /// Whether a battlefield static ("You may activate abilities of creatures
+    /// you control as though those creatures had haste") lets this object's
+    /// {T}/{Q} abilities ignore summoning sickness.
+    pub fn activates_abilities_as_though_haste(&self, id: ObjectId) -> bool {
+        let Some(object) = self.object(id) else {
+            return false;
+        };
+        for perm_id in self.battlefield.iter().copied() {
+            let Some(perm) = self.object(perm_id) else {
+                continue;
+            };
+            let controller = self.controller_of(perm);
+            let filter_ctx = self.filter_context_for(controller, Some(perm_id));
+            let matches_grant = |ability: &crate::static_abilities::StaticAbility| {
+                ability.is_active(self, perm_id)
+                    && ability
+                        .activate_abilities_as_though_haste()
+                        .is_some_and(|grant| grant.filter.matches(object, &filter_ctx, self))
+            };
+            let granted = if let Some(chars) = self.calculated_characteristics(perm_id) {
+                chars.static_abilities.iter().any(|ability| matches_grant(ability))
+            } else {
+                perm.abilities.iter().any(|ability| {
+                    matches!(&ability.kind, crate::ability::AbilityKind::Static(static_ability)
+                        if ability.functions_in(&perm.zone) && matches_grant(static_ability))
+                })
+            };
+            if granted {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn current_has_static_ability_id(
         &self,
         id: ObjectId,

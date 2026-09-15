@@ -345,12 +345,14 @@ pub fn parse_sentence_sacrifice_one_or_more(
 /// resolution, with no exile rider.
 fn may_cast_target_graveyard_card_lexed<'a>(
     input: &mut crate::lexer::LexStream<'a>,
-) -> winnow::error::ModalResult<(&'static str, &'a [OwnedLexToken], bool)> {
+) -> winnow::error::ModalResult<(bool, &'static str, &'a [OwnedLexToken], bool)> {
     use winnow::combinator::{alt, opt, peek, repeat_till};
     use winnow::prelude::*;
     use winnow::token::any;
 
-    crate::grammar::primitives::phrase(&["you", "may"]).parse_next(input)?;
+    let may = opt(crate::grammar::primitives::phrase(&["you", "may"]))
+        .parse_next(input)?
+        .is_some();
     let verb = alt((
         crate::grammar::primitives::kw("cast").value("cast"),
         crate::grammar::primitives::kw("play").value("play"),
@@ -372,14 +374,14 @@ fn may_cast_target_graveyard_card_lexed<'a>(
     .parse_next(input)?
     .is_some();
     crate::grammar::primitives::sentence_end().parse_next(input)?;
-    Ok((verb, filter_tokens, without_paying))
+    Ok((may, verb, filter_tokens, without_paying))
 }
 
 pub fn parse_sentence_may_cast_target_graveyard_card(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = clause.tokens();
-    let Some((verb, filter_tokens, without_paying)) = crate::grammar::primitives::probe_all(
+    let Some((may, verb, filter_tokens, without_paying)) = crate::grammar::primitives::probe_all(
         tokens,
         may_cast_target_graveyard_card_lexed,
         "may cast target graveyard card",
@@ -404,6 +406,22 @@ pub fn parse_sentence_may_cast_target_graveyard_card(
     filter.zone = Some(Zone::Graveyard);
     filter.owner = Some(PlayerFilter::You);
     let tag = crate::util::helper_tag_for_tokens(tokens, "graveyard_cast_target");
+    let cast = EffectAst::subject_verb_cast_tagged(
+        tag.clone(),
+        PlayerAst::You,
+        verb == "play",
+        false,
+        without_paying,
+        None,
+    );
+    // Without a leading "you may" the outer player-may reading (if any) supplies the permission.
+    let cast_effect = if may {
+        EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::May {
+            effects: vec![cast],
+        })
+    } else {
+        cast
+    };
     Ok(Some(vec![
         EffectAst::TagAffected {
             effect: Box::new(EffectAst::subject_verb_target_only(TargetAst::Object(
@@ -416,16 +434,71 @@ pub fn parse_sentence_may_cast_target_graveyard_card(
             ))),
             tag: tag.clone(),
         },
-        EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::May {
-            effects: vec![EffectAst::subject_verb_cast_tagged(
-                tag,
-                PlayerAst::You,
-                verb == "play",
-                false,
-                without_paying,
-                None,
-            )],
+        cast_effect,
+    ]))
+}
+
+/// "Each opponent draws a card, then you draw a card for each opponent who
+/// drew a card this way." (Cut a Deal). The second draw counts the opponents
+/// whose iterated draw produced a positive count.
+pub fn parse_sentence_each_opponent_draws_then_you_draw_per_opponent(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = crate::lexer::token_word_refs(clause.tokens());
+    let (opponent_count, your_count) = match words.as_slice() {
+        [
+            "each", "opponent", "draws", opponent_count, opponent_noun, "then", "you", "draw",
+            your_count, your_noun, "for", "each", "opponent", "who", "drew", "a", "card", "this",
+            "way",
+        ] if matches!(*opponent_noun, "card" | "cards") && matches!(*your_noun, "card" | "cards") => {
+            (*opponent_count, *your_count)
+        }
+        _ => return Ok(None),
+    };
+    let parse_count = |word: &str| -> Option<u32> {
+        if matches!(word, "a" | "an") {
+            Some(1)
+        } else {
+            crate::util::parse_number_word_u32(word)
+        }
+    };
+    let (Some(opponent_count), Some(your_count)) =
+        (parse_count(opponent_count), parse_count(your_count))
+    else {
+        return Ok(None);
+    };
+    let opponent_draw = EffectAst::subject_verb(
+        crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
+        PlayerAst::That,
+        crate::cards::builders::SubjectVerbActionAst::LifeResources(
+            crate::cards::builders::LifeResourceActionAst::Draw {
+                count: crate::effect::Value::Fixed(opponent_count as i32),
+            },
+        ),
+    );
+    let per_opponent = crate::effect::Value::PendingEffectMetric {
+        source: ironsmith_core::EffectMetricSource::Outcome,
+        metric: ironsmith_core::EffectMetric::PlayersWithPositiveCount,
+    };
+    let your_draw_count = if your_count == 1 {
+        per_opponent
+    } else {
+        crate::effect::Value::Scaled(Box::new(per_opponent), your_count as i32)
+    };
+    let your_draw = EffectAst::subject_verb(
+        crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
+        PlayerAst::You,
+        crate::cards::builders::SubjectVerbActionAst::LifeResources(
+            crate::cards::builders::LifeResourceActionAst::Draw {
+                count: your_draw_count,
+            },
+        ),
+    );
+    Ok(Some(vec![
+        EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachOpponent {
+            effects: vec![opponent_draw],
         }),
+        your_draw,
     ]))
 }
 

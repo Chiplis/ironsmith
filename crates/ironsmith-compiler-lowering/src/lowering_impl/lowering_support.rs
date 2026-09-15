@@ -2143,6 +2143,14 @@ fn source_sentence_boundary_continues_repeat_process(
                 Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess))
             )
         }
+        Some(EffectAst::Coordination(coordination)) => {
+            coordination.members.last().is_some_and(|member| {
+                matches!(
+                    member.effects.as_slice(),
+                    [EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)]
+                )
+            })
+        }
         _ => false,
     }
 }
@@ -4413,6 +4421,7 @@ pub(crate) fn lower_compiler_static_ability_core(
                         additional_counters_source_filter: spec.additional_counters_source_filter.clone(),
                         added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                         set_base_power_toughness_from_self: spec.set_base_power_toughness_from_self,
+                        conditional_additional_counters: spec.conditional_additional_counters.clone(),
                     },
                     display,
                 },

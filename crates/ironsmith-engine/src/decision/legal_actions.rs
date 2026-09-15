@@ -261,7 +261,30 @@ fn append_graveyard_granted_alternative_cast_actions_for_card(
     card: &crate::object::Object,
     view: &DerivedGameView<'_>,
 ) {
-    let granted_casts = view.granted_alternative_casts_for_card(card_id, Zone::Graveyard, player);
+    append_zone_granted_alternative_cast_actions_for_card(
+        game,
+        actions,
+        player,
+        card_id,
+        card,
+        Zone::Graveyard,
+        view,
+    );
+}
+
+/// Granted alternative casts from a public zone: the graveyard, or the top
+/// card of the library ("If you cast a spell this way, pay life equal to its
+/// mana value rather than pay its mana cost." — Bolas's Citadel).
+fn append_zone_granted_alternative_cast_actions_for_card(
+    game: &GameState,
+    actions: &mut Vec<LegalAction>,
+    player: PlayerId,
+    card_id: ObjectId,
+    card: &crate::object::Object,
+    zone: Zone,
+    view: &DerivedGameView<'_>,
+) {
+    let granted_casts = view.granted_alternative_casts_for_card(card_id, zone, player);
 
     let base_alt_idx = card.alternative_casts.len();
     for (offset, grant) in granted_casts.into_iter().enumerate() {
@@ -282,16 +305,16 @@ fn append_graveyard_granted_alternative_cast_actions_for_card(
                 CastingMethod::GrantedFlashback
             }
             crate::alternative_cast::AlternativeCastingMethod::FromZone {
-                zone: Zone::Graveyard,
+                zone: method_zone,
                 ..
-            } => CastingMethod::PlayFrom {
+            } if *method_zone == zone => CastingMethod::PlayFrom {
                 source: grant.source_id,
-                zone: Zone::Graveyard,
+                zone,
                 use_alternative: Some(base_alt_idx + offset),
             },
-            _ if method.cast_from_zone() == Zone::Graveyard => CastingMethod::PlayFrom {
+            _ if method.cast_from_zone() == zone => CastingMethod::PlayFrom {
                 source: grant.source_id,
-                zone: Zone::Graveyard,
+                zone,
                 use_alternative: Some(base_alt_idx + offset),
             },
             _ => continue,
@@ -317,7 +340,7 @@ fn append_graveyard_granted_alternative_cast_actions_for_card(
 
         actions.push(LegalAction::CastSpell {
             spell_id: card_id,
-            from_zone: Zone::Graveyard,
+            from_zone: zone,
             casting_method,
         });
     }
@@ -450,6 +473,18 @@ fn append_cast_actions_from_zone_for_card(
         );
         append_graveyard_granted_adventure_alternative_cast_actions_for_card(
             game, actions, player, card_id, card, view,
+        );
+    }
+    if zone_has_active_grants && from_zone == Zone::Library && !card.is_land() {
+        // Only the top card reaches this path (see `add_library_cast_actions`).
+        append_zone_granted_alternative_cast_actions_for_card(
+            game,
+            actions,
+            player,
+            card_id,
+            card,
+            Zone::Library,
+            view,
         );
     }
     if zone_has_active_grants {

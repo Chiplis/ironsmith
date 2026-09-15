@@ -175,6 +175,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
+        | Value::GreatestSharedNameCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
         | Value::TotalManaValue(filter)
@@ -213,6 +214,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::ColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => choose_spec_mentions_iterated_player(spec),
         Value::CreaturesDiedThisTurnControlledBy(player)
@@ -329,6 +331,7 @@ pub fn value_contains_pending_effect_metric(value: &Value) -> bool {
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
+        | Value::GreatestSharedNameCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
         | Value::TotalManaValue(filter)
@@ -357,6 +360,7 @@ pub fn value_contains_pending_effect_metric(value: &Value) -> bool {
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::ColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => choose_spec_contains_pending_effect_metric(spec),
         Value::SpellsCastThisTurnMatching { filter, .. }
@@ -434,6 +438,7 @@ pub fn condition_mentions_iterated_player(condition: &Condition) -> bool {
         | PlayerIsMonarch { player }
         | PlayerHasInitiative { player }
         | PlayerHasCitysBlessing { player }
+        | PlayerHasEnduringStory { player }
         | SourceIsRingBearer { player }
         | PlayerRingTemptedThisGameOrMore { player, .. }
         | PlayerCommittedCrimeThisTurn { player }

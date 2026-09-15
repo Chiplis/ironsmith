@@ -93,6 +93,9 @@ struct PermanentObjectView {
     counter_signature: String,
     mana_cost: Option<String>,
     oracle_text: String,
+    /// Surface lines for a changed current ability list. The normal oracle
+    /// text remains the authoritative source when the list is unchanged.
+    abilities: Vec<String>,
     power_toughness: Option<String>,
     counters: Vec<CounterSnapshot>,
 }
@@ -849,6 +852,13 @@ impl SnapshotObjectViewCache {
             .as_ref()
             .map(|chars| chars.compiled_card_text.to_string())
             .unwrap_or_else(|| obj.compiled_card_text.to_string());
+        let abilities =
+            current_ability_surface_texts_for_battlefield(game, obj, current.as_deref());
+        let oracle_text = if abilities.is_empty() {
+            oracle_text
+        } else {
+            abilities.join("\n")
+        };
         let counter_signature = key.counter_signature.clone();
         let view = Arc::new(PermanentObjectView {
             characteristics: current.clone(),
@@ -862,6 +872,7 @@ impl SnapshotObjectViewCache {
             counter_signature,
             mana_cost: obj.mana_cost.as_ref().map(|mc| mc.to_oracle()),
             oracle_text,
+            abilities,
             power_toughness,
             counters: counter_snapshots_for_object(obj),
         });
@@ -1500,6 +1511,72 @@ fn object_characteristic_signature_inner(
     signature
 }
 
+fn current_ability_surface_texts_for_battlefield(
+    game: &GameState,
+    object: &ironsmith::object::Object,
+    current: Option<&ironsmith::continuous::CalculatedCharacteristics>,
+) -> Vec<String> {
+    let Some(current) = current else {
+        return Vec::new();
+    };
+
+    // Keep the compact battlefield snapshot cheap and backwards-compatible
+    // for ordinary cards. Its oracle_text already contains the complete
+    // current text whenever the executable ability list is unchanged.
+    if current.abilities.as_slice() == object.abilities.as_slice() {
+        return Vec::new();
+    }
+
+    let current_lines = current
+        .compiled_card_text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if current_lines.len() == current.abilities.len() {
+        return current_lines;
+    }
+
+    // Ability additions do not rewrite compiled_card_text. Preserve printed
+    // lines from the object or a borrowed source, then render any ability
+    // without a canonical origin through the lightweight runtime surface.
+    current
+        .abilities
+        .iter()
+        .enumerate()
+        .map(|(index, ability)| {
+            current
+                .abilities
+                .origin(index)
+                .and_then(|origin| ability_surface_text_from_origin(game, object, origin))
+                .unwrap_or_else(|| ironsmith::runtime_display::ability_surface_text(ability))
+        })
+        .collect()
+}
+
+fn ability_surface_text_from_origin(
+    game: &GameState,
+    object: &ironsmith::object::Object,
+    origin: &ironsmith::continuous::AbilityOrigin,
+) -> Option<String> {
+    match origin {
+        ironsmith::continuous::AbilityOrigin::Printed(index) => object
+            .compiled_card_text
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .nth(*index)
+            .map(str::to_string),
+        ironsmith::continuous::AbilityOrigin::Borrowed { source, origin, .. } => {
+            game.object(*source).and_then(|source_object| {
+                ability_surface_text_from_origin(game, source_object, origin)
+            })
+        }
+        ironsmith::continuous::AbilityOrigin::Effect { .. } => None,
+    }
+}
+
 pub(super) fn counter_snapshots_for_object(
     obj: &ironsmith::object::Object,
 ) -> Vec<CounterSnapshot> {
@@ -1707,6 +1784,9 @@ fn grouped_battlefield_for_ids(
             let compiled_card_text = representative
                 .map(|view| view.oracle_text.clone())
                 .unwrap_or_default();
+            let abilities = representative
+                .map(|view| view.abilities.clone())
+                .unwrap_or_default();
             let counters = representative
                 .map(|view| view.counters.clone())
                 .unwrap_or_default();
@@ -1723,6 +1803,7 @@ fn grouped_battlefield_for_ids(
                 lane: key.lane.as_str().to_string(),
                 mana_cost,
                 oracle_text: compiled_card_text,
+                abilities,
                 power_toughness,
                 counter_signature: key.counter_signature.clone(),
                 counters,
@@ -1957,6 +2038,7 @@ pub(super) struct PermanentSnapshot {
     pub(super) lane: String,
     pub(super) mana_cost: Option<String>,
     pub(super) oracle_text: String,
+    pub(super) abilities: Vec<String>,
     pub(super) power_toughness: Option<String>,
     pub(super) counter_signature: String,
     pub(super) counters: Vec<CounterSnapshot>,
@@ -2971,7 +3053,8 @@ pub(super) fn build_object_details_snapshot(
         (obj.power(), obj.toughness())
     };
     let counters = counter_snapshots_for_object(obj);
-    let compiled_text = ironsmith::runtime_display::compiled_text_lines(&obj.to_card_definition());
+    let printed_compiled_text =
+        ironsmith::runtime_display::compiled_text_lines(&obj.to_card_definition());
 
     let type_line =
         format_type_line_parts(&current_supertypes, &current_card_types, &current_subtypes);
@@ -2982,11 +3065,27 @@ pub(super) fn build_object_details_snapshot(
         &obj.subtypes,
     );
 
-    let current_abilities = game
-        .current_abilities(id)
-        .unwrap_or_else(|| obj.abilities_vec());
-    let abilities =
-        ironsmith::runtime_display::current_ability_surface_texts(&current_abilities, definition);
+    let current = (obj.zone == Zone::Battlefield)
+        .then(|| game.calculated_characteristics(id))
+        .flatten();
+    let abilities = if let Some(current) = current.as_ref() {
+        current_ability_surface_texts_for_battlefield(game, obj, Some(current))
+    } else {
+        let current_abilities = game
+            .current_abilities(id)
+            .unwrap_or_else(|| obj.abilities_vec());
+        ironsmith::runtime_display::current_ability_surface_texts(&current_abilities, definition)
+    };
+    let oracle_text = if abilities.is_empty() {
+        obj.compiled_card_text.to_string()
+    } else {
+        abilities.join("\n")
+    };
+    let compiled_text = if abilities.is_empty() {
+        printed_compiled_text
+    } else {
+        abilities.clone()
+    };
 
     Some(ObjectDetailsSnapshot {
         id: obj.id.0,
@@ -3000,7 +3099,7 @@ pub(super) fn build_object_details_snapshot(
         type_line_display,
         type_line_badges,
         mana_cost: obj.mana_cost.as_ref().map(|cost| cost.to_oracle()),
-        oracle_text: obj.compiled_card_text.to_string(),
+        oracle_text,
         power,
         toughness,
         loyalty: obj.loyalty(),
@@ -3116,15 +3215,22 @@ fn zone_label(zone: Zone) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ironsmith::ability::{Ability, AbilityKind};
     use ironsmith::alternative_cast::AlternativeCastingMethod;
     use ironsmith::card::{Card, CardBuilder, PowerToughness};
     use ironsmith::cards::tokens::cursed_role_token_definition;
+    use ironsmith::continuous::{ContinuousEffect, EffectTarget, Modification};
+    use ironsmith::costs::Cost;
     use ironsmith::decisions::context::{DecisionContext, SelectObjectsContext, SelectableObject};
+    use ironsmith::effect::Effect;
     use ironsmith::game_state::{GameState, PlayerControlDuration, PlayerControlStart};
     use ironsmith::ids::{CardId, PlayerId};
     use ironsmith::mana::{ManaCost, ManaSymbol};
-    use ironsmith::object::AttachmentTarget;
-    use ironsmith::types::Subtype;
+    use ironsmith::object::{AttachmentTarget, CounterType};
+    use ironsmith::static_abilities::{CopyActivatedAbilities, StaticAbility};
+    use ironsmith::target::{ChooseSpec, ObjectFilter};
+    use ironsmith::types::{CardType, Subtype};
+    use ironsmith::zone::Zone;
     use ironsmith_registry_test::cards::builders::CardDefinitionBuilder;
 
     fn test_bears_card() -> Card {
@@ -3149,6 +3255,177 @@ mod tests {
                     ironsmith::costs::Cost::exile_from_graveyard(2, None),
                 ),
             });
+    }
+
+    #[test]
+    fn battlefield_ability_surface_includes_granted_ability() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let object_id = game.create_object_from_card(&test_bears_card(), alice, Zone::Battlefield);
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                object_id,
+                alice,
+                EffectTarget::Specific(object_id),
+                Modification::AddAbility(StaticAbility::lifelink()),
+            ));
+
+        let object = game.object(object_id).expect("object should exist");
+        let current = game
+            .calculated_characteristics(object_id)
+            .expect("current characteristics should exist");
+
+        assert_eq!(
+            current_ability_surface_texts_for_battlefield(&game, object, Some(&current)),
+            vec!["Lifelink"]
+        );
+
+        let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &HashSet::new());
+        let snapshot = battlefield
+            .iter()
+            .find(|permanent| permanent.id == object_id.0)
+            .expect("expected Bears in battlefield snapshot");
+        let encoded = serde_json::to_value(snapshot).expect("snapshot should serialize");
+        assert_eq!(encoded["abilities"], serde_json::json!(["Lifelink"]));
+    }
+
+    #[test]
+    fn battlefield_snapshot_includes_copied_activated_ability() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let ballista = CardDefinitionBuilder::new(CardId::from_raw(91_001), "Walking Ballista")
+            .card_types(vec![CardType::Artifact, CardType::Creature])
+            .power_toughness(PowerToughness::fixed(0, 0))
+            .oracle_text(
+                "Remove a +1/+1 counter from Walking Ballista: It deals 1 damage to any target.",
+            )
+            .with_ability(Ability::activated(
+                ironsmith::TotalCost::from_cost(Cost::remove_counters(
+                    CounterType::PlusOnePlusOne,
+                    1,
+                )),
+                vec![Effect::deal_damage(1, ChooseSpec::AnyTarget)],
+            ))
+            .build();
+        let ballista_id = game.create_object_from_definition(&ballista, alice, Zone::Exile);
+
+        let recipients = ObjectFilter::creature()
+            .you_control()
+            .with_counter_type(CounterType::PlusOnePlusOne);
+        let exiled_creatures = ObjectFilter::creature()
+            .match_tagged(
+                ironsmith::tag::SOURCE_EXILED_TAG,
+                ironsmith::filter::TaggedOpbjectRelation::IsTaggedObject,
+            )
+            .in_zone(Zone::Exile);
+        let copied = StaticAbility::copy_activated_abilities(
+            CopyActivatedAbilities::new(exiled_creatures)
+                .with_display("Has all activated abilities of exiled creatures".to_string()),
+        );
+        let cauldron = CardDefinitionBuilder::new(CardId::from_raw(91_002), "Agatha's Soul Cauldron")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::static_ability(
+                StaticAbility::grant_object_ability_for_filter(
+                recipients,
+                Ability::static_ability(copied),
+                "Creatures you control with +1/+1 counters have all activated abilities of exiled creature cards".to_string(),
+                ),
+            ))
+            .build();
+        let cauldron_id = game.create_object_from_definition(&cauldron, alice, Zone::Battlefield);
+        game.add_exiled_with_source_link(cauldron_id, ballista_id);
+
+        let yawgmoth_def = ironsmith_registry_test::cards::definitions::yawgmoth_thran_physician();
+        let yawgmoth_id =
+            game.create_object_from_definition(&yawgmoth_def, alice, Zone::Battlefield);
+        game.object_mut(yawgmoth_id)
+            .expect("Yawgmoth should exist")
+            .add_counters(CounterType::PlusOnePlusOne, 1);
+
+        let current = game
+            .calculated_characteristics(yawgmoth_id)
+            .expect("Yawgmoth characteristics should calculate");
+        assert_eq!(game.objects_in_zone(Zone::Exile), vec![ballista_id]);
+        let ballista_current = game
+            .calculated_characteristics(ballista_id)
+            .expect("Ballista characteristics should calculate");
+        assert!(
+            ballista_current
+                .abilities
+                .iter()
+                .any(|ability| matches!(ability.kind, AbilityKind::Activated(_))),
+            "Ballista should have its printed activated ability: {ballista_current:?}"
+        );
+        let copied_activated = current
+            .abilities
+            .iter()
+            .filter(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+            .count();
+        assert!(
+            copied_activated >= 3,
+            "expected Yawgmoth to gain Ballista's activated ability, got {} abilities: {:?}",
+            copied_activated,
+            current
+                .abilities
+                .iter()
+                .map(|ability| match &ability.kind {
+                    AbilityKind::Activated(_) => "activated",
+                    AbilityKind::Triggered(_) => "triggered",
+                    AbilityKind::Static(_) => "static",
+                })
+                .collect::<Vec<_>>()
+        );
+
+        let object = game.object(yawgmoth_id).expect("Yawgmoth should exist");
+        let surface = current_ability_surface_texts_for_battlefield(&game, object, Some(&current));
+        assert!(
+            surface.iter().any(|line| line.contains("damage")),
+            "expected copied Ballista text, got {surface:?}"
+        );
+
+        let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &HashSet::new());
+        let snapshot = battlefield
+            .iter()
+            .find(|permanent| permanent.id == yawgmoth_id.0)
+            .expect("expected Yawgmoth in battlefield snapshot");
+        assert!(
+            snapshot
+                .abilities
+                .iter()
+                .any(|line| line.contains("damage")),
+            "expected copied Ballista ability in battlefield snapshot, got {:?}",
+            snapshot.abilities
+        );
+
+        game.refresh_continuous_state();
+        let refreshed_effects = game.all_continuous_effects();
+        let explicit_refreshed = game
+            .calculated_characteristics_with_effects(yawgmoth_id, &refreshed_effects)
+            .expect("explicit refreshed characteristics should calculate");
+        assert!(
+            explicit_refreshed
+                .abilities
+                .iter()
+                .filter(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+                .count()
+                >= 3,
+            "expected copied ability in explicit refreshed calculation"
+        );
+        let refreshed = game
+            .calculated_characteristics(yawgmoth_id)
+            .expect("Yawgmoth characteristics should calculate after refresh");
+        let refreshed_object = game.object(yawgmoth_id).expect("Yawgmoth should exist");
+        let refreshed_surface = current_ability_surface_texts_for_battlefield(
+            &game,
+            refreshed_object,
+            Some(&refreshed),
+        );
+        assert!(
+            refreshed_surface.iter().any(|line| line.contains("damage")),
+            "expected copied Ballista text after cached refresh, got {refreshed_surface:?}"
+        );
     }
 
     #[test]

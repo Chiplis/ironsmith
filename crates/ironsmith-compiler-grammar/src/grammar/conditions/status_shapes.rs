@@ -119,6 +119,9 @@ pub(super) fn parse_player_achievement_tail(
     {
         return Some(PlayerAchievementAst::CitysBlessing);
     }
+    if parse_complete(tokens, parse_enduring_story) {
+        return Some(PlayerAchievementAst::EnduringStory);
+    }
     if parse_complete(tokens, parse_full_party) {
         return Some(PlayerAchievementAst::FullParty);
     }
@@ -342,6 +345,13 @@ fn parse_citys_blessing_for_each(input: &mut LexStream<'_>) -> WResult<()> {
     parse_citys_blessing(input)?;
     primitives::phrase(&["for", "each"]).parse_next(input)?;
     take_remaining(input).map(|_| ())
+}
+
+fn parse_enduring_story(input: &mut LexStream<'_>) -> WResult<()> {
+    opt(alt((primitives::kw("an"), primitives::kw("the")))).parse_next(input)?;
+    primitives::phrase(&["enduring", "story"])
+        .void()
+        .parse_next(input)
 }
 
 fn parse_full_party(input: &mut LexStream<'_>) -> WResult<()> {

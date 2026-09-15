@@ -441,10 +441,19 @@ fn push_enter_as_copy_effects_for_spec(
                     enters_tapped: spec.enters_tapped_if_chosen,
                     copy_duration: spec.copy_duration.clone(),
                     linked_exile_objects: Vec::new(),
-                    additional_counters: if copy_condition_matches(candidate, &spec.additional_counters_source_filter) {
-                        spec.additional_counters.clone()
-                    } else {
-                        Vec::new()
+                    additional_counters: {
+                        let mut counters =
+                            if copy_condition_matches(candidate, &spec.additional_counters_source_filter) {
+                                spec.additional_counters.clone()
+                            } else {
+                                Vec::new()
+                            };
+                        for conditional in &spec.conditional_additional_counters {
+                            if copy_condition_matches(candidate, &Some(conditional.source_filter.clone())) {
+                                counters.push((conditional.counter_type, conditional.count));
+                            }
+                        }
+                        counters
                     },
                     name_override: spec.name_override.clone(),
                     added_colors: spec.added_colors,
@@ -5191,6 +5200,7 @@ mod tests {
                 additional_counters_source_filter: None,
                 added_abilities_source_filter: None,
                 set_base_power_toughness_from_self: false,
+                conditional_additional_counters: Vec::new(),
             },
             "Creatures enter as a copy of this creature.".to_string(),
         )
@@ -5335,6 +5345,7 @@ mod tests {
                         additional_counters_source_filter: None,
                         added_abilities_source_filter: None,
                         set_base_power_toughness_from_self: false,
+                        conditional_additional_counters: Vec::new(),
                     },
                     "This permanent enters as a copy of a creature.".to_string(),
                 ),

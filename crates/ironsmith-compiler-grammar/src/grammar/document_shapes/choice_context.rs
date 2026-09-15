@@ -28,6 +28,9 @@ fn case_label(input: &mut LexStream<'_>) -> WResult<CaseLabelKind> {
 }
 
 fn chosen_option_context(input: &mut LexStream<'_>) -> WResult<ChosenOptionContext> {
+    // A bulleted option label ("• Mardu") names the same chosen option.
+    winnow::combinator::opt(primitives::token_kind(crate::lexer::TokenKind::Bullet))
+        .parse_next(input)?;
     let words = winnow::combinator::repeat(1.., primitives::word_parser_text)
         .fold(String::new, |mut label, word| {
             if !label.is_empty() {

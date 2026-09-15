@@ -61,6 +61,9 @@ pub enum StaticAbilityId {
     DoctorsCompanion,
     Assist,
     Ascend,
+    /// "Storied": if you control three or more artifacts, legendaries, and/or
+    /// Sagas, you have an enduring story for the rest of the game.
+    Storied,
     SplitSecond,
     Rebound,
     Cascade,
@@ -90,6 +93,8 @@ pub enum StaticAbilityId {
     CantBeBlockedExceptByNOrMore,
     CanAttackAsThoughNoDefender,
     CanAttackAsThoughHaste,
+    /// "You may activate abilities of <objects> as though those creatures had haste."
+    ActivateAbilitiesAsThoughHaste,
     MustAttack,
     GoadedBySourceController,
     MustAttackAttachedController,
@@ -392,6 +397,7 @@ impl StaticAbilityId {
             | DoctorsCompanion
             | Assist
             | Ascend
+            | Storied
             | SplitSecond
             | Rebound
             | Cascade
@@ -421,6 +427,7 @@ impl StaticAbilityId {
             | CantBeBlockedExceptByNOrMore
             | CanAttackAsThoughNoDefender
             | CanAttackAsThoughHaste
+            | ActivateAbilitiesAsThoughHaste
             | MustAttack
             | GoadedBySourceController
             | MustAttackAttachedController
@@ -798,6 +805,8 @@ impl StaticAbilityId {
                 | CantBeBlockedWhileDefendingPlayerControlsMostCreatures
                 | CanAttackAsThoughNoDefender
                 | CanAttackAsThoughHaste
+                | ActivateAbilitiesAsThoughHaste
+            | ActivateAbilitiesAsThoughHaste
                 | MustAttack
                 | MustBlock
                 | CantAttack

@@ -1683,7 +1683,19 @@ fn rewrite_repeat_process(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
         Some(EffectAst::Coordinated { effects, .. })
             if matches!(effects.last(), Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)))
     );
-    if !marker_is_direct && !marker_is_coordinated {
+    // "put a loyalty counter on Grist and repeat this process" arrives as a
+    // planned coordination whose last member is the bare repeat marker.
+    let marker_is_coordination_member = matches!(
+        tail_effects.last(),
+        Some(EffectAst::Coordination(coordination))
+            if coordination.members.last().is_some_and(|member| {
+                matches!(
+                    member.effects.as_slice(),
+                    [EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)]
+                )
+            })
+    );
+    if !marker_is_direct && !marker_is_coordinated && !marker_is_coordination_member {
         return None;
     }
     // In "<action> unless <player> pays ... and repeat this process", paying is
@@ -1718,6 +1730,15 @@ fn rewrite_repeat_process(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
         effects.pop();
     } else if let Some(EffectAst::Coordinated { effects, .. }) = effects.last_mut() {
         effects.pop();
+    } else if let Some(EffectAst::Coordination(coordination)) = effects.last_mut() {
+        coordination.members.pop();
+        coordination.boundaries.pop();
+        if let [single] = coordination.members.as_mut_slice() {
+            // A one-member coordination is just its effects.
+            let remaining = std::mem::take(&mut single.effects);
+            effects.pop();
+            effects.extend(remaining);
+        }
     }
     if effects.is_empty() {
         body.pop();

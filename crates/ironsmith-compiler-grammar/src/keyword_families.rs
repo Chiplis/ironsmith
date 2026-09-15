@@ -271,6 +271,12 @@ mod spell_keywords {
             parse: structured_keyword_parser!(registry::parse_squad),
         },
         KeywordLineRule {
+            cst_kind: super::super::recognized_document::KeywordLineKind::Teamwork,
+            hints: &[KeywordDispatchHint::Teamwork],
+            id: RuleId::new("parse_teamwork"),
+            parse: structured_keyword_parser!(registry::parse_teamwork),
+        },
+        KeywordLineRule {
             cst_kind: super::super::recognized_document::KeywordLineKind::Splice,
             hints: &[KeywordDispatchHint::Splice],
             id: RuleId::new("parse_splice"),

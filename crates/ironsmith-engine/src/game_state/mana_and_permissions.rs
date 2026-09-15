@@ -136,7 +136,9 @@ impl GameState {
         // happens only after continuous effects have been reapplied. Earning
         // the blessing can itself turn on conditional continuous abilities,
         // so refresh those effects once more when a designation is granted.
-        if self.grant_citys_blessings_from_permanent_ascend() {
+        if self.grant_citys_blessings_from_permanent_ascend()
+            | self.grant_enduring_stories_from_permanent_storied()
+        {
             self.update_static_ability_effects();
             self.reconcile_continuous_control_changes();
             self.update_replacement_effects();
@@ -174,6 +176,52 @@ impl GameState {
         for id in changed {
             self.set_summoning_sick(id);
         }
+    }
+
+    /// Storied: a controller of a Storied permanent who controls three or more
+    /// artifacts, legendaries, and/or Sagas gets an enduring story.
+    fn grant_enduring_stories_from_permanent_storied(&mut self) -> bool {
+        let storied_controllers = self
+            .battlefield
+            .iter()
+            .copied()
+            .filter(|&object_id| {
+                self.current_has_static_ability_id(
+                    object_id,
+                    crate::static_abilities::StaticAbilityId::Storied,
+                )
+            })
+            .filter_map(|object_id| self.controller_of_id(object_id))
+            .collect::<HashSet<_>>();
+
+        let newly_storied = storied_controllers
+            .into_iter()
+            .filter(|&player| {
+                !self.has_enduring_story(player)
+                    && self
+                        .battlefield
+                        .iter()
+                        .copied()
+                        .filter(|&object_id| self.controller_of_id(object_id) == Some(player))
+                        .filter(|&object_id| {
+                            self.current_card_types(object_id).is_some_and(|types| {
+                                types.contains(&crate::types::CardType::Artifact)
+                            }) || self.current_has_supertype(
+                                object_id,
+                                crate::types::Supertype::Legendary,
+                            ) || self.current_subtypes(object_id).is_some_and(|subtypes| {
+                                subtypes.contains(&crate::types::Subtype::Saga)
+                            })
+                        })
+                        .count()
+                        >= 3
+            })
+            .collect::<Vec<_>>();
+
+        for player in &newly_storied {
+            self.grant_enduring_story(*player);
+        }
+        !newly_storied.is_empty()
     }
 
     fn grant_citys_blessings_from_permanent_ascend(&mut self) -> bool {
@@ -1032,6 +1080,17 @@ impl GameState {
         });
         match predicate {
             crate::ability::ManaPaymentPredicate::Any => true,
+            // Pip-level predicates are decided in `mana_unit_can_pay`; at the
+            // transaction level both the predicate and its negation pass.
+            crate::ability::ManaPaymentPredicate::GenericManaCost => true,
+            crate::ability::ManaPaymentPredicate::Not(inner)
+                if matches!(
+                    inner.as_ref(),
+                    crate::ability::ManaPaymentPredicate::GenericManaCost
+                ) =>
+            {
+                true
+            }
             crate::ability::ManaPaymentPredicate::Purpose(purpose) => {
                 reason.mana_payment_purpose() == *purpose
             }
@@ -1472,6 +1531,39 @@ impl GameState {
         pips
     }
 
+    /// "This mana can't be spent to pay generic mana costs" (Jegantha, the
+    /// Wellspring): a restricted unit whose transaction predicate forbids
+    /// paying a generic pip.
+    fn mana_unit_forbids_generic_payment(&self, payer: PlayerId, unit: &PayableManaUnit) -> bool {
+        fn forbids_generic(predicate: &crate::ability::ManaPaymentPredicate) -> bool {
+            match predicate {
+                crate::ability::ManaPaymentPredicate::Not(inner) => matches!(
+                    inner.as_ref(),
+                    crate::ability::ManaPaymentPredicate::GenericManaCost
+                ),
+                crate::ability::ManaPaymentPredicate::All(parts) => {
+                    parts.iter().any(forbids_generic)
+                }
+                _ => false,
+            }
+        }
+        let Some(index) = unit.restricted_index else {
+            return false;
+        };
+        let Some(player) = self.player(payer) else {
+            return false;
+        };
+        player.restricted_mana.get(index).is_some_and(|restricted| {
+            restricted.restrictions.iter().any(|restriction| match restriction {
+                crate::ability::ManaUsageRestriction::PaymentTransaction {
+                    restriction: Some(predicate),
+                    ..
+                } => forbids_generic(&*predicate),
+                _ => false,
+            })
+        })
+    }
+
     fn mana_unit_can_pay(
         &self,
         payer: PlayerId,
@@ -1484,7 +1576,7 @@ impl GameState {
 
         match required {
             ManaSymbol::Snow => unit.from_snow_source,
-            ManaSymbol::Generic(_) => true,
+            ManaSymbol::Generic(_) => !self.mana_unit_forbids_generic_payment(payer, unit),
             ManaSymbol::White
             | ManaSymbol::Blue
             | ManaSymbol::Black
@@ -2755,6 +2847,20 @@ impl GameState {
     /// Permanently grant a player the city's blessing designation.
     pub fn grant_citys_blessing(&mut self, player: PlayerId) -> bool {
         let granted = self.citys_blessing.insert(player);
+        if granted {
+            self.mark_continuous_state_dirty();
+        }
+        granted
+    }
+
+    /// Returns true if the given player has an enduring story (Storied).
+    pub fn has_enduring_story(&self, player: PlayerId) -> bool {
+        self.enduring_story.contains(&player)
+    }
+
+    /// Permanently grant a player an enduring story.
+    pub fn grant_enduring_story(&mut self, player: PlayerId) -> bool {
+        let granted = self.enduring_story.insert(player);
         if granted {
             self.mark_continuous_state_dirty();
         }

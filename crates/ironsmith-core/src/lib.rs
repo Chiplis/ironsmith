@@ -210,6 +210,7 @@ pub use spell_cost_condition_model::ThisSpellCostCondition;
 pub use spell_timing_model::ThisSpellCastTiming;
 pub use static_ability_id::StaticAbilityId;
 pub use static_ability_model::{
+    ConditionalAdditionalCounters,
     AbilityLossMode, ActivatedAbilityCostCondition, AdditionalTokenKind, Anthem,
     AnthemReplacementSurface, AttachedAbilityGrant, AttachedChosenLandwalkGrant,
     AttackCostCondition, AttackingGroupAttackCondition, CantAttackUnlessConditionSpec,

@@ -2465,6 +2465,15 @@ fn try_parse_labeled_line_dispatch(
                 labeled_static = recognize_static_line(line)?;
             }
             if let Some(mut static_line) = labeled_static {
+                // "• Mardu — If a creature attacking causes …" (Windcrag Siege):
+                // a bulleted option label inside a named-option choice block
+                // scopes the static ability to that chosen option.
+                if labeled_choice_block_has_peer(&preprocessed.items, idx)
+                    && labeled_choice_block_has_named_option_header(&preprocessed.items, idx)
+                {
+                    static_line.chosen_option =
+                        document_grammar::parse_chosen_option_context_tokens(label_tokens);
+                }
                 static_line
                     .info
                     .semantic_facts

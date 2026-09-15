@@ -3029,6 +3029,19 @@ pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
                     format!("{label} {cost_text}")
                 }
             }
+            OptionalCostKind::Teamwork => {
+                if let Some([single]) = cost.cost.as_all()
+                    && let Some(crew) = single
+                        .effect_ref()
+                        .and_then(|effect| effect.downcast_ref::<crate::effects::CrewCostEffect>())
+                {
+                    format!("{label} {}", crew.required_power)
+                } else if cost_text.trim().is_empty() {
+                    label.to_string()
+                } else {
+                    format!("{label}—{}", cost_text.trim_end_matches('.'))
+                }
+            }
             OptionalCostKind::Squad => {
                 if cost_text.trim().is_empty() {
                     label.to_string()

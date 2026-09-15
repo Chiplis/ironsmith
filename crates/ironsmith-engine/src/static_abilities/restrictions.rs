@@ -355,6 +355,26 @@ impl StaticAbilityKind for Cascade {
     }
 }
 
+/// "Storied" on a permanent: if its controller controls three or more
+/// artifacts, legendaries, and/or Sagas, they have an enduring story for the
+/// rest of the game. Checked during continuous-state refresh like Ascend.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Storied;
+
+impl StaticAbilityKind for Storied {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Storied
+    }
+
+    fn display(&self) -> String {
+        "Storied".to_string()
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+}
+
 /// "Ascend" on a permanent.
 ///
 /// The designation check is performed during continuous-state refresh after

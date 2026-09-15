@@ -3377,6 +3377,12 @@ fn evaluate_condition_in_context(
             };
             Ok(game.has_citys_blessing(player_id))
         }
+        Condition::PlayerHasEnduringStory { player } => {
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
+            Ok(game.has_enduring_story(player_id))
+        }
         Condition::PlayerCommittedCrimeThisTurn { player } => {
             let Some(player_id) = ctx.resolve_player(game, player)? else {
                 return Ok(false);

@@ -676,6 +676,7 @@ fn value_object_target_spec(value: &Value) -> Option<&ChooseSpec> {
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::ColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => {
             (spec.is_target() && choose_spec_targets_object(spec)).then_some(spec.as_ref())
@@ -6489,6 +6490,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
+        | Value::GreatestSharedNameCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
         | Value::TotalManaValue(filter)
@@ -6513,6 +6515,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::ColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => bind_unresolved_it_in_choose_spec(spec, seed_tag),
         _ => 0,

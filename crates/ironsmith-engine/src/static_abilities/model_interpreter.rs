@@ -41,6 +41,7 @@ pub struct StaticAbilityModelInterpreter {
     activated_ability_cost_increase: Option<super::ActivatedAbilityCostIncrease>,
     cost_increase: Option<super::CostIncrease>,
     cost_increase_life: Option<super::CostIncreaseLife>,
+    activate_abilities_as_though_haste: Option<super::ActivateAbilitiesAsThoughHaste>,
     cost_reduction_mana_cost: Option<super::CostReductionManaCost>,
     cost_increase_mana_cost: Option<super::CostIncreaseManaCost>,
     cost_increase_mana_cost_per_additional_target:
@@ -139,6 +140,8 @@ impl StaticAbilityModelInterpreter {
         let activated_ability_cost_increase = Self::cached_activated_ability_cost_increase(&model);
         let cost_increase = Self::cached_cost_increase(&model);
         let cost_increase_life = Self::cached_cost_increase_life(&model);
+        let activate_abilities_as_though_haste =
+            Self::cached_activate_abilities_as_though_haste(&model);
         let cost_reduction_mana_cost = Self::cached_cost_reduction_mana_cost(&model);
         let cost_increase_mana_cost = Self::cached_cost_increase_mana_cost(&model);
         let cost_increase_mana_cost_per_additional_target =
@@ -160,6 +163,7 @@ impl StaticAbilityModelInterpreter {
             activated_ability_cost_increase,
             cost_increase,
             cost_increase_life,
+            activate_abilities_as_though_haste,
             cost_reduction_mana_cost,
             cost_increase_mana_cost,
             cost_increase_mana_cost_per_additional_target,
@@ -467,6 +471,7 @@ impl StaticAbilityModelInterpreter {
                     set_base_power_toughness: spec.set_base_power_toughness,
                     additional_counters: spec.additional_counters.clone(),
                     additional_counters_source_filter: spec.additional_counters_source_filter.clone(),
+                    conditional_additional_counters: spec.conditional_additional_counters.clone(),
                     added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                     set_base_power_toughness_from_self: spec.set_base_power_toughness_from_self,
                 })
@@ -653,6 +658,21 @@ impl StaticAbilityModelInterpreter {
                 Self::cached_activated_ability_cost_increase(ability)
                     .map(|increase| increase.with_condition(condition.clone()))
             }
+            _ => None,
+        }
+    }
+
+    fn cached_activate_abilities_as_though_haste(
+        model: &CompiledStaticAbility,
+    ) -> Option<super::ActivateAbilitiesAsThoughHaste> {
+        match &model.payload {
+            ironsmith_core::StaticAbilityPayload::ActivateAbilitiesAsThoughHaste {
+                filter,
+                display,
+            } => Some(super::ActivateAbilitiesAsThoughHaste::new(
+                filter.clone(),
+                display.clone(),
+            )),
             _ => None,
         }
     }
@@ -1560,6 +1580,7 @@ impl StaticAbilityModelInterpreter {
                         set_base_power_toughness: spec.set_base_power_toughness,
                         additional_counters: spec.additional_counters.clone(),
                         additional_counters_source_filter: spec.additional_counters_source_filter.clone(),
+                        conditional_additional_counters: spec.conditional_additional_counters.clone(),
                         added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                         set_base_power_toughness_from_self: spec
                             .set_base_power_toughness_from_self,
@@ -3044,6 +3065,12 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn cost_increase_life(&self) -> Option<&super::CostIncreaseLife> {
         self.cost_increase_life.as_ref()
+    }
+
+    fn activate_abilities_as_though_haste(
+        &self,
+    ) -> Option<&super::ActivateAbilitiesAsThoughHaste> {
+        self.activate_abilities_as_though_haste.as_ref()
     }
 
     fn cost_reduction_mana_cost(&self) -> Option<&super::CostReductionManaCost> {

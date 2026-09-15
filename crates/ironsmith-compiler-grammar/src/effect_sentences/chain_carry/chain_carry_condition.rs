@@ -150,6 +150,7 @@ pub(super) fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool 
             | PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch { .. })
             | PredicateAst::Player(PlayerPredicateAst::PlayerHasInitiative { .. })
             | PredicateAst::Player(PlayerPredicateAst::PlayerHasCitysBlessing { .. })
+            | PredicateAst::Player(PlayerPredicateAst::PlayerHasEnduringStory { .. })
             | PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreCardsInHandThanYou { .. })
             | PredicateAst::Player(PlayerPredicateAst::PlayerHasCardTypesInGraveyardOrMore { .. })
             | PredicateAst::YouControlMoreCreaturesThanTargetSpellController

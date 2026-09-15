@@ -1052,6 +1052,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// "You may activate abilities of <objects> as though those creatures had haste."
+    fn activate_abilities_as_though_haste(&self) -> Option<&ActivateAbilitiesAsThoughHaste> {
+        None
+    }
+
     /// Get cost reduction details if this reduces specific mana symbols (e.g., "{B} less").
     fn cost_reduction_mana_cost(&self) -> Option<&CostReductionManaCost> {
         None
@@ -1326,6 +1331,8 @@ pub struct EnterAsCopyAsEntersSpec {
     pub additional_counters_source_filter: Option<crate::target::ObjectFilter>,
     pub added_abilities_source_filter: Option<crate::target::ObjectFilter>,
     pub set_base_power_toughness_from_self: bool,
+    /// Counters placed only when the chosen copy source matches the entry's filter.
+    pub conditional_additional_counters: Vec<ironsmith_core::ConditionalAdditionalCounters>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2056,6 +2063,10 @@ impl StaticAbility {
         self.0.cost_increase_life()
     }
 
+    pub fn activate_abilities_as_though_haste(&self) -> Option<&ActivateAbilitiesAsThoughHaste> {
+        self.0.activate_abilities_as_though_haste()
+    }
+
     pub fn cost_reduction_mana_cost(&self) -> Option<&CostReductionManaCost> {
         self.0.cost_reduction_mana_cost()
     }
@@ -2336,6 +2347,10 @@ impl StaticAbility {
 
     pub fn ascend() -> Self {
         Self::new(Ascend)
+    }
+
+    pub fn storied() -> Self {
+        Self::new(Storied)
     }
 
     pub fn split_second() -> Self {

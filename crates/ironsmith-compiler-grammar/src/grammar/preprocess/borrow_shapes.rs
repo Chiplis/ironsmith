@@ -259,6 +259,20 @@ pub fn parse_borrow_static_condition_surface_tokens(
         let verb_index = ability_start.saturating_sub(1);
         if matches!(word_refs.get(verb_index), Some(&"has" | &"have"))
             && permission_shapes::exact_words(word_refs.get(ability_start..)?, &ability_words)
+            // The subject must be one noun phrase. A clause boundary or a
+            // second verb ("as long as Kaito has one or more loyalty counters
+            // on him, he's a 3/4 Ninja creature and has hexproof") is not a
+            // borrowed-ability condition.
+            && !word_refs[..verb_index].iter().any(|word| {
+                matches!(
+                    *word,
+                    "has" | "have" | "is" | "are" | "it's" | "its" | "he's" | "she's" | "and"
+                )
+            })
+            && !tokens
+                .get(words.token_span_for_words(0, verb_index)?)?
+                .iter()
+                .any(OwnedLexToken::is_comma)
         {
             let subject_range = words.token_span_for_words(0, verb_index)?;
             let subject = render_token_slice(tokens.get(subject_range)?)

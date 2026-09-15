@@ -964,6 +964,20 @@ pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond, ICond = Condition> {
     #[cfg_attr(feature = "serde", serde(default))]
     pub added_abilities_source_filter: Option<ObjectFilter>,
     pub set_base_power_toughness_from_self: bool,
+    /// Extra counters placed only when the chosen copy source matches the
+    /// entry's filter ("it enters with an additional +1/+1 counter on it if
+    /// it's a creature, … loyalty counter … if it's a planeswalker").
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub conditional_additional_counters: Vec<ConditionalAdditionalCounters>,
+}
+
+/// One conditional counter batch for an enter-as-copy replacement.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct ConditionalAdditionalCounters {
+    pub counter_type: crate::CounterType,
+    pub count: u32,
+    pub source_filter: ObjectFilter,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

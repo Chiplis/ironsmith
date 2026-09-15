@@ -2308,22 +2308,49 @@ fn try_parse_player_attack_with_one_or_more_lexed(
         return Ok(None);
     }
     let words = crate::lexer::token_word_refs(tokens);
-    if words.len() <= 6
-        || !crate::word_primitives::parse_any_sequence_prefix(
-            &words,
-            &[
-                &["you", "attack", "with", "one", "or", "more"],
-                &["you", "attacks", "with", "one", "or", "more"],
-            ],
-        )
+    // "<player> attack(s) with [one or more] <plural objects>": the player
+    // subject may be "you" or "an opponent" (Mangara, the Diplomat: "Whenever
+    // an opponent attacks with creatures"). Aggregate shapes ("with total
+    // power …") belong to the aggregate reading.
+    let Some(attack_word) = crate::slice_primitives::select_position(&words, |word| {
+        matches!(*word, "attack" | "attacks")
+    }) else {
+        return Ok(None);
+    };
+    if words.get(attack_word + 1) != Some(&"with")
+        || crate::word_primitives::contains_word(&words, "total")
     {
         return Ok(None);
     }
-    let Some(filter_start) = trigger_word_token_start(tokens, 6) else {
+    let Some(player) =
+        crate::activation_and_restrictions::trigger_subject_filters::parse_trigger_subject_player_filter(
+            &words[..attack_word],
+        )
+    else {
         return Ok(None);
     };
-    let mut filter = parse_object_filter_lexed(&tokens[filter_start..], false)?;
-    filter.controller = Some(PlayerFilter::You);
+    let mut filter_word = attack_word + 2;
+    let explicit_one_or_more =
+        words.get(filter_word..filter_word + 3) == Some(["one", "or", "more"].as_slice());
+    if explicit_one_or_more {
+        filter_word += 3;
+    }
+    if filter_word >= words.len() {
+        return Ok(None);
+    }
+    let Some(filter_start) = trigger_word_token_start(tokens, filter_word) else {
+        return Ok(None);
+    };
+    let plural_noun = words
+        .last()
+        .is_some_and(|word| crate::word_primitives::strip_word_suffix(word, "s").is_some());
+    if !explicit_one_or_more && !plural_noun {
+        return Ok(None);
+    }
+    let Ok(mut filter) = parse_object_filter_lexed(&tokens[filter_start..], false) else {
+        return Ok(None);
+    };
+    filter.controller = Some(player);
     filter.set_union_one_or_more(true);
     Ok(Some(apply_leading_trigger_intro_surface(
         TriggerSpec::AttacksOneOrMore(filter),

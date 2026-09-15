@@ -3383,6 +3383,12 @@ impl CardDefinitionBuilder {
         })
     }
 
+    /// Add storied ("If you control three or more artifacts, legendaries,
+    /// and/or Sagas, you have an enduring story for the rest of the game.").
+    pub fn storied(self) -> Self {
+        self.with_ability(Ability::static_ability(StaticAbility::storied()))
+    }
+
     /// Add ascend.
     ///
     /// Ascend means "If you control ten or more permanents, you get the city's blessing

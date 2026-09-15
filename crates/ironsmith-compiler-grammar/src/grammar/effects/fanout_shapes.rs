@@ -732,6 +732,20 @@ pub fn parse_damage_part_shape(
     require_each: bool,
 ) -> Option<DamagePartShape> {
     let tokens = strip_trailing_damage_noise(tokens);
+    // "3 damage to each of up to two other targets" (Drakuseth, Maw of
+    // Flames): "each of" distributes over a counted target set, which the
+    // target grammar reads directly.
+    if let Some(((), rest)) =
+        primitives::parse_prefix(&tokens, primitives::phrase(&["each", "of"]).void())
+        && (contains_word(rest, "target") || contains_word(rest, "targets"))
+    {
+        let rest = trimmed(rest);
+        let (target_tokens, controller) = strip_controller_tail(rest);
+        return (!target_tokens.is_empty()).then_some(DamagePartShape::TargetTokens {
+            tokens: target_tokens,
+            controller,
+        });
+    }
     if let Some(((), rest)) = primitives::parse_prefix(
         &tokens,
         alt((primitives::kw("each"), primitives::kw("all"))).void(),
@@ -747,7 +761,7 @@ pub fn parse_damage_part_shape(
     if exact_any(&tokens, &[&["opponent"], &["opponents"]]) {
         return Some(DamagePartShape::TargetOpponent(tokens));
     }
-    if !contains_word(&tokens, "target") {
+    if !contains_word(&tokens, "target") && !contains_word(&tokens, "targets") {
         return None;
     }
     let (target_tokens, controller) = strip_controller_tail(&tokens);

@@ -177,6 +177,24 @@ pub(super) fn parse_static_line_impl(
         special_shape,
         Some(semantic_grammar::StaticSpecialLineShape::FirstEquipCostAlternative)
     ) {
+        if let Some(prefix) =
+            crate::grammar::abilities::split_as_long_as_condition_prefix_lexed(parse_tokens)
+        {
+            let condition =
+                crate::keyword_static::parse_static_condition_clause(prefix.condition_tokens)?;
+            let display = capitalize_first_equip_cost_alternative_display(prefix.remainder_tokens);
+            return wrap_chosen_option_static_chunk(
+                LineAst::StaticAbilities(vec![
+                    crate::cards::builders::StaticAbilityAst::ConditionalStaticAbility {
+                        ability: Box::new(crate::cards::builders::StaticAbilityAst::Static(
+                            StaticAbility::first_equip_cost_alternative(display),
+                        )),
+                        condition,
+                    },
+                ]),
+                chosen_option,
+            );
+        }
         let display = capitalize_first_equip_cost_alternative_display(parse_tokens);
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::first_equip_cost_alternative(display).into()),
@@ -189,6 +207,24 @@ pub(super) fn parse_static_line_impl(
     ) {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::equip_abilities_any_time().into()),
+            chosen_option,
+        );
+    }
+    if matches!(
+        special_shape,
+        Some(semantic_grammar::StaticSpecialLineShape::EquipAtInstantSpeedDuringYourTurn)
+    ) {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbilities(vec![
+                crate::cards::builders::StaticAbilityAst::ConditionalStaticAbility {
+                    ability: Box::new(crate::cards::builders::StaticAbilityAst::Static(
+                        StaticAbility::equip_abilities_any_time(),
+                    )),
+                    condition: crate::cards::builders::PredicateAst::ActivationTiming(
+                        crate::ability::ActivationTiming::DuringYourTurn,
+                    ),
+                },
+            ]),
             chosen_option,
         );
     }

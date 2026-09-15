@@ -781,9 +781,30 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
         above_base = true;
         filter_tokens = stripped.tokens();
     }
+    // "eight or more artifacts with the same name as one another" (Mechanized
+    // Production) counts the largest same-name group, not all matching objects.
+    const SAME_NAME_GROUP_SUFFIX: &[&str] =
+        &["with", "the", "same", "name", "as", "one", "another"];
+    let mut same_name_group = false;
+    let group_clause = LexedClause::new(filter_tokens);
+    let group_stripped = group_clause.without_trailing_phrase(SAME_NAME_GROUP_SUFFIX);
+    if group_stripped.tokens().len() != filter_tokens.len() {
+        same_name_group = true;
+        filter_tokens = group_stripped.tokens();
+    }
     let mut filter = parse_object_filter(filter_tokens, false)?;
     filter.controller = Some(controller);
     filter.power_greater_than_base_power |= above_base;
+    if same_name_group {
+        let Some(count) = comparison_to_at_least_threshold(&comparison) else {
+            return Ok(None);
+        };
+        return Ok(Some(PredicateAst::ValueComparison {
+            left: Value::GreatestSharedNameCount(filter),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count as i32),
+        }));
+    }
 
     let authored_exactly = tail
         .tokens()

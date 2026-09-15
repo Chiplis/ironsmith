@@ -19900,6 +19900,13 @@ pub(super) fn describe_resolution_program(
     let mut rendered_segments = Vec::new();
     let mut skipped_segments = 0usize;
     for (segment_index, segment) in program.segments.iter().enumerate() {
+        if std::env::var_os("IRONSMITH_TEXT_TRACE").is_some() {
+            eprintln!(
+                "[text-trace] segment {segment_index}: {} default effects, {} replacements",
+                segment.default_effects.len(),
+                segment.self_replacements.len()
+            );
+        }
         if skipped_segments > 0 {
             skipped_segments -= 1;
             continue;

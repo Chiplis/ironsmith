@@ -2370,6 +2370,12 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             }
             _ => "as long as that player has the city's blessing".to_string(),
         },
+        crate::ConditionExpr::PlayerHasEnduringStory { player } => match player {
+            crate::target::PlayerFilter::You => {
+                "as long as you have an enduring story".to_string()
+            }
+            _ => "as long as that player has an enduring story".to_string(),
+        },
         crate::ConditionExpr::ActivationTiming(
             crate::ability::ActivationTiming::DuringYourTurn,
         ) => "during your turn".to_string(),

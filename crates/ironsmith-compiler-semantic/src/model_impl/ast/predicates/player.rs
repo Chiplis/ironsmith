@@ -87,6 +87,9 @@ pub enum PlayerPredicateAst {
     PlayerHasCitysBlessing {
         player: PlayerAst,
     },
+    PlayerHasEnduringStory {
+        player: PlayerAst,
+    },
     PlayerRingTemptedThisGameOrMore {
         player: PlayerAst,
         count: u32,

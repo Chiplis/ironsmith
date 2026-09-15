@@ -1665,6 +1665,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::CountScaled(_, _)
         | Value::GreatestCount(_)
         | Value::GreatestSharedCreatureTypeCount(_)
+        | Value::GreatestSharedNameCount(_)
         | Value::TotalManaValue(_)
         | Value::GreatestManaValue(_)
         | Value::LeastManaValue(_)
@@ -1696,6 +1697,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::UnspentMana(_)
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::ManaValueOf(_)
+        | Value::ColorsOf(_)
         | Value::ManaSymbolsInManaCostOf { .. }
         | Value::NameStickerCharacterCountOnSource { .. }
         | Value::LifeTotal(_)
@@ -1725,6 +1727,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::SpellsCastThisTurn(_)
         | Value::SpellsCastBeforeThisTurn(_)
         | Value::CommanderCastCount(_)
+        | Value::CommanderColorIdentityColors(_)
         | Value::ThisAbilityResolvedThisTurnCount
         | Value::SourceRegeneratedThisTurnCount
         | Value::SourceMutationCount

@@ -239,6 +239,8 @@ pub struct PlayerStatusConditionAst {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlayerAchievementAst {
     CitysBlessing,
+    /// "an enduring story" (Storied).
+    EnduringStory,
     CompletedDungeon { dungeon_name: Option<String> },
     FullParty,
     VisitedAttractionThisTurn,
@@ -603,6 +605,11 @@ impl PlayerAchievementConditionAst {
         let condition = match self.achievement {
             PlayerAchievementAst::CitysBlessing => {
                 PredicateAst::Player(PlayerPredicateAst::PlayerHasCitysBlessing {
+                    player: self.player,
+                })
+            }
+            PlayerAchievementAst::EnduringStory => {
+                PredicateAst::Player(PlayerPredicateAst::PlayerHasEnduringStory {
                     player: self.player,
                 })
             }

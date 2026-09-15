@@ -905,6 +905,9 @@ pub enum OptionalCostKind {
     Buyback,
     Entwine,
     Squad,
+    /// "Teamwork N": you may tap creatures with total power N or more as an
+    /// additional cost.
+    Teamwork,
     Offspring,
     Bargain,
     Conspire,
@@ -940,6 +943,7 @@ impl OptionalCostKind {
             "buyback" => Self::Buyback,
             "entwine" => Self::Entwine,
             "squad" => Self::Squad,
+            "teamwork" => Self::Teamwork,
             "offspring" => Self::Offspring,
             "bargain" => Self::Bargain,
             "conspire" => Self::Conspire,
@@ -982,6 +986,7 @@ impl OptionalCostKind {
             Self::Buyback => "Buyback",
             Self::Entwine => "Entwine",
             Self::Squad => "Squad",
+            Self::Teamwork => "Teamwork",
             Self::Offspring => "Offspring",
             Self::Bargain => "Bargain",
             Self::Conspire => "Conspire",
@@ -1254,6 +1259,10 @@ impl<C> OptionalCost<C> {
 
     pub fn squad(cost: TotalCost<C>) -> Self {
         Self::typed(OptionalCostKind::Squad, "Squad", cost).repeatable()
+    }
+
+    pub fn teamwork(cost: TotalCost<C>) -> Self {
+        Self::typed(OptionalCostKind::Teamwork, "Teamwork", cost)
     }
 
     pub fn offspring(cost: TotalCost<C>) -> Self {

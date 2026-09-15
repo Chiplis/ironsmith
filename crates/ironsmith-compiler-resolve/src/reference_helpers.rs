@@ -1501,6 +1501,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::ToughnessOf(spec) => Ok(Value::ToughnessOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),
+        Value::ColorsOf(spec) => Ok(Value::ColorsOf(Box::new(resolve_choose_spec_it_tag(
+            spec, refs,
+        )?))),
         Value::ManaValueOf(spec) => Ok(Value::ManaValueOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),

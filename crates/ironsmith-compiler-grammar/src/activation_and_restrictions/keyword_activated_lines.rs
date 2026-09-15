@@ -349,6 +349,22 @@ pub fn parse_equip_line(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility
             if qualifier.commander {
                 target_filter.is_commander = true;
             }
+            if qualifier.worthy {
+                // A creature is worthy if it's a legendary non-Villain that's
+                // red and/or white.
+                crate::slice_primitives::push_unique(
+                    &mut target_filter.supertypes,
+                    crate::types::Supertype::Legendary,
+                );
+                crate::slice_primitives::push_unique(
+                    &mut target_filter.excluded_subtypes,
+                    crate::types::Subtype::Villain,
+                );
+                target_filter.colors = Some(
+                    crate::color::ColorSet::from_color(crate::color::Color::Red)
+                        .with(crate::color::Color::White),
+                );
+            }
             Ok(Some(build_equip_ability(total_cost, target_filter)))
         }
         EquipLineSpec::ActivationCost { cost_tokens } => {

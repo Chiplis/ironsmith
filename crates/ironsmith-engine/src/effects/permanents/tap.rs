@@ -138,6 +138,7 @@ impl CostExecutableEffect for TapEffect {
                 source,
                 crate::static_abilities::StaticAbilityId::Haste,
             )
+            && !game.activates_abilities_as_though_haste(source)
         {
             return Err(CostValidationError::SummoningSickness);
         }

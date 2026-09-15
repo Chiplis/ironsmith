@@ -6,6 +6,9 @@ use winnow::token::any;
 
 use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::primitives;
+use super::super::leaf;
+use crate::object::CounterType;
+use crate::types::CardType;
 
 #[path = "copy_shapes/linked_exile.rs"]
 mod linked_exile;
@@ -52,8 +55,22 @@ pub enum CopyCharacteristicRemainder<'a> {
     Unsupported,
 }
 
+/// "it enters with an additional +1/+1 counter on it if it's a creature".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConditionalCopyCounterEntry {
+    pub counter_type: CounterType,
+    pub count: u32,
+    pub card_type: CardType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CopyExceptionShape<'a> {
+    /// Spark Double: conditional extra counters keyed on the copied source's
+    /// card type, optionally with "and it isn't legendary".
+    ConditionalCounters {
+        entries: Vec<ConditionalCopyCounterEntry>,
+        remove_legendary: bool,
+    },
     Name {
         name_tokens: &'a [OwnedLexToken],
         use_named_subject: bool,
@@ -104,12 +121,92 @@ pub fn parse_copy_exception_tokens(tokens: &[OwnedLexToken]) -> Option<CopyExcep
     crate::grammar::primitives::probe_all(
         tokens,
         alt((
+            parse_copy_conditional_counters_exception_lexed,
             parse_copy_name_exception_lexed,
             parse_copy_ability_exception_lexed,
             parse_copy_characteristic_exception_lexed,
         )),
         "enter-as-copy exception",
     )
+}
+
+fn conditional_copy_counter_entry<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<ConditionalCopyCounterEntry> {
+    primitives::phrase(&["it", "enters", "with"]).parse_next(input)?;
+    let count = alt((
+        alt((primitives::kw("a"), primitives::kw("an"))).value(1u32),
+        leaf::parse_leaf_number_prefix_lexed,
+    ))
+    .parse_next(input)?;
+    primitives::kw("additional").parse_next(input)?;
+    let counter_type = any
+        .verify_map(|token: &OwnedLexToken| {
+            crate::util::parse_counter_type_word(token.parser_text())
+        })
+        .parse_next(input)?;
+    alt((primitives::kw("counter"), primitives::kw("counters"))).parse_next(input)?;
+    primitives::phrase(&["on", "it", "if"]).parse_next(input)?;
+    alt((
+        (primitives::kw("it"), primitives::kw("s")).void(),
+        primitives::kw("it's").void(),
+        primitives::kw("its").void(),
+        (primitives::kw("it"), primitives::kw("is")).void(),
+    ))
+    .parse_next(input)?;
+    opt(alt((primitives::kw("a"), primitives::kw("an")))).parse_next(input)?;
+    let card_type = any
+        .verify_map(|token: &OwnedLexToken| {
+            leaf::parse_leaf_card_type_complete(token.parser_text()).ok()
+        })
+        .parse_next(input)?;
+    Ok(ConditionalCopyCounterEntry {
+        counter_type,
+        count,
+        card_type,
+    })
+}
+
+fn parse_copy_conditional_counters_exception_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<CopyExceptionShape<'a>> {
+    let mut entries = Vec::new();
+    let mut remove_legendary = false;
+    loop {
+        if let Some(entry) = opt(conditional_copy_counter_entry).parse_next(input)? {
+            entries.push(entry);
+        } else if opt(alt((
+            primitives::phrase(&["it", "isn't", "legendary"]),
+            primitives::phrase(&["it", "isnt", "legendary"]),
+            primitives::phrase(&["it", "is", "not", "legendary"]),
+        )))
+        .parse_next(input)?
+        .is_some()
+        {
+            remove_legendary = true;
+        } else {
+            return Err(primitives::backtrack_err(
+                "copy exception",
+                "conditional counter entry",
+            ));
+        }
+        if peek(primitives::sentence_end()).parse_next(input).is_ok() {
+            primitives::sentence_end().parse_next(input)?;
+            break;
+        }
+        opt(primitives::comma()).parse_next(input)?;
+        opt(primitives::kw("and")).parse_next(input)?;
+    }
+    if entries.is_empty() {
+        return Err(primitives::backtrack_err(
+            "copy exception",
+            "at least one conditional counter entry",
+        ));
+    }
+    Ok(CopyExceptionShape::ConditionalCounters {
+        entries,
+        remove_legendary,
+    })
 }
 
 fn parse_direct_enter_as_copy_lexed<'a>(
@@ -273,7 +370,12 @@ fn parse_as_enters_become_copy_lexed<'a>(
 fn parse_copy_name_exception_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<CopyExceptionShape<'a>> {
-    primitives::phrase(&["its", "name", "is"]).parse_next(input)?;
+    alt((
+        primitives::phrase(&["its", "name", "is"]),
+        primitives::phrase(&["his", "name", "is"]),
+        primitives::phrase(&["her", "name", "is"]),
+    ))
+    .parse_next(input)?;
     let name_tokens = repeat_till::<_, _, (), _, _, _, _>(
         1..,
         any.void(),

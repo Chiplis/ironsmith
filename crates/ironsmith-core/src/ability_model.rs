@@ -90,6 +90,10 @@ pub enum ManaPaymentPurpose {
 pub enum ManaPaymentPredicate {
     Any,
     Purpose(ManaPaymentPurpose),
+    /// The mana unit would pay a generic mana component of the cost. Only
+    /// meaningful per pip; at the transaction level it is vacuously satisfied
+    /// so `Not(GenericManaCost)` never blocks a whole payment.
+    GenericManaCost,
     SourceMatches(ObjectFilter),
     CostContains(ManaSymbol),
     CostContainsX,

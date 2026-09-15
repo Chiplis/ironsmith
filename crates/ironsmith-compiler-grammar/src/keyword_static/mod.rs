@@ -467,6 +467,8 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_damage_amount_replacement_line" => vec![StaticAbilityLineHeadHint::Single("if")],
         "parse_prevent_half_damage_replacement_line" => vec![StaticAbilityLineHeadHint::Single("if")],
         "parse_if_you_would_draw_instead_effects_line" => vec![StaticAbilityLineHeadHint::Single("if")],
+        "parse_activate_abilities_as_though_haste_line" => vec![StaticAbilityLineHeadHint::Single("you")],
+        "parse_play_from_top_pay_life_line" => vec![StaticAbilityLineHeadHint::Single("you")],
         "parse_double_counters_replacement_line" => vec![StaticAbilityLineHeadHint::Single("if")],
         "parse_players_skip_extra_turns_line" => vec![
             StaticAbilityLineHeadHint::Single("if"),
@@ -1286,6 +1288,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_draw_extra_cards_replacement_line),
         single_static_ability_ast_rule!(parse_if_opponent_would_draw_redirect_line),
         single_static_ability_ast_rule!(parse_if_you_would_draw_instead_effects_line),
+        single_static_ability_ast_rule!(parse_activate_abilities_as_though_haste_line),
         single_static_ability_ast_rule!(parse_draw_replacement_double_line),
         single_static_ability_ast_rule!(parse_draw_replacement_skip_empty_library_line),
         single_static_ability_ast_rule!(parse_exile_to_exile_instead_of_graveyard_line),
@@ -1500,6 +1503,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_during_your_turn_graveyard_cards_have_retrace_line
         ),
         multi_static_ability_ast_rule!(parse_multi_subject_anthem_line),
+        multi_static_ability_ast_rule!(parse_play_from_top_pay_life_line),
         single_static_ability_ast_rule!(parse_anthem_line),
         single_static_ability_ast_rule!(parse_flying_restriction_line),
         single_static_ability_ast_rule!(parse_can_block_only_flying_line),
@@ -4488,6 +4492,7 @@ pub fn parse_enter_as_copy_as_enters_line(
                     additional_counters_source_filter: None,
                     added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
+                    conditional_additional_counters: Vec::new(),
                 },
                 render_token_slice(tokens).trim().to_string(),
             )))
@@ -4533,6 +4538,7 @@ pub fn parse_enter_as_copy_as_enters_line(
                     additional_counters_source_filter: None,
                     added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
+                    conditional_additional_counters: Vec::new(),
                 },
                 display,
             )))
@@ -4580,6 +4586,8 @@ pub fn parse_enter_as_copy_as_enters_line(
             let mut added_abilities = Vec::new();
             let mut additional_counters = Vec::new();
             let mut additional_counters_source_filter = None;
+            let mut conditional_additional_counters: Vec<ironsmith_core::ConditionalAdditionalCounters> =
+                Vec::new();
             let mut added_abilities_source_filter = None;
             let mut set_base_power_toughness = None;
             let mut set_base_power_toughness_from_self = false;
@@ -4593,6 +4601,23 @@ pub fn parse_enter_as_copy_as_enters_line(
                         ))
                     })?;
                 match exception {
+                    keyword_static_lines::CopyExceptionShape::ConditionalCounters {
+                        entries,
+                        remove_legendary,
+                    } => {
+                        if remove_legendary {
+                            removed_supertypes.push(crate::types::Supertype::Legendary);
+                        }
+                        for entry in entries {
+                            conditional_additional_counters.push(
+                                ironsmith_core::ConditionalAdditionalCounters {
+                                    counter_type: entry.counter_type,
+                                    count: entry.count,
+                                    source_filter: ObjectFilter::default().with_type(entry.card_type),
+                                },
+                            );
+                        }
+                    }
                     keyword_static_lines::CopyExceptionShape::Name {
                         name_tokens,
                         use_named_subject,
@@ -4771,6 +4796,7 @@ pub fn parse_enter_as_copy_as_enters_line(
                     additional_counters_source_filter,
                     added_abilities_source_filter,
                     set_base_power_toughness_from_self,
+                    conditional_additional_counters,
                     added_supertypes,
                     removed_supertypes,
                 },

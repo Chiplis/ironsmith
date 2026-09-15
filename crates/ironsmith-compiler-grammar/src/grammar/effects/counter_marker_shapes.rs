@@ -115,6 +115,9 @@ pub struct EachPlayerReturnAdditionalShape<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PutCounterChoiceShape<'a> {
     pub counter_types: Vec<CounterType>,
+    /// Counters placed by each mode, parallel to `counter_types` ("a +1/+1
+    /// counter or two charge counters").
+    pub counter_counts: Vec<u32>,
     pub target_tokens: &'a [OwnedLexToken],
 }
 
@@ -929,12 +932,26 @@ pub fn parse_each_player_return_additional_tokens(
 }
 
 fn choice_counter_type<'a>(input: &mut LexStream<'a>) -> WResult<CounterType> {
-    opt(alt((
-        primitives::kw("a"),
-        primitives::kw("an"),
-        primitives::kw("one"),
-    )))
-    .parse_next(input)?;
+    choice_counted_counter_type
+        .map(|(counter_type, _)| counter_type)
+        .parse_next(input)
+}
+
+/// One counter-choice mode with its count: "a +1/+1 counter", "two charge
+/// counters".
+fn choice_counted_counter_type<'a>(input: &mut LexStream<'a>) -> WResult<(CounterType, u32)> {
+    let count = alt((
+        alt((
+            primitives::kw("a"),
+            primitives::kw("an"),
+            primitives::kw("one"),
+        ))
+        .value(1u32),
+        leaf::parse_leaf_number_prefix_lexed,
+    ))
+    .parse_next(input)
+    .ok()
+    .unwrap_or(1);
     let counter_type = alt((
         primitives::phrase(&["first", "strike"]).value(CounterType::FirstStrike),
         primitives::phrase(&["double", "strike"]).value(CounterType::DoubleStrike),
@@ -942,7 +959,7 @@ fn choice_counter_type<'a>(input: &mut LexStream<'a>) -> WResult<CounterType> {
     ))
     .parse_next(input)?;
     opt(counter_noun).parse_next(input)?;
-    Ok(counter_type)
+    Ok((counter_type, count))
 }
 
 fn choice_single_counter_type<'a>(input: &mut LexStream<'a>) -> WResult<CounterType> {
@@ -962,8 +979,12 @@ fn parse_put_counter_choice_lexed<'a>(
         primitives::kw("put").void(),
     ))
     .parse_next(input)?;
-    let counter_types =
-        separated(2.., choice_counter_type, primitives::comma_or_separator).parse_next(input)?;
+    let modes: Vec<(CounterType, u32)> = separated(
+        2..,
+        choice_counted_counter_type,
+        primitives::comma_or_separator,
+    )
+    .parse_next(input)?;
     primitives::kw("on").parse_next(input)?;
     let target_tokens = repeat_till(1.., any.void(), peek(primitives::sentence_end()))
         .map(|((), _)| ())
@@ -971,7 +992,8 @@ fn parse_put_counter_choice_lexed<'a>(
         .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(PutCounterChoiceShape {
-        counter_types,
+        counter_types: modes.iter().map(|(counter_type, _)| *counter_type).collect(),
+        counter_counts: modes.iter().map(|(_, count)| *count).collect(),
         target_tokens,
     })
 }

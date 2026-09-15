@@ -1515,6 +1515,14 @@ impl CardDefinitionBuilder {
         })
     }
 
+    /// Storied: "If you control three or more artifacts, legendaries, and/or
+    /// Sagas, you have an enduring story for the rest of the game."
+    pub fn storied(self) -> Self {
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::storied(),
+        ))
+    }
+
     pub fn ascend(self) -> Self {
         let is_nonpermanent_spell = self
             .card_builder

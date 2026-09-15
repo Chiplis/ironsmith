@@ -1482,6 +1482,18 @@ pub(super) fn describe_mana_usage_restriction(
             on_spend,
         } => {
             if on_spend.is_empty()
+                && matches!(
+                    restriction,
+                    Some(crate::ability::ManaPaymentPredicate::Not(inner))
+                        if matches!(
+                            inner.as_ref(),
+                            crate::ability::ManaPaymentPredicate::GenericManaCost
+                        )
+                )
+            {
+                return Some("This mana can't be spent to pay generic mana costs".to_string());
+            }
+            if on_spend.is_empty()
                 && let Some(filter) = restriction
                     .as_ref()
                     .and_then(cast_or_any_ability_payment_filter)

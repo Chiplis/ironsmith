@@ -13,6 +13,9 @@ pub enum StaticSpecialLineShape {
     BlackManaMayBePaidWithLife,
     BoastTwice,
     EquipAtInstantSpeed,
+    /// "During your turn, you may activate equip abilities any time you
+    /// could cast an instant." (Forge Anew).
+    EquipAtInstantSpeedDuringYourTurn,
     AdditionalVoteTime,
     AdditionalVote,
     DoesntUntap,
@@ -149,6 +152,11 @@ pub fn parse_static_special_line_tokens(
         Some(StaticSpecialLineShape::BoastTwice)
     } else if is_equip_at_instant_speed(&words) {
         Some(StaticSpecialLineShape::EquipAtInstantSpeed)
+    } else if words.len() > 3
+        && words[..3] == ["during", "your", "turn"]
+        && is_equip_at_instant_speed(&words[3..])
+    {
+        Some(StaticSpecialLineShape::EquipAtInstantSpeedDuringYourTurn)
     } else if let Some(kind) = keyword_static_lines::parse_additional_vote_tokens(tokens) {
         Some(match kind {
             AdditionalVoteKind::OptionalTime => StaticSpecialLineShape::AdditionalVoteTime,
@@ -165,6 +173,13 @@ pub fn parse_static_special_line_tokens(
     } else if is_named_deck_construction(&words) {
         Some(StaticSpecialLineShape::AnyNumberNamedDeckConstruction)
     } else if is_first_equip_alternative(&words) {
+        Some(StaticSpecialLineShape::FirstEquipCostAlternative)
+    } else if let Some(prefix) =
+        crate::grammar::abilities::split_as_long_as_condition_prefix_lexed(tokens)
+        && is_first_equip_alternative(&parser_token_word_refs(prefix.remainder_tokens))
+    {
+        // "As long as you have an enduring story, you may pay {0} rather than
+        // pay the equip cost …" (Kíli the Resourceful).
         Some(StaticSpecialLineShape::FirstEquipCostAlternative)
     } else {
         None

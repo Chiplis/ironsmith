@@ -26,6 +26,9 @@ pub fn ability_surface_text(ability: &Ability) -> String {
     if let Some(text) = fixed_mana_ability_surface_text(ability) {
         return text;
     }
+    if let AbilityKind::Static(static_ability) = &ability.kind {
+        return static_ability.display();
+    }
     format!("{ability:?}")
 }
 

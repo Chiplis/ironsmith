@@ -210,6 +210,24 @@ const DOCUMENT_READINGS: &[Reading] = &[
         },
     },
     Reading {
+        id: RuleId::new("sentence-each-opponent-draws-then-you-draw-per-opponent"),
+        head: HeadDiscriminator::Any,
+        read: |document| {
+            document.outcome(read_sentence_each_opponent_draws_then_you_draw_per_opponent(
+                document,
+            ))
+        },
+    },
+    Reading {
+        id: RuleId::new("each-opponent-attacking-that-player-does-the-same"),
+        head: HeadDiscriminator::Any,
+        read: |document| {
+            document.outcome(read_each_opponent_attacking_that_player_does_the_same(
+                document,
+            ))
+        },
+    },
+    Reading {
         id: RuleId::new("next-end-step-followups"),
         head: HeadDiscriminator::Any,
         read: |document| document.outcome(read_next_end_step_followups(document)),
@@ -655,6 +673,58 @@ fn read_complete_become(document: &Document<'_>) -> Result<Option<Vec<EffectAst>
         && let Some(effect) = parse_complete_become_statement(sentence)?
     {
         return Ok(Some(vec![effect]));
+    }
+    Ok(None)
+}
+/// "Create a Gold token. Each opponent attacking that player does the same."
+/// (Curse of Opulence): the first sentence's actions are repeated for every
+/// opponent attacking the enchanted player.
+fn read_each_opponent_attacking_that_player_does_the_same(
+    document: &Document<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentences = &document.sentences;
+    let [first, second] = sentences.as_slice() else {
+        return Ok(None);
+    };
+    let second_words = crate::lexer::token_word_refs(second);
+    if second_words.as_slice()
+        != ["each", "opponent", "attacking", "that", "player", "does", "the", "same"]
+    {
+        return Ok(None);
+    }
+    let effects = crate::clause_support::parse_effect_sentences_lexed(first)?;
+    let mut repeated = Vec::with_capacity(effects.len());
+    for effect in &effects {
+        let EffectAst::SubjectVerb(subject_verb) = effect else {
+            return Ok(None);
+        };
+        let mut copy = subject_verb.clone();
+        copy.subject.player = crate::cards::builders::PlayerAst::That;
+        repeated.push(EffectAst::SubjectVerb(copy));
+    }
+    let mut out = effects;
+    out.push(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        sequential: false,
+        filter: crate::target::PlayerFilter::Excluding {
+            base: Box::new(crate::target::PlayerFilter::Attacking),
+            excluded: Box::new(crate::target::PlayerFilter::You),
+        },
+        effects: repeated,
+    }));
+    Ok(Some(out))
+}
+
+fn read_sentence_each_opponent_draws_then_you_draw_per_opponent(
+    document: &Document<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentences = &document.sentences;
+    if let [sentence] = sentences.as_slice()
+        && let Some(effects) = super::subject_verb_primitives::
+            parse_sentence_each_opponent_draws_then_you_draw_per_opponent(
+                SubjectVerbPrimitiveClause::new(sentence),
+            )?
+    {
+        return Ok(Some(effects));
     }
     Ok(None)
 }

@@ -39,6 +39,7 @@ pub enum KeywordDispatchHint {
     MorphFamily,
     Mutate,
     Squad,
+    Teamwork,
     Splice,
     Transmute,
     Transfigure,
@@ -92,6 +93,7 @@ impl KeywordDispatchHint {
             Self::MorphFamily => &["morph", "megamorph", "disguise"],
             Self::Mutate => &["mutate"],
             Self::Squad => &["squad"],
+            Self::Teamwork => &["teamwork"],
             Self::Splice => &["splice"],
             Self::Transmute => &["transmute"],
             Self::Transfigure => &["transfigure"],
@@ -190,7 +192,10 @@ fn parse_keyword_dispatch_hint_lexed<'a>(
                 primitives::kw("disguise").value(KeywordDispatchHint::MorphFamily),
                 primitives::kw("mutate").value(KeywordDispatchHint::Mutate),
             )),
-            primitives::kw("squad").value(KeywordDispatchHint::Squad),
+            alt((
+                primitives::kw("squad").value(KeywordDispatchHint::Squad),
+                primitives::kw("teamwork").value(KeywordDispatchHint::Teamwork),
+            )),
             alt((
                 primitives::kw("transmute").value(KeywordDispatchHint::Transmute),
                 primitives::kw("transfigure").value(KeywordDispatchHint::Transfigure),

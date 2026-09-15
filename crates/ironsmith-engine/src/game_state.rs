@@ -3330,6 +3330,8 @@ pub struct GameState {
     pub initiative: Option<PlayerId>,
     /// Players who have earned the city's blessing designation this game.
     citys_blessing: HashSet<PlayerId>,
+    /// Players who have an enduring story (Storied) this game.
+    enduring_story: HashSet<PlayerId>,
     battlefield_flags: Arc<BattlefieldFlags>,
 
     combat_transients: Arc<CombatTransientState>,
@@ -3600,6 +3602,7 @@ impl GameState {
             monarch: None,
             initiative: None,
             citys_blessing: HashSet::new(),
+            enduring_story: HashSet::new(),
             battlefield_flags: Arc::new(BattlefieldFlags::default()),
             combat_transients: Arc::new(CombatTransientState::default()),
             auxiliary_tracking: Arc::new(AuxiliaryTrackingState::default()),
@@ -4282,6 +4285,7 @@ impl GameState {
             | crate::effect::Value::CountScaled(filter, _)
             | crate::effect::Value::GreatestCount(filter)
             | crate::effect::Value::GreatestSharedCreatureTypeCount(filter)
+            | crate::effect::Value::GreatestSharedNameCount(filter)
             | crate::effect::Value::TotalPower(filter)
             | crate::effect::Value::TotalToughness(filter)
             | crate::effect::Value::TotalManaValue(filter)
@@ -4327,6 +4331,7 @@ impl GameState {
             | crate::effect::Value::SpellsCastThisTurnMatching { .. }
             | crate::effect::Value::TotalManaValueOfSpellsCastThisTurnMatching { .. }
             | crate::effect::Value::CommanderCastCount(_)
+            | crate::effect::Value::CommanderColorIdentityColors(_)
             | crate::effect::Value::ThisAbilityResolvedThisTurnCount
             | crate::effect::Value::SourceRegeneratedThisTurnCount
             | crate::effect::Value::DamageDealtThisTurnByTaggedSpellCast(_) => true,

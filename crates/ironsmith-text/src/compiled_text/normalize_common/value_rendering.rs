@@ -5620,6 +5620,12 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_count_filter_value_subject(filter)
             )
         }
+        Value::GreatestSharedNameCount(filter) => {
+            format!(
+                "the greatest number of {} with the same name as one another",
+                describe_count_filter_value_subject(filter)
+            )
+        }
         Value::GreatestSharedCreatureTypeCount(filter) => {
             format!(
                 "the greatest number of {} that have a creature type in common",
@@ -5840,6 +5846,17 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 "the exiled card's toughness".to_string()
             } else {
                 format!("{} toughness", describe_possessive_choose_spec(spec))
+            }
+        }
+        Value::ColorsOf(spec) => {
+            if let ChooseSpec::Tagged(tag) = spec.base()
+                && tag.as_str() == "triggering"
+            {
+                "the number of colors that spell is".to_string()
+            } else if spec.source_reference_surface().is_some() {
+                format!("the number of colors {} is", describe_choose_spec(spec))
+            } else {
+                "the number of colors it is".to_string()
             }
         }
         Value::ManaValueOf(spec) => {
@@ -6110,6 +6127,15 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of spells cast before this spell this turn by {}",
             describe_player_filter(filter)
         ),
+        Value::CommanderColorIdentityColors(filter) => match filter {
+            PlayerFilter::You => {
+                "the number of colors in your commanders' color identity".to_string()
+            }
+            other => format!(
+                "the number of colors in the color identity of the commanders of {}",
+                describe_player_filter(other)
+            ),
+        },
         Value::CommanderCastCount(filter) => match filter {
             PlayerFilter::You => {
                 "the number of times you've cast your commander from the command zone this game"

@@ -3583,7 +3583,7 @@ pub(crate) fn filter_matches_with_characteristics(
     effect_controller: PlayerId,
     effect_source: ObjectId,
 ) -> bool {
-    let filter_ctx = game.filter_context_for(effect_controller, Some(effect_source));
+    let filter_ctx = continuous_filter_context(game, effect_controller, effect_source);
     match filter_matches_layered_fast(filter, object, chars, game, &filter_ctx) {
         Some(true) => {}
         Some(false) => return false,
