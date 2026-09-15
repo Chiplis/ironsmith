@@ -712,6 +712,21 @@ pub(super) fn current_ability_action_text(
     ability_index: usize,
 ) -> Option<String> {
     let characteristics = game.current_characteristics(source)?;
+    // An ability a permanent gained (a Soul Cauldron copy, for instance) has no
+    // line of its own in this object's compiled text. Resolve it the way the
+    // text box does, so the action reads as the same sentence the player sees
+    // printed on the card instead of a debug rendering of the ability.
+    if let Some(object) = game.object(source) {
+        let text = crate::ui_snapshot::current_indexed_ability_surface_text(
+            game,
+            object,
+            &characteristics,
+            ability_index,
+        );
+        if !text.is_empty() {
+            return Some(normalize_action_text(&text));
+        }
+    }
     ironsmith::runtime_display::indexed_ability_surface_text(
         &characteristics.abilities,
         &characteristics.compiled_card_text,

@@ -464,7 +464,17 @@ impl ManaPaymentPlanner {
         game: &GameState,
         request: &ManaPaymentRequest,
     ) -> Result<ManaPaymentPlan, ManaPaymentFailure> {
-        self.plan_internal(game, request, true)?
+        let result = self.plan_internal(game, request, true);
+        // Previews are the searches that actually hurt, so report their cost
+        // the same way a full plan reports its own.
+        LAST_MANA_PAYMENT_PERF.with(|slot| {
+            *slot.borrow_mut() = ManaPaymentPerfMetrics {
+                visited_nodes: self.visited_nodes,
+                search_limited: matches!(&result, Err(ManaPaymentFailure::SearchLimitReached)),
+                plans_returned: result.as_ref().map_or(0, Vec::len),
+            };
+        });
+        result?
             .into_iter()
             .next()
             .ok_or(ManaPaymentFailure::NoLegalPlan)
@@ -933,6 +943,27 @@ impl ManaPaymentAnalysis {
             result: None,
         }
     }
+
+    /// The sliced twin of [`check_mana_payment`]: can this cost be paid at all?
+    ///
+    /// Ranking plans means simulating every sibling activation, which grows
+    /// exponentially with the untapped sources on the battlefield — eight lands
+    /// already take hundreds of milliseconds to answer "yes" for `{4}`. A caller
+    /// that only reads the yes/no, such as the inspector greying out an
+    /// ability, follows one candidate line instead and answers in constant time.
+    pub fn check(game: &GameState, request: ManaPaymentRequest) -> Self {
+        Self {
+            game: Box::new(game.clone()),
+            request,
+            planner: ManaPaymentPlanner {
+                sliced: true,
+                lazy_candidates: true,
+                ..Default::default()
+            },
+            result: None,
+        }
+    }
+
     pub fn step(&mut self, budget: usize) -> Option<Result<ManaPaymentPlan, ManaPaymentFailure>> {
         if let Some(result) = &self.result {
             return Some(result.clone());

@@ -1541,40 +1541,50 @@ fn current_ability_surface_texts_for_battlefield(
     // Ability additions do not rewrite compiled_card_text. Preserve printed
     // lines from the object or a borrowed source, then render any ability
     // without a canonical origin through the lightweight runtime surface.
-    current
-        .abilities
-        .iter()
-        .enumerate()
-        .map(|(index, ability)| {
-            current
-                .abilities
-                .origin(index)
-                .and_then(|origin| ability_surface_text_from_origin(game, object, origin))
-                .unwrap_or_else(|| ironsmith::runtime_display::ability_surface_text(ability))
-        })
+    (0..current.abilities.len())
+        .map(|index| current_indexed_ability_surface_text(game, object, current, index))
         .collect()
 }
 
-fn ability_surface_text_from_origin(
+/// Presentation text for one ability of an object's current characteristics.
+///
+/// A permanent that gained abilities (Agatha's Soul Cauldron copying an exiled
+/// creature's activated abilities, say) no longer maps one-to-one onto its own
+/// compiled text, so a granted ability is resolved back to the printed line of
+/// whichever card lent it. Every surface that names an ability shares this
+/// resolution: a text box and the action that activates it must agree word for
+/// word, because the inspector pairs actions with rules lines by their text.
+pub(super) fn current_indexed_ability_surface_text(
     game: &GameState,
     object: &ironsmith::object::Object,
-    origin: &ironsmith::continuous::AbilityOrigin,
-) -> Option<String> {
-    match origin {
-        ironsmith::continuous::AbilityOrigin::Printed(index) => object
-            .compiled_card_text
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .nth(*index)
-            .map(str::to_string),
-        ironsmith::continuous::AbilityOrigin::Borrowed { source, origin, .. } => {
-            game.object(*source).and_then(|source_object| {
-                ability_surface_text_from_origin(game, source_object, origin)
-            })
-        }
-        ironsmith::continuous::AbilityOrigin::Effect { .. } => None,
+    current: &ironsmith::continuous::CalculatedCharacteristics,
+    ability_index: usize,
+) -> String {
+    let current_lines = current
+        .compiled_card_text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    if current_lines.len() == current.abilities.len()
+        && let Some(line) = current_lines.get(ability_index)
+    {
+        return (*line).to_string();
     }
+
+    ironsmith::runtime_display::printed_ability_line(
+        game,
+        object,
+        &current.abilities,
+        ability_index,
+    )
+    .or_else(|| {
+        current
+            .abilities
+            .get(ability_index)
+            .map(ironsmith::runtime_display::ability_surface_text)
+    })
+    .unwrap_or_default()
 }
 
 pub(super) fn counter_snapshots_for_object(
@@ -3215,12 +3225,14 @@ fn zone_label(zone: Zone) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::describe_action;
     use ironsmith::ability::{Ability, AbilityKind};
     use ironsmith::alternative_cast::AlternativeCastingMethod;
     use ironsmith::card::{Card, CardBuilder, PowerToughness};
     use ironsmith::cards::tokens::cursed_role_token_definition;
     use ironsmith::continuous::{ContinuousEffect, EffectTarget, Modification};
     use ironsmith::costs::Cost;
+    use ironsmith::decision::LegalAction;
     use ironsmith::decisions::context::{DecisionContext, SelectObjectsContext, SelectableObject};
     use ironsmith::effect::Effect;
     use ironsmith::game_state::{GameState, PlayerControlDuration, PlayerControlStart};
@@ -3425,6 +3437,58 @@ mod tests {
         assert!(
             refreshed_surface.iter().any(|line| line.contains("damage")),
             "expected copied Ballista text after cached refresh, got {refreshed_surface:?}"
+        );
+
+        // The inspector pairs a priority action with the rules line it should
+        // light up by comparing their text, so the action for a copied ability
+        // has to read as the very sentence the text box prints. A debug
+        // rendering matches no line and leaves the ability visible but
+        // unclickable.
+        let copied_index = refreshed
+            .abilities
+            .iter()
+            .enumerate()
+            .filter(|(_, ability)| matches!(ability.kind, AbilityKind::Activated(_)))
+            .map(|(index, _)| index)
+            .find(|index| refreshed_surface[*index].contains("damage"))
+            .expect("Yawgmoth should have gained Ballista's damage ability");
+        let label = describe_action(
+            &game,
+            &LegalAction::ActivateAbility {
+                source: yawgmoth_id,
+                ability_index: copied_index,
+            },
+        );
+        assert_eq!(
+            label,
+            format!(
+                "Activate Yawgmoth, Thran Physician: {}",
+                refreshed_surface[copied_index]
+            ),
+            "the copied ability's action label should quote its printed sentence"
+        );
+        assert!(
+            !label.contains("ActivatedAbility"),
+            "the copied ability's action label should not fall back to a debug rendering: {label}"
+        );
+
+        // Prompts raised while the copied ability resolves quote its printed
+        // sentence too. Scored against Yawgmoth's own printed lines instead,
+        // a damage effect lands on "Put a -1/-1 counter ... and draw a card".
+        let AbilityKind::Activated(copied_ability) = &refreshed.abilities[copied_index].kind else {
+            panic!("the copied ability should be activated");
+        };
+        let prompt_text = ironsmith::runtime_display::effect_sentences::effect_summary_text(
+            &game,
+            yawgmoth_id,
+            None,
+            Some(copied_index),
+            copied_ability.effects.flattened_default_effects(),
+        );
+        assert_eq!(
+            prompt_text.as_deref().map(|text| text.trim_end_matches('.')),
+            Some(refreshed_surface[copied_index].trim_end_matches('.')),
+            "a prompt for the copied ability should quote the lending card's sentence"
         );
     }
 
@@ -4755,5 +4819,106 @@ mod tests {
 
         assert_eq!(display, "Creature - Angel Advisor");
         assert!(badges.is_empty());
+    }
+}
+
+/// The inspector greys an ability out from a yes/no affordability answer, and
+/// asking the ranked planner for that answer costs exponentially more as
+/// untapped mana sources accumulate. These pin both halves: the cheap existence
+/// check must agree with the ranked planner, and must stay cheap.
+#[cfg(test)]
+mod mana_payment_preview {
+    use ironsmith::costs::PaymentReason;
+    use ironsmith::ids::{ObjectId, PlayerId};
+    use ironsmith::mana::{ManaCost, ManaSymbol};
+    use ironsmith::mana_payment::{
+        ManaPaymentRequest, check_mana_payment, last_mana_payment_perf, plan_first_mana_payment,
+    };
+
+    fn request(source: ObjectId, pips: Vec<Vec<ManaSymbol>>) -> ManaPaymentRequest {
+        ManaPaymentRequest::new(
+            PlayerId::from_index(0),
+            source,
+            PaymentReason::ActivateAbility,
+            ManaCost::from_pips(pips),
+        )
+    }
+
+    fn costs() -> Vec<(&'static str, Vec<Vec<ManaSymbol>>)> {
+        vec![
+            ("{1}", vec![vec![ManaSymbol::Generic(1)]]),
+            ("{4}", vec![vec![ManaSymbol::Generic(4)]]),
+            ("{9}", vec![vec![ManaSymbol::Generic(9)]]),
+            (
+                "{B}{B}",
+                vec![vec![ManaSymbol::Black], vec![ManaSymbol::Black]],
+            ),
+            (
+                "{2}{U}",
+                vec![vec![ManaSymbol::Generic(2)], vec![ManaSymbol::Blue]],
+            ),
+            ("{R}{G}", vec![vec![ManaSymbol::Red], vec![ManaSymbol::Green]]),
+            ("{B/G}", vec![vec![ManaSymbol::Black, ManaSymbol::Green]]),
+        ]
+    }
+
+    fn board(lands: &[&str]) -> (crate::WasmGame, ObjectId) {
+        let mut wasm = crate::WasmGame::new();
+        let source = wasm
+            .add_card_to_zone(
+                0,
+                "Yawgmoth, Thran Physician".to_string(),
+                "battlefield".to_string(),
+                true,
+            )
+            .expect("source permanent");
+        for land in lands {
+            wasm.add_card_to_zone(0, (*land).to_string(), "battlefield".to_string(), true)
+                .expect("land");
+        }
+        wasm.game.refresh_continuous_state();
+        (wasm, ObjectId::from_raw(source))
+    }
+
+    #[test]
+    fn existence_check_agrees_with_the_ranked_planner() {
+        let _guard = crate::test_id_counter_guard();
+        for lands in [
+            vec!["Swamp"; 8],
+            vec!["Swamp", "Island", "Forest", "Mountain", "Plains", "Swamp"],
+            vec!["Swamp", "Swamp", "Command Tower", "Bloodstained Mire"],
+        ] {
+            let (wasm, source) = board(&lands);
+            for (label, pips) in costs() {
+                let request = request(source, pips);
+                assert_eq!(
+                    plan_first_mana_payment(&wasm.game, &request).is_ok(),
+                    check_mana_payment(&wasm.game, &request).is_ok(),
+                    "the preview's existence check disagrees with the ranked planner \
+                     on {label} over {lands:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn existence_check_does_not_explode_with_untapped_sources() {
+        let _guard = crate::test_id_counter_guard();
+        // "{4}" over identical sources is the worst case: every subset of four
+        // Swamps is a distinct ranked plan, and none of them is a better answer
+        // to "can this be paid" than the first one found.
+        let (wasm, source) = board(&vec!["Swamp"; 8]);
+        let request = request(source, vec![vec![ManaSymbol::Generic(4)]]);
+
+        assert!(plan_first_mana_payment(&wasm.game, &request).is_ok());
+        let ranked_nodes = last_mana_payment_perf().visited_nodes;
+        assert!(check_mana_payment(&wasm.game, &request).is_ok());
+        let check_nodes = last_mana_payment_perf().visited_nodes;
+
+        assert!(
+            check_nodes * 8 < ranked_nodes,
+            "the preview should settle the answer in far fewer nodes than ranking \
+             every plan: {check_nodes} vs {ranked_nodes}"
+        );
     }
 }

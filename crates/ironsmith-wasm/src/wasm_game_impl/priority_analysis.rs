@@ -263,7 +263,7 @@ impl WasmGame {
             }
             if index == job.searches.len() {
                 job.searches
-                    .push(ManaPaymentAnalysis::new(&self.game, request.clone()));
+                    .push(ManaPaymentAnalysis::check(&self.game, request.clone()));
             }
             let outcome = job.searches[index].step(budget.clamp(1, 8));
             index += 1;

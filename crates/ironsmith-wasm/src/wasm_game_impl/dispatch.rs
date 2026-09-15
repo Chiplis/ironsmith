@@ -2094,9 +2094,11 @@ impl WasmGame {
     #[wasm_bindgen(js_name = inspectorActions)]
     pub fn inspector_actions(&self, object_id: u64, requested_ability: Option<usize>) -> Result<JsValue, JsValue> {
         self.inspector_actions_with(object_id, requested_ability, &mut |request| {
-            use ironsmith::mana_payment::{plan_first_mana_payment, ManaPaymentFailure};
-            match plan_first_mana_payment(&self.game, request) {
-                Ok(_) => Some(true),
+            use ironsmith::mana_payment::{check_mana_payment, ManaPaymentFailure};
+            // Greying out an ability needs the yes/no, never the plan, so this
+            // asks for existence rather than the best payment.
+            match check_mana_payment(&self.game, request) {
+                Ok(()) => Some(true),
                 Err(ManaPaymentFailure::NoLegalPlan) => Some(false),
                 Err(_) => None,
             }

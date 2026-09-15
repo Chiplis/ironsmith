@@ -9,9 +9,13 @@ pub mod effect_sentences;
 
 use crate::ability::{Ability, AbilityKind};
 use crate::cards::CardDefinition;
+use crate::continuous::{AbilityOrigin, CalculatedAbilities};
 use crate::effect::{Condition, Effect, Value};
 use crate::filter::ObjectFilter;
+use crate::game_state::GameState;
+use crate::ids::ObjectId;
 use crate::mana::ManaCost;
+use crate::object::Object;
 use crate::target::PlayerFilter;
 
 pub fn compile_effect_list(effects: &[Effect]) -> String {
@@ -20,6 +24,55 @@ pub fn compile_effect_list(effects: &[Effect]) -> String {
         .map(|effect| format!("{effect:?}"))
         .collect::<Vec<_>>()
         .join("; ")
+}
+
+/// The printed line behind one ability of an object's current characteristics.
+///
+/// An ability a permanent gained records the card that lent it, so its wording
+/// is that card's printed line rather than anything this object prints: a
+/// creature copying Walking Ballista's abilities through Agatha's Soul Cauldron
+/// has no line of its own for them. Returns `None` for an ability a continuous
+/// effect wrote from whole cloth, which no card prints.
+pub fn printed_ability_line(
+    game: &GameState,
+    object: &Object,
+    abilities: &CalculatedAbilities,
+    ability_index: usize,
+) -> Option<String> {
+    fn printed_line(object: &Object, index: usize) -> Option<String> {
+        object
+            .compiled_card_text
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .nth(index)
+            .map(str::to_string)
+    }
+
+    fn resolve(game: &GameState, object: &Object, origin: &AbilityOrigin) -> Option<String> {
+        match origin {
+            AbilityOrigin::Printed(index) => printed_line(object, *index),
+            AbilityOrigin::Borrowed { source, origin, .. } => game
+                .object(*source)
+                .and_then(|lender| resolve(game, lender, origin)),
+            AbilityOrigin::Effect { .. } => None,
+        }
+    }
+
+    abilities
+        .origin(ability_index)
+        .and_then(|origin| resolve(game, object, origin))
+}
+
+/// The printed line behind one currently active ability of `source`.
+pub fn printed_ability_line_for_object(
+    game: &GameState,
+    source: ObjectId,
+    ability_index: usize,
+) -> Option<String> {
+    let object = game.object(source)?;
+    let characteristics = game.current_characteristics(source)?;
+    printed_ability_line(game, object, &characteristics.abilities, ability_index)
 }
 
 pub fn ability_surface_text(ability: &Ability) -> String {

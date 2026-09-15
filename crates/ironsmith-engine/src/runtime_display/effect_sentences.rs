@@ -258,6 +258,15 @@ fn candidate_lines(
         .map(str::to_string)
         .collect();
 
+    // An ability the permanent gained has no line of its own here, so ask the
+    // card that lent it. Without this a copied ability scores against the
+    // lender's other printed sentences and the prompt quotes the wrong one.
+    if let Some(index) = ability_index
+        && let Some(line) = super::printed_ability_line_for_object(game, source, index)
+    {
+        return vec![line];
+    }
+
     let ability_count = object
         .map(|object| object.abilities.len())
         .or_else(|| source_snapshot.map(|snapshot| snapshot.abilities.len()));
