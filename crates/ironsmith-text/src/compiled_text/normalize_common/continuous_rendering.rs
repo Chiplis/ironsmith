@@ -3813,10 +3813,20 @@ pub(crate) fn describe_attack_block_if_able_apply_continuous(
         return None;
     }
 
+    let plural = crate::compiled_text::merge_passes::subject_is_plural(target)
+        || target.split_whitespace().next().is_some_and(|first| {
+            let first = first.to_ascii_lowercase();
+            first.ends_with('s') && !matches!(first.as_str(), "this" | "its" | "his")
+        });
+    let (attack, block) = if plural {
+        ("attack", "block")
+    } else {
+        ("attacks", "blocks")
+    };
     match (has_must_attack, has_must_block) {
-        (true, true) => Some(format!("{target} attacks or blocks {scope} if able")),
-        (true, false) => Some(format!("{target} attacks {scope} if able")),
-        (false, true) => Some(format!("{target} blocks {scope} if able")),
+        (true, true) => Some(format!("{target} {attack} or {block} {scope} if able")),
+        (true, false) => Some(format!("{target} {attack} {scope} if able")),
+        (false, true) => Some(format!("{target} {block} {scope} if able")),
         (false, false) => None,
     }
 }
@@ -5032,6 +5042,20 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{subject} can't block")
         }
         crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker } => {
+            // "It can't be blocked by creatures of that color this turn"
+            // (Skrelv, Defector Mite): a back-referenced attacker is the
+            // subject, not an object of the blockers.
+            if attacker.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+            }) && attacker.description().eq_ignore_ascii_case("permanent")
+            {
+                return format!(
+                    "It can't be blocked by {}",
+                    crate::compiled_text::pluralize_noun_phrase(
+                        &blockers.description()
+                    )
+                );
+            }
             format!(
                 "{} can't block {}",
                 blockers.description(),

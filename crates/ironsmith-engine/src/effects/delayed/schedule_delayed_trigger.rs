@@ -45,6 +45,11 @@ pub struct ScheduleDelayedTriggerEffect {
     pub either_of_watched_objects: bool,
     pub while_any_tagged_object_in_zone: Option<(TagKey, crate::zone::Zone)>,
     pub target_objects: Vec<crate::ids::ObjectId>,
+    /// Override the object used as the delayed ability's source.
+    ///
+    /// This is useful when a delayed ability watches one object but its
+    /// resolving effects refer to that watched object as "this card".
+    pub ability_source: Option<crate::ids::ObjectId>,
     pub target_tag: Option<TagKey>,
     pub target_filter: Option<ObjectFilter>,
     pub controller: PlayerFilter,
@@ -77,6 +82,7 @@ impl ScheduleDelayedTriggerEffect {
             either_of_watched_objects: false,
             while_any_tagged_object_in_zone: None,
             target_objects,
+            ability_source: None,
             target_tag: None,
             target_filter: None,
             controller,
@@ -106,6 +112,7 @@ impl ScheduleDelayedTriggerEffect {
             either_of_watched_objects: false,
             while_any_tagged_object_in_zone: None,
             target_objects: Vec::new(),
+            ability_source: None,
             target_tag: Some(target_tag.into()),
             target_filter: None,
             controller,
@@ -183,6 +190,11 @@ impl ScheduleDelayedTriggerEffect {
         self
     }
 
+    pub fn with_ability_source(mut self, source: crate::ids::ObjectId) -> Self {
+        self.ability_source = Some(source);
+        self
+    }
+
     pub fn watch_all_object_targets(mut self) -> Self {
         self.watch_all_object_targets = true;
         self
@@ -207,7 +219,10 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         // stable identity so the delayed ability and any `this card` effects
         // refer to the current object rather than the stale pre-zone-change
         // ObjectId.
-        let ability_source = resolve_source_object_id(game, ctx).unwrap_or(ctx.source);
+        let ability_source = self
+            .ability_source
+            .or_else(|| resolve_source_object_id(game, ctx))
+            .unwrap_or(ctx.source);
         let filter_ctx = ctx.filter_context(game);
         let mut tagged_players = filter_ctx.tagged_players.clone();
         if !ctx.targets_are_cost_choices {

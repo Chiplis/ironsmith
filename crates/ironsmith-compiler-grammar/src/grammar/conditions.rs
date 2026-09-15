@@ -1902,6 +1902,13 @@ fn parse_spell_cast_filter_tokens_single(tokens: &[OwnedLexToken]) -> Option<Obj
 }
 
 fn parse_life_change_subject_clause(clause: LexedClause<'_>) -> Option<PlayerFilter> {
+    // "you've gained 3 or more life this turn" (Haliya, Guided by Light)
+    if matches!(
+        clause.word_refs().as_slice(),
+        ["youve"] | ["you've"] | ["you", "ve"] | ["you", "have"]
+    ) {
+        return Some(PlayerFilter::You);
+    }
     let reference = parse_leaf_player_reference_tokens(
         clause.tokens(),
         LeafPlayerReferenceMode::LifeChangeSubject,

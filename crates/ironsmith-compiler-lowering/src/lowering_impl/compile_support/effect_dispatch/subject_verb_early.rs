@@ -1664,6 +1664,7 @@ pub(super) fn compile_subject_verb_early(
                 duration,
                 cause_policy,
                 link_exiled_to_source,
+                cast_this_way_surface,
             },
         ) => {
             let mode = match duration {
@@ -1694,6 +1695,9 @@ pub(super) fn compile_subject_verb_early(
             }
             if *link_exiled_to_source {
                 replacement = replacement.linking_exiled_to_source();
+            }
+            if *cast_this_way_surface {
+                replacement = replacement.with_cast_this_way_surface();
             }
             let effect = Effect::new(replacement);
             Ok((vec![effect], Vec::new()))

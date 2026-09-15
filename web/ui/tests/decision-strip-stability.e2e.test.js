@@ -44,7 +44,7 @@ async function startWasmServer() {
 }
 
 test(
-  "main decision button stays mounted across priority passes and keeps its local accent",
+  "main decision button stays mounted across priority passes and keeps its active accent",
   { timeout: 60000 },
   async () => {
     const { vite, baseUrl } = await startWasmServer();
@@ -68,7 +68,7 @@ test(
         // browser can interpolate them. Two independent signals:
         // 1. the CSSPropertyRule survives the CSS pipeline,
         // 2. registered <color> values compute to normalized rgb() form
-        //    (an unregistered var would echo the raw "#731bde" token).
+        //    (an unregistered var would echo the raw color token).
         let accentRegistered = false;
         let rgbRegistered = false;
         for (const sheet of document.styleSheets) {
@@ -129,8 +129,8 @@ test(
       assert.equal(checks.rgbRegistered, true, "--decision-main-rgb should be registered via @property");
       assert.match(
         checks.accent,
-        /^rgb\(115, 27, 222\)$/,
-        "local decision accent should compute to the registered (interpolable) purple"
+        /^rgb\(255, 224, 131\)$/,
+        "local decision accent should compute to the registered (interpolable) yellow"
       );
       assert.match(
         checks.pulseAnimation,

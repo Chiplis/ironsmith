@@ -783,7 +783,14 @@ export function measureFrameGeometry(scan,art,conventional=true) {
     const x=Math.floor(scan.width*.07),y=Math.floor(scan.height*(section==='title'?.035:.55));
     const w=Math.floor(scan.width*.72),h=Math.floor(scan.height*.065),data=new Uint8ClampedArray(w*h*4);
     for(let row=0;row<h;row++) data.set(scan.data.subarray(((y+row)*scan.width+x)*4,((y+row)*scan.width+x+w)*4),row*w*4);
-    const analysis=analyzeSection({data,width:w,height:h},{minGlyphHeight:Math.floor(scan.height*.015)});
+    // Extended-art/integrated type bars use a smaller printed face than the
+    // enclosed bars. At the normalized 488px scan width their glyphs can be
+    // only five pixels high; requiring the title threshold drops the whole
+    // type region and prevents a layout from being produced.
+    const minGlyphHeight=section==='type'
+      ? Math.max(5,Math.floor(scan.height*.008))
+      : Math.floor(scan.height*.015);
+    const analysis=analyzeSection({data,width:w,height:h},{minGlyphHeight});
     const bounds=analysis.textBounds || analysis.glyphBounds;
     const padding=bounds?3:0;
     return bounds?{x:x+bounds.x,y:y+bounds.y-padding,width:bounds.right-bounds.x,height:bounds.bottom-bounds.y+padding*2}:null;

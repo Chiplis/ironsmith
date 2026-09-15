@@ -17,6 +17,10 @@ pub struct GoadEffect {
     pub target: ChooseSpec,
     /// How long the goad designation lasts.
     pub duration: Until,
+    /// The printed text spelled the requirement out ("attack each combat if
+    /// able and attack a player other than you if able") rather than saying
+    /// "goad". Display only; the designation is the same.
+    pub spelled_out_requirement: bool,
 }
 
 impl GoadEffect {
@@ -27,7 +31,17 @@ impl GoadEffect {
 
     /// Create a goad effect with an explicit duration.
     pub fn with_duration(target: ChooseSpec, duration: Until) -> Self {
-        Self { target, duration }
+        Self {
+            target,
+            duration,
+            spelled_out_requirement: false,
+        }
+    }
+
+    /// Keep the printed spelled-out requirement wording for display.
+    pub fn spelled_out_requirement(mut self) -> Self {
+        self.spelled_out_requirement = true;
+        self
     }
 }
 

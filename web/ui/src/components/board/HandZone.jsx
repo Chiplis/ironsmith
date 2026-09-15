@@ -225,22 +225,28 @@ function buildHandCardRowStyle(index, total, { dims, activeIndex = null, activeI
     pushX = -selectedCenter;
   } else if (!isActive && activeIndex !== null && activeIndex >= 0 && spreadAroundActive) {
     const sign = index < activeIndex ? -1 : 1;
-    // Reserve the enlarged card's full horizontal footprint, including the
-    // fan rotation around its bottom center. Move each side together so the
-    // gap cannot close again at a farther card in a tightly packed hand.
+    // Keep each rest just outside the enlarged card's footprint. Use the
+    // actual rotated rectangle bounds so adjacent cards such as Lightning
+    // Bolt remain readable without splitting the two sides unnecessarily far.
     const horizontalReach = (layout, scale) => {
       const angle = Math.abs(layout.rot) * Math.PI / 180;
-      return scale * (dims.cardW / 2 * Math.cos(angle) + dims.cardH * Math.sin(angle));
+      return scale * (
+        (dims.cardW / 2 * Math.cos(angle))
+        + (dims.cardH / 2 * Math.sin(angle))
+      );
     };
     const activeReach = horizontalReach(baseLayout[activeIndex], MANABREW_HAND_FAN_PARAMS.hoverScale);
-    const clearance = dims.cardW * 0.06;
-    let sidePush = dims.neighborPush;
+    const clearance = Math.max(2, dims.cardW * 0.015);
+    let sidePush = 0;
     baseLayout.forEach((layout, neighborIndex) => {
       if (Math.sign(neighborIndex - activeIndex) !== sign) return;
       const distance = Math.abs(neighborIndex - activeIndex) * spread;
-      sidePush = Math.max(sidePush, activeReach + horizontalReach(layout, 0.94) + clearance - distance);
+      sidePush = Math.max(
+        sidePush,
+        activeReach + horizontalReach(layout, 0.94) + clearance - distance
+      );
     });
-    pushX = sign * sidePush;
+    pushX = sign * Math.max(0, sidePush);
   }
 
   const fanRotate = isActive && centerActive && !activeIsPlayable ? "0deg" : `${base.rot.toFixed(2)}deg`;

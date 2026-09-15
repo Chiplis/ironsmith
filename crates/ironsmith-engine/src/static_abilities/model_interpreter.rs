@@ -40,6 +40,7 @@ pub struct StaticAbilityModelInterpreter {
     activated_ability_cost_reduction: Option<super::ActivatedAbilityCostReduction>,
     activated_ability_cost_increase: Option<super::ActivatedAbilityCostIncrease>,
     cost_increase: Option<super::CostIncrease>,
+    cost_increase_life: Option<super::CostIncreaseLife>,
     cost_reduction_mana_cost: Option<super::CostReductionManaCost>,
     cost_increase_mana_cost: Option<super::CostIncreaseManaCost>,
     cost_increase_mana_cost_per_additional_target:
@@ -137,6 +138,7 @@ impl StaticAbilityModelInterpreter {
             Self::cached_activated_ability_cost_reduction(&model);
         let activated_ability_cost_increase = Self::cached_activated_ability_cost_increase(&model);
         let cost_increase = Self::cached_cost_increase(&model);
+        let cost_increase_life = Self::cached_cost_increase_life(&model);
         let cost_reduction_mana_cost = Self::cached_cost_reduction_mana_cost(&model);
         let cost_increase_mana_cost = Self::cached_cost_increase_mana_cost(&model);
         let cost_increase_mana_cost_per_additional_target =
@@ -157,6 +159,7 @@ impl StaticAbilityModelInterpreter {
             activated_ability_cost_reduction,
             activated_ability_cost_increase,
             cost_increase,
+            cost_increase_life,
             cost_reduction_mana_cost,
             cost_increase_mana_cost,
             cost_increase_mana_cost_per_additional_target,
@@ -654,6 +657,23 @@ impl StaticAbilityModelInterpreter {
         }
     }
 
+    fn cached_cost_increase_life(
+        model: &CompiledStaticAbility,
+    ) -> Option<super::CostIncreaseLife> {
+        match &model.payload {
+            ironsmith_core::StaticAbilityPayload::CostIncreaseLife {
+                filter,
+                amount,
+                display,
+            } => Some(super::CostIncreaseLife::new(
+                filter.clone(),
+                *amount,
+                display.clone(),
+            )),
+            _ => None,
+        }
+    }
+
     fn cached_cost_increase(model: &CompiledStaticAbility) -> Option<super::CostIncrease> {
         match &model.payload {
             ironsmith_core::StaticAbilityPayload::CostIncrease(increase) => {
@@ -1078,6 +1098,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(
                 filter,
             ) => StaticAbility::prevent_all_combat_damage_to_permanents_matching(filter.clone()),
+            ironsmith_core::StaticAbilityPayload::PreventAllDamageToPermanentsMatching(filter) => {
+                StaticAbility::prevent_all_damage_to_permanents_matching(filter.clone())
+            }
             ironsmith_core::StaticAbilityPayload::PreventAllNoncombatDamageToPermanentsMatching(
                 filter,
             ) => StaticAbility::prevent_all_noncombat_damage_to_permanents_matching(filter.clone()),
@@ -1664,11 +1687,45 @@ impl StaticAbilityModelInterpreter {
                 }
                 StaticAbility::new(replacement)
             }
+            ironsmith_core::StaticAbilityPayload::DrawReplacementWithEffects {
+                drawer,
+                replacement_effects,
+                display,
+            } => StaticAbility::draw_replacement_with_effects(
+                drawer.clone(),
+                replacement_effects.clone(),
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::PreventHalfDamageReplacement {
+                source_filter,
+                target_player_filter,
+                target_object_filter,
+                round_up,
+                display,
+            } => StaticAbility::prevent_half_damage_replacement(
+                source_filter.clone(),
+                target_player_filter.clone(),
+                target_object_filter.clone(),
+                *round_up,
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::DoubleCountersReplacement {
+                actor: Some(actor),
+                includes_permanents: true,
+                halve,
+                display,
+                ..
+            } => StaticAbility::actor_counter_multiplier_replacement(
+                actor.clone(),
+                *halve,
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::DoubleCountersReplacement {
                 filter,
                 player_filter,
                 counter_type,
                 display,
+                ..
             } => match player_filter {
                 Some(player_filter) => StaticAbility::double_player_counters_replacement(
                     player_filter.clone(),
@@ -1683,16 +1740,24 @@ impl StaticAbilityModelInterpreter {
             },
             ironsmith_core::StaticAbilityPayload::AddCountersPlacementReplacement {
                 filter,
+                player_filter,
                 counter_type,
                 additional,
                 display,
-                ..
-            } => StaticAbility::add_counters_placement_replacement(
-                filter.clone(),
-                *counter_type,
-                *additional,
-                display.clone(),
-            ),
+            } => match player_filter {
+                Some(player_filter) => StaticAbility::add_player_counters_placement_replacement(
+                    player_filter.clone(),
+                    *counter_type,
+                    *additional,
+                    display.clone(),
+                ),
+                None => StaticAbility::add_counters_placement_replacement(
+                    filter.clone(),
+                    *counter_type,
+                    *additional,
+                    display.clone(),
+                ),
+            },
             ironsmith_core::StaticAbilityPayload::PlayerCounterPerTurnLimitReplacement {
                 player_filter,
                 counter_type,
@@ -1716,14 +1781,26 @@ impl StaticAbilityModelInterpreter {
                 token_filter,
                 additional_token,
                 additional,
+                per_created,
                 display,
-            } => StaticAbility::add_token_creation_replacement(
-                controller.clone(),
-                token_filter.clone(),
-                *additional_token,
-                *additional,
-                display.clone(),
-            ),
+            } => {
+                if *per_created {
+                    StaticAbility::add_token_per_created_replacement(
+                        controller.clone(),
+                        token_filter.clone(),
+                        *additional_token,
+                        display.clone(),
+                    )
+                } else {
+                    StaticAbility::add_token_creation_replacement(
+                        controller.clone(),
+                        token_filter.clone(),
+                        *additional_token,
+                        *additional,
+                        display.clone(),
+                    )
+                }
+            }
             ironsmith_core::StaticAbilityPayload::KeywordActionReplacement {
                 action,
                 source_filter,
@@ -1830,6 +1907,27 @@ impl StaticAbilityModelInterpreter {
                 source_filter.clone(),
                 *minimum_amount,
                 replacement_mana.clone(),
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::ManaProductionMultiplierReplacement {
+                source_filter,
+                factor,
+                display,
+            } => StaticAbility::mana_production_multiplier_replacement(
+                source_filter.clone(),
+                *factor,
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::CreateOneOfEachTokenReplacement { kinds, display } => {
+                StaticAbility::create_one_of_each_token_replacement(kinds.clone(), display.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::RedirectDrawReplacement {
+                drawer,
+                except_first_of_draw_step,
+                display,
+            } => StaticAbility::redirect_draw_replacement(
+                drawer.clone(),
+                *except_first_of_draw_step,
                 display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::MultiplyTokenCreationReplacement {
@@ -2942,6 +3040,10 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn cost_increase(&self) -> Option<&super::CostIncrease> {
         self.cost_increase.as_ref()
+    }
+
+    fn cost_increase_life(&self) -> Option<&super::CostIncreaseLife> {
+        self.cost_increase_life.as_ref()
     }
 
     fn cost_reduction_mana_cost(&self) -> Option<&super::CostReductionManaCost> {

@@ -870,6 +870,26 @@ export default function Workspace({
     setTransientInspectorPreviewIndex(0);
   }, []);
 
+  const targetingModeActive = Boolean(dragState?.castIntent) || decision?.kind === "targets";
+  const previousTargetingModeRef = useRef(false);
+  useEffect(() => {
+    const wasTargeting = previousTargetingModeRef.current;
+    previousTargetingModeRef.current = targetingModeActive;
+    if (!targetingModeActive || wasTargeting) return;
+
+    // A regular inspector may be pinned before a cast enters target mode.
+    // Clear that ownership at the mode boundary so it cannot reappear when
+    // the target decision is submitted.
+    queueMicrotask(() => {
+      clearTransientInspectorPreviews();
+      clearAnchoredCardPreview();
+      clearHover();
+      setSelectedObjectId(null);
+      setPinnedInspectorObjectId(null);
+      setFocusedStackObjectId(null);
+    });
+  }, [clearAnchoredCardPreview, clearHover, clearTransientInspectorPreviews, targetingModeActive]);
+
   const showTransitionInspectorPreviews = useCallback((previews) => {
     if (!Array.isArray(previews) || previews.length === 0) return;
 
@@ -1196,17 +1216,27 @@ export default function Workspace({
   const handleInspectObject = useCallback(
     async (objectId, options = null) => {
       if (combatDeclarationActive) return;
-      if (
-        decision?.kind === "targets"
-        && samePlayerId(decision.player, state?.perspective)
-        && objectId != null
-        && legalTargetObjectIds.has(Number(objectId))
-      ) {
-        window.dispatchEvent(
-          new CustomEvent("ironsmith:target-choice", {
-            detail: { target: { kind: "object", object: Number(objectId) } },
-          })
-        );
+      if (decision?.kind === "targets") {
+        // Target clicks are choices, never inspector requests. Clear any
+        // regular-mode frame before dispatching a legal choice, and consume
+        // illegal target-card clicks so they cannot pin an anchored frame.
+        clearTransientInspectorPreviews();
+        clearAnchoredCardPreview();
+        clearHover();
+        setSelectedObjectId(null);
+        setPinnedInspectorObjectId(null);
+        setFocusedStackObjectId(null);
+        if (
+          samePlayerId(decision.player, state?.perspective)
+          && objectId != null
+          && legalTargetObjectIds.has(Number(objectId))
+        ) {
+          window.dispatchEvent(
+            new CustomEvent("ironsmith:target-choice", {
+              detail: { target: { kind: "object", object: Number(objectId) } },
+            })
+          );
+        }
         return;
       }
       if (

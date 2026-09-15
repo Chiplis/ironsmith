@@ -2849,6 +2849,65 @@ impl StaticAbilityKind for PreventAllNoncombatDamageToPermanentsMatching {
     }
 }
 
+/// "Prevent all damage that would be dealt to attacking creatures you control."
+/// (Iroas, God of Victory)
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventAllDamageToPermanentsMatching {
+    pub filter: ObjectFilter,
+}
+
+impl PreventAllDamageToPermanentsMatching {
+    pub fn new(filter: ObjectFilter) -> Self {
+        Self { filter }
+    }
+}
+
+impl StaticAbilityKind for PreventAllDamageToPermanentsMatching {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventAllDamageToPermanentsMatching
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "Prevent all damage that would be dealt to {}.",
+            pluralize_filter_description(&self.filter.description())
+        )
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            PreventableAnyDamageToObjectMatcher {
+                combat: PreventableCombatDamageToObjectMatcher::new(self.filter.clone()),
+                noncombat: PreventableNoncombatDamageToObjectMatcher::new(self.filter.clone()),
+            },
+            ReplacementAction::PreventDamage,
+        ))
+    }
+}
+
+/// Combat or noncombat damage that could be prevented, dealt to a matching object.
+#[derive(Debug, Clone)]
+struct PreventableAnyDamageToObjectMatcher {
+    combat: PreventableCombatDamageToObjectMatcher,
+    noncombat: PreventableNoncombatDamageToObjectMatcher,
+}
+
+impl ReplacementMatcher for PreventableAnyDamageToObjectMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        self.combat.matches_event(event, ctx) || self.noncombat.matches_event(event, ctx)
+    }
+
+    fn display(&self) -> String {
+        "When preventable damage would be dealt to a matching permanent".to_string()
+    }
+}
+
 /// "Prevent all damage that would be dealt to this creature."
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PreventAllDamageToSelf;

@@ -1,8 +1,9 @@
-use winnow::combinator::opt;
+use winnow::combinator::{alt, opt, repeat_till};
 use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
+use winnow::token::any;
 
-use crate::lexer::{LexStream, OwnedLexToken};
+use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use crate::mana::ManaSymbol;
 
 use super::super::{leaf, primitives};
@@ -100,6 +101,53 @@ fn parse_tapped_for_amount_mana_replacement<'a>(
         minimum_amount,
         replacement_mana,
     })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ManaMultiplierReplacementSpec<'a> {
+    pub source_tokens: &'a [OwnedLexToken],
+    pub factor: u32,
+}
+
+/// "If you tap a permanent for mana, it produces three times as much of that
+/// mana instead." (Nyxbloom Ancient, Mana Reflection)
+fn parse_mana_multiplier_replacement<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<ManaMultiplierReplacementSpec<'a>, ErrMode<ContextError>> {
+    primitives::phrase(&["if", "you", "tap"]).parse_next(input)?;
+    let source_tokens = repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        winnow::combinator::peek(primitives::phrase(&["for", "mana"])),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    primitives::phrase(&["for", "mana"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["it", "produces"]).parse_next(input)?;
+    let factor = alt((
+        primitives::kw("twice").value(2),
+        primitives::phrase(&["two", "times"]).value(2),
+        primitives::phrase(&["three", "times"]).value(3),
+    ))
+    .parse_next(input)?;
+    primitives::phrase(&["as", "much", "of", "that", "mana", "instead"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(ManaMultiplierReplacementSpec {
+        source_tokens: trim_lexed_commas(source_tokens),
+        factor,
+    })
+}
+
+pub fn parse_mana_multiplier_replacement_spec_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<ManaMultiplierReplacementSpec<'_>> {
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_mana_multiplier_replacement,
+        "mana multiplier replacement",
+    )
 }
 
 pub fn parse_tapped_for_amount_mana_replacement_spec_lexed(

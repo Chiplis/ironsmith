@@ -19,7 +19,8 @@ use super::dispatch_inner::trim_edge_punctuation;
 use super::divvy::try_parse_divvy_sentence_sequence;
 use super::sentence_helpers::*;
 use crate::cards::builders::{
-    CardTextError, ConditionalEffectAst, EffectAst, IfResultPredicate, PermissionEffectAst,
+    CardTextError, ConditionalEffectAst, EffectAst, ForEachEffectAst, IfResultPredicate,
+    PermissionEffectAst,
 };
 use crate::grammar::effects as effect_grammar;
 use crate::lexer::{OwnedLexToken, TokenKind, split_lexed_sentences};
@@ -108,6 +109,11 @@ const DOCUMENT_READINGS: &[Reading] = &[
         id: RuleId::new("conditional-put-counters"),
         head: HeadDiscriminator::Any,
         read: |document| document.outcome(read_conditional_put_counters(document)),
+    },
+    Reading {
+        id: RuleId::new("repeat-following-process"),
+        head: HeadDiscriminator::Any,
+        read: |document| document.outcome(read_repeat_following_process(document)),
     },
     Reading {
         id: RuleId::new("emblem-payload"),
@@ -365,6 +371,44 @@ fn read_each_player_may_discard_hand_and_draw(
     }
     Ok(None)
 }
+/// "Repeat the following process X times. <process sentences>" (Torment of
+/// Hailfire): the remaining sentences run the given number of times.
+fn read_repeat_following_process(
+    document: &Document<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let [first, rest @ ..] = document.sentences.as_slice() else {
+        return Ok(None);
+    };
+    if rest.is_empty() {
+        return Ok(None);
+    }
+    let words = crate::lexer::parser_token_word_refs(first);
+    let count_word = match words.as_slice() {
+        ["repeat", "the", "following", "process", count, "times"] => *count,
+        _ => return Ok(None),
+    };
+    let count = if count_word == "x" {
+        crate::effect::Value::X
+    } else if let Some(count) = crate::util::parse_number_word_u32(count_word) {
+        crate::effect::Value::Fixed(count as i32)
+    } else {
+        return Ok(None);
+    };
+    let first_end = first.as_ptr() as usize - document.tokens.as_ptr() as usize;
+    let first_end = first_end / std::mem::size_of::<OwnedLexToken>() + first.len();
+    let Some(process_tokens) = document.tokens.get(first_end..) else {
+        return Ok(None);
+    };
+    let effects = crate::clause_support::parse_effect_sentences_lexed(process_tokens)?;
+    if effects.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+        count,
+        effects,
+    })]))
+}
+
 fn read_conditional_put_counters(
     document: &Document<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

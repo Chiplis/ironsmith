@@ -171,6 +171,12 @@ pub(super) fn read_library_placement_destination(
     let exiled_with_source_surface = input.exiled_with_source_surface.clone();
     if let Some(shape) = cca_shapes::parse_library_placement_destination_shape(tokens) {
         let (target_tokens, source_top_only) = strip_source_top_only_prefix(shape.target_tokens);
+        // "put one of those cards back on top of your library" (Devourer of
+        // Destiny): "back" restates the origin, not the moved object.
+        let target_tokens = match target_tokens.split_last() {
+            Some((last, rest)) if last.is_word("back") && !rest.is_empty() => rest,
+            _ => target_tokens,
+        };
         let target = if let Some(target) = parse_counted_card_target_prefix(target_tokens)? {
             target
         } else {

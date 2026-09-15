@@ -422,6 +422,11 @@ pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAct
             }
             ProtectionTargetKind::ChosenPlayer => Some(KeywordAction::ProtectionFromChosenPlayer),
             ProtectionTargetKind::ChosenColor => Some(KeywordAction::ProtectionFromChosenColor),
+            ProtectionTargetKind::ChosenCardType => {
+                let mut filter = ObjectFilter::default();
+                filter.chosen_card_type = true;
+                Some(KeywordAction::ProtectionFromFilter(filter))
+            }
             ProtectionTargetKind::Colorless => Some(KeywordAction::ProtectionFromColorless),
             ProtectionTargetKind::Multicolored => Some(KeywordAction::ProtectionFromFilter(
                 ObjectFilter::default().multicolored(),

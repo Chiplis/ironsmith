@@ -341,6 +341,12 @@ export default function TableCore({
             {actionBarElement}
           </div>
         ) : null}
+        {expandedActionBar ? (
+          <div
+            className="table-decision-submit-slot"
+            data-decision-submit-portal-host="true"
+          />
+        ) : null}
         {middleInspectorDock ? (
           <div
             className="table-shared-inspector-dock pointer-events-none absolute right-2 z-[110] flex items-start justify-end overflow-visible"

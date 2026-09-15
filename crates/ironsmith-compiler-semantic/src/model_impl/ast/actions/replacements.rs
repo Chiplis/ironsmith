@@ -24,6 +24,9 @@ pub enum ReplacementActionAst {
         duration: ZoneReplacementDurationAst,
         cause_policy: FutureZoneReplacementCausePolicyAst,
         link_exiled_to_source: bool,
+        /// "If an instant or sorcery spell cast this way would be put into
+        /// your graveyard, exile it instead" wording.
+        cast_this_way_surface: bool,
     },
     RegisterDrawReplacement {
         player: PlayerFilter,

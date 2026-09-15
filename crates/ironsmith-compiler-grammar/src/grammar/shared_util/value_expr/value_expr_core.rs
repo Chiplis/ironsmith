@@ -81,6 +81,9 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         if permission_shapes::starts_at_words(words, used, &["rounded", "up"]) {
             return Some((rounded_half(base, Rounding::Up), used + 2));
         }
+        // "you gain half X life and draw half X cards. Round down each time."
+        // (Hydroid Krasis): an unstated rounding is down.
+        return Some((rounded_half(base, Rounding::Down), used));
     }
 
     if let Some((_, used)) = DAMAGE_EVENT_AMOUNT_PREFIXES
@@ -183,6 +186,26 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if permission_shapes::prefix_words(words, &["twice", "x"]) {
         return Some((Value::XTimes(2), 2));
     }
+    // "two times X life" (Debt to the Deathless), "five times X damage"
+    // (Crackle with Power)
+    if words.len() >= 3
+        && words[1] == "times"
+        && words[2] == "x"
+        && let Some(multiplier) = match words[0] {
+            "two" => Some(2),
+            "three" => Some(3),
+            "four" => Some(4),
+            "five" => Some(5),
+            "six" => Some(6),
+            "seven" => Some(7),
+            "eight" => Some(8),
+            "nine" => Some(9),
+            "ten" => Some(10),
+            _ => None,
+        }
+    {
+        return Some((Value::XTimes(multiplier), 3));
+    }
     if permission_shapes::prefix_words(words, &["twice"]) {
         let (value, used) = parse_value_expr_term_words(&words[1..])?;
         return Some((Value::Scaled(Box::new(value), 2), used + 1));
@@ -283,6 +306,31 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         ],
     ) {
         return Some((Value::LifeGainedThisTurn(PlayerFilter::You), used));
+    }
+    // "greater than each other creature's power" (Selvala, Heart of the
+    // Wilds): exceeding every other creature is exceeding the greatest.
+    if let Some(used) = prefix_len(
+        words,
+        &[
+            &["each", "other", "creature's", "power"],
+            &["each", "other", "creatures", "power"],
+            &["each", "other", "creature", "power"],
+        ],
+    ) {
+        return Some((
+            Value::GreatestPower(ObjectFilter::creature().other()),
+            used,
+        ));
+    }
+    // "the amount of life you lost this turn" (Betor, Ancestor's Voice)
+    if let Some(used) = prefix_len(
+        words,
+        &[
+            &["the", "amount", "of", "life", "you", "lost", "this", "turn"],
+            &["amount", "of", "life", "you", "lost", "this", "turn"],
+        ],
+    ) {
+        return Some((Value::LifeLostThisTurn(PlayerFilter::You), used));
     }
     if let Some(used) = prefix_len(
         words,
@@ -419,6 +467,39 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
             3,
         ));
     }
+    // "where X is that artifact's mana value" (Artifact Mutation, Aura
+    // Mutation): the demonstrative names the object just acted on.
+    if words.len() >= 4
+        && words[0] == "that"
+        && matches!(
+            words[1],
+            "artifacts"
+                | "artifact's"
+                | "enchantments"
+                | "enchantment's"
+                | "creatures"
+                | "creature's"
+                | "permanents"
+                | "permanent's"
+                | "lands"
+                | "land's"
+                | "spells"
+                | "spell's"
+        )
+        && words[2] == "mana"
+        && words[3] == "value"
+    {
+        let noun = words[1].trim_end_matches("'s").trim_end_matches('s');
+        return Some((
+            Value::ManaValueOf(Box::new(
+                ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into())
+                    .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(
+                        SourceReferenceSurface::ThisPermanentType(format!("that {noun}")),
+                    )),
+            )),
+            4,
+        ));
+    }
     if let Some(used) = prefix_len(
         words,
         &[
@@ -485,6 +566,17 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
                 Value::ToughnessOf(Box::new(ChooseSpec::Tagged(tag.bind().into()))),
                 &words[..used],
             ),
+            used,
+        ));
+    }
+    // "the mana value of the discarded card" inside a reflexive "when you
+    // discard a card this way" trigger names the triggering card (Argentum
+    // Masticore).
+    if let Some(used) = prefix_len(words, DISCARDED_MANA_VALUE_PREFIXES) {
+        return Some((
+            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            ))),
             used,
         ));
     }

@@ -57,6 +57,9 @@ pub enum ExileWouldDieSpec {
         controller: ReplacementPlayerKind,
         exile_counter: Option<CounterType>,
         follow_up_token: Option<CreatureTokenShape>,
+        /// "instead exile it and you gain 2 life" (The Darkness Crystal): the
+        /// effect clause that follows the exile.
+        follow_up_tokens: Vec<OwnedLexToken>,
     },
     DamagedBy {
         victim: ExileWouldDieVictimKind,
@@ -277,10 +280,11 @@ fn parse_nontoken_exile_would_die_lexed<'a>(
     .parse_next(input)?;
     primitives::phrase(&["would", "die"]).parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
-    let (exile_counter, follow_up_token) = alt((
-        parse_created_token_exile_tail_lexed.map(|token| (None, Some(token))),
-        parse_countered_exile_tail_lexed.map(|counter| (Some(counter), None)),
-        parse_plain_exile_tail_lexed.value((None, None)),
+    let (exile_counter, follow_up_token, follow_up_tokens) = alt((
+        parse_created_token_exile_tail_lexed.map(|token| (None, Some(token), Vec::new())),
+        parse_countered_exile_tail_lexed.map(|counter| (Some(counter), None, Vec::new())),
+        parse_exile_with_follow_up_tail_lexed.map(|tokens| (None, None, tokens)),
+        parse_plain_exile_tail_lexed.value((None, None, Vec::new())),
     ))
     .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
@@ -288,7 +292,32 @@ fn parse_nontoken_exile_would_die_lexed<'a>(
         controller,
         exile_counter,
         follow_up_token,
+        follow_up_tokens,
     })
+}
+
+/// "instead exile it and you gain 2 life" / "exile it instead and you gain 2
+/// life": the exile plus a following effect clause.
+fn parse_exile_with_follow_up_tail_lexed(input: &mut LexStream<'_>) -> WResult<Vec<OwnedLexToken>> {
+    let leading_instead = opt(primitives::kw("instead"))
+        .map(|instead| instead.is_some())
+        .parse_next(input)?;
+    primitives::kw("exile").parse_next(input)?;
+    alt((
+        primitives::kw("it").void(),
+        primitives::phrase(&["that", "card"]),
+    ))
+    .parse_next(input)?;
+    if !leading_instead {
+        primitives::kw("instead").parse_next(input)?;
+    }
+    primitives::kw("and").parse_next(input)?;
+    let follow_up =
+        repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::sentence_end()))
+            .map(|((), ())| ())
+            .take()
+            .parse_next(input)?;
+    Ok(trim_lexed_commas(follow_up).to_vec())
 }
 
 fn parse_created_token_exile_tail_lexed(input: &mut LexStream<'_>) -> WResult<CreatureTokenShape> {

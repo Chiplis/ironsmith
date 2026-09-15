@@ -1657,6 +1657,58 @@ select.stone-select.topbar-phase-perspective-select:disabled {
   animation: none !important;
 }
 
+/* The local active decision is the primary affordance: start it as a warm
+   yellow control with dark lettering, then ease into the familiar yellow-on-
+   black treatment while the pointer is over it. */
+.decision-main-button:not(:disabled):not([aria-disabled="true"]),
+.mobile-decision-primary-button:not(:disabled):not([aria-disabled="true"]) {
+  border-color: #ffe083 !important;
+  color: #080a0b !important;
+  -webkit-text-fill-color: #080a0b !important;
+  background: #ffe083 !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 224, 131, 0.72),
+    0 0 16px rgba(255, 224, 131, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.52),
+    inset 0 -2px 0 rgba(116, 80, 14, 0.22) !important;
+  text-shadow: none !important;
+  transition:
+    background 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    -webkit-text-fill-color 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+.decision-main-button:not(:disabled):not([aria-disabled="true"]) > *,
+.mobile-decision-primary-button:not(:disabled):not([aria-disabled="true"]) > * {
+  color: #080a0b !important;
+  -webkit-text-fill-color: #080a0b !important;
+  text-shadow: none !important;
+}
+
+.decision-main-button:not(:disabled):not([aria-disabled="true"]):hover,
+.mobile-decision-primary-button:not(:disabled):not([aria-disabled="true"]):hover {
+  border-color: #ffe8a6 !important;
+  color: #ffe8a6 !important;
+  -webkit-text-fill-color: #ffe8a6 !important;
+  background: #111314 !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 240, 190, 0.2),
+    0 0 18px 2px rgba(255, 224, 131, 0.46),
+    0 0 34px 8px rgba(255, 224, 131, 0.18),
+    inset 0 0 16px rgba(255, 224, 131, 0.12) !important;
+  transform: translateY(-1px) scale(1.01) !important;
+}
+
+.decision-main-button:not(:disabled):not([aria-disabled="true"]):hover > *,
+.mobile-decision-primary-button:not(:disabled):not([aria-disabled="true"]):hover > * {
+  color: #ffe8a6 !important;
+  -webkit-text-fill-color: #ffe8a6 !important;
+  text-shadow: 0 0 7px rgba(255, 224, 131, 0.46) !important;
+}
+
 .decision-cancel-button,
 .mobile-decision-secondary-button {
   border: 1px solid rgba(223, 113, 108, 0.44) !important;
@@ -2583,12 +2635,13 @@ select.stone-select.topbar-phase-perspective-select:disabled {
   filter: saturate(0.62) brightness(0.72);
 }
 
-/* Interaction vectors must stay legible across every board and control
-   surface. Inspectors, tooltips and action choices sit above them. */
+/* Interaction vectors stay above the battlefield but below the shared middle
+   control band (z-90+), including its external Submit row. Inspectors,
+   tooltips and action choices remain above them. */
 .action-arrow-overlay,
 .cast-intent-drag-arrow,
 .placement-drag-arrow {
-  z-index: 30000 !important;
+  z-index: 80 !important;
 }
 
 .floating-card-preview {
@@ -3141,15 +3194,12 @@ button:disabled,
   background: #111314 !important;
 }
 
-/* Keep the action surface dark; yellow diffusion belongs to the text only. */
+/* Keep the surrounding action surface dark; the active button owns its yellow
+   fill and transitions to the dark hover treatment above. */
 :is(.topbar-main-decision-host, .priority-inline-panel)
 :is(.action-strip-command-region, .action-strip-main-region):has(.decision-main-button:not(:disabled):not([aria-disabled="true"])),
 :is(.topbar-main-decision-host, .priority-inline-panel)
-:is(.action-strip-command-region, .action-strip-main-region):has(.decision-main-button:not(:disabled):not([aria-disabled="true"])):hover,
-.decision-main-button:not(:disabled):not([aria-disabled="true"]),
-.decision-main-button:not(:disabled):not([aria-disabled="true"]):hover,
-.mobile-decision-primary-button:not(:disabled):not([aria-disabled="true"]),
-.mobile-decision-primary-button:not(:disabled):not([aria-disabled="true"]):hover {
+:is(.action-strip-command-region, .action-strip-main-region):has(.decision-main-button:not(:disabled):not([aria-disabled="true"])):hover {
   background: #111314 !important;
   box-shadow: none !important;
   filter: none !important;
@@ -3369,7 +3419,7 @@ button:disabled,
 }
 
 
-/* Keep Cancel with the primary action, including controls portaled to the topbar. */
+/* Keep Cancel with the compact topbar controls when Submit uses the external row. */
 .topbar-main-decision-host .decision-primary-controls {
   display: grid !important;
   grid-auto-flow: column;
@@ -4259,4 +4309,141 @@ button:disabled,
 html[data-hand-pointer-suspended="true"],
 html[data-hand-pointer-suspended="true"] * {
   cursor: none !important;
+}
+
+/* Segmented decision buttons render their visible label in a sibling text
+   stack above the screen-reader-only button label. Keep that local label
+   aligned with the active button surface; danger actions retain their red
+   treatment below. */
+.action-strip-command-region:not(.action-strip-command-region--danger)
+.action-strip-main-region:has(.decision-main-button:not(:disabled):not([aria-disabled="true"]))
+.action-strip-main-title-text {
+  color: #080a0b !important;
+  -webkit-text-fill-color: #080a0b !important;
+  -webkit-text-stroke: 0 !important;
+  text-shadow: none !important;
+}
+
+.action-strip-command-region:not(.action-strip-command-region--danger)
+.action-strip-main-region:has(.decision-main-button:not(:disabled):not([aria-disabled="true"]):hover)
+.action-strip-main-title-text {
+  color: #ffe8a6 !important;
+  -webkit-text-fill-color: #ffe8a6 !important;
+  -webkit-text-stroke: 0 !important;
+  text-shadow: 0 0 7px rgba(255, 224, 131, 0.46) !important;
+}
+
+/* Expanded decisions place their primary submit below the selectable card
+   row. The row is intentionally inset on the Look side so its hover glow and
+   hit target never cover that zone. */
+.action-strip-submit-row {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: min(20vw, calc(100% - 24px));
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: stretch;
+  margin-inline: auto;
+  padding: 4px 0 7px;
+}
+
+.action-strip-submit-row .action-strip-submit-button {
+  /* The previous 36px control was still flush with lifted battlefield objects.
+     Keep the reduction explicit because the JSX also supplies h-full. */
+  height: 32.4px !important;
+  min-height: 32.4px !important;
+  max-height: 32.4px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  border-radius: 2px !important;
+  border: 0 !important;
+  font-family: var(--font-heading, "Alegreya"), Georgia, serif !important;
+  font-size: clamp(12px, 1vw, 15px) !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+}
+
+/* The external Submit control deliberately reverses the main decision
+   button's contrast: dark with warm lettering at rest, then warm with dark
+   lettering on hover. */
+.action-strip-submit-row .action-strip-submit-button:not(:disabled):not([aria-disabled="true"]) {
+  border: 0 !important;
+  color: #ffe8a6 !important;
+  -webkit-text-fill-color: #ffe8a6 !important;
+  background: #111314 !important;
+  box-shadow: none !important;
+}
+
+.action-strip-submit-row .action-strip-submit-button:not(:disabled):not([aria-disabled="true"]) > * {
+  color: #ffe8a6 !important;
+  -webkit-text-fill-color: #ffe8a6 !important;
+  text-shadow: 0 0 7px rgba(255, 224, 131, 0.3) !important;
+}
+
+.action-strip-submit-row .action-strip-submit-button:not(:disabled):not([aria-disabled="true"]):hover {
+  border: 0 !important;
+  color: #080a0b !important;
+  -webkit-text-fill-color: #080a0b !important;
+  background: #ffe083 !important;
+  box-shadow: none !important;
+}
+
+.action-strip-submit-row .action-strip-submit-button:not(:disabled):not([aria-disabled="true"]):hover > * {
+  color: #080a0b !important;
+  -webkit-text-fill-color: #080a0b !important;
+  text-shadow: none !important;
+}
+
+/* Submit lives outside the clipped decision overlay so the control can sit
+   below the options without being cut off by the strip's fixed height. */
+.table-decision-submit-slot {
+  position: relative;
+  z-index: 210;
+  min-width: 0;
+  pointer-events: auto;
+}
+
+.my-zone-action-strip-shell > .table-decision-submit-slot {
+  display: flex;
+  width: 100%;
+  align-items: stretch;
+  padding: 4px 12px 7px;
+}
+
+.table-decision-strips > .table-decision-submit-slot {
+  position: absolute;
+  /* The strips already leave the protected battlefield inset below them.
+     Pull the external row slightly into that inset to close the dead space
+     above Submit without spilling down over the first battlefield row. */
+  top: calc(100% - 12px);
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: stretch;
+  padding: 4px 12px 7px;
+}
+
+/* Available choices stay in one readable lane: horizontal overflow is the
+   only scrolling mode, regardless of how many candidates are present. */
+.table-decision-overlay-slot .action-strip-decision-content,
+.table-decision-overlay-slot .decision-strip-scroll,
+.table-decision-overlay-slot .action-strip-scroll,
+.priority-inline-panel .decision-strip-scroll,
+.priority-inline-panel .action-strip-scroll {
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: thin;
+}
+
+.table-decision-overlay-slot .decision-strip-options-row,
+.table-decision-overlay-slot .action-strip-scroll > div,
+.priority-inline-panel .decision-strip-options-row,
+.priority-inline-panel .action-strip-scroll > div {
+  width: max-content !important;
+  min-width: 100% !important;
+  max-width: none !important;
+  flex-wrap: nowrap !important;
 }

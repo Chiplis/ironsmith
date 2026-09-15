@@ -265,8 +265,9 @@ fn looked_partition_library_destination(
         primitives::kw("bottom").value(false),
     ))
     .parse_next(input)?;
-    primitives::kw("of").parse_next(input)?;
-    looked_partition_library_reference.parse_next(input)?;
+    // "Put the rest on the bottom in a random order." (Loot, Exuberant
+    // Explorer) leaves the library implicit.
+    opt((primitives::kw("of"), looked_partition_library_reference)).parse_next(input)?;
     let order = looked_partition_order.parse_next(input)?;
     Ok(if top {
         LookedPartitionDestination::LibraryTop(order)

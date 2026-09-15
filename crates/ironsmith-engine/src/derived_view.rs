@@ -331,6 +331,7 @@ fn static_ability_has_spell_cost_modifier(
 ) -> bool {
     static_ability.cost_reduction().is_some()
         || static_ability.cost_increase().is_some()
+        || static_ability.cost_increase_life().is_some()
         || static_ability.cost_reduction_mana_cost().is_some()
         || static_ability.cost_increase_mana_cost().is_some()
 }

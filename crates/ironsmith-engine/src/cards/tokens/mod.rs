@@ -13,6 +13,7 @@ mod powerstone_token;
 mod role_token;
 mod shard_token;
 mod treasure_token;
+mod squirrel_token;
 mod walker_token;
 
 pub use blood_token::blood_token_definition;
@@ -31,4 +32,5 @@ pub use role_token::{
 };
 pub use shard_token::shard_token_definition;
 pub use treasure_token::treasure_token_definition;
+pub use squirrel_token::squirrel_token_definition;
 pub use walker_token::walker_token_definition;

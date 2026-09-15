@@ -420,6 +420,18 @@ pub fn parse_trigger_subject_filter_lexed(
         return Ok(Some(ObjectFilter::default()));
     }
     if subject_facts.relative_pronoun {
+        // "Whenever that creature deals combat damage ... this turn" (Hunter's
+        // Insight): the demonstrative names the object chosen earlier.
+        if let ["that", noun] = subject_words.as_slice()
+            && matches!(
+                *noun,
+                "creature" | "permanent" | "artifact" | "enchantment" | "land" | "planeswalker"
+            )
+        {
+            return Ok(Some(ObjectFilter::tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+            )));
+        }
         return Err(CardTextError::ParseError(format!(
             "unsupported trigger subject filter (clause: '{}')",
             subject_words.join(" ")

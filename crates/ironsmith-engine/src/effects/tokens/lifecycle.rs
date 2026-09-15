@@ -63,6 +63,12 @@ pub(crate) fn create_replacement_additional_tokens(
             ironsmith_core::AdditionalTokenKind::Food => {
                 crate::cards::tokens::food_token_definition()
             }
+            ironsmith_core::AdditionalTokenKind::Clue => {
+                crate::cards::tokens::clue_token_definition()
+            }
+            ironsmith_core::AdditionalTokenKind::Squirrel => {
+                crate::cards::tokens::squirrel_token_definition()
+            }
         };
         let count = (*requested_count as usize).min(remaining_token_slots(game, controller_id));
         for _ in 0..count {

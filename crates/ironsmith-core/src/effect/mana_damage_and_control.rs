@@ -1020,6 +1020,10 @@ pub struct RegisterFutureZoneReplacementEffect {
     pub cause_filter: Option<crate::cause_model::CauseFilter>,
     pub require_cause_source_match: bool,
     pub link_exiled_to_source: bool,
+    /// Authored as "If an instant or sorcery spell cast this way would be put
+    /// into your graveyard, exile it instead" rather than "If that spell ...".
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub cast_this_way_surface: bool,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1165,7 +1169,13 @@ impl RegisterFutureZoneReplacementEffect {
             cause_filter: None,
             require_cause_source_match: false,
             link_exiled_to_source: false,
+            cast_this_way_surface: false,
         }
+    }
+
+    pub fn with_cast_this_way_surface(mut self) -> Self {
+        self.cast_this_way_surface = true;
+        self
     }
 
     pub fn with_cause_filter(mut self, cause_filter: crate::cause_model::CauseFilter) -> Self {

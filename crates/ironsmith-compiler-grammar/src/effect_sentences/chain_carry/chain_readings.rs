@@ -1148,6 +1148,13 @@ fn read_unless_payment_choice(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>
 }
 fn read_or_action_clause(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
+    // "in any combination of {U}, {B}, and/or {R}" (Relic of Sauron) lists
+    // mana symbols; its "or" is not an action alternative.
+    if tokens.windows(3).any(|window| {
+        window[0].is_word("any") && window[1].is_word("combination") && window[2].is_word("of")
+    }) {
+        return Ok(None);
+    }
     if let Some(unless_action) = parse_or_action_clause_lexed(tokens)? {
         return Ok(Some(vec![unless_action]));
     }
@@ -1264,6 +1271,13 @@ fn read_coordinated_and_segments(
             }
             return Ok(Some(effects));
         }
+    }
+    // "Add two mana in any combination of {U}, {B}, and/or {R}." (Relic of
+    // Sauron) lists mana symbols; the conjunction is not a chain boundary.
+    if tokens.windows(3).any(|window| {
+        window[0].is_word("any") && window[1].is_word("combination") && window[2].is_word("of")
+    }) {
+        return Ok(None);
     }
     let split_segments = split_effect_chain_on_and_lexed(tokens);
     let executable_heads = split_segments

@@ -213,11 +213,31 @@ impl EffectExecutor for ExileEffect {
         if self.spec.is_target() && uses_ctx_targets(self) {
             let count = self.spec.count();
             if count.is_single() {
-                return apply_single_target_object_from_context(
-                    game,
-                    ctx,
-                    |game, ctx, object_id| exile_object(game, ctx, object_id, self.face_down),
-                );
+                let pre_memory = ctx.targets.iter().find_map(|target| match target {
+                    ResolvedTarget::Object(object_id) => {
+                        OutcomeObjectMemory::from_object_id(game, *object_id)
+                    }
+                    ResolvedTarget::Player(_) => None,
+                });
+                let outcome =
+                    apply_single_target_object_from_context(game, ctx, |game, ctx, object_id| {
+                        exile_object(game, ctx, object_id, self.face_down)
+                    })?;
+
+                // Reflexive follow-ups such as "when a creature card is
+                // exiled this way" inspect the moved object's LKI. The
+                // generic single-target helper only preserves the status, so
+                // restore the pre-zone-change memory here for successful and
+                // replaced exiles.
+                if matches!(
+                    outcome.status,
+                    OutcomeStatus::Succeeded | OutcomeStatus::Replaced
+                ) {
+                    if let Some(memory) = pre_memory {
+                        return Ok(outcome.with_affected_object_memory(vec![memory]));
+                    }
+                }
+                return Ok(outcome);
             }
             // Multi-target with count - handle "any number" specially
             if count.min == 0 {
@@ -586,6 +606,38 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
         assert_eq!(game.exile.len(), 1);
+    }
+
+    #[test]
+    fn targeted_exile_preserves_lki_for_type_filtered_followups() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let card_id = add_card_to_zone(
+            &mut game,
+            alice,
+            Zone::Graveyard,
+            "Exiled Creature",
+            vec![ManaSymbol::Generic(1)],
+            CardType::Creature,
+        );
+
+        let effect = ExileEffect::with_spec(ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::default().in_zone(Zone::Graveyard),
+        )));
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(card_id)]);
+
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("targeted exile should resolve");
+        let memory = result
+            .affected_object_memory()
+            .expect("targeted exile should preserve the moved card's LKI");
+
+        assert_eq!(memory.len(), 1);
+        assert_eq!(memory[0].zone, Zone::Graveyard);
+        assert!(memory[0].card_types.contains(&CardType::Creature));
     }
 
     #[test]

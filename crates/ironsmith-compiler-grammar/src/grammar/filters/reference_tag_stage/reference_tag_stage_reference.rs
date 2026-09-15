@@ -817,16 +817,6 @@ pub(in super::super) fn parse_object_filter_inner(
         POWER_OR_TOUGHNESS_PHRASES,
     )
     .is_some();
-    if has_power_or_toughness_clause
-        && !all_words
-            .iter()
-            .any(|word| parse_word_choice(word, SPELL_OR_SPELLS_WORDS).is_some())
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported power-or-toughness object filter (clause: '{}')",
-            all_words.join(" ")
-        )));
-    }
 
     // A sharing clause compares the candidate's characteristics with a
     // separately filtered object set. Parse and remove the entire relation
@@ -2251,7 +2241,9 @@ pub(in super::super) fn parse_object_filter_inner(
         filter = disjunction;
     }
 
-    if has_power_or_toughness_clause && saw_spell {
+    // "creature with power or toughness 1 or less" (Warping Wail) and the
+    // spell form share one either-characteristic disjunction.
+    if has_power_or_toughness_clause {
         let mut power_or_toughness_cmp = None;
         for idx in 0..all_words.len() {
             let (_, value_tokens) = match all_words.get(idx..) {
@@ -2269,22 +2261,26 @@ pub(in super::super) fn parse_object_filter_inner(
             power_or_toughness_cmp = Some(cmp);
             break;
         }
-        if let Some(cmp) = power_or_toughness_cmp {
-            let mut base = filter.clone();
-            base.any_of.clear();
-            base.power = None;
-            base.toughness = None;
+        let Some(cmp) = power_or_toughness_cmp else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported power-or-toughness object filter (clause: '{}')",
+                all_words.join(" ")
+            )));
+        };
+        let mut base = filter.clone();
+        base.any_of.clear();
+        base.power = None;
+        base.toughness = None;
 
-            let mut power_branch = base.clone();
-            power_branch.power = Some(cmp.clone());
+        let mut power_branch = base.clone();
+        power_branch.power = Some(cmp.clone());
 
-            let mut toughness_branch = base;
-            toughness_branch.toughness = Some(cmp);
+        let mut toughness_branch = base;
+        toughness_branch.toughness = Some(cmp);
 
-            let mut disjunction = ObjectFilter::default();
-            disjunction.any_of = vec![power_branch, toughness_branch];
-            filter = disjunction;
-        }
+        let mut disjunction = ObjectFilter::default();
+        disjunction.any_of = vec![power_branch, toughness_branch];
+        filter = disjunction;
     }
 
     // In "creature attacking you or a planeswalker you control", the

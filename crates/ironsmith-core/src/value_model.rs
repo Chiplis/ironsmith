@@ -1660,6 +1660,8 @@ pub enum Condition {
         count: u32,
     },
     OpponentWasDealtDamageThisTurn,
+    /// An opponent was dealt at least this much damage this turn (Spinerock Knoll).
+    OpponentWasDealtDamageThisTurnOrMore(u32),
     PermanentLeftBattlefieldThisTurn,
     NonlandPermanentLeftBattlefieldThisTurn,
     SpellWasWarpedThisTurn,
@@ -1731,6 +1733,9 @@ pub enum Condition {
     /// This condition's controller is the active player and the game is in
     /// either a precombat or postcombat main phase.
     SourceControllersMainPhase,
+    /// This condition's controller is the active player and the game is in
+    /// the combat phase.
+    SourceControllersCombatPhase,
     SourceControllersEndStep,
     SourceIsTapped,
     SourceIsSaddled,

@@ -300,6 +300,11 @@ pub fn preserve_and_reason(
     if color_pair_boundary(current, remaining) {
         return Some(AndPreservation::ColorPair);
     }
+    // "hexproof from blue and from black" (Veil of Summer): the repeated
+    // preposition continues the keyword's quality list.
+    if contains_any(current, &["hexproof", "protection"]) && starts_any(remaining, &[&["from"]]) {
+        return Some(AndPreservation::ColorPair);
+    }
     // `tapped and attacking` is one token-entry modifier. At this boundary
     // the token noun is necessarily in the right-hand slice, so the generic
     // "current clause contains token" guard below cannot recognize it yet.
@@ -918,6 +923,19 @@ pub fn is_creature_subtype_subject_list_boundary(
     }
 
     let current_words = token_word_refs(current);
+    // "target attacking Cleric, Rogue, Warrior, or Wizard gains ..." (Seasoned
+    // Dungeoneer): selector and combat-state qualifiers precede the list.
+    let subject_start = current_words
+        .iter()
+        .position(|word| {
+            !matches!(
+                *word,
+                "target" | "another" | "each" | "all" | "attacking" | "blocking" | "tapped"
+                    | "untapped" | "nontoken" | "token" | "a" | "an" | "up" | "to"
+            ) && crate::util::parse_number_word_u32(word).is_none()
+        })
+        .unwrap_or(current_words.len());
+    let current_words = &current_words[subject_start..];
     if current_words.is_empty()
         || !current_words.iter().all(|word| {
             *word == "other"

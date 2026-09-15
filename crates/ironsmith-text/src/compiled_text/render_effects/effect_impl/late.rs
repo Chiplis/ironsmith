@@ -1825,6 +1825,17 @@
         return format!("Detain {}", describe_choose_spec(&detain.target));
     }
     if let Some(goad) = effect.downcast_ref::<crate::effects::GoadEffect>() {
+        if goad.spelled_out_requirement
+            && goad.duration == crate::effect::Until::YourNextTurn
+            && let ChooseSpec::All(filter) = &goad.target
+        {
+            let subject = crate::compiled_text::render_effects::costs_and_triggers::pluralize_noun_phrase(
+                &strip_leading_article(&filter.description()),
+            );
+            return format!(
+                "Until your next turn, {subject} attack each combat if able and attack a player other than you if able"
+            );
+        }
         let target = describe_goad_target(&goad.target);
         return match goad.duration {
             crate::effect::Until::Forever => format!(

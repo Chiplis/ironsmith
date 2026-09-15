@@ -682,6 +682,17 @@ pub fn search_library_discard_marker<'a>(
         .parse_next(input)
 }
 
+pub fn search_library_cast_marker<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    (
+        alt((primitives::kw("and"), primitives::kw("then"))),
+        primitives::kw("cast"),
+    )
+        .void()
+        .parse_next(input)
+}
+
 pub fn search_library_reveal_or_then_marker<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
@@ -915,10 +926,14 @@ pub fn scan_search_library_clause_markers_lexed(
     let shuffle_idx =
         find_search_library_marker_lexed(search_tokens, search_library_shuffle_marker);
     let has_explicit_destination = put_idx.is_some() || exile_idx.is_some();
+    // "Search your library for ... and cast that card without paying its mana
+    // cost." (Sunforger): the cast follow-up ends the filter.
+    let cast_idx = find_search_library_marker_lexed(search_tokens, search_library_cast_marker);
     let filter_boundary = put_idx
         .or(exile_idx)
         .or(reveal_idx)
         .or(shuffle_idx)
+        .or(cast_idx)
         .unwrap_or(search_tokens.len());
 
     Some(SearchLibraryClauseMarkers {
@@ -1054,12 +1069,17 @@ pub fn find_search_library_trailing_create_followup_lexed(
     let marker_idx = find_search_library_marker_lexed(
         &search_tokens[start_idx..],
         |input: &mut LexStream<'_>| {
+            // "and cast that card without paying its mana cost" (Sunforger)
+            // follows the found card the same way a token creation does.
             let _ = (
                 alt((
                     super::super::primitives::kw("then"),
                     super::super::primitives::kw("and"),
                 )),
-                super::super::primitives::kw("create"),
+                alt((
+                    super::super::primitives::kw("create"),
+                    super::super::primitives::kw("cast"),
+                )),
             )
                 .parse_next(input)?;
             Ok(())
@@ -1094,7 +1114,7 @@ pub fn find_search_library_trailing_create_followup_lexed(
     (!trailing_tokens.is_empty()
         && trailing_tokens
             .first()
-            .is_some_and(|token| search_library_token_is_any_word(token, &["create"])))
+            .is_some_and(|token| search_library_token_is_any_word(token, &["create", "cast"])))
     .then_some(trailing_tokens)
 }
 

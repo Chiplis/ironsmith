@@ -24,6 +24,8 @@ pub enum ProtectionTargetKind {
     PermanentWithCounter { counter_word_first: usize },
     ChosenPlayer,
     ChosenColor,
+    /// "protection from the chosen card type" (Serra's Emissary).
+    ChosenCardType,
     Colorless,
     /// "protection from multicolored" (Argentum Masticore, Stonecoil Serpent).
     Multicolored,
@@ -374,7 +376,15 @@ fn classify_protection_target(words: &[&str], target_word: usize) -> ProtectionT
     {
         return ProtectionTargetKind::ChosenColor;
     }
-    if word_phrase_prefix(tail, &["all", "color"]) || word_phrase_prefix(tail, &["all", "colors"]) {
+    if word_phrase_prefix(tail, &["the", "chosen", "card", "type"])
+        || word_phrase_prefix(tail, &["the", "chosen", "type"])
+    {
+        return ProtectionTargetKind::ChosenCardType;
+    }
+    if word_phrase_prefix(tail, &["all", "color"])
+        || word_phrase_prefix(tail, &["all", "colors"])
+        || word_phrase_prefix(tail, &["each", "color"])
+    {
         return ProtectionTargetKind::AllColors;
     }
     match words.get(target_word).copied() {

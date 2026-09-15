@@ -592,10 +592,13 @@ pub fn parse_put_onto_battlefield_with_counters_on_it_sentence(
     else {
         return Ok(None);
     };
-    if shape.destination.tapped || shape.destination.attacking {
+    if shape.destination.attacking {
         return Ok(None);
     }
 
+    // "onto the battlefield tapped under your control with two additional
+    // +1/+1 counters on it" (The Darkness Crystal) keeps the tapped entry.
+    let tapped = shape.destination.tapped;
     let target = parse_target_phrase(shape.target_tokens)?;
     let move_effect = if shape
         .target_tokens
@@ -608,7 +611,7 @@ pub fn parse_put_onto_battlefield_with_counters_on_it_sentence(
             Zone::Battlefield,
             false,
             shape.destination.controller,
-            false,
+            tapped,
             None,
         )
     } else {
@@ -617,7 +620,7 @@ pub fn parse_put_onto_battlefield_with_counters_on_it_sentence(
             Zone::Battlefield,
             false,
             shape.destination.controller,
-            false,
+            tapped,
             None,
         )
     }

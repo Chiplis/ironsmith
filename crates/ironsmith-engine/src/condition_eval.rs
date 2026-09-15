@@ -4670,6 +4670,8 @@ fn evaluate_condition_in_context(
                 game.turn.phase,
                 crate::game_state::Phase::FirstMain | crate::game_state::Phase::NextMain
             )),
+        Condition::SourceControllersCombatPhase => Ok(game.is_active_player(shared.controller)
+            && matches!(game.turn.phase, crate::game_state::Phase::Combat)),
         Condition::SourceControllersEndStep => Ok(game.is_active_player(shared.controller)
             && game.turn.phase == crate::game_state::Phase::Ending),
         Condition::SourceIsRenowned => Ok(game.is_renowned(shared.source)),
@@ -4721,6 +4723,15 @@ fn evaluate_condition_in_context(
                 game.turn_store
                     .turn_history
                     .player_was_dealt_damage_this_turn(*opponent)
+            }))
+        }
+        Condition::OpponentWasDealtDamageThisTurnOrMore(count) => {
+            let filter_ctx = game.filter_context_for(shared.controller, shared.filter_source);
+            Ok(filter_ctx.opponents.iter().any(|opponent| {
+                game.turn_store
+                    .turn_history
+                    .total_damage_to_player(*opponent)
+                    >= *count
             }))
         }
         Condition::PermanentLeftBattlefieldThisTurn => Ok(game

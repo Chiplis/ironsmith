@@ -853,6 +853,10 @@ export function GameProvider({ children }) {
   const stickyViewedCardsRef = useRef(null);
   const stickyGameOverRef = useRef(null);
   const queuedSyncedCancelRef = useRef(false);
+  // Background payment replans are disposable once the player accepts the
+  // currently visible payable plan. Incrementing this generation cancels
+  // refinements that are still waiting on the interaction gate.
+  const backgroundDispatchGenerationRef = useRef(0);
   const recentTargetSubmitRef = useRef({
     inFlight: false,
     expiresAt: -Infinity,
@@ -1935,24 +1939,67 @@ export function GameProvider({ children }) {
   }, [stateRef, game, state?.__priority_revision, state?.decision?.analysis_complete, multiplayer.matchStarted, finalizeState, setStatus]);
 
   const dispatch = useCallback(
-    async (command, successMessage, { castingAction = null, waitForPaymentReady = false } = {}) => {
+    async (command, successMessage, {
+      castingAction = null,
+      waitForPaymentReady = false,
+      acceptCurrentPayment = false,
+      backgroundGeneration = null,
+    } = {}) => {
       if (!game) return;
       const payment = stateRef.current?.mana_payment;
+      const backgroundIsCurrent = () => (
+        backgroundGeneration == null
+        || backgroundDispatchGenerationRef.current === backgroundGeneration
+      );
       // Render-driven payment actions must survive the previous action's cooldown,
       // but must not be applied after cancellation or a different plan arrives.
       const runInteraction = waitForPaymentReady
         ? (task) => wasmInteractionGateRef.current.runWhenReady(task, () => {
+          if (!backgroundIsCurrent()) return false;
           const current = stateRef.current;
           return current?.decision?.kind === "mana_payment"
             && samePlayerId(current.decision.player, current.perspective)
             && current.mana_payment?.request_hash === payment?.request_hash
-            && current.mana_payment?.plan_id === payment?.plan_id;
+            && (acceptCurrentPayment
+              || current.mana_payment?.plan_id === payment?.plan_id)
+            && (!acceptCurrentPayment || current.mana_payment?.can_confirm !== false);
         })
         : runWasmInteraction;
       return runInteraction(async () => {
-        // A concurrent board render may still show the previous decision.
-        // Never apply a click from that view to the newer engine snapshot.
-        if (!isSnapshotRendered()) return;
+        if (!backgroundIsCurrent()) return;
+        // Replanning may complete between the click and the interaction gate
+        // becoming available. The player accepted this payment request, so use
+        // the newest authoritative plan rather than submitting an obsolete
+        // plan id that would force a rollback.
+        if (acceptCurrentPayment && command?.type === "mana_payment") {
+          let current = stateRef.current;
+          try {
+            current = await game.uiState();
+          } catch {
+            // The normal snapshot remains sufficient if the read races the
+            // worker; the engine will still perform authoritative validation.
+          }
+          const currentPayment = current?.mana_payment;
+          if (
+            current?.decision?.kind === "mana_payment"
+            && samePlayerId(current.decision.player, current.perspective)
+            && currentPayment?.request_hash === payment?.request_hash
+            && currentPayment?.can_confirm !== false
+          ) {
+            command = {
+              ...command,
+              response: {
+                ...command.response,
+                plan_id: String(currentPayment.plan_id),
+                request_hash: String(currentPayment.request_hash),
+              },
+            };
+          }
+        }
+        // A concurrent board render may still show the previous decision. A
+        // payment confirmation is safe to rebase onto the same request's
+        // current plan; all other clicks must wait for the newer snapshot.
+        if (!isSnapshotRendered() && !acceptCurrentPayment) return;
         const isTargetSubmit = command?.type === "select_targets";
         const currentDecision = stateRef.current?.decision || null;
         const stopAfterTriggerOrderingSubmit = (
@@ -2173,11 +2220,22 @@ export function GameProvider({ children }) {
   // occupying the foreground interaction gate. The worker still serializes
   // game mutations, so a foreground action submitted during refinement is
   // applied immediately afterward in a deterministic order.
+  const cancelBackgroundDispatch = useCallback(() => {
+    backgroundDispatchGenerationRef.current += 1;
+  }, []);
+
   const dispatchInBackground = useCallback(
     async (command) => {
       if (!game) return undefined;
+      const backgroundGeneration = backgroundDispatchGenerationRef.current;
       if (multiplayer.matchStarted) {
-        return dispatch(command, undefined, { waitForPaymentReady: true });
+        return dispatch(command, undefined, {
+          waitForPaymentReady: true,
+          backgroundGeneration,
+        });
+      }
+      if (backgroundDispatchGenerationRef.current !== backgroundGeneration) {
+        return undefined;
       }
       const currentDecision = stateRef.current?.decision || null;
       if (!isDecisionCommandCompatible(currentDecision, command)) {
@@ -2772,6 +2830,7 @@ export function GameProvider({ children }) {
       exitAuditReplaySession,
       submitMultiplayerCommand,
       submitMultiplayerAddCardCheat,
+      cancelBackgroundDispatch,
       setExternalAutoPassGate,
     }),
     [
@@ -2788,7 +2847,7 @@ export function GameProvider({ children }) {
       status,
       setStatus,
       runWasmInteraction,
-      dispatch, dispatchInBackground, cancelDecision, refresh, autoPassEnabled, holdRule, uiFont,
+      dispatch, dispatchInBackground, cancelBackgroundDispatch, cancelDecision, refresh, autoPassEnabled, holdRule, uiFont,
       playerAccentOverrides, setPlayerAccentOverride, inspectorDebug,
       activeTriggerOrderingState, moveTriggerOrderingItem,
       semanticThreshold, setSemanticThreshold, cardsMeetingThreshold,

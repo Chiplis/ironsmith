@@ -267,6 +267,10 @@ impl CreationPhrase {
             Self::GraveyardOrHandThisWay => &[
                 &["card", "put", "into", "a", "graveyard", "this", "way"],
                 &["cards", "put", "into", "a", "graveyard", "this", "way"],
+                // "Create a Treasure token for each card put into your
+                // graveyard this way." (Dihada, Binder of Wills)
+                &["card", "put", "into", "your", "graveyard", "this", "way"],
+                &["cards", "put", "into", "your", "graveyard", "this", "way"],
                 &["object", "put", "into", "a", "graveyard", "this", "way"],
                 &["objects", "put", "into", "a", "graveyard", "this", "way"],
                 &["permanent", "put", "into", "a", "graveyard", "this", "way"],

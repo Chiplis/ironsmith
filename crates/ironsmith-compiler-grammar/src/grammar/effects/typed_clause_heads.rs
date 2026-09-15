@@ -212,6 +212,8 @@ fn is_structural_action(word: &str) -> bool {
             | "bolsters"
             | "block"
             | "blocks"
+            | "change"
+            | "changes"
             | "clash"
             | "clashes"
             | "cloak"

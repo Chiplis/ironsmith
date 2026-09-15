@@ -177,6 +177,25 @@ pub fn parse_object_filter_with_grammar_entrypoint(
             }
         }
     }
+    // "permanent that's one or more colors" (Ugin, Eye of the Storms),
+    // "creatures of one or more colors": a trailing color-count phrase
+    // narrows the head noun phrase.
+    if let Some((head_tokens, count)) = split_trailing_color_count_phrase_tokens(tokens) {
+        if count >= 3 {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported color-count object filter '{}'",
+                crate::lexer::render_token_slice(tokens)
+            )));
+        }
+        let mut filter = parse_object_filter_with_grammar_entrypoint(head_tokens, other)?;
+        if count == 1 {
+            filter.colors = Some(crate::color::Color::ALL.into_iter().collect());
+        } else {
+            filter.color_count = Some(crate::filter::Comparison::GreaterThanOrEqual(count as i32));
+        }
+        preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
+        return Ok(filter);
+    }
     // An extremum owns the outer comparison and parses its comparison set
     // independently. Preserve that structure before classifying its operands.
     if let Some(mut filter) = parse_extremum_object_filter_lexed(tokens, other)? {
@@ -230,6 +249,37 @@ pub fn parse_object_filter_with_grammar_entrypoint(
     };
     preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
     Ok(filter)
+}
+
+/// Split "<head> of|that's <one or more> colors" into the head tokens and the
+/// minimum color count. The linking word and the count phrase must run to the
+/// end of the slice.
+fn split_trailing_color_count_phrase_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], u32)> {
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let starts = view.token_start_indices();
+    for (link_idx, link) in words.iter().enumerate().skip(1) {
+        if !matches!(*link, "of" | "thats" | "that's" | "that") {
+            continue;
+        }
+        let Some((count, consumed)) =
+            super::naming_and_reference::parse_color_count_phrase_words(&words[link_idx + 1..])
+        else {
+            continue;
+        };
+        if link_idx + 1 + consumed != words.len() {
+            continue;
+        }
+        let link_token = *starts.get(link_idx)?;
+        let head = crate::lexer::trim_lexed_commas(&tokens[..link_token]);
+        if head.is_empty() {
+            return None;
+        }
+        return Some((head, count));
+    }
+    None
 }
 
 pub fn parse_spell_filter_with_grammar_entrypoint_lexed(tokens: &[OwnedLexToken]) -> ObjectFilter {

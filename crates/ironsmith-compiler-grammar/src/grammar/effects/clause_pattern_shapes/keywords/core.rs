@@ -6,6 +6,14 @@ pub(super) fn parse_explore<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMec
         0,
         alt((primitives::kw("explore"), primitives::kw("explores"))).void(),
     )?;
+    // The subject is one clause: "... until end of turn. It explores." must
+    // not swallow the preceding sentence (Seasoned Dungeoneer).
+    if subject_tokens.iter().any(|token| token.is_period()) {
+        return Err(primitives::backtrack_err(
+            "explore subject",
+            "a single-sentence subject",
+        ));
+    }
     alt((primitives::kw("explore"), primitives::kw("explores"))).parse_next(input)?;
     let repeat = if peek(primitives::sentence_end()).parse_next(input).is_ok() {
         primitives::sentence_end().parse_next(input)?;

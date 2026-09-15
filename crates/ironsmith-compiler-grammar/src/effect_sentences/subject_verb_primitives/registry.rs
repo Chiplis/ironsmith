@@ -507,7 +507,14 @@ fn recognize_subject_verb_primitives_lexed(
     {
         ParseOutcome::NoMatch => return ParseOutcome::NoMatch,
         ParseOutcome::Match(matched) => matched.value,
-        ParseOutcome::Error(diagnostic) => return ParseOutcome::Error(diagnostic),
+        ParseOutcome::Error(diagnostic) => {
+            crate::parse_trace::event(format!(
+                "subject-verb-primitive-registry: typed head error on \"{}\"",
+                crate::lexer::render_token_slice(tokens).trim()
+            ));
+            crate::util::parser_trace_stack("subject-verb-primitive-registry:typed-head-error", tokens);
+            return ParseOutcome::Error(diagnostic);
+        }
     };
     let lowered = OnceCell::new();
     let view = LexClauseView::from_tokens(tokens);

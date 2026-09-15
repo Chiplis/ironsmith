@@ -528,6 +528,40 @@ pub fn parse_shuffle(
             ))
         })?;
     match shape {
+        ResourceShuffleShape::ObjectsIntoOwnersLibraries { target_len } => {
+            let target_tokens = trim_commas(&tokens[..target_len]);
+            let shuffle_into_owner_library = |target: TargetAst| {
+                EffectAst::subject_verb(
+                    SubjectVerbRoleAst::LibraryOwner,
+                    PlayerAst::ItsOwner,
+                    SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary {
+                        target,
+                        all: false,
+                        owner_library_destination: true,
+                        possessive_owner_subject: true,
+                        shuffle_subject_library: false,
+                    }),
+                )
+            };
+            // "this creature and target creature with a stun counter on it"
+            // (Floodpits Drowner) names two independent operands; each is
+            // shuffled into its own owner's library.
+            if let Some(and_idx) = target_tokens.iter().position(|token| token.is_word("and"))
+                && and_idx > 0
+                && and_idx + 1 < target_tokens.len()
+                && let Ok(first) = parse_target_phrase(&trim_commas(&target_tokens[..and_idx]))
+                && let Ok(second) = parse_target_phrase(&trim_commas(&target_tokens[and_idx + 1..]))
+            {
+                return Ok(EffectAst::Sequence {
+                    effects: vec![
+                        shuffle_into_owner_library(first),
+                        shuffle_into_owner_library(second),
+                    ],
+                });
+            }
+            let target = parse_target_phrase(&target_tokens)?;
+            Ok(shuffle_into_owner_library(target))
+        }
         ResourceShuffleShape::HandIntoLibrary { player } => {
             let owner = crate::grammar::effects::zone_counter_shapes::player_filter_for_half_reference(player)
                 .ok_or_else(|| CardTextError::ParseError("unsupported hand owner in shuffle".to_string()))?;

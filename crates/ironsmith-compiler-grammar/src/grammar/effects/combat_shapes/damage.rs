@@ -20,7 +20,12 @@ const EVENT_AMOUNT_PREFIXES: &[&[&str]] = &[
     &["that", "many"],
 ];
 const EACH_PLAYER_TARGETS: &[&[&str]] = &[&["each", "player"], &["each", "players"]];
-const EACH_OPPONENT_TARGETS: &[&[&str]] = &[&["each", "opponent"], &["each", "opponents"]];
+const EACH_OPPONENT_TARGETS: &[&[&str]] = &[
+    &["each", "opponent"],
+    &["each", "opponents"],
+    // "deals 3 damage to each of your opponents" (Aurelia, the Law Above)
+    &["each", "of", "your", "opponents"],
+];
 const EACH_OTHER_PLAYER_TARGETS: &[&[&str]] =
     &[&["each", "other", "player"], &["each", "other", "players"]];
 const EACH_OTHER_OPPONENT_TARGETS: &[&[&str]] = &[

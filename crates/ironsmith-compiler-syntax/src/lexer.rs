@@ -116,7 +116,12 @@ pub fn is_authored_proper_name_phrase(tokens: &[OwnedLexToken]) -> bool {
             return false;
         };
         saw_word = true;
-        let authored = token.slice.trim_matches(|ch: char| !ch.is_alphabetic());
+        // The literal surface survives case normalization, so a lowered
+        // sentence ("untap Hydro-Man" read as a multi-sentence trigger) still
+        // shows the authored capitalization.
+        let authored = token
+            .literal_surface()
+            .trim_matches(|ch: char| !ch.is_alphabetic());
         if authored.is_empty() {
             return false;
         }

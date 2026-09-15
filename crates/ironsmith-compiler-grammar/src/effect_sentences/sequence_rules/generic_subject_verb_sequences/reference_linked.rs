@@ -1377,7 +1377,11 @@ pub fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
     else {
         return Ok(None);
     };
-    graveyard_cast_with_exile_replacement(&first, &shape)
+    let cast_this_way = crate::word_primitives::sequence_occurs(
+        &crate::lexer::token_word_refs(&second),
+        &["cast", "this", "way"],
+    );
+    graveyard_cast_with_exile_replacement_surface(&first, &shape, cast_this_way)
 }
 
 /// The effects of a graveyard-cast permission whose spell is exiled instead
@@ -1387,10 +1391,33 @@ pub fn graveyard_cast_with_exile_replacement(
     first: &[OwnedLexToken],
     shape: &effect_grammar::GraveyardCastReplacementShape,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    graveyard_cast_with_exile_replacement_surface(first, shape, false)
+}
+
+/// `cast_this_way` records the rider wording "If an instant or sorcery spell
+/// cast this way would be put into your graveyard, exile it instead".
+pub fn graveyard_cast_with_exile_replacement_surface(
+    first: &[OwnedLexToken],
+    shape: &effect_grammar::GraveyardCastReplacementShape,
+    cast_this_way: bool,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let chosen_tag = helper_tag_for_tokens(first, "graveyard_cast_target");
     let cast_spell_tag = helper_tag_for_tokens(first, "cast_spell");
     let first_view = crate::lexer::TokenWordView::new(first);
-    let Some(target_word) = first_view.parse_word_position("target") else {
+    // "you may cast an artifact, instant, or sorcery spell from your
+    // graveyard" (Bilbo, Thief in the Night) chooses the card instead of
+    // targeting it; the article after "cast" opens the card description.
+    let chosen_not_targeted = first_view.parse_word_position("target").is_none();
+    let target_word = if let Some(target_word) = first_view.parse_word_position("target") {
+        target_word
+    } else if let Some(cast_word) = first_view.parse_word_position("cast")
+        && first_view
+            .word_refs()
+            .get(cast_word + 1)
+            .is_some_and(|word| matches!(*word, "a" | "an"))
+    {
+        cast_word + 1
+    } else {
         return Ok(None);
     };
     let Some(target_start) = first_view.token_index_after_words(target_word + 1) else {
@@ -1422,7 +1449,16 @@ pub fn graveyard_cast_with_exile_replacement(
         .chain(mana_spend_clause)
         .min()
         .unwrap_or(first.len());
-    let target_filter_tokens = trim_commas(&first[target_start..target_end]);
+    let mut target_filter_tokens = trim_commas(&first[target_start..target_end]);
+    if chosen_not_targeted {
+        // "an artifact, instant, or sorcery spell from your graveyard" names
+        // cards in the graveyard; "spell" is the cast-time noun.
+        for token in &mut target_filter_tokens {
+            if token.is_word("spell") {
+                *token = OwnedLexToken::word("card".to_string(), token.span());
+            }
+        }
+    }
     let Ok(filter) = parse_object_filter_lexed(&target_filter_tokens, false) else {
         return Ok(None);
     };
@@ -1476,7 +1512,15 @@ pub fn graveyard_cast_with_exile_replacement(
         TaggedOpbjectRelation::IsTaggedObject,
     );
 
-    Ok(Some(vec![
+    let select_card = if chosen_not_targeted {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: crate::tag::TagRef::of(chosen_tag.clone()),
+        })
+    } else {
         EffectAst::TagAffected {
             effect: Box::new(EffectAst::subject_verb_target_only(TargetAst::Object(
                 filter,
@@ -1484,7 +1528,11 @@ pub fn graveyard_cast_with_exile_replacement(
                 None,
             ))),
             tag: crate::tag::TagRef::of(chosen_tag.clone()),
-        },
+        }
+    };
+
+    Ok(Some(vec![
+        select_card,
         EffectAst::Permissions(PermissionEffectAst::May {
             effects: vec![EffectAst::TagAffected {
                 effect: Box::new(
@@ -1504,15 +1552,22 @@ pub fn graveyard_cast_with_exile_replacement(
         }),
         EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
-            effects: vec![EffectAst::subject_verb_register_future_zone_replacement(
-                replacement_filter,
-                Some(Zone::Stack),
-                Some(Zone::Graveyard),
-                Zone::Exile,
-                ZoneReplacementDurationAst::OneShot,
-                crate::cards::builders::FutureZoneReplacementCausePolicyAst::Any,
-                false,
-            )],
+            effects: vec![{
+                let replacement = EffectAst::subject_verb_register_future_zone_replacement(
+                    replacement_filter,
+                    Some(Zone::Stack),
+                    Some(Zone::Graveyard),
+                    Zone::Exile,
+                    ZoneReplacementDurationAst::OneShot,
+                    crate::cards::builders::FutureZoneReplacementCausePolicyAst::Any,
+                    false,
+                );
+                if cast_this_way {
+                    replacement.with_cast_this_way_replacement_surface()
+                } else {
+                    replacement
+                }
+            }],
         }),
     ]))
 }

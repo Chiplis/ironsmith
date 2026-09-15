@@ -39,6 +39,12 @@ pub fn parse_tagged_permission_shape(tokens: &[OwnedLexToken]) -> Option<TaggedP
                 "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that", "spell",
                 "this", "way",
             ],
+            // "If you cast a spell this way, mana of any type can be spent to
+            // cast it." (Bloodsoaked Insight)
+            &[
+                "if", "you", "cast", "a", "spell", "this", "way", "mana", "of", "any", "type",
+                "can", "be", "spent", "to", "cast", "it",
+            ],
         ])
         .value(TaggedPermissionShape::ManaAnyTypeCastsTaggedThisWay),
     ));

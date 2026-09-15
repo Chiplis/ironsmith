@@ -35,7 +35,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
   const { state } = useGame();
   const { t } = useI18n();
   const chosenObjectIds = useChosenObjectIds();
-  const { hoverCard, clearHover, showAnchoredCardPreview } = useHover();
+  const { hoverCard, clearHover, clearAnchoredCardPreview, showAnchoredCardPreview } = useHover();
   const castIntent = useCastTargeting();
   const castZoneHovered = useCastZoneHovered(player.id ?? player.index, zone);
   const [open, setOpen] = useState(false);
@@ -153,6 +153,8 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
             return;
           }
           if (choosingTarget && legal) {
+            clearAnchoredCardPreview();
+            clearHover();
             window.dispatchEvent(new CustomEvent("ironsmith:target-choice", {
               detail: { target: { kind: "object", object: Number(card.id) } },
             }));

@@ -3637,6 +3637,22 @@ pub(super) fn continue_to_mana_payment(
             pending.chosen_targets.len(),
             pending.from_zone,
         );
+        if let Some(spell) = game.object(pending.spell_id) {
+            let surcharge = crate::decision::battlefield_life_cost_increase_for_spell(
+                game,
+                pending.caster,
+                spell,
+                &pending.chosen_targets,
+                &pending.casting_method,
+                Some(pending.from_zone),
+            );
+            if surcharge > 0 {
+                append_activation_cost_steps_from_components(
+                    &[crate::costs::Cost::life(surcharge)],
+                    &mut pending.remaining_cost_steps,
+                );
+            }
+        }
         if let Some(resource) = pending.cost_resource {
             let original_filter = cast_resource_sacrifice_filter(game, &pending);
             if pending.cost_resource_is_tap {

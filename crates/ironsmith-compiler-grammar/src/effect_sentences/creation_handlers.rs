@@ -77,6 +77,10 @@ fn parse_create_value_binding(tokens: &[OwnedLexToken]) -> Result<Option<Value>,
                 "create-count-relative-players",
                 crate::grammar::values::parse_players_who_control_more_than_you_value_lexed(tokens),
             ),
+            (
+                "create-count-triggering-damage-amount",
+                parse_where_x_is_triggering_damage_amount(tokens),
+            ),
         ],
     )?;
     if specific.is_some() {
@@ -100,6 +104,28 @@ fn parse_create_value_binding(tokens: &[OwnedLexToken]) -> Result<Option<Value>,
             ("create-count-value-expression", value_expression),
         ],
     )
+}
+
+/// "where X is the amount of damage those creatures dealt to that player"
+/// (Quartzwood Crasher): the triggering damage event's amount.
+fn parse_where_x_is_triggering_damage_amount(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let words = crate::word_primitives::strip_any_prefix(
+        &words,
+        &[&["where", "x", "is"], &["x", "is"]],
+    )
+    .map_or(words.as_slice(), |(_, rest)| rest);
+    let words = crate::word_primitives::strip_any_prefix(&words, &[&["the"]])
+        .map_or(words, |(_, rest)| rest);
+    let is_dealt_damage_amount = crate::word_primitives::parse_sequence_prefix(
+        words,
+        &["amount", "of", "damage"],
+    ) && crate::word_primitives::sequence_occurs(words, &["dealt"])
+        && words.ends_with(&["that", "player"]);
+    is_dealt_damage_amount.then(|| {
+        Value::EventValue(ironsmith_core::EventValueSpec::Amount)
+            .with_surface_hint(ValueSurfaceHint::WhereXIs)
+    })
 }
 
 fn reject_lossy_for_each_fallback(

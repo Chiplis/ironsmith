@@ -564,6 +564,15 @@ pub enum DelayedTriggerSpec {
     },
     ThisBecomesBlockedByObject(ObjectFilter),
     Attacks(ObjectFilter),
+    /// "whenever a creature attacks you or a planeswalker you control"
+    /// (Tamiyo, Seasoned Scholar +2).
+    AttacksYou(ObjectFilter),
+    /// "Until end of turn, whenever a player taps an Island for mana, ..."
+    /// (High Tide).
+    PlayerTapsForMana {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    },
     AttacksAndIsntBlocked(ObjectFilter),
     AttacksOneOrMore(ObjectFilter),
     Blocks(ObjectFilter),
@@ -3963,6 +3972,11 @@ impl DetainEffect {
 pub struct GoadEffect {
     pub target: ChooseSpec,
     pub duration: Until,
+    /// The printed text spelled the requirement out ("attack each combat if
+    /// able and attack a player other than you if able") rather than saying
+    /// "goad" (Kardur, Doomscourge). Display only.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub spelled_out_requirement: bool,
 }
 
 impl GoadEffect {
@@ -3971,7 +3985,16 @@ impl GoadEffect {
     }
 
     pub fn with_duration(target: ChooseSpec, duration: Until) -> Self {
-        Self { target, duration }
+        Self {
+            target,
+            duration,
+            spelled_out_requirement: false,
+        }
+    }
+
+    pub fn spelled_out_requirement(mut self) -> Self {
+        self.spelled_out_requirement = true;
+        self
     }
 }
 

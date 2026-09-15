@@ -576,6 +576,12 @@ fn push_unique_keyword_action(actions: &mut Vec<KeywordAction>, action: KeywordA
 }
 
 fn color_only_hexproof_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    // "hexproof from that color" (Skrelv, Defector Mite): the chosen color.
+    if crate::lexer::token_word_refs(tokens) == ["that", "color"] {
+        let mut filter = ObjectFilter::default();
+        filter.chosen_color = true;
+        return Some(filter);
+    }
     let mut filters = Vec::new();
     for token in tokens {
         if token
@@ -647,6 +653,13 @@ fn parse_granted_ability_component_for_gain(
         return Ok(None);
     }
     let ability_words = crate::lexer::token_word_refs(&ability_tokens);
+    // "gain all creature types" (Mirror Entity, Maskwood Nexus): the
+    // changeling characteristic as a granted static ability.
+    if ability_words == ["all", "creature", "types"] {
+        return Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(
+            StaticAbilityAst::Static(StaticAbility::changeling()),
+        ))]));
+    }
     let top_level_activated_ability = authored_as_quoted_ability
         && gain_shapes::parse_top_level_activated_ability_surface(&ability_tokens);
     let top_level_triggered_ability = authored_as_quoted_ability
@@ -741,7 +754,33 @@ fn parse_granted_ability_conjunction_for_gain(
     }
 
     let mut abilities = Vec::new();
+    let mut previous_keyword: Option<&str> = None;
     for segment in segments {
+        let segment = trim_lexed_commas(segment);
+        // "hexproof from blue and from black" (Veil of Summer) repeats only
+        // the preposition; the second arm shares the first arm's keyword.
+        let synthesized: Vec<OwnedLexToken>;
+        let segment: &[OwnedLexToken] = if segment.first().is_some_and(|token| token.is_word("from"))
+            && let Some(keyword) = previous_keyword
+        {
+            let mut tokens: Vec<OwnedLexToken> =
+                crate::lexer::synthetic_word_tokens(&[keyword]).into_iter().collect();
+            tokens.extend_from_slice(segment);
+            synthesized = tokens;
+            &synthesized
+        } else {
+            segment
+        };
+        if segment
+            .get(1)
+            .is_some_and(|token| token.is_word("from"))
+            && let Some(first) = segment.first().and_then(OwnedLexToken::as_word)
+            && matches!(first, "hexproof" | "protection")
+        {
+            previous_keyword = Some(if first == "hexproof" { "hexproof" } else { "protection" });
+        } else {
+            previous_keyword = None;
+        }
         let Some(parsed) = parse_granted_ability_component_for_gain(segment, clause_words)? else {
             return Ok(None);
         };

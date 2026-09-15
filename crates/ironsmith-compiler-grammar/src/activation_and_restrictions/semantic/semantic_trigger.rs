@@ -1291,6 +1291,23 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
+    // "Whenever a creature is exiled from the battlefield" (Soulherder): a
+    // battlefield exit whose destination is exile.
+    if let Some(exiled_word_idx) = words.iter().position(|word| *word == "exiled")
+        && exiled_word_idx >= 2
+        && matches!(words[exiled_word_idx - 1], "is" | "are")
+        && words[exiled_word_idx..] == ["exiled", "from", "the", "battlefield"]
+    {
+        let verb_token_idx =
+            trigger_word_token_start(tokens, exiled_word_idx - 1).unwrap_or(tokens.len());
+        let subject_tokens = &tokens[..verb_token_idx];
+        if let Some(filter) =
+            crate::grammar::primitives::probe_shape(parse_object_filter_lexed(subject_tokens, false))
+        {
+            return Ok(TriggerSpec::ExiledFromBattlefield(filter));
+        }
+    }
+
     if let Some(leaves_word_idx) = trigger_atom_word(&words, TriggerClauseAtom::Leave)
         && trigger_pattern_accepts(
             &words[leaves_word_idx..],

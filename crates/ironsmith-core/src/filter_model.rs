@@ -7152,6 +7152,12 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::LifeLostThisTurn(PlayerFilter::Opponent) => {
                 "the total amount of life your opponents have lost this turn".to_string()
             }
+            Value::LifeLostThisTurn(PlayerFilter::You) => {
+                "the amount of life you lost this turn".to_string()
+            }
+            Value::LifeGainedThisTurn(PlayerFilter::You) => {
+                "the amount of life you gained this turn".to_string()
+            }
             _ => "a dynamic value".to_string(),
         }
     }

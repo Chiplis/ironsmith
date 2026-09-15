@@ -50,6 +50,27 @@ pub(super) fn apply_trait_replacement(
             }
         }
 
+        ReplacementAction::PreventHalfDamage { round_up } => {
+            let Some(damage) =
+                crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()).cloned()
+            else {
+                return TraitApplyResult::Unchanged(event);
+            };
+            let prevented = if damage.is_unpreventable {
+                0
+            } else if *round_up {
+                damage.amount.div_ceil(2)
+            } else {
+                damage.amount / 2
+            };
+            if prevented == 0 {
+                TraitApplyResult::Unchanged(event)
+            } else {
+                queue_damage_prevented_event(game, &event, effect, &damage, prevented);
+                TraitApplyResult::Modified(event.rewrap(damage.reduced(prevented)))
+            }
+        }
+
         ReplacementAction::PreventDamageByRemovingSourceCounters { counter_type } => {
             let Some(damage) =
                 crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()).cloned()
@@ -182,6 +203,14 @@ pub(super) fn apply_trait_replacement(
 
         ReplacementAction::DoubleCounters { counter_type } => {
             let modified = apply_trait_double_counters(&event, *counter_type);
+            match modified {
+                Some(e) => TraitApplyResult::Modified(e),
+                None => TraitApplyResult::Unchanged(event),
+            }
+        }
+
+        ReplacementAction::HalveCounters { counter_type } => {
+            let modified = apply_trait_halve_counters(&event, *counter_type);
             match modified {
                 Some(e) => TraitApplyResult::Modified(e),
                 None => TraitApplyResult::Unchanged(event),
@@ -452,6 +481,59 @@ pub(super) fn apply_trait_replacement(
                 Some(e) => TraitApplyResult::Modified(e),
                 None => TraitApplyResult::Unchanged(event),
             }
+        }
+
+        ReplacementAction::AddTokensPerCreated { token } => {
+            use crate::events::{CreateTokensEvent, downcast_event};
+
+            let Some(create_tokens) = downcast_event::<CreateTokensEvent>(event.inner()) else {
+                return TraitApplyResult::Unchanged(event);
+            };
+            match apply_trait_add_tokens(&event, *token, create_tokens.count) {
+                Some(e) => TraitApplyResult::Modified(e),
+                None => TraitApplyResult::Unchanged(event),
+            }
+        }
+
+        ReplacementAction::AddTokensOfOtherKinds { kinds } => {
+            use crate::events::{CreateTokensEvent, downcast_event};
+
+            let Some(create_tokens) = downcast_event::<CreateTokensEvent>(event.inner()) else {
+                return TraitApplyResult::Unchanged(event);
+            };
+            let created_kind = create_tokens.token.as_ref().and_then(|token| {
+                kinds.iter().copied().find(|kind| {
+                    token.has_subtype(match kind {
+                        ironsmith_core::AdditionalTokenKind::Treasure => {
+                            crate::types::Subtype::Treasure
+                        }
+                        ironsmith_core::AdditionalTokenKind::Food => crate::types::Subtype::Food,
+                        ironsmith_core::AdditionalTokenKind::Clue => crate::types::Subtype::Clue,
+                        ironsmith_core::AdditionalTokenKind::Squirrel => {
+                            crate::types::Subtype::Squirrel
+                        }
+                    })
+                })
+            });
+            let mut modified = create_tokens.clone();
+            for kind in kinds {
+                if Some(*kind) != created_kind {
+                    modified = modified.with_additional_tokens(*kind, create_tokens.count);
+                }
+            }
+            TraitApplyResult::Modified(event.rewrap(modified))
+        }
+
+        ReplacementAction::RedirectDrawToController => {
+            use crate::events::{DrawEvent, downcast_event};
+
+            let Some(draw) = downcast_event::<DrawEvent>(event.inner()) else {
+                return TraitApplyResult::Unchanged(event);
+            };
+            if draw.player == effect.controller {
+                return TraitApplyResult::Unchanged(event);
+            }
+            TraitApplyResult::Modified(event.rewrap(draw.with_player(effect.controller)))
         }
 
         ReplacementAction::ReplaceMana(mana) => {
@@ -1043,6 +1125,19 @@ fn apply_trait_modification(
             };
             Some(event.rewrap(modified))
         }
+        EventKind::ManaAdded => {
+            use crate::events::ManaAddedEvent;
+
+            let mana_event = downcast_event::<ManaAddedEvent>(event.inner())?;
+            let EventModification::Multiply(factor) = modification else {
+                return None;
+            };
+            let mut mana = Vec::with_capacity(mana_event.mana.len() * (*factor as usize).max(1));
+            for _ in 0..*factor {
+                mana.extend(mana_event.mana.iter().cloned());
+            }
+            Some(event.rewrap(mana_event.clone().with_mana(mana)))
+        }
         EventKind::Draw => {
             let draw = downcast_event::<DrawEvent>(event.inner())?;
             let modified = match modification {
@@ -1125,6 +1220,34 @@ fn apply_trait_double_counters(event: &Event, counter_type: Option<CounterType>)
                 }
             }
             changed.then(|| event.rewrap(doubled))
+        }
+        _ => None,
+    }
+}
+
+fn apply_trait_halve_counters(event: &Event, counter_type: Option<CounterType>) -> Option<Event> {
+    use crate::events::{EnterBattlefieldEvent, PutCountersEvent, downcast_event};
+
+    match event.kind() {
+        EventKind::PutCounters => {
+            let put_counters = downcast_event::<PutCountersEvent>(event.inner())?;
+            if counter_type.is_none_or(|ct| ct == put_counters.counter_type) {
+                Some(event.rewrap(put_counters.with_count(put_counters.count / 2)))
+            } else {
+                None
+            }
+        }
+        EventKind::EnterBattlefield => {
+            let etb = downcast_event::<EnterBattlefieldEvent>(event.inner())?;
+            let mut halved = etb.clone();
+            let mut changed = false;
+            for (existing_type, count) in &mut halved.enters_with_counters {
+                if counter_type.is_none_or(|ct| ct == *existing_type) {
+                    *count /= 2;
+                    changed = true;
+                }
+            }
+            changed.then(|| event.rewrap(halved))
         }
         _ => None,
     }

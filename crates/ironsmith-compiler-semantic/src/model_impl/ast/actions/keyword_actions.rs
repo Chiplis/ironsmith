@@ -123,6 +123,10 @@ pub enum KeywordActionAst {
     Goad {
         target: TargetAst,
         duration: Until,
+        /// The card spelled the requirement out ("attack each combat if able
+        /// and attack a player other than you if able") instead of saying
+        /// "goad" (Kardur, Doomscourge).
+        spelled_out_requirement: bool,
     },
     Suspect {
         target: TargetAst,

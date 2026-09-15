@@ -6847,9 +6847,22 @@ pub(super) fn describe_for_each_object_filter_subject(filter: &ObjectFilter) -> 
 pub(super) fn describe_for_each_optional_free_cast_any_number(
     for_each: &crate::effects::ForEachObject,
 ) -> Option<String> {
-    if for_each.filter.zone != Some(Zone::Hand)
-        || for_each.filter.owner != Some(PlayerFilter::You)
-        || !for_each.filter.tagged_constraints.is_empty()
+    // "You may cast any number of spells from among the nonland cards exiled
+    // this way without paying their mana costs." (Etali, Primal Conqueror)
+    let exiled_this_way = for_each.filter.zone == Some(Zone::Exile)
+        && for_each.filter.owner.is_none()
+        && for_each.filter.excluded_card_types == [CardType::Land]
+        && for_each.filter.card_types.is_empty()
+        && for_each.filter.tagged_constraints.iter().any(|constraint| {
+            // The exiled set is a compiler-owned collection tag ("__it__" or
+            // a sentence helper tag), never an authored name.
+            constraint.tag.as_str().starts_with("__")
+                && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+        });
+    if !exiled_this_way
+        && (for_each.filter.zone != Some(Zone::Hand)
+            || for_each.filter.owner != Some(PlayerFilter::You)
+            || !for_each.filter.tagged_constraints.is_empty())
     {
         return None;
     }
@@ -6874,6 +6887,12 @@ pub(super) fn describe_for_each_optional_free_cast_any_number(
         return None;
     }
 
+    if exiled_this_way {
+        return Some(
+            "you may cast any number of spells from among the nonland cards exiled this way without paying their mana costs"
+                .to_string(),
+        );
+    }
     let spells = pluralize_cast_spell_description(&describe_cast_spell_filter(
         &for_each.filter,
         CastSpellFilterContext::Standalone,

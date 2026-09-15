@@ -1332,7 +1332,14 @@ fn parse_effect_chain_inner_lexed_unstacked(
             effect_chain_tokens,
         );
     let mut effects = Vec::new();
-    let mut coordination_plan =
+    // "Add two mana in any combination of {U}, {B}, and/or {R}." (Relic of
+    // Sauron) lists mana symbols; its conjunctions never coordinate actions.
+    let lists_mana_combination = effect_chain_tokens.windows(3).any(|window| {
+        window[0].is_word("any") && window[1].is_word("combination") && window[2].is_word("of")
+    });
+    let mut coordination_plan = if lists_mana_combination {
+        None
+    } else {
         match super::super::grammar::effects::coordination::recognize_coordination(
             effect_chain_tokens,
         ) {
@@ -1341,7 +1348,8 @@ fn parse_effect_chain_inner_lexed_unstacked(
             crate::recognition::ParseOutcome::Error(diagnostic) => {
                 return Err(diagnostic.into_card_text_error());
             }
-        };
+        }
+    };
     let planned_segments = coordination_plan
         .as_ref()
         .and_then(|plan| plan.materialized_segments());
@@ -1351,7 +1359,11 @@ fn parse_effect_chain_inner_lexed_unstacked(
     let mut segments: Vec<Vec<OwnedLexToken>> = if let Some(planned_segments) = planned_segments {
         planned_segments
     } else {
-        let raw_segments = split_effect_chain_on_and_lexed(effect_chain_tokens);
+        let raw_segments = if lists_mana_combination {
+            vec![effect_chain_tokens]
+        } else {
+            split_effect_chain_on_and_lexed(effect_chain_tokens)
+        };
         let mut lexed_segments = Vec::new();
         for segment in raw_segments {
             if segment.is_empty() {

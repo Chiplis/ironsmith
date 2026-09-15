@@ -214,6 +214,14 @@ fn next_cast_instant_sorcery_or_loyalty_trigger_from_core(
     ))
 }
 
+/// "When you next attack this turn, ..." (All-Out Assault): one or more
+/// creatures you control attacking.
+fn next_attack_trigger_from_core(trigger_core_tokens: &[OwnedLexToken]) -> Option<TriggerSpec> {
+    let words = crate::lexer::token_word_refs(trigger_core_tokens);
+    (words == ["you", "next", "attack"])
+        .then(|| TriggerSpec::AttacksOneOrMore(ObjectFilter::creature().you_control()))
+}
+
 fn delayed_trigger_is_one_shot(trigger_clause: LexedClause<'_>) -> bool {
     let tokens = trigger_clause.trimmed().tokens();
     delayed_shapes::delayed_trigger_has_next_marker(tokens)
@@ -495,6 +503,7 @@ pub fn parse_sentence_delayed_trigger_this_turn(
         }
 
         let trigger = next_cast_instant_sorcery_or_loyalty_trigger_from_core(trigger_tokens)
+            .or_else(|| next_attack_trigger_from_core(trigger_tokens))
             .map(Ok)
             .unwrap_or_else(|| parse_trigger_clause_lexed(trigger_tokens))?;
         let one_shot = delayed_trigger_is_one_shot(trigger_clause);
@@ -656,6 +665,8 @@ pub fn parse_sentence_delayed_trigger_this_turn(
     let trigger = if let Some(trigger) =
         next_cast_instant_sorcery_or_loyalty_trigger_from_core(trigger_core_tokens)
     {
+        trigger
+    } else if let Some(trigger) = next_attack_trigger_from_core(trigger_core_tokens) {
         trigger
     } else if let Some(trigger) =
         delayed_that_deals_combat_damage_to_player_trigger_from_core(trigger_core_tokens)

@@ -470,12 +470,15 @@ fn parse_tagged_permission_target_lexed<'a>(
                 TaggedPermissionTargetSurface::Them,
                 None,
             )),
-            primitives::phrase(&["those", "cards"]).value((
-                TaggedPermissionReference::LastTagged,
-                false,
-                TaggedPermissionTargetSurface::ThoseCards,
-                None,
-            )),
+            // "You may play cards exiled this way until the end of your next
+            // turn." (Escape to the Wilds) names the same exiled set.
+            primitives::any_phrase(&[&["those", "cards"], &["cards", "exiled", "this", "way"]])
+                .value((
+                    TaggedPermissionReference::LastTagged,
+                    false,
+                    TaggedPermissionTargetSurface::ThoseCards,
+                    None,
+                )),
             primitives::phrase(&["spells", "from", "among", "those", "exiled", "cards"]).value((
                 TaggedPermissionReference::LastTagged,
                 false,

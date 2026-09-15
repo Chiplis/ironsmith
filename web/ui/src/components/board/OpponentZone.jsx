@@ -1,10 +1,11 @@
 import useUiText from "@/i18n/useUiText";
 import PlayerZonePiles from "./PlayerZonePiles";
-import { useCastPlayerHovered } from "@/context/DragContext";
+import { useCastPlayerHovered, useCastTargeting } from "@/context/DragContext";
 import { useCallback, useEffect, useState } from "react";
 import BattlefieldRow from "./BattlefieldRow";
 import ManaPool from "@/components/left-rail/ManaPool";
 import { useCombatArrows } from "@/context/useCombatArrows";
+import { useHoverActions } from "@/context/HoverContext";
 import { useGame } from "@/context/GameContext";
 import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
 import { cn } from "@/lib/utils";
@@ -373,8 +374,10 @@ function OpponentSlot({
 }) {
   const ui = useUiText();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
+  const { clearAnchoredCardPreview, clearHover } = useHoverActions();
   const { combatModeRef, combatMode, dragArrow } = useCombatArrows();
   const { playerAccentOverrides } = useGame();
+  const castIntent = useCastTargeting();
   const playerAccent = getPlayerAccent(
     state?.players || [],
     player?.id,
@@ -417,8 +420,12 @@ function OpponentSlot({
   const castPlayerHovered = useCastPlayerHovered(player?.index ?? player?.id);
   const isPlayerLegalTarget =
     legalTargetPlayerIds.has(Number(player.id)) || legalTargetPlayerIds.has(Number(player.index));
-  const canPickTargetFromBoard = state?.decision?.kind === "targets"
-    && samePlayerId(state?.decision?.player, state?.perspective);
+  const targetDecision = state?.decision?.kind === "targets"
+    ? state.decision
+    : castIntent?.targetDecision;
+  const targetModeActive = Boolean(castIntent) || state?.decision?.kind === "targets";
+  const canPickTargetFromBoard = targetDecision?.kind === "targets"
+    && samePlayerId(targetDecision.player, state?.perspective);
   const activatableMap = buildActivatableMap(state?.decision, state?.perspective);
   const activeAttackerId = (
     combatMode?.mode === "attackers"
@@ -458,16 +465,20 @@ function OpponentSlot({
     if (canPickTargetFromBoard && !shouldHandleClick(e)) return;
     const candidateObjectIds = collectCardObjectIds(card);
 
-    if (canPickTargetFromBoard) {
-      const matchedTargetId = candidateObjectIds.find((id) => legalTargetObjectIds.has(id));
+    if (targetModeActive) {
+      clearAnchoredCardPreview();
+      clearHover();
+      const matchedTargetId = canPickTargetFromBoard
+        ? candidateObjectIds.find((id) => legalTargetObjectIds.has(id))
+        : null;
       if (matchedTargetId != null) {
         window.dispatchEvent(
           new CustomEvent("ironsmith:target-choice", {
             detail: { target: { kind: "object", object: matchedTargetId } },
           })
         );
-        return;
       }
+      return;
     }
 
     onInspect?.(card.id, { candidateObjectIds });
@@ -478,6 +489,8 @@ function OpponentSlot({
     const candidateObjectIds = collectCardObjectIds(card);
     const matchedTargetId = candidateObjectIds.find((id) => legalTargetObjectIds.has(id));
     if (matchedTargetId == null) return;
+    clearAnchoredCardPreview();
+    clearHover();
     event.preventDefault();
     event.stopPropagation();
     window.dispatchEvent(
@@ -485,10 +498,12 @@ function OpponentSlot({
         detail: { target: { kind: "object", object: matchedTargetId } },
       })
     );
-  }, [canPickTargetFromBoard, legalTargetObjectIds, registerPointerDown]);
+  }, [canPickTargetFromBoard, clearAnchoredCardPreview, clearHover, legalTargetObjectIds, registerPointerDown]);
 
   const dispatchPlayerTargetChoice = useCallback(() => {
     if (!canPickTargetFromBoard || !isPlayerLegalTarget) return;
+    clearAnchoredCardPreview();
+    clearHover();
     const targetPlayer = legalTargetPlayerIds.has(Number(player.id))
       ? Number(player.id)
       : Number(player.index);
@@ -500,6 +515,8 @@ function OpponentSlot({
     );
   }, [
     canPickTargetFromBoard,
+    clearAnchoredCardPreview,
+    clearHover,
     isPlayerLegalTarget,
     legalTargetPlayerIds,
     player.id,

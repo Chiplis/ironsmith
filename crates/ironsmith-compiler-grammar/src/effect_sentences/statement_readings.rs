@@ -550,6 +550,39 @@ fn read_trailing_if_clause(input: &Statement<'_>) -> Result<Option<Vec<EffectAst
     }
     Ok(None)
 }
+/// "return from <zone> to the battlefield <target>" → "return <target> from
+/// <zone> to the battlefield".
+fn reorder_fronted_return_zones(sentence: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
+    let words = crate::lexer::token_word_refs(sentence);
+    if words.len() < 8 || words[0] != "return" || words[1] != "from" {
+        return None;
+    }
+    let to_word = words.iter().position(|word| *word == "to")?;
+    if words.get(to_word + 1..to_word + 3)? != ["the", "battlefield"] {
+        return None;
+    }
+    let view = crate::lexer::TokenWordView::new(sentence);
+    let from_token = view.map_word_to_token_start(1)?;
+    let target_token = view.map_word_to_token_start(to_word + 3)?;
+    let zone_tokens = &sentence[from_token..target_token];
+    let target_tokens = &sentence[target_token..];
+    let (target_tokens, terminal) = match target_tokens.split_last() {
+        Some((last, rest)) if last.is_period() => (rest, Some(last)),
+        _ => (target_tokens, None),
+    };
+    if target_tokens.is_empty() {
+        return None;
+    }
+    let mut reordered = Vec::with_capacity(sentence.len());
+    reordered.push(sentence[0].clone());
+    reordered.extend_from_slice(target_tokens);
+    reordered.extend_from_slice(zone_tokens);
+    if let Some(terminal) = terminal {
+        reordered.push(terminal.clone());
+    }
+    Some(reordered)
+}
+
 fn read_complete_get_pump(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentence = input.sentence;
     if let Some(effect) = parse_complete_get_pump_statement(sentence)? {
@@ -748,6 +781,12 @@ fn read_return_clause(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, C
         .is_some_and(|token| token.is_word("return"))
     {
         return Ok(None);
+    }
+    // "Return from your graveyard to the battlefield any number of target
+    // creature cards ..." (Agadeem's Awakening) fronts the origin and
+    // destination; read it in the ordinary target-first order.
+    if let Some(reordered) = reorder_fronted_return_zones(input.sentence) {
+        return crate::clause_support::parse_effect_sentences_lexed(&reordered).map(Some);
     }
 
     if let Some(effects) = super::parse_same_name_target_fanout_sentence(input.sentence)? {

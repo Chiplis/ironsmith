@@ -2816,7 +2816,26 @@ pub(super) fn describe_may_cast_target_graveyard_spell_then_exile_replacement(
     let [choose_effect, may_effect, replacement_effect] = effects else {
         return None;
     };
-    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    // "If you do, <replacement>" wraps the one-shot exile rider when the card
+    // is chosen rather than targeted (Bilbo, Thief in the Night).
+    let replacement_effect: &Effect = replacement_effect
+        .downcast_ref::<crate::effects::IfEffect>()
+        .filter(|followup| {
+            followup.else_.is_empty()
+                && followup.then.len() == 1
+                && match &followup.predicate {
+                    crate::effect::EffectPredicate::Happened => true,
+                    crate::effect::EffectPredicate::PriorEffectResult(surface) => {
+                        !surface.negated
+                            && surface.action == crate::effect::PriorEffectAction::Cast
+                    }
+                    _ => false,
+                }
+        })
+        .map_or(*replacement_effect, |followup| &followup.then[0]);
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let may_effect = structural_unwrap_render_wrappers(may_effect);
     if choose.is_search
         || !choose.count.is_single()
         || choose.chooser != PlayerFilter::You
@@ -2832,7 +2851,9 @@ pub(super) fn describe_may_cast_target_graveyard_spell_then_exile_replacement(
     let [cast_effect] = may.effects.as_slice() else {
         return None;
     };
-    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast_result_tag = wrapped_effect_tag(cast_effect);
+    let cast = structural_unwrap_render_wrappers(cast_effect)
+        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
     if cast.tag != choose.tag
         || cast.player != PlayerFilter::You
         || cast.allow_land
@@ -2842,7 +2863,11 @@ pub(super) fn describe_may_cast_target_graveyard_spell_then_exile_replacement(
         return None;
     }
 
-    if !is_chosen_spell_graveyard_exile_replacement(replacement_effect, &choose.tag) {
+    // The rider may watch the chosen card's tag or the tag of the cast spell
+    // itself ("If you do, ... exile it instead").
+    if !is_chosen_spell_graveyard_exile_replacement(replacement_effect, &choose.tag)
+        && !cast_result_tag.is_some_and(|tag| is_cast_spell_exile_rider(replacement_effect, tag))
+    {
         return None;
     }
 
@@ -2881,9 +2906,54 @@ pub(super) fn describe_may_cast_target_graveyard_spell_then_exile_replacement(
     };
 
     let card_types = describe_graveyard_cast_card_types(&choose.filter.card_types)?;
+    let rider = graveyard_cast_exile_rider_text(replacement_effect, graveyard_text);
+    let article = if card_types.starts_with(['a', 'e', 'i', 'o', 'u']) {
+        "an"
+    } else {
+        "a"
+    };
     Some(format!(
-        "You may cast target {card_types} card{mana_value_text} from {graveyard_text}{payment_text}{mana_spend_text}. If that spell would be put into {graveyard_text}, exile it instead"
+        "You may cast {article} {card_types} card{mana_value_text} from {graveyard_text}{payment_text}{mana_spend_text}. {rider}"
     ))
+}
+
+/// A one-shot "that spell goes to exile instead of the graveyard" rider keyed
+/// on the tag the cast effect gives the spell.
+fn is_cast_spell_exile_rider(replacement_effect: &Effect, cast_spell_tag: &TagKey) -> bool {
+    let Some(replacement) = structural_unwrap_render_wrappers(replacement_effect)
+        .downcast_ref::<crate::effects::RegisterFutureZoneReplacementEffect>()
+    else {
+        return false;
+    };
+    let linked_stack_object = ObjectFilter::tagged(cast_spell_tag.clone()).in_zone(Zone::Stack);
+    let mut linked_spell = ObjectFilter::spell();
+    linked_spell
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag: cast_spell_tag.clone(),
+            relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        });
+    (replacement.filter == linked_stack_object || replacement.filter == linked_spell)
+        && replacement.from_zone == Some(Zone::Stack)
+        && replacement.to_zone == Some(Zone::Graveyard)
+        && replacement.replacement_zone == Zone::Exile
+        && replacement.mode == crate::effects::ReplacementApplyMode::OneShot
+        && replacement.cause_filter.is_none()
+        && !replacement.require_cause_source_match
+}
+
+/// The one-shot graveyard exile rider in its authored wording.
+fn graveyard_cast_exile_rider_text(replacement_effect: &Effect, graveyard_text: &str) -> String {
+    let cast_this_way = replacement_effect
+        .downcast_ref::<crate::effects::RegisterFutureZoneReplacementEffect>()
+        .is_some_and(|replacement| replacement.cast_this_way_surface);
+    if cast_this_way {
+        format!(
+            "If an instant or sorcery spell cast this way would be put into {graveyard_text}, exile it instead"
+        )
+    } else {
+        format!("If that spell would be put into {graveyard_text}, exile it instead")
+    }
 }
 
 /// Reconstruct the target declaration that a reflexive trigger stores in its
@@ -3212,8 +3282,9 @@ fn describe_targeted_graveyard_cast_with_gated_replacement(effects: &[&Effect]) 
         .filter(|colors| !colors.is_empty())
         .map(|colors| format!("{colors} "))
         .unwrap_or_default();
+    let rider = graveyard_cast_exile_rider_text(replacement_effect, graveyard_text);
     Some(format!(
-        "You may cast target {color_text}{card_types_text} card{mana_value_text} from {graveyard_text}{payment_text}{mana_spend_text}. If that spell would be put into {graveyard_text}, exile it instead"
+        "You may cast target {color_text}{card_types_text} card{mana_value_text} from {graveyard_text}{payment_text}{mana_spend_text}. {rider}"
     ))
 }
 
@@ -3634,7 +3705,14 @@ pub(super) fn describe_attack_block_if_able_grant(
         }
     }
 
-    let plural = crate::compiled_text::merge_passes::subject_is_plural(subject);
+    let plural = crate::compiled_text::merge_passes::subject_is_plural(subject)
+        || subject
+            .split_whitespace()
+            .next()
+            .is_some_and(|first| {
+                let first = first.to_ascii_lowercase();
+                first.ends_with('s') && !matches!(first.as_str(), "this" | "its" | "his")
+            });
     let (attack, block) = if plural {
         ("attack", "block")
     } else {

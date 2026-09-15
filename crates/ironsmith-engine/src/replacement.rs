@@ -103,6 +103,9 @@ pub enum ReplacementAction {
     /// Prevent up to the specified amount of damage and emit the CR 615.13 event.
     PreventDamageAmount(u32),
 
+    /// Prevent half of the damage (rounded up or down) and emit the CR 615.13 event.
+    PreventHalfDamage { round_up: bool },
+
     /// Prevent one point of damage for each matching counter available on this
     /// replacement effect's source, then remove exactly that many counters.
     PreventDamageByRemovingSourceCounters { counter_type: CounterType },
@@ -155,6 +158,10 @@ pub enum ReplacementAction {
 
     /// Change the zone an object would go to
     ChangeDestination(Zone),
+
+    /// The replacement's controller draws instead of the event's player
+    /// ("that player skips that draw and you draw a card", Notion Thief).
+    RedirectDrawToController,
 
     /// Move the object to a replacement zone and put counters on it.
     MoveToZoneWithCounters {
@@ -243,6 +250,10 @@ pub enum ReplacementAction {
     /// Double counters of the matching type on counter-placement events.
     DoubleCounters { counter_type: Option<CounterType> },
 
+    /// Halve (rounded down) counters of the matching type on counter-placement
+    /// events ("they put half that many ... instead, rounded down").
+    HalveCounters { counter_type: Option<CounterType> },
+
     /// Add extra counters of the matching type to counter-placement events
     /// ("that many plus one ... counters are put on it instead").
     AddCountersToPlacement {
@@ -268,6 +279,15 @@ pub enum ReplacementAction {
         token: AdditionalTokenKind,
         count: u32,
     },
+
+    /// Add one separately defined token per token being created ("those
+    /// tokens plus that many 1/1 green Squirrel creature tokens", Chatterfang).
+    AddTokensPerCreated { token: AdditionalTokenKind },
+
+    /// Add one of each listed token kind other than the kind being created
+    /// ("If you would create a Clue, Food, or Treasure token, instead create
+    /// one of each", Academy Manufactor).
+    AddTokensOfOtherKinds { kinds: Vec<AdditionalTokenKind> },
 
     /// Replace the mana produced by a matching mana event.
     ReplaceMana(Vec<crate::mana::ManaSymbol>),

@@ -11,12 +11,30 @@ use super::nearby_primitives::{semantic_all, semantic_kw, semantic_noise, semant
 pub enum CounterReplacementShape<'a> {
     GenericUnderYourControl,
     EnergyYouGet,
+    /// "If you would put one or more counters on a permanent or player, put
+    /// twice that many of each of those kinds of counters on that permanent
+    /// or player instead." (Innkeeper's Talent); `opponent` reads "If an
+    /// opponent would put ... they put half that many ... rounded down"
+    /// (Vorinclex, Monstrous Raider).
+    ActorAnyKindMultiply { opponent: bool, halve: bool },
     PlusOneAdd {
         filter_tokens: &'a [OwnedLexToken],
         additional: u32,
     },
     PlusOneDouble {
         filter_tokens: &'a [OwnedLexToken],
+    },
+    /// "If one or more counters would be put on an artifact or creature you
+    /// control, that many plus one of each of those kinds of counters are put
+    /// on that permanent instead." (Winding Constrictor)
+    AnyKindAdd {
+        filter_tokens: &'a [OwnedLexToken],
+        additional: u32,
+    },
+    /// "If you would get one or more counters, you get that many plus one of
+    /// each of those kinds of counters instead." (Winding Constrictor)
+    PlayerAnyKindAdd {
+        additional: u32,
     },
     PlayerCounterPerTurnLimit {
         counter_type: ironsmith_core::CounterType,
@@ -48,6 +66,13 @@ pub enum TokenCreationReplacementShape<'a> {
     AddNamedToken {
         descriptor_tokens: &'a [OwnedLexToken],
         additional_kind_word: &'static str,
+        /// "those tokens plus that many ... tokens" (Chatterfang).
+        per_created: bool,
+    },
+    /// "If you would create a Clue, Food, or Treasure token, instead create
+    /// one of each." (Academy Manufactor). `kind_tokens` is the listed kinds.
+    OneOfEach {
+        kind_tokens: &'a [OwnedLexToken],
     },
 }
 
@@ -107,6 +132,9 @@ pub fn parse_counter_replacement_tokens(
             parse_player_counter_per_turn_limit_lexed,
             parse_plus_one_add_lexed,
             parse_plus_one_double_lexed,
+            parse_any_kind_add_lexed,
+            parse_player_any_kind_add_lexed,
+            parse_actor_any_kind_multiply_lexed,
         )),
         "counter replacement",
     )
@@ -129,6 +157,13 @@ pub fn parse_token_creation_replacement_tokens(
         tokens,
         parse_add_named_token_replacement_lexed,
         "additional named token replacement",
+    ) {
+        return Some(shape);
+    }
+    if let Some(shape) = crate::grammar::primitives::probe_all(
+        tokens,
+        parse_one_of_each_token_replacement_lexed,
+        "one of each token replacement",
     ) {
         return Some(shape);
     }
@@ -175,6 +210,27 @@ fn parse_multiplied_token_replacement_lexed<'a>(
     })
 }
 
+fn parse_one_of_each_token_replacement_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<TokenCreationReplacementShape<'a>> {
+    primitives::phrase(&["if", "you", "would", "create", "a"]).parse_next(input)?;
+    let kind_tokens = repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        peek(alt((primitives::kw("token"), primitives::kw("tokens")))),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    alt((primitives::kw("token"), primitives::kw("tokens"))).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["instead", "create", "one", "of", "each"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(TokenCreationReplacementShape::OneOfEach {
+        kind_tokens: trim_lexed_commas(kind_tokens),
+    })
+}
+
 fn parse_add_named_token_replacement_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<TokenCreationReplacementShape<'a>> {
@@ -191,8 +247,15 @@ fn parse_add_named_token_replacement_lexed<'a>(
     primitives::phrase(&["would", "be", "created", "under", "your", "control"]).parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
     primitives::phrase(&["those", "tokens", "plus"]).parse_next(input)?;
-    opt(alt((primitives::kw("a"), primitives::kw("an")))).parse_next(input)?;
-    primitives::kw("additional").parse_next(input)?;
+    let per_created = alt((
+        primitives::phrase(&["that", "many"]).value(true),
+        (
+            opt(alt((primitives::kw("a"), primitives::kw("an")))),
+            primitives::kw("additional"),
+        )
+            .value(false),
+    ))
+    .parse_next(input)?;
     let repeated_descriptor = repeat_till::<_, _, (), _, _, _, _>(
         1..,
         any.void(),
@@ -209,6 +272,7 @@ fn parse_add_named_token_replacement_lexed<'a>(
     let additional_kind_word = match repeated_words.as_slice() {
         ["food"] => "food",
         ["treasure"] => "treasure",
+        ["1/1", "green", "squirrel", "creature"] if per_created => "squirrel",
         _ => {
             return Err(primitives::backtrack_err(
                 "additional named token replacement",
@@ -216,7 +280,7 @@ fn parse_add_named_token_replacement_lexed<'a>(
             ));
         }
     };
-    if !descriptor_words.is_empty() && descriptor_words != repeated_words {
+    if !per_created && !descriptor_words.is_empty() && descriptor_words != repeated_words {
         return Err(primitives::backtrack_err(
             "additional named token replacement",
             "a repeated token descriptor",
@@ -225,6 +289,7 @@ fn parse_add_named_token_replacement_lexed<'a>(
     Ok(TokenCreationReplacementShape::AddNamedToken {
         descriptor_tokens: trim_lexed_commas(descriptor_tokens),
         additional_kind_word,
+        per_created,
     })
 }
 
@@ -527,6 +592,76 @@ fn semantic_energy_symbol<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     })
     .void()
     .parse_next(input)
+}
+
+fn parse_any_kind_add_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CounterReplacementShape<'a>> {
+    primitives::phrase(&["if", "one", "or", "more", "counters", "would", "be", "put", "on"])
+        .parse_next(input)?;
+    let filter_tokens = take_until_replacement_phrase(input, &["that", "many", "plus"])?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["that", "many", "plus"]).parse_next(input)?;
+    let additional = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    primitives::phrase(&[
+        "of", "each", "of", "those", "kinds", "of", "counters", "are", "put", "on",
+    ])
+    .parse_next(input)?;
+    alt((
+        primitives::kw("it").void(),
+        primitives::phrase(&["that", "creature"]),
+        primitives::phrase(&["that", "permanent"]),
+    ))
+    .parse_next(input)?;
+    primitives::kw("instead").parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(CounterReplacementShape::AnyKindAdd {
+        filter_tokens: trim_lexed_commas(filter_tokens),
+        additional,
+    })
+}
+
+fn parse_player_any_kind_add_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<CounterReplacementShape<'a>> {
+    primitives::phrase(&["if", "you", "would", "get", "one", "or", "more", "counters"])
+        .parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["you", "get", "that", "many", "plus"]).parse_next(input)?;
+    let additional = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    primitives::phrase(&["of", "each", "of", "those", "kinds", "of", "counters", "instead"])
+        .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(CounterReplacementShape::PlayerAnyKindAdd { additional })
+}
+
+fn parse_actor_any_kind_multiply_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<CounterReplacementShape<'a>> {
+    primitives::kw("if").parse_next(input)?;
+    let opponent = alt((
+        primitives::kw("you").value(false),
+        primitives::phrase(&["an", "opponent"]).value(true),
+    ))
+    .parse_next(input)?;
+    primitives::phrase(&["would", "put", "one", "or", "more", "counters", "on"]).parse_next(input)?;
+    opt(primitives::kw("a")).parse_next(input)?;
+    primitives::phrase(&["permanent", "or", "player"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    opt(alt((primitives::kw("they"), primitives::kw("you")))).parse_next(input)?;
+    primitives::kw("put").parse_next(input)?;
+    let halve = alt((
+        primitives::kw("twice").value(false),
+        primitives::kw("half").value(true),
+    ))
+    .parse_next(input)?;
+    primitives::phrase(&["that", "many", "of", "each", "of", "those", "kinds", "of", "counters", "on", "that"])
+        .parse_next(input)?;
+    primitives::phrase(&["permanent", "or", "player", "instead"]).parse_next(input)?;
+    if halve {
+        opt(primitives::comma()).parse_next(input)?;
+        primitives::phrase(&["rounded", "down"]).parse_next(input)?;
+    }
+    primitives::sentence_end().parse_next(input)?;
+    Ok(CounterReplacementShape::ActorAnyKindMultiply { opponent, halve })
 }
 
 fn parse_plus_one_add_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CounterReplacementShape<'a>> {

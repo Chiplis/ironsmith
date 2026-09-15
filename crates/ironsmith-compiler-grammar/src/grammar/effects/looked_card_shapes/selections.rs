@@ -116,7 +116,9 @@ fn library_position(input: &mut LexStream<'_>, position: &str) -> WResult<()> {
     } else {
         primitives::kw("bottom").parse_next(input)?;
     }
-    primitives::phrase(&["of", "your", "library"])
+    // "Put the rest on the bottom in a random order." (Loot, Exuberant
+    // Explorer) leaves the library implicit.
+    opt(primitives::phrase(&["of", "your", "library"]))
         .void()
         .parse_next(input)
 }

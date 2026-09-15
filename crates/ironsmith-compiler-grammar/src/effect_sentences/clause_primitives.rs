@@ -517,7 +517,7 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         specific_primitive!(
             "must-block-clause",
             &[
-                "all", "another", "each", "it", "that", "they", "those", "target",
+                "all", "another", "each", "it", "that", "they", "those", "target", "up",
             ],
             parse_must_block_if_able_clause,
         ),
@@ -1046,11 +1046,19 @@ pub fn parse_must_block_if_able_clause(
             attacker_and_duration_tokens,
         } => {
             let subject_clause = LexedClause::new(subject_tokens).trimmed();
+            let subject_words = crate::lexer::parser_token_word_refs(subject_clause.tokens());
+            // "up to one target creature blocks it this combat if able"
+            // (Fighter Class): a counted target phrase is still a target.
+            let counted_target = crate::word_primitives::parse_sequence_prefix(
+                &subject_words,
+                &["up", "to"],
+            ) && subject_words.contains(&"target");
             let blocker_is_target =
                 super::super::grammar::activation_restrictions::parse_target_indicator_tokens(
                     subject_clause.tokens(),
                 )
-                .is_some();
+                .is_some()
+                    || counted_target;
             let mut target_declarations = Vec::new();
             let blockers_filter = if blocker_is_target {
                 let blocker_target = parse_target_phrase(subject_clause.tokens())?;
@@ -1508,6 +1516,46 @@ pub fn parse_deal_damage_equal_to_power_clause(
             EffectAst::subject_verb_damage_with_source(source.clone(), amount, source),
         )),
         clause_shapes::PowerDamageTargetShape::Tokens(target_tokens) => {
+            // "to each other creature and each opponent" (Chandra's Ignition):
+            // the object set and the player set are damaged independently.
+            if target_tokens.first().is_some_and(|token| token.is_word("each"))
+                && let Some((and_idx, opponents, after)) =
+                    crate::grammar::primitives::find_prefix(target_tokens, || {
+                        winnow::combinator::alt((
+                            crate::grammar::primitives::phrase(&["and", "each", "opponent"])
+                                .value(true),
+                            crate::grammar::primitives::phrase(&["and", "each", "player"])
+                                .value(false),
+                        ))
+                    })
+                && and_idx >= 2
+                && crate::lexer::parser_token_word_refs(after).is_empty()
+            {
+                let mut objects = parse_target_phrase(&target_tokens[..and_idx])?;
+                if let TargetAst::Object(filter, None, _) = &mut objects {
+                    filter.set_plural_object_noun_surface(true);
+                }
+                let player_damage = vec![EffectAst::subject_verb_damage_with_source(
+                    source.clone(),
+                    amount.clone(),
+                    TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                )];
+                let players = if opponents {
+                    EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+                        effects: player_damage,
+                    })
+                } else {
+                    EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                        effects: player_damage,
+                    })
+                };
+                return Ok(Some(EffectAst::Sequence {
+                    effects: vec![
+                        EffectAst::subject_verb_damage_with_source(source, amount, objects),
+                        players,
+                    ],
+                }));
+            }
             let mut target = parse_target_phrase(target_tokens)?;
             if target_tokens.first().is_some_and(|token| token.is_word("each"))
                 && let TargetAst::Object(filter, None, _) = &mut target

@@ -852,11 +852,15 @@ export default function TargetsDecision({
     clearTimeout(gestureSubmitTimerRef.current);
     gestureSubmitTimerRef.current = null;
     setAutoSubmitTarget(null);
+    // Target-mode field hovers are allowed to open previews, but that hover
+    // must not survive the decision transition and become a regular inspector
+    // request when the target decision disappears.
+    clearHover();
     dispatch(
       { type: "select_targets", targets: allSelections.map(toDispatchTarget) },
       "Targets selected"
     );
-  }, [dispatch, allSelections, canAct, canSubmit]);
+  }, [dispatch, allSelections, canAct, canSubmit, clearHover]);
 
   // Dragging only requests auto-submit. Submit the committed selection through
   // the same handler as the menu, and cancel if selection or legality changes.

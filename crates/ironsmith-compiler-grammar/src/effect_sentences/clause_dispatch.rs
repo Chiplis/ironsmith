@@ -238,9 +238,40 @@ fn parse_explicit_target_object_damage_source(
     }
 
     let parsed = parse_deal_damage(action_tokens)?;
+    // "Target creature you control deals damage equal to its power to each
+    // other creature and each opponent." (Chandra's Ignition): the recipient
+    // union parses as a sequence of damage actions sharing one source.
+    if let EffectAst::Sequence { effects } = parsed {
+        let mut sourced = Vec::with_capacity(effects.len());
+        for effect in effects {
+            let EffectAst::SubjectVerb(parsed) = effect else {
+                return Ok(None);
+            };
+            let Some(effect) = explicit_damage_source_effect(
+                subject_tokens,
+                action_tokens,
+                explicitly_targeted,
+                parsed,
+            )?
+            else {
+                return Ok(None);
+            };
+            sourced.push(effect);
+        }
+        return Ok(Some(EffectAst::Sequence { effects: sourced }));
+    }
     let EffectAst::SubjectVerb(parsed) = parsed else {
         return Ok(None);
     };
+    explicit_damage_source_effect(subject_tokens, action_tokens, explicitly_targeted, parsed)
+}
+
+fn explicit_damage_source_effect(
+    subject_tokens: &[OwnedLexToken],
+    action_tokens: &[OwnedLexToken],
+    explicitly_targeted: bool,
+    parsed: crate::cards::builders::SubjectVerbEffectAst,
+) -> Result<Option<EffectAst>, CardTextError> {
     let source = if explicitly_targeted {
         let source = parse_target_phrase(subject_tokens)?;
         if !matches!(

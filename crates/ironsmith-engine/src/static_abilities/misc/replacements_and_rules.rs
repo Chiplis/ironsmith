@@ -502,11 +502,79 @@ impl StaticAbilityKind for DoubleDamageAmountReplacement {
     }
 }
 
+/// "If a source would deal damage to you or a permanent you control, prevent
+/// half that damage, rounded up." (Gisela, Blade of Goldnight)
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventHalfDamageReplacement {
+    pub source_filter: ObjectFilter,
+    pub target_player_filter: Option<PlayerFilter>,
+    pub target_object_filter: Option<ObjectFilter>,
+    pub round_up: bool,
+    pub display: String,
+}
+
+impl PreventHalfDamageReplacement {
+    pub fn new(
+        source_filter: ObjectFilter,
+        target_player_filter: Option<PlayerFilter>,
+        target_object_filter: Option<ObjectFilter>,
+        round_up: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            source_filter,
+            target_player_filter,
+            target_object_filter,
+            round_up,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for PreventHalfDamageReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventHalfDamageReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            DamageAmountReplacementMatcher {
+                source_filter: self.source_filter.clone(),
+                target_player_filter: self.target_player_filter.clone(),
+                target_object_filter: self.target_object_filter.clone(),
+                condition: None,
+                combat_only: false,
+                noncombat_only: false,
+                amount_less_than: None,
+            },
+            ReplacementAction::PreventHalfDamage {
+                round_up: self.round_up,
+            },
+        ))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct DoubleCountersReplacement {
     pub filter: ObjectFilter,
     pub player_filter: Option<PlayerFilter>,
     pub counter_type: Option<CounterType>,
+    /// Who must be putting the counters; `None` matches any actor.
+    pub actor: Option<PlayerFilter>,
+    /// With `player_filter` set, also match permanents matching `filter`.
+    pub includes_permanents: bool,
+    /// Halve (rounded down) instead of doubling.
+    pub halve: bool,
     pub display: String,
 }
 
@@ -516,6 +584,9 @@ impl DoubleCountersReplacement {
             filter,
             player_filter: None,
             counter_type,
+            actor: None,
+            includes_permanents: false,
+            halve: false,
             display,
         }
     }
@@ -529,6 +600,23 @@ impl DoubleCountersReplacement {
             filter: ObjectFilter::default(),
             player_filter: Some(player_filter),
             counter_type,
+            actor: None,
+            includes_permanents: false,
+            halve: false,
+            display,
+        }
+    }
+
+    /// "If <actor> would put one or more counters on a permanent or player,
+    /// ... twice/half that many ... instead."
+    pub fn new_for_actor(actor: PlayerFilter, halve: bool, display: String) -> Self {
+        Self {
+            filter: ObjectFilter::permanent(),
+            player_filter: Some(PlayerFilter::Any),
+            counter_type: None,
+            actor: Some(actor),
+            includes_permanents: true,
+            halve,
             display,
         }
     }
@@ -541,6 +629,20 @@ struct WouldPutCountersOrEnterWithCountersMatcher {
     filter: ObjectFilter,
     player_filter: Option<PlayerFilter>,
     counter_type: Option<CounterType>,
+    actor: Option<PlayerFilter>,
+    includes_permanents: bool,
+}
+
+impl WouldPutCountersOrEnterWithCountersMatcher {
+    fn actor_matches(&self, actor: Option<PlayerId>, game: &crate::game_state::GameState) -> bool {
+        let Some(required) = &self.actor else {
+            return true;
+        };
+        let Some(actor) = actor else {
+            return false;
+        };
+        player_ids_for_filter(game, required.clone(), self.controller).contains(&actor)
+    }
 }
 
 impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
@@ -561,9 +663,12 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
                 {
                     return false;
                 }
+                if !self.actor_matches(put_counters.cause.source_controller, ctx.game) {
+                    return false;
+                }
                 match put_counters.target {
                     crate::game_state::Target::Object(object) => {
-                        self.player_filter.is_none()
+                        (self.player_filter.is_none() || self.includes_permanents)
                             && ctx.game.object(object).is_some_and(|obj| {
                                 self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
                             })
@@ -577,13 +682,21 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
                 }
             }
             EventKind::EnterBattlefield => {
-                if self.player_filter.is_some() {
+                if self.player_filter.is_some() && !self.includes_permanents {
                     return false;
                 }
                 let Some(etb) = downcast_event::<EnterBattlefieldEvent>(event) else {
                     return false;
                 };
                 if etb.object == self.ability_source {
+                    return false;
+                }
+                if self.actor.is_some()
+                    && !self.actor_matches(
+                        ctx.game.controller_of_id(etb.object),
+                        ctx.game,
+                    )
+                {
                     return false;
                 }
                 if !etb
@@ -636,9 +749,17 @@ impl StaticAbilityKind for DoubleCountersReplacement {
                 filter: self.filter.clone(),
                 player_filter: self.player_filter.clone(),
                 counter_type: self.counter_type,
+                actor: self.actor.clone(),
+                includes_permanents: self.includes_permanents,
             },
-            ReplacementAction::DoubleCounters {
-                counter_type: self.counter_type,
+            if self.halve {
+                ReplacementAction::HalveCounters {
+                    counter_type: self.counter_type,
+                }
+            } else {
+                ReplacementAction::DoubleCounters {
+                    counter_type: self.counter_type,
+                }
             },
         ))
     }
@@ -670,6 +791,12 @@ impl AddCountersPlacementReplacement {
             display,
         }
     }
+
+    /// Counters a matching player would get instead of counters on permanents.
+    pub fn for_player(mut self, player_filter: PlayerFilter) -> Self {
+        self.player_filter = Some(player_filter);
+        self
+    }
 }
 
 impl StaticAbilityKind for AddCountersPlacementReplacement {
@@ -695,6 +822,8 @@ impl StaticAbilityKind for AddCountersPlacementReplacement {
                 filter: self.filter.clone(),
                 player_filter: self.player_filter.clone(),
                 counter_type: self.counter_type,
+                actor: None,
+                includes_permanents: false,
             },
             ReplacementAction::AddCountersToPlacement {
                 counter_type: self.counter_type,
@@ -754,6 +883,8 @@ impl StaticAbilityKind for PlayerCounterPerTurnLimitReplacement {
                 filter: ObjectFilter::default(),
                 player_filter: Some(self.player_filter.clone()),
                 counter_type: Some(self.counter_type),
+                actor: None,
+                includes_permanents: false,
             },
             ReplacementAction::SetPlayerCountersAndLockForTurn {
                 counter_type: self.counter_type,
@@ -864,6 +995,8 @@ pub struct AddTokenCreationReplacement {
     pub token_filter: ObjectFilter,
     pub additional_token: ironsmith_core::AdditionalTokenKind,
     pub additional: i32,
+    /// One additional token per token being created ("that many").
+    pub per_created: bool,
     pub display: String,
 }
 
@@ -880,8 +1013,14 @@ impl AddTokenCreationReplacement {
             token_filter,
             additional_token,
             additional,
+            per_created: false,
             display: display.into(),
         }
+    }
+
+    pub fn per_created(mut self) -> Self {
+        self.per_created = true;
+        self
     }
 }
 
@@ -906,9 +1045,15 @@ impl StaticAbilityKind for AddTokenCreationReplacement {
                 self.controller.clone(),
             )
             .with_token_filter(self.token_filter.clone()),
-            ReplacementAction::AddTokens {
-                token: self.additional_token,
-                count: self.additional.max(0) as u32,
+            if self.per_created {
+                ReplacementAction::AddTokensPerCreated {
+                    token: self.additional_token,
+                }
+            } else {
+                ReplacementAction::AddTokens {
+                    token: self.additional_token,
+                    count: self.additional.max(0) as u32,
+                }
             },
         ))
     }
@@ -2060,6 +2205,185 @@ impl ReplacementMatcher for WouldDrawInstructionMatcher {
     }
 }
 
+/// "If you would create a Clue, Food, or Treasure token, instead create one of
+/// each." (Academy Manufactor)
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateOneOfEachTokenReplacement {
+    pub kinds: Vec<ironsmith_core::AdditionalTokenKind>,
+    pub display: String,
+}
+
+impl CreateOneOfEachTokenReplacement {
+    pub fn new(kinds: Vec<ironsmith_core::AdditionalTokenKind>, display: impl Into<String>) -> Self {
+        Self {
+            kinds,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for CreateOneOfEachTokenReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CreateOneOfEachTokenReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        let mut token_filter = ObjectFilter::default();
+        token_filter.any_of = self
+            .kinds
+            .iter()
+            .map(|kind| {
+                let mut branch = ObjectFilter::default();
+                branch.subtypes.push(match kind {
+                    ironsmith_core::AdditionalTokenKind::Treasure => crate::types::Subtype::Treasure,
+                    ironsmith_core::AdditionalTokenKind::Food => crate::types::Subtype::Food,
+                    ironsmith_core::AdditionalTokenKind::Squirrel => crate::types::Subtype::Squirrel,
+                    ironsmith_core::AdditionalTokenKind::Clue => crate::types::Subtype::Clue,
+                });
+                branch
+            })
+            .collect();
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            crate::events::tokens::matchers::WouldCreateTokensUnderControlMatcher::new(
+                PlayerFilter::You,
+            )
+            .with_token_filter(token_filter),
+            ReplacementAction::AddTokensOfOtherKinds {
+                kinds: self.kinds.clone(),
+            },
+        ))
+    }
+}
+
+/// "If an opponent would draw a card except the first one they draw in each
+/// of their draw steps, instead that player skips that draw and you draw a
+/// card." (Notion Thief)
+#[derive(Debug, Clone, PartialEq)]
+pub struct RedirectDrawReplacement {
+    pub drawer: PlayerFilter,
+    pub except_first_of_draw_step: bool,
+    pub display: String,
+}
+
+impl RedirectDrawReplacement {
+    pub fn new(drawer: PlayerFilter, except_first_of_draw_step: bool, display: impl Into<String>) -> Self {
+        Self {
+            drawer,
+            except_first_of_draw_step,
+            display: display.into(),
+        }
+    }
+}
+
+/// "If you would draw a card, instead <effects>." (Underrealm Lich)
+#[derive(Debug, Clone, PartialEq)]
+pub struct DrawReplacementWithEffects {
+    pub drawer: PlayerFilter,
+    pub replacement_effects: Vec<Effect>,
+    pub display: String,
+}
+
+impl DrawReplacementWithEffects {
+    pub fn new(
+        drawer: PlayerFilter,
+        replacement_effects: Vec<Effect>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            drawer,
+            replacement_effects,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for DrawReplacementWithEffects {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DrawReplacementWithEffects
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            WouldDrawByPlayerMatcher {
+                drawer: self.drawer.clone(),
+                except_first_of_draw_step: false,
+                display: self.display.clone(),
+            },
+            ReplacementAction::Instead(self.replacement_effects.clone()),
+        ))
+    }
+}
+
+impl StaticAbilityKind for RedirectDrawReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::RedirectDrawReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            WouldDrawByPlayerMatcher {
+                drawer: self.drawer.clone(),
+                except_first_of_draw_step: self.except_first_of_draw_step,
+                display: self.display.clone(),
+            },
+            ReplacementAction::RedirectDrawToController,
+        ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct WouldDrawByPlayerMatcher {
+    drawer: PlayerFilter,
+    except_first_of_draw_step: bool,
+    display: String,
+}
+
+impl ReplacementMatcher for WouldDrawByPlayerMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if !WouldDrawCardMatcher::new(self.drawer.clone()).matches_event(event, ctx) {
+            return false;
+        }
+        let Some(draw) = crate::events::downcast_event::<crate::events::DrawEvent>(event) else {
+            return false;
+        };
+        !(self.except_first_of_draw_step && draw.first_of_draw_step)
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+}
+
 /// "If you would draw a card, exile the top N cards of your library instead. You may play those
 /// cards this turn."
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -3129,6 +3453,53 @@ impl StaticAbilityKind for ManaProductionReplacement {
                 minimum_amount: self.minimum_amount,
             },
             ReplacementAction::ReplaceManaExact(self.replacement_mana.clone()),
+        ))
+    }
+}
+
+/// "If you tap a permanent for mana, it produces three times as much of that
+/// mana instead." (Nyxbloom Ancient, Mana Reflection)
+#[derive(Debug, Clone, PartialEq)]
+pub struct ManaProductionMultiplierReplacement {
+    pub source_filter: ObjectFilter,
+    pub factor: u32,
+    pub display: String,
+}
+
+impl ManaProductionMultiplierReplacement {
+    pub fn new(source_filter: ObjectFilter, factor: u32, display: impl Into<String>) -> Self {
+        Self {
+            source_filter,
+            factor,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for ManaProductionMultiplierReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ManaProductionMultiplierReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            TappedForMinimumManaMatcher {
+                inner: crate::events::mana::matchers::ManaProducedBySourceMatcher::tapped_source_for_mana(
+                    self.source_filter.clone(),
+                ),
+                minimum_amount: 1,
+            },
+            ReplacementAction::Modify(EventModification::Multiply(self.factor)),
         ))
     }
 }

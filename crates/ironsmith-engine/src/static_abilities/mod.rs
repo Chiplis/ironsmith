@@ -1047,6 +1047,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Life surcharge on matching spells ("cost an additional 3 life to cast").
+    fn cost_increase_life(&self) -> Option<&CostIncreaseLife> {
+        None
+    }
+
     /// Get cost reduction details if this reduces specific mana symbols (e.g., "{B} less").
     fn cost_reduction_mana_cost(&self) -> Option<&CostReductionManaCost> {
         None
@@ -2045,6 +2050,10 @@ impl StaticAbility {
 
     pub fn cost_increase(&self) -> Option<&CostIncrease> {
         self.0.cost_increase()
+    }
+
+    pub fn cost_increase_life(&self) -> Option<&CostIncreaseLife> {
+        self.0.cost_increase_life()
     }
 
     pub fn cost_reduction_mana_cost(&self) -> Option<&CostReductionManaCost> {
@@ -3168,6 +3177,11 @@ impl StaticAbility {
         Self::new(PreventAllNoncombatDamageToPermanentsMatching::new(filter))
     }
 
+    /// "Prevent all damage that would be dealt to <permanents>." (Iroas)
+    pub fn prevent_all_damage_to_permanents_matching(filter: crate::target::ObjectFilter) -> Self {
+        Self::new(PreventAllDamageToPermanentsMatching::new(filter))
+    }
+
     pub fn prevent_all_damage_to_self() -> Self {
         Self::new(PreventAllDamageToSelf)
     }
@@ -3804,6 +3818,34 @@ impl StaticAbility {
         ))
     }
 
+    pub fn draw_replacement_with_effects(
+        drawer: crate::target::PlayerFilter,
+        replacement_effects: Vec<crate::effect::Effect>,
+        display: String,
+    ) -> Self {
+        Self::new(DrawReplacementWithEffects::new(
+            drawer,
+            replacement_effects,
+            display,
+        ))
+    }
+
+    pub fn prevent_half_damage_replacement(
+        source_filter: crate::target::ObjectFilter,
+        target_player_filter: Option<crate::target::PlayerFilter>,
+        target_object_filter: Option<crate::target::ObjectFilter>,
+        round_up: bool,
+        display: String,
+    ) -> Self {
+        Self::new(PreventHalfDamageReplacement::new(
+            source_filter,
+            target_player_filter,
+            target_object_filter,
+            round_up,
+            display,
+        ))
+    }
+
     pub fn double_counters_replacement(
         filter: crate::target::ObjectFilter,
         counter_type: Option<crate::object::CounterType>,
@@ -3828,6 +3870,14 @@ impl StaticAbility {
         ))
     }
 
+    pub fn actor_counter_multiplier_replacement(
+        actor: crate::target::PlayerFilter,
+        halve: bool,
+        display: String,
+    ) -> Self {
+        Self::new(DoubleCountersReplacement::new_for_actor(actor, halve, display))
+    }
+
     pub fn add_counters_placement_replacement(
         filter: crate::target::ObjectFilter,
         counter_type: Option<crate::object::CounterType>,
@@ -3840,6 +3890,24 @@ impl StaticAbility {
             additional,
             display,
         ))
+    }
+
+    /// "If you would get one or more counters, you get that many plus one ..."
+    pub fn add_player_counters_placement_replacement(
+        player_filter: crate::target::PlayerFilter,
+        counter_type: Option<crate::object::CounterType>,
+        additional: u32,
+        display: String,
+    ) -> Self {
+        Self::new(
+            AddCountersPlacementReplacement::new(
+                crate::target::ObjectFilter::default(),
+                counter_type,
+                additional,
+                display,
+            )
+            .for_player(player_filter),
+        )
     }
 
     pub fn player_counter_per_turn_limit_replacement(
@@ -3877,6 +3945,18 @@ impl StaticAbility {
             additional,
             display,
         ))
+    }
+
+    pub fn add_token_per_created_replacement(
+        controller: crate::target::PlayerFilter,
+        token_filter: crate::target::ObjectFilter,
+        additional_token: ironsmith_core::AdditionalTokenKind,
+        display: String,
+    ) -> Self {
+        Self::new(
+            AddTokenCreationReplacement::new(controller, token_filter, additional_token, 1, display)
+                .per_created(),
+        )
     }
 
     pub fn effect_discard_to_library_replacement() -> Self {
@@ -4225,6 +4305,43 @@ impl StaticAbility {
     /// you may pay 2 life. If you don't, it enters the battlefield tapped."
     pub fn pay_life_or_enter_tapped(life_cost: u32) -> Self {
         Self::new(PayLifeOrEnterTappedReplacement::new(life_cost))
+    }
+
+    /// "If you tap a permanent for mana, it produces three times as much of
+    /// that mana instead." (Nyxbloom Ancient)
+    pub fn mana_production_multiplier_replacement(
+        source_filter: crate::target::ObjectFilter,
+        factor: u32,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(ManaProductionMultiplierReplacement::new(
+            source_filter,
+            factor,
+            display,
+        ))
+    }
+
+    /// "If you would create a Clue, Food, or Treasure token, instead create
+    /// one of each." (Academy Manufactor)
+    pub fn create_one_of_each_token_replacement(
+        kinds: Vec<ironsmith_core::AdditionalTokenKind>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(CreateOneOfEachTokenReplacement::new(kinds, display))
+    }
+
+    /// "If an opponent would draw a card ..., instead that player skips that
+    /// draw and you draw a card." (Notion Thief)
+    pub fn redirect_draw_replacement(
+        drawer: crate::target::PlayerFilter,
+        except_first_of_draw_step: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(RedirectDrawReplacement::new(
+            drawer,
+            except_first_of_draw_step,
+            display,
+        ))
     }
 
     /// "three times that many of those tokens are created instead" (Ojer Taq)

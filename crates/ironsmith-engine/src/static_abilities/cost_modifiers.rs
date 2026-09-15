@@ -2874,6 +2874,39 @@ impl StaticAbilityKind for ThisSpellCostReductionManaCost {
     }
 }
 
+/// Life surcharge on matching spells: "Spells your opponents cast that
+/// target this creature cost an additional 3 life to cast." (Terror of the Peaks)
+#[derive(Debug, Clone, PartialEq)]
+pub struct CostIncreaseLife {
+    pub filter: ObjectFilter,
+    pub amount: u32,
+    pub display: String,
+}
+
+impl CostIncreaseLife {
+    pub fn new(filter: ObjectFilter, amount: u32, display: impl Into<String>) -> Self {
+        Self {
+            filter,
+            amount,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for CostIncreaseLife {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CostIncreaseLife
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn cost_increase_life(&self) -> Option<&CostIncreaseLife> {
+        Some(self)
+    }
+}
+
 /// Cost increase: "Spells cost {N} more to cast"
 #[derive(Debug, Clone, PartialEq)]
 pub struct CostIncrease {

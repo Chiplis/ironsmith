@@ -534,7 +534,13 @@ fn parse_trigger_controller_reference(words: &[&str]) -> Option<TriggerControlle
     }
     if word_slice_is_any(
         words,
-        &[&["the", "chosen", "player"], &["chosen", "player"]],
+        &[
+            &["the", "chosen", "player"],
+            &["chosen", "player"],
+            // "Choose target opponent. Whenever a creature you control deals
+            // combat damage to that player this turn, ..." (Great Train Heist)
+            &["that", "player"],
+        ],
     ) {
         return Some(TriggerControllerReference::ChosenPlayer);
     }

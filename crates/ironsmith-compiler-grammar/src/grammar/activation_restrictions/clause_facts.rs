@@ -335,7 +335,13 @@ pub fn parse_player_restriction_tail_words(words: &[&str]) -> Option<PlayerRestr
         PlayerRestrictionTailKind::CastMoreThanOneSpellEachTurn
     } else if exact_any(
         words,
-        &[&["cast", "spells"], &["cast", "spells", "this", "turn"]],
+        &[
+            &["cast", "spells"],
+            &["cast", "spells", "this", "turn"],
+            // "you can't cast additional spells this turn" (Conduit of Worlds)
+            &["cast", "additional", "spells"],
+            &["cast", "additional", "spells", "this", "turn"],
+        ],
     ) {
         PlayerRestrictionTailKind::CastSpells
     } else {

@@ -331,6 +331,18 @@ const REVEALED_MANA_VALUE_PREFIXES: &[&[&str]] = &[
     &["mana", "value", "of", "the", "revealed", "cards"],
 ];
 
+/// "the mana value of the discarded card" (Argentum Masticore).
+const DISCARDED_MANA_VALUE_PREFIXES: &[&[&str]] = &[
+    &["the", "mana", "value", "of", "the", "discarded", "card"],
+    &["mana", "value", "of", "the", "discarded", "card"],
+    &["mana", "value", "of", "discarded", "card"],
+    &["the", "mana", "value", "of", "discarded", "card"],
+    &["the", "discarded", "card", "mana", "value"],
+    &["the", "discarded", "cards", "mana", "value"],
+    &["discarded", "card", "mana", "value"],
+    &["discarded", "cards", "mana", "value"],
+];
+
 const EXILED_MANA_VALUE_PREFIXES: &[&[&str]] = &[
     &["the", "exiled", "card", "mana", "value"],
     &["the", "exiled", "cards", "mana", "value"],

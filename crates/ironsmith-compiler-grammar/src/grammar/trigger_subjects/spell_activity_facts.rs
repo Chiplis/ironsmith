@@ -307,7 +307,16 @@ fn global_exact_spell_count_surface(words: &[&str]) -> Option<u32> {
 fn draw_number_set_surface(words: &[&str]) -> Vec<u32> {
     let Some(card_idx) = words.iter().enumerate().find_map(|(idx, word)| {
         (matches!(*word, "card" | "cards")
-            && matches!(words.get(idx + 1..idx + 3), Some(["each" | "this", "turn"])))
+            && (matches!(words.get(idx + 1..idx + 3), Some(["each" | "this", "turn"]))
+                // "When you draw your third card in a turn" (Tamiyo,
+                // Inquisitive Student)
+                || matches!(words.get(idx + 1..idx + 4), Some(["in", "a", "turn"]))
+                // "draws their second card during their turn" (The Council
+                // of Four)
+                || matches!(
+                    words.get(idx + 1..idx + 4),
+                    Some(["during", "their" | "your", "turn"])
+                )))
         .then_some(idx)
     }) else {
         return Vec::new();

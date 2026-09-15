@@ -740,6 +740,12 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             one_or_more,
         } => Trigger::tokens_created(player, filter, one_or_more),
         TriggerSpec::LeavesBattlefield(filter) => Trigger::leaves_battlefield(filter),
+        TriggerSpec::ExiledFromBattlefield(filter) => Trigger::new(
+            crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                .from(crate::zone::Zone::Battlefield)
+                .to(crate::zone::Zone::Exile)
+                .filter(filter),
+        ),
         TriggerSpec::LeavesBattlefieldWithoutDying {
             filter,
             one_or_more,

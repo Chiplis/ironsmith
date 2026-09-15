@@ -657,6 +657,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 duration,
                 cause_policy,
                 link_exiled_to_source,
+                cast_this_way_surface: _,
             }) => f
                 .debug_struct("RegisterFutureZoneReplacement")
                 .field("filter", filter)
@@ -2463,10 +2464,15 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::KeywordActions(KeywordActionAst::Detain { target }) => {
                 f.debug_tuple("Detain").field(target).finish()
             }
-            Self::KeywordActions(KeywordActionAst::Goad { target, duration }) => f
+            Self::KeywordActions(KeywordActionAst::Goad {
+                target,
+                duration,
+                spelled_out_requirement,
+            }) => f
                 .debug_struct("Goad")
                 .field("target", target)
                 .field("duration", duration)
+                .field("spelled_out_requirement", spelled_out_requirement)
                 .finish(),
             Self::KeywordActions(KeywordActionAst::Prepare { target }) => {
                 f.debug_tuple("Prepare").field(target).finish()

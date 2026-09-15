@@ -9,6 +9,8 @@ pub enum TurnEventPredicateAst {
         count: u32,
     },
     OpponentWasDealtDamageThisTurn,
+    /// "if an opponent was dealt 7 or more damage this turn" (Spinerock Knoll)
+    OpponentWasDealtDamageThisTurnOrMore(u32),
     YouAttackedWithExactlyNOtherCreaturesThisCombat(u32),
     CreatureDiedThisTurn,
     CreatureDiedThisTurnOrMore(u32),

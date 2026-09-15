@@ -256,6 +256,22 @@ fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
     if is_exactly_all_magic_colors_filter(filter) {
         return "each color".to_string();
     }
+    // "protection from the chosen card type" (Serra's Emissary).
+    if filter.chosen_card_type && {
+        let mut chosen_only = ObjectFilter::default();
+        chosen_only.chosen_card_type = true;
+        *filter == chosen_only
+    } {
+        return "the chosen card type".to_string();
+    }
+    // "hexproof from that color" (Skrelv, Defector Mite): the chosen color.
+    if filter.chosen_color && {
+        let mut chosen_only = ObjectFilter::default();
+        chosen_only.chosen_color = true;
+        *filter == chosen_only
+    } {
+        return "the chosen color".to_string();
+    }
 
     let description = filter.description();
     let fragment = description

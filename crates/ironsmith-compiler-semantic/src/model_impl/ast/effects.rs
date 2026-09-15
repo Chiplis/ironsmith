@@ -3303,9 +3303,25 @@ impl EffectAst {
                     duration,
                     cause_policy,
                     link_exiled_to_source,
+                    cast_this_way_surface: false,
                 },
             ),
         )
+    }
+
+    /// Mark a future zone replacement as authored with "a spell cast this way".
+    pub fn with_cast_this_way_replacement_surface(mut self) -> Self {
+        if let EffectAst::SubjectVerb(subject_verb) = &mut self
+            && let SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterFutureZoneReplacement {
+                    cast_this_way_surface,
+                    ..
+                },
+            ) = &mut subject_verb.action
+        {
+            *cast_this_way_surface = true;
+        }
+        self
     }
 
     pub fn subject_verb_register_draw_replacement(
@@ -5601,7 +5617,25 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { target, duration }),
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad {
+                target,
+                duration,
+                spelled_out_requirement: false,
+            }),
+        )
+    }
+
+    /// "<creatures> attack each combat if able and attack a player other than
+    /// you if able" — the goad requirement written out (Kardur, Doomscourge).
+    pub fn subject_verb_goad_requirement(target: TargetAst, duration: Until) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad {
+                target,
+                duration,
+                spelled_out_requirement: true,
+            }),
         )
     }
 

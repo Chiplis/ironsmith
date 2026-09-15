@@ -2234,7 +2234,11 @@ pub(super) fn compile_subject_verb_late(
                 tag_object_target_effect(Effect::detain(spec.clone()), &spec, ctx, "detained");
             Ok((vec![effect], choices))
         }
-        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { target, duration }) => {
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad {
+            target,
+            duration,
+            spelled_out_requirement,
+        }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let spec = if choices.is_empty()
@@ -2249,12 +2253,12 @@ pub(super) fn compile_subject_verb_late(
             } else {
                 spec
             };
-            let effect = tag_object_target_effect(
-                Effect::goad_for(spec.clone(), duration.clone()),
-                &spec,
-                ctx,
-                "goaded",
-            );
+            let goad = if *spelled_out_requirement {
+                Effect::goad_requirement_for(spec.clone(), duration.clone())
+            } else {
+                Effect::goad_for(spec.clone(), duration.clone())
+            };
+            let effect = tag_object_target_effect(goad, &spec, ctx, "goaded");
             track_selected_object_player_provenance(&spec, ctx);
             Ok((vec![effect], choices))
         }

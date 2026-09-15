@@ -83,10 +83,9 @@ fn rest_head(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
 
 pub fn parse_rest_destination(tokens: &[OwnedLexToken]) -> Option<RestDestinationShape> {
     let tail = rest_head(tokens)?;
-    if primitives::contains_word(tail, "bottom")
-        && (primitives::contains_word(tail, "library")
-            || primitives::contains_word(tail, "libraries"))
-    {
+    // "Put the rest on the bottom in a random order." (Loot, Exuberant
+    // Explorer) leaves the library implicit; only libraries have a bottom.
+    if primitives::contains_word(tail, "bottom") {
         return Some(RestDestinationShape::BottomOfLibrary);
     }
     if primitives::contains_word(tail, "graveyard") || primitives::contains_word(tail, "graveyards")

@@ -34,6 +34,15 @@ pub struct DamageMultiplierSpec<'a> {
     pub noncombat_only: bool,
 }
 
+/// "If a source would deal damage to you or a permanent you control, prevent
+/// half that damage, rounded up." (Gisela, Blade of Goldnight)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PreventHalfDamageSpec<'a> {
+    pub source: DamageSourceShape<'a>,
+    pub damaged_tokens: &'a [OwnedLexToken],
+    pub round_up: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AdditiveDamageAmountSpec<'a> {
     pub source: DamageSourceShape<'a>,
@@ -74,6 +83,16 @@ pub fn parse_damage_multiplier_tokens(
         tokens,
         alt((parse_imperative_damage_multiplier_lexed, parse_damage_multiplier_lexed)),
         "damage multiplier line",
+    )
+}
+
+pub fn parse_prevent_half_damage_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<PreventHalfDamageSpec<'_>> {
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_prevent_half_damage_lexed,
+        "prevent half damage replacement",
     )
 }
 
@@ -128,8 +147,27 @@ fn parse_imperative_damage_multiplier_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<DamageMultiplierSpec<'a>> {
     let factor = alt((primitives::kw("double").value(2), primitives::kw("triple").value(3))).parse_next(input)?;
-    primitives::phrase(&["all", "damage", "that"]).parse_next(input)?;
-    let source = parse_explicit_damage_source_shape_lexed(input)?;
+    primitives::phrase(&["all", "damage"]).parse_next(input)?;
+    let source = if opt(primitives::kw("that")).parse_next(input)?.is_some() {
+        parse_explicit_damage_source_shape_lexed(input)?
+    } else {
+        // "Double all damage equipped creature would deal." (Mjölnir, Hammer
+        // of Thor): the dealing object named directly.
+        let filter_tokens = repeat_till::<_, _, (), _, _, _, _>(
+            1..,
+            any.void(),
+            peek(primitives::phrase(&["would", "deal"])),
+        )
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+        DamageSourceShape {
+            source_noun: false,
+            filter_tokens: trim_lexed_commas(filter_tokens),
+            controller: DamageSourceControllerKind::None,
+            trailing_filter_tokens: &[],
+        }
+    };
     primitives::phrase(&["would", "deal"]).parse_next(input)?;
     opt(primitives::period()).parse_next(input)?;
     Ok(DamageMultiplierSpec {
@@ -147,24 +185,41 @@ fn parse_damage_multiplier_lexed<'a>(
     primitives::kw("if").parse_next(input)?;
     let source = parse_damage_source_shape_lexed(input)?;
     let (combat_only, noncombat_only) = alt((
-        primitives::phrase(&["would", "deal", "combat", "damage", "to"]).value((true, false)),
-        primitives::phrase(&["would", "deal", "noncombat", "damage", "to"]).value((false, true)),
-        primitives::phrase(&["would", "deal", "damage", "to"]).value((false, false)),
+        primitives::phrase(&["would", "deal", "combat", "damage"]).value((true, false)),
+        primitives::phrase(&["would", "deal", "noncombat", "damage"]).value((false, true)),
+        primitives::phrase(&["would", "deal", "damage"]).value((false, false)),
     ))
     .parse_next(input)?;
-    let damaged_tokens = repeat_till::<_, _, (), _, _, _, _>(
-        1..,
-        any.void(),
-        peek((
-            primitives::phrase(&["it", "deals"]),
-            alt((primitives::kw("double"), primitives::kw("triple"))),
-            primitives::phrase(&["that", "damage"]),
-        )),
-    )
-    .map(|((), _)| ())
-    .take()
+    // "If a red instant or sorcery spell you control would deal damage, it
+    // deals double that damage instead." (Fire Servant) names no recipient.
+    let damaged_tokens = if opt(primitives::kw("to")).parse_next(input)?.is_some() {
+        Some(
+            repeat_till::<_, _, (), _, _, _, _>(
+                1..,
+                any.void(),
+                peek((
+                    opt(primitives::comma()),
+                    alt((
+                        primitives::phrase(&["it", "deals"]),
+                        primitives::phrase(&["that", "source", "deals"]),
+                    )),
+                    alt((primitives::kw("double"), primitives::kw("triple"))),
+                    primitives::phrase(&["that", "damage"]),
+                )),
+            )
+            .map(|((), _)| ())
+            .take()
+            .parse_next(input)?,
+        )
+    } else {
+        None
+    };
+    opt(primitives::comma()).parse_next(input)?;
+    alt((
+        primitives::phrase(&["it", "deals"]),
+        primitives::phrase(&["that", "source", "deals"]),
+    ))
     .parse_next(input)?;
-    primitives::phrase(&["it", "deals"]).parse_next(input)?;
     let factor = alt((
         primitives::kw("double").value(2),
         primitives::kw("triple").value(3),
@@ -181,10 +236,43 @@ fn parse_damage_multiplier_lexed<'a>(
     primitives::sentence_end().parse_next(input)?;
     Ok(DamageMultiplierSpec {
         source,
-        damaged_tokens: Some(trim_lexed_commas(damaged_tokens)),
+        damaged_tokens: damaged_tokens.map(trim_lexed_commas),
         factor,
         combat_only,
         noncombat_only,
+    })
+}
+
+fn parse_prevent_half_damage_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<PreventHalfDamageSpec<'a>> {
+    primitives::kw("if").parse_next(input)?;
+    let source = parse_damage_source_shape_lexed(input)?;
+    primitives::phrase(&["would", "deal", "damage", "to"]).parse_next(input)?;
+    let damaged_tokens = repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        peek((
+            opt(primitives::comma()),
+            primitives::phrase(&["prevent", "half", "that", "damage"]),
+        )),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["prevent", "half", "that", "damage"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    let round_up = alt((
+        primitives::phrase(&["rounded", "up"]).value(true),
+        primitives::phrase(&["rounded", "down"]).value(false),
+    ))
+    .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(PreventHalfDamageSpec {
+        source,
+        damaged_tokens: trim_lexed_commas(damaged_tokens),
+        round_up,
     })
 }
 
@@ -296,9 +384,9 @@ fn parse_object_damage_source_shape_lexed<'a>(
         1..,
         any.void(),
         peek(alt((
-            primitives::phrase(&["would", "deal", "combat", "damage", "to"]),
-            primitives::phrase(&["would", "deal", "noncombat", "damage", "to"]),
-            primitives::phrase(&["would", "deal", "damage", "to"]),
+            primitives::phrase(&["would", "deal", "combat", "damage"]),
+            primitives::phrase(&["would", "deal", "noncombat", "damage"]),
+            primitives::phrase(&["would", "deal", "damage"]),
         ))),
     )
     .map(|((), _)| ())

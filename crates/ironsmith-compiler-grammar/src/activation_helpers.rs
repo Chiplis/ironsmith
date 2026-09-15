@@ -201,6 +201,20 @@ pub fn parse_add_mana(
         ));
     }
 
+    if facts.amount_that_type {
+        // "add three mana of that type instead" (Incubation Druid) restates
+        // the default's type choice for the replacement amount.
+        let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
+        return Ok(EffectAst::subject_verb_add_mana_from_land_could_produce(
+            player,
+            amount,
+            ObjectFilter::land().controlled_by(crate::target::PlayerFilter::You),
+            true,
+            true,
+            crate::effects::ManaTypeSource::MatchingLandsCouldProduce,
+        ));
+    }
+
     if let Some(mana_choice) = facts.choice {
         let mut amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         let any_one = mana_choice.kind.any_one();

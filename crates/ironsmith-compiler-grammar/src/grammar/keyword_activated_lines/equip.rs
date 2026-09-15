@@ -13,6 +13,10 @@ use super::super::{leaf, primitives};
 pub struct EquipQualifierSpec<'a> {
     pub tokens: &'a [OwnedLexToken],
     pub subtypes: Vec<Subtype>,
+    /// "Equip legendary creature {3}" (Blackblade Reforged).
+    pub legendary: bool,
+    /// "Equip commander {3}" (Commander's Plate).
+    pub commander: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,10 +84,13 @@ fn parse_qualified_equip_cost<'a>(input: &mut LexStream<'a>) -> WResult<EquipLin
     let ((mana_prefix, trailing), cost_tokens) = (leaf::parse_leaf_mana_cost_prefix_lexed, rest)
         .with_taken()
         .parse_next(input)?;
+    let (subtypes, legendary, commander) = qualifier;
     Ok(EquipLineSpec::QualifiedCost {
         qualifier: EquipQualifierSpec {
             tokens: trim_lexed_commas(qualifier_tokens),
-            subtypes: qualifier,
+            subtypes,
+            legendary,
+            commander,
         },
         cost_tokens: trim_lexed_commas(cost_tokens),
         mana_prefix: mana_prefix.cost,
@@ -113,34 +120,44 @@ fn parse_general_equip_activation_cost<'a>(
     Ok(EquipLineSpec::ActivationCost { cost_tokens })
 }
 
-fn parse_equip_qualifier_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Vec<Subtype>> {
-    let first = parse_equip_subtype_lexed.parse_next(input)?;
-    let trailing: Vec<Subtype> = repeat(
-        0..,
-        (
-            repeat::<_, _, (), _, _>(
-                0..,
-                alt((
-                    primitives::comma().void(),
-                    primitives::kw("or").void(),
-                    primitives::kw("and").void(),
-                    primitives::kw("and/or").void(),
-                )),
-            ),
-            parse_equip_subtype_lexed,
+fn parse_equip_qualifier_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<(Vec<Subtype>, bool, bool)> {
+    // "Equip legendary creature {3}" (Blackblade Reforged), "Equip commander
+    // {3}" (Commander's Plate): a supertype or commander qualifier instead of
+    // (or before) a subtype list.
+    let legendary = opt(primitives::kw("legendary")).parse_next(input)?.is_some();
+    let commander = opt(primitives::kw("commander")).parse_next(input)?.is_some();
+    let mut subtypes = Vec::new();
+    if let Some(first) = opt(parse_equip_subtype_lexed).parse_next(input)? {
+        let trailing: Vec<Subtype> = repeat(
+            0..,
+            (
+                repeat::<_, _, (), _, _>(
+                    0..,
+                    alt((
+                        primitives::comma().void(),
+                        primitives::kw("or").void(),
+                        primitives::kw("and").void(),
+                        primitives::kw("and/or").void(),
+                    )),
+                ),
+                parse_equip_subtype_lexed,
+            )
+                .map(|(_, subtype)| subtype),
         )
-            .map(|(_, subtype)| subtype),
-    )
-    .parse_next(input)?;
+        .parse_next(input)?;
+        subtypes.push(first);
+        trailing.into_iter().for_each(|subtype| {
+            crate::slice_primitives::push_unique(&mut subtypes, subtype);
+        });
+    }
     opt(primitives::kw("creature")).parse_next(input)?;
     eof.parse_next(input)?;
-
-    let mut subtypes = Vec::with_capacity(trailing.len() + 1);
-    subtypes.push(first);
-    trailing.into_iter().for_each(|subtype| {
-        crate::slice_primitives::push_unique(&mut subtypes, subtype);
-    });
-    Ok(subtypes)
+    if subtypes.is_empty() && !legendary && !commander {
+        return Err(primitives::backtrack_err("equip qualifier", "a subtype or qualifier"));
+    }
+    Ok((subtypes, legendary, commander))
 }
 
 fn parse_equip_subtype_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Subtype> {

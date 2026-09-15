@@ -1737,10 +1737,14 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::GoadEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::GoadEffect::with_duration(
+        let mut goad = crate::effects::GoadEffect::with_duration(
             payload.target.clone(),
             payload.duration.clone(),
-        )));
+        );
+        if payload.spelled_out_requirement {
+            goad = goad.spelled_out_requirement();
+        }
+        return Ok(Effect::new(goad));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::PrepareEffect>(&effect) {
         return Ok(Effect::new(crate::effects::PrepareEffect::new(

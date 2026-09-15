@@ -910,6 +910,10 @@ impl super::Trigger {
                 Self::this_becomes_blocked_by_object(filter)
             }
             ironsmith_core::DelayedTriggerSpec::Attacks(filter) => Self::attacks(filter),
+            ironsmith_core::DelayedTriggerSpec::AttacksYou(filter) => Self::attacks_you(filter),
+            ironsmith_core::DelayedTriggerSpec::PlayerTapsForMana { player, filter } => {
+                Self::player_taps_for_mana(player, filter)
+            }
             ironsmith_core::DelayedTriggerSpec::AttacksAndIsntBlocked(filter) => {
                 Self::attacks_and_isnt_blocked(filter)
             }

@@ -12,6 +12,12 @@ pub(super) fn read_player_life_change_this_turn_predicate(
     if let Some(predicate) = parse_player_life_change_this_turn_predicate(predicate_tokens) {
         return Ok(Some(predicate));
     }
+    if let Some(predicate) = parse_opponent_dealt_damage_this_turn_predicate(predicate_tokens) {
+        return Ok(Some(predicate));
+    }
+    if let Some(predicate) = parse_total_stat_threshold_predicate(predicate_tokens) {
+        return Ok(Some(predicate));
+    }
     Ok(None)
 }
 pub(super) fn read_player_descended_this_turn_predicate(

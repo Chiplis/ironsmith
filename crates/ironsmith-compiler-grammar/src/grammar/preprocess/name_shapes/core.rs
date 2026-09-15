@@ -15,7 +15,7 @@ pub(super) fn is_reserved_short_alias(alias: &str, alias_tokens: &[OwnedLexToken
     }
     if matches!(
         lower.as_str(),
-        "prototype" | "dredge" | "enchanted" | "equipped"
+        "prototype" | "dredge" | "enchanted" | "equipped" | "command"
     ) {
         return true;
     }

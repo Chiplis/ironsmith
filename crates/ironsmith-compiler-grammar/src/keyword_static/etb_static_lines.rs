@@ -145,6 +145,14 @@ pub fn parse_enters_with_counters_line(
     if etb_starts_with_trigger_intro_after_label(tokens) {
         return Ok(None);
     }
+    // "enters tapped with five slumber counters on it" (Arixmethes) is the
+    // tapped rule's line.
+    if full_words
+        .windows(2)
+        .any(|pair| pair[0] == "tapped" && pair[1] == "with")
+    {
+        return Ok(None);
+    }
     let mut condition: Option<(PredicateAst, String)> = None;
     let mut clause_tokens: Vec<OwnedLexToken> = tokens.to_vec();
 

@@ -4377,6 +4377,104 @@ pub(crate) fn apply_spell_cost_modifiers(
     adjusted
 }
 
+/// Total life surcharge from battlefield permanents whose "cost an additional
+/// N life to cast" static abilities match `spell` (Terror of the Peaks).
+pub(crate) fn battlefield_life_cost_increase_for_spell(
+    game: &GameState,
+    caster: PlayerId,
+    spell: &crate::object::Object,
+    chosen_targets: &[Target],
+    casting_method: &CastingMethod,
+    cast_from_zone: Option<Zone>,
+) -> u32 {
+    use crate::filter::FilterContext;
+
+    let view = DerivedGameView::new(game);
+    let mut total: u32 = 0;
+    for perm_id in view.battlefield_spell_cost_modifier_sources() {
+        let Some(perm) = game.object(perm_id) else {
+            continue;
+        };
+        let controller = game.controller_of(perm);
+        let opponents: Vec<PlayerId> = game
+            .turn_store
+            .turn_order
+            .iter()
+            .copied()
+            .filter(|player| game.are_opponents(controller, *player))
+            .collect();
+        let ctx = with_source_exiled_tagged_objects(
+            game,
+            FilterContext::new(controller)
+                .with_source(perm_id)
+                .with_active_player(game.turn.active_player)
+                .with_opponents(opponents),
+            perm_id,
+        );
+        let Some(static_abilities) = view.static_abilities_rc(perm_id) else {
+            continue;
+        };
+        for static_ability in static_abilities.iter() {
+            if !static_ability.is_active(game, perm_id) {
+                continue;
+            }
+            if let Some(increase) = static_ability.cost_increase_life()
+                && spell_matches_cost_modifier_filter(
+                    game,
+                    spell,
+                    caster,
+                    &increase.filter,
+                    &ctx,
+                    casting_method,
+                    cast_from_zone,
+                    chosen_targets,
+                )
+            {
+                total = total.saturating_add(increase.amount);
+            }
+        }
+    }
+    total
+}
+
+fn spell_matches_cost_modifier_filter(
+    game: &GameState,
+    spell: &crate::object::Object,
+    caster: PlayerId,
+    filter: &crate::target::ObjectFilter,
+    ctx: &crate::filter::FilterContext,
+    casting_method: &CastingMethod,
+    cast_from_zone: Option<Zone>,
+    chosen_targets: &[Target],
+) -> bool {
+    let targets_match = chosen_targets_match_cost_filter(game, filter, ctx, chosen_targets);
+    let mut cast_filter = filter.clone();
+    let alternative_cast = cast_filter.alternative_cast;
+    cast_filter.targets_player = None;
+    cast_filter.targets_object = None;
+    cast_filter.targets_any_of = false;
+    cast_filter.targets_only_player = None;
+    cast_filter.targets_only_object = None;
+    cast_filter.targets_only_any_of = false;
+    cast_filter.target_count = None;
+    cast_filter.alternative_cast = None;
+    let overlaid_spell =
+        spell_view_for_cost_filter_match(game, caster, spell, casting_method, cast_from_zone);
+    let spell_for_match = overlaid_spell.as_ref().unwrap_or(spell);
+    let matches = cast_filter.matches_non_recursive(
+        spell_for_match,
+        &ctx.clone()
+            .with_caster(Some(caster))
+            .with_prospective_cast(spell.id),
+        game,
+    ) || disturb_linked_face_matches_cost_filter(game, caster, spell, &cast_filter, ctx);
+    targets_match
+        && matches
+        && alternative_cast.is_none_or(|kind| {
+            casting_method_matches_alternative_kind(game, caster, spell, casting_method, kind)
+        })
+}
+
 pub(crate) fn apply_battlefield_spell_cost_modifiers(
     game: &GameState,
     caster: PlayerId,

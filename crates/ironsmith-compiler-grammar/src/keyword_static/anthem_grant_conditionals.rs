@@ -3126,6 +3126,45 @@ pub fn parse_has_base_power_toughness_and_type_color_addition_static_line(
     Ok(Some(compiled))
 }
 
+/// "As long as Arixmethes has a slumber counter on it, it's a land." (Arixmethes,
+/// Slumbering Isle): the source's card types become exactly Land while the
+/// condition holds.
+pub fn parse_as_long_as_source_is_a_land_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let Some((_, rest)) = crate::grammar::primitives::parse_prefix(
+        tokens,
+        crate::grammar::primitives::phrase(&["as", "long", "as"]),
+    ) else {
+        return Ok(None);
+    };
+    let Some(comma) = rest.iter().position(|token| token.is_comma()) else {
+        return Ok(None);
+    };
+    let condition_tokens = trim_commas(&rest[..comma]);
+    let tail_words = crate::lexer::parser_token_word_refs(&rest[comma + 1..]);
+    let is_a_land = matches!(
+        tail_words.as_slice(),
+        ["it", "is", "a", "land"]
+            | ["its", "a", "land"]
+            | ["it's", "a", "land"]
+            | ["it", "s", "a", "land"]
+            | ["this", "permanent", "is", "a", "land"]
+            | ["this", "creature", "is", "a", "land"]
+    );
+    if !is_a_land || condition_tokens.is_empty() {
+        return Ok(None);
+    }
+    let condition = parse_static_condition_clause(&condition_tokens)?;
+    Ok(Some(StaticAbilityAst::ConditionalStaticAbility {
+        ability: Box::new(StaticAbilityAst::Static(StaticAbility::set_card_types(
+            ObjectFilter::source(),
+            vec![CardType::Land],
+        ))),
+        condition,
+    }))
+}
+
 pub fn parse_isnt_creature_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {

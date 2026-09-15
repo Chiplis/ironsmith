@@ -230,6 +230,10 @@ pub enum AttackEachCombatFact<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RetraceGrantFact {
     pub card_types: Vec<CardType>,
+    /// "nonland permanent cards in your graveyard have retrace" (Six).
+    pub nonland_permanents: bool,
+    /// "During your turn, ..." scopes the grant to the controller's turn.
+    pub during_your_turn: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -488,7 +492,25 @@ pub fn parse_retrace_grant_tokens(tokens: &[OwnedLexToken]) -> Option<RetraceGra
 }
 
 fn parse_retrace_grant_lexed(input: &mut LexStream<'_>) -> WResult<RetraceGrantFact> {
+    let during_your_turn = opt((
+        semantic_phrase(&["during", "your", "turn"]),
+        opt(primitives::comma()),
+    ))
+    .parse_next(input)?
+    .is_some();
     opt(semantic_kw("each")).parse_next(input)?;
+    if opt(semantic_phrase(&["nonland", "permanent"]))
+        .parse_next(input)?
+        .is_some()
+    {
+        alt((semantic_kw("cards"), semantic_kw("card"))).parse_next(input)?;
+        semantic_phrase(&["in", "your", "graveyard", "have", "retrace"]).parse_next(input)?;
+        return Ok(RetraceGrantFact {
+            card_types: Vec::new(),
+            nonland_permanents: true,
+            during_your_turn,
+        });
+    }
     let (atoms, ()) = repeat_till::<_, _, Vec<Option<CardType>>, _, _, _, _>(
         1..,
         parse_retrace_subject_atom,
@@ -509,7 +531,11 @@ fn parse_retrace_grant_lexed(input: &mut LexStream<'_>) -> WResult<RetraceGrantF
             "instant or sorcery card type",
         ));
     }
-    Ok(RetraceGrantFact { card_types })
+    Ok(RetraceGrantFact {
+        card_types,
+        nonland_permanents: false,
+        during_your_turn,
+    })
 }
 
 fn parse_retrace_subject_atom(input: &mut LexStream<'_>) -> WResult<Option<CardType>> {
@@ -572,6 +598,47 @@ fn parse_conditional_draw_replacement_lexed<'a>(
         condition_tokens: trim_lexed_commas(condition_tokens),
         draw_count,
         life_loss,
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RedirectDrawReplacementFact {
+    pub drawer_is_opponent: bool,
+    pub except_first_of_draw_step: bool,
+}
+
+/// "If an opponent would draw a card except the first one they draw in each
+/// of their draw steps, instead that player skips that draw and you draw a
+/// card." (Notion Thief)
+pub fn parse_redirect_draw_replacement_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<RedirectDrawReplacementFact> {
+    parse_semantic_all(tokens, parse_redirect_draw_replacement_lexed)
+}
+
+fn parse_redirect_draw_replacement_lexed(
+    input: &mut LexStream<'_>,
+) -> WResult<RedirectDrawReplacementFact> {
+    semantic_kw("if").parse_next(input)?;
+    let drawer_is_opponent = alt((
+        semantic_phrase(&["an", "opponent"]).value(true),
+        semantic_phrase(&["a", "player"]).value(false),
+    ))
+    .parse_next(input)?;
+    semantic_phrase(&["would", "draw", "a", "card"]).parse_next(input)?;
+    let except_first_of_draw_step = opt(semantic_phrase(&[
+        "except", "the", "first", "one", "they", "draw", "in", "each", "of", "their", "draw",
+        "steps",
+    ]))
+    .parse_next(input)?
+    .is_some();
+    semantic_phrase(&[
+        "instead", "that", "player", "skips", "that", "draw", "and", "you", "draw", "a", "card",
+    ])
+    .parse_next(input)?;
+    Ok(RedirectDrawReplacementFact {
+        drawer_is_opponent,
+        except_first_of_draw_step,
     })
 }
 

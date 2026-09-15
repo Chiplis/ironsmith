@@ -47,6 +47,10 @@ pub enum ResourceLookShape<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResourceShuffleShape {
     HandIntoLibrary { player: PlayerAst },
+    /// "Shuffle this creature and target creature with a stun counter on it
+    /// into their owners' libraries." (Floodpits Drowner): the first
+    /// `target_len` tokens name the shuffled objects.
+    ObjectsIntoOwnersLibraries { target_len: usize },
     TaggedIntoLibrary { player: PlayerAst, to_bottom: bool },
     ShuffleLibrary { player: PlayerAst },
     SimpleLibrary,
@@ -162,6 +166,9 @@ fn tagged_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         primitives::phrase(&["them"]),
         primitives::phrase(&["that", "card"]),
         primitives::phrase(&["those", "cards"]),
+        // "Shuffle this card into your library from your graveyard" (Kogla
+        // and Yidaro) names the source card itself.
+        primitives::phrase(&["this", "card"]),
     ))
     .void()
     .parse_next(input)

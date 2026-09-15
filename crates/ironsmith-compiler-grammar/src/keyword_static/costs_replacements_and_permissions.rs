@@ -605,12 +605,33 @@ pub fn parse_spells_cost_modifier_line(
     let is_life_cost_modifier =
         crate::word_primitives::sequence_occurs(&remaining_words, &["life"]);
     if is_life_cost_modifier && direction == CostModifierDirection::More {
-        // "cost an additional 3 life to cast" (Terror of the Peaks): the
-        // runtime cost increase adds generic mana only, so a life surcharge
-        // must not silently become mana.
-        return Err(CardTextError::ParseError(format!(
-            "unsupported life cost increase for spells (clause: '{}')",
-            clause_words.join(" ")
+        // "cost an additional 3 life to cast" (Terror of the Peaks): a life
+        // surcharge on matching spells, never generic mana.
+        let Value::Fixed(life) = amount_value else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported life cost increase for spells (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        };
+        if is_this_spell {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported life cost increase for spells (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        parse_trailing_targets_condition_in_cost_modifier(
+            &mut filter,
+            remaining_tokens,
+            &clause_words,
+        )?;
+        let mut display = crate::lexer::render_token_slice(tokens).trim().to_string();
+        if !crate::string_primitives::ends_with_char(&display, '.') {
+            display.push('.');
+        }
+        return Ok(Some(StaticAbility::cost_increase_life(
+            filter,
+            u32::try_from(life).unwrap_or(0),
+            display,
         )));
     }
     let per_target = !is_life_cost_modifier && is_exact_per_target_cost_modifier(&remaining_words);
@@ -1213,11 +1234,18 @@ pub fn parse_equip_cost_modifier_line(
         }
         keyword_static_lines::EquipCostPayer::Unspecified => {}
     }
+    if head.targets_source {
+        filter.targets_object = Some(Box::new(ObjectFilter::source()));
+    }
 
     if direction == CostModifierDirection::Less {
         let amount_text = format!("{{{amount}}}");
         let display = if head.source_relative_equipment {
             format!("This Equipment's equip abilities cost {amount_text} less to activate")
+        } else if head.targets_source {
+            format!(
+                "Equip abilities you activate that target this creature cost {amount_text} less to activate"
+            )
         } else if filter.controller == Some(PlayerFilter::Opponent) {
             format!("Equip costs your opponents pay cost {amount_text} less")
         } else {
@@ -2755,6 +2783,17 @@ pub fn parse_double_counters_replacement_line(
                 display_text_for_tokens(tokens, true),
             )
         }
+        keyword_static_lines::CounterReplacementShape::ActorAnyKindMultiply { opponent, halve } => {
+            StaticAbility::actor_counter_multiplier_replacement(
+                if opponent {
+                    PlayerFilter::Opponent
+                } else {
+                    PlayerFilter::You
+                },
+                halve,
+                display_text_for_tokens(tokens, true),
+            )
+        }
         keyword_static_lines::CounterReplacementShape::PlusOneAdd {
             filter_tokens,
             additional,
@@ -2764,6 +2803,23 @@ pub fn parse_double_counters_replacement_line(
             additional,
             display_text_for_tokens(tokens, true),
         ),
+        keyword_static_lines::CounterReplacementShape::AnyKindAdd {
+            filter_tokens,
+            additional,
+        } => StaticAbility::add_counters_placement_replacement(
+            parse_object_filter_lexed(filter_tokens, false)?,
+            None,
+            additional,
+            display_text_for_tokens(tokens, true),
+        ),
+        keyword_static_lines::CounterReplacementShape::PlayerAnyKindAdd { additional } => {
+            StaticAbility::add_player_counters_placement_replacement(
+                PlayerFilter::You,
+                None,
+                additional,
+                display_text_for_tokens(tokens, true),
+            )
+        }
         keyword_static_lines::CounterReplacementShape::PlusOneDouble { filter_tokens } => {
             StaticAbility::double_counters_replacement(
                 parse_object_filter_lexed(filter_tokens, false)?,
@@ -2844,9 +2900,29 @@ pub fn parse_double_token_creation_replacement_line(
                 )
             }
         }
+        keyword_static_lines::TokenCreationReplacementShape::OneOfEach { kind_tokens } => {
+            let mut kinds = Vec::new();
+            for word in parser_token_word_refs(kind_tokens) {
+                match word {
+                    "clue" => kinds.push(ironsmith_core::AdditionalTokenKind::Clue),
+                    "food" => kinds.push(ironsmith_core::AdditionalTokenKind::Food),
+                    "treasure" => kinds.push(ironsmith_core::AdditionalTokenKind::Treasure),
+                    "or" | "and" => {}
+                    _ => return Ok(None),
+                }
+            }
+            if kinds.len() < 2 {
+                return Ok(None);
+            }
+            StaticAbility::create_one_of_each_token_replacement(
+                kinds,
+                display_text_for_tokens(tokens, true),
+            )
+        }
         keyword_static_lines::TokenCreationReplacementShape::AddNamedToken {
             descriptor_tokens,
             additional_kind_word,
+            per_created,
         } => {
             let Some(token_filter) = token_descriptor_filter(descriptor_tokens) else {
                 return Ok(None);
@@ -2854,15 +2930,26 @@ pub fn parse_double_token_creation_replacement_line(
             let additional_token = match additional_kind_word {
                 "food" => ironsmith_core::AdditionalTokenKind::Food,
                 "treasure" => ironsmith_core::AdditionalTokenKind::Treasure,
+                "squirrel" => ironsmith_core::AdditionalTokenKind::Squirrel,
                 _ => return Ok(None),
             };
-            StaticAbility::add_token_creation_replacement(
-                PlayerFilter::You,
-                token_filter.unwrap_or_else(|| ObjectFilter::default().token()),
-                additional_token,
-                1,
-                display_text_for_tokens(tokens, true),
-            )
+            let token_filter = token_filter.unwrap_or_else(|| ObjectFilter::default().token());
+            if per_created {
+                StaticAbility::add_token_per_created_replacement(
+                    PlayerFilter::You,
+                    token_filter,
+                    additional_token,
+                    display_text_for_tokens(tokens, true),
+                )
+            } else {
+                StaticAbility::add_token_creation_replacement(
+                    PlayerFilter::You,
+                    token_filter,
+                    additional_token,
+                    1,
+                    display_text_for_tokens(tokens, true),
+                )
+            }
         }
         keyword_static_lines::TokenCreationReplacementShape::AddTreasure { descriptor_tokens } => {
             let mut token_filter = ObjectFilter::default().token();
@@ -2894,6 +2981,39 @@ pub fn parse_prevent_all_combat_damage_to_source_line(
     }
 
     Ok(None)
+}
+
+/// "Prevent all damage that would be dealt to attacking creatures you
+/// control." (Iroas, God of Victory): a filtered prevention of combat and
+/// noncombat damage alike. Self, player, bare-creature, and attached-object
+/// subjects keep their dedicated rules.
+pub fn parse_prevent_all_damage_to_matching_permanents_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some((_, rest)) = crate::grammar::primitives::parse_prefix(
+        tokens,
+        crate::grammar::primitives::phrase(&[
+            "prevent", "all", "damage", "that", "would", "be", "dealt", "to",
+        ]),
+    ) else {
+        return Ok(None);
+    };
+    let target_tokens = trim_edge_punctuation(rest);
+    let words = parser_token_word_refs(&target_tokens);
+    if words.len() < 2
+        || matches!(
+            words[0],
+            "you" | "this" | "it" | "that" | "enchanted" | "equipped" | "each" | "any"
+        )
+        || words.iter().any(|word| matches!(*word, "by" | "and" | "or"))
+    {
+        return Ok(None);
+    }
+    let filter = parse_object_filter_lexed(&target_tokens, false)?;
+    if filter.zone != Some(Zone::Battlefield) {
+        return Ok(None);
+    }
+    Ok(Some(StaticAbility::prevent_all_damage_to_permanents_matching(filter)))
 }
 
 pub fn parse_prevent_all_combat_damage_to_matching_permanents_line(
@@ -3898,18 +4018,52 @@ pub fn parse_graveyard_cards_have_retrace_line(
     let Some(fact) = late_static_facts::parse_retrace_grant_tokens(tokens) else {
         return Ok(None);
     };
-    let mut filter = ObjectFilter {
-        card_types: fact.card_types,
-        owner: Some(PlayerFilter::You),
-        ..ObjectFilter::default()
+    if fact.during_your_turn {
+        // The turn-scoped grant is the conditional rule's
+        // (`parse_during_your_turn_graveyard_cards_have_retrace_line`).
+        return Ok(None);
+    }
+    Ok(Some(graveyard_cards_have_retrace_ability(fact)))
+}
+
+fn graveyard_cards_have_retrace_ability(fact: late_static_facts::RetraceGrantFact) -> StaticAbility {
+    let mut filter = if fact.nonland_permanents {
+        ObjectFilter::permanent_card().without_type(CardType::Land)
+    } else {
+        ObjectFilter {
+            card_types: fact.card_types,
+            ..ObjectFilter::default()
+        }
     };
+    filter.owner = Some(PlayerFilter::You);
     filter.zone = Some(Zone::Graveyard);
     let spec = crate::model::CompilerGrantSpecCore::new(
         crate::model::CompilerGrantableCore::retrace_from_cards_mana_cost(),
         filter,
         Zone::Graveyard,
     );
-    Ok(Some(StaticAbility::grants(spec)))
+    StaticAbility::grants(spec)
+}
+
+/// "During your turn, nonland permanent cards in your graveyard have
+/// retrace." (Six): the retrace grant scoped to the controller's turn.
+pub fn parse_during_your_turn_graveyard_cards_have_retrace_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<crate::cards::builders::StaticAbilityAst>, CardTextError> {
+    let Some(fact) = late_static_facts::parse_retrace_grant_tokens(tokens) else {
+        return Ok(None);
+    };
+    if !fact.during_your_turn {
+        return Ok(None);
+    }
+    Ok(Some(
+        crate::cards::builders::StaticAbilityAst::ConditionalStaticAbility {
+            ability: Box::new(crate::cards::builders::StaticAbilityAst::Static(
+                graveyard_cards_have_retrace_ability(fact),
+            )),
+            condition: crate::cards::builders::PredicateAst::YourTurn,
+        },
+    ))
 }
 
 pub fn parse_cast_spells_from_hand_without_paying_mana_costs_line(
@@ -4167,6 +4321,66 @@ pub fn parse_draw_replacement_skip_empty_library_line(
 
 /// "If you would draw one or more cards, you draw that many cards plus one
 /// instead." (Quantum Riddler)
+pub fn parse_if_opponent_would_draw_redirect_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(fact) = late_static_facts::parse_redirect_draw_replacement_tokens(tokens) else {
+        return Ok(None);
+    };
+    let drawer = if fact.drawer_is_opponent {
+        PlayerFilter::Opponent
+    } else {
+        PlayerFilter::Any
+    };
+    Ok(Some(StaticAbility::redirect_draw_replacement(
+        drawer,
+        fact.except_first_of_draw_step,
+        render_token_slice(tokens),
+    )))
+}
+
+/// "If you would draw a card, instead look at the top three cards of your
+/// library, then put one into your hand and the rest into your graveyard."
+/// (Underrealm Lich): the draw is replaced by the stated effects.
+pub fn parse_if_you_would_draw_instead_effects_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    let Some((_, rest)) = crate::word_primitives::strip_any_prefix(
+        &words,
+        &[
+            &["if", "you", "would", "draw", "a", "card", "instead"],
+            &["if", "an", "opponent", "would", "draw", "a", "card", "instead"],
+            &["if", "a", "player", "would", "draw", "a", "card", "instead"],
+        ],
+    ) else {
+        return Ok(None);
+    };
+    if rest.is_empty() {
+        return Ok(None);
+    }
+    let drawer = match words[1] {
+        "you" => PlayerFilter::You,
+        "an" => PlayerFilter::Opponent,
+        _ => PlayerFilter::Any,
+    };
+    let effect_start_word = words.len() - rest.len();
+    let view = TokenWordView::new(tokens);
+    let Some(effect_start) = view.map_word_to_token_start(effect_start_word) else {
+        return Ok(None);
+    };
+    let effects =
+        super::super::clause_support::parse_effect_sentences_lexed(&tokens[effect_start..])?;
+    if effects.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(StaticAbility::draw_replacement_with_effects(
+        drawer,
+        effects,
+        render_token_slice(tokens),
+    )))
+}
+
 pub fn parse_draw_extra_cards_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -4668,6 +4882,7 @@ pub fn parse_exile_would_die_instead_line(
             controller,
             exile_counter,
             follow_up_token,
+            follow_up_tokens,
         } => {
             let matched_filter = match controller {
                 keyword_static_lines::ReplacementPlayerKind::Any => {
@@ -4683,10 +4898,15 @@ pub fn parse_exile_would_die_instead_line(
             let exile_with_counters = exile_counter
                 .map(|counter_type| vec![(counter_type, 1)])
                 .unwrap_or_default();
-            let follow_up = follow_up_token
+            let mut follow_up = follow_up_token
                 .map(build_replacement_creature_token)
                 .map(|token| vec![token])
                 .unwrap_or_default();
+            if !follow_up_tokens.is_empty() {
+                follow_up.extend(super::super::clause_support::parse_effect_sentences_lexed(
+                    &follow_up_tokens,
+                )?);
+            }
             StaticAbility::exile_would_die_instead_with_damage_source_counters_and_follow_up(
                 matched_filter,
                 None,
@@ -4904,6 +5124,27 @@ pub fn parse_if_source_tapped_for_mana_replacement_line(
         source_filter,
         spec.minimum_amount,
         vec![spec.replacement_mana],
+        render_token_slice(tokens),
+    )))
+}
+
+/// "If you tap a permanent for mana, it produces three times as much of that
+/// mana instead." (Nyxbloom Ancient, Mana Reflection)
+pub fn parse_if_you_tap_for_mana_multiplier_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(spec) =
+        crate::grammar::effects::parse_mana_multiplier_replacement_spec_lexed(tokens)
+    else {
+        return Ok(None);
+    };
+    let mut source_filter = parse_object_filter(spec.source_tokens, false)?;
+    if source_filter.zone.is_none() {
+        source_filter.zone = Some(Zone::Battlefield);
+    }
+    Ok(Some(StaticAbility::mana_production_multiplier_replacement(
+        source_filter,
+        spec.factor,
         render_token_slice(tokens),
     )))
 }

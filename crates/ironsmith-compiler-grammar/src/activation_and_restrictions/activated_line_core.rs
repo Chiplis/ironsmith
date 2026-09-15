@@ -1075,6 +1075,17 @@ fn parse_enters_tapped_turn_condition_line(
         _ => {
             // "unless your opponents control eight or more lands" (Turbulent
             // Fen): any static condition clause the anthem grammar reads.
+            // Lines the dedicated unless-rule already recognizes ("unless you
+            // control a black permanent", Spymaster's Vault) stay with it, or
+            // the registry would see two readings.
+            if unless
+                && matches!(
+                    crate::keyword_static::parse_conditional_enters_tapped_unless_line(tokens),
+                    Ok(Some(_))
+                )
+            {
+                return None;
+            }
             let predicate =
                 crate::keyword_static::parse_static_condition_clause(condition_tokens).ok()?;
             if unless {

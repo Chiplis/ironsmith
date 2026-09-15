@@ -1,7 +1,7 @@
 import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { manaPaymentActionMap } from "@/lib/mana-payment-actions";
-import { useDragSession } from "@/context/DragContext";
+import { useCastTargeting, useDragSession } from "@/context/DragContext";
 import { useGame } from "@/context/GameContext";
 import {
   useAnchoredCardPreview,
@@ -304,6 +304,8 @@ export default function FloatingCardPreview({
   const anchoredCardPreview = useAnchoredCardPreview();
   const { clearAnchoredCardPreview } = useHoverActions();
   const dragState = useDragSession();
+  const castIntent = useCastTargeting();
+  const targetingMode = Boolean(castIntent) || state?.decision?.kind === "targets";
   const shellRef = useRef(null);
   const closeTimerRef = useRef(null);
   const [renderedObjectId, setRenderedObjectId] = useState(null);
@@ -348,13 +350,20 @@ export default function FloatingCardPreview({
   // Explicit selections bypass passive-hover exclusions. Hand cards stay
   // excluded from hover previews, but clicking one opens this composed,
   // interactive inspector instead of enlarging the card art in place.
-  const pinnedPreviewObjectId = !disabled && !dragState && state?.decision?.kind !== "mana_payment" && objectExistsInState(state, pinnedObjectId)
+  const pinnedPreviewObjectId = !disabled
+    && !dragState
+    && !targetingMode
+    && state?.decision?.kind !== "mana_payment"
+    && objectExistsInState(state, pinnedObjectId)
     ? String(pinnedObjectId)
     : null;
   const lockedObjectId = anchoredObjectId || pinnedPreviewObjectId;
   const requestedObjectId = lockedObjectId
     || directlyRequestedObjectId
-    || (previewHovered && !disabled && !manaPaymentActions.has(Number(renderedObjectId)) && canHoverInspectorObject(state, renderedObjectId) ? renderedObjectId : null);
+    // In target mode the preview is only a response to the source card's
+    // hover. Do not let entering the enlarged frame keep it alive after the
+    // source card has been left; the target highlight remains on the card.
+    || (!targetingMode && previewHovered && !disabled && !manaPaymentActions.has(Number(renderedObjectId)) && canHoverInspectorObject(state, renderedObjectId) ? renderedObjectId : null);
   const preparationCard = useMemo(() => {
     const matches = card => card && [card.id, card.inspect_object_id, ...(card.member_ids || [])]
       .some(id => id != null && String(id) === requestedObjectId);
@@ -529,7 +538,9 @@ export default function FloatingCardPreview({
       aria-hidden={!visible}
       inert={!visible}
       style={{ ...accentStyle, ...(positionStyle || {}) }}
-      onMouseEnter={() => setPreviewHovered(true)}
+      onMouseEnter={() => {
+        if (!targetingMode) setPreviewHovered(true);
+      }}
       onMouseLeave={() => setPreviewHovered(false)}
     >
       {renderedObjectId != null ? (

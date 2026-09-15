@@ -1291,6 +1291,13 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
     if predicate_number_or_more_prefix_tokens(counter_clause.tokens()).is_some() {
         return None;
     }
+    // "if The Ozolith has counters on it" (The Ozolith): any counter of any
+    // kind.
+    if counter_clause.word_refs() == ["counters"] {
+        return Some(PredicateAst::Source(
+            SourcePredicateAst::SourceHasCountersAtLeast(1),
+        ));
+    }
     let counter_type = parse_terminal_counter_phrase(counter_clause.tokens())??;
     Some(PredicateAst::Source(
         SourcePredicateAst::SourceHasCounterAtLeast {
@@ -2948,6 +2955,7 @@ pub fn parse_triggering_spell_ordinal_predicate(tokens: &[OwnedLexToken]) -> Opt
 
 fn ability_resolution_ordinal_count(clause: LexedClause<'_>) -> Option<u32> {
     const OPTIONAL_THE: &[WinnowAtom<'static>] = &[WinnowSequence::word("the")];
+    const OPTIONAL_IS: &[WinnowAtom<'static>] = &[WinnowSequence::word("is")];
 
     ability_resolution_count_from_pattern(
         clause,
@@ -2958,6 +2966,21 @@ fn ability_resolution_ordinal_count(clause: LexedClause<'_>) -> Option<u32> {
             WinnowSequence::phrase(&["time", "this", "ability", "has", "resolved", "this", "turn"]),
         ]),
     )
+    .or_else(|| {
+        // "If it's the second time, draw a card." (Belladonna Took, Omnath,
+        // Locus of Creation): the elided "this ability has resolved this
+        // turn" follows an earlier spelled-out first-time clause.
+        ability_resolution_count_from_pattern(
+            clause,
+            WinnowSequence::new(&[
+                WinnowSequence::subject("subject", WinnowCaptureKind::OneOf(&["it", "its"])),
+                WinnowSequence::optional(OPTIONAL_IS),
+                WinnowSequence::optional(OPTIONAL_THE),
+                WinnowSequence::amount("count", WinnowCaptureKind::WordCount(1)),
+                WinnowSequence::phrase(&["time"]),
+            ]),
+        )
+    })
     .or_else(|| {
         ability_resolution_count_from_pattern(
             clause,

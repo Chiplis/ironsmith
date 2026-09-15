@@ -143,6 +143,9 @@ pub enum CounterRemovalPreventionSurface {
 pub enum AdditionalTokenKind {
     Treasure,
     Food,
+    Clue,
+    /// 1/1 green Squirrel creature token (Chatterfang, Squirrel General).
+    Squirrel,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -526,6 +529,13 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     CostReduction(CostReduction<ICond>),
     CostReductionManaCost(CostReductionManaCost<ICond>),
     CostIncrease(CostIncrease<ICond>),
+    /// "Spells your opponents cast that target this creature cost an
+    /// additional 3 life to cast." (Terror of the Peaks)
+    CostIncreaseLife {
+        filter: ObjectFilter,
+        amount: u32,
+        display: String,
+    },
     CostIncreaseManaCost(CostIncreaseManaCost<ICond>),
     ThisSpellCostReduction(ThisSpellCostReduction<Cond>),
     ThisSpellCostReductionManaCost(ThisSpellCostReductionManaCost<Cond>),
@@ -547,6 +557,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     Protection(ProtectionFrom),
     PreventAllCombatDamageToPermanentsMatching(ObjectFilter),
     PreventAllNoncombatDamageToPermanentsMatching(ObjectFilter),
+    /// "Prevent all damage that would be dealt to attacking creatures you
+    /// control." (Iroas, God of Victory)
+    PreventAllDamageToPermanentsMatching(ObjectFilter),
     PreventAllDamageToSelfFromSourcesMatching(PreventAllDamageToSelfFromSourcesMatchingSpec),
     RuleRestriction {
         restriction: Restriction,
@@ -911,10 +924,30 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         noncombat_only: bool,
         display: String,
     },
+    /// "If a source would deal damage to you or a permanent you control,
+    /// prevent half that damage, rounded up." (Gisela, Blade of Goldnight)
+    PreventHalfDamageReplacement {
+        source_filter: ObjectFilter,
+        target_player_filter: Option<PlayerFilter>,
+        target_object_filter: Option<ObjectFilter>,
+        round_up: bool,
+        display: String,
+    },
     DoubleCountersReplacement {
         filter: ObjectFilter,
         player_filter: Option<PlayerFilter>,
         counter_type: Option<CounterType>,
+        /// Who must be putting the counters ("If you would put", "If an
+        /// opponent would put"); `None` matches any actor.
+        #[cfg_attr(feature = "serde", serde(default))]
+        actor: Option<PlayerFilter>,
+        /// With `player_filter` set, also match permanents matching `filter`
+        /// ("on a permanent or player").
+        #[cfg_attr(feature = "serde", serde(default))]
+        includes_permanents: bool,
+        /// "half that many ... rounded down" instead of "twice that many".
+        #[cfg_attr(feature = "serde", serde(default))]
+        halve: bool,
         display: String,
     },
     AddCountersPlacementReplacement {
@@ -947,6 +980,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         token_filter: ObjectFilter,
         additional_token: AdditionalTokenKind,
         additional: i32,
+        /// "those tokens plus that many 1/1 green Squirrel creature tokens":
+        /// one additional token per token being created (Chatterfang).
+        #[cfg_attr(feature = "serde", serde(default))]
+        per_created: bool,
         display: String,
     },
     ConditionalSpellKeyword(ConditionalSpellKeywordSpec),
@@ -968,6 +1005,26 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     },
     /// "If you would draw one or more cards, you draw that many cards plus
     /// one instead." (Quantum Riddler). Applies once per draw instruction.
+    /// "If you would create a Clue, Food, or Treasure token, instead create
+    /// one of each." (Academy Manufactor)
+    CreateOneOfEachTokenReplacement {
+        kinds: Vec<AdditionalTokenKind>,
+        display: String,
+    },
+    /// "If an opponent would draw a card except the first one they draw in
+    /// each of their draw steps, instead that player skips that draw and you
+    /// draw a card." (Notion Thief)
+    RedirectDrawReplacement {
+        drawer: PlayerFilter,
+        except_first_of_draw_step: bool,
+        display: String,
+    },
+    /// "If you would draw a card, instead <effects>." (Underrealm Lich)
+    DrawReplacementWithEffects {
+        drawer: PlayerFilter,
+        replacement_effects: Vec<E>,
+        display: String,
+    },
     DrawExtraCardsReplacement {
         extra: u32,
         /// "except the first one you draw in each of your draw steps"
@@ -1033,6 +1090,13 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         source_filter: ObjectFilter,
         minimum_amount: u32,
         replacement_mana: Vec<crate::ManaSymbol>,
+        display: String,
+    },
+    /// "If you tap a permanent for mana, it produces three times as much of
+    /// that mana instead." (Nyxbloom Ancient, Mana Reflection)
+    ManaProductionMultiplierReplacement {
+        source_filter: ObjectFilter,
+        factor: u32,
         display: String,
     },
     /// "If you would gain life, you gain twice that much life instead." (Boon
@@ -1610,6 +1674,15 @@ where
             StaticAbilityPayload::CostIncrease(increase) => StaticAbilityPayload::CostIncrease(
                 increase.try_map_condition(&mut *map_intervening)?,
             ),
+            StaticAbilityPayload::CostIncreaseLife {
+                filter,
+                amount,
+                display,
+            } => StaticAbilityPayload::CostIncreaseLife {
+                filter,
+                amount,
+                display,
+            },
             StaticAbilityPayload::CostIncreaseManaCost(increase) => StaticAbilityPayload::CostIncreaseManaCost(
                 increase.try_map_condition(&mut *map_intervening)?,
             ),
@@ -1654,6 +1727,9 @@ where
             StaticAbilityPayload::Protection(from) => StaticAbilityPayload::Protection(from),
             StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(filter) => {
                 StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(filter)
+            }
+            StaticAbilityPayload::PreventAllDamageToPermanentsMatching(filter) => {
+                StaticAbilityPayload::PreventAllDamageToPermanentsMatching(filter)
             }
             StaticAbilityPayload::PreventAllNoncombatDamageToPermanentsMatching(filter) => {
                 StaticAbilityPayload::PreventAllNoncombatDamageToPermanentsMatching(filter)
@@ -2297,15 +2373,34 @@ where
                 noncombat_only,
                 display,
             },
+            StaticAbilityPayload::PreventHalfDamageReplacement {
+                source_filter,
+                target_player_filter,
+                target_object_filter,
+                round_up,
+                display,
+            } => StaticAbilityPayload::PreventHalfDamageReplacement {
+                source_filter,
+                target_player_filter,
+                target_object_filter,
+                round_up,
+                display,
+            },
             StaticAbilityPayload::DoubleCountersReplacement {
                 filter,
                 player_filter,
                 counter_type,
+                actor,
+                includes_permanents,
+                halve,
                 display,
             } => StaticAbilityPayload::DoubleCountersReplacement {
                 filter,
                 player_filter,
                 counter_type,
+                actor,
+                includes_permanents,
+                halve,
                 display,
             },
             StaticAbilityPayload::AddCountersPlacementReplacement {
@@ -2355,12 +2450,14 @@ where
                 token_filter,
                 additional_token,
                 additional,
+                per_created,
                 display,
             } => StaticAbilityPayload::AddTokenCreationReplacement {
                 controller,
                 token_filter,
                 additional_token,
                 additional,
+                per_created,
                 display,
             },
             StaticAbilityPayload::KeywordActionReplacement {
@@ -2390,6 +2487,30 @@ where
                 extra,
                 except_first_of_draw_step,
                 per_instruction,
+                display,
+            },
+            StaticAbilityPayload::CreateOneOfEachTokenReplacement { kinds, display } => {
+                StaticAbilityPayload::CreateOneOfEachTokenReplacement { kinds, display }
+            }
+            StaticAbilityPayload::DrawReplacementWithEffects {
+                drawer,
+                replacement_effects,
+                display,
+            } => StaticAbilityPayload::DrawReplacementWithEffects {
+                drawer,
+                replacement_effects: replacement_effects
+                    .into_iter()
+                    .map(map_effect)
+                    .collect::<Result<Vec<_>, _>>()?,
+                display,
+            },
+            StaticAbilityPayload::RedirectDrawReplacement {
+                drawer,
+                except_first_of_draw_step,
+                display,
+            } => StaticAbilityPayload::RedirectDrawReplacement {
+                drawer,
+                except_first_of_draw_step,
                 display,
             },
             StaticAbilityPayload::ConditionalDrawReplacement {
@@ -2469,6 +2590,15 @@ where
                 filter,
                 not_cast,
                 destination,
+                display,
+            },
+            StaticAbilityPayload::ManaProductionMultiplierReplacement {
+                source_filter,
+                factor,
+                display,
+            } => StaticAbilityPayload::ManaProductionMultiplierReplacement {
+                source_filter,
+                factor,
                 display,
             },
             StaticAbilityPayload::ManaProductionReplacement {
@@ -5155,6 +5285,18 @@ impl<
             payload: StaticAbilityPayload::CostIncreaseManaCostPerTargetBeyondFirst(cost),
         }
     }
+    pub fn cost_increase_life(filter: ObjectFilter, amount: u32, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::CostIncreaseLife),
+            label: display.clone(),
+            payload: StaticAbilityPayload::CostIncreaseLife {
+                filter,
+                amount,
+                display,
+            },
+        }
+    }
     pub fn additional_life_cost_per_target(amount: u32) -> Self {
         Self {
             id: Some(StaticAbilityId::CostIncreasePerAdditionalTarget),
@@ -5272,6 +5414,13 @@ impl<
             id: Some(StaticAbilityId::PreventAllCombatDamageToPermanentsMatching),
             label: "prevent all combat damage to permanents matching filter".into(),
             payload: StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(filter),
+        }
+    }
+    pub fn prevent_all_damage_to_permanents_matching(filter: ObjectFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::PreventAllDamageToPermanentsMatching),
+            label: "prevent all damage to permanents matching filter".into(),
+            payload: StaticAbilityPayload::PreventAllDamageToPermanentsMatching(filter),
         }
     }
     pub fn prevent_all_noncombat_damage_to_permanents_matching(filter: ObjectFilter) -> Self {
@@ -5525,6 +5674,37 @@ impl<
 
     pub fn draw_extra_cards_replacement(extra: u32, display: impl Into<String>) -> Self {
         Self::draw_extra_cards_replacement_with_options(extra, false, true, display)
+    }
+    /// "If you would create a Clue, Food, or Treasure token, instead create
+    /// one of each." (Academy Manufactor)
+    pub fn create_one_of_each_token_replacement(
+        kinds: Vec<AdditionalTokenKind>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::CreateOneOfEachTokenReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::CreateOneOfEachTokenReplacement { kinds, display },
+        }
+    }
+    /// "If an opponent would draw a card ..., instead that player skips that
+    /// draw and you draw a card." (Notion Thief)
+    pub fn redirect_draw_replacement(
+        drawer: PlayerFilter,
+        except_first_of_draw_step: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::RedirectDrawReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::RedirectDrawReplacement {
+                drawer,
+                except_first_of_draw_step,
+                display,
+            },
+        }
     }
     pub fn draw_extra_cards_replacement_with_options(
         extra: u32,
@@ -5791,6 +5971,23 @@ impl<
             },
         }
     }
+    /// "If you would draw a card, instead <effects>." (Underrealm Lich)
+    pub fn draw_replacement_with_effects(
+        drawer: PlayerFilter,
+        replacement_effects: Vec<E>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::DrawReplacementWithEffects),
+            label: display.clone(),
+            payload: StaticAbilityPayload::DrawReplacementWithEffects {
+                drawer,
+                replacement_effects,
+                display,
+            },
+        }
+    }
     pub fn modify_damage_amount_replacement(
         source_filter: ObjectFilter,
         target_player_filter: Option<PlayerFilter>,
@@ -5902,6 +6099,27 @@ impl<
         }
     }
 
+    pub fn prevent_half_damage_replacement(
+        source_filter: ObjectFilter,
+        target_player_filter: Option<PlayerFilter>,
+        target_object_filter: Option<ObjectFilter>,
+        round_up: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::PreventHalfDamageReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::PreventHalfDamageReplacement {
+                source_filter,
+                target_player_filter,
+                target_object_filter,
+                round_up,
+                display,
+            },
+        }
+    }
+
     pub fn double_counters_replacement(
         filter: ObjectFilter,
         counter_type: Option<CounterType>,
@@ -5915,6 +6133,34 @@ impl<
                 filter,
                 player_filter: None,
                 counter_type,
+                actor: None,
+                includes_permanents: false,
+                halve: false,
+                display,
+            },
+        }
+    }
+
+    /// "If you would put one or more counters on a permanent or player, put
+    /// twice that many of each of those kinds of counters on that permanent
+    /// or player instead." (Innkeeper's Talent, Vorinclex); `halve` reads
+    /// "they put half that many ... instead, rounded down".
+    pub fn actor_counter_multiplier_replacement(
+        actor: PlayerFilter,
+        halve: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::DoubleCountersReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::DoubleCountersReplacement {
+                filter: ObjectFilter::permanent(),
+                player_filter: Some(PlayerFilter::Any),
+                counter_type: None,
+                actor: Some(actor),
+                includes_permanents: true,
+                halve,
                 display,
             },
         }
@@ -5955,6 +6201,28 @@ impl<
         }
     }
 
+    /// "If you would get one or more counters, you get that many plus one of
+    /// each of those kinds of counters instead." (Winding Constrictor)
+    pub fn add_player_counters_placement_replacement(
+        player_filter: PlayerFilter,
+        counter_type: Option<CounterType>,
+        additional: u32,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::AddCountersPlacementReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::AddCountersPlacementReplacement {
+                filter: ObjectFilter::default(),
+                player_filter: Some(player_filter),
+                counter_type,
+                additional,
+                display,
+            },
+        }
+    }
+
     pub fn double_player_counters_replacement(
         player_filter: PlayerFilter,
         counter_type: Option<CounterType>,
@@ -5968,6 +6236,9 @@ impl<
                 filter: ObjectFilter::default(),
                 player_filter: Some(player_filter),
                 counter_type,
+                actor: None,
+                includes_permanents: false,
+                halve: false,
                 display,
             },
         }
@@ -6041,6 +6312,30 @@ impl<
                 token_filter,
                 additional_token,
                 additional,
+                per_created: false,
+                display,
+            },
+        }
+    }
+
+    /// "If one or more tokens would be created under your control, those
+    /// tokens plus that many <token> tokens are created instead."
+    pub fn add_token_per_created_replacement(
+        controller: PlayerFilter,
+        token_filter: ObjectFilter,
+        additional_token: AdditionalTokenKind,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::AddTokenCreationReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::AddTokenCreationReplacement {
+                controller,
+                token_filter,
+                additional_token,
+                additional: 1,
+                per_created: true,
                 display,
             },
         }
@@ -6107,6 +6402,22 @@ impl<
                 filter,
                 not_cast,
                 destination,
+                display,
+            },
+        }
+    }
+    pub fn mana_production_multiplier_replacement(
+        source_filter: ObjectFilter,
+        factor: u32,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ManaProductionMultiplierReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ManaProductionMultiplierReplacement {
+                source_filter,
+                factor,
                 display,
             },
         }

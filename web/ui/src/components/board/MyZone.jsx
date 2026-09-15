@@ -2,13 +2,14 @@ import useUiText from "@/i18n/useUiText";
 import PlayerZonePiles from "./PlayerZonePiles";
 import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
 import RollingPanel from "./RollingPanel";
-import { useCastPlayerHovered } from "@/context/DragContext";
+import { useCastPlayerHovered, useCastTargeting } from "@/context/DragContext";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import BattlefieldRow from "./BattlefieldRow";
 import HandZone from "./HandZone";
 import ManaPool from "@/components/left-rail/ManaPool";
 import StackTimelineRail from "@/components/right-rail/StackTimelineRail";
+import { useHoverActions } from "@/context/HoverContext";
 import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
 import { isTriggerOrderingDecision } from "@/lib/trigger-ordering";
@@ -282,7 +283,9 @@ export default function MyZone({
 }) {
   const ui = useUiText();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
+  const { clearAnchoredCardPreview, clearHover } = useHoverActions();
   const { state, playerAccentOverrides } = useGame();
+  const castIntent = useCastTargeting();
   const mobileZoneRef = useRef(null);
   const mobileHandRef = useRef(null);
   const mobileHandMeasureRafRef = useRef(null);
@@ -349,8 +352,12 @@ export default function MyZone({
   const castPlayerHovered = useCastPlayerHovered(player?.id);
   const isPlayerLegalTarget =
     legalTargetPlayerIds.has(Number(player.id)) || legalTargetPlayerIds.has(Number(player.index));
-  const canPickTargetFromBoard = state?.decision?.kind === "targets"
-    && samePlayerId(state?.decision?.player, state?.perspective);
+  const targetDecision = state?.decision?.kind === "targets"
+    ? state.decision
+    : castIntent?.targetDecision;
+  const targetModeActive = Boolean(castIntent) || state?.decision?.kind === "targets";
+  const canPickTargetFromBoard = targetDecision?.kind === "targets"
+    && samePlayerId(targetDecision.player, state?.perspective);
 
   // Build activatable map from decision actions (activate_ability + activate_mana_ability)
   const activatableMap = buildActivatableMap(state?.decision, state?.perspective);
@@ -359,16 +366,20 @@ export default function MyZone({
     if (canPickTargetFromBoard && !shouldHandleClick(_e)) return;
     const candidateObjectIds = collectCardObjectIds(card);
 
-    if (canPickTargetFromBoard) {
-      const matchedTargetId = candidateObjectIds.find((id) => legalTargetObjectIds.has(id));
+    if (targetModeActive) {
+      clearAnchoredCardPreview();
+      clearHover();
+      const matchedTargetId = canPickTargetFromBoard
+        ? candidateObjectIds.find((id) => legalTargetObjectIds.has(id))
+        : null;
       if (matchedTargetId != null) {
         window.dispatchEvent(
           new CustomEvent("ironsmith:target-choice", {
             detail: { target: { kind: "object", object: matchedTargetId } },
           })
         );
-        return;
       }
+      return;
     }
 
     onInspect?.(card.id, { candidateObjectIds });
@@ -379,6 +390,8 @@ export default function MyZone({
     const candidateObjectIds = collectCardObjectIds(card);
     const matchedTargetId = candidateObjectIds.find((id) => legalTargetObjectIds.has(id));
     if (matchedTargetId == null) return;
+    clearAnchoredCardPreview();
+    clearHover();
     event.preventDefault();
     event.stopPropagation();
     window.dispatchEvent(
@@ -386,10 +399,12 @@ export default function MyZone({
         detail: { target: { kind: "object", object: matchedTargetId } },
       })
     );
-  }, [canPickTargetFromBoard, legalTargetObjectIds, registerPointerDown]);
+  }, [canPickTargetFromBoard, clearAnchoredCardPreview, clearHover, legalTargetObjectIds, registerPointerDown]);
 
   const dispatchPlayerTargetChoice = useCallback(() => {
     if (!canPickTargetFromBoard || !isPlayerLegalTarget) return;
+    clearAnchoredCardPreview();
+    clearHover();
     const targetPlayer = legalTargetPlayerIds.has(Number(player.id))
       ? Number(player.id)
       : Number(player.index);
@@ -401,6 +416,8 @@ export default function MyZone({
     );
   }, [
     canPickTargetFromBoard,
+    clearAnchoredCardPreview,
+    clearHover,
     isPlayerLegalTarget,
     legalTargetPlayerIds,
     player.id,
@@ -780,6 +797,10 @@ export default function MyZone({
               )}
             >
               {headerActionBarElement}
+              <div
+                className="table-decision-submit-slot"
+                data-decision-submit-portal-host="true"
+              />
             </div>
           ) : null}
           {mergedMobileHeader ? (

@@ -214,6 +214,7 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::IsDealtCombatDamage(filter)
         | TriggerSpec::IsDealtExcessNoncombatDamage(filter)
         | TriggerSpec::LeavesBattlefield(filter)
+        | TriggerSpec::ExiledFromBattlefield(filter)
         | TriggerSpec::Dies(filter)
         | TriggerSpec::DiesOneOrMore(filter)
         | TriggerSpec::PutIntoGraveyard(filter)
@@ -271,6 +272,10 @@ fn trigger_zone_transition(trigger: &TriggerSpec) -> Option<TriggerZoneTransitio
         | TriggerSpec::HauntedCreatureDies => Some(TriggerZoneTransitionAst {
             from: Some(Zone::Battlefield),
             to: Some(Zone::Graveyard),
+        }),
+        TriggerSpec::ExiledFromBattlefield(_) => Some(TriggerZoneTransitionAst {
+            from: Some(Zone::Battlefield),
+            to: Some(Zone::Exile),
         }),
         TriggerSpec::ThisLeavesBattlefield
         | TriggerSpec::ThisLeavesBattlefieldWithSurface(_)

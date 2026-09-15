@@ -2046,6 +2046,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::OpponentWasDealtDamageThisTurn => {
             "an opponent was dealt damage this turn".to_string()
         }
+        Condition::OpponentWasDealtDamageThisTurnOrMore(count) => {
+            format!("an opponent was dealt {count} or more damage this turn")
+        }
         Condition::PermanentLeftBattlefieldThisTurn => {
             "a permanent left the battlefield this turn".to_string()
         }
@@ -2174,6 +2177,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::ItIsNight => "it's night".to_string(),
         Condition::FirstCombatPhaseOfTurn => "it's the first combat phase of the turn".to_string(),
         Condition::SourceControllersMainPhase => "it's your main phase".to_string(),
+        Condition::SourceControllersCombatPhase => "it's your combat phase".to_string(),
         Condition::SourceControllersEndStep => "during your end step".to_string(),
         Condition::SpellsWereCastLastTurnOrMore(count) => {
             let count_text = small_number_word(*count)

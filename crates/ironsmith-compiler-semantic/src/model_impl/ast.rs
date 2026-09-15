@@ -432,6 +432,8 @@ pub enum TriggerSpec {
         one_or_more: bool,
     },
     LeavesBattlefield(ObjectFilter),
+    /// "Whenever a creature is exiled from the battlefield" (Soulherder).
+    ExiledFromBattlefield(ObjectFilter),
     LeavesBattlefieldWithoutDying {
         filter: ObjectFilter,
         one_or_more: bool,

@@ -27,9 +27,17 @@ enum CounterTargetTerm {
 }
 
 fn connector<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    alt((primitives::kw("and"), primitives::kw("or")))
-        .void()
-        .parse_next(input)
+    // "target instant spell, sorcery spell, activated ability, or triggered
+    // ability" (Return the Favor): list commas join terms too.
+    alt((
+        (
+            primitives::comma(),
+            opt(alt((primitives::kw("and"), primitives::kw("or")))),
+        )
+            .void(),
+        alt((primitives::kw("and"), primitives::kw("or"))).void(),
+    ))
+    .parse_next(input)
 }
 
 fn target_word<'a>(input: &mut LexStream<'a>) -> WResult<()> {

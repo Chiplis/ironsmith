@@ -11,6 +11,24 @@ pub fn parse_resource_shuffle_shape(
         let target = trimmed(&clause[..into_idx]);
         let normalized_destination = without_articles(trimmed(after_into));
         let target_words = crate::lexer::token_word_refs(target);
+        let destination_words = crate::lexer::token_word_refs(&normalized_destination);
+        if !target.is_empty()
+            && matches!(
+                destination_words.as_slice(),
+                ["their", "owners", "libraries"]
+                    | ["their", "owners'", "libraries"]
+                    | ["their", "owner's", "libraries"]
+                    | ["their", "owners'", "library"]
+                    | ["its", "owner's", "library"]
+                    | ["its", "owners", "library"]
+                    | ["its", "owners'", "library"]
+            )
+            && !exact_unit(target, tagged_reference)
+        {
+            return Some(ResourceShuffleShape::ObjectsIntoOwnersLibraries {
+                target_len: into_idx,
+            });
+        }
         if matches!(
             target_words.as_slice(),
             ["your", "hand"] | ["their", "hand"] | ["his", "or", "her", "hand"]

@@ -155,6 +155,7 @@ pub enum StaticAbilityId {
     ThisSpellCostReduction,
     ThisSpellCostReductionManaCost,
     CostIncrease,
+    CostIncreaseLife,
     CostReductionManaCost,
     CostIncreaseManaCost,
     CostIncreasePerAdditionalTarget,
@@ -221,6 +222,7 @@ pub enum StaticAbilityId {
     PreventAllCombatDamageToSelf,
     PreventAllCombatDamageToPermanentsMatching,
     PreventAllNoncombatDamageToPermanentsMatching,
+    PreventAllDamageToPermanentsMatching,
     PreventAllDamageToSelfFromSourcesMatching,
     PreventAllDamageToSelfByCreatures,
     PreventDamageToYouFromSourceFilter,
@@ -284,11 +286,15 @@ pub enum StaticAbilityId {
     ExileToExileInsteadOfGraveyard,
     ExileWouldDieInstead,
     ModifyDamageAmountReplacement,
+    PreventHalfDamageReplacement,
     DoubleCountersReplacement,
     AddCountersPlacementReplacement,
     PlayerCounterPerTurnLimitReplacement,
     DoubleTokenCreationReplacement,
     MultiplyTokenCreationReplacement,
+    RedirectDrawReplacement,
+    DrawReplacementWithEffects,
+    CreateOneOfEachTokenReplacement,
     AddTokenCreationReplacement,
     CreaturesEnteringDontCauseAbilitiesToTrigger,
     DuplicateMatchingTriggeredAbilities,
@@ -311,6 +317,7 @@ pub enum StaticAbilityId {
     RevealCardOrEnterTappedReplacement,
     RedirectWouldEnterReplacement,
     ManaProductionReplacement,
+    ManaProductionMultiplierReplacement,
     DoubleLifeChangeReplacement,
     PregameAction,
     DeckConstructionRuleText,
@@ -479,6 +486,7 @@ impl StaticAbilityId {
             | ThisSpellCostReduction
             | ThisSpellCostReductionManaCost
             | CostIncrease
+            | CostIncreaseLife
             | CostReductionManaCost
             | CostIncreaseManaCost
             | CostIncreasePerAdditionalTarget
@@ -545,6 +553,7 @@ impl StaticAbilityId {
             | PreventAllCombatDamageToSelf
             | PreventAllCombatDamageToPermanentsMatching
             | PreventAllNoncombatDamageToPermanentsMatching
+            | PreventAllDamageToPermanentsMatching
             | PreventAllDamageToSelfFromSourcesMatching
             | PreventAllDamageToSelfByCreatures
             | PreventDamageToYouFromSourceFilter
@@ -608,11 +617,15 @@ impl StaticAbilityId {
             | ExileToExileInsteadOfGraveyard
             | ExileWouldDieInstead
             | ModifyDamageAmountReplacement
+            | PreventHalfDamageReplacement
             | DoubleCountersReplacement
             | AddCountersPlacementReplacement
             | PlayerCounterPerTurnLimitReplacement
             | DoubleTokenCreationReplacement
             | MultiplyTokenCreationReplacement
+            | RedirectDrawReplacement
+            | DrawReplacementWithEffects
+            | CreateOneOfEachTokenReplacement
             | AddTokenCreationReplacement
             | CreaturesEnteringDontCauseAbilitiesToTrigger
             | DuplicateMatchingTriggeredAbilities
@@ -635,6 +648,7 @@ impl StaticAbilityId {
             | RevealCardOrEnterTappedReplacement
             | RedirectWouldEnterReplacement
             | ManaProductionReplacement
+            | ManaProductionMultiplierReplacement
             | DoubleLifeChangeReplacement
             | PregameAction
             | DeckConstructionRuleText

@@ -465,6 +465,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         ],
         "parse_damage_prevention_with_owner_shuffle_line" => vec![StaticAbilityLineHeadHint::Single("if")],
         "parse_damage_amount_replacement_line" => vec![StaticAbilityLineHeadHint::Single("if")],
+        "parse_prevent_half_damage_replacement_line" => vec![StaticAbilityLineHeadHint::Single("if")],
+        "parse_if_you_would_draw_instead_effects_line" => vec![StaticAbilityLineHeadHint::Single("if")],
+        "parse_double_counters_replacement_line" => vec![StaticAbilityLineHeadHint::Single("if")],
         "parse_players_skip_extra_turns_line" => vec![
             StaticAbilityLineHeadHint::Single("if"),
             StaticAbilityLineHeadHint::Pair("if", "an"),
@@ -678,6 +681,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_play_lands_from_graveyard_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
+        ],
+        "parse_during_your_turn_graveyard_cards_have_retrace_line" => vec![
+            StaticAbilityLineHeadHint::Single("during"),
         ],
         "parse_graveyard_cards_have_retrace_line" => vec![
             StaticAbilityLineHeadHint::Single("instant"),
@@ -1278,6 +1284,8 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         single_static_ability_ast_rule!(parse_conditional_draw_replacement_line),
         single_static_ability_ast_rule!(parse_draw_extra_cards_replacement_line),
+        single_static_ability_ast_rule!(parse_if_opponent_would_draw_redirect_line),
+        single_static_ability_ast_rule!(parse_if_you_would_draw_instead_effects_line),
         single_static_ability_ast_rule!(parse_draw_replacement_double_line),
         single_static_ability_ast_rule!(parse_draw_replacement_skip_empty_library_line),
         single_static_ability_ast_rule!(parse_exile_to_exile_instead_of_graveyard_line),
@@ -1285,6 +1293,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_exile_would_die_instead_line),
         single_static_ability_ast_rule!(parse_redirect_would_enter_line),
         single_static_ability_ast_rule!(parse_if_source_tapped_for_mana_replacement_line),
+        single_static_ability_ast_rule!(parse_if_you_tap_for_mana_multiplier_line),
         single_static_ability_ast_rule!(parse_if_player_would_change_life_double_line),
         single_static_ability_ast_rule!(parse_discard_or_redirect_replacement_line),
         single_static_ability_ast_rule!(parse_sacrifice_or_redirect_replacement_line),
@@ -1360,6 +1369,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_double_damage_from_sources_you_control_of_chosen_type_line
         ),
         single_static_ability_ast_rule!(parse_double_damage_amount_replacement_line),
+        single_static_ability_ast_rule!(parse_prevent_half_damage_replacement_line),
         single_static_ability_ast_rule!(parse_minimum_damage_amount_replacement_line),
         single_static_ability_ast_rule!(parse_damage_amount_replacement_line),
         single_static_ability_ast_rule!(parse_foretelling_cards_cost_modifier_line),
@@ -1485,6 +1495,10 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_enter_as_copy_as_enters_line),
         single_static_ability_ast_rule!(parse_has_base_power_toughness_static_line),
         single_static_ability_ast_rule!(parse_isnt_creature_line),
+        single_static_ability_ast_passthrough_rule!(parse_as_long_as_source_is_a_land_line),
+        single_static_ability_ast_passthrough_rule!(
+            parse_during_your_turn_graveyard_cards_have_retrace_line
+        ),
         multi_static_ability_ast_rule!(parse_multi_subject_anthem_line),
         single_static_ability_ast_rule!(parse_anthem_line),
         single_static_ability_ast_rule!(parse_flying_restriction_line),
@@ -1511,6 +1525,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_cast_this_spell_as_though_it_had_flash_line),
         single_static_ability_ast_rule!(parse_during_your_turn_prevent_all_damage_to_source_line),
         single_static_ability_ast_rule!(parse_prevent_all_combat_damage_to_source_line),
+        single_static_ability_ast_rule!(parse_prevent_all_damage_to_matching_permanents_line),
         single_static_ability_ast_rule!(
             parse_prevent_all_combat_damage_to_matching_permanents_line
         ),
@@ -4155,6 +4170,33 @@ pub fn parse_damage_amount_replacement_line(
     ))
 }
 
+pub fn parse_prevent_half_damage_replacement_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let Some(spec) = keyword_static_lines::parse_prevent_half_damage_tokens(&tokens) else {
+        return Ok(None);
+    };
+    let damaged_words = parser_token_word_refs(spec.damaged_tokens);
+    let (target_player_filter, target_object_filter) =
+        parse_damage_amount_replacement_target_filters(&damaged_words)?;
+    if target_player_filter.is_none() && target_object_filter.is_none() {
+        return Ok(None);
+    }
+    let source_filter = damage_source_filter_from_shape(spec.source)?;
+    let mut display = render_token_slice(&tokens).trim().to_string();
+    if !crate::string_primitives::ends_with_char(&display, '.') {
+        display.push('.');
+    }
+    Ok(Some(StaticAbility::prevent_half_damage_replacement(
+        source_filter,
+        target_player_filter,
+        target_object_filter,
+        spec.round_up,
+        display,
+    )))
+}
+
 pub fn parse_double_damage_amount_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -4268,6 +4310,7 @@ fn parse_damage_amount_replacement_target_filters(
         Permanent,
         PermanentOrPlayer,
         OpponentOrPermanentOpponentControls,
+        YouOrPermanentYouControl,
     }
 
     const DAMAGE_REPLACEMENT_TARGET_PHRASES: &[(&[&str], DamageReplacementTargetKind)] = &[
@@ -4311,6 +4354,14 @@ fn parse_damage_amount_replacement_target_filters(
             &["opponent", "or", "permanent", "an", "opponent", "controls"],
             DamageReplacementTargetKind::OpponentOrPermanentOpponentControls,
         ),
+        (
+            &["you", "or", "a", "permanent", "you", "control"],
+            DamageReplacementTargetKind::YouOrPermanentYouControl,
+        ),
+        (
+            &["you", "or", "permanent", "you", "control"],
+            DamageReplacementTargetKind::YouOrPermanentYouControl,
+        ),
     ];
 
     let words = strip_leading_word_refs_any(words, &["a", "an"]);
@@ -4338,6 +4389,10 @@ fn parse_damage_amount_replacement_target_filters(
         DamageReplacementTargetKind::OpponentOrPermanentOpponentControls => Ok((
             Some(PlayerFilter::Opponent),
             Some(ObjectFilter::permanent().controlled_by(PlayerFilter::Opponent)),
+        )),
+        DamageReplacementTargetKind::YouOrPermanentYouControl => Ok((
+            Some(PlayerFilter::You),
+            Some(ObjectFilter::permanent().you_control()),
         )),
     }
 }

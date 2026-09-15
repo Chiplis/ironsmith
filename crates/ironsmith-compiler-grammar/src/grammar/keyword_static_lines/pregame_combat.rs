@@ -74,6 +74,9 @@ pub fn parse_pregame_reveal_from_opening_hand_tokens(
     let mut prefix_shape = None;
     for (phrase, timing) in [
         (FIRST_UPKEEP, PregameRevealTiming::FirstUpkeep),
+        // "If you do, at the beginning of your first upkeep, look at ..."
+        // (Devourer of Destiny) states the timing before the consequence.
+        (YOUR_FIRST_UPKEEP, PregameRevealTiming::YourFirstUpkeep),
         (
             YOUR_FIRST_MAIN,
             PregameRevealTiming::YourFirstPrecombatMainPhase,

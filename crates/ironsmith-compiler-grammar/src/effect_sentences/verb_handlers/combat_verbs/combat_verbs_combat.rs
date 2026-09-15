@@ -1,3 +1,4 @@
+use winnow::Parser;
 use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::DelayedEffectAst;
@@ -65,6 +66,36 @@ pub fn parse_deal_damage_equal_to_clause(
             return Err(CardTextError::ParseError(
                 "missing damage target filter after 'each'".to_string(),
             ));
+        }
+        // "to each other creature and each opponent" (Chandra's Ignition):
+        // the object set and the player set are damaged independently.
+        if let Some((and_idx, players, after)) =
+            crate::grammar::primitives::find_prefix(shape.target_tokens, || {
+                winnow::combinator::alt((
+                    crate::grammar::primitives::phrase(&["and", "each", "opponent"]).value(true),
+                    crate::grammar::primitives::phrase(&["and", "each", "player"]).value(false),
+                ))
+            })
+            && and_idx >= 2
+            && crate::lexer::parser_token_word_refs(after).is_empty()
+        {
+            let filter = parse_damage_each_filter(&shape.target_tokens[1..and_idx])?;
+            let player_damage = vec![EffectAst::subject_verb_damage(
+                amount.clone(),
+                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            )];
+            let players = if players {
+                EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+                    effects: player_damage,
+                })
+            } else {
+                EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                    effects: player_damage,
+                })
+            };
+            return Ok(Some(EffectAst::Sequence {
+                effects: vec![EffectAst::subject_verb_damage_each(amount, filter), players],
+            }));
         }
         let filter = parse_damage_each_filter(&shape.target_tokens[1..])?;
         return Ok(Some(EffectAst::subject_verb_damage_each(amount, filter)));

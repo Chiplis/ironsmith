@@ -148,6 +148,56 @@ pub fn parse_sentence_must_attack_filter_this_turn(
     )]))
 }
 
+/// "Creatures your opponents control attack each combat if able and attack a
+/// player other than you if able." (Kardur, Doomscourge): the goad requirement
+/// (CR 701.38) spelled out for a filtered set of creatures.
+pub fn parse_sentence_goad_requirement_filter(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::effect::Until;
+    use winnow::prelude::*;
+
+    let tokens = clause.tokens();
+    let Some((suffix_start, (), suffix_rest)) = crate::grammar::primitives::find_prefix(tokens, || {
+        (
+            winnow::combinator::alt((
+                crate::grammar::primitives::kw("attack"),
+                crate::grammar::primitives::kw("attacks"),
+            )),
+            crate::grammar::primitives::phrase(&["each", "combat", "if", "able", "and"]),
+            winnow::combinator::alt((
+                crate::grammar::primitives::kw("attack"),
+                crate::grammar::primitives::kw("attacks"),
+            )),
+            crate::grammar::primitives::phrase(&[
+                "a", "player", "other", "than", "you", "if", "able",
+            ]),
+        )
+            .void()
+    }) else {
+        return Ok(None);
+    };
+    if !crate::lexer::trim_lexed_commas(suffix_rest).is_empty() {
+        return Ok(None);
+    }
+    let subject_tokens = crate::lexer::trim_lexed_commas(&tokens[..suffix_start]);
+    if subject_tokens.is_empty()
+        || subject_tokens
+            .iter()
+            .any(|token| token.is_any_word(&["target", "chosen", "choice", "that", "it"]))
+    {
+        return Ok(None);
+    }
+    let filter = parse_object_filter(subject_tokens, false)?;
+    if !iter_contains(filter.card_types.iter(), &CardType::Creature) {
+        return Ok(None);
+    }
+    Ok(Some(vec![EffectAst::subject_verb_goad_requirement(
+        TargetAst::Object(filter, None, span_from_tokens(subject_tokens)),
+        Until::YourNextTurn,
+    )]))
+}
+
 pub fn parse_sentence_must_attack_creature_type_of_choice(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

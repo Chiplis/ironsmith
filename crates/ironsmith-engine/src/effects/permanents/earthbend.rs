@@ -82,7 +82,8 @@ impl EffectExecutor for EarthbendEffect {
             true,
             vec![target_id],
             crate::target::PlayerFilter::Specific(ctx.controller),
-        );
+        )
+        .with_ability_source(target_id);
         let _ = execute_effect(game, &Effect::new(schedule), ctx)?;
 
         events.push(TriggerEvent::new_with_provenance(
@@ -151,5 +152,58 @@ mod tests {
         );
         assert_eq!(game.calculated_power(land), Some(4));
         assert_eq!(game.calculated_toughness(land), Some(4));
+    }
+
+    #[test]
+    fn earthbend_returns_a_sacrificed_land_to_the_battlefield() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source_card = CardBuilder::new(CardId::from_raw(881_002), "Awaken Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let land = game.create_object_from_definition(
+            &crate::cards::definitions::basic_plains(),
+            alice,
+            Zone::Battlefield,
+        );
+
+        let effect = EarthbendEffect::new(
+            ChooseSpec::target(ChooseSpec::Object(ObjectFilter::land().you_control())),
+            1,
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(land)]);
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("earthbend should resolve");
+        let land_stable_id = game.object(land).expect("land should exist").stable_id;
+
+        game.move_object_by_effect(land, Zone::Graveyard)
+            .expect("the earthbent land should be sacrificed");
+        let mut triggered = Vec::new();
+        for event in game.take_pending_trigger_events() {
+            triggered.extend(crate::triggers::check_delayed_triggers(&mut game, &event));
+        }
+
+        assert_eq!(triggered.len(), 1);
+        assert_eq!(triggered[0].source, land);
+        let mut trigger_queue = crate::triggers::TriggerQueue::new();
+        for entry in triggered {
+            trigger_queue.add(entry);
+        }
+        crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("earthbend trigger should reach the stack");
+        crate::game_loop::resolve_stack_entry(&mut game).expect("earthbend return should resolve");
+
+        let returned_land = game
+            .find_object_by_stable_id(land_stable_id)
+            .expect("earthbent land should still exist");
+        assert_eq!(
+            game.object(returned_land).map(|object| object.zone),
+            Some(Zone::Battlefield)
+        );
+        assert!(game.is_tapped(returned_land));
     }
 }

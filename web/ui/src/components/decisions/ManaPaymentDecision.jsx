@@ -178,7 +178,12 @@ export default function ManaPaymentDecision({
   layout = "panel",
 }) {
   const ui = useUiText();
-  const { state, dispatch, dispatchInBackground } = useGame();
+  const {
+    state,
+    dispatch,
+    dispatchInBackground,
+    cancelBackgroundDispatch,
+  } = useGame();
   const {
     setPreviewLinkedObjects,
     clearPreviewLinkedObjects,
@@ -191,7 +196,6 @@ export default function ManaPaymentDecision({
   const [excluded, setExcluded] = useState(() => idSet(payment?.excluded_source_ids));
   const [preserved, setPreserved] = useState(() => idSet(payment?.preserved_source_ids));
   const [preferLife, setPreferLife] = useState(() => Boolean(payment?.prefer_life));
-  const payWhenReadyRef = useRef(false);
   const optimizationKeyRef = useRef("");
 
   const plannedIds = useMemo(
@@ -229,6 +233,7 @@ export default function ManaPaymentDecision({
 
   const sendConfirmation = useCallback((currentPayment) => {
     if (!currentPayment || currentPayment.can_confirm === false) return;
+    cancelBackgroundDispatch?.();
     dispatch({
       type: "mana_payment",
       response: {
@@ -236,21 +241,14 @@ export default function ManaPaymentDecision({
         plan_id: String(currentPayment.plan_id),
         request_hash: String(currentPayment.request_hash),
       },
-    }, `Paid mana for ${currentPayment.source_name || decision.subject}`, { waitForPaymentReady: true });
-  }, [decision.subject, dispatch]);
+    }, `Paid mana for ${currentPayment.source_name || decision.subject}`, {
+      waitForPaymentReady: true,
+      acceptCurrentPayment: true,
+    });
+  }, [cancelBackgroundDispatch, decision.subject, dispatch]);
 
   const confirm = useCallback(() => {
     if (!payment || payment.can_confirm === false) return;
-    if (!payment.planning_complete) {
-      payWhenReadyRef.current = true;
-      return;
-    }
-    sendConfirmation(payment);
-  }, [payment, sendConfirmation]);
-
-  useEffect(() => {
-    if (!payWhenReadyRef.current || !payment?.planning_complete) return;
-    payWhenReadyRef.current = false;
     sendConfirmation(payment);
   }, [payment, sendConfirmation]);
 

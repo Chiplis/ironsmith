@@ -294,7 +294,13 @@ pub fn is_return_other_to_owner_hand_shape(tokens: &[OwnedLexToken]) -> bool {
     matches_complete_content_sequence(tokens, RETURN_OTHER)
 }
 
-const CAST_PREFIX: &[&[&str]] = &[&["you", "may", "cast", "target"]];
+const CAST_PREFIX: &[&[&str]] = &[
+    &["you", "may", "cast", "target"],
+    // "you may cast an artifact, instant, or sorcery spell from your
+    // graveyard" (Bilbo, Thief in the Night): a chosen card, not a target.
+    &["you", "may", "cast", "an"],
+    &["you", "may", "cast", "a"],
+];
 const CAST_FROM_GRAVEYARD: &[&[&str]] =
     &[&["from", "your", "graveyard"], &["from", "a", "graveyard"]];
 const WITHOUT_MANA: &[&[&str]] = &[&["without", "paying", "its", "mana", "cost"]];

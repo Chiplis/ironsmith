@@ -141,6 +141,15 @@ pub fn compile_delayed_trigger_spec(
         TriggerSpec::Attacks(filter) => {
             Ok(ironsmith_core::DelayedTriggerSpec::Attacks(filter.clone()))
         }
+        TriggerSpec::AttacksYouOrPlaneswalkerYouControl(filter) => {
+            Ok(ironsmith_core::DelayedTriggerSpec::AttacksYou(filter.clone()))
+        }
+        TriggerSpec::PlayerTapsForMana { player, filter } => {
+            Ok(ironsmith_core::DelayedTriggerSpec::PlayerTapsForMana {
+                player: player.clone(),
+                filter: filter.clone(),
+            })
+        }
         TriggerSpec::AttacksAndIsntBlocked(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::AttacksAndIsntBlocked(filter.clone()),
         ),

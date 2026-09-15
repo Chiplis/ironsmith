@@ -176,17 +176,32 @@ pub fn parse_for_each_player_clause(
             .first()
             .is_some_and(|token| token.is_word("may"));
     let participant_chooses = for_each_shapes::starts_choose(outer.inner_tokens);
+    // "Each player creates X Treasure tokens ..., where X is the number of
+    // descent counters on this enchantment." (Descent into Avernus): the
+    // value definition scopes the whole participant body.
+    let (inner_tokens, body_where_x) = match find_word_phrase(outer.inner_tokens, &["where", "x", "is"])
+        .and_then(|where_idx| {
+            let value = parse_participant_body_where_x_value(outer.inner_tokens)?;
+            Some((crate::lexer::trim_lexed_commas(&outer.inner_tokens[..where_idx]).to_vec(), value))
+        }) {
+        Some((body, value)) if !body.is_empty() => (body, Some(value)),
+        _ => (outer.inner_tokens.to_vec(), None),
+    };
+    let inner_tokens = inner_tokens.as_slice();
     let mut effects = if outer.participant_is_actor && !participant_may {
-        if let Some(effects) = parse_quantified_participant_actor_program(outer.inner_tokens)? {
+        if let Some(effects) = parse_quantified_participant_actor_program(inner_tokens)? {
             effects
         } else {
-            let normalized = prepend_that_player_subject(outer.inner_tokens);
+            let normalized = prepend_that_player_subject(inner_tokens);
             parse_maybe_effects(&normalized, true, true)?
         }
     } else {
-        let normalized = prepend_that_player_life_total_subject(outer.inner_tokens);
+        let normalized = prepend_that_player_life_total_subject(inner_tokens);
         parse_maybe_effects(&normalized, true, outer.participant_is_actor)?
     };
+    if let Some(value) = body_where_x {
+        replace_unbound_x_in_effects_anywhere(&mut effects, &value, &clause_text)?;
+    }
     if !outer.participant_is_actor {
         force_implicit_token_controller_you(&mut effects);
     }

@@ -203,7 +203,9 @@ fn placement_start(
         (
             primitives::kw("on"),
             opt(primitives::kw("the")),
-            primitives::phrase(&["bottom", "of"]),
+            primitives::kw("bottom"),
+            // "on the bottom in a random order" (Loot, Exuberant Explorer)
+            opt(primitives::kw("of")),
         )
             .void()
     })
@@ -218,12 +220,10 @@ fn placement_start(
 pub fn parse_library_placement_destination_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LibraryPlacementDestinationShape<'_>> {
+    // "Put the rest on the bottom in a random order." (Loot, Exuberant
+    // Explorer) leaves the library implicit; only libraries have a top or
+    // bottom to put cards on, so the placement alone names the zone.
     let (index, placement, destination) = placement_start(tokens)?;
-    if !(primitives::contains_word(destination, "library")
-        || primitives::contains_word(destination, "libraries"))
-    {
-        return None;
-    }
     let target_tokens = trim_lexed_commas(tokens.get(..index)?);
     let order = if primitives::contains_word(destination, "random")
         && primitives::contains_word(destination, "order")

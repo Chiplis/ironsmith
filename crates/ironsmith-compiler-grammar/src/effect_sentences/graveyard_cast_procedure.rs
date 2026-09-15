@@ -7,7 +7,9 @@
 //! replacement binds to the spell the permission tagged.
 
 use super::dispatch_entry::SentenceInput;
-use super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::graveyard_cast_with_exile_replacement;
+use super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::{
+    graveyard_cast_with_exile_replacement, graveyard_cast_with_exile_replacement_surface,
+};
 use crate::cards::builders::{CardTextError, ConditionalEffectAst, EffectAst, IfResultPredicate};
 use crate::grammar::effects::{self as effect_grammar, GraveyardCastReplacementShape};
 use crate::lexer::OwnedLexToken;
@@ -18,6 +20,8 @@ pub(super) struct GraveyardCastGroup {
     replaced: bool,
     /// The permission sat under \"When you do,\": the pair is that result's effect.
     when_result: bool,
+    /// The rider read "If an instant or sorcery spell cast this way ...".
+    cast_this_way: bool,
     pub(super) first_sentence: usize,
     pub(super) consumed: usize,
 }
@@ -57,11 +61,14 @@ pub(super) fn open(
     let Some(shape) = effect_grammar::parse_graveyard_cast_permission_shape(&permission) else {
         return Ok(None);
     };
-    if !effect_grammar::is_graveyard_cast_replacement_sentence(&crate::util::trim_commas(
-        next.lowered(),
-    )) {
+    let replacement_tokens = crate::util::trim_commas(next.lowered());
+    if !effect_grammar::is_graveyard_cast_replacement_sentence(&replacement_tokens) {
         return Ok(None);
     }
+    let cast_this_way = crate::word_primitives::sequence_occurs(
+        &crate::lexer::token_word_refs(&replacement_tokens),
+        &["cast", "this", "way"],
+    );
     // The permission must read as a targeted graveyard spell card for the
     // pair to be this procedure; the same check the program made.
     if graveyard_cast_with_exile_replacement(&permission, &shape)?.is_none() {
@@ -71,6 +78,7 @@ pub(super) fn open(
         permission,
         shape,
         when_result,
+        cast_this_way,
         replaced: false,
         first_sentence: sentence_idx,
         consumed: 1,
@@ -96,10 +104,14 @@ pub(super) fn continue_with(
 }
 
 pub(super) fn finish(group: GraveyardCastGroup) -> Vec<EffectAst> {
-    let effects = graveyard_cast_with_exile_replacement(&group.permission, &group.shape)
-        .ok()
-        .flatten()
-        .unwrap_or_default();
+    let effects = graveyard_cast_with_exile_replacement_surface(
+        &group.permission,
+        &group.shape,
+        group.cast_this_way,
+    )
+    .ok()
+    .flatten()
+    .unwrap_or_default();
     if group.when_result {
         vec![EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
             predicate: IfResultPredicate::Did,

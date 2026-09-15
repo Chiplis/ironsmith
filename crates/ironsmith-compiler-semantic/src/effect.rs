@@ -1778,6 +1778,13 @@ impl Effect {
         Self::new(crate::effects::GoadEffect::new(target))
     }
 
+    /// Goad whose printed text spells the requirement out (Kardur, Doomscourge).
+    pub fn goad_requirement_for(target: crate::target::ChooseSpec, duration: Until) -> Self {
+        Self::new(
+            crate::effects::GoadEffect::with_duration(target, duration).spelled_out_requirement(),
+        )
+    }
+
     pub fn goad_for(target: crate::target::ChooseSpec, duration: Until) -> Self {
         Self::new(crate::effects::GoadEffect::with_duration(target, duration))
     }

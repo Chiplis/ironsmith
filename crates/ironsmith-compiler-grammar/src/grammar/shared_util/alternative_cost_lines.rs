@@ -6,6 +6,7 @@ use crate::lexer::{OwnedLexToken, TokenWordView, lex_line, render_token_slice};
 use crate::mana::ManaCost;
 use crate::model::CompilerAlternativeCastingMethod as AlternativeCastingMethod;
 use crate::static_abilities::ThisSpellCostCondition;
+use crate::util::trim_edge_punctuation;
 
 pub fn parse_self_free_cast(tokens: &[OwnedLexToken]) -> Option<AlternativeCastingMethod> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -83,18 +84,33 @@ pub fn parse_you_may_rather_than_spell_cost(
                 line
             ))
         })?;
-    if !TokenWordView::new(&tokens[cost_clause_end + 1..])
-        .word_refs()
-        .is_empty()
+    let trailing_tokens = trim_edge_punctuation(&tokens[cost_clause_end + 1..]);
+    // "You may pay {B} rather than pay this spell's mana cost if there are
+    // thirteen or more creatures on the battlefield." (Blasphemous Edict)
+    let trailing_condition = if trailing_tokens
+        .first()
+        .is_some_and(|token| token.is_word("if"))
     {
+        let condition_tokens = trim_edge_punctuation(&trailing_tokens[1..]);
+        Some(
+            parse_this_spell_cost_condition(&condition_tokens)
+                .or_else(|| parse_special_cost_condition(&condition_tokens))
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported this-spell cost condition (clause: '{}')",
+                        TokenWordView::new(&condition_tokens).word_refs().join(" ")
+                    ))
+                })?,
+        )
+    } else if !TokenWordView::new(&trailing_tokens).word_refs().is_empty() {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing clause after alternative cost (line: '{}', trailing: '{}')",
             line,
-            TokenWordView::new(&tokens[cost_clause_end + 1..])
-                .word_refs()
-                .join(" ")
+            TokenWordView::new(&trailing_tokens).word_refs().join(" ")
         )));
-    }
+    } else {
+        None
+    };
     let cost_tokens = tokens.get(2..rather_token).unwrap_or_default();
     if cost_tokens.is_empty() {
         return Err(CardTextError::ParseError(
@@ -108,11 +124,15 @@ pub fn parse_you_may_rather_than_spell_cost(
             render_token_slice(cost_tokens).trim()
         ))
     })?;
-    Ok(Some(AlternativeCastingMethod::Composed {
+    let method = AlternativeCastingMethod::Composed {
         name: "Parsed alternative cost".into(),
         total_cost,
         condition: None,
         prototype_power_toughness: None,
+    };
+    Ok(Some(match trailing_condition {
+        Some(condition) => normalize_trap_method(method.with_cast_condition(condition)),
+        None => method,
     }))
 }
 

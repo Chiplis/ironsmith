@@ -858,7 +858,11 @@ pub(super) fn parse_first_combat_phase_predicate_shape(
         WinnowCaptureKind::OneOf(&["is"]),
     )];
     let article = [WinnowSequence::word("the")];
-    let tail_article = [WinnowSequence::word("the")];
+    // "of the turn" / "of your turn" (Tifa, Martial Artist)
+    let tail_article = [WinnowSequence::modifier(
+        "owner",
+        WinnowCaptureKind::OneOf(&["the", "your"]),
+    )];
     let atoms = [
         WinnowSequence::subject("subject", WinnowCaptureKind::OneOf(&["it", "its"])),
         WinnowSequence::optional(&copula),
@@ -914,6 +918,17 @@ pub(super) fn parse_source_controllers_main_phase_predicate_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
+    if surface::exact_any(
+        clause,
+        &[
+            &["its", "your", "combat", "phase"],
+            &["it", "is", "your", "combat", "phase"],
+        ],
+    ) {
+        return Some(PredicateAst::Source(
+            SourcePredicateAst::SourceControllersCombatPhase,
+        ));
+    }
     surface::exact_any(
         clause,
         &[
@@ -924,6 +939,40 @@ pub(super) fn parse_source_controllers_main_phase_predicate_shape(
     .then_some(PredicateAst::Source(
         SourcePredicateAst::SourceControllersMainPhase,
     ))
+}
+
+/// "creatures you control have total toughness 10 or greater" (Betor, Kin
+/// to All): a summed characteristic threshold over a filter.
+pub(super) fn parse_total_stat_threshold_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let have = words
+        .iter()
+        .position(|word| matches!(*word, "have" | "has"))?;
+    let stat = match words.get(have + 1..have + 3)? {
+        ["total", "power"] => "power",
+        ["total", "toughness"] => "toughness",
+        _ => return None,
+    };
+    let count = match &words[have + 3..] {
+        [amount, "or", "greater"] | [amount, "or", "more"] => {
+            crate::util::parse_number_word_u32(amount)?
+        }
+        _ => return None,
+    };
+    let filter_end = LexedClause::new(tokens)
+        .words()
+        .map_word_or_end_to_token_boundary(have)?;
+    let filter = parse_object_filter(&tokens[..filter_end], false).ok()?;
+    let left = if stat == "power" {
+        Value::TotalPower(filter)
+    } else {
+        Value::TotalToughness(filter)
+    };
+    Some(PredicateAst::ValueComparison {
+        left,
+        operator: ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(count as i32),
+    })
 }
 
 pub(super) fn parse_player_achievement_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -1748,6 +1797,30 @@ pub(super) fn parse_player_life_change_this_turn_predicate(
                 right: Value::Fixed(count),
             })
         }
+    }
+}
+
+/// "an opponent was dealt [N or more] damage this turn" (Spinerock Knoll).
+pub(super) fn parse_opponent_dealt_damage_this_turn_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let rest = crate::word_primitives::strip_any_prefix(
+        &words,
+        &[&["an", "opponent", "was", "dealt"], &["an", "opponent", "has", "been", "dealt"]],
+    )
+    .map(|(_, rest)| rest)?;
+    match rest {
+        ["damage", "this", "turn"] => Some(PredicateAst::TurnEvents(
+            TurnEventPredicateAst::OpponentWasDealtDamageThisTurn,
+        )),
+        [amount, "or", "more", "damage", "this", "turn"] => {
+            let count = crate::util::parse_number_word_u32(amount)?;
+            Some(PredicateAst::TurnEvents(
+                TurnEventPredicateAst::OpponentWasDealtDamageThisTurnOrMore(count),
+            ))
+        }
+        _ => None,
     }
 }
 

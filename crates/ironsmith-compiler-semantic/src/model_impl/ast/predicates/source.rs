@@ -5,6 +5,8 @@ use super::*;
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum SourcePredicateAst {
     SourceControllersMainPhase,
+    /// "if it's your combat phase" (Great Train Heist)
+    SourceControllersCombatPhase,
     SourceChosenOption(String),
     SourceBlockedOrBecameBlockedSinceLastUpkeep,
     SourceIsRingBearer {

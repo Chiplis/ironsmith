@@ -2004,6 +2004,12 @@ impl Effect {
         Self::new(GoadEffect::with_duration(target, duration))
     }
 
+    /// Goad whose printed text spells the requirement out (Kardur, Doomscourge).
+    pub fn goad_requirement_for(target: ChooseSpec, duration: Until) -> Self {
+        use crate::effects::GoadEffect;
+        Self::new(GoadEffect::with_duration(target, duration).spelled_out_requirement())
+    }
+
     /// Create a "detain target permanent" effect.
     pub fn detain(target: ChooseSpec) -> Self {
         use crate::effects::DetainEffect;

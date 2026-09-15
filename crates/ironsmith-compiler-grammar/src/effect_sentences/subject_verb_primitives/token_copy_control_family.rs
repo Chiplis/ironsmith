@@ -340,6 +340,95 @@ pub fn parse_sentence_sacrifice_one_or_more(
     parse_sacrifice_one_or_more_sentence(clause)
 }
 
+/// "You may cast target Elemental card from your graveyard without paying
+/// its mana cost." (Horde of Notions): a targeted graveyard card cast at
+/// resolution, with no exile rider.
+fn may_cast_target_graveyard_card_lexed<'a>(
+    input: &mut crate::lexer::LexStream<'a>,
+) -> winnow::error::ModalResult<(&'static str, &'a [OwnedLexToken], bool)> {
+    use winnow::combinator::{alt, opt, peek, repeat_till};
+    use winnow::prelude::*;
+    use winnow::token::any;
+
+    crate::grammar::primitives::phrase(&["you", "may"]).parse_next(input)?;
+    let verb = alt((
+        crate::grammar::primitives::kw("cast").value("cast"),
+        crate::grammar::primitives::kw("play").value("play"),
+    ))
+    .parse_next(input)?;
+    crate::grammar::primitives::kw("target").parse_next(input)?;
+    let filter_tokens = repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        peek(crate::grammar::primitives::phrase(&["from", "your", "graveyard"])),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    crate::grammar::primitives::phrase(&["from", "your", "graveyard"]).parse_next(input)?;
+    let without_paying = opt(crate::grammar::primitives::phrase(&[
+        "without", "paying", "its", "mana", "cost",
+    ]))
+    .parse_next(input)?
+    .is_some();
+    crate::grammar::primitives::sentence_end().parse_next(input)?;
+    Ok((verb, filter_tokens, without_paying))
+}
+
+pub fn parse_sentence_may_cast_target_graveyard_card(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = clause.tokens();
+    let Some((verb, filter_tokens, without_paying)) = crate::grammar::primitives::probe_all(
+        tokens,
+        may_cast_target_graveyard_card_lexed,
+        "may cast target graveyard card",
+    ) else {
+        return Ok(None);
+    };
+    let filter_words = crate::lexer::token_word_refs(filter_tokens);
+    if !filter_words
+        .last()
+        .is_some_and(|word| matches!(*word, "card" | "cards"))
+    {
+        return Ok(None);
+    }
+    // Instant/sorcery graveyard casts belong to the exile-rider procedure.
+    if filter_words
+        .iter()
+        .any(|word| matches!(*word, "instant" | "sorcery" | "instants" | "sorceries"))
+    {
+        return Ok(None);
+    }
+    let mut filter = crate::object_filters::parse_object_filter_lexed(filter_tokens, false)?;
+    filter.zone = Some(Zone::Graveyard);
+    filter.owner = Some(PlayerFilter::You);
+    let tag = crate::util::helper_tag_for_tokens(tokens, "graveyard_cast_target");
+    Ok(Some(vec![
+        EffectAst::TagAffected {
+            effect: Box::new(EffectAst::subject_verb_target_only(TargetAst::Object(
+                filter,
+                Some(
+                    crate::util::span_from_tokens(tokens)
+                        .unwrap_or_else(crate::TextSpan::synthetic),
+                ),
+                None,
+            ))),
+            tag: tag.clone(),
+        },
+        EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::May {
+            effects: vec![EffectAst::subject_verb_cast_tagged(
+                tag,
+                PlayerAst::You,
+                verb == "play",
+                false,
+                without_paying,
+                None,
+            )],
+        }),
+    ]))
+}
+
 pub fn parse_sentence_keyword_then_chain(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

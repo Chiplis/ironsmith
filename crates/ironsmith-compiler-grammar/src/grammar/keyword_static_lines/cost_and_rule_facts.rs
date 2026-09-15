@@ -32,6 +32,9 @@ pub struct EquipCostModifierHead {
     pub cost_token: usize,
     pub payer: EquipCostPayer,
     pub source_relative_equipment: bool,
+    /// "Equip abilities you activate that target this creature" (Dwarven
+    /// Mauler): only equip abilities targeting the source.
+    pub targets_source: bool,
 }
 
 pub fn parse_starting_life_bonus_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
@@ -116,15 +119,34 @@ pub fn parse_equip_cost_modifier_head_tokens(
         && words[2].eq_ignore_ascii_case("equip")
         && words[3].eq_ignore_ascii_case("abilities")
         && matches!(words[4].to_ascii_lowercase().as_str(), "cost" | "costs");
+    // "Equip abilities you activate cost {2} less to activate." (Fighter
+    // Class)
+    let equip_abilities_head = starts_with(&["equip", "abilities"]);
     let has_equip_cost_head = starts_with(&["equip", "costs"])
         || starts_with(&["equip", "cost"])
-        || source_relative_equipment;
+        || source_relative_equipment
+        || equip_abilities_head;
     if !has_equip_cost_head {
         return None;
     }
     let cost_token = static_keyword_cost_shapes::parse_last_cost_verb(tokens)?.token;
-    let payer = if primitives::find_prefix(tokens, || primitives::phrase(&["you", "pay"]).void())
-        .is_some()
+    let targets_source = equip_abilities_head
+        && primitives::find_prefix(tokens, || {
+            alt((
+                primitives::phrase(&["that", "target", "this", "creature"]),
+                primitives::phrase(&["that", "target", "this", "permanent"]),
+            ))
+            .void()
+        })
+        .is_some();
+    let payer = if primitives::find_prefix(tokens, || {
+        alt((
+            primitives::phrase(&["you", "pay"]),
+            primitives::phrase(&["you", "activate"]),
+        ))
+        .void()
+    })
+    .is_some()
     {
         EquipCostPayer::You
     } else if primitives::find_prefix(tokens, || {
@@ -145,6 +167,7 @@ pub fn parse_equip_cost_modifier_head_tokens(
         cost_token,
         payer,
         source_relative_equipment,
+        targets_source,
     })
 }
 

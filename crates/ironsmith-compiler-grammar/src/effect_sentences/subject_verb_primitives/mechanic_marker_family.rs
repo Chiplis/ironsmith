@@ -370,6 +370,17 @@ pub const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
         parse_sentence_must_attack_creature_type_of_choice
     ),
     primitive!(
+        "goad-requirement-filter",
+        66,
+        PostDiagnostic,
+        &[
+            LexRuleHeadHint::Single("creatures"),
+            LexRuleHeadHint::Single("each"),
+            LexRuleHeadHint::Single("all"),
+        ],
+        parse_sentence_goad_requirement_filter
+    ),
+    primitive!(
         "must-attack-filter-this-turn",
         66,
         PostDiagnostic,
@@ -421,6 +432,17 @@ pub const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
         PostDiagnostic,
         &[LexRuleHeadHint::Single("target")],
         parse_sentence_keyword_then_chain
+    ),
+    primitive!(
+        "may-cast-target-graveyard-card",
+        121,
+        PostDiagnostic,
+        &[
+            LexRuleHeadHint::Single("you"),
+            LexRuleHeadHint::Single("cast"),
+            LexRuleHeadHint::Single("play"),
+        ],
+        parse_sentence_may_cast_target_graveyard_card
     ),
     primitive!(
         "chain-then-keyword",

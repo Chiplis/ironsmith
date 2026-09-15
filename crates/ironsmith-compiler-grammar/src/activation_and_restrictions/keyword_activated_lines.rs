@@ -341,6 +341,14 @@ pub fn parse_equip_line(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility
             let total_cost = parse_compiler_activation_cost(cost_tokens)?;
             let mut target_filter = ObjectFilter::creature().you_control();
             target_filter.subtypes = qualifier.subtypes;
+            if qualifier.legendary {
+                target_filter
+                    .supertypes
+                    .push(crate::types::Supertype::Legendary);
+            }
+            if qualifier.commander {
+                target_filter.is_commander = true;
+            }
             Ok(Some(build_equip_ability(total_cost, target_filter)))
         }
         EquipLineSpec::ActivationCost { cost_tokens } => {

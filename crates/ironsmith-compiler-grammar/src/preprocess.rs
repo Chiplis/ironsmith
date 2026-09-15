@@ -482,6 +482,11 @@ fn replace_names_with_map(
                     | b"put"
                     | b"on"
                     | b"to"
+                    | b"untap"
+                    | b"tap"
+                    | b"sacrifice"
+                    | b"destroy"
+                    | b"regenerate"
             )
         }) || next.is_some_and(|word| {
             matches!(
@@ -502,6 +507,10 @@ fn replace_names_with_map(
                     | b"is"
                     | b"has"
                     | b"have"
+                    | b"gain"
+                    | b"gains"
+                    | b"lose"
+                    | b"loses"
                     | b"get"
                     | b"gets"
                     | b"deal"
@@ -974,6 +983,59 @@ fn rewrite_borrow_static_sentence(sentence: &[OwnedLexToken]) -> String {
 
 /// "The same is true for ..." sentences expanded into one sentence per
 /// target, over the stage text's tokens — tokenized once for the whole line.
+/// "If you cast a spell this way, mana of any type can be spent to cast it."
+/// (Bloodsoaked Insight) restates the rider the permission grammar already
+/// reads as "Mana of any type can be spent to cast spells this way."
+fn rewrite_any_type_cast_rider_line(text: &str) -> String {
+    text.replace(
+        "if you cast a spell this way, mana of any type can be spent to cast it",
+        "mana of any type can be spent to cast spells this way",
+    )
+}
+
+/// "you recruit" (The Queen of Dale): the keyword action spelled out as its
+/// reminder text so the ordinary draw/discard/create grammar executes it.
+fn expand_recruit_keyword_line(text: &str) -> String {
+    const KEYWORD: &str = "recruit";
+    const EXPANSION: &str = "draw a card, then discard a card. if you discarded a nonland card this way, create a 1/1 white human soldier creature token";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(idx) = rest.find(KEYWORD) {
+        let before = &rest[..idx];
+        let tail = &rest[idx + KEYWORD.len()..];
+        let word_start = before
+            .chars()
+            .last()
+            .is_none_or(|ch| !ch.is_ascii_alphanumeric());
+        let word_end = tail
+            .chars()
+            .next()
+            .is_none_or(|ch| !ch.is_ascii_alphanumeric());
+        if word_start && word_end {
+            let trimmed = before.trim_end();
+            if let Some(without_you) = trimmed.strip_suffix("you")
+                && without_you
+                    .chars()
+                    .last()
+                    .is_none_or(|ch| !ch.is_ascii_alphanumeric())
+            {
+                out.push_str(without_you);
+                if !without_you.is_empty() && !without_you.ends_with(' ') {
+                    out.push(' ');
+                }
+            } else {
+                out.push_str(before);
+            }
+            out.push_str(EXPANSION);
+        } else {
+            out.push_str(&rest[..idx + KEYWORD.len()]);
+        }
+        rest = tail;
+    }
+    out.push_str(rest);
+    out
+}
+
 fn expand_borrow_ability_line(text: &str) -> String {
     let Some(tokens) = stage_tokens(text) else {
         return text.trim().to_string();
@@ -1166,6 +1228,22 @@ pub fn preprocess_document_with_provenance(
         };
         provenance.record_structural_span(kind, node.span, reminder_text);
     }
+    fn strip_rounding_instruction_sentence(line: &str) -> String {
+        const SENTENCE: &str = "round down each time.";
+        let lower = line.to_ascii_lowercase();
+        let Some(start) = lower.find(SENTENCE) else {
+            return line.to_string();
+        };
+        let mut out = String::with_capacity(line.len());
+        out.push_str(line[..start].trim_end());
+        let rest = line[start + SENTENCE.len()..].trim_start();
+        if !rest.is_empty() {
+            out.push(' ');
+            out.push_str(rest);
+        }
+        out
+    }
+
     fn normalize_card_name_for_self_reference(name: &str) -> String {
         let lower = name.to_ascii_lowercase();
         let bytes = lower.as_bytes();
@@ -1188,6 +1266,9 @@ pub fn preprocess_document_with_provenance(
     ) -> Result<Option<PreprocessedLine>, CardTextError> {
         let source_tokens = authored_rules_tokens(raw_line.trim(), line_index)?;
         let stripped = strip_parenthetical_segments(raw_line);
+        // "Round down each time." (Hydroid Krasis) restates the default
+        // rounding of the "half X" values in the same line.
+        let stripped = strip_rounding_instruction_sentence(&stripped);
         if stripped.trim().is_empty() {
             return Ok(None);
         }
@@ -1207,6 +1288,8 @@ pub fn preprocess_document_with_provenance(
         };
 
         let expanded_normalized = expand_borrow_ability_line(normalized.normalized.as_str());
+        let expanded_normalized = expand_recruit_keyword_line(expanded_normalized.as_str());
+        let expanded_normalized = rewrite_any_type_cast_rider_line(expanded_normalized.as_str());
         let rewritten_normalized = rewrite_vote_count_followups_line(expanded_normalized.as_str());
         // Keep explicit exile/return sentences intact. The effect-sequence bundle
         // parser folds them into one source-leaves runtime effect while retaining

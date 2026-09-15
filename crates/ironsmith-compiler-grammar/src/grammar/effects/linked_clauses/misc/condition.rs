@@ -43,7 +43,7 @@ pub fn parse_graveyard_cast_permission_shape(
     if !starts_sequence(cast, CAST_PREFIX)
         || !contains_sequence_phrase(cast, CAST_FROM_GRAVEYARD)
         || !(contains_sequence_word(cast, "instant") || contains_sequence_word(cast, "sorcery"))
-        || !contains_sequence_word(cast, "card")
+        || !(contains_sequence_word(cast, "card") || contains_sequence_word(cast, "spell"))
     {
         return None;
     }

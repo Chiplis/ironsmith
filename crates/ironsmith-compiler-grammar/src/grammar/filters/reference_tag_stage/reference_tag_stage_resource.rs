@@ -177,13 +177,31 @@ pub(super) fn try_apply_distinct_mana_values_clause(
     for phrase in [
         ["with", "different", "mana", "values"].as_slice(),
         ["that", "have", "different", "mana", "values"].as_slice(),
+        // "creature cards that each have a different mana value [X or less]"
+        // (Agadeem's Awakening): the distinctness is dropped from the words
+        // while a following comparison keeps its "mana value" head.
+        ["that", "each", "have", "a", "different", "mana", "value"].as_slice(),
+        ["that", "each", "have", "different", "mana", "value"].as_slice(),
+        ["that", "each", "has", "a", "different", "mana", "value"].as_slice(),
+        ["each", "with", "a", "different", "mana", "value"].as_slice(),
+        ["each", "with", "different", "mana", "value"].as_slice(),
     ] {
         let Some(fact) = parse_phrase_anywhere(all_words, phrase) else {
             continue;
         };
         let idx = fact.span.start;
         filter.distinct_mana_values = true;
-        all_words.drain(idx..idx + phrase.len());
+        let comparison_follows = all_words
+            .get(idx + phrase.len())
+            .is_some_and(|word| *word == "x" || word.chars().all(|ch| ch.is_ascii_digit()))
+            && all_words
+                .get(idx + phrase.len() + 1)
+                .is_some_and(|word| *word == "or");
+        if comparison_follows && phrase.ends_with(&["mana", "value"]) {
+            all_words.drain(idx..idx + phrase.len() - 2);
+        } else {
+            all_words.drain(idx..idx + phrase.len());
+        }
         return true;
     }
     false

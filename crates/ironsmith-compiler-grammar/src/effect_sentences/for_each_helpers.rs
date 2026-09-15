@@ -422,6 +422,7 @@ pub fn parse_get_modifier_values_with_tail(
         .and_then(super::dispatch_inner::lower_where_x_shape)
         .map(|(_, value)| value)
         .or_else(|| parse_value_binding_clause(binding_tokens))
+        .or_else(|| parse_power_toughness_difference_binding(binding_tokens))
         .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
@@ -809,6 +810,48 @@ fn rewrite_difference_bounded_search(tokens: &[OwnedLexToken]) -> Option<Vec<Own
     rewritten.extend_from_slice(&tokens[selector_start..suffix]);
     rewritten.extend_from_slice(&tokens[suffix + DIFFERENCE_SUFFIX.len()..]);
     Some(rewritten)
+}
+
+/// "where X is the difference between its power and toughness" (Doran,
+/// Besieged by Time): toughness minus power of the referenced creature.
+fn parse_power_toughness_difference_binding(binding_tokens: &[OwnedLexToken]) -> Option<Value> {
+    let words = crate::lexer::token_word_refs(binding_tokens);
+    let words = crate::word_primitives::strip_any_prefix(
+        &words,
+        &[&["where", "x", "is"], &["x", "is"]],
+    )
+    .map_or(words.as_slice(), |(_, rest)| rest);
+    let object = |reference: &str| match reference {
+        "its" => Some(crate::target::ChooseSpec::Tagged(
+            (crate::tag::CompilerReferenceTag::It.bind()).into(),
+        )),
+        "this" => Some(crate::target::ChooseSpec::Source),
+        _ => None,
+    };
+    let (owner, first, second) = match words {
+        ["the", "difference", "between", owner, first, "and", second]
+        | ["difference", "between", owner, first, "and", second] => (*owner, *first, *second),
+        _ => return None,
+    };
+    let spec = object(owner)?;
+    let (minuend, subtrahend) = match (first, second) {
+        ("power", "toughness") => (
+            Value::ToughnessOf(Box::new(spec.clone())),
+            Value::PowerOf(Box::new(spec)),
+        ),
+        ("toughness", "power") => (
+            Value::PowerOf(Box::new(spec.clone())),
+            Value::ToughnessOf(Box::new(spec)),
+        ),
+        _ => return None,
+    };
+    Some(
+        Value::Add(
+            Box::new(minuend),
+            Box::new(Value::Scaled(Box::new(subtrahend), -1)),
+        )
+        .with_surface_hint(ValueSurfaceHint::Difference),
+    )
 }
 
 /// Recover an authored where-X binding from the body of a participant-scoped

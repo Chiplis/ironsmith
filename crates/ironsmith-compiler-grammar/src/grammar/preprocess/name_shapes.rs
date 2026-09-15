@@ -135,7 +135,17 @@ pub fn parse_short_self_reference_name_tokens(name: &str, tokens: &[OwnedLexToke
     let alias = alias_token
         .slice
         .trim_matches(|character: char| !crate::lexer::is_word_char(character) && character != '-');
-    if alias.len() <= 2 || is_reserved_short_alias(alias, std::slice::from_ref(alias_token)) {
+    // "Commander's Sphere" must not alias "commander's" ("your commander's
+    // color identity"): judge the possessive by its base word.
+    let alias_base = alias
+        .strip_suffix("'s")
+        .or_else(|| alias.strip_suffix("\u{2019}s"))
+        .unwrap_or(alias);
+    if alias.len() <= 2
+        || is_reserved_short_alias(alias, std::slice::from_ref(alias_token))
+        || (alias_base != alias
+            && is_reserved_short_alias(alias_base, std::slice::from_ref(alias_token)))
+    {
         trimmed.to_string()
     } else {
         alias.to_string()

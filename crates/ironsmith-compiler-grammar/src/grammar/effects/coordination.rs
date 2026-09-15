@@ -567,6 +567,19 @@ fn classify_boundary<'a>(
     RecognizedCoordinationBoundary,
     Option<TypedClauseHeadAst<'a>>,
 )> {
+    if candidate.operator == CoordinationOperatorAst::Or
+        && before
+            .last()
+            .is_some_and(|token| token.is_any_word(&["spell", "spells"]))
+        && after.first().is_some_and(|token| {
+            token.is_any_word(&["ability", "abilities", "activated", "triggered"])
+        })
+    {
+        // "Counter target spell or ability that targets a creature you
+        // control" (Siren Stormtamer): the stack-object union is one target
+        // even when its relative clause contains a finite verb.
+        return None;
+    }
     if boundary_continues_shuffle_zone_list(candidate.operator, before, after) {
         // "shuffles their hand and graveyard into their library" is one
         // shuffle whose object is a zone union; the connective is not an
@@ -583,7 +596,7 @@ fn classify_boundary<'a>(
     }
     if matches!(
         candidate.operator,
-        CoordinationOperatorAst::Comma | CoordinationOperatorAst::And
+        CoordinationOperatorAst::Comma | CoordinationOperatorAst::And | CoordinationOperatorAst::Or
     ) && super::chain_splitting::is_creature_subtype_subject_list_boundary(before, after)
     {
         // Serial subtype subjects are one filter even though the final arm

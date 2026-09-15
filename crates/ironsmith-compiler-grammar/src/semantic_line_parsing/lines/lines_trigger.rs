@@ -46,6 +46,32 @@ pub(super) fn parse_triggered_line_impl(
         DelayedScheduleStep, parse_delayed_schedule_sentence_shape,
     };
 
+    // "When this creature enters, if it was cast, ..." (Doomsday
+    // Excruciator): the intervening "it" is the triggering source itself.
+    let source_intervening_line;
+    let line = match &line.intervening_if {
+        Some(PredicateAst::TaggedWasCast(tag))
+            if tag.key.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                && crate::lexer::token_word_refs(trigger_parse_tokens)
+                    .iter()
+                    .take(2)
+                    .any(|word| *word == "this") =>
+        {
+            source_intervening_line = RewriteTriggeredLine {
+                intervening_if: Some(PredicateAst::TurnHistory(
+                    crate::cards::builders::TurnHistoryPredicateAst::SourceWasCast {
+                        surface: ironsmith_core::SourceReferenceSurface::ThisPermanentType(
+                            "it".to_string(),
+                        ),
+                    },
+                )),
+                ..line.clone()
+            };
+            &source_intervening_line
+        }
+        _ => line,
+    };
+
     let delayed_schedule = parse_delayed_schedule_sentence_shape(full_parse_tokens).or_else(|| {
         // Trigger rewriting may hand this routine a punctuation-normalized
         // effect slice as `full_parse_tokens`. The immutable source tokens

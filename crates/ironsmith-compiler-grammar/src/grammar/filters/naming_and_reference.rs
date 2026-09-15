@@ -642,7 +642,20 @@ pub(super) fn try_apply_color_count_phrase(
         filter.color_count = Some(crate::filter::Comparison::GreaterThanOrEqual(count as i32));
     }
 
-    all_words.drain(color_count_idx..color_count_idx + consumed);
+    // "creatures of one or more colors" / "permanent that's one or more
+    // colors" (Ugin, Eye of the Storms): the linking word belongs to the
+    // color-count phrase.
+    let drain_start = if color_count_idx > 0
+        && matches!(
+            all_words[color_count_idx - 1],
+            "of" | "thats" | "that's" | "that"
+        )
+    {
+        color_count_idx - 1
+    } else {
+        color_count_idx
+    };
+    all_words.drain(drain_start..color_count_idx + consumed);
     Ok(true)
 }
 

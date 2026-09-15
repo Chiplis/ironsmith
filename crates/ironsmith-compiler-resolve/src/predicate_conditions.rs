@@ -32,6 +32,9 @@ pub fn resolve_condition_from_predicate(
     Ok(match predicate {
         PredicateAst::ItIsNight => Condition::ItIsNight,
         PredicateAst::FirstCombatPhaseOfTurn => Condition::FirstCombatPhaseOfTurn,
+        PredicateAst::Source(SourcePredicateAst::SourceControllersCombatPhase) => {
+            Condition::SourceControllersCombatPhase
+        }
         PredicateAst::Source(SourcePredicateAst::SourceControllersMainPhase) => {
             Condition::SourceControllersMainPhase
         }
@@ -121,10 +124,20 @@ pub fn resolve_condition_from_predicate(
             let resolved_tag = resolve_it_tag_key(tag, &refs)?;
             Condition::TaggedObjectMatches(resolved_tag, resolve_it_tag(filter, &refs)?)
         }
-        PredicateAst::TaggedWasCast(tag) => {
-            let resolved_tag = resolve_it_tag_key(tag, &refs)?;
-            Condition::TaggedObjectWasCast(resolved_tag)
-        }
+        PredicateAst::TaggedWasCast(tag) => match resolve_it_tag_key(tag, &refs) {
+            Ok(resolved_tag) => Condition::TaggedObjectWasCast(resolved_tag),
+            // "When this creature enters, if it was cast, ..." (Doomsday
+            // Excruciator): with no earlier object reference, "it" is the
+            // source itself.
+            Err(_) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() => {
+                Condition::TurnHistory(ironsmith_core::TurnHistoryCondition::SourceWasCast {
+                    surface: ironsmith_core::SourceReferenceSurface::ThisPermanentType(
+                        "it".to_string(),
+                    ),
+                })
+            }
+            Err(error) => return Err(error),
+        },
         PredicateAst::EnchantedPermanentAttackedThisTurn => {
             Condition::EnchantedPermanentAttackedThisTurn
         }
@@ -515,6 +528,9 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::TurnEvents(TurnEventPredicateAst::AnyPlayerLostLifeThisTurnOrMore {
             count,
         }) => Condition::AnyPlayerLostLifeThisTurnOrMore { count: *count },
+        PredicateAst::TurnEvents(TurnEventPredicateAst::OpponentWasDealtDamageThisTurnOrMore(
+            count,
+        )) => Condition::OpponentWasDealtDamageThisTurnOrMore(*count),
         PredicateAst::TurnEvents(TurnEventPredicateAst::OpponentWasDealtDamageThisTurn) => {
             Condition::OpponentWasDealtDamageThisTurn
         }

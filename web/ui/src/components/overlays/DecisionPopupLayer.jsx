@@ -66,6 +66,17 @@ function safeInlineLabel(value, fallback = "") {
   return String(value);
 }
 
+function combatMainDecisionLabel(value) {
+  return safeInlineLabel(value).replace(/^declare\s+/i, "");
+}
+
+function combatMainDecisionFontSize(label) {
+  const length = String(label || "").length;
+  if (length > 16) return "12px";
+  if (length > 12) return "14px";
+  return "16px";
+}
+
 function DecisionCardNameTrigger({ objectId, onInspect, children, className = "" }) {
   const ui = useUiText();
   if (objectId == null || typeof onInspect !== "function") return children;
@@ -2174,8 +2185,10 @@ function MobileBattleDecisionLayer({
       <>
         <MobileDecisionDock
           primaryLabel={
-            combatAction?.label
-            || ui(decision.kind === "attackers" ? "Confirm Attackers (0)" : "Confirm Blockers (0)")
+            combatMainDecisionLabel(
+              combatAction?.label
+              || ui(decision.kind === "attackers" ? "Confirm Attackers (0)" : "Confirm Blockers (0)")
+            )
           }
           primaryDisabled={combatAction?.disabled ?? !canAct}
           onPrimary={combatAction?.onSubmit}
@@ -2697,6 +2710,14 @@ function PriorityBar({
     && typeof document !== "undefined"
     ? document.querySelector('[data-topbar-main-decision-host="true"]')
     : null;
+  const decisionSubmitPortalHost = inline
+    && !isPriorityDecision
+    && effectiveSubmitAction
+    && !showViewedCardsStep
+    && !peerWaiting
+    && typeof document !== "undefined"
+    ? document.querySelector('[data-decision-submit-portal-host="true"]')
+    : null;
   const renderCancelControl = (ported = false) => (
     <Button
       type="button"
@@ -2717,7 +2738,7 @@ function PriorityBar({
       {t("decision.cancel")}
     </Button>
   );
-  const renderExpandedPrimaryControl = (ported = false) => (
+  const renderExpandedPrimaryControl = (ported = false, belowToolbar = false) => (
     (peerWaiting || showViewedCardsStep || effectiveSubmitAction) ? (
       <PeerWaitPopover peerWait={peerWait}>
         <Button
@@ -2727,7 +2748,9 @@ function PriorityBar({
             "decision-neon-button decision-main-button decision-submit-button h-full self-stretch rounded-none font-bold uppercase",
             ported
               ? "topbar-ported-decision-button w-full min-w-0 px-2 text-[11px]"
-              : cn(
+              : belowToolbar
+                ? "action-strip-submit-button w-full min-w-0 flex-1 px-3 text-[clamp(11px,0.88vw,14px)]"
+                : cn(
                   manaPayment
                     ? "mana-payment-pay-button min-w-[82px] flex-[0.75_1_0] px-2 text-[clamp(11px,0.88vw,14px)]"
                     : "min-w-[104px] flex-[1.2_1_0] px-3 text-[clamp(11px,0.88vw,14px)]",
@@ -2764,6 +2787,10 @@ function PriorityBar({
         >
           {peerWaiting ? (
             <PeerWaitButtonContent />
+          ) : !isPriorityDecision && effectiveSubmitAction && !showViewedCardsStep && inline && !belowToolbar ? (
+            <span className="sr-only">
+              {effectiveSubmitAction.label || t("decision.submitPlain")}
+            </span>
           ) : (
             showViewedCardsStep ? t("decision.done") : (effectiveSubmitAction?.label || t("decision.submitPlain"))
           )}
@@ -2858,6 +2885,12 @@ function PriorityBar({
   if (inline) {
     return (
       <>
+        {decisionSubmitPortalHost ? createPortal(
+          <div className="action-strip-submit-row">
+            {renderExpandedPrimaryControl(false, true)}
+          </div>,
+          decisionSubmitPortalHost,
+        ) : null}
         {topbarMainDecisionHost
           ? createPortal(
               <div
@@ -2869,7 +2902,6 @@ function PriorityBar({
                   style={decisionButtonStyle}
                   data-local-action={localDecisionButton ? "true" : "false"}
                 >
-                  {renderExpandedPrimaryControl(true)}
                   {renderCancelControl(true)}
                 </div>
               </div>,
@@ -3024,7 +3056,7 @@ function PriorityBar({
                     "decision-primary-controls flex min-w-0 shrink-0 items-stretch gap-2",
                     manaPayment ? "max-w-[360px]" : "max-w-[320px]"
                   )}>
-                    {!topbarMainDecisionHost ? renderExpandedPrimaryControl(false) : null}
+                    {!decisionSubmitPortalHost ? renderExpandedPrimaryControl(false) : null}
                     {manaPayment && secondarySubmitAction ? (
                       <Button
                         type="button"
@@ -3327,6 +3359,10 @@ function PriorityBar({
                       >
                         {peerWaiting ? (
                           <PeerWaitButtonContent />
+                        ) : !isPriorityDecision && effectiveSubmitAction && !showViewedCardsStep ? (
+                          <span className="sr-only">
+                            {effectiveSubmitAction.label || t("decision.submitPlain")}
+                          </span>
                         ) : (
                           showViewedCardsStep ? t("decision.done") : (effectiveSubmitAction?.label || t("decision.submitPlain"))
                         )}
@@ -3555,16 +3591,20 @@ function CombatBar({ anchor = null, inline = false, replaceMiddleControls = fals
   const primaryDisabled = peerWaitLocked || !canSubmitCombat;
   const topbarHost = inline && !replaceMiddleControls && typeof document !== "undefined"
     ? document.querySelector('[data-topbar-main-decision-host="true"]') : null;
+  const combatMainLabel = combatMainDecisionLabel(
+    combatAction?.label
+    || (decision.kind === "attackers" ? ui("Declare no attackers") : ui("Confirm Blockers (0)"))
+  );
   const primaryControl = (
     <PeerWaitPopover peerWait={peerWait}>
       <Button variant="ghost" size="sm"
-        className="decision-neon-button decision-main-button combat-submit-button rounded-none px-3 text-[11px] font-bold uppercase"
-        style={decisionButtonStyle}
+        className="decision-neon-button decision-main-button combat-submit-button rounded-none px-3 font-bold uppercase"
+        style={{ ...decisionButtonStyle, fontSize: combatMainDecisionFontSize(combatMainLabel) }}
         data-local-action={localDecisionButton ? "true" : "false"}
         disabled={primaryDisabled} aria-disabled={primaryDisabled}
         onClick={() => { if (!primaryDisabled) combatAction?.onSubmit?.(); }}>
         {peerWaiting ? <PeerWaitButtonContent /> : (
-          combatAction?.label || (decision.kind === "attackers" ? ui("Declare no attackers") : ui("Confirm Blockers (0)"))
+          combatMainLabel
         )}
       </Button>
     </PeerWaitPopover>
