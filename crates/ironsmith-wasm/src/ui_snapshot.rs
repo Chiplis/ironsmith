@@ -4922,3 +4922,55 @@ mod mana_payment_preview {
         );
     }
 }
+
+/// The dependency baseline only covers objects some effect can reach, so a card
+/// that reaches a hidden zone has to keep working. Arcane Adaptation is the one
+/// in the registry that does: "creature cards you own that aren't on the
+/// battlefield" compiles to filters naming Hand and Library.
+#[cfg(test)]
+mod hidden_zone_continuous_effects {
+    use ironsmith::ids::ObjectId;
+    use ironsmith::types::Subtype;
+
+    #[test]
+    fn arcane_adaptation_types_creature_cards_in_hand_and_library() {
+        let _guard = crate::test_id_counter_guard();
+        let mut wasm = crate::WasmGame::new();
+        let adaptation = wasm
+            .add_card_to_zone(
+                0,
+                "Arcane Adaptation".to_string(),
+                "battlefield".to_string(),
+                true,
+            )
+            .expect("Arcane Adaptation should enter the battlefield");
+        wasm.game
+            .set_chosen_creature_type(ObjectId::from_raw(adaptation), Subtype::Shapeshifter);
+
+        let placements = [
+            ("hand", "hand"),
+            ("library", "library"),
+            ("graveyard", "graveyard"),
+            ("battlefield", "battlefield"),
+        ]
+        .map(|(label, zone)| {
+            let id = wasm
+                .add_card_to_zone(0, "Grizzly Bears".to_string(), zone.to_string(), true)
+                .unwrap_or_else(|_| panic!("a bear should go to the {zone}"));
+            (label, ObjectId::from_raw(id))
+        });
+        wasm.game.refresh_continuous_state();
+
+        for (label, id) in placements {
+            let chars = wasm
+                .game
+                .calculated_characteristics(id)
+                .unwrap_or_else(|| panic!("characteristics for the bear in the {label}"));
+            assert!(
+                chars.subtypes.contains(&Subtype::Shapeshifter),
+                "the bear in the {label} should be the chosen type, got {:?}",
+                chars.subtypes
+            );
+        }
+    }
+}

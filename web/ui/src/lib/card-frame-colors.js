@@ -115,33 +115,35 @@ export function printedTextBounds(region,options) { return analyzeSection(region
 // printing leaves no more room than that between one line's descenders and the
 // next line's ascenders, so the same bridge silently welds two lines into one
 // band twice the height. Every measurement taken from that band is then wrong:
-// the width belongs to two lines, the height to none, and the first line of the
-// text box is not where it says it is. Split a band too tall to be one line at
-// its emptiest row.
-function splitMergedLineBands(bands, counts) {
-  const median = values => { const sorted = [...values].sort((a, b) => a - b); return sorted.length ? sorted[Math.floor(sorted.length / 2)] : null; };
-  const heights = bands.map(band => band.bottom - band.top + 1).filter(height => height >= 7 && height <= 32);
-  const typical = median(heights);
-  if (!typical) return bands;
+// its width spans two lines, its height matches neither, and the first line of
+// the text box is not where it says it is. Agatha's Soul Cauldron rendered a
+// third smaller than its printing this way.
+//
+// A line inks some row across the whole of its own height, so a row with no ink
+// at all inside a band is the join between two of them. That is a stricter test
+// than the one that bridged them — the bridge also spans rows holding one or
+// two stray pixels — so it splits welded lines without ever cutting one apart.
+export function splitMergedLineBands(bands, counts) {
   const out = [];
-  for (const band of [...bands]) {
+  for (const band of bands) {
     let current = band;
-    // One pass per split: a band merging three lines splits twice.
+    // A band welding three lines needs splitting twice.
     for (let guard = 0; guard < 4; guard++) {
-      if (current.bottom - current.top + 1 < typical * 1.5) break;
-      let split = -1, fewest = Infinity;
-      // Both halves must still be tall enough to read as a line, which is the
-      // same floor the line filters downstream apply.
+      let split = -1;
+      // Both halves must stay tall enough to read as a line, which is the same
+      // floor the line filters apply downstream.
       for (let row = current.top + 7; row <= current.bottom - 7; row++) {
-        if (counts[row] < fewest) { fewest = counts[row]; split = row; }
+        if (!counts[row]) { split = row; break; }
       }
       if (split < 0) break;
+      let blank = split;
+      while (blank + 1 <= current.bottom && !counts[blank + 1]) blank++;
       out.push({top: current.top, bottom: split - 1});
-      current = {top: split + 1, bottom: current.bottom};
+      current = {top: blank + 1, bottom: current.bottom};
     }
     out.push(current);
   }
-  return out.sort((a, b) => a.top - b.top);
+  return out;
 }
 
 function scanRulesLines(ctx, box, rowGap) {

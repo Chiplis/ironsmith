@@ -1368,6 +1368,39 @@ fn alternative_can_pay(kind: AlternativeKind, pip: &[ManaSymbol]) -> bool {
     })
 }
 
+/// True when every mana this ability adds carries a usage restriction that
+/// forbids spending it on `request`.
+///
+/// Restricted mana is still a legal activation, but exploring it costs a full
+/// `GameState` clone per producible colour in [`prepare_activation`], so the
+/// search skips branches whose output provably cannot pay this request. The
+/// check is deliberately one-sided: anything it cannot decide is treated as
+/// usable, so pruning never removes a payment the player could actually make.
+fn ability_mana_is_unusable_for_request(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+    source: ObjectId,
+    ability: &crate::ability::ActivatedAbility,
+) -> bool {
+    if ability.mana_usage_restrictions.is_empty() {
+        return false;
+    }
+    // `source_chosen_creature_type: None` makes a subtype requirement match
+    // anything, which keeps an undecidable restriction on the usable side.
+    let unit = crate::ability::RestrictedManaUnit {
+        symbol: ManaSymbol::Colorless,
+        source,
+        source_chosen_creature_type: None,
+        restrictions: ability.mana_usage_restrictions.clone(),
+    };
+    !game.restricted_mana_unit_is_payable_for_transaction(
+        &unit,
+        Some(request.source),
+        request.reason,
+        Some(&request.cost),
+    )
+}
+
 fn collect_activation_choices(
     game: &GameState,
     request: &ManaPaymentRequest,
@@ -1408,6 +1441,7 @@ fn collect_activation_choices(
                     None,
                 )
                 .is_err()
+                || ability_mana_is_unusable_for_request(game, request, source, mana_ability)
             {
                 continue;
             }
@@ -1895,6 +1929,79 @@ mod tests {
     ) -> ManaPaymentRequest {
         ManaPaymentRequest::new(payer, source, crate::costs::PaymentReason::Effect, cost)
             .with_spend_policy(game.mana_spend_policy(payer, Some(source)))
+    }
+
+    fn restricted_mana_land(
+        game: &mut GameState,
+        owner: PlayerId,
+        card_types: Vec<CardType>,
+    ) -> ObjectId {
+        let definition = CardBuilder::new(CardId::new(), "Restricted Font")
+            .card_types(vec![CardType::Land])
+            .build();
+        let land = game.create_object_from_card(&definition, owner, Zone::Battlefield);
+        let mut ability = crate::ability::Ability::mana(
+            crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
+            vec![ManaSymbol::Green],
+        );
+        if let AbilityKind::Activated(activated) = &mut ability.kind {
+            activated.mana_usage_restrictions =
+                vec![crate::ability::ManaUsageRestriction::CastSpell {
+                    card_types,
+                    subtype_requirement: None,
+                    restrict_to_matching_spell: true,
+                    grant_uncounterable: false,
+                    enters_with_counters: Vec::new(),
+                    granted_abilities: Vec::new(),
+                }];
+        }
+        game.object_mut(land).unwrap().abilities_mut().push(ability);
+        land
+    }
+
+    fn cast_request(game: &GameState, payer: PlayerId, spell: ObjectId) -> ManaPaymentRequest {
+        ManaPaymentRequest::new(
+            payer,
+            spell,
+            crate::costs::PaymentReason::CastSpell,
+            ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
+        )
+        .with_spend_policy(game.mana_spend_policy(payer, Some(spell)))
+    }
+
+    /// Restricted mana that cannot pay for the pending spell must not be
+    /// expanded: each colour costs a full `GameState` clone to simulate.
+    #[test]
+    fn restricted_mana_unusable_for_the_pending_spell_is_not_offered() {
+        let (mut game, alice) = game();
+        restricted_mana_land(&mut game, alice, vec![CardType::Creature]);
+        let instant = CardBuilder::new(CardId::new(), "Test Instant")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let spell = game.create_object_from_card(&instant, alice, Zone::Stack);
+        let request = cast_request(&game, alice, spell);
+        assert!(
+            collect_activation_choices(&game, &request).is_empty(),
+            "creature-only mana must not be explored for an instant spell"
+        );
+    }
+
+    /// The same source stays available when its restriction is satisfied, so
+    /// pruning never removes a payment the player could actually make.
+    #[test]
+    fn restricted_mana_usable_for_the_pending_spell_is_still_offered() {
+        let (mut game, alice) = game();
+        let land = restricted_mana_land(&mut game, alice, vec![CardType::Creature]);
+        let creature = CardBuilder::new(CardId::new(), "Test Bear")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let spell = game.create_object_from_card(&creature, alice, Zone::Stack);
+        let request = cast_request(&game, alice, spell);
+        let choices = collect_activation_choices(&game, &request);
+        assert!(
+            choices.iter().any(|choice| choice.source == land),
+            "creature-only mana must stay available for a creature spell"
+        );
     }
 
     #[test]

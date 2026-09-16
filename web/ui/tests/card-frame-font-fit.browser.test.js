@@ -19,6 +19,21 @@ test('short text keeps its size, spacing shrinks first, and long text has a read
       function paddingBottom(e){return parseFloat(getComputedStyle(e).paddingBottom)||0;}
     });
     assert.ok(reserved.text<=reserved.bottom+1,JSON.stringify(reserved));
+    // A card that gained abilities must stay readable as separate paragraphs.
+    // Closing UI spacing is the fitter's first move, but the printing separates
+    // its paragraphs too, so the gap has a floor and the type gives way instead.
+    const paragraphs=await page.locator('[data-sample="paragraphs"] [data-fit-text]').evaluate(box=>{
+      const lines=[...box.querySelectorAll('.interactive-card-frame__rule')];
+      const rects=lines.map(line=>line.getBoundingClientRect());
+      const gaps=rects.slice(1).map((rect,index)=>rect.top-rects[index].bottom);
+      return {gaps,font:parseFloat(getComputedStyle(lines[0]).fontSize),
+        spacing:Number(box.style.getPropertyValue('--card-rules-spacing-scale')),
+        bottom:rects.at(-1).bottom-box.getBoundingClientRect().bottom};
+    });
+    assert.ok(paragraphs.spacing<1,`the sample should need the fitter: ${JSON.stringify(paragraphs)}`);
+    assert.ok(Math.min(...paragraphs.gaps)>=paragraphs.font*.3,
+      `paragraphs must keep a printed-sized gap: ${JSON.stringify(paragraphs)}`);
+    assert.ok(paragraphs.bottom<=1,`paragraphs must stay inside the box: ${JSON.stringify(paragraphs)}`);
     const measured=await page.evaluate(async()=>{
       const {measureRulesFirstLine,measureFlavorFirstLine,measureReminderText}=await import('/src/lib/card-frame-colors.js');
       const canvas=document.createElement('canvas');canvas.width=400;canvas.height=180;

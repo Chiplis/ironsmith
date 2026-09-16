@@ -241,3 +241,28 @@ test('gray stats bevels are detected relative to their panel paper',()=>{
   const bounds=detectStatsPanelBounds({data,width,height},stats);
   assert.ok(bounds&&bounds.x<=380&&bounds.y<=611,JSON.stringify(bounds));
 });
+
+test('a band that merged two tightly leaded lines is split at the blank row between them', async () => {
+  const {splitMergedLineBands} = await import('../src/lib/card-frame-colors.js');
+  // Agatha's Soul Cauldron (WOE 242), rows 432-462 of its text box. One blank
+  // row (449) separates the first line's descenders from the second line's
+  // ascenders, and `rowGap` bridges it exactly as it bridges the two-pixel row
+  // inside the first line at 445. Both lines then read as one 31-row band.
+  const counts = new Array(500).fill(0);
+  const put = (from, values) => values.forEach((count, i) => { counts[from + i] = count; });
+  put(432, [17, 13, 7, 11, 139, 124, 99, 96, 88, 87, 88, 124, 161, 2, 3, 8, 11]);
+  put(450, [8, 20, 7, 15, 98, 134, 94, 95, 88, 88, 91, 101, 158]);
+  put(473, [13, 27, 13, 13, 14, 14, 15, 16, 12]);
+
+  assert.deepEqual(
+    splitMergedLineBands([{top: 432, bottom: 462}, {top: 473, bottom: 481}], counts),
+    [{top: 432, bottom: 448}, {top: 450, bottom: 462}, {top: 473, bottom: 481}],
+  );
+
+  // The two-pixel row inside the first line is not a join: a band that holds
+  // only that line is reported whole.
+  assert.deepEqual(splitMergedLineBands([{top: 432, bottom: 448}], counts), [{top: 432, bottom: 448}]);
+
+  // Neither is a band too short to give both halves a readable line.
+  assert.deepEqual(splitMergedLineBands([{top: 440, bottom: 453}], counts), [{top: 440, bottom: 453}]);
+});

@@ -1375,6 +1375,76 @@ pub(super) fn resolve_value_with_context(
     )
 }
 
+/// The objects a CR 613.8 dependency baseline has to cover.
+///
+/// The baseline answers one question — does applying this effect change which
+/// objects that one applies to — so it needs exactly the objects some effect
+/// can reach. Nearly every effect names the battlefield, which leaves both
+/// libraries and both hands out of a calculation that would only discard them,
+/// and those are most of the objects in a real game.
+pub(super) struct BaselineScope {
+    everything: bool,
+    zones: Vec<Zone>,
+    ids: Vec<ObjectId>,
+}
+
+impl BaselineScope {
+    fn covers(&self, object: &crate::object::Object) -> bool {
+        self.covers_object(object.zone, object.id)
+    }
+
+    fn covers_object(&self, zone: Zone, id: ObjectId) -> bool {
+        self.everything || self.zones.contains(&zone) || self.ids.contains(&id)
+    }
+}
+
+/// Read the zones and objects `effects` can reach.
+///
+/// Cards that work from a hidden zone say which one: Arcane Adaptation's
+/// "creature cards you own that aren't on the battlefield" compiles to filters
+/// naming `Hand` and `Library`, and those zones come back in here. A filter
+/// that names no zone at all is unrestricted rather than implicitly a
+/// battlefield filter, so it gives up the narrowing instead of guessing.
+pub(super) fn baseline_scope(effects: &[ContinuousEffect]) -> BaselineScope {
+    let mut scope = BaselineScope {
+        everything: false,
+        // A spell is an object effects routinely reach, and a zone-named filter
+        // can still match one through its cast origin.
+        zones: vec![Zone::Battlefield, Zone::Stack],
+        ids: Vec::new(),
+    };
+    for effect in effects {
+        match &effect.applies_to {
+            // An attachment names itself here; whatever it is attached to is a
+            // permanent or a player, so the battlefield entry already covers
+            // the object the effect lands on.
+            EffectTarget::Specific(id) | EffectTarget::AttachedTo(id) => {
+                if !scope.ids.contains(id) {
+                    scope.ids.push(*id);
+                }
+            }
+            EffectTarget::Source => {
+                if !scope.ids.contains(&effect.source) {
+                    scope.ids.push(effect.source);
+                }
+            }
+            EffectTarget::AllPermanents | EffectTarget::AllCreatures => {}
+            EffectTarget::Filter(filter) => match filter.zone {
+                Some(zone) => {
+                    if !scope.zones.contains(&zone) {
+                        scope.zones.push(zone);
+                    }
+                }
+                None => {
+                    scope.everything = true;
+                    return scope;
+                }
+            },
+        }
+    }
+    scope
+}
+
 pub(super) fn build_layer_baseline(
     objects: &ObjectMap,
     effects: &[ContinuousEffect],
@@ -1404,8 +1474,12 @@ pub(super) fn build_layer_baseline(
         }
     }
 
+    let scope = baseline_scope(effects);
     let mut baseline = HashMap::with_capacity(objects.len());
     for &id in objects.keys() {
+        if !objects.get(&id).is_some_and(|object| scope.covers(object)) {
+            continue;
+        }
         if let Some(chars) = calculate_characteristics_with_effects_simple_internal(
             id,
             objects,
@@ -1827,5 +1901,85 @@ pub(super) fn apply_level_granted_abilities(
             }
         }
         push_static_ability_once(chars, ability);
+    }
+}
+
+#[cfg(test)]
+mod baseline_scope_tests {
+    use super::{BaselineScope, baseline_scope};
+    use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
+    use crate::ids::{ObjectId, PlayerId};
+    use crate::target::ObjectFilter;
+    use crate::zone::Zone;
+
+    fn effect(applies_to: EffectTarget) -> ContinuousEffect {
+        ContinuousEffect::new(
+            ObjectId::from_raw(1),
+            PlayerId::from_index(0),
+            applies_to,
+            Modification::AddAbility(crate::static_abilities::StaticAbility::flying()),
+        )
+    }
+
+    fn covers(scope: &BaselineScope, zone: Zone) -> bool {
+        scope.covers_object(zone, ObjectId::from_raw(999))
+    }
+
+    #[test]
+    fn ordinary_battlefield_effects_leave_hidden_zones_out() {
+        let scope = baseline_scope(&[
+            effect(EffectTarget::Filter(
+                ObjectFilter::creature().in_zone(Zone::Battlefield),
+            )),
+            effect(EffectTarget::AllCreatures),
+            effect(EffectTarget::Source),
+        ]);
+        assert!(covers(&scope, Zone::Battlefield));
+        assert!(!covers(&scope, Zone::Hand));
+        assert!(!covers(&scope, Zone::Library));
+        assert!(!covers(&scope, Zone::Graveyard));
+    }
+
+    #[test]
+    fn a_filter_keeps_the_zone_it_names() {
+        // Arcane Adaptation reaches creature cards you own that aren't on the
+        // battlefield, and compiles to filters naming those zones.
+        let scope = baseline_scope(&[
+            effect(EffectTarget::Filter(
+                ObjectFilter::creature().in_zone(Zone::Hand),
+            )),
+            effect(EffectTarget::Filter(
+                ObjectFilter::creature().in_zone(Zone::Library),
+            )),
+        ]);
+        assert!(covers(&scope, Zone::Hand));
+        assert!(covers(&scope, Zone::Library));
+        assert!(covers(&scope, Zone::Battlefield));
+        assert!(!covers(&scope, Zone::Graveyard));
+    }
+
+    #[test]
+    fn an_unrestricted_filter_gives_up_the_narrowing() {
+        let mut unrestricted = ObjectFilter::creature();
+        unrestricted.zone = None;
+        let scope = baseline_scope(&[effect(EffectTarget::Filter(unrestricted))]);
+        for zone in [
+            Zone::Battlefield,
+            Zone::Hand,
+            Zone::Library,
+            Zone::Graveyard,
+            Zone::Exile,
+            Zone::Command,
+        ] {
+            assert!(covers(&scope, zone), "an unrestricted filter must cover {zone:?}");
+        }
+    }
+
+    #[test]
+    fn an_individually_named_object_is_covered_wherever_it_is() {
+        let hidden = ObjectId::from_raw(77);
+        let scope = baseline_scope(&[effect(EffectTarget::Specific(hidden))]);
+        assert!(scope.covers_object(Zone::Library, hidden));
+        assert!(!scope.covers_object(Zone::Library, ObjectId::from_raw(78)));
     }
 }
