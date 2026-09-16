@@ -36,11 +36,23 @@ pub struct ManaPaymentPerfMetrics {
     pub visited_nodes: usize,
     pub search_limited: bool,
     pub plans_returned: usize,
+    /// Selections answered by the clone-free assignment instead of the search.
+    pub analytic_selections: usize,
+    /// Selections that fell back to the cloning search.
+    pub searched_selections: usize,
 }
 
 thread_local! {
     static LAST_MANA_PAYMENT_PERF: RefCell<ManaPaymentPerfMetrics> =
-        const { RefCell::new(ManaPaymentPerfMetrics { visited_nodes: 0, search_limited: false, plans_returned: 0 }) };
+        const {
+            RefCell::new(ManaPaymentPerfMetrics {
+                visited_nodes: 0,
+                search_limited: false,
+                plans_returned: 0,
+                analytic_selections: 0,
+                searched_selections: 0,
+            })
+        };
 }
 
 pub fn last_mana_payment_perf() -> ManaPaymentPerfMetrics {
@@ -89,6 +101,8 @@ pub fn plan_mana_payment(
             visited_nodes: planner.visited_nodes,
             search_limited: matches!(&result, Err(ManaPaymentFailure::SearchLimitReached)),
             plans_returned: result.as_ref().map_or(0, Vec::len),
+            analytic_selections: planner.analytic_selections,
+            searched_selections: planner.searched_selections,
         };
     });
     result
@@ -424,6 +438,8 @@ pub fn execute_mana_payment_plan(
 #[derive(Debug, Default)]
 pub struct ManaPaymentPlanner {
     visited_nodes: usize,
+    analytic_selections: usize,
+    searched_selections: usize,
     lazy_candidates: bool,
     sliced: bool,
     remaining: usize,
@@ -472,6 +488,8 @@ impl ManaPaymentPlanner {
                 visited_nodes: self.visited_nodes,
                 search_limited: matches!(&result, Err(ManaPaymentFailure::SearchLimitReached)),
                 plans_returned: result.as_ref().map_or(0, Vec::len),
+                analytic_selections: self.analytic_selections,
+                searched_selections: self.searched_selections,
             };
         });
         result?
@@ -606,11 +624,49 @@ impl ManaPaymentPlanner {
                 if !request.allow_mana_abilities {
                     continue;
                 }
+                // Payments where every source just taps for a fixed bundle are
+                // an assignment, not a search: solving them directly replaces
+                // thousands of state clones with one per source. The module
+                // declines anything it cannot model, so this only ever skips
+                // work the search would have repeated.
+                //
+                // Existence checks are the exception. They only need *a* plan,
+                // which the lazy search already reaches by following a single
+                // candidate line, while the assignment measures every candidate
+                // before it can solve. Ranking is where the search explodes and
+                // where measuring every candidate pays for itself.
+                if !self.lazy_candidates
+                    && let Some(candidates) =
+                        super::analytic::try_candidates(&staged, &payment_request)
+                {
+                    self.visited_nodes = 0;
+                    self.analytic_selections += 1;
+                    for (final_game, steps) in candidates {
+                        let pool_after = final_game
+                            .player(request.payer)
+                            .ok_or(ManaPaymentFailure::MissingPlayer)?
+                            .mana_pool
+                            .clone();
+                        cursor.plans.push(build_plan(
+                            &final_game,
+                            request,
+                            &payment_request,
+                            &selection,
+                            cursor.pool_before.clone(),
+                            pool_after,
+                            steps,
+                        ));
+                    }
+                    if !cursor.plans.is_empty() {
+                        continue;
+                    }
+                }
                 let depth_limit = expanded_pip_count(&payment_request)
                     .saturating_add(MAX_EXTRA_ACTIVATIONS)
                     .max(payment_request.preferences.required_activations.len())
                     .max(1);
                 self.visited_nodes = 0;
+                self.searched_selections += 1;
                 let search = CandidateSearch::new(
                     staged,
                     &payment_request,
@@ -865,7 +921,7 @@ impl CandidateSearch {
     }
 }
 
-fn prepare_activation(
+pub(super) fn prepare_activation(
     game: &GameState,
     request: &ManaPaymentRequest,
     choice: ActivationChoice,
@@ -998,11 +1054,11 @@ fn score_reaches_search_floor(score: ManaPaymentScore) -> bool {
 }
 
 #[derive(Debug, Clone)]
-struct ActivationChoice {
-    source: ObjectId,
-    ability_index: usize,
-    color_restriction: Option<Vec<Color>>,
-    flexibility: usize,
+pub(super) struct ActivationChoice {
+    pub(super) source: ObjectId,
+    pub(super) ability_index: usize,
+    pub(super) color_restriction: Option<Vec<Color>>,
+    pub(super) flexibility: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -1401,7 +1457,7 @@ fn ability_mana_is_unusable_for_request(
     )
 }
 
-fn collect_activation_choices(
+pub(super) fn collect_activation_choices(
     game: &GameState,
     request: &ManaPaymentRequest,
 ) -> Vec<ActivationChoice> {
@@ -1567,7 +1623,7 @@ fn positive_pool_delta(before: &ManaPool, after: &ManaPool) -> ManaPool {
     }
 }
 
-fn can_pay_request(game: &GameState, request: &ManaPaymentRequest) -> bool {
+pub(super) fn can_pay_request(game: &GameState, request: &ManaPaymentRequest) -> bool {
     if request.reserved_permanent_sources.iter().any(|id| {
         !game.object(*id).is_some_and(|object| {
             object.zone == crate::zone::Zone::Battlefield
@@ -1969,6 +2025,41 @@ mod tests {
         .with_spend_policy(game.mana_spend_policy(payer, Some(spell)))
     }
 
+    /// Slicing must still hand control back mid-search for boards the
+    /// assignment declines, so a long plan cannot block a frame.
+    #[test]
+    fn sliced_search_still_yields_before_finishing_when_it_cannot_be_assigned() {
+        let (mut game, alice) = game();
+        for _ in 0..4 {
+            let definition = CardBuilder::new(CardId::new(), "Sacrificial Font")
+                .card_types(vec![CardType::Land])
+                .build();
+            let land = game.create_object_from_card(&definition, alice, Zone::Battlefield);
+            game.object_mut(land)
+                .unwrap()
+                .abilities_mut()
+                .push(crate::ability::Ability::mana(
+                    crate::cost::TotalCost::from_costs(vec![
+                        crate::costs::Cost::tap(),
+                        crate::costs::Cost::life(1),
+                    ]),
+                    vec![ManaSymbol::Green],
+                ));
+        }
+        let source = game.new_object_id();
+        let request = request(
+            &game,
+            alice,
+            source,
+            ManaCost::from_pips(vec![vec![ManaSymbol::Green], vec![ManaSymbol::Green]]),
+        );
+        let mut analysis = ManaPaymentAnalysis::new(&game, request);
+        assert!(
+            analysis.step(1).is_none(),
+            "a searched board must not finish inside a single slice"
+        );
+    }
+
     /// Restricted mana that cannot pay for the pending spell must not be
     /// expanded: each colour costs a full `GameState` clone to simulate.
     #[test]
@@ -2030,8 +2121,10 @@ mod tests {
             );
             let expected = plan_first_mana_payment(&game, &request).map(|plan| plan.id);
             let mut analysis = ManaPaymentAnalysis::new(&game, request);
-            assert!(analysis.step(1).is_none());
-            let mut slices = 1;
+            // A tap-only board is answered by the assignment, which does not
+            // spend search budget, so this may now settle on the first slice.
+            // What must still hold is that slicing reaches the same plan.
+            let mut slices = 0;
             let actual = loop {
                 slices += 1;
                 assert!(slices < 10000);

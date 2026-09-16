@@ -4904,17 +4904,57 @@ mod mana_payment_preview {
     #[test]
     fn existence_check_does_not_explode_with_untapped_sources() {
         let _guard = crate::test_id_counter_guard();
-        // "{4}" over identical sources is the worst case: every subset of four
-        // Swamps is a distinct ranked plan, and none of them is a better answer
-        // to "can this be paid" than the first one found.
+        // "{4}" over identical sources used to be the worst case: every subset
+        // of four Swamps is a distinct ranked plan. Tapping a Swamp changes
+        // nothing else on the board, so this is now solved as an assignment and
+        // neither call searches at all.
         let (wasm, source) = board(&vec!["Swamp"; 8]);
         let request = request(source, vec![vec![ManaSymbol::Generic(4)]]);
+
+        assert!(plan_first_mana_payment(&wasm.game, &request).is_ok());
+        let ranked = last_mana_payment_perf();
+        assert!(check_mana_payment(&wasm.game, &request).is_ok());
+        let checked = last_mana_payment_perf();
+
+        assert_eq!(
+            ranked.searched_selections, 0,
+            "tap-only Swamps should never reach the cloning search"
+        );
+        assert!(ranked.analytic_selections > 0);
+        assert_eq!(
+            ranked.visited_nodes, 0,
+            "ranking a tap-only board should not expand search nodes"
+        );
+        // The existence check still follows a single candidate line rather than
+        // measuring every source, so it keeps searching. What matters is that
+        // its cost tracks the four pips, not the 70 four-Swamp subsets.
+        assert!(
+            checked.visited_nodes <= 8,
+            "the existence check should track the pip count, not the subset \
+             count, got {}",
+            checked.visited_nodes
+        );
+    }
+
+    #[test]
+    fn existence_check_stays_cheaper_than_ranking_when_a_search_is_needed() {
+        let _guard = crate::test_id_counter_guard();
+        // Ancient Tomb's ability also deals damage, so it is not a pure mana
+        // producer and the assignment declines it. The original guarantee still
+        // has to hold on that path: answering "can this be paid" must cost far
+        // less than ranking every plan.
+        let (wasm, source) = board(&vec!["Ancient Tomb"; 8]);
+        let request = request(source, vec![vec![ManaSymbol::Generic(9)]]);
 
         assert!(plan_first_mana_payment(&wasm.game, &request).is_ok());
         let ranked_nodes = last_mana_payment_perf().visited_nodes;
         assert!(check_mana_payment(&wasm.game, &request).is_ok());
         let check_nodes = last_mana_payment_perf().visited_nodes;
 
+        assert!(
+            ranked_nodes > 0,
+            "this board is meant to exercise the search path"
+        );
         assert!(
             check_nodes * 8 < ranked_nodes,
             "the preview should settle the answer in far fewer nodes than ranking \

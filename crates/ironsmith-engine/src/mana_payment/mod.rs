@@ -4,6 +4,7 @@
 //! execution.  A UI may constrain which resources it wants to use, but it
 //! never supplies executable payment steps directly.
 
+mod analytic;
 mod plan;
 mod planner;
 
