@@ -20,7 +20,13 @@
   overflow-wrap: anywhere;
 }
 .interactive-card-frame__rules[data-fit-text="true"] .interactive-card-frame__rules-body {
-  gap: calc(clamp(6px, 1.8cqw, 10px) * var(--card-rules-spacing-scale, 1));
+  /* The gap above the clamp is ours to give back when the text runs long, but
+     the printing separates its paragraphs too: measured across the scans it is
+     about a third of the type size (Yawgmoth sets its lines 22px apart and its
+     paragraphs 30px apart at a 22.8px face). Keep that much whatever the fitter
+     does, so a card that gained abilities reads as separate paragraphs at
+     smaller type instead of one wall of text at the printed size. */
+  gap: max(0.35em, calc(clamp(6px, 1.8cqw, 10px) * var(--card-rules-spacing-scale, 1)));
 }
 .interactive-card-frame__rules[data-fit-text="true"] .interactive-card-frame__ability {
   font-size: inherit;

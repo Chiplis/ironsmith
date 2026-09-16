@@ -110,11 +110,45 @@ export function sectionInk(region) {
 export function printedGlyphHeight(region) { return analyzeSection(region).glyphHeight; }
 export function printedTextBounds(region,options) { return analyzeSection(region,options).textBounds; }
 
+// `rowGap` has to bridge the blank rows inside one line, between the body of
+// the lettering and the few pixels its descenders reach. Tightly leaded
+// printing leaves no more room than that between one line's descenders and the
+// next line's ascenders, so the same bridge silently welds two lines into one
+// band twice the height. Every measurement taken from that band is then wrong:
+// the width belongs to two lines, the height to none, and the first line of the
+// text box is not where it says it is. Split a band too tall to be one line at
+// its emptiest row.
+function splitMergedLineBands(bands, counts) {
+  const median = values => { const sorted = [...values].sort((a, b) => a - b); return sorted.length ? sorted[Math.floor(sorted.length / 2)] : null; };
+  const heights = bands.map(band => band.bottom - band.top + 1).filter(height => height >= 7 && height <= 32);
+  const typical = median(heights);
+  if (!typical) return bands;
+  const out = [];
+  for (const band of [...bands]) {
+    let current = band;
+    // One pass per split: a band merging three lines splits twice.
+    for (let guard = 0; guard < 4; guard++) {
+      if (current.bottom - current.top + 1 < typical * 1.5) break;
+      let split = -1, fewest = Infinity;
+      // Both halves must still be tall enough to read as a line, which is the
+      // same floor the line filters downstream apply.
+      for (let row = current.top + 7; row <= current.bottom - 7; row++) {
+        if (counts[row] < fewest) { fewest = counts[row]; split = row; }
+      }
+      if (split < 0) break;
+      out.push({top: current.top, bottom: split - 1});
+      current = {top: split + 1, bottom: current.bottom};
+    }
+    out.push(current);
+  }
+  return out.sort((a, b) => a.top - b.top);
+}
+
 function scanRulesLines(ctx, box, rowGap) {
   const x = Math.ceil(box.x + 9), y = Math.ceil(box.y + 8);
   const scan = ctx.getImageData(x, y, Math.floor(box.width - 18), Math.floor(box.height - 16));
   const paper = luminance(materialColor(scan.data));
-  const ink = new Uint8Array(scan.width * scan.height), rows = [];
+  const ink = new Uint8Array(scan.width * scan.height), rows = [], counts = [];
   for (let py = 0; py < scan.height; py++) {
     let count = 0;
     for (let px = 0; px < scan.width; px++) {
@@ -127,6 +161,7 @@ function scanRulesLines(ctx, box, rowGap) {
         : value<paper;
       if (printedInk && (Math.max(paper, value) + .05) / (Math.min(paper, value) + .05) > 2.5) { ink[p] = 1; count++; }
     }
+    counts[py] = count;
     if (count >= 3) rows.push(py);
   }
   if (!rows.length) return null;
@@ -136,7 +171,7 @@ function scanRulesLines(ctx, box, rowGap) {
     if (!band || row - band.bottom > rowGap) bands.push({top:row,bottom:row});
     else band.bottom = row;
   }
-  return {x, y, scan, ink, bands};
+  return {x, y, scan, ink, bands: splitMergedLineBands(bands, counts)};
 }
 
 export function measureRulesFirstLine(ctx, box, text, family, { italic = false, bandIndex = 0, geometryFallback = false, rowGap = 2, source = null } = {}) {
