@@ -5,6 +5,19 @@ import { wireStablePayload } from '../../lib/accepted-actions.js';
 import { canonicalMultiplayerPayload, enqueueAsync, safeSend, PROTOCOL_VERSION,
   MULTIPLAYER_SECURITY_TRUSTED, sessionSecurityMode, isTrustedMultiplayerSecurityMode } from './shared.js';
 
+function randomUuidV4() {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === 'function') return cryptoApi.randomUUID();
+  if (typeof cryptoApi?.getRandomValues !== 'function') {
+    throw new Error('Secure random UUID generation is unavailable');
+  }
+  const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 // One host queue owns sequence allocation. Retries retain the same command ID;
 // the durable accepted transcript is the source of deduplication after a reload.
 export function useTrustedSequencer(base, servicesRef) {
@@ -78,7 +91,7 @@ export function useTrustedSequencer(base, servicesRef) {
   }
   function submitTrustedIntent(command, label) {
     const session = multiplayerRef.current;
-    const intent = envelope({ type: 'trusted_command', commandId: `${session.localPeerId}:${crypto.randomUUID()}`,
+    const intent = envelope({ type: 'trusted_command', commandId: `${session.localPeerId}:${randomUuidV4()}`,
       expectedSequence: Number(session.lastAppliedSequence || 0), actorIndex: session.localPlayerIndex,
       command: wireStablePayload(command), label });
     if (session.role === 'host') return enqueueAsync(clientMessageQueueRef, () => acceptTrustedCommand(null, intent));

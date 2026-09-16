@@ -28,6 +28,7 @@ async function setup(t, insecure = false) {
     const context = await browser.newContext();
     if (insecure) await context.addInitScript(() => {
       Object.defineProperty(globalThis.crypto, "subtle", { value: undefined });
+      Object.defineProperty(globalThis.crypto, "randomUUID", { value: undefined });
     });
     const page = await context.newPage();
     await page.goto(`${browserBase}/tests/fixtures/peer-lobby-harness.html`);
