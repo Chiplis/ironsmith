@@ -547,6 +547,61 @@ export default function TargetsDecision({
   const currentReq = requirements[currentReqIdx];
   const allDone = currentReqIdx >= requirements.length;
 
+  // A requirement whose legal targets only just cover its minimum is not a
+  // choice: the lone opponent of a two-player game, the only creature on the
+  // battlefield. Those get placed for the player, who still submits.
+  //
+  // Placed, not submitted, and the requirement is not advanced past: the aiming
+  // arrow and the dead-space cancel stay live, so a forced target is still
+  // shown being aimed at and the cast can still be abandoned.
+  //
+  // Requirements with a real choice in them keep an empty slot.
+  const forcedSelectionsByReq = useMemo(() => {
+    if (requirements.length === 0) return null;
+    const picks = requirements.map(() => []);
+    const claimCounts = new Map();
+    let placedAny = false;
+
+    requirements.forEach((req, reqIdx) => {
+      const legalTargets = req?.legal_targets || [];
+      const reqMin = req?.min_targets ?? 1;
+      if (reqMin < 1 || legalTargets.length !== reqMin) return;
+      const reqPicks = [];
+      for (const candidate of legalTargets) {
+        const targetInput = toDispatchTarget(candidate);
+        if (targetInput.kind === "player" && !Number.isFinite(targetInput.player)) return;
+        if (targetInput.kind === "object" && !Number.isFinite(targetInput.object)) return;
+        reqPicks.push({
+          ...targetInput,
+          name: pickBestTargetName({
+            target: targetInput,
+            legalName: candidate?.name,
+            targetName: candidate?.name,
+            objectNames: objectNamesById,
+            playerNames: playerNamesById,
+          }),
+        });
+      }
+      for (const pick of reqPicks) {
+        const key = targetListKey(pick);
+        claimCounts.set(key, (claimCounts.get(key) || 0) + 1);
+      }
+      picks[reqIdx] = reqPicks;
+      placedAny = placedAny || reqPicks.length > 0;
+    });
+
+    if (!placedAny) return null;
+
+    // Two requirements forced onto the same target is not a forced decision,
+    // it is an illegal one. Hand both back to the player.
+    return picks.map((reqPicks) => (
+      reqPicks.some((pick) => (claimCounts.get(targetListKey(pick)) || 0) > 1)
+        ? []
+        : reqPicks
+    ));
+  }, [objectNamesById, playerNamesById, requirements]);
+  const autoPlacedRef = useRef(false);
+
   // Flat list of all selections for dispatch
   const allSelections = useMemo(
     () => selectionsByReq.flat(),
@@ -861,6 +916,21 @@ export default function TargetsDecision({
       "Targets selected"
     );
   }, [dispatch, allSelections, canAct, canSubmit, clearHover]);
+
+  // The component is keyed per decision (see DecisionRouter), so this runs at
+  // most once per targets decision; removing a placed target leaves it removed.
+  useEffect(() => {
+    if (!canAct || !forcedSelectionsByReq || autoPlacedRef.current) return;
+    if (allSelections.length > 0) return;
+    autoPlacedRef.current = true;
+    setSelectionsByReq(forcedSelectionsByReq.map((reqPicks) => [...reqPicks]));
+    const firstUnfilled = requirements.findIndex((req, reqIdx) => (
+      (forcedSelectionsByReq[reqIdx] || []).length < (req?.min_targets ?? 1)
+    ));
+    // Never past the last requirement: allDone would retire the aiming arrow
+    // and the dead-space cancel along with it.
+    setCurrentReqIdx(firstUnfilled >= 0 ? firstUnfilled : requirements.length - 1);
+  }, [allSelections.length, canAct, forcedSelectionsByReq, requirements]);
 
   // Dragging only requests auto-submit. Submit the committed selection through
   // the same handler as the menu, and cancel if selection or legality changes.

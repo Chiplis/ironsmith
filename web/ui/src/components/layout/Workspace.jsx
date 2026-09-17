@@ -1216,7 +1216,11 @@ export default function Workspace({
   const handleInspectObject = useCallback(
     async (objectId, options = null) => {
       if (combatDeclarationActive) return;
-      if (decision?.kind === "targets") {
+      // A detail request only ever opens the inspector. It is never consumed
+      // as a choice, so a stack entry stays readable while a decision is
+      // holding on to the click.
+      const detailOnly = options?.detailOnly === true;
+      if (!detailOnly && decision?.kind === "targets") {
         // Target clicks are choices, never inspector requests. Clear any
         // regular-mode frame before dispatching a legal choice, and consume
         // illegal target-card clicks so they cannot pin an anchored frame.
@@ -1240,7 +1244,8 @@ export default function Workspace({
         return;
       }
       if (
-        decision?.kind === "select_objects"
+        !detailOnly
+        && decision?.kind === "select_objects"
         && samePlayerId(decision.player, state?.perspective)
       ) {
         const candidateIds = Array.isArray(options?.candidateObjectIds) && options.candidateObjectIds.length > 0
@@ -1275,6 +1280,7 @@ export default function Workspace({
       const stackEntry = options?.source === "stack" ? options?.stackEntry : null;
       if (
         stackEntry
+        && !detailOnly
         && !multiplayer.matchStarted
         && game
         && Number.isFinite(Number(stackEntry.controller))

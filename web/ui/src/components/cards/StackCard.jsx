@@ -1,6 +1,8 @@
 import useUiText from "@/i18n/useUiText";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useGame } from "@/context/GameContext";
+import { useHoverActions } from "@/context/HoverContext";
+import { stackInspectObjectId } from "@/lib/stack-targets";
 import PlayerStackAlert from "@/components/board/PlayerStackAlert";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
@@ -26,6 +28,7 @@ export default function StackCard({
 }) {
   const ui = useUiText();
   const { state } = useGame();
+  const { hoverCard, clearHover } = useHoverActions();
   const name = entry.name || `Object#${entry.id}`;
   const artUrl = useScryfallImageUrl(name, "art_crop");
   const scryfallUrl = useScryfallImageUrl(name);
@@ -46,6 +49,17 @@ export default function StackCard({
     : undefined;
   const subtitle = String(entry?.__subtitle || "").trim();
   const hasReorderControls = !!reorderControls;
+  // A stack tile's click belongs to whatever is live -- a target pick, a
+  // resolve, an inspector request. Hover is the one read path nothing else
+  // claims, so it is what keeps the spell or ability readable mid-decision.
+  const inspectObjectId = stackInspectObjectId(entry);
+  const handleHoverEnter = useCallback(() => {
+    if (isLeaving || inspectObjectId == null) return;
+    hoverCard(inspectObjectId);
+  }, [hoverCard, inspectObjectId, isLeaving]);
+  const handleHoverLeave = useCallback(() => {
+    clearHover();
+  }, [clearHover]);
   const rootRef = useRef(null);
   const motionRef = useRef(null);
 
@@ -108,6 +122,8 @@ export default function StackCard({
           source: "stack",
           stackEntry: entry,
         })}
+        onMouseEnter={handleHoverEnter}
+        onMouseLeave={handleHoverLeave}
         style={stackAccentStyle}
       >
         {artUrl && (
@@ -147,6 +163,8 @@ export default function StackCard({
         source: "stack",
         stackEntry: entry,
       })}
+      onMouseEnter={handleHoverEnter}
+      onMouseLeave={handleHoverLeave}
       style={stackAccentStyle}
     >
       {!isLeaving && (

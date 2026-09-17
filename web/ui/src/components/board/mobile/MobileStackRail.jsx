@@ -23,6 +23,9 @@ function MobileStackRailEntry({
     onLongPressInspect?.(entry?.inspect_object_id ?? entry?.id, {
       source: "stack",
       stackEntry: entry,
+      // Reading a stack entry is the point of the long press; it must not be
+      // swallowed by a targets or select_objects decision the way a tap is.
+      detailOnly: true,
     });
   }, [entry, onLongPressInspect]);
   const longPress = useMobileLongPress({ onLongPress: handleLongPress });
@@ -104,6 +107,7 @@ function MobileStackBrowser({ entries, focusedId, onFocus, onClose, onInspect })
               onInspect?.(entry?.inspect_object_id ?? entry?.id, {
                 source: "stack",
                 stackEntry: entry,
+                detailOnly: true,
               });
             }}
           >
