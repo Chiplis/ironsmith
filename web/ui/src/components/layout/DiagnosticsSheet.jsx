@@ -13,6 +13,7 @@ import {
   resetDiagnostics,
   subscribeDiagnostics,
 } from "@/lib/action-diagnostics";
+import { journalSummary, recordCardRoutes } from "@/lib/engine-journal";
 import { useI18n } from "@/i18n/I18nContext";
 import { playerDisplayName } from "@/lib/player-display";
 
@@ -121,6 +122,9 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
 
   const report = async () => {
     const engine = await readEngineDiagnostics(game);
+    // Read straight into the journal: `extra` is compacted for display, which
+    // would truncate the route list into something a replay cannot use.
+    recordCardRoutes(engine?.externalCardRoutes);
     return exportDiagnostics({
       multiplayer: {
         mode: multiplayer?.mode, role: multiplayer?.role, lastAppliedSequence: multiplayer?.lastAppliedSequence,
@@ -175,6 +179,7 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
             // Match-clock epochs are stamped with the monotonic clock, like snapshot.at.
             const clockEpochAge = clock?.startedAtMs != null ? snapshot.at - Number(clock.startedAtMs) : null;
             const activeClockPlayer = clock?.activePlayerIndex != null ? playerDisplayName(players, clock.activePlayerIndex) || `P${Number(clock.activePlayerIndex) + 1}` : "—";
+            const journal = journalSummary();
             return (
               <div className="diagnostics-body">
                 <div className="diagnostics-verdict" data-tone={summary.tone}>{ui(summary.text)}</div>
@@ -186,6 +191,33 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
                     <Stat label={ui("Worst freeze, last 60 s")} value={snapshot.mainThread.worstStallMs ? seconds(snapshot.mainThread.worstStallMs) : "none"} tone={tone(snapshot.mainThread.worstStallMs, 200, 2000)} hint={ui(snapshot.mainThread.worstStallAt != null ? `${age(snapshot.at - snapshot.mainThread.worstStallAt)} ago` : undefined)} />
                     <Stat label={ui("Engine queue wait")} value={snapshot.engine ? ms(snapshot.engine.queueWaitMs) : "—"} tone={snapshot.engine ? tone(snapshot.engine.queueWaitMs, 200, 2000) : "muted"} hint={ui(snapshot.engine ? `last ${snapshot.engine.method || "call"}, ${age(snapshot.at - snapshot.engine.at)} ago` : "no engine call yet")} />
                     <Stat label={ui("Engine compute")} value={snapshot.engine ? ms(snapshot.engine.wasmCallMs) : "—"} tone={snapshot.engine ? tone(snapshot.engine.wasmCallMs, 500, 5000) : "muted"} hint={ui("wasm time inside the worker")} />
+                  </div>
+                </section>
+
+                <section className="fantasy-sheet-section diagnostics-section">
+                  <h3 className="diagnostics-section-title">{ui("Reproduction")}</h3>
+                  <div className="diagnostics-stat-grid">
+                    <Stat
+                      label={ui("Replayable")}
+                      value={journal.replayable ? ui("yes") : ui("no")}
+                      tone={journal.replayable ? "good" : "warn"}
+                      hint={ui(journal.replayable
+                        ? "the report can rebuild this session from a fresh engine"
+                        : journal.policy === "redacted"
+                          ? "peer match: card identities are withheld, so the report profiles but cannot replay"
+                          : "the journal stopped recording, so only the prefix before it can replay")}
+                    />
+                    <Stat
+                      label={ui("Engine calls recorded")}
+                      value={journal.entryCount}
+                      hint={ui("mutations replayed in order")}
+                    />
+                    <Stat
+                      label={ui("Report size")}
+                      value={`${Math.round(journal.approxArgBytes / 1024)} KB`}
+                      tone={tone(journal.approxArgBytes, 4 * 1024 * 1024, 12 * 1024 * 1024)}
+                      hint={ui("replay data carried in the download")}
+                    />
                   </div>
                 </section>
 

@@ -146,13 +146,61 @@ fn append_late_static_effects(
     // Grants can add a static ability that emits another continuous effect.
     // Iterate to a small fixed point so nested grants work without allowing a
     // cyclic static-ability dependency to recurse indefinitely.
+    let mut previous_round: Option<(Vec<ContinuousEffect>, Vec<ObjectId>)> = None;
+    let mut recipient_chars = std::collections::HashMap::default();
     for _ in 0..8 {
+        // Effects below the ability layer are the only ones that can change
+        // which abilities an object has, and they are the same list for every
+        // recipient, so build it once per round rather than per object.
+        let before_pt = available_effects
+            .iter()
+            .filter(|effect| effect.modification.layer() <= Layer::Ability)
+            .cloned()
+            .collect::<Vec<_>>();
+        let grant_may_emit_effects = available_effects
+            .iter()
+            .any(registered_grant_may_emit_late_effects);
+        let recipients = sources
+            .iter()
+            .filter(|source| {
+                (grant_may_emit_effects || abilities_grant_continuous_levels(&source.abilities))
+                    && game
+                        .object(source.object_id)
+                        .is_some_and(|object| object.zone == Zone::Battlefield)
+            })
+            .map(|source| source.object_id)
+            .collect::<Vec<_>>();
+        // One batched pass shares the layer pipeline — including the CR 613.8
+        // dependency sort, which is global rather than per recipient — instead
+        // of repeating it for every object on the battlefield. A later round
+        // that only added effects above the ability layer feeds this the same
+        // inputs, so the previous round's result still stands.
+        let round_inputs = (before_pt, recipients);
+        if previous_round.as_ref() != Some(&round_inputs) {
+            recipient_chars = if round_inputs.1.is_empty() {
+                std::collections::HashMap::default()
+            } else {
+                crate::continuous::calculate_characteristics_batch_with_effects(
+                    &round_inputs.1,
+                    game.objects_map(),
+                    &round_inputs.0,
+                    &game.battlefield,
+                    game.commander_objects(),
+                    game,
+                )
+            };
+            previous_round = Some(round_inputs);
+        }
         let mut added = Vec::new();
         for source in sources.iter_mut() {
+            let Some(chars) = recipient_chars.get(&source.object_id) else {
+                continue;
+            };
             let late = generate_granted_late_static_effects(
                 game,
                 source.object_id,
                 &available_effects,
+                chars,
                 &source.abilities,
             );
             for effect in late {
@@ -481,14 +529,26 @@ pub(crate) fn generate_continuous_effects_from_static_abilities_cached(
 /// Granted static abilities may themselves generate effects in the ability
 /// layer or later layers. Read their recipients after grants/removals without
 /// replacing the earlier text-box abilities used for layers before six.
-fn generate_granted_late_static_effects(
-    game: &GameState,
-    object_id: ObjectId,
-    registered: &[ContinuousEffect],
-    text_abilities: &[crate::ability::Ability],
-) -> Vec<ContinuousEffect> {
-    use crate::continuous::{Modification, PtSublayer};
-    let level_grants_continuous = text_abilities.iter().any(|ability| {
+/// Whether a granted ability could itself emit a later-layer continuous effect.
+///
+/// Flag-only keywords and nonstatic abilities cannot, so an ordinary ability
+/// grant on the battlefield must not force a characteristic calculation for
+/// every recipient.
+fn registered_grant_may_emit_late_effects(effect: &ContinuousEffect) -> bool {
+    use crate::continuous::Modification;
+    match &effect.modification {
+        Modification::AddAbility(ability) => ability.may_generate_continuous_effects(),
+        Modification::AddAbilityGeneric(ability) => match &ability.kind {
+            AbilityKind::Static(ability) => ability.may_generate_continuous_effects(),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+/// Whether a level-up ability can grant something that emits continuous effects.
+fn abilities_grant_continuous_levels(text_abilities: &[crate::ability::Ability]) -> bool {
+    text_abilities.iter().any(|ability| {
         let AbilityKind::Static(ability) = &ability.kind else {
             return false;
         };
@@ -499,43 +559,18 @@ fn generate_granted_late_static_effects(
                     .any(|ability| ability.may_generate_continuous_effects())
             })
         })
-    });
-    if !level_grants_continuous
-        && !registered.iter().any(|effect| {
-            // Flag-only keywords and nonstatic abilities cannot emit later-layer
-            // effects. Avoid a full characteristic calculation for every recipient
-            // merely because an ordinary ability grant exists on the battlefield.
-            match &effect.modification {
-                Modification::AddAbility(ability) => ability.may_generate_continuous_effects(),
-                Modification::AddAbilityGeneric(ability) => match &ability.kind {
-                    AbilityKind::Static(ability) => ability.may_generate_continuous_effects(),
-                    _ => false,
-                },
-                _ => false,
-            }
-        })
-    {
-        return Vec::new();
-    }
+    })
+}
+
+fn generate_granted_late_static_effects(
+    game: &GameState,
+    object_id: ObjectId,
+    registered: &[ContinuousEffect],
+    chars: &crate::continuous::CalculatedCharacteristics,
+    text_abilities: &[crate::ability::Ability],
+) -> Vec<ContinuousEffect> {
+    use crate::continuous::{Modification, PtSublayer};
     let Some(object) = game.object(object_id) else {
-        return Vec::new();
-    };
-    if object.zone != Zone::Battlefield {
-        return Vec::new();
-    }
-    let before_pt = registered
-        .iter()
-        .filter(|effect| effect.modification.layer() <= Layer::Ability)
-        .cloned()
-        .collect::<Vec<_>>();
-    let Some(chars) = crate::continuous::calculate_characteristics_with_effects(
-        object_id,
-        game.objects_map(),
-        &before_pt,
-        &game.battlefield,
-        game.commander_objects(),
-        game,
-    ) else {
         return Vec::new();
     };
     let mut result = Vec::new();
@@ -662,10 +697,17 @@ mod tests {
                 ContinuousEffect::new(source, alice, EffectTarget::AllPermanents, modification)
                     .with_condition(crate::ConditionExpr::YourTurn),
             ];
+            // The gate now lives in `append_late_static_effects`, which decides
+            // which recipients are worth a characteristic calculation at all.
+            assert!(!registered.iter().any(registered_grant_may_emit_late_effects));
+            let mut sources = vec![SourceStaticEffectEntry {
+                object_id: source,
+                abilities: Vec::new(),
+                effects: Vec::new(),
+            }];
             let before = game.work_counters();
-            assert!(
-                generate_granted_late_static_effects(&game, source, &registered, &[]).is_empty()
-            );
+            append_late_static_effects(&game, &mut sources, registered.clone());
+            assert!(sources[0].effects.is_empty());
             assert_eq!(
                 game.work_counters().dependency_sorts,
                 before.dependency_sorts

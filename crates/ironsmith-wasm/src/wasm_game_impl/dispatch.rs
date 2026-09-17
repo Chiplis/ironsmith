@@ -330,11 +330,45 @@ impl WasmGame {
         let snapshot = self.snapshot();
         perf.snapshot = self.last_snapshot_perf.clone();
         perf.total_dispatch_ms = started_at.elapsed_ms();
-        self.last_dispatch_perf = Some(perf);
+        self.store_dispatch_perf_at(perf);
         snapshot
     }
 
     fn store_dispatch_perf(&mut self, started_at: PerfTimer, mut perf: DispatchPerfMetrics) {
+        perf.total_dispatch_ms = started_at.elapsed_ms();
+        self.store_dispatch_perf_at(perf);
+    }
+
+    fn store_dispatch_perf_at(&mut self, perf: DispatchPerfMetrics) {
+        self.last_dispatch_perf = Some(perf);
+    }
+
+    /// Fill in what the route did not record, and correct what it recorded too
+    /// early.
+    ///
+    /// Routes publish their metrics at different points: `live_priority_response`
+    /// publishes before the advance and snapshot that follow it, and the runner
+    /// and pregame routes do not publish at all. The worker, meanwhile, measures
+    /// the whole wasm call. Unless `total_dispatch_ms` means the same span, a
+    /// slow dispatch reads as unexplained time and a route with no metrics is
+    /// indistinguishable from one that was never taken.
+    fn finalize_dispatch_perf(&mut self, started_at: PerfTimer, succeeded: bool) {
+        let advances = std::mem::take(&mut self.dispatch_advance_until_decision_perfs);
+        let mut perf = self
+            .last_dispatch_perf
+            .take()
+            .unwrap_or_else(|| DispatchPerfMetrics {
+                route_kind: "unrecorded".to_string(),
+                outcome_kind: if succeeded { "ok" } else { "error" }.to_string(),
+                ..DispatchPerfMetrics::default()
+            });
+        perf.advance_until_decision_calls.extend(advances);
+        if perf.advance_until_decision.is_none() {
+            perf.advance_until_decision = perf.advance_until_decision_calls.last().cloned();
+        }
+        if perf.snapshot.is_none() {
+            perf.snapshot = self.last_snapshot_perf.clone();
+        }
         perf.total_dispatch_ms = started_at.elapsed_ms();
         self.last_dispatch_perf = Some(perf);
     }
@@ -684,6 +718,7 @@ impl WasmGame {
             last_snapshot_perf: None,
             last_replay_execution_perf: None,
             last_advance_until_decision_perf: None,
+            dispatch_advance_until_decision_perfs: Vec::new(),
             last_dispatch_perf: None,
             snapshot_object_view_cache: Box::default(),
             #[cfg(target_arch = "wasm32")]
@@ -3273,6 +3308,14 @@ impl WasmGame {
     /// Apply a player command for the currently pending decision.
     #[wasm_bindgen]
     pub fn dispatch(&mut self, command: JsValue) -> Result<JsValue, JsValue> {
+        let dispatch_started_at = PerfTimer::start();
+        self.dispatch_advance_until_decision_perfs.clear();
+        let result = self.dispatch_routed(command);
+        self.finalize_dispatch_perf(dispatch_started_at, result.is_ok());
+        result
+    }
+
+    fn dispatch_routed(&mut self, command: JsValue) -> Result<JsValue, JsValue> {
         let dispatch_started_at = PerfTimer::start();
         self.last_dispatch_perf = None;
         if self.pending_priority_decision_is_stale() {

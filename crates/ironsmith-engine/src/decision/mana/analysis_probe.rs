@@ -524,3 +524,143 @@ fn agatha_payment_planner_report() {
         }
     }
 }
+
+/// A board where no two mana sources are interchangeable: every land is a
+/// distinct colour pair and every rock a distinct output set. Choice collapsing
+/// cannot help here, so this is the honest worst case for the planner's search
+/// and the board the remaining per-candidate costs must be measured against.
+fn heterogeneous_board(
+    pairs: usize,
+    rocks: usize,
+    with_cauldron: bool,
+) -> (GameState, PlayerId, ObjectId) {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let player = PlayerId::from_index(0);
+    // Deliberately no blue: the probe cost needs blue, so the board is payable
+    // only through the Cauldron's permission. That is what forces the candidate
+    // search instead of the analytic assignment.
+    let colors = [
+        ManaSymbol::White,
+        ManaSymbol::Black,
+        ManaSymbol::Red,
+        ManaSymbol::Green,
+    ];
+    let mut made = 0usize;
+    for first in 0..colors.len() {
+        for second in (first + 1)..colors.len() {
+            if made >= pairs {
+                break;
+            }
+            let definition = mana_permanent(
+                &format!("Dual {first}{second}"),
+                &[vec![colors[first]], vec![colors[second]]],
+                made % 3 == 0,
+            )
+            .build();
+            game.create_object_from_definition(&definition, player, Zone::Battlefield);
+            made += 1;
+        }
+    }
+    for index in 0..rocks {
+        let outputs: Vec<Vec<ManaSymbol>> = colors
+            .iter()
+            .cycle()
+            .skip(index)
+            .take(2 + index % 3)
+            .map(|color| vec![*color])
+            .collect();
+        let definition = mana_permanent(&format!("Rock {index}"), &outputs, index % 2 == 0).build();
+        game.create_object_from_definition(&definition, player, Zone::Battlefield);
+    }
+    if with_cauldron {
+        let mut creature_filter = crate::filter::ObjectFilter::default();
+        creature_filter.card_types = vec![CardType::Creature];
+        creature_filter.controller = Some(crate::target::PlayerFilter::You);
+        let permission = ironsmith_core::ManaSpendPermission {
+            player: crate::target::PlayerFilter::You,
+            scope: ironsmith_core::ManaSpendScope::ActivationCostsOf(creature_filter),
+            mode: ironsmith_core::value_model::ManaSpendMode::AnyColor,
+            mana_source_filter: None,
+            any_color_mana_symbol: None,
+            other_mana_only_as_colorless: false,
+        };
+        let cauldron = CardDefinitionBuilder::new(CardId::new(), "Agatha's Soul Cauldron")
+            .card_types(vec![CardType::Artifact])
+            .supertypes(vec![crate::types::Supertype::Legendary])
+            .with_ability(crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::new(
+                    crate::static_abilities::ManaSpendPermissionAbility::new(
+                        permission,
+                        "any color for creature activations".to_string(),
+                    ),
+                ),
+            ))
+            .build();
+        game.create_object_from_definition(&cauldron, player, Zone::Battlefield);
+    }
+    let adept = CardDefinitionBuilder::new(CardId::new(), "Adept")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+        .build();
+    let adept_id = game.create_object_from_definition(&adept, player, Zone::Battlefield);
+    game.turn.active_player = player;
+    game.turn.priority_player = Some(player);
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    game.refresh_continuous_state();
+    (game, player, adept_id)
+}
+
+#[test]
+#[ignore = "manual performance probe"]
+fn heterogeneous_payment_planner_report() {
+    use crate::mana_payment::{plan_mana_payment, ManaPaymentRequest};
+    println!(
+        "{:>8} {:>6} {:>6} {:>12} {:>10} {:>9} {:>8}",
+        "cauldron", "duals", "rocks", "plan_ms", "plans", "nodes", "limited"
+    );
+    for (pairs, rocks, with_cauldron) in [
+        (4usize, 2usize, false),
+        (6, 3, false),
+        (10, 6, false),
+        (4, 2, true),
+        (6, 3, true),
+        (8, 4, true),
+        (10, 6, true),
+    ] {
+        let (game, player, adept) = heterogeneous_board(pairs, rocks, with_cauldron);
+        let cost = ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]);
+        let mut request = ManaPaymentRequest::new(
+            player,
+            adept,
+            crate::costs::PaymentReason::ActivateAbility,
+            cost,
+        );
+        request.allow_mana_abilities = true;
+        let started = Instant::now();
+        let plans = plan_mana_payment(&game, &request);
+        let plan_ms = started.elapsed().as_secs_f64() * 1000.0;
+        let perf = crate::mana_payment::last_mana_payment_perf();
+        println!(
+            "{:>8} {:>6} {:>6} {:>12.2} {:>10} {:>9} {:>8}",
+            with_cauldron,
+            pairs,
+            rocks,
+            plan_ms,
+            plans.as_ref().map(Vec::len).unwrap_or(0),
+            perf.visited_nodes,
+            perf.search_limited
+        );
+        // Without the permission there is no blue at all, so only the
+        // cauldron rows are expected to find a plan.
+        assert_eq!(
+            plans.is_ok(),
+            with_cauldron,
+            "payability should track the permission (duals={pairs}, rocks={rocks})"
+        );
+    }
+}

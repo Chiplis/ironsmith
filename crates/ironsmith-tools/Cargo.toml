@@ -168,3 +168,8 @@ test = false
 name = "export_cedh_support_report"
 path = "src/bin/export_cedh_support_report.rs"
 test = false
+
+[[bin]]
+name = "probe_badgermole_etb"
+path = "src/bin/probe_badgermole_etb.rs"
+test = false

@@ -146,6 +146,24 @@ impl WasmGame {
             && obj.player != self.perspective
     }
 
+    /// Publish one `advance_until_decision` pass: to the single "last" slot the
+    /// existing readers use, and to the per-dispatch list that lets a caller
+    /// account for a dispatch that advanced more than once.
+    ///
+    /// The list is capped because advances also happen outside a dispatch —
+    /// `advance_phase` during an auto-advance run, pregame setup — and only a
+    /// dispatch clears it. At the cap the list stops growing and its length
+    /// saturates, so a reader summing it gets a lower bound rather than an
+    /// unbounded buffer. A dispatch that needs more than this many passes has
+    /// already said what it needed to say.
+    fn record_advance_until_decision_perf(&mut self, perf: AdvanceUntilDecisionPerfMetrics) {
+        const MAX_RECORDED_ADVANCES: usize = 256;
+        if self.dispatch_advance_until_decision_perfs.len() < MAX_RECORDED_ADVANCES {
+            self.dispatch_advance_until_decision_perfs.push(perf.clone());
+        }
+        self.last_advance_until_decision_perf = Some(perf);
+    }
+
     pub(super) fn advance_until_decision(&mut self) -> Result<(), JsValue> {
         use ironsmith::turn_runner::TurnAction;
 
@@ -170,7 +188,7 @@ impl WasmGame {
                     self.runner_pending_decision = false;
                     perf.total_ms = total_started_at.elapsed_ms();
                     perf.final_outcome = "pregame_decision".to_string();
-                    self.last_advance_until_decision_perf = Some(perf);
+                    self.record_advance_until_decision_perf(perf);
                     return Ok(());
                 }
                 perf.pregame_decision_build_ms += build_started_at.elapsed_ms();
@@ -225,7 +243,7 @@ impl WasmGame {
                         self.runner_pending_decision = true;
                         perf.total_ms = total_started_at.elapsed_ms();
                         perf.final_outcome = "runner_decision".to_string();
-                        self.last_advance_until_decision_perf = Some(perf);
+                        self.record_advance_until_decision_perf(perf);
                         return Ok(());
                     }
 
@@ -276,7 +294,7 @@ impl WasmGame {
                         self.record_game_result(result);
                         perf.total_ms = total_started_at.elapsed_ms();
                         perf.final_outcome = "runner_game_over".to_string();
-                        self.last_advance_until_decision_perf = Some(perf);
+                        self.record_advance_until_decision_perf(perf);
                         return Ok(());
                     }
                 }
@@ -306,7 +324,7 @@ impl WasmGame {
                     });
                     perf.total_ms = total_started_at.elapsed_ms();
                     perf.final_outcome = "replay_needs_decision".to_string();
-                    self.last_advance_until_decision_perf = Some(perf);
+                    self.record_advance_until_decision_perf(perf);
                     return Ok(());
                 }
                 ReplayOutcome::Complete(progress) => match progress {
@@ -316,7 +334,7 @@ impl WasmGame {
                         self.runner_pending_decision = false;
                         perf.total_ms = total_started_at.elapsed_ms();
                         perf.final_outcome = "progress_needs_decision".to_string();
-                        self.last_advance_until_decision_perf = Some(perf);
+                        self.record_advance_until_decision_perf(perf);
                         return Ok(());
                     }
                     GameProgress::Continue => {
@@ -355,7 +373,7 @@ impl WasmGame {
                         self.record_game_result(result);
                         perf.total_ms = total_started_at.elapsed_ms();
                         perf.final_outcome = "progress_game_over".to_string();
-                        self.last_advance_until_decision_perf = Some(perf);
+                        self.record_advance_until_decision_perf(perf);
                         return Ok(());
                     }
                 },
@@ -364,7 +382,7 @@ impl WasmGame {
 
         perf.total_ms = total_started_at.elapsed_ms();
         perf.final_outcome = "iteration_budget_exceeded".to_string();
-        self.last_advance_until_decision_perf = Some(perf);
+        self.record_advance_until_decision_perf(perf);
         Err(JsValue::from_str(
             "advance loop exceeded iteration budget (possible infinite loop)",
         ))

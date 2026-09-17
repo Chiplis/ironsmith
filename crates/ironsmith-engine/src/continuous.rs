@@ -1880,7 +1880,8 @@ fn calculate_characteristics_layer_batch_with_effects(
     remaining.sort_unstable();
     order.extend(remaining);
 
-    let mut chars_by_id = HashMap::with_capacity(order.len());
+    let mut chars_by_id =
+        HashMap::with_capacity(order.len());
     let mut guards = Vec::with_capacity(order.len());
     for &id in &order {
         let Some(object) = objects.get(&id) else {
@@ -2312,7 +2313,8 @@ fn calculate_characteristics_layer_batch_with_effects(
     }
 
     let requested: HashSet<_> = ids.iter().copied().collect();
-    let mut calculated = HashMap::with_capacity(requested.len());
+    let mut calculated =
+        HashMap::with_capacity(requested.len());
     for id in requested {
         if let Some(chars) = chars_by_id.get(&id) {
             calculated.insert(id, chars.clone());
@@ -4439,9 +4441,14 @@ fn apply_modification_to_chars(
             force_once_each_turn,
         } => {
             use crate::ability::AbilityKind;
-            use crate::static_ability_processor::get_all_continuous_effects;
 
-            let effects = get_all_continuous_effects(game);
+            // Reuse the effect list this derivation was given instead of
+            // regenerating every continuous effect in the game. Regenerating
+            // re-enters static-effect generation, which re-enters characteristic
+            // calculation, which lands back here — so a board with a
+            // copy-activated-abilities source (Agatha's Soul Cauldron) paid a
+            // full effect rebuild per candidate per layer pass.
+            let effects = effects.to_vec();
             let commanders = game.commander_objects();
             let battlefield = &game.battlefield;
 
@@ -4535,9 +4542,14 @@ fn apply_modification_to_chars(
             exclude_source_id,
         } => {
             use crate::ability::AbilityKind;
-            use crate::static_ability_processor::get_all_continuous_effects;
 
-            let effects = get_all_continuous_effects(game);
+            // Reuse the effect list this derivation was given instead of
+            // regenerating every continuous effect in the game. Regenerating
+            // re-enters static-effect generation, which re-enters characteristic
+            // calculation, which lands back here — so a board with a
+            // copy-activated-abilities source (Agatha's Soul Cauldron) paid a
+            // full effect rebuild per candidate per layer pass.
+            let effects = effects.to_vec();
             let commanders = game.commander_objects();
             let battlefield = &game.battlefield;
 

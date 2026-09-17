@@ -325,7 +325,7 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
 
         let static_abilities = if perm.zone == Zone::Battlefield {
             view.static_abilities_rc(source_id).unwrap_or_else(|| {
-                Rc::new(
+                std::sync::Arc::new(
                     perm.abilities
                         .iter()
                         .filter_map(|a| match &a.kind {
@@ -336,7 +336,7 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
                 )
             })
         } else {
-            Rc::new(
+            std::sync::Arc::new(
                 perm.abilities
                     .iter()
                     .filter_map(|a| match &a.kind {
@@ -505,7 +505,7 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view(
 
         let static_abilities = if perm.zone == Zone::Battlefield {
             view.static_abilities_rc(source_id).unwrap_or_else(|| {
-                Rc::new(
+                std::sync::Arc::new(
                     perm.abilities
                         .iter()
                         .filter_map(|a| match &a.kind {
@@ -516,7 +516,7 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view(
                 )
             })
         } else {
-            Rc::new(
+            std::sync::Arc::new(
                 perm.abilities
                     .iter()
                     .filter_map(|a| match &a.kind {
@@ -5399,7 +5399,7 @@ fn available_mana_sources_for_payment(
         };
         let abilities = view
             .abilities_rc(perm_id)
-            .unwrap_or_else(|| std::rc::Rc::new(object.abilities_vec()));
+            .unwrap_or_else(|| std::sync::Arc::new(object.abilities_vec()));
         let mut outputs_for_permanent = Vec::new();
         for &ability_index in analysis.mana_ability_indices_for(perm_id) {
             let Some(ability) = abilities.get(ability_index) else {

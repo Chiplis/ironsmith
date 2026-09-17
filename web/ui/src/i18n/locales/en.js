@@ -231,6 +231,7 @@ export const messages = {
 };
 
 export const ui = {
+  "Engine calls recorded": "Engine calls recorded",
   "Loading card art": "Loading card art",
   "Card art unavailable": "Card art unavailable",
   " ({0} main{1})": " ({0} main{1})",
@@ -248,6 +249,16 @@ export const ui = {
   ", tap to add mana": ", tap to add mana",
   "; evidence implicates {0}": "; evidence implicates {0}",
   "; skipped unsupported cards: {0}": "; skipped unsupported cards: {0}",
+  "mutations replayed in order": "mutations replayed in order",
+  "no": "no",
+  "peer match: card identities are withheld, so the report profiles but cannot replay": "peer match: card identities are withheld, so the report profiles but cannot replay",
+  "replay data carried in the download": "replay data carried in the download",
+  "Replayable": "Replayable",
+  "Report size": "Report size",
+  "Reproduction": "Reproduction",
+  "the journal stopped recording, so only the prefix before it can replay": "the journal stopped recording, so only the prefix before it can replay",
+  "the report can rebuild this session from a fresh engine": "the report can rebuild this session from a fresh engine",
+  "yes": "yes",
   "· D": "· D",
   "· G": "· G",
   "· Select": "· Select",

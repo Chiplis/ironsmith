@@ -3003,13 +3003,17 @@ impl GameState {
     /// - Registered continuous effects (from resolved spells/abilities)
     /// - Static abilities on permanents (generated dynamically)
     pub fn all_continuous_effects(&self) -> Vec<ContinuousEffect> {
+        self.all_continuous_effects_arc().as_ref().clone()
+    }
+
+    /// Shared form of [`Self::all_continuous_effects`].
+    pub(crate) fn all_continuous_effects_arc(&self) -> Arc<Vec<ContinuousEffect>> {
         if self.continuous_state_is_clean() {
-            return self
-                .cached_continuous_effects_snapshot_arc()
-                .as_ref()
-                .clone();
+            return self.cached_continuous_effects_snapshot_arc();
         }
-        crate::static_ability_processor::get_all_continuous_effects(self)
+        Arc::new(crate::static_ability_processor::get_all_continuous_effects(
+            self,
+        ))
     }
 
     /// Combine registered and cached static-ability continuous effects.

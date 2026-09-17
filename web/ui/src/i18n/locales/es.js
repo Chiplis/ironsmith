@@ -231,6 +231,7 @@ export const messages = {
 };
 
 export const ui = {
+  "Engine calls recorded": "Llamadas al motor registradas",
   "Loading card art": "Cargando la ilustración de la carta",
   "Card art unavailable": "Ilustración de la carta no disponible",
   " ({0} main{1})": {
@@ -255,6 +256,16 @@ export const ui = {
   ", tap to add mana": ", pulsa para agregar maná",
   "; evidence implicates {0}": "; las pruebas implican a {0}",
   "; skipped unsupported cards: {0}": "; cartas no compatibles omitidas: {0}",
+  "mutations replayed in order": "mutaciones reproducidas en orden",
+  "no": "no",
+  "peer match: card identities are withheld, so the report profiles but cannot replay": "partida entre pares: las cartas se omiten, así que el informe mide pero no puede reproducir",
+  "replay data carried in the download": "datos de reproducción incluidos en la descarga",
+  "Replayable": "Reproducible",
+  "Report size": "Tamaño del informe",
+  "Reproduction": "Reproducción",
+  "the journal stopped recording, so only the prefix before it can replay": "el registro dejó de grabar, así que solo se puede reproducir lo anterior",
+  "the report can rebuild this session from a fresh engine": "el informe puede reconstruir esta sesión desde un motor nuevo",
+  "yes": "sí",
   "· D": "· B",
   "· G": "· C",
   "· Select": "· Seleccionar",

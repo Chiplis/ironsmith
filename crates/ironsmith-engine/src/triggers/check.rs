@@ -6,7 +6,6 @@
 use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
 use std::collections::{HashMap, HashSet, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
-use std::rc::Rc;
 
 use crate::Effect;
 use crate::FxMap;
@@ -1844,7 +1843,7 @@ fn build_trigger_registry(
         };
         let calculated_abilities = view
             .abilities_rc(obj_id)
-            .unwrap_or_else(|| Rc::new(obj.abilities_vec()));
+            .unwrap_or_else(|| std::sync::Arc::new(obj.abilities_vec()));
 
         for (ability_index, ability) in calculated_abilities.iter().enumerate() {
             let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
@@ -1917,7 +1916,7 @@ fn check_battlefield_trigger_subscriber(
         .unwrap_or_else(|| game.controller_of(obj));
     let calculated_abilities = view
         .abilities_rc(obj_id)
-        .unwrap_or_else(|| Rc::new(obj.abilities_vec()));
+        .unwrap_or_else(|| std::sync::Arc::new(obj.abilities_vec()));
     let Some(ability) = calculated_abilities.get(subscriber.ability_index) else {
         return;
     };
@@ -2019,7 +2018,7 @@ fn battlefield_trigger_subscriber_matches_event(
         .unwrap_or_else(|| game.controller_of(obj));
     let calculated_abilities = view
         .abilities_rc(obj_id)
-        .unwrap_or_else(|| Rc::new(obj.abilities_vec()));
+        .unwrap_or_else(|| std::sync::Arc::new(obj.abilities_vec()));
     let Some(ability) = calculated_abilities.get(subscriber.ability_index) else {
         return false;
     };
@@ -2066,7 +2065,7 @@ fn legacy_battlefield_matching_trigger_subscribers(
         };
         let calculated_abilities = view
             .abilities_rc(obj_id)
-            .unwrap_or_else(|| Rc::new(obj.abilities_vec()));
+            .unwrap_or_else(|| std::sync::Arc::new(obj.abilities_vec()));
 
         for (ability_index, ability) in calculated_abilities.iter().enumerate() {
             let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
@@ -2874,7 +2873,7 @@ pub fn check_state_triggers(
         };
         let calculated_abilities = view
             .abilities_rc(obj_id)
-            .unwrap_or_else(|| Rc::new(obj.abilities_vec()));
+            .unwrap_or_else(|| std::sync::Arc::new(obj.abilities_vec()));
         let controller = view
             .calculated_characteristics(obj_id)
             .map(|chars| chars.controller)
@@ -3252,7 +3251,7 @@ fn check_triggers_in_zone(
 
     let calculated_abilities = view
         .abilities_rc(obj_id)
-        .unwrap_or_else(|| Rc::new(obj.abilities_vec()));
+        .unwrap_or_else(|| std::sync::Arc::new(obj.abilities_vec()));
 
     for ability in calculated_abilities.iter() {
         let AbilityKind::Triggered(trigger_ability) = &ability.kind else {

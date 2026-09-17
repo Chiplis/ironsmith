@@ -1,5 +1,6 @@
 import { createSnapshotDecoder } from "../lib/snapshot-channel.js";
 import { beginEngineRequest, endEngineRequest } from '../lib/action-diagnostics.js';
+import { beginJournalEntry, completeJournalEntry, failJournalEntry, recordWorkerInit } from '../lib/engine-journal.js';
 import { useEffect, useRef, useState } from "react";
 import { isGameRead } from '../lib/game-methods.js';
 
@@ -33,6 +34,7 @@ const WORKER_METHODS = [
   "finishPuzzleSetup",
   "forfeitPlayer",
   "getCardSemanticScore",
+  "getExternalCardRoutes",
   "importSyncCheckpoint",
   "isKnownCardName",
   "lastAdvanceUntilDecisionPerf",
@@ -192,21 +194,38 @@ export function useWasmGame() {
     let viewVersion = 0;
     const snapshotVersions = new WeakMap();
     let pendingMutations = 0;
-    const callWorker = (method, args = []) =>
-      new Promise((resolve, reject) => {
+    // Every engine mutation funnels through here, whichever UI path issued it
+    // — a click, an opponent auto-pass, a trivial auto-resolve, a phase
+    // advance. That makes this the one place where a replayable journal of the
+    // session can be recorded without threading bookkeeping through each
+    // caller. See lib/engine-journal.js.
+    const callWorker = (method, args = []) => {
+      const journalEntry = beginJournalEntry(method, args);
+      return new Promise((resolve, reject) => {
         if (disposed) {
-          reject(new Error("WASM worker is not available"));
+          const error = new Error("WASM worker is not available");
+          failJournalEntry(journalEntry, error);
+          reject(error);
           return;
         }
         const id = nextRequestId++;
         const mutation = !isGameRead(method);
         if (mutation) { viewVersion++; pendingMutations++; }
         const version = viewVersion;
-        pending.set(id, { resolve, reject, version, mutation });
+        pending.set(id, {
+          resolve: (value) => { completeJournalEntry(journalEntry, value); resolve(value); },
+          reject: (error) => { failJournalEntry(journalEntry, error); reject(error); },
+          version,
+          mutation,
+        });
         beginEngineRequest(id, method);
         try { worker.postMessage({ type: "call", id, method, args }); }
-        catch (error) { pending.delete(id); if (mutation) pendingMutations--; endEngineRequest(id); reject(error); }
+        catch (error) {
+          pending.delete(id); if (mutation) pendingMutations--; endEngineRequest(id);
+          failJournalEntry(journalEntry, error); reject(error);
+        }
       });
+    };
 
     const selectZiffleWorker = () => {
       let best = null;
@@ -430,6 +449,9 @@ export function useWasmGame() {
     setRegistryTotal(0);
 
     const assetBaseUrl = resolveAssetBaseUrl();
+    // A replay has to start the engine the same way this session did, so the
+    // init message is part of the journal's preamble.
+    recordWorkerInit({ assetBaseUrl, startedAtWall: Date.now() });
     worker.postMessage({ type: "init", assetBaseUrl });
 
     return () => {

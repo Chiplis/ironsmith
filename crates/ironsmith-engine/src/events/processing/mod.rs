@@ -4208,7 +4208,7 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
             };
             let controller = game.controller_of(source_obj);
             let static_abilities = view.static_abilities_rc(source).unwrap_or_else(|| {
-                std::rc::Rc::new(
+                std::sync::Arc::new(
                     source_obj
                         .abilities
                         .iter()

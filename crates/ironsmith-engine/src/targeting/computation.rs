@@ -386,7 +386,7 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
     // Get calculated abilities for the target (to account for effects like Humility)
     let target_abilities = view
         .static_abilities_rc(target_id)
-        .unwrap_or_else(|| std::rc::Rc::new(extract_static_abilities(&target.abilities)));
+        .unwrap_or_else(|| std::sync::Arc::new(extract_static_abilities(&target.abilities)));
     let ignores_shroud = game
         .effect_store
         .cant_effects
@@ -547,7 +547,7 @@ fn has_protection_from_subject_with_view(
     // Get calculated abilities for the target
     let target_abilities = view
         .static_abilities_rc(target_id)
-        .unwrap_or_else(|| std::rc::Rc::new(extract_static_abilities(&target.abilities)));
+        .unwrap_or_else(|| std::sync::Arc::new(extract_static_abilities(&target.abilities)));
 
     for ability in target_abilities.iter() {
         if ability.has_protection()

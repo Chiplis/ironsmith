@@ -213,6 +213,12 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        // The effect that scheduled this has usually just changed the board, and
+        // everything below reads calculated characteristics — the filter context
+        // snapshots targets, and the queued trigger snapshots its source.
+        // Refreshing once is cheaper than letting each of those reads rebuild
+        // every continuous effect from scratch.
+        game.refresh_continuous_state();
         let controller_id = resolve_player_filter(game, &self.controller, ctx)?;
         // A resolving ability may already have moved its source to another
         // zone before registering this delayed trigger. Follow the source's

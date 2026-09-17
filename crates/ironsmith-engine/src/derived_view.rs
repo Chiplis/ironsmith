@@ -34,10 +34,10 @@ pub(crate) struct DerivedGameView<'a> {
     battlefield_characteristic_scope: OnceCell<BattlefieldCharacteristicScope>,
     use_game_characteristics_cache: bool,
     characteristics: RefCell<FxMap<ObjectId, Option<Arc<CalculatedCharacteristics>>>>,
-    abilities_cache: RefCell<FxMap<ObjectId, Rc<Vec<Ability>>>>,
+    abilities_cache: RefCell<FxMap<ObjectId, Arc<Vec<Ability>>>>,
     ability_index_summary_cache: RefCell<FxMap<ObjectId, Rc<AbilityIndexSummary>>>,
     static_abilities_cache:
-        RefCell<FxMap<ObjectId, Rc<Vec<crate::static_abilities::StaticAbility>>>>,
+        RefCell<FxMap<ObjectId, Arc<Vec<crate::static_abilities::StaticAbility>>>>,
     zone_candidates: RefCell<FxMap<Option<Zone>, Vec<ObjectId>>>,
     battlefield_creatures: RefCell<Option<Vec<ObjectId>>>,
     battlefield_noncreatures: RefCell<Option<Vec<ObjectId>>>,
@@ -586,9 +586,9 @@ impl<'a> DerivedGameView<'a> {
     pub(crate) fn abilities_rc(
         &self,
         object_id: ObjectId,
-    ) -> Option<Rc<Vec<crate::ability::Ability>>> {
+    ) -> Option<Arc<Vec<crate::ability::Ability>>> {
         if let Some(cached) = self.abilities_cache.borrow().get(&object_id) {
-            return Some(Rc::clone(cached));
+            return Some(Arc::clone(cached));
         }
 
         let object = self.game.object(object_id)?;
@@ -605,16 +605,21 @@ impl<'a> DerivedGameView<'a> {
                     abilities.push(ability);
                 }
             }
-            abilities
+            Arc::new(abilities)
         } else {
+            // The calculated abilities already live behind an `Arc`; sharing it
+            // avoids deep-cloning every `Ability` (each carrying filters and
+            // choose specs) for every object on the battlefield. Any effect that
+            // grants abilities puts every object on this path, so the clone is
+            // paid board-wide rather than by the objects that were granted
+            // something.
             self.calculated_characteristics_arc(object_id)?
                 .abilities
-                .to_vec()
+                .shared()
         };
-        let abilities = Rc::new(abilities);
         self.abilities_cache
             .borrow_mut()
-            .insert(object_id, Rc::clone(&abilities));
+            .insert(object_id, Arc::clone(&abilities));
         Some(abilities)
     }
 
@@ -656,32 +661,36 @@ impl<'a> DerivedGameView<'a> {
     pub(crate) fn static_abilities_rc(
         &self,
         object_id: ObjectId,
-    ) -> Option<Rc<Vec<crate::static_abilities::StaticAbility>>> {
+    ) -> Option<Arc<Vec<crate::static_abilities::StaticAbility>>> {
         if let Some(cached) = self.static_abilities_cache.borrow().get(&object_id) {
-            return Some(Rc::clone(cached));
+            return Some(Arc::clone(cached));
         }
 
         let object = self.game.object(object_id)?;
         let static_abilities = if !self.requires_battlefield_characteristic_calculation(object_id) {
-            object
-                .abilities
-                .iter()
-                .filter_map(|ability| match &ability.kind {
-                    AbilityKind::Static(static_ability) if ability.functions_in(&object.zone) => {
-                        Some(static_ability.clone())
-                    }
-                    _ => None,
-                })
-                .collect()
+            Arc::new(
+                object
+                    .abilities
+                    .iter()
+                    .filter_map(|ability| match &ability.kind {
+                        AbilityKind::Static(static_ability)
+                            if ability.functions_in(&object.zone) =>
+                        {
+                            Some(static_ability.clone())
+                        }
+                        _ => None,
+                    })
+                    .collect(),
+            )
         } else {
+            // Shared for the same reason as `abilities_rc`.
             self.calculated_characteristics_arc(object_id)?
                 .static_abilities
-                .to_vec()
+                .shared()
         };
-        let static_abilities = Rc::new(static_abilities);
         self.static_abilities_cache
             .borrow_mut()
-            .insert(object_id, Rc::clone(&static_abilities));
+            .insert(object_id, Arc::clone(&static_abilities));
         Some(static_abilities)
     }
 
@@ -878,7 +887,7 @@ impl<'a> DerivedGameView<'a> {
 
             let abilities = self
                 .abilities_rc(perm_id)
-                .unwrap_or_else(|| Rc::new(perm.abilities_vec()));
+                .unwrap_or_else(|| std::sync::Arc::new(perm.abilities_vec()));
             let Some(ability_summary) = self.ability_index_summary(perm_id) else {
                 continue;
             };

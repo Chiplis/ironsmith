@@ -11,6 +11,8 @@
 // Everything here is best-effort bookkeeping: it must never throw into the
 // game path, and it must stay cheap when nobody is looking.
 
+import { getJournal, journalSummary, resetJournal } from "./engine-journal.js";
+
 const MAX_TRACES = 40;
 const MAX_EVENTS = 240;
 const MAX_STALLS = 60;
@@ -20,6 +22,9 @@ const HEARTBEAT_INTERVAL_MS = 500;
 const RTT_SAMPLES = 20;
 
 const now = () => (globalThis.performance?.now?.() ?? Date.now());
+
+const SESSION_STARTED_AT_MS = now();
+const SESSION_STARTED_AT_WALL = Date.now();
 
 const store = {
   traces: [],
@@ -317,6 +322,52 @@ export function getDiagnosticsSnapshot() {
   };
 }
 
+// The machine the stall happened on. A dispatch that takes two minutes on a
+// throttled laptop and twelve seconds on a workstation is the same bug with a
+// different multiplier, and a bundle that omits the multiplier invites the
+// wrong conclusion.
+function pageUrlWithoutPayload() {
+  try {
+    const url = new URL(String(window.location?.href || ""));
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return "";
+  }
+}
+
+function collectEnvironment() {
+  if (typeof window === "undefined") return null;
+  const navigatorRef = globalThis.navigator || {};
+  const memory = globalThis.performance?.memory || null;
+  const toMb = (bytes) => (Number.isFinite(bytes) ? Math.round(bytes / 1048576) : null);
+  return {
+    userAgent: String(navigatorRef.userAgent || ""),
+    platform: String(navigatorRef.platform || ""),
+    language: String(navigatorRef.language || ""),
+    hardwareConcurrency: Number(navigatorRef.hardwareConcurrency) || null,
+    deviceMemoryGb: Number(navigatorRef.deviceMemory) || null,
+    // Origin and path identify the build; the query and hash can carry an
+    // encoded deck, which the journal already records properly when the policy
+    // allows it. Dropping them here costs the report nothing.
+    url: pageUrlWithoutPayload(),
+    visibility: String(globalThis.document?.visibilityState || ""),
+    // A tab that spent the session in the background is throttled differently
+    // from one the player was watching, which changes what a wall-clock gap in
+    // the timeline means.
+    hidden: Boolean(globalThis.document?.hidden),
+    devicePixelRatio: Number(window.devicePixelRatio) || null,
+    jsHeap: memory
+      ? {
+        usedMb: toMb(memory.usedJSHeapSize),
+        totalMb: toMb(memory.totalJSHeapSize),
+        limitMb: toMb(memory.jsHeapSizeLimit),
+      }
+      : null,
+    sessionUptimeMs: now() - SESSION_STARTED_AT_MS,
+    sessionStartedAtWall: SESSION_STARTED_AT_WALL,
+  };
+}
+
 export function exportDiagnostics(extra = null, gameState = null) {
   const snapshot = getDiagnosticsSnapshot();
   // Export the last published UI state without waiting for the worker. Unlike
@@ -340,6 +391,11 @@ export function exportDiagnostics(extra = null, gameState = null) {
     events: snapshot.events,
     traces: snapshot.traces,
     perfEvents: typeof window !== "undefined" && Array.isArray(window.__ironsmithPerfEvents) ? window.__ironsmithPerfEvents.slice(-100) : [],
+    environment: collectEnvironment(),
+    // Not passed through compact(): the journal is the only part of the bundle
+    // meant to be executed rather than read, so truncating it would quietly
+    // produce a replay that diverges.
+    journal: getJournal(),
   };
 }
 
@@ -349,9 +405,16 @@ export function resetDiagnostics() {
   store.stalls = [];
   store.mainThread = { lagMs: 0, worstStallMs: 0, worstStallAt: null, lastTickAt: null, longTasks: 0 };
   store.engine = null;
+  resetJournal();
   notify();
 }
 
 if (typeof window !== "undefined") {
-  window.__ironsmithDiagnostics = { snapshot: getDiagnosticsSnapshot, export: exportDiagnostics, reset: resetDiagnostics };
+  window.__ironsmithDiagnostics = {
+    snapshot: getDiagnosticsSnapshot,
+    export: exportDiagnostics,
+    reset: resetDiagnostics,
+    journal: getJournal,
+    journalSummary,
+  };
 }

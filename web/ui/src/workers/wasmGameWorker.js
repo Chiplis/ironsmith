@@ -45,6 +45,7 @@ let latestTargetPreview;
 let previewWorker = null;
 const targetPreviews = new Map();
 let engineModule = null;
+let engineExports = null;
 const missingCardRoutes = new Set();
 const fetchSource = createAsyncLimiter(8);
 const sourceRequests = new Map();
@@ -161,6 +162,23 @@ function readRegistryStatus() {
     return null;
   }
   return game.preloadRegistryStatus();
+}
+
+// Cards outside the baked registry are compiled on demand as a game reaches
+// them, so both of these grow during a session. Sampled only alongside the
+// detailed perf read, which is already rate limited.
+function readEngineMemoryBytes() {
+  const buffer = engineExports?.memory?.buffer;
+  return typeof buffer?.byteLength === "number" ? buffer.byteLength : null;
+}
+
+function readRegistrySize() {
+  if (!game || typeof game.registrySize !== "function") return null;
+  try {
+    return Number(game.registrySize());
+  } catch {
+    return null;
+  }
 }
 
 function cardRouteKey(name) {
@@ -687,7 +705,10 @@ async function handleInit(msg = {}) {
     engineModule = await compileWasmWithProgress(engineWasmUrl,
       (p) => postProgress("download", p), { estimatedSize: WASM_ESTIMATED_SIZE });
     postProgress("init", 1);
-    await initWasm({ engine: engineModule, compiler: false, verifier: false });
+    // The engine's exports carry its linear memory. Its size over a session is
+    // the one signal that separates "this call is expensive" from "this session
+    // has grown expensive", which a single slow call cannot tell apart.
+    engineExports = await initWasm({ engine: engineModule, compiler: false, verifier: false });
     game = new WasmGame();
     game.setDeferredPriorityAnalysis(true);
     const status = readRegistryStatus();
@@ -805,6 +826,17 @@ function handleCall(msg) {
         registryStatus: readRegistryStatus(),
       };
     }
+    // Cards outside the baked registry are fetched and registered by this
+    // worker, not by an engine call, so they never appear in the journal. A
+    // replay has to register the same ones before it can replay anything that
+    // used them; the routes are enough for a harness to load them from the
+    // card asset tree.
+    if (method === "getExternalCardRoutes") {
+      return {
+        result: [...registeredCardRoutes],
+        registryStatus: readRegistryStatus(),
+      };
+    }
     if (method === "filterKnownCardNames") {
       const names = compactCardNameList(args?.[0]);
       return {
@@ -874,6 +906,8 @@ function handleCall(msg) {
       registryStatusMs: clampMs(registryStatusMs),
       totalWorkerMs: clampMs(totalWorkerMs),
       estimatedEngineMs: clampMs(wasmCallMs - snapshotTotalMs),
+      engineMemoryBytes: sampleDetailedPerf ? readEngineMemoryBytes() : null,
+      registrySize: sampleDetailedPerf ? readRegistrySize() : null,
       snapshot: snapshotPerf || null,
       dispatch: dispatchPerf || null,
       replayExecution: replayExecutionPerf || null,

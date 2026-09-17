@@ -311,6 +311,9 @@ struct DispatchPerfMetrics {
     outcome_kind: String,
     replay_execution: Option<ReplayExecutionPerfMetrics>,
     advance_until_decision: Option<AdvanceUntilDecisionPerfMetrics>,
+    /// Every advance this dispatch ran, in order, so the reported total can be
+    /// reconciled against the caller's measured wasm time.
+    advance_until_decision_calls: Vec<AdvanceUntilDecisionPerfMetrics>,
     snapshot: Option<SnapshotPerfMetrics>,
 }
 
@@ -4097,6 +4100,17 @@ pub struct WasmGame {
     last_replay_execution_perf: Option<ReplayExecutionPerfMetrics>,
     /// Timing breakdown for the most recent `advance_until_decision` pass.
     last_advance_until_decision_perf: Option<AdvanceUntilDecisionPerfMetrics>,
+    /// Every `advance_until_decision` pass run by the dispatch currently in
+    /// flight, cleared when a dispatch begins.
+    ///
+    /// `last_advance_until_decision_perf` is a single slot, so a dispatch that
+    /// advances more than once — a resolved stack re-entering the loop, a
+    /// subgame recursing — reports only its final pass, and a dispatch that
+    /// never advances reports the *previous* call's pass as if it were its own.
+    /// Reading a 120 s dispatch through that slot attributes 12 s of it and
+    /// leaves the rest unexplained. This vector is what a diagnostics bundle
+    /// needs for the time inside a dispatch to add up.
+    dispatch_advance_until_decision_perfs: Vec<AdvanceUntilDecisionPerfMetrics>,
     /// Timing breakdown for the most recent dispatch-like engine call.
     last_dispatch_perf: Option<DispatchPerfMetrics>,
     snapshot_object_view_cache: Box<SnapshotObjectViewCache>,

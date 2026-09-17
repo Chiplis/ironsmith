@@ -945,6 +945,9 @@ struct RuntimeCacheState {
     /// revision — the classification walks every effect's filter recursively
     /// and would otherwise run on every cache-validity check.
     turn_sensitivity: Cell<Option<(u64, bool)>>,
+    /// Memo of whether any continuous effect can change when a permanent taps
+    /// or a mana pool changes, keyed on the continuous-effects revision.
+    tap_sensitivity: Cell<Option<(u64, bool)>>,
     effects_snapshot: RefCell<Option<(u64, Arc<Vec<ContinuousEffect>>)>>,
     controller_cache: RefCell<Option<ControllerCache>>,
     payment_restriction_presence: Cell<Option<PaymentRestrictionPresenceCache>>,
@@ -973,6 +976,7 @@ impl Clone for RuntimeCacheState {
             continuous_state_revision: Cell::new(self.continuous_state_revision.get()),
             continuous_state_turn_number: Cell::new(self.continuous_state_turn_number.get()),
             turn_sensitivity: Cell::new(self.turn_sensitivity.get()),
+            tap_sensitivity: Cell::new(self.tap_sensitivity.get()),
             continuous_state_active_player: Cell::new(self.continuous_state_active_player.get()),
             continuous_state_phase: Cell::new(self.continuous_state_phase.get()),
             continuous_state_step: Cell::new(self.continuous_state_step.get()),
@@ -1009,6 +1013,7 @@ impl RuntimeCacheState {
             continuous_state_revision: Cell::new(0),
             continuous_state_turn_number: Cell::new(1),
             turn_sensitivity: Cell::new(None),
+            tap_sensitivity: Cell::new(None),
             continuous_state_active_player: Cell::new(active_player),
             continuous_state_phase: Cell::new(Phase::Beginning),
             continuous_state_step: Cell::new(Some(Step::Untap)),
@@ -1039,6 +1044,7 @@ struct ObjectSnapshotCache {
     effect_revision: u64,
     entries: PersistentMap<ObjectId, Arc<ObjectSnapshot>>,
 }
+
 
 #[derive(Debug, Default)]
 struct CharacteristicsCache {
@@ -4215,12 +4221,115 @@ impl GameState {
         !self.cached_continuous_effects_are_turn_context_sensitive()
     }
 
+    /// Diagnostics accessor: whether cached continuous state can be reused.
+    pub fn continuous_state_is_clean_public(&self) -> bool {
+        self.continuous_state_is_clean()
+    }
+
     pub(crate) fn continuous_state_is_clean(&self) -> bool {
         self.observe_player_mutations();
         !self.runtime_cache.continuous_state_dirty.get()
             && self.runtime_cache.continuous_state_revision.get()
                 == self.effect_store.continuous_effects.revision()
             && self.cached_continuous_turn_state_matches_current()
+    }
+
+    /// Whether any continuous effect could produce a different result once a
+    /// permanent becomes tapped or a player's mana pool changes.
+    ///
+    /// Used to decide whether a mana activation invalidates the cached
+    /// continuous state. It fails safe: anything not positively recognized as
+    /// insensitive answers `true`, so an unrecognized effect keeps the full
+    /// recompute rather than silently reading stale state.
+    pub(crate) fn continuous_effects_are_tap_sensitive(&self) -> bool {
+        let revision = self.effect_store.continuous_effects.revision();
+        if let Some((cached_revision, sensitive)) = self.runtime_cache.tap_sensitivity.get()
+            && cached_revision == revision
+        {
+            return sensitive;
+        }
+        let sensitive = self
+            .cached_continuous_effects_snapshot_arc()
+            .iter()
+            .any(Self::continuous_effect_is_tap_sensitive);
+        self.runtime_cache
+            .tap_sensitivity
+            .set(Some((revision, sensitive)));
+        sensitive
+    }
+
+    fn continuous_effect_is_tap_sensitive(effect: &ContinuousEffect) -> bool {
+        // A condition is arbitrary game-state code, so it is never assumed
+        // insensitive.
+        effect.condition.is_some()
+            || Self::effect_target_is_tap_sensitive(&effect.applies_to)
+            || Self::modification_is_tap_sensitive(&effect.modification)
+    }
+
+    fn effect_target_is_tap_sensitive(target: &EffectTarget) -> bool {
+        match target {
+            EffectTarget::Filter(filter) => Self::object_filter_is_tap_sensitive(filter),
+            _ => false,
+        }
+    }
+
+    fn modification_is_tap_sensitive(modification: &Modification) -> bool {
+        match modification {
+            Modification::SetPower { value, .. } | Modification::SetToughness { value, .. } => {
+                Self::value_is_tap_sensitive(value)
+            }
+            Modification::SetPowerToughness {
+                power, toughness, ..
+            } => Self::value_is_tap_sensitive(power) || Self::value_is_tap_sensitive(toughness),
+            _ => false,
+        }
+    }
+
+    fn value_is_tap_sensitive(value: &crate::effect::Value) -> bool {
+        match value {
+            crate::effect::Value::Fixed(_) => false,
+            crate::effect::Value::SurfaceHinted { value, .. }
+            | crate::effect::Value::Scaled(value, _)
+            | crate::effect::Value::DividedRoundedDown(value, _)
+            | crate::effect::Value::HalfRoundedDown(value) => Self::value_is_tap_sensitive(value),
+            crate::effect::Value::Add(left, right) | crate::effect::Value::Min(left, right) => {
+                Self::value_is_tap_sensitive(left) || Self::value_is_tap_sensitive(right)
+            }
+            crate::effect::Value::Count(filter)
+            | crate::effect::Value::CountScaled(filter, _)
+            | crate::effect::Value::GreatestCount(filter)
+            | crate::effect::Value::TotalPower(filter)
+            | crate::effect::Value::TotalToughness(filter) => {
+                Self::object_filter_is_tap_sensitive(filter)
+            }
+            // Anything else may read the pool or the battlefield in ways this
+            // classifier does not model.
+            _ => true,
+        }
+    }
+
+    fn object_filter_is_tap_sensitive(filter: &crate::target::ObjectFilter) -> bool {
+        filter.tapped || filter.untapped
+    }
+
+    /// Restores the cached continuous state after a mana activation that only
+    /// tapped a source and added mana, when no continuous effect can observe
+    /// either. Returns whether the cache was retained.
+    ///
+    /// The caller must have started from a clean state and must know the
+    /// activation had no other game effect; see `mana_ability_is_undo_safe`.
+    pub(crate) fn retain_continuous_state_after_mana_activation(&self) -> bool {
+        if self.continuous_effects_are_tap_sensitive() {
+            return false;
+        }
+        if self.runtime_cache.continuous_state_revision.get()
+            != self.effect_store.continuous_effects.revision()
+            || !self.cached_continuous_turn_state_matches_current()
+        {
+            return false;
+        }
+        self.runtime_cache.continuous_state_dirty.set(false);
+        true
     }
 
     fn cached_continuous_effects_are_turn_context_sensitive(&self) -> bool {
@@ -5407,6 +5516,35 @@ impl GameState {
                     .is_some_and(|snapshot| filter.matches_snapshot(snapshot, ctx, self)))
     }
 
+    /// Whether any object could currently have a "goads matching" static
+    /// ability.
+    ///
+    /// Calculated static abilities come from printed abilities plus abilities
+    /// added by continuous effects, so when neither mentions this one no object
+    /// can have it. Checking that first avoids building a derived view and
+    /// reading characteristics for the whole battlefield on every object
+    /// snapshot, which is how often goad is queried.
+    fn any_goad_ability_exists(&self, goad: crate::static_abilities::StaticAbilityId) -> bool {
+        use crate::continuous::Modification;
+        let is_goad_ability = |ability: &crate::ability::Ability| {
+            matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.id() == goad)
+        };
+        self.battlefield
+            .iter()
+            .filter_map(|id| self.object(*id))
+            .any(|object| object.abilities.iter().any(is_goad_ability))
+            || self
+                .effect_store
+                .continuous_effects
+                .effects()
+                .iter()
+                .any(|effect| match &effect.modification {
+                    Modification::AddAbility(static_ability) => static_ability.id() == goad,
+                    Modification::AddAbilityGeneric(ability) => is_goad_ability(ability),
+                    _ => false,
+                })
+    }
+
     pub fn active_goaders_for(&self, creature: ObjectId) -> HashSet<PlayerId> {
         let current_turn = self.turn.turn_number;
         let mut goaders: HashSet<PlayerId> = self
@@ -5417,10 +5555,18 @@ impl GameState {
             .map(|effect| effect.goaded_by)
             .collect();
 
-        let view = DerivedGameView::new(self);
-        let static_abilities = view
-            .calculated_characteristics(creature)
-            .map(|chars| chars.static_abilities)
+        // Reading one creature's static abilities does not need a whole derived
+        // view; building one here rebuilt every continuous effect whenever the
+        // state was dirty, and this runs for every object snapshot taken while
+        // effects resolve. Skipped entirely when nothing in the game can goad.
+        let static_abilities = if !self
+            .any_goad_ability_exists(crate::static_abilities::StaticAbilityId::GoadedBySourceController)
+        {
+            Default::default()
+        } else {
+            self
+            .calculated_characteristics_arc(creature)
+            .map(|chars| chars.static_abilities.clone())
             .or_else(|| {
                 self.object(creature).map(|object| {
                     object
@@ -5433,7 +5579,8 @@ impl GameState {
                         .collect()
                 })
             })
-            .unwrap_or_default();
+            .unwrap_or_default()
+        };
 
         if let Some(object) = self.object(creature) {
             let controller = self.controller_of(object);
@@ -5447,7 +5594,10 @@ impl GameState {
         // Goad is a designation, not an ability granted to the creature.
         // Evaluate these live predicates after characteristics, so power
         // modifications and removal of the source's ability are respected.
-        if let Some(candidate) = self.object(creature) {
+        if let Some(candidate) = self.object(creature)
+            && self.any_goad_ability_exists(crate::static_abilities::StaticAbilityId::GoadMatching)
+        {
+            let view = DerivedGameView::new(self);
             for source in &self.battlefield {
                 if self.is_phased_out(*source)
                     || !view.object_has_static_ability_id(

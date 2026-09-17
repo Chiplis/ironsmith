@@ -234,6 +234,12 @@ pub fn advance_priority_with_dm(
     };
     perf.priority_player = Some(priority_player.index() as u8);
 
+    // Enumeration reads calculated characteristics for every object, and that
+    // read is served from cache only while the continuous state is clean.
+    // Putting triggers on the stack above dirties it, so without this the whole
+    // menu is computed against a dirty state and every characteristic lookup
+    // regenerates all continuous effects from scratch.
+    game.refresh_continuous_state();
     let analysis_started_at = PerfTimer::start();
     let ctx = priority_context(game, priority_player);
     perf.compute_legal_actions_ms = analysis_started_at.elapsed_ms();

@@ -838,8 +838,12 @@ impl GameState {
         let Some(object) = self.object(object_id) else {
             return false;
         };
+        // Ordered cheapest-first. `current_has_subtype` reads calculated
+        // characteristics, which is the expensive layered path whenever any
+        // effect grants abilities board-wide, and this predicate is asked once
+        // per controlled permanent while enumerating actions. The plain field
+        // reads below reject every non-Room before that cost is paid.
         object.zone == Zone::Battlefield
-            && self.current_has_subtype(object_id, crate::types::Subtype::Room)
             && object.linked_face_layout == LinkedFaceLayout::Split
             && !self
                 .battlefield_flags
@@ -851,6 +855,7 @@ impl GameState {
                     object.other_face,
                 )
                 .is_some_and(|def| def.card.subtypes.contains(&crate::types::Subtype::Room))
+            && self.current_has_subtype(object_id, crate::types::Subtype::Room)
     }
 
     pub(crate) fn mark_room_fully_unlocked(&mut self, object_id: ObjectId) {

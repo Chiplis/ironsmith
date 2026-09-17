@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use crate::ability::{AbilityKind, ActivatedAbilityRuntimeExt as _};
@@ -455,7 +456,7 @@ fn every_mana_ability_is_single_use(
         };
         let abilities = view
             .abilities_rc(source)
-            .unwrap_or_else(|| std::rc::Rc::new(object.abilities_vec()));
+            .unwrap_or_else(|| std::sync::Arc::new(object.abilities_vec()));
         for &ability_index in analysis.mana_ability_indices_for(source) {
             let Some(ability) = abilities.get(ability_index) else {
                 continue;
@@ -1022,7 +1023,9 @@ impl CandidateSearch {
             if path.len() >= self.depth_limit {
                 continue;
             }
-            let choices = collect_activation_choices(&game, request).into_iter();
+            // Collapsed only for the search; the inventory entry points keep
+            // every source so the client can still offer them all.
+            let choices = collect_search_choices(&game, request).into_iter();
             self.expansion = Some(Expansion {
                 game,
                 path,
@@ -1044,6 +1047,12 @@ pub(super) fn prepare_activation(
         .player(request.payer)
         .map(|player| player.mana_pool.clone())
         .unwrap_or_default();
+    // An undo-safe activation taps the source and adds mana and does nothing
+    // else, so when no continuous effect can observe a tap or a pool change the
+    // parent's continuous state is still correct for the staged state.
+    let retainable = game.continuous_state_is_clean()
+        && crate::game_loop::mana_ability_is_undo_safe(game, choice.source, choice.ability_index)
+        && !game.continuous_effects_are_tap_sensitive();
     let mut decision_maker = SelectFirstDecisionMaker;
     if crate::special_actions::perform_activate_mana_ability_restricted_colors(
         &mut staged,
@@ -1057,7 +1066,9 @@ pub(super) fn prepare_activation(
     {
         return None;
     }
-    staged.refresh_continuous_state();
+    if !retainable || !staged.retain_continuous_state_after_mana_activation() {
+        staged.refresh_continuous_state();
+    }
     let after = staged
         .player(request.payer)
         .map(|player| player.mana_pool.clone())
@@ -1583,9 +1594,122 @@ fn ability_mana_is_unusable_for_request(
     )
 }
 
+/// Collapses activation choices that the rest of the search and the plan scorer
+/// cannot tell apart, keeping the lowest-id representative of each class.
+///
+/// Sixteen untapped Forests offer sixteen branches at every node even though
+/// every resulting state and every resulting score is identical, which is what
+/// makes a wide board expensive. Two choices are only merged when everything
+/// downstream reads the same from either: the mana produced, the restrictions
+/// that mana carries, snow provenance, and each preference that names a source
+/// individually. Only undo-safe abilities are eligible, so a merged class is
+/// always "tap this, add these symbols" with no other game effect.
+///
+/// This narrows which plans are *offered*, not which payments are *possible*:
+/// picking a specific source is expressed through `required_sources` and
+/// `required_activations`, and both are part of the class key, so a constrained
+/// replan still sees the source the player named.
+fn collapse_interchangeable_choices(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+    view: &DerivedGameView<'_>,
+    choices: Vec<ActivationChoice>,
+) -> Vec<ActivationChoice> {
+    #[derive(PartialEq)]
+    struct ClassKey {
+        symbols: Vec<ManaSymbol>,
+        color_restriction: Option<Vec<Color>>,
+        flexibility: usize,
+        snow: bool,
+        restrictions: Vec<crate::ability::ManaUsageRestriction>,
+        exact_required: bool,
+        required_source: bool,
+        preserved: bool,
+        reserved_tap: bool,
+    }
+
+    let mut classes: Vec<(ClassKey, usize)> = Vec::new();
+    let mut keep = vec![false; choices.len()];
+    for (index, choice) in choices.iter().enumerate() {
+        let Some(object) = game.object(choice.source) else {
+            keep[index] = true;
+            continue;
+        };
+        let abilities = view
+            .abilities_rc(choice.source)
+            .unwrap_or_else(|| std::sync::Arc::new(object.abilities_vec()));
+        let Some(ability) = abilities.get(choice.ability_index) else {
+            keep[index] = true;
+            continue;
+        };
+        let AbilityKind::Activated(mana_ability) = &ability.kind else {
+            keep[index] = true;
+            continue;
+        };
+        // A non-undo-safe activation can do anything to the game, so it is
+        // never merged with another source.
+        if !crate::game_loop::mana_ability_is_undo_safe(game, choice.source, choice.ability_index) {
+            keep[index] = true;
+            continue;
+        }
+        let mut symbols = mana_ability.inferred_mana_symbols(game, choice.source, request.payer);
+        symbols.sort_by_key(|symbol| format!("{symbol:?}"));
+        let key = ClassKey {
+            symbols,
+            color_restriction: choice.color_restriction.clone(),
+            flexibility: choice.flexibility,
+            snow: game.current_has_supertype(choice.source, crate::types::Supertype::Snow),
+            restrictions: mana_ability.mana_usage_restrictions.clone(),
+            exact_required: request
+                .preferences
+                .required_activations
+                .iter()
+                .any(|required| activation_choice_matches(required, choice)),
+            required_source: request
+                .preferences
+                .required_sources
+                .contains(&choice.source),
+            preserved: request
+                .preferences
+                .preserve_sources
+                .contains(&choice.source),
+            reserved_tap: request.reserved_tap_sources.contains(&choice.source),
+        };
+        match classes.iter().find(|(candidate, _)| *candidate == key) {
+            Some(_) => continue,
+            None => {
+                classes.push((key, index));
+                keep[index] = true;
+            }
+        }
+    }
+    choices
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, choice)| keep[index].then_some(choice))
+        .collect()
+}
+
 pub(super) fn collect_activation_choices(
     game: &GameState,
     request: &ManaPaymentRequest,
+) -> Vec<ActivationChoice> {
+    collect_activation_choices_inner(game, request, false)
+}
+
+/// The search's view of the same list, with interchangeable sources collapsed.
+/// Shares one derived view with the collection pass.
+pub(super) fn collect_search_choices(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+) -> Vec<ActivationChoice> {
+    collect_activation_choices_inner(game, request, true)
+}
+
+fn collect_activation_choices_inner(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+    collapse: bool,
 ) -> Vec<ActivationChoice> {
     if !request.allow_mana_abilities {
         return Vec::new();
@@ -1603,7 +1727,7 @@ pub(super) fn collect_activation_choices(
         };
         let abilities = view
             .abilities_rc(source)
-            .unwrap_or_else(|| std::rc::Rc::new(object.abilities_vec()));
+            .unwrap_or_else(|| std::sync::Arc::new(object.abilities_vec()));
         for &ability_index in analysis.mana_ability_indices_for(source) {
             let Some(ability) = abilities.get(ability_index) else {
                 continue;
@@ -1652,6 +1776,9 @@ pub(super) fn collect_activation_choices(
                 flexibility,
             });
         }
+    }
+    if collapse {
+        out = collapse_interchangeable_choices(game, request, &view, out);
     }
     out
 }
@@ -2054,8 +2181,22 @@ fn plan_hash(
     hasher.finish()
 }
 
+/// Order-independent structural digest of one collection element.
+fn unordered_digest<T>(items: &[T], mut each: impl FnMut(&T, &mut DefaultHasher)) -> Vec<u64> {
+    let mut digests = items
+        .iter()
+        .map(|item| {
+            let mut hasher = DefaultHasher::new();
+            each(item, &mut hasher);
+            hasher.finish()
+        })
+        .collect::<Vec<_>>();
+    digests.sort_unstable();
+    digests
+}
+
 fn safe_search_state_key(game: &GameState, payer: crate::ids::PlayerId) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let mut hasher = DefaultHasher::new();
     if let Some(player) = game.player(payer) {
         player.life.hash(&mut hasher);
         player.mana_pool.white.hash(&mut hasher);
@@ -2064,20 +2205,28 @@ fn safe_search_state_key(game: &GameState, payer: crate::ids::PlayerId) -> u64 {
         player.mana_pool.red.hash(&mut hasher);
         player.mana_pool.green.hash(&mut hasher);
         player.mana_pool.colorless.hash(&mut hasher);
-        let mut restricted = player
-            .restricted_mana
-            .iter()
-            .map(|unit| format!("{unit:?}"))
-            .collect::<Vec<_>>();
-        restricted.sort();
-        restricted.hash(&mut hasher);
-        let mut provenance = player
-            .mana_source_provenance
-            .iter()
-            .map(|unit| format!("{unit:?}"))
-            .collect::<Vec<_>>();
-        provenance.sort();
-        provenance.hash(&mut hasher);
+        // Hashed structurally rather than through `format!("{:?}")`: this key is
+        // taken once per prepared candidate and once per queued node, and a
+        // provenance entry carries a full `ObjectSnapshot` whose Debug output is
+        // large. The snapshot itself is not hashed because within one search
+        // every entry for a given (symbol, source) was produced by the same
+        // activation of the same object, so the identity fields already
+        // distinguish the states this dedup can encounter.
+        unordered_digest(&player.restricted_mana, |unit, hasher| {
+            unit.symbol.hash(hasher);
+            unit.source.hash(hasher);
+            unit.source_chosen_creature_type.hash(hasher);
+            unit.restrictions.len().hash(hasher);
+        })
+        .hash(&mut hasher);
+        unordered_digest(&player.mana_source_provenance, |unit, hasher| {
+            unit.symbol.hash(hasher);
+            unit.source.hash(hasher);
+            unit.restricted.hash(hasher);
+            unit.retention.hash(hasher);
+            unit.snapshot.is_some().hash(hasher);
+        })
+        .hash(&mut hasher);
     }
     for id in &game.battlefield {
         id.hash(&mut hasher);
@@ -2089,6 +2238,7 @@ fn safe_search_state_key(game: &GameState, payer: crate::ids::PlayerId) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+use std::collections::hash_map::DefaultHasher;
     use crate::card::CardBuilder;
     use crate::decision::SelectFirstDecisionMaker;
     use crate::ids::{CardId, PlayerId};
@@ -2341,6 +2491,93 @@ mod tests {
         let mut permanent = base.clone();
         permanent.reserved_permanent_sources.push(land);
         assert!(!affordability_solver_sees_every_resource(&game, &permanent));
+    }
+
+    /// The continuous-state cache is only retained across a staged mana
+    /// activation when nothing can observe a tap. This pins the classifier that
+    /// decides it, because a wrong "insensitive" answer would let the search
+    /// read stale continuous state.
+    #[test]
+    fn tap_sensitivity_recognizes_effects_that_read_tapped_state() {
+        use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
+
+        let (mut game, alice) = game();
+        mana_land(&mut game, alice, "Plain", &[vec![ManaSymbol::Green]], false, Some(false));
+        game.refresh_continuous_state();
+        assert!(
+            !game.continuous_effects_are_tap_sensitive(),
+            "a board of plain lands has nothing that reads tapped state"
+        );
+
+        let mut tapped_filter = crate::filter::ObjectFilter::default();
+        tapped_filter.tapped = true;
+        let source = game.new_object_id();
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                source,
+                alice,
+                EffectTarget::Filter(tapped_filter),
+                Modification::ModifyPower(1),
+            ));
+        assert!(
+            game.continuous_effects_are_tap_sensitive(),
+            "an effect whose filter reads tapped state must force the recompute"
+        );
+    }
+
+    /// Collapsing interchangeable sources may change which source a plan names,
+    /// but never how good the plan is or whether one exists.
+    #[test]
+    fn collapsing_interchangeable_sources_preserves_plan_quality() {
+        use crate::mana::ManaSymbol as M;
+        for lands in [2usize, 4, 6] {
+            for cost in [
+                ManaCost::from_pips(vec![vec![M::Green]]),
+                ManaCost::from_pips(vec![vec![M::Green], vec![M::Green]]),
+                ManaCost::from_pips(vec![vec![M::Generic(3)]]),
+            ] {
+                let (mut game, alice) = game();
+                for index in 0..lands {
+                    mana_land(
+                        &mut game,
+                        alice,
+                        &format!("Forest {index}"),
+                        &[vec![M::Green]],
+                        false,
+                        Some(false),
+                    );
+                }
+                game.refresh_continuous_state();
+                let source = game.new_object_id();
+                let request = request(&game, alice, source, cost.clone());
+                let all = collect_activation_choices(&game, &request);
+                let collapsed = collect_search_choices(&game, &request);
+                assert!(
+                    collapsed.len() <= all.len(),
+                    "collapsing must not invent choices"
+                );
+                if lands > 1 {
+                    assert!(
+                        collapsed.len() < all.len(),
+                        "identical forests should collapse (lands={lands})"
+                    );
+                }
+                let plan = plan_mana_payment(&game, &request);
+                assert_eq!(
+                    plan.is_ok(),
+                    lands >= cost.mana_value() as usize,
+                    "payability must not change (lands={lands})"
+                );
+                if let Ok(plans) = plan {
+                    assert_eq!(
+                        plans[0].mana_ability_steps.len(),
+                        cost.mana_value() as usize,
+                        "a collapsed plan still taps one source per pip"
+                    );
+                }
+            }
+        }
     }
 
     /// Slicing must still hand control back mid-search for boards the

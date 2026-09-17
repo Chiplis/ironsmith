@@ -1533,7 +1533,7 @@ fn player_may_activate_equip_abilities_any_time(
         }
         let abilities = view
             .abilities_rc(object_id)
-            .unwrap_or_else(|| std::rc::Rc::new(object.abilities_vec()));
+            .unwrap_or_else(|| std::sync::Arc::new(object.abilities_vec()));
         abilities.iter().any(|ability| {
             matches!(
                 &ability.kind,
@@ -1565,7 +1565,7 @@ fn player_may_activate_exhaust_abilities_as_unactivated_this_turn(
         }
         let abilities = view
             .abilities_rc(object_id)
-            .unwrap_or_else(|| std::rc::Rc::new(object.abilities_vec()));
+            .unwrap_or_else(|| std::sync::Arc::new(object.abilities_vec()));
         abilities.iter().any(|ability| {
             matches!(
                 &ability.kind,

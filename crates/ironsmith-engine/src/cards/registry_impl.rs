@@ -1046,8 +1046,13 @@ pub fn generated_definition_has_unimplemented_content(definition: &CardDefinitio
     }
 
     // Some parsed definitions still carry raw "unimplemented_*" internals
-    // (for example, fallback custom triggers).
-    let raw_debug = format!("{definition:#?}").to_ascii_lowercase();
+    // (for example, fallback custom triggers). There is no structural marker for
+    // those, so this falls back to scanning the Debug rendering — but compactly,
+    // and matching case-insensitively in place. Pretty-printing and lowercasing
+    // a whole definition dominated deck building, which validates every
+    // candidate card for every player.
+    let mut raw_debug = format!("{definition:?}");
+    raw_debug.make_ascii_lowercase();
     raw_debug.contains("unimplemented") || raw_debug.contains("unsupported")
 }
 

@@ -5,6 +5,7 @@ import {
   recordEnginePerf,
   startMainThreadMonitor,
 } from "@/lib/action-diagnostics";
+import { setJournalPolicy } from "@/lib/engine-journal";
 import { mergePriorityAnalysis } from "@/lib/priority-analysis-scheduler.js";
 import { castingMethodChoiceForAction, finishExplicitCastingMethod } from "@/lib/casting-method-choice";
 import { startTransition, useContext, useState, useCallback, useRef, useMemo, useEffect, useSyncExternalStore } from "react";
@@ -1749,6 +1750,12 @@ export function GameProvider({ children }) {
 
   useEffect(() => {
     multiplayerActiveRef.current = multiplayer.matchStarted;
+    // A local session's journal may carry card identities: they are the
+    // player's own, and without them the export cannot rebuild the board. A
+    // peer match holds other people's hidden information, so the journal keeps
+    // method names and argument shapes only and the bundle reports itself as
+    // not replayable.
+    setJournalPolicy(multiplayer.matchStarted ? "redacted" : "full");
   }, [multiplayer.matchStarted]);
 
   useEffect(() => {

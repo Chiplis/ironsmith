@@ -6,6 +6,11 @@ export async function readEngineDiagnostics(game, timeoutMs = 250) {
     workCounters: 'lastWorkCounters',
     manaPaymentPerf: 'lastManaPaymentPerf',
     advanceUntilDecisionPerf: 'lastAdvanceUntilDecisionPerf',
+    // Cards compile on demand, so registry size is a session-growth signal
+    // rather than a constant. Read here so a bundle captured mid-stall still
+    // carries the final value even if the journal's last samples were skipped.
+    registrySize: 'registrySize',
+    externalCardRoutes: 'getExternalCardRoutes',
   };
   const result = Object.fromEntries(Object.keys(methods).map(key => [key, null]));
   let expired = false;
