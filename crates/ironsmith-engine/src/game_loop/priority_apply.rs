@@ -851,9 +851,13 @@ pub fn apply_priority_response_with_dm(
                             source: *source,
                             controller: player,
                         });
-                let source_snapshot = game
-                    .object(*source)
-                    .map(|obj| ObjectSnapshot::from_object(obj, game));
+                // Continuous effects have to be part of the snapshot: an
+                // animated land (earthbend, Awaken, ...) is a creature only in
+                // its calculated characteristics, and "whenever you tap a
+                // creature for mana" matches against this snapshot.
+                let source_snapshot = game.object(*source).map(|obj| {
+                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+                });
 
                 if mana_cost.is_none() {
                     // Pay all costs immediately

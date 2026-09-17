@@ -2155,15 +2155,21 @@ pub fn perform_activate_mana_ability_restricted_colors(
     mana_color_restriction: Option<Vec<crate::color::Color>>,
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
-    perform_activate_mana_ability_restricted_colors_with_events(
+    let events = perform_activate_mana_ability_restricted_colors_with_events(
         game,
         player,
         permanent_id,
         ability_index,
         mana_color_restriction,
         decision_maker,
-    )
-    .map(|_| ())
+    )?;
+    // Callers of this variant have no way to see the mana-added event, so queue
+    // it here: dropping it silently skips triggers like "whenever you tap a
+    // creature for mana".
+    for event in events {
+        game.queue_trigger_event(event.provenance(), event);
+    }
+    Ok(())
 }
 
 pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(

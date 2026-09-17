@@ -1551,9 +1551,11 @@ pub(super) fn execute_pending_mana_ability(
     use crate::costs::CostContext;
     use crate::effects::ExecutionContext;
 
+    // Snapshot with continuous effects applied so tap-for-mana triggers see the
+    // source's real characteristics (an animated land is a creature only there).
     let source_snapshot = game
         .object(pending.source)
-        .map(|obj| ObjectSnapshot::from_object(obj, game));
+        .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
 
     // Pay the mana cost
     if !game.try_pay_mana_cost_with_reason(

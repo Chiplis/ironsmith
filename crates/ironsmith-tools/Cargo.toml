@@ -173,3 +173,8 @@ test = false
 name = "probe_badgermole_etb"
 path = "src/bin/probe_badgermole_etb.rs"
 test = false
+
+[[bin]]
+name = "probe_badgermole_tap"
+path = "src/bin/probe_badgermole_tap.rs"
+test = false

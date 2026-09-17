@@ -177,4 +177,88 @@ mod tests {
             "Whenever a player taps a Mountain, Forest, or Plains for mana"
         );
     }
+
+    /// Badgermole Cub: earthbend animates a land, and tapping that land for
+    /// mana is tapping a creature for mana, so the Cub's additional {G} applies.
+    ///
+    /// Regression: the priority-level mana-ability path snapshotted the source
+    /// with its printed characteristics, so the animated land still looked like
+    /// a plain land to this trigger's filter.
+    #[test]
+    fn matches_an_animated_land_tapped_for_mana_through_the_priority_path() {
+        use crate::ability::Ability;
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::decision::{LegalAction, SelectFirstDecisionMaker, compute_legal_actions};
+        use crate::effect::Effect;
+        use crate::effects::{EarthbendEffect, EffectExecutor, ExecutionContext, ResolvedTarget};
+        use crate::filter::ObjectFilter;
+        use crate::game_loop::{
+            PriorityLoopState, PriorityResponse, apply_priority_response_with_dm,
+        };
+        use crate::game_state::Phase;
+        use crate::target::ChooseSpec;
+        use crate::triggers::{Trigger, TriggerQueue};
+
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+
+        let swamp = game.create_object_from_definition(
+            &crate::cards::definitions::basic_swamp(),
+            alice,
+            Zone::Battlefield,
+        );
+
+        let cub_card = CardBuilder::new(CardId::new(), "Badgermole Cub")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let cub = game.create_object_from_card(&cub_card, alice, Zone::Battlefield);
+        if let Some(object) = game.object_mut(cub) {
+            object.abilities_mut().push(Ability::triggered(
+                Trigger::player_taps_for_mana(PlayerFilter::You, ObjectFilter::creature()),
+                vec![Effect::add_mana(vec![ManaSymbol::Green])],
+            ));
+        }
+
+        // Badgermole Cub's earthbend 1, targeting the Swamp.
+        let mut ctx = ExecutionContext::new_default(cub, alice)
+            .with_targets(vec![ResolvedTarget::Object(swamp)]);
+        EarthbendEffect::new(
+            ChooseSpec::target(ChooseSpec::Object(ObjectFilter::land().you_control())),
+            1,
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("earthbend should resolve");
+        game.refresh_continuous_state();
+
+        let action = compute_legal_actions(&game, alice)
+            .into_iter()
+            .find(|action| {
+                matches!(action, LegalAction::ActivateManaAbility { source, .. } if *source == swamp)
+            })
+            .expect("the animated Swamp should still offer its mana ability");
+
+        let mut trigger_queue = TriggerQueue::new();
+        let mut state = PriorityLoopState::new(game.players_in_game());
+        let mut decision_maker = SelectFirstDecisionMaker;
+        apply_priority_response_with_dm(
+            &mut game,
+            &mut trigger_queue,
+            &mut state,
+            &PriorityResponse::PriorityAction(action),
+            &mut decision_maker,
+        )
+        .expect("tapping the animated Swamp for mana should succeed");
+
+        let pool = &game.player(alice).expect("alice").mana_pool;
+        assert_eq!(pool.black, 1, "the Swamp should still add {{B}}");
+        assert_eq!(
+            pool.green, 1,
+            "tapping the animated Swamp taps a creature for mana, so the additional {{G}} applies"
+        );
+    }
 }
