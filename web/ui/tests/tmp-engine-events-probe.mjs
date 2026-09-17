@@ -40,6 +40,7 @@ try {
       startingLife: 20,
       seed: 1,
       format: "normal",
+      startingPlayer: 0,
       openingHandSize: 7,
       decks: [Array(60).fill("Mountain"), Array(60).fill("Mountain")],
     });

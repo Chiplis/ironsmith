@@ -34,6 +34,7 @@ pub(super) fn validate_match_setup_accepts_loadable_normal_decks() {
         hidden_deck_manifests: None,
         free_for_all: None,
         teams: None,
+        starting_player: None,
     };
 
     let validation = wasm
@@ -73,6 +74,7 @@ pub(super) fn start_match_loads_sideboards_outside_the_game() {
         hidden_deck_manifests: None,
         free_for_all: None,
         teams: None,
+        starting_player: None,
     };
 
     wasm.start_match(serde_wasm_bindgen::to_value(&config).expect("config should encode"))
@@ -115,6 +117,7 @@ pub(super) fn validate_match_setup_reports_invalid_cards() {
         hidden_deck_manifests: None,
         free_for_all: None,
         teams: None,
+        starting_player: None,
     };
 
     let validation = wasm

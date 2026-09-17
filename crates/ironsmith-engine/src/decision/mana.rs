@@ -7,6 +7,8 @@ use crate::types::CardType;
 
 mod mechanics;
 mod resumable;
+#[cfg(test)]
+mod analysis_probe;
 pub use resumable::ManaAnalysisSession;
 
 pub use mechanics::*;
@@ -2575,17 +2577,33 @@ pub(crate) fn can_cast_spell_with_context(
         .as_ref()
         .and_then(|view| view.spell_effect.as_deref())
         .or(spell.spell_effect.as_deref());
-    let has_legal_targets =
-        spell_has_legal_targets_for_cast_or_payable_optional_cost_hypothesis_with_view(
-            game,
-            spell_for_checks,
-            spell.id,
-            program,
-            None,
+    // Target legality is a pure function of the analysis snapshot, and this is
+    // the dominant fixed cost of a menu pass. Under a sliced analysis the
+    // snapshot is frozen, so the answer is memoized across slices; synchronous
+    // callers compute it as before.
+    let has_legal_targets = resumable::memo_snapshot_fact(
+        resumable::SnapshotFactKey {
+            kind: resumable::SnapshotFactKind::CastTargetLegality,
+            object: spell.id,
             player,
-            base_mana_cost.as_ref(),
-            casting_method,
-        );
+        },
+        &resumable::SnapshotFactContext {
+            casting_method: casting_method.clone(),
+            mana_cost: base_mana_cost.clone(),
+        },
+        || {
+            spell_has_legal_targets_for_cast_or_payable_optional_cost_hypothesis_with_view(
+                game,
+                spell_for_checks,
+                spell.id,
+                program,
+                None,
+                player,
+                base_mana_cost.as_ref(),
+                casting_method,
+            )
+        },
+    );
     ctx.add_target_legality_ms(target_started_at.elapsed_ms());
     if !has_legal_targets {
         ctx.add_total_ms(total_started_at.elapsed_ms());
@@ -2843,6 +2861,9 @@ pub(crate) fn can_cast_with_cost_with_context(
     } else {
         spell_for_checks.spell_effect.as_deref()
     };
+    // Not memoized: callers of this entry point supply their own spell view
+    // for a given id, so (id, method, cost) does not pin the computation the
+    // way it does on the primary cast path.
     let has_legal_targets =
         spell_has_legal_targets_for_cast_or_payable_optional_cost_hypothesis_with_view(
             game,
@@ -5181,7 +5202,7 @@ pub fn compute_potential_mana(game: &GameState, player: PlayerId) -> crate::play
     compute_potential_mana_with_view(game, player, &view)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AvailableManaSource {
     source_id: ObjectId,
     outputs: Vec<Vec<ManaSymbol>>,

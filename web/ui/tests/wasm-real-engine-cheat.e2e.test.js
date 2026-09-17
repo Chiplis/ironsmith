@@ -468,6 +468,7 @@ test("real WASM engine emits crypto requirements when a hidden committed card is
         startingLife: 20,
         seed: 1,
         format: "normal",
+        startingPlayer: 0,
         openingHandSize: 7,
         decks: [
           Array(60).fill("Plains"),
@@ -554,6 +555,7 @@ test("real WASM engine keeps Tainted Pact prompt after post-resolution hidden op
         startingLife: 20,
         seed: 1,
         format: "normal",
+        startingPlayer: 0,
         openingHandSize: 7,
         decks: [
           Array(60).fill("Island"),
@@ -745,6 +747,7 @@ test("real WASM engine opens Tainted Pact duplicate-stop exile card", { timeout:
         startingLife: 20,
         seed: 1,
         format: "normal",
+        startingPlayer: 0,
         openingHandSize: 7,
         decks: [
           Array(60).fill("Island"),
@@ -952,6 +955,7 @@ test("real WASM engine redacts committed hand cards after private reveal", { tim
         startingLife: 20,
         seed: 1,
         format: "normal",
+        startingPlayer: 0,
         openingHandSize: 7,
         decks: [
           Array(60).fill("Island"),
@@ -1033,6 +1037,7 @@ test("real WASM engine emits private openings for committed scry and surveil ins
           startingLife: 20,
           seed: 1,
           format: "normal",
+          startingPlayer: 0,
           openingHandSize: 7,
           decks: [
             Array(60).fill(landName),
@@ -1188,6 +1193,7 @@ test("real WASM engine ziffle position reveal ignores opened commitment metadata
         startingLife: 20,
         seed: 1,
         format: "normal",
+        startingPlayer: 0,
         openingHandSize: 60,
         decks: [[], []],
         hiddenDeckManifests: [
@@ -1305,6 +1311,7 @@ test("real WASM trusted recovery preserves pending surveil and scry choices", { 
           startingLife: 20,
           seed: 1,
           format: "normal",
+          startingPlayer: 0,
           openingHandSize: 7,
           decks: [
             Array(60).fill(landName),

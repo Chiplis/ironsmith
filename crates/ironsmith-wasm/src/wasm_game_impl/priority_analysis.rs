@@ -21,6 +21,7 @@ impl WasmGame {
             ironsmith::game_loop::analyze_priority_context(&job.game, job.player)
         });
         restore_id_counters(id_counters);
+        self.last_analysis_slice_nodes = job.session.last_slice_nodes();
         if !complete {
             self.priority_analysis_job = Some(job);
             return Some(false);
@@ -42,6 +43,14 @@ impl WasmGame {
         ironsmith::game_loop::set_priority_analysis_deferred(enabled);
         self.priority_analysis_job = None;
         self.inspector_analysis_job = None;
+    }
+
+    /// Node pops consumed by the most recent analysis slice. Compared against
+    /// the budget that was requested, this separates search cost from the fixed
+    /// per-slice cost of rebuilding the menu.
+    #[wasm_bindgen(js_name = lastAnalysisSliceNodes)]
+    pub fn last_analysis_slice_nodes(&self) -> usize {
+        self.last_analysis_slice_nodes
     }
 
     #[wasm_bindgen(js_name = priorityAnalysisIdentity)]
@@ -257,6 +266,7 @@ impl WasmGame {
         restore_id_counters(job.counters);
         let mut index = 0;
         let mut pending = false;
+        let mut slice_units = 0usize;
         let result = self.inspector_actions_with(job.object_id, job.ability, &mut |request| {
             if pending {
                 return None;
@@ -265,7 +275,8 @@ impl WasmGame {
                 job.searches
                     .push(ManaPaymentAnalysis::check(&self.game, request.clone()));
             }
-            let outcome = job.searches[index].step(budget.clamp(1, 8));
+            let outcome = job.searches[index].step(budget.clamp(1, 64));
+            slice_units = slice_units.saturating_add(job.searches[index].last_slice_units());
             index += 1;
             match outcome {
                 None => {
@@ -279,6 +290,7 @@ impl WasmGame {
         });
         job.counters = snapshot_id_counters();
         restore_id_counters(counters);
+        self.last_analysis_slice_nodes = slice_units;
         if pending {
             self.inspector_analysis_job = Some(job);
             return Ok(JsValue::NULL);

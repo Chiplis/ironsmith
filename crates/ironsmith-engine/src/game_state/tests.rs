@@ -119,6 +119,65 @@ fn shuffle_slice_marks_irreversible_random_usage() {
 }
 
 #[test]
+fn setting_the_starting_player_rotates_seating_without_consuming_randomness() {
+    let names = ["Alice", "Bob", "Charlie", "Diana"]
+        .map(str::to_string)
+        .to_vec();
+    let mut game = GameState::new(names, 20);
+    let before = game.irreversible_random_count();
+
+    game.set_starting_player(PlayerId::from_index(2));
+
+    assert_eq!(
+        game.turn_store.turn_order,
+        vec![
+            PlayerId::from_index(2),
+            PlayerId::from_index(3),
+            PlayerId::from_index(0),
+            PlayerId::from_index(1),
+        ],
+        "seating is only rotated, so each player keeps the same neighbours"
+    );
+    assert_eq!(game.turn.active_player, PlayerId::from_index(2));
+    assert_eq!(game.turn.priority_player, Some(PlayerId::from_index(2)));
+    assert_eq!(
+        game.irreversible_random_count(),
+        before,
+        "restoring a known starting seat must not consume match randomness"
+    );
+}
+
+#[test]
+fn randomizing_the_starting_player_follows_the_match_seed() {
+    let seat_for_seed = |seed: u64| {
+        let mut game = GameState::new(
+            ["Alice", "Bob", "Charlie"].map(str::to_string).to_vec(),
+            20,
+        );
+        game.set_random_seed(seed);
+        let chosen = game
+            .randomize_starting_player()
+            .expect("a seated game always has a starting player");
+        assert_eq!(game.turn.active_player, chosen);
+        assert_eq!(game.turn_store.turn_order.first().copied(), Some(chosen));
+        chosen
+    };
+
+    let seats = (1..=32u64).map(seat_for_seed).collect::<Vec<_>>();
+    assert!(
+        seats.iter().any(|seat| *seat != seats[0]),
+        "the draw must reach more than one seat: {seats:?}"
+    );
+    for (index, seed) in (1..=32u64).enumerate() {
+        assert_eq!(
+            seat_for_seed(seed),
+            seats[index],
+            "the same seed must always pick the same starting seat"
+        );
+    }
+}
+
+#[test]
 fn cloned_hypothetical_state_does_not_burn_real_object_ids() {
     let mut game = GameState::new(vec!["Alice".to_string()], 20);
     let first = game.new_object_id();

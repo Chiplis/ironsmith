@@ -117,6 +117,10 @@ struct SyncTurn {
     turn_number: u32,
     phase: String,
     step: Option<String>,
+    /// Seating order rotated onto the seat that took the first turn, so a
+    /// randomly chosen starting player survives a checkpoint round trip.
+    #[serde(default)]
+    turn_order: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -968,6 +972,9 @@ fn sync_turn_state(turn: &TurnState) -> SyncTurn {
         turn_number: turn.turn_number,
         phase: sync_phase_name(turn.phase).to_string(),
         step: turn.step.map(sync_step_name).map(str::to_string),
+        // Grand Melee lanes take their seating from the profile's own seats,
+        // not from the per-lane turn state.
+        turn_order: Vec::new(),
     }
 }
 
@@ -1855,6 +1862,13 @@ impl WasmGame {
                 turn_number: self.game.turn.turn_number,
                 phase: sync_phase_name(self.game.turn.phase).to_string(),
                 step: self.game.turn.step.map(sync_step_name).map(str::to_string),
+                turn_order: self
+                    .game
+                    .turn_store
+                    .turn_order
+                    .iter()
+                    .map(|player| player.0)
+                    .collect(),
             },
             priority_runtime: SyncPriorityRuntime {
                 runner_awaiting_priority: self.runner_awaiting_priority,
@@ -2276,6 +2290,13 @@ impl WasmGame {
                 turn_number: self.game.turn.turn_number,
                 phase: sync_phase_name(self.game.turn.phase).to_string(),
                 step: self.game.turn.step.map(sync_step_name).map(str::to_string),
+                turn_order: self
+                    .game
+                    .turn_store
+                    .turn_order
+                    .iter()
+                    .map(|player| player.0)
+                    .collect(),
             },
             priority_runtime: SyncPriorityRuntime {
                 runner_awaiting_priority: self.runner_awaiting_priority,
@@ -2828,6 +2849,31 @@ impl WasmGame {
                 .map(sync_step_from_name)
                 .transpose()?,
         };
+        // Formats without a seating profile keep their starting seat only in
+        // the turn order, so restore it before anything reads the rotation.
+        // Pre-rotation checkpoints carry no order and keep the default seating.
+        if !checkpoint.turn.turn_order.is_empty() {
+            let restored = checkpoint
+                .turn
+                .turn_order
+                .iter()
+                .copied()
+                .map(PlayerId::from_index)
+                .collect::<Vec<_>>();
+            let seated = restored
+                .iter()
+                .copied()
+                .collect::<std::collections::HashSet<_>>();
+            let known = self
+                .game
+                .players
+                .iter()
+                .map(|player| player.id)
+                .collect::<std::collections::HashSet<_>>();
+            if seated.len() == restored.len() && seated == known {
+                self.game.turn_store.turn_order = restored;
+            }
+        }
         if let Some(range) = checkpoint.limited_range_of_influence.as_ref() {
             self.game
                 .restore_limited_range_of_influence(
@@ -3945,6 +3991,43 @@ mod sync_checkpoint_tests {
             guest.game.attack_direction(),
             Some(ironsmith::game_state::AttackDirection::Right)
         );
+    }
+
+    #[test]
+    fn sync_checkpoint_round_trip_keeps_a_randomly_chosen_starting_seat() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
+            20,
+            103,
+        );
+        host.game.set_starting_player(PlayerId::from_index(2));
+        let expected = host.game.turn_store.turn_order.clone();
+        assert_eq!(
+            expected,
+            vec![
+                PlayerId::from_index(2),
+                PlayerId::from_index(0),
+                PlayerId::from_index(1),
+            ],
+            "the chosen seat heads the order, seating otherwise intact"
+        );
+
+        let checkpoint = host.build_sync_checkpoint();
+        assert_eq!(checkpoint.turn.turn_order, vec![2, 0, 1]);
+
+        let mut guest = WasmGame::new();
+        guest
+            .apply_sync_checkpoint(checkpoint)
+            .expect("checkpoint should preserve the starting seat");
+
+        assert_eq!(guest.game.turn_store.turn_order, expected);
+        assert_eq!(guest.game.turn.active_player, PlayerId::from_index(2));
     }
 
     #[test]

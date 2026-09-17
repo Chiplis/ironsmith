@@ -3,10 +3,17 @@ import { createAdaptiveWorkBudget } from './adaptive-work-budget.js';
  * Every slice is a separate task, so queued game commands run between slices.
  */
 export function createPriorityAnalysisScheduler({ game, busy, enqueue, publish, fail,
-  schedule = (fn) => setTimeout(fn, 0), cancel = clearTimeout, budget = 128,
+  schedule = (fn) => setTimeout(fn, 0), cancel = clearTimeout, budget = 4096,
+  deadlineMs = 2000,
   now = () => performance.now(), reportSlice = () => {} }) {
   const priorityBudget = createAdaptiveWorkBudget({ initial: Math.min(8, budget), max: budget, now, report: reportSlice });
-  const inspectorBudget = createAdaptiveWorkBudget({ initial: 1, max: 4, now, report: reportSlice });
+  const inspectorBudget = createAdaptiveWorkBudget({ initial: 1, max: 64, now, report: reportSlice });
+  // Nodes the last slice actually spent, so the budget controller can tell the
+  // fixed cost of rebuilding the menu apart from the cost of searching.
+  const sliceNodes = () => {
+    const value = game()?.lastAnalysisSliceNodes?.();
+    return Number.isFinite(value) ? value : 0;
+  };
   let revision = 0;
   const previews = new Map();
   const queue = [];
@@ -32,13 +39,19 @@ export function createPriorityAnalysisScheduler({ game, busy, enqueue, publish, 
     const token = String(revision);
     if (!game().beginPriorityAnalysis(token)) { startPreview(); return; }
     running = true;
+    // A job that has already run this long is not going to feel interactive by
+    // being cut into more pieces; each extra slice only re-pays its fixed cost.
+    const startedAt = now();
     const tick = () => {
       timer = null;
       if (token !== String(revision)) return;
       if (busy()) { timer = schedule(tick); return; }
       enqueue(() => {
         if (token !== String(revision)) return;
-        const decision = priorityBudget.run(units => game().stepPriorityAnalysis(token, units));
+        const overdue = now() - startedAt > deadlineMs;
+        const decision = overdue
+          ? game().stepPriorityAnalysis(token, budget)
+          : priorityBudget.run(units => game().stepPriorityAnalysis(token, units), sliceNodes);
         if (decision === false) { stop(); start(); return; }
         if (decision) {
           stop();
@@ -76,7 +89,7 @@ export function createPriorityAnalysisScheduler({ game, busy, enqueue, publish, 
           game().beginInspectorAnalysis(token, ...entry.args);
           begun = true;
         }
-        const result = inspectorBudget.run(units => game().stepInspectorAnalysis(token, units));
+        const result = inspectorBudget.run(units => game().stepInspectorAnalysis(token, units), sliceNodes);
         if (result === null) timer = schedule(tick);
         else finish(result === false ? [] : result);
       }).catch(() => {

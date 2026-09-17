@@ -371,6 +371,10 @@ fn manabrew_match_setup(input: &ManabrewMatchConfigInput) -> MatchSetupInput {
         hidden_deck_manifests: None,
         free_for_all: None,
         teams: None,
+        // Manabrew's protocol has the caller decide seating and expects the
+        // first listed player to take the first turn, so this compatibility
+        // path keeps its fixed seat instead of drawing one.
+        starting_player: Some(0),
     }
 }
 
@@ -3318,6 +3322,7 @@ mod manabrew_tests {
             hidden_deck_manifests: None,
             free_for_all: None,
             teams: None,
+            starting_player: None,
         };
         game.apply_match_setup(config)
             .expect("legal Brawl match should start");

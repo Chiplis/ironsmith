@@ -652,6 +652,7 @@ impl WasmGame {
             next_runtime_savepoint: 0,
             priority_analysis_job: None,
             inspector_analysis_job: None,
+            last_analysis_slice_nodes: 0,
             pending_decision: None,
             pending_replay_action: None,
             pending_action_checkpoint: None,
@@ -1240,6 +1241,20 @@ impl WasmGame {
             };
             self.game
                 .enable_free_for_all(attack, options.range_of_influence)?;
+        }
+        // CR 103.2: whoever the lobby seated first has no claim on the first
+        // turn. The multiplayer profiles above already drew their starting seat
+        // while randomizing seating, so only the remaining formats need this.
+        if !self.game.starting_player_is_profile_chosen() {
+            match config.starting_player {
+                Some(seat) if usize::from(seat) < player_count => {
+                    self.game.set_starting_player(PlayerId::from_index(seat));
+                }
+                Some(_) => return Err("starting player is not a seat in this match".to_string()),
+                None => {
+                    self.game.randomize_starting_player();
+                }
+            }
         }
         let hidden_manifests = config.hidden_deck_manifests.unwrap_or_default();
 

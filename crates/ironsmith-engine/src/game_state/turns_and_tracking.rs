@@ -384,6 +384,59 @@ impl GameState {
             .resize(phase_count, None);
     }
 
+    /// Whether a multiplayer profile already picked the seat that takes the
+    /// first turn while it randomized seating.
+    ///
+    /// Free-for-All, Grand Melee, and the team variants choose their starting
+    /// seat as part of `enable_*`, so the generic CR 103.2 draw must not run a
+    /// second time and re-roll their decision.
+    pub fn starting_player_is_profile_chosen(&self) -> bool {
+        self.free_for_all.is_some()
+            || self.grand_melee.is_some()
+            || self.team_vs_team.is_some()
+            || self.emperor.is_some()
+            || self.two_headed_giant.is_some()
+            || self.alternating_teams.is_some()
+    }
+
+    /// Pick the player who takes the first turn at random (CR 103.2), keeping
+    /// the seating arrangement intact.
+    ///
+    /// Only the rotation of `turn_order` changes, so who sits to a player's
+    /// left is still what the lobby seated; the chosen seat simply becomes the
+    /// head of the order, which is also what `should_skip_first_turn_draw`
+    /// reads for the play/draw rule. Randomness comes from the match RNG, so
+    /// every peer replaying the same seeded setup picks the same seat.
+    pub fn randomize_starting_player(&mut self) -> Option<PlayerId> {
+        let len = self.turn_store.turn_order.len();
+        if len == 0 {
+            return None;
+        }
+        let mut positions = (0..len).collect::<Vec<_>>();
+        self.shuffle_slice(&mut positions);
+        let starting_player = self.turn_store.turn_order[positions[0]];
+        self.set_starting_player(starting_player);
+        Some(starting_player)
+    }
+
+    /// Rotate the seating order onto an already-chosen starting seat without
+    /// consuming randomness, for checkpoint and restart boundaries.
+    pub fn set_starting_player(&mut self, starting_player: PlayerId) {
+        let Some(start) = self
+            .turn_store
+            .turn_order
+            .iter()
+            .position(|player| *player == starting_player)
+        else {
+            return;
+        };
+        self.turn_store.turn_order.rotate_left(start);
+        self.turn.active_player = starting_player;
+        self.turn.priority_player = Some(starting_player);
+        self.bump_mutation_revision();
+        self.mark_continuous_state_dirty();
+    }
+
     /// Return the next player in turn order who is still in the game.
     ///
     /// This is the common CR 800.4 routing primitive for priority and rule

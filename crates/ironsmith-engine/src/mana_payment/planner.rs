@@ -435,8 +435,77 @@ pub fn execute_mana_payment_plan(
     Ok(super::ManaPaymentExecution::Paid)
 }
 
+/// Whether every mana ability the solver counted can be used at most once
+/// during a single payment.
+///
+/// The solver tracks sources with a used/unused flag, so it cannot express
+/// activating the same ability twice. A tap cost guarantees single use: the
+/// permanent is tapped afterwards and cannot pay again. Anything else — a free
+/// or sacrifice-costed mana ability — may repeat, and the solver would
+/// under-count it, so those boards keep the full search.
+fn every_mana_ability_is_single_use(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    let analysis = view.simple_battlefield_mana_analysis(request.payer);
+    for &source in analysis.mana_source_ids() {
+        let Some(object) = game.object(source) else {
+            continue;
+        };
+        let abilities = view
+            .abilities_rc(source)
+            .unwrap_or_else(|| std::rc::Rc::new(object.abilities_vec()));
+        for &ability_index in analysis.mana_ability_indices_for(source) {
+            let Some(ability) = abilities.get(ability_index) else {
+                continue;
+            };
+            let AbilityKind::Activated(mana_ability) = &ability.kind else {
+                continue;
+            };
+            if !mana_ability.has_tap_cost() {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// Fast unpayability check run once before the planner's search begins.
+///
+/// Proving a cost unpayable is the planner's worst case: it expands the whole
+/// candidate space, cloning a `GameState` per candidate, so the node cap bounds
+/// nodes but not wall time. The solver answers the same question in
+/// microseconds. A "yes" from the solver decides nothing and the search runs
+/// unchanged; only a "no" short-circuits, and only when the solver could see
+/// everything the planner could have spent.
+fn affordability_rules_out_payment(game: &GameState, request: &ManaPaymentRequest) -> bool {
+    if !affordability_solver_sees_every_resource(game, request) {
+        return false;
+    }
+    let view = DerivedGameView::new(game);
+    if !every_mana_ability_is_single_use(game, request, &view) {
+        return false;
+    }
+    !crate::decision::can_pay_mana_cost_with_available_sources(
+        game,
+        request.payer,
+        Some(request.source),
+        &request.cost,
+        request.x_value,
+        request.reason,
+        &request.spend_policy,
+        request.allow_black_life,
+        &view,
+    )
+}
+
 #[derive(Debug, Default)]
 pub struct ManaPaymentPlanner {
+    /// Test-only escape hatch: runs the full search even when the affordability
+    /// solver would veto it, so a differential test can check that the veto
+    /// never refuses a payment the search would have found.
+    skip_affordability_gate: bool,
     visited_nodes: usize,
     analytic_selections: usize,
     searched_selections: usize,
@@ -464,6 +533,42 @@ struct SelectionWork {
 #[derive(Debug, Clone)]
 struct SearchStep {
     activation: PlannedManaActivation,
+}
+
+/// Whether the affordability solver can see every resource this request could
+/// spend, making a "cannot pay" answer from it a sound veto on the planner.
+///
+/// The solver models the mana pool, snow mana, life payment and every
+/// activatable mana ability the planner would consider — its source discovery is
+/// the same `simple_battlefield_mana_analysis`, and the planner only narrows it
+/// further. What the solver does not model is the keyword payments in CR 601.2h
+/// and resources the caller reserved outside the request's cost, so those cases
+/// keep the full search.
+fn affordability_solver_sees_every_resource(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+) -> bool {
+    // Reserved graveyard cards and announced sacrifices are spendable by the
+    // planner and invisible to the solver.
+    if !request.reserved_graveyard_sources.is_empty()
+        || !request.reserved_permanent_sources.is_empty()
+    {
+        return false;
+    }
+    // Convoke, Delve and Improvise pay pips without producing mana, and only
+    // ever apply while casting a spell.
+    if request.reason == crate::costs::PaymentReason::CastSpell {
+        let Some(source) = game.object(request.source) else {
+            return false;
+        };
+        if crate::decision::has_convoke(source)
+            || crate::decision::has_delve(source)
+            || crate::decision::has_improvise(source)
+        {
+            return false;
+        }
+    }
+    true
 }
 
 impl ManaPaymentPlanner {
@@ -534,6 +639,14 @@ impl ManaPaymentPlanner {
                 })
         {
             return Err(ManaPaymentFailure::ConflictingPreferences);
+        }
+
+        // Only on a fresh search: a resumed slice has already paid for this.
+        if self.outer.is_none()
+            && !self.skip_affordability_gate
+            && affordability_rules_out_payment(game, request)
+        {
+            return Err(ManaPaymentFailure::NoLegalPlan);
         }
 
         let mut cursor = self.outer.take().unwrap_or_else(|| PlanningCursor {
@@ -986,6 +1099,9 @@ pub struct ManaPaymentAnalysis {
     request: ManaPaymentRequest,
     planner: ManaPaymentPlanner,
     result: Option<Result<ManaPaymentPlan, ManaPaymentFailure>>,
+    /// Search units the most recent slice actually consumed, so a scheduler can
+    /// tell search cost apart from the fixed cost of setting a slice up.
+    last_slice_units: usize,
 }
 impl ManaPaymentAnalysis {
     pub fn new(game: &GameState, request: ManaPaymentRequest) -> Self {
@@ -997,6 +1113,7 @@ impl ManaPaymentAnalysis {
                 ..Default::default()
             },
             result: None,
+            last_slice_units: 0,
         }
     }
 
@@ -1017,14 +1134,22 @@ impl ManaPaymentAnalysis {
                 ..Default::default()
             },
             result: None,
+            last_slice_units: 0,
         }
+    }
+
+    /// Units consumed by the last [`Self::step`].
+    pub fn last_slice_units(&self) -> usize {
+        self.last_slice_units
     }
 
     pub fn step(&mut self, budget: usize) -> Option<Result<ManaPaymentPlan, ManaPaymentFailure>> {
         if let Some(result) = &self.result {
+            self.last_slice_units = 0;
             return Some(result.clone());
         }
-        self.planner.remaining = budget.max(1);
+        let budget = budget.max(1);
+        self.planner.remaining = budget;
         self.planner.pending = false;
         let result = self
             .planner
@@ -1035,6 +1160,7 @@ impl ManaPaymentAnalysis {
                     .next()
                     .ok_or(ManaPaymentFailure::NoLegalPlan)
             });
+        self.last_slice_units = budget.saturating_sub(self.planner.remaining);
         if self.planner.pending {
             None
         } else {
@@ -2023,6 +2149,198 @@ mod tests {
             ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
         )
         .with_spend_policy(game.mana_spend_policy(payer, Some(spell)))
+    }
+
+    /// Builds a land whose mana ability produces `outputs`, optionally snow and
+    /// optionally with an extra activation cost.
+    fn mana_land(
+        game: &mut GameState,
+        owner: PlayerId,
+        name: &str,
+        outputs: &[Vec<ManaSymbol>],
+        snow: bool,
+        // `Some(true)` adds a life cost alongside the tap; `Some(false)` is a
+        // plain tap; `None` makes the ability free, and therefore repeatable.
+        extra_cost: Option<bool>,
+    ) -> ObjectId {
+        let mut builder = CardBuilder::new(CardId::new(), name).card_types(vec![CardType::Land]);
+        if snow {
+            builder = builder.supertypes(vec![crate::types::Supertype::Snow]);
+        }
+        let definition = builder.build();
+        let land = game.create_object_from_card(&definition, owner, Zone::Battlefield);
+        for output in outputs {
+            let cost = match extra_cost {
+                Some(true) => crate::cost::TotalCost::from_costs(vec![
+                    crate::costs::Cost::tap(),
+                    crate::costs::Cost::life(1),
+                ]),
+                Some(false) => crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
+                None => crate::cost::TotalCost::free(),
+            };
+            game.object_mut(land)
+                .unwrap()
+                .abilities_mut()
+                .push(crate::ability::Ability::mana(cost, output.clone()));
+        }
+        land
+    }
+
+    /// The affordability solver may only veto the planner when it cannot miss a
+    /// resource the search would have found. This sweeps board shapes and costs
+    /// and fails if the veto ever refuses a payment the full search can make.
+    ///
+    /// The veto is a one-way door: a "yes" from the solver decides nothing, so
+    /// only false negatives can break payments, and that is what is asserted.
+    #[test]
+    fn affordability_veto_never_refuses_a_payment_the_search_can_find() {
+        use crate::mana::ManaSymbol as M;
+        let colors = [M::White, M::Blue, M::Black, M::Red, M::Green];
+        let outputs_for = |kind: usize| -> Vec<Vec<ManaSymbol>> {
+            match kind {
+                0 => vec![vec![M::Green]],
+                1 => vec![vec![M::Green], vec![M::Blue]],
+                2 => colors.iter().map(|color| vec![*color]).collect(),
+                3 => vec![vec![M::Colorless]],
+                _ => vec![vec![M::Green, M::Green]],
+            }
+        };
+        let costs = [
+            ManaCost::from_pips(vec![vec![M::Green]]),
+            ManaCost::from_pips(vec![vec![M::Blue], vec![M::Blue]]),
+            ManaCost::from_pips(vec![vec![M::Generic(3)]]),
+            ManaCost::from_pips(vec![vec![M::Generic(2)], vec![M::Blue], vec![M::Blue]]),
+            ManaCost::from_pips(vec![vec![M::Green, M::Blue], vec![M::Generic(1)]]),
+            ManaCost::from_pips(vec![vec![M::Snow], vec![M::Green]]),
+            ManaCost::from_pips(vec![vec![M::Blue, M::Life(2)]]),
+            ManaCost::from_pips(vec![vec![M::Colorless], vec![M::Generic(1)]]),
+            ManaCost::from_pips(vec![vec![M::Generic(6)]]),
+        ];
+        let mut vetoed = 0usize;
+        let mut checked = 0usize;
+        for kind in 0..5usize {
+            for lands in [0usize, 1, 2, 3, 5] {
+                for snow in [false, true] {
+                    for extra_cost in [Some(false), Some(true), None] {
+                        for pool_green in [0u32, 1] {
+                            for (cost_index, cost) in costs.iter().enumerate() {
+                                let (mut game, alice) = game();
+                                for index in 0..lands {
+                                    mana_land(
+                                        &mut game,
+                                        alice,
+                                        &format!("Land {index}"),
+                                        &outputs_for(kind),
+                                        snow,
+                                        extra_cost,
+                                    );
+                                }
+                                if pool_green > 0 {
+                                    game.player_mut(alice)
+                                        .unwrap()
+                                        .mana_pool
+                                        .add(M::Green, pool_green);
+                                }
+                                game.refresh_continuous_state();
+                                let source = game.new_object_id();
+                                let request = request(&game, alice, source, cost.clone());
+
+                                let veto = affordability_rules_out_payment(&game, &request);
+                                let searched = ManaPaymentPlanner {
+                                    skip_affordability_gate: true,
+                                    ..Default::default()
+                                }
+                                .plan(&game, &request);
+                                checked += 1;
+                                if veto {
+                                    vetoed += 1;
+                                    assert!(
+                                        searched.is_err(),
+                                        "affordability veto refused a payment the search found: \
+                                         kind={kind} lands={lands} snow={snow} \
+                                         extra_cost={extra_cost:?} pool_green={pool_green} \
+                                         cost_index={cost_index}"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(checked > 500, "matrix should be broad, checked {checked}");
+        assert!(vetoed > 50, "matrix should exercise the veto, vetoed {vetoed}");
+    }
+
+    /// Convoke, Delve and Improvise pay pips without producing mana, so the
+    /// solver cannot see them and must not be allowed to veto those casts.
+    #[test]
+    fn keyword_payments_are_never_vetoed_by_the_affordability_solver() {
+        for keyword in ["Convoke", "Delve", "Improvise"] {
+            let (mut game, alice) = game();
+            let definition = CardBuilder::new(CardId::new(), format!("{keyword} Spell"))
+                .card_types(vec![CardType::Sorcery])
+                .build();
+            let spell = game.create_object_from_card(&definition, alice, Zone::Stack);
+            game.object_mut(spell)
+                .unwrap()
+                .abilities_mut()
+                .push(crate::ability::Ability::static_ability(match keyword {
+                    "Convoke" => crate::static_abilities::StaticAbility::new(
+                        crate::static_abilities::Convoke,
+                    ),
+                    "Delve" => crate::static_abilities::StaticAbility::new(
+                        crate::static_abilities::Delve,
+                    ),
+                    _ => crate::static_abilities::StaticAbility::new(
+                        crate::static_abilities::Improvise,
+                    ),
+                }));
+            game.refresh_continuous_state();
+            let mut request = ManaPaymentRequest::new(
+                alice,
+                spell,
+                crate::costs::PaymentReason::CastSpell,
+                ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]),
+            );
+            request.spend_policy = game.mana_spend_policy(alice, Some(spell));
+            assert!(
+                !affordability_solver_sees_every_resource(&game, &request),
+                "{keyword} must disable the affordability veto"
+            );
+        }
+    }
+
+    /// Reserved resources are spendable by the planner and invisible to the
+    /// solver, so they must disable the veto too.
+    #[test]
+    fn reserved_resources_disable_the_affordability_veto() {
+        let (mut game, alice) = game();
+        let land = mana_land(
+            &mut game,
+            alice,
+            "Reserved",
+            &[vec![ManaSymbol::Green]],
+            false,
+            Some(false),
+        );
+        game.refresh_continuous_state();
+        let source = game.new_object_id();
+        let base = request(
+            &game,
+            alice,
+            source,
+            ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
+        );
+        assert!(affordability_solver_sees_every_resource(&game, &base));
+
+        let mut graveyard = base.clone();
+        graveyard.reserved_graveyard_sources.push(land);
+        assert!(!affordability_solver_sees_every_resource(&game, &graveyard));
+
+        let mut permanent = base.clone();
+        permanent.reserved_permanent_sources.push(land);
+        assert!(!affordability_solver_sees_every_resource(&game, &permanent));
     }
 
     /// Slicing must still hand control back mid-search for boards the

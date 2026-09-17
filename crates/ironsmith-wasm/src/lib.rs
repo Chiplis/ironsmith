@@ -4007,6 +4007,11 @@ pub struct WasmGame {
     next_runtime_savepoint: u32,
     priority_analysis_job: Option<Box<PriorityAnalysisJob>>,
     inspector_analysis_job: Option<Box<InspectorAnalysisJob>>,
+    /// Node pops the last analysis slice consumed. A slice that spends fewer
+    /// nodes than its budget was bound by the fixed cost of re-enumerating the
+    /// menu, which is what the worker's slice scheduler needs in order to size
+    /// the next slice instead of shrinking it toward uselessness.
+    last_analysis_slice_nodes: usize,
     game: GameState,
     registry: CardRegistry,
     trigger_queue: TriggerQueue,
@@ -4368,6 +4373,12 @@ struct MatchSetupInput {
     /// CR 808 team blocks, each expressed in that team's chosen seat order.
     #[serde(default)]
     teams: Option<Vec<Vec<u8>>>,
+    /// Seat that takes the first turn. Omitting it draws the starting player at
+    /// random from the match RNG (CR 103.2), which is what a lobby wants; a
+    /// fixture that needs a known first turn pins the seat instead. Formats
+    /// that randomize seating choose their own starting seat and ignore this.
+    #[serde(default)]
+    starting_player: Option<u8>,
 }
 
 /// Optional companion selections are decoded separately from `MatchSetupInput`

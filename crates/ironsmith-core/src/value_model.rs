@@ -966,7 +966,7 @@ pub enum Restriction {
 /// colored mana satisfy a colorless `{C}` symbol. "Any type" includes
 /// colorless, so it permits either conversion.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, TagKeyWalk)]
 pub enum ManaSpendMode {
     #[default]
     Normal,

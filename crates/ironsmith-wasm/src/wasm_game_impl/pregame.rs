@@ -35,6 +35,7 @@ mod free_for_all_setup_tests {
             hidden_deck_manifests: None,
             free_for_all: options,
             teams: None,
+            starting_player: None,
         }
     }
 
@@ -3234,6 +3235,94 @@ mod mulligan_policy_tests {
 }
 
 #[cfg(test)]
+mod starting_player_setup_tests {
+    use super::*;
+
+    fn config(seed: u64, starting_player: Option<u8>) -> MatchSetupInput {
+        let deck = vec!["Plains".to_string(); 60];
+        MatchSetupInput {
+            player_names: vec!["Alice".to_string(), "Bob".to_string()],
+            starting_life: 20,
+            seed,
+            format: MatchFormatInput::Normal,
+            decks: Some(vec![deck.clone(), deck]),
+            sideboards: None,
+            commanders: None,
+            planar_decks: None,
+            vanguards: None,
+            scheme_decks: None,
+            conspiracies: None,
+            commander_draft: None,
+            opening_hand_size: Some(0),
+            hidden_deck_manifests: None,
+            free_for_all: None,
+            teams: None,
+            starting_player,
+        }
+    }
+
+    fn starting_seat(seed: u64) -> u8 {
+        let _id_guard = crate::test_id_counter_guard();
+        let mut game = WasmGame::new();
+        game.apply_match_setup(config(seed, None))
+            .expect("two 60-card decks are a legal constructed match");
+        assert_eq!(
+            game.game.turn_store.turn_order.first().copied(),
+            Some(game.game.turn.active_player),
+            "the chosen seat heads the turn order so the play/draw rule follows it"
+        );
+        game.game.turn.active_player.0
+    }
+
+    #[test]
+    fn match_setup_draws_the_starting_player_from_the_match_seed() {
+        let seats = (1..=32u64).map(starting_seat).collect::<Vec<_>>();
+
+        assert!(
+            seats.contains(&0) && seats.contains(&1),
+            "the seat that takes the first turn must not be fixed to the lobby host: {seats:?}"
+        );
+        for seed in 1..=32u64 {
+            assert_eq!(
+                starting_seat(seed),
+                seats[(seed - 1) as usize],
+                "every peer replaying seed {seed} must land on the same starting seat"
+            );
+        }
+    }
+
+    #[test]
+    fn a_pinned_starting_player_takes_the_first_turn() {
+        for seat in 0..2u8 {
+            let _id_guard = crate::test_id_counter_guard();
+            let mut game = WasmGame::new();
+            game.apply_match_setup(config(9, Some(seat)))
+                .expect("pinning a seat in the match is legal");
+
+            assert_eq!(game.game.turn.active_player, PlayerId::from_index(seat));
+            assert_eq!(
+                game.game.turn_store.turn_order.first().copied(),
+                Some(PlayerId::from_index(seat))
+            );
+        }
+    }
+
+    #[test]
+    fn a_pinned_starting_player_must_be_a_seat_in_the_match() {
+        let _id_guard = crate::test_id_counter_guard();
+        let mut game = WasmGame::new();
+
+        // The native variant is used directly: building the `JsValue` the
+        // wasm-facing wrapper returns panics off wasm32.
+        let error = game
+            .apply_match_setup_with_companions_native(config(9, Some(2)), None)
+            .expect_err("seat 2 does not exist in a two-player match");
+
+        assert!(error.contains("not a seat"), "unexpected error: {error}");
+    }
+}
+
+#[cfg(test)]
 mod normal_constructed_setup_tests {
     use super::*;
 
@@ -3263,6 +3352,7 @@ mod normal_constructed_setup_tests {
             hidden_deck_manifests: None,
             free_for_all: None,
             teams: None,
+            starting_player: None,
         }
     }
 
@@ -3303,6 +3393,7 @@ mod normal_constructed_setup_tests {
             hidden_deck_manifests: Some(hidden_manifests(deck_count, sideboard_count)),
             free_for_all: None,
             teams: None,
+            starting_player: None,
         }
     }
 
@@ -3356,6 +3447,7 @@ mod normal_constructed_setup_tests {
             hidden_deck_manifests: None,
             free_for_all: None,
             teams: None,
+            starting_player: None,
         };
 
         validate_normal_config(&mut game, &config)
@@ -3754,6 +3846,7 @@ mod commander_setup_tests {
             hidden_deck_manifests: None,
             free_for_all: None,
             teams: None,
+            starting_player: None,
         }
     }
 
@@ -3994,6 +4087,7 @@ mod commander_setup_tests {
             hidden_deck_manifests: Some(manifests),
             free_for_all: None,
             teams: None,
+            starting_player: None,
         };
         game.apply_match_setup(config)
             .expect("complete hidden Commander setup should start");
@@ -4121,6 +4215,7 @@ mod commander_draft_setup_tests {
             hidden_deck_manifests: None,
             free_for_all: None,
             teams: None,
+            starting_player: None,
         }
     }
 
@@ -4318,6 +4413,7 @@ mod planechase_setup_tests {
             hidden_deck_manifests: None,
             free_for_all: None,
             teams: None,
+            starting_player: None,
         };
 
         game.apply_match_setup(config)
@@ -4390,6 +4486,7 @@ mod vanguard_setup_tests {
             hidden_deck_manifests: None,
             free_for_all: None,
             teams: None,
+            starting_player: None,
         }
     }
 
@@ -4491,6 +4588,7 @@ mod archenemy_setup_tests {
             hidden_deck_manifests: None,
             free_for_all: None,
             teams: None,
+            starting_player: None,
         }
     }
 
@@ -4638,6 +4736,7 @@ mod conspiracy_setup_tests {
             hidden_deck_manifests: None,
             free_for_all: None,
             teams: None,
+            starting_player: None,
         }
     }
 
