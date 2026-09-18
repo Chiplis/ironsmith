@@ -3,7 +3,12 @@
   "format": "modern",
   "name": "Instant Reanimator",
   "archetype": "Instant Reanimator",
-  "colors": [],
+  "colors": [
+    "B",
+    "G",
+    "U",
+    "W"
+  ],
   "mechanics": [],
   "cardNames": [
     "Atraxa, Grand Unifier",
@@ -184,5 +189,50 @@
   "tags": [
     "Top 8"
   ],
-  "hash": "684c5f3542b59f5d"
+  "hash": "684c5f3542b59f5d",
+  "manaProfile": {
+    "colors": [
+      "B",
+      "G",
+      "U",
+      "W"
+    ],
+    "pipCounts": {
+      "G": 4,
+      "W": 23,
+      "U": 25,
+      "B": 20
+    },
+    "sourceCounts": {
+      "G": 1,
+      "U": 6,
+      "B": 5,
+      "W": 5
+    },
+    "landCount": 22,
+    "predominantColors": [
+      "U"
+    ],
+    "predominantLands": [
+      {
+        "name": "Flooded Strand",
+        "count": 4
+      },
+      {
+        "name": "Marsh Flats",
+        "count": 4
+      },
+      {
+        "name": "Polluted Delta",
+        "count": 4
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact",
+      "resolvedCardCount": 26,
+      "totalCardCount": 26,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
 }

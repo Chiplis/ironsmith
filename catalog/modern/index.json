@@ -1,14 +1,18 @@
 {
   "schemaVersion": 1,
   "format": "modern",
-  "generatedAt": "2026-09-18T17:35:12.590Z",
+  "generatedAt": "2026-09-18T18:36:47.535Z",
   "decks": [
     {
       "id": "mtgtop8-90808-889588",
       "format": "modern",
       "name": "Broodscale Bloodchief",
       "archetype": "Broodscale Bloodchief",
-      "colors": [],
+      "colors": [
+        "B",
+        "C",
+        "G"
+      ],
       "mechanics": [],
       "cardNames": [
         "Ancient Stirrings",
@@ -96,14 +100,58 @@
         "Yavimaya, Cradle of Growth"
       ],
       "hash": "e3abdaa5666c7120",
-      "detail": "details/mtgtop8-90808-889588.json"
+      "detail": "details/mtgtop8-90808-889588.json",
+      "manaProfile": {
+        "colors": [
+          "B",
+          "C",
+          "G"
+        ],
+        "pipCounts": {
+          "G": 17,
+          "C": 15,
+          "B": 4
+        },
+        "sourceCounts": {
+          "G": 9,
+          "C": 11
+        },
+        "landCount": 22,
+        "predominantColors": [
+          "C"
+        ],
+        "predominantLands": [
+          {
+            "name": "Forest",
+            "count": 5
+          },
+          {
+            "name": "Eldrazi Temple",
+            "count": 4
+          },
+          {
+            "name": "Urza's Saga",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 27,
+          "totalCardCount": 27,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      }
     },
     {
       "id": "mtgtop8-90808-889587",
       "format": "modern",
       "name": "Dimir Control",
       "archetype": "Dimir Control",
-      "colors": [],
+      "colors": [
+        "B",
+        "U"
+      ],
       "mechanics": [],
       "cardNames": [
         "Cling to Dust",
@@ -191,14 +239,58 @@
         "Watery Grave"
       ],
       "hash": "20febbec6c3b59a8",
-      "detail": "details/mtgtop8-90808-889587.json"
+      "detail": "details/mtgtop8-90808-889587.json",
+      "manaProfile": {
+        "colors": [
+          "B",
+          "U"
+        ],
+        "pipCounts": {
+          "B": 18,
+          "U": 38
+        },
+        "sourceCounts": {
+          "B": 8,
+          "U": 10
+        },
+        "landCount": 20,
+        "predominantColors": [
+          "U"
+        ],
+        "predominantLands": [
+          {
+            "name": "Polluted Delta",
+            "count": 4
+          },
+          {
+            "name": "Flooded Strand",
+            "count": 3
+          },
+          {
+            "name": "Watery Grave",
+            "count": 3
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 27,
+          "totalCardCount": 27,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      }
     },
     {
       "id": "mtgtop8-90808-889589",
       "format": "modern",
       "name": "Scepter Chant",
       "archetype": "Scepter Chant",
-      "colors": [],
+      "colors": [
+        "C",
+        "R",
+        "U",
+        "W"
+      ],
       "mechanics": [],
       "cardNames": [
         "Arid Mesa",
@@ -280,14 +372,62 @@
         "Wrath of the Skies"
       ],
       "hash": "5a999fed997a895c",
-      "detail": "details/mtgtop8-90808-889589.json"
+      "detail": "details/mtgtop8-90808-889589.json",
+      "manaProfile": {
+        "colors": [
+          "C",
+          "R",
+          "U",
+          "W"
+        ],
+        "pipCounts": {
+          "U": 28,
+          "R": 3,
+          "W": 23
+        },
+        "sourceCounts": {
+          "R": 4,
+          "W": 7,
+          "C": 1,
+          "U": 8
+        },
+        "landCount": 24,
+        "predominantColors": [
+          "U"
+        ],
+        "predominantLands": [
+          {
+            "name": "Arid Mesa",
+            "count": 4
+          },
+          {
+            "name": "Flooded Strand",
+            "count": 4
+          },
+          {
+            "name": "Hallowed Fountain",
+            "count": 2
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 27,
+          "totalCardCount": 27,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      }
     },
     {
       "id": "mtgtop8-90808-889590",
       "format": "modern",
       "name": "UrzaTron",
       "archetype": "UrzaTron",
-      "colors": [],
+      "colors": [
+        "B",
+        "C",
+        "G"
+      ],
       "mechanics": [],
       "cardNames": [
         "All Is Dust",
@@ -375,14 +515,60 @@
         "Wastes"
       ],
       "hash": "83eecd7e3035e02b",
-      "detail": "details/mtgtop8-90808-889590.json"
+      "detail": "details/mtgtop8-90808-889590.json",
+      "manaProfile": {
+        "colors": [
+          "B",
+          "C",
+          "G"
+        ],
+        "pipCounts": {
+          "C": 17,
+          "B": 4,
+          "G": 4
+        },
+        "sourceCounts": {
+          "C": 21,
+          "G": 1
+        },
+        "landCount": 22,
+        "predominantColors": [
+          "C"
+        ],
+        "predominantLands": [
+          {
+            "name": "Eldrazi Temple",
+            "count": 4
+          },
+          {
+            "name": "Ugin's Labyrinth",
+            "count": 4
+          },
+          {
+            "name": "Urza's Mine",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 22,
+          "totalCardCount": 22,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      }
     },
     {
       "id": "mtgtop8-90808-889591",
       "format": "modern",
       "name": "Instant Reanimator",
       "archetype": "Instant Reanimator",
-      "colors": [],
+      "colors": [
+        "B",
+        "G",
+        "U",
+        "W"
+      ],
       "mechanics": [],
       "cardNames": [
         "Atraxa, Grand Unifier",
@@ -464,14 +650,63 @@
         "Wrath of the Skies"
       ],
       "hash": "684c5f3542b59f5d",
-      "detail": "details/mtgtop8-90808-889591.json"
+      "detail": "details/mtgtop8-90808-889591.json",
+      "manaProfile": {
+        "colors": [
+          "B",
+          "G",
+          "U",
+          "W"
+        ],
+        "pipCounts": {
+          "G": 4,
+          "W": 23,
+          "U": 25,
+          "B": 20
+        },
+        "sourceCounts": {
+          "G": 1,
+          "U": 6,
+          "B": 5,
+          "W": 5
+        },
+        "landCount": 22,
+        "predominantColors": [
+          "U"
+        ],
+        "predominantLands": [
+          {
+            "name": "Flooded Strand",
+            "count": 4
+          },
+          {
+            "name": "Marsh Flats",
+            "count": 4
+          },
+          {
+            "name": "Polluted Delta",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 26,
+          "totalCardCount": 26,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      }
     },
     {
       "id": "mtgtop8-90808-889592",
       "format": "modern",
       "name": "Pinnacle Affinity",
       "archetype": "Pinnacle Affinity",
-      "colors": [],
+      "colors": [
+        "C",
+        "R",
+        "U"
+      ],
       "mechanics": [],
       "cardNames": [
         "Arcbound Ravager",
@@ -551,14 +786,60 @@
         "Whipflare"
       ],
       "hash": "1b0292119f4a1287",
-      "detail": "details/mtgtop8-90808-889592.json"
+      "detail": "details/mtgtop8-90808-889592.json",
+      "manaProfile": {
+        "colors": [
+          "C",
+          "R",
+          "U"
+        ],
+        "pipCounts": {
+          "U": 15,
+          "R": 8
+        },
+        "sourceCounts": {
+          "R": 9,
+          "U": 11,
+          "C": 4
+        },
+        "landCount": 16,
+        "predominantColors": [
+          "U"
+        ],
+        "predominantLands": [
+          {
+            "name": "Fiery Islet",
+            "count": 4
+          },
+          {
+            "name": "Spirebluff Canal",
+            "count": 4
+          },
+          {
+            "name": "Urza's Saga",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 23,
+          "totalCardCount": 23,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      }
     },
     {
       "id": "mtgtop8-90808-889593",
       "format": "modern",
       "name": "Pinnacle Affinity",
       "archetype": "Pinnacle Affinity",
-      "colors": [],
+      "colors": [
+        "C",
+        "R",
+        "U",
+        "W"
+      ],
       "mechanics": [],
       "cardNames": [
         "Consign to Memory",
@@ -642,14 +923,62 @@
         "Welding Jar"
       ],
       "hash": "b19216bc3599272c",
-      "detail": "details/mtgtop8-90808-889593.json"
+      "detail": "details/mtgtop8-90808-889593.json",
+      "manaProfile": {
+        "colors": [
+          "C",
+          "R",
+          "U",
+          "W"
+        ],
+        "pipCounts": {
+          "U": 16,
+          "W": 4,
+          "R": 4
+        },
+        "sourceCounts": {
+          "U": 10,
+          "W": 6,
+          "R": 1,
+          "C": 4
+        },
+        "landCount": 17,
+        "predominantColors": [
+          "U"
+        ],
+        "predominantLands": [
+          {
+            "name": "Seachrome Coast",
+            "count": 4
+          },
+          {
+            "name": "Urza's Saga",
+            "count": 4
+          },
+          {
+            "name": "Flooded Strand",
+            "count": 3
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 23,
+          "totalCardCount": 23,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      }
     },
     {
       "id": "mtgtop8-90808-889594",
       "format": "modern",
       "name": "UR Cutter Prowess",
       "archetype": "UR Cutter Prowess",
-      "colors": [],
+      "colors": [
+        "G",
+        "R",
+        "U"
+      ],
       "mechanics": [],
       "cardNames": [
         "Arid Mesa",
@@ -717,7 +1046,48 @@
         "Violent Urge"
       ],
       "hash": "c720c28dd2756a47",
-      "detail": "details/mtgtop8-90808-889594.json"
+      "detail": "details/mtgtop8-90808-889594.json",
+      "manaProfile": {
+        "colors": [
+          "G",
+          "R",
+          "U"
+        ],
+        "pipCounts": {
+          "R": 30,
+          "U": 8,
+          "G": 4
+        },
+        "sourceCounts": {
+          "R": 9,
+          "U": 6
+        },
+        "landCount": 18,
+        "predominantColors": [
+          "R"
+        ],
+        "predominantLands": [
+          {
+            "name": "Arid Mesa",
+            "count": 3
+          },
+          {
+            "name": "Bloodstained Mire",
+            "count": 3
+          },
+          {
+            "name": "Mountain",
+            "count": 3
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 18,
+          "totalCardCount": 18,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      }
     }
   ]
 }

@@ -1,0 +1,1779 @@
+{
+  "all is dust": {
+    "name": "All Is Dust",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{7}",
+    "typeLine": "Kindred — Sorcery"
+  },
+  "ancient stirrings": {
+    "name": "Ancient Stirrings",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [],
+    "manaCost": "{G}",
+    "typeLine": "Sorcery"
+  },
+  "arcbound ravager": {
+    "name": "Arcbound Ravager",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{2}",
+    "typeLine": "Artifact — Creature"
+  },
+  "arid mesa": {
+    "name": "Arid Mesa",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "atraxa, grand unifier": {
+    "name": "Atraxa, Grand Unifier",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B",
+      "G",
+      "U",
+      "W"
+    ],
+    "colorIdentity": [
+      "B",
+      "G",
+      "U",
+      "W"
+    ],
+    "producedMana": [],
+    "manaCost": "{3}{G}{W}{U}{B}",
+    "typeLine": "Creature"
+  },
+  "basking broodscale": {
+    "name": "Basking Broodscale",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [
+      "C"
+    ],
+    "manaCost": "{1}{G}",
+    "typeLine": "Creature"
+  },
+  "blade of the bloodchief": {
+    "name": "Blade of the Bloodchief",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{1}",
+    "typeLine": "Artifact"
+  },
+  "bloodstained mire": {
+    "name": "Bloodstained Mire",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "boseiju, who endures": {
+    "name": "Boseiju, Who Endures",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "G"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "breeding pool": {
+    "name": "Breeding Pool",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "G",
+      "U"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "cavern of souls": {
+    "name": "Cavern of Souls",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "C",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "chalice of the void": {
+    "name": "Chalice of the Void",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{X}{X}",
+    "typeLine": "Artifact"
+  },
+  "claws of gix": {
+    "name": "Claws of Gix",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{0}",
+    "typeLine": "Artifact"
+  },
+  "cling to dust": {
+    "name": "Cling to Dust",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B"
+    ],
+    "colorIdentity": [
+      "B"
+    ],
+    "producedMana": [],
+    "manaCost": "{B}",
+    "typeLine": "Instant"
+  },
+  "consult the star charts": {
+    "name": "Consult the Star Charts",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{U}",
+    "typeLine": "Instant"
+  },
+  "cori-steel cutter": {
+    "name": "Cori-Steel Cutter",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "R"
+    ],
+    "colorIdentity": [
+      "R"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{R}",
+    "typeLine": "Artifact"
+  },
+  "counterspell": {
+    "name": "Counterspell",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{U}{U}",
+    "typeLine": "Instant"
+  },
+  "darkslick shores": {
+    "name": "Darkslick Shores",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "U"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "day's undoing": {
+    "name": "Day's Undoing",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{2}{U}",
+    "typeLine": "Sorcery"
+  },
+  "delighted halfling": {
+    "name": "Delighted Halfling",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [
+      "B",
+      "C",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "manaCost": "{G}",
+    "typeLine": "Creature"
+  },
+  "devourer of destiny": {
+    "name": "Devourer of Destiny",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "C"
+    ],
+    "colorIdentity": [
+      "C"
+    ],
+    "producedMana": [],
+    "manaCost": "{5}{C}{C}",
+    "typeLine": "Creature"
+  },
+  "dismember": {
+    "name": "Dismember",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B"
+    ],
+    "colorIdentity": [
+      "B"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{B/P}{B/P}",
+    "typeLine": "Instant"
+  },
+  "dragon's rage channeler": {
+    "name": "Dragon's Rage Channeler",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "R"
+    ],
+    "colorIdentity": [
+      "R"
+    ],
+    "producedMana": [],
+    "manaCost": "{R}",
+    "typeLine": "Creature"
+  },
+  "drown in the loch": {
+    "name": "Drown in the Loch",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B",
+      "U"
+    ],
+    "colorIdentity": [
+      "B",
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{U}{B}",
+    "typeLine": "Instant"
+  },
+  "eldrazi temple": {
+    "name": "Eldrazi Temple",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "C"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "elegant parlor": {
+    "name": "Elegant Parlor",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "R",
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "emrakul, the promised end": {
+    "name": "Emrakul, the Promised End",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{13}",
+    "typeLine": "Creature"
+  },
+  "emry, lurker of the loch": {
+    "name": "Emry, Lurker of the Loch",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{2}{U}",
+    "typeLine": "Creature"
+  },
+  "engineered explosives": {
+    "name": "Engineered Explosives",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{X}",
+    "typeLine": "Artifact"
+  },
+  "ephemerate": {
+    "name": "Ephemerate",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "W"
+    ],
+    "colorIdentity": [
+      "W"
+    ],
+    "producedMana": [],
+    "manaCost": "{W}",
+    "typeLine": "Instant"
+  },
+  "expedition map": {
+    "name": "Expedition Map",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{1}",
+    "typeLine": "Artifact"
+  },
+  "expressive iteration": {
+    "name": "Expressive Iteration",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "R",
+      "U"
+    ],
+    "colorIdentity": [
+      "R",
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{U}{R}",
+    "typeLine": "Sorcery"
+  },
+  "faithful mending": {
+    "name": "Faithful Mending",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U",
+      "W"
+    ],
+    "colorIdentity": [
+      "U",
+      "W"
+    ],
+    "producedMana": [],
+    "manaCost": "{W}{U}",
+    "typeLine": "Instant"
+  },
+  "fatal push": {
+    "name": "Fatal Push",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B"
+    ],
+    "colorIdentity": [
+      "B"
+    ],
+    "producedMana": [],
+    "manaCost": "{B}",
+    "typeLine": "Instant"
+  },
+  "fiery islet": {
+    "name": "Fiery Islet",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "R",
+      "U"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "flooded strand": {
+    "name": "Flooded Strand",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "force of negation": {
+    "name": "Force of Negation",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{U}{U}",
+    "typeLine": "Instant"
+  },
+  "forest": {
+    "name": "Forest",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "G"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "galvanic discharge": {
+    "name": "Galvanic Discharge",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "R"
+    ],
+    "colorIdentity": [
+      "R"
+    ],
+    "producedMana": [],
+    "manaCost": "{R}",
+    "typeLine": "Instant"
+  },
+  "geier reach sanitarium": {
+    "name": "Geier Reach Sanitarium",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "C"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "gemstone caverns": {
+    "name": "Gemstone Caverns",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "C",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "glaring fleshraker": {
+    "name": "Glaring Fleshraker",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "C"
+    ],
+    "colorIdentity": [
+      "C"
+    ],
+    "producedMana": [
+      "C"
+    ],
+    "manaCost": "{2}{C}",
+    "typeLine": "Creature"
+  },
+  "godless shrine": {
+    "name": "Godless Shrine",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "goryo's vengeance": {
+    "name": "Goryo's Vengeance",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B"
+    ],
+    "colorIdentity": [
+      "B"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{B}",
+    "typeLine": "Instant"
+  },
+  "grinding station": {
+    "name": "Grinding Station",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{2}",
+    "typeLine": "Artifact"
+  },
+  "griselbrand": {
+    "name": "Griselbrand",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B"
+    ],
+    "colorIdentity": [
+      "B"
+    ],
+    "producedMana": [],
+    "manaCost": "{4}{B}{B}{B}{B}",
+    "typeLine": "Creature"
+  },
+  "hallowed fountain": {
+    "name": "Hallowed Fountain",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "U",
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "haywire mite": {
+    "name": "Haywire Mite",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{1}",
+    "typeLine": "Artifact — Creature"
+  },
+  "island": {
+    "name": "Island",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "U"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "isochron scepter": {
+    "name": "Isochron Scepter",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{2}",
+    "typeLine": "Artifact"
+  },
+  "kaito, bane of nightmares": {
+    "name": "Kaito, Bane of Nightmares",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B",
+      "U"
+    ],
+    "colorIdentity": [
+      "B",
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{2}{U}{B}",
+    "typeLine": "Planeswalker"
+  },
+  "kappa cannoneer": {
+    "name": "Kappa Cannoneer",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{5}{U}",
+    "typeLine": "Artifact — Creature"
+  },
+  "karn, the great creator": {
+    "name": "Karn, the Great Creator",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{4}",
+    "typeLine": "Planeswalker"
+  },
+  "kozilek's command": {
+    "name": "Kozilek's Command",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "C"
+    ],
+    "colorIdentity": [
+      "C"
+    ],
+    "producedMana": [
+      "C"
+    ],
+    "manaCost": "{X}{C}{C}",
+    "typeLine": "Kindred — Instant"
+  },
+  "krang, master mind": {
+    "name": "Krang, Master Mind",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{6}{U}{U}",
+    "typeLine": "Artifact — Creature"
+  },
+  "lava dart": {
+    "name": "Lava Dart",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "R"
+    ],
+    "colorIdentity": [
+      "R"
+    ],
+    "producedMana": [],
+    "manaCost": "{R}",
+    "typeLine": "Instant"
+  },
+  "lightning bolt": {
+    "name": "Lightning Bolt",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "R"
+    ],
+    "colorIdentity": [
+      "R"
+    ],
+    "producedMana": [],
+    "manaCost": "{R}",
+    "typeLine": "Instant"
+  },
+  "malevolent rumble": {
+    "name": "Malevolent Rumble",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [
+      "C"
+    ],
+    "manaCost": "{1}{G}",
+    "typeLine": "Sorcery"
+  },
+  "march of otherworldly light": {
+    "name": "March of Otherworldly Light",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "W"
+    ],
+    "colorIdentity": [
+      "W"
+    ],
+    "producedMana": [],
+    "manaCost": "{X}{W}",
+    "typeLine": "Instant"
+  },
+  "marsh flats": {
+    "name": "Marsh Flats",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "metallic rebuke": {
+    "name": "Metallic Rebuke",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{2}{U}",
+    "typeLine": "Instant"
+  },
+  "meticulous archive": {
+    "name": "Meticulous Archive",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "U",
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "mishra's bauble": {
+    "name": "Mishra's Bauble",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{0}",
+    "typeLine": "Artifact"
+  },
+  "monastery swiftspear": {
+    "name": "Monastery Swiftspear",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "R"
+    ],
+    "colorIdentity": [
+      "R"
+    ],
+    "producedMana": [],
+    "manaCost": "{R}",
+    "typeLine": "Creature"
+  },
+  "monumental henge": {
+    "name": "Monumental Henge",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "mountain": {
+    "name": "Mountain",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "R"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "mox amber": {
+    "name": "Mox Amber",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "manaCost": "{0}",
+    "typeLine": "Artifact"
+  },
+  "mox opal": {
+    "name": "Mox Opal",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "manaCost": "{0}",
+    "typeLine": "Artifact"
+  },
+  "murktide regent": {
+    "name": "Murktide Regent",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{5}{U}{U}",
+    "typeLine": "Creature"
+  },
+  "mutagenic growth": {
+    "name": "Mutagenic Growth",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [],
+    "manaCost": "{G/P}",
+    "typeLine": "Instant"
+  },
+  "mystic gate": {
+    "name": "Mystic Gate",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "C",
+      "U",
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "narset, parter of veils": {
+    "name": "Narset, Parter of Veils",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{U}{U}",
+    "typeLine": "Planeswalker"
+  },
+  "orcish bowmasters": {
+    "name": "Orcish Bowmasters",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B"
+    ],
+    "colorIdentity": [
+      "B"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{B}",
+    "typeLine": "Creature"
+  },
+  "orim's chant": {
+    "name": "Orim's Chant",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "W"
+    ],
+    "colorIdentity": [
+      "W"
+    ],
+    "producedMana": [],
+    "manaCost": "{W}",
+    "typeLine": "Instant"
+  },
+  "oswald fiddlebender": {
+    "name": "Oswald Fiddlebender",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "W"
+    ],
+    "colorIdentity": [
+      "W"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{W}",
+    "typeLine": "Creature"
+  },
+  "otawara, soaring city": {
+    "name": "Otawara, Soaring City",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "U"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "pinnacle emissary": {
+    "name": "Pinnacle Emissary",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "R",
+      "U"
+    ],
+    "colorIdentity": [
+      "R",
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{U}{R}",
+    "typeLine": "Artifact — Creature"
+  },
+  "pithing needle": {
+    "name": "Pithing Needle",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{1}",
+    "typeLine": "Artifact"
+  },
+  "plains": {
+    "name": "Plains",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "polluted delta": {
+    "name": "Polluted Delta",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "portable hole": {
+    "name": "Portable Hole",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "W"
+    ],
+    "colorIdentity": [
+      "W"
+    ],
+    "producedMana": [],
+    "manaCost": "{W}",
+    "typeLine": "Artifact"
+  },
+  "preordain": {
+    "name": "Preordain",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{U}",
+    "typeLine": "Sorcery"
+  },
+  "prismatic ending": {
+    "name": "Prismatic Ending",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "W"
+    ],
+    "colorIdentity": [
+      "W"
+    ],
+    "producedMana": [],
+    "manaCost": "{X}{W}",
+    "typeLine": "Sorcery"
+  },
+  "psychic frog": {
+    "name": "Psychic Frog",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B",
+      "U"
+    ],
+    "colorIdentity": [
+      "B",
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{U}{B}",
+    "typeLine": "Creature"
+  },
+  "quantum riddler": {
+    "name": "Quantum Riddler",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{3}{U}{U}",
+    "typeLine": "Creature"
+  },
+  "relic of progenitus": {
+    "name": "Relic of Progenitus",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{1}",
+    "typeLine": "Artifact"
+  },
+  "scalding tarn": {
+    "name": "Scalding Tarn",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "seachrome coast": {
+    "name": "Seachrome Coast",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "U",
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "sewer-veillance cam": {
+    "name": "Sewer-veillance Cam",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{U}",
+    "typeLine": "Artifact"
+  },
+  "shadowspear": {
+    "name": "Shadowspear",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{1}",
+    "typeLine": "Artifact"
+  },
+  "shadowy backstreet": {
+    "name": "Shadowy Backstreet",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "sheoldred's edict": {
+    "name": "Sheoldred's Edict",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B"
+    ],
+    "colorIdentity": [
+      "B"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{B}",
+    "typeLine": "Instant"
+  },
+  "shifting woodland": {
+    "name": "Shifting Woodland",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "G"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "shivan reef": {
+    "name": "Shivan Reef",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "C",
+      "R",
+      "U"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "sink into stupor": {
+    "name": "Sink into Stupor",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [
+      "U"
+    ],
+    "manaCost": "",
+    "typeLine": "Instant"
+  },
+  "sire of seven deaths": {
+    "name": "Sire of Seven Deaths",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{7}",
+    "typeLine": "Creature"
+  },
+  "skateboard": {
+    "name": "Skateboard",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{1}",
+    "typeLine": "Artifact"
+  },
+  "slickshot show-off": {
+    "name": "Slickshot Show-Off",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "R"
+    ],
+    "colorIdentity": [
+      "R"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{R}",
+    "typeLine": "Creature"
+  },
+  "solitude": {
+    "name": "Solitude",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "W"
+    ],
+    "colorIdentity": [
+      "W"
+    ],
+    "producedMana": [],
+    "manaCost": "{3}{W}{W}",
+    "typeLine": "Creature"
+  },
+  "soul-guide lantern": {
+    "name": "Soul-Guide Lantern",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{1}",
+    "typeLine": "Artifact"
+  },
+  "sowing mycospawn": {
+    "name": "Sowing Mycospawn",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [],
+    "manaCost": "{3}{G}",
+    "typeLine": "Creature"
+  },
+  "spell snare": {
+    "name": "Spell Snare",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{U}",
+    "typeLine": "Instant"
+  },
+  "spirebluff canal": {
+    "name": "Spirebluff Canal",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "R",
+      "U"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "springleaf drum": {
+    "name": "Springleaf Drum",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "manaCost": "{1}",
+    "typeLine": "Artifact"
+  },
+  "steam vents": {
+    "name": "Steam Vents",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "R",
+      "U"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "subtlety": {
+    "name": "Subtlety",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{2}{U}{U}",
+    "typeLine": "Creature"
+  },
+  "superior spider-man": {
+    "name": "Superior Spider-Man",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B",
+      "U"
+    ],
+    "colorIdentity": [
+      "B",
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{2}{U}{B}",
+    "typeLine": "Creature"
+  },
+  "supreme verdict": {
+    "name": "Supreme Verdict",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U",
+      "W"
+    ],
+    "colorIdentity": [
+      "U",
+      "W"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{W}{W}{U}",
+    "typeLine": "Sorcery"
+  },
+  "swamp": {
+    "name": "Swamp",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "talisman of impulse": {
+    "name": "Talisman of Impulse",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "C",
+      "G",
+      "R"
+    ],
+    "manaCost": "{2}",
+    "typeLine": "Artifact"
+  },
+  "talisman of resilience": {
+    "name": "Talisman of Resilience",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "C",
+      "G"
+    ],
+    "manaCost": "{2}",
+    "typeLine": "Artifact"
+  },
+  "tamiyo, inquisitive student": {
+    "name": "Tamiyo, Inquisitive Student",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [
+      "B",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Creature"
+  },
+  "tarrian's soulcleaver": {
+    "name": "Tarrian's Soulcleaver",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{1}",
+    "typeLine": "Artifact"
+  },
+  "teferi, time raveler": {
+    "name": "Teferi, Time Raveler",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U",
+      "W"
+    ],
+    "colorIdentity": [
+      "U",
+      "W"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{W}{U}",
+    "typeLine": "Planeswalker"
+  },
+  "thought-knot seer": {
+    "name": "Thought-Knot Seer",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "C"
+    ],
+    "colorIdentity": [
+      "C"
+    ],
+    "producedMana": [],
+    "manaCost": "{3}{C}",
+    "typeLine": "Creature"
+  },
+  "thoughtseize": {
+    "name": "Thoughtseize",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B"
+    ],
+    "colorIdentity": [
+      "B"
+    ],
+    "producedMana": [],
+    "manaCost": "{B}",
+    "typeLine": "Sorcery"
+  },
+  "thundering falls": {
+    "name": "Thundering Falls",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "R",
+      "U"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "tormod's crypt": {
+    "name": "Tormod's Crypt",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{0}",
+    "typeLine": "Artifact"
+  },
+  "traverse the ulvenwald": {
+    "name": "Traverse the Ulvenwald",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [],
+    "manaCost": "{G}",
+    "typeLine": "Sorcery"
+  },
+  "ugin, eye of the storms": {
+    "name": "Ugin, Eye of the Storms",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "C"
+    ],
+    "manaCost": "{7}",
+    "typeLine": "Planeswalker"
+  },
+  "ugin's labyrinth": {
+    "name": "Ugin's Labyrinth",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "C"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "ulamog, the ceaseless hunger": {
+    "name": "Ulamog, the Ceaseless Hunger",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{10}",
+    "typeLine": "Creature"
+  },
+  "undercity sewers": {
+    "name": "Undercity Sewers",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "U"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "urza's mine": {
+    "name": "Urza's Mine",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "C"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "urza's power plant": {
+    "name": "Urza's Power Plant",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "C"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "urza's saga": {
+    "name": "Urza's Saga",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "C"
+    ],
+    "manaCost": "",
+    "typeLine": "Enchantment — Land"
+  },
+  "urza's tower": {
+    "name": "Urza's Tower",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "C"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "vexing bauble": {
+    "name": "Vexing Bauble",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{1}",
+    "typeLine": "Artifact"
+  },
+  "violent urge": {
+    "name": "Violent Urge",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "R"
+    ],
+    "colorIdentity": [
+      "R"
+    ],
+    "producedMana": [],
+    "manaCost": "{R}",
+    "typeLine": "Instant"
+  },
+  "wastes": {
+    "name": "Wastes",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "C"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "watery grave": {
+    "name": "Watery Grave",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "U"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "weapons manufacturing": {
+    "name": "Weapons Manufacturing",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "R"
+    ],
+    "colorIdentity": [
+      "R"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{R}",
+    "typeLine": "Enchantment"
+  },
+  "welding jar": {
+    "name": "Welding Jar",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{0}",
+    "typeLine": "Artifact"
+  },
+  "wrath of the skies": {
+    "name": "Wrath of the Skies",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "W"
+    ],
+    "colorIdentity": [
+      "W"
+    ],
+    "producedMana": [],
+    "manaCost": "{X}{W}{W}",
+    "typeLine": "Sorcery"
+  },
+  "yavimaya, cradle of growth": {
+    "name": "Yavimaya, Cradle of Growth",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "G"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  }
+}

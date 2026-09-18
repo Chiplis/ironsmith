@@ -3,7 +3,11 @@
   "format": "modern",
   "name": "UR Cutter Prowess",
   "archetype": "UR Cutter Prowess",
-  "colors": [],
+  "colors": [
+    "G",
+    "R",
+    "U"
+  ],
   "mechanics": [],
   "cardNames": [
     "Arid Mesa",
@@ -145,5 +149,46 @@
   "tags": [
     "Top 8"
   ],
-  "hash": "c720c28dd2756a47"
+  "hash": "c720c28dd2756a47",
+  "manaProfile": {
+    "colors": [
+      "G",
+      "R",
+      "U"
+    ],
+    "pipCounts": {
+      "R": 30,
+      "U": 8,
+      "G": 4
+    },
+    "sourceCounts": {
+      "R": 9,
+      "U": 6
+    },
+    "landCount": 18,
+    "predominantColors": [
+      "R"
+    ],
+    "predominantLands": [
+      {
+        "name": "Arid Mesa",
+        "count": 3
+      },
+      {
+        "name": "Bloodstained Mire",
+        "count": 3
+      },
+      {
+        "name": "Mountain",
+        "count": 3
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact",
+      "resolvedCardCount": 18,
+      "totalCardCount": 18,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
 }

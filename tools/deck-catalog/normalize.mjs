@@ -20,6 +20,35 @@ function positivePlacement(value) {
   return Number.isInteger(placement) && placement > 0 ? placement : null;
 }
 
+function normalizeManaProfile(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const counts = (value) => Object.fromEntries(
+    Object.entries(value && typeof value === "object" ? value : {})
+      .filter(([color, count]) => /^[WUBRGC]$/.test(color) && Number(count) > 0)
+      .map(([color, count]) => [color, Number(count)]),
+  );
+  const coverage = raw.metadataCoverage && typeof raw.metadataCoverage === "object"
+    ? raw.metadataCoverage
+    : {};
+  return {
+    colors: [...new Set((Array.isArray(raw.colors) ? raw.colors : []).map((color) => text(color).toUpperCase()).filter((color) => /^[WUBRGC]$/.test(color)))].sort(),
+    pipCounts: counts(raw.pipCounts),
+    sourceCounts: counts(raw.sourceCounts),
+    landCount: Number.isInteger(Number(raw.landCount)) && Number(raw.landCount) >= 0 ? Number(raw.landCount) : 0,
+    predominantColors: [...new Set((Array.isArray(raw.predominantColors) ? raw.predominantColors : []).map((color) => text(color).toUpperCase()).filter((color) => /^[WUBRGC]$/.test(color)))].sort(),
+    predominantLands: (Array.isArray(raw.predominantLands) ? raw.predominantLands : [])
+      .map((land) => ({ name: text(land?.name), count: Number(land?.count) }))
+      .filter((land) => land.name && Number.isInteger(land.count) && land.count > 0),
+    metadataCoverage: {
+      source: text(coverage.source),
+      resolvedCardCount: Number(coverage.resolvedCardCount) || 0,
+      totalCardCount: Number(coverage.totalCardCount) || 0,
+      unresolvedCardNames: [...new Set((Array.isArray(coverage.unresolvedCardNames) ? coverage.unresolvedCardNames : []).map(text).filter(Boolean))].sort(),
+      complete: coverage.complete === true,
+    },
+  };
+}
+
 function canonicalDeck(raw) {
   const format = text(raw.format).toLocaleLowerCase("en-US");
   const source = text(raw.source).toLocaleLowerCase("en-US");
@@ -30,6 +59,7 @@ function canonicalDeck(raw) {
   const sideboard = normalizeCardList(raw.sideboard || raw.sideBoard);
   const commander = normalizeCardList(raw.commander);
   const tags = [...new Set((Array.isArray(raw.tags) ? raw.tags : []).map(text).filter(Boolean))].sort();
+  const manaProfile = normalizeManaProfile(raw.manaProfile);
   const identity = {
     format,
     source,
@@ -46,8 +76,9 @@ function canonicalDeck(raw) {
     format,
     name: text(raw.name || raw.archetype),
     archetype: text(raw.archetype),
-    colors: [...new Set((Array.isArray(raw.colors) ? raw.colors : []).map((color) => text(color).toUpperCase()).filter((color) => /^[WUBRGC]$/.test(color)))].sort(),
+    colors: [...new Set((Array.isArray(raw.colors) && raw.colors.length ? raw.colors : (manaProfile?.colors || [])).map((color) => text(color).toUpperCase()).filter((color) => /^[WUBRGC]$/.test(color)))].sort(),
     mechanics: [...new Set((Array.isArray(raw.mechanics) ? raw.mechanics : []).map(text).filter(Boolean))].sort(),
+    ...(manaProfile ? { manaProfile } : {}),
     cardNames: [...new Set([
       ...mainboard.map((card) => card.name),
       ...sideboard.map((card) => card.name),

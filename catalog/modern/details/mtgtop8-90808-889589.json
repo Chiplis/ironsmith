@@ -3,7 +3,12 @@
   "format": "modern",
   "name": "Scepter Chant",
   "archetype": "Scepter Chant",
-  "colors": [],
+  "colors": [
+    "C",
+    "R",
+    "U",
+    "W"
+  ],
   "mechanics": [],
   "cardNames": [
     "Arid Mesa",
@@ -188,5 +193,49 @@
   "tags": [
     "Top 8"
   ],
-  "hash": "5a999fed997a895c"
+  "hash": "5a999fed997a895c",
+  "manaProfile": {
+    "colors": [
+      "C",
+      "R",
+      "U",
+      "W"
+    ],
+    "pipCounts": {
+      "U": 28,
+      "R": 3,
+      "W": 23
+    },
+    "sourceCounts": {
+      "R": 4,
+      "W": 7,
+      "C": 1,
+      "U": 8
+    },
+    "landCount": 24,
+    "predominantColors": [
+      "U"
+    ],
+    "predominantLands": [
+      {
+        "name": "Arid Mesa",
+        "count": 4
+      },
+      {
+        "name": "Flooded Strand",
+        "count": 4
+      },
+      {
+        "name": "Hallowed Fountain",
+        "count": 2
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact",
+      "resolvedCardCount": 27,
+      "totalCardCount": 27,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
 }

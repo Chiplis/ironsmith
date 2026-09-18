@@ -3,7 +3,11 @@
   "format": "modern",
   "name": "UrzaTron",
   "archetype": "UrzaTron",
-  "colors": [],
+  "colors": [
+    "B",
+    "C",
+    "G"
+  ],
   "mechanics": [],
   "cardNames": [
     "All Is Dust",
@@ -195,5 +199,46 @@
   "tags": [
     "Top 8"
   ],
-  "hash": "83eecd7e3035e02b"
+  "hash": "83eecd7e3035e02b",
+  "manaProfile": {
+    "colors": [
+      "B",
+      "C",
+      "G"
+    ],
+    "pipCounts": {
+      "C": 17,
+      "B": 4,
+      "G": 4
+    },
+    "sourceCounts": {
+      "C": 21,
+      "G": 1
+    },
+    "landCount": 22,
+    "predominantColors": [
+      "C"
+    ],
+    "predominantLands": [
+      {
+        "name": "Eldrazi Temple",
+        "count": 4
+      },
+      {
+        "name": "Ugin's Labyrinth",
+        "count": 4
+      },
+      {
+        "name": "Urza's Mine",
+        "count": 4
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact",
+      "resolvedCardCount": 22,
+      "totalCardCount": 22,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
 }

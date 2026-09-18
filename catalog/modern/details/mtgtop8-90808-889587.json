@@ -3,7 +3,10 @@
   "format": "modern",
   "name": "Dimir Control",
   "archetype": "Dimir Control",
-  "colors": [],
+  "colors": [
+    "B",
+    "U"
+  ],
   "mechanics": [],
   "cardNames": [
     "Cling to Dust",
@@ -195,5 +198,44 @@
   "tags": [
     "Top 8"
   ],
-  "hash": "20febbec6c3b59a8"
+  "hash": "20febbec6c3b59a8",
+  "manaProfile": {
+    "colors": [
+      "B",
+      "U"
+    ],
+    "pipCounts": {
+      "B": 18,
+      "U": 38
+    },
+    "sourceCounts": {
+      "B": 8,
+      "U": 10
+    },
+    "landCount": 20,
+    "predominantColors": [
+      "U"
+    ],
+    "predominantLands": [
+      {
+        "name": "Polluted Delta",
+        "count": 4
+      },
+      {
+        "name": "Flooded Strand",
+        "count": 3
+      },
+      {
+        "name": "Watery Grave",
+        "count": 3
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact",
+      "resolvedCardCount": 27,
+      "totalCardCount": 27,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
 }

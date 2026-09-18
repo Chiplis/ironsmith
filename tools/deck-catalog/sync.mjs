@@ -10,8 +10,10 @@ import {
 } from "./sources/mtgtop8.mjs";
 import { normalizeCompetitiveDecks } from "./normalize.mjs";
 import { buildSearchIndex } from "./index.mjs";
+import { enrichDeckWithManaProfile, resolveCardMetadata } from "./card-metadata.mjs";
 
 const DEFAULT_OUTPUT_DIR = fileURLToPath(new URL("../../catalog", import.meta.url));
+const DEFAULT_CARD_ROOT = fileURLToPath(new URL("../../web/ui/public/cards", import.meta.url));
 
 function argument(name, fallback = "") {
   const index = process.argv.indexOf(`--${name}`);
@@ -42,6 +44,15 @@ async function readState(statePath) {
   }
 }
 
+async function readJsonOr(path, fallback) {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return fallback;
+    throw error;
+  }
+}
+
 function catalogEntry(deck) {
   return {
     id: deck.id,
@@ -50,6 +61,7 @@ function catalogEntry(deck) {
     archetype: deck.archetype,
     colors: deck.colors,
     mechanics: deck.mechanics,
+    ...(deck.manaProfile ? { manaProfile: deck.manaProfile } : {}),
     cardNames: deck.cardNames,
     event: deck.event,
     date: deck.date,
@@ -103,17 +115,26 @@ async function sync() {
     if (rawDecks.length >= deckLimit) break;
   }
 
-  const decks = normalizeCompetitiveDecks(rawDecks);
+  const normalizedDecks = normalizeCompetitiveDecks(rawDecks);
   if (hasFlag("dry-run")) {
-    console.log(JSON.stringify({ events: events.length, decks: decks.length, ids: decks.map((deck) => deck.id) }, null, 2));
+    console.log(JSON.stringify({ events: events.length, decks: normalizedDecks.length, ids: normalizedDecks.map((deck) => deck.id) }, null, 2));
     return;
   }
 
   await mkdir(detailsDir, { recursive: true });
   await mkdir(join(outputDir, "state"), { recursive: true });
+  const metadataPath = join(outputDir, "state", "scryfall-cards.json");
+  const metadataCache = await readJsonOr(metadataPath, {});
+  const cardNames = [...new Set(normalizedDecks.flatMap((deck) => deck.mainboard.map((card) => card.name)))];
+  const cardMetadata = await resolveCardMetadata(cardNames, { cache: metadataCache, localRoot: DEFAULT_CARD_ROOT });
+  const decks = normalizedDecks.map((deck) => enrichDeckWithManaProfile(deck, cardMetadata));
+  const metadataSource = [...new Set(decks
+    .map((deck) => deck.manaProfile?.metadataCoverage?.source)
+    .filter(Boolean))].sort().join("+") || "none";
   for (const deck of decks) {
     await writeJsonAtomic(join(detailsDir, `${deck.id}.json`), deck);
   }
+  await writeJsonAtomic(metadataPath, cardMetadata);
 
   const indexPath = join(formatDir, "index.json");
   const searchIndexPath = join(formatDir, "search-index.json");
@@ -143,6 +164,8 @@ async function sync() {
     lastEventId,
     lastPage: page,
     updatedAt: generatedAt,
+    metadataSource,
+    metadataUpdatedAt: generatedAt,
   });
   console.log(JSON.stringify({ events: events.length, decks: decks.length, outputDir }, null, 2));
 }

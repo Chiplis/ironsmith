@@ -3,7 +3,11 @@
   "format": "modern",
   "name": "Pinnacle Affinity",
   "archetype": "Pinnacle Affinity",
-  "colors": [],
+  "colors": [
+    "C",
+    "R",
+    "U"
+  ],
   "mechanics": [],
   "cardNames": [
     "Arcbound Ravager",
@@ -179,5 +183,46 @@
   "tags": [
     "Top 8"
   ],
-  "hash": "1b0292119f4a1287"
+  "hash": "1b0292119f4a1287",
+  "manaProfile": {
+    "colors": [
+      "C",
+      "R",
+      "U"
+    ],
+    "pipCounts": {
+      "U": 15,
+      "R": 8
+    },
+    "sourceCounts": {
+      "R": 9,
+      "U": 11,
+      "C": 4
+    },
+    "landCount": 16,
+    "predominantColors": [
+      "U"
+    ],
+    "predominantLands": [
+      {
+        "name": "Fiery Islet",
+        "count": 4
+      },
+      {
+        "name": "Spirebluff Canal",
+        "count": 4
+      },
+      {
+        "name": "Urza's Saga",
+        "count": 4
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact",
+      "resolvedCardCount": 23,
+      "totalCardCount": 23,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
 }

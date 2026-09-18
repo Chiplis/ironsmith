@@ -3,7 +3,11 @@
   "format": "modern",
   "name": "Broodscale Bloodchief",
   "archetype": "Broodscale Bloodchief",
-  "colors": [],
+  "colors": [
+    "B",
+    "C",
+    "G"
+  ],
   "mechanics": [],
   "cardNames": [
     "Ancient Stirrings",
@@ -203,5 +207,46 @@
   "tags": [
     "Top 8"
   ],
-  "hash": "e3abdaa5666c7120"
+  "hash": "e3abdaa5666c7120",
+  "manaProfile": {
+    "colors": [
+      "B",
+      "C",
+      "G"
+    ],
+    "pipCounts": {
+      "G": 17,
+      "C": 15,
+      "B": 4
+    },
+    "sourceCounts": {
+      "G": 9,
+      "C": 11
+    },
+    "landCount": 22,
+    "predominantColors": [
+      "C"
+    ],
+    "predominantLands": [
+      {
+        "name": "Forest",
+        "count": 5
+      },
+      {
+        "name": "Eldrazi Temple",
+        "count": 4
+      },
+      {
+        "name": "Urza's Saga",
+        "count": 4
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact",
+      "resolvedCardCount": 27,
+      "totalCardCount": 27,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
 }
