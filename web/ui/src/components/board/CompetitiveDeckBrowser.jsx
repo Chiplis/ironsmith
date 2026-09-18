@@ -203,19 +203,23 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
       {loading ? <p className="text-[12px] text-[#b8aa8e]">Cargando índice…</p> : null}
       {error ? <p className="text-[12px] text-red-300">{error}</p> : null}
       {!loading && !error && carouselEntries.length === 0 ? <p className="text-[12px] text-[#b8aa8e]">No hay resultados para esta búsqueda.</p> : null}
-      <div className="grid items-stretch gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {carouselEntries.map((entry) => <CatalogDeckRow key={entry.id} entry={entry} isBusy={busyId === entry.id} isCopying={copyingId === entry.id} isCopied={copiedId === entry.id} onSelect={handleSelect} onCopy={handleCopy} />)}
-      </div>
-      {filteredResults.length > CAROUSEL_SIZE ? (
-        <div className="flex items-center justify-between gap-2 pt-1">
-          <Button type="button" variant="ghost" size="sm" className="h-8 w-8 rounded-full p-0 text-[#d8bf7a] hover:bg-white/10" aria-label="Decks anteriores" title="Decks anteriores" disabled={visiblePage === 0} onClick={() => setCarouselPage((current) => Math.max(0, current - 1))}>
+      <div className="relative px-0 sm:px-9">
+        {filteredResults.length > CAROUSEL_SIZE ? (
+          <Button type="button" variant="ghost" size="sm" className="absolute left-0 top-1/2 z-10 h-9 w-9 -translate-y-1/2 rounded-full bg-[#17130e]/85 p-0 text-[#d8bf7a] shadow-lg hover:bg-[#342817]" aria-label="Decks anteriores" title="Decks anteriores" onClick={() => setCarouselPage((current) => (current - 1 + pageCount) % pageCount)}>
             <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
           </Button>
-          <span className="text-[10px] uppercase tracking-wide text-[#8b806b]">{visiblePage + 1} / {pageCount} · {filteredResults.length} decks</span>
-          <Button type="button" variant="ghost" size="sm" className="h-8 w-8 rounded-full p-0 text-[#d8bf7a] hover:bg-white/10" aria-label="Decks siguientes" title="Decks siguientes" disabled={visiblePage >= pageCount - 1} onClick={() => setCarouselPage((current) => Math.min(pageCount - 1, current + 1))}>
+        ) : null}
+        <div className="grid items-stretch gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {carouselEntries.map((entry) => <CatalogDeckRow key={entry.id} entry={entry} isBusy={busyId === entry.id} isCopying={copyingId === entry.id} isCopied={copiedId === entry.id} onSelect={handleSelect} onCopy={handleCopy} />)}
+        </div>
+        {filteredResults.length > CAROUSEL_SIZE ? (
+          <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-1/2 z-10 h-9 w-9 -translate-y-1/2 rounded-full bg-[#17130e]/85 p-0 text-[#d8bf7a] shadow-lg hover:bg-[#342817]" aria-label="Decks siguientes" title="Decks siguientes" onClick={() => setCarouselPage((current) => (current + 1) % pageCount)}>
             <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true"><path d="m7.5 4.5 5.5 5.5-5.5 5.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
           </Button>
-        </div>
+        ) : null}
+      </div>
+      {filteredResults.length > CAROUSEL_SIZE ? (
+        <div className="pt-1 text-center text-[10px] uppercase tracking-wide text-[#8b806b]">{visiblePage + 1} / {pageCount} · {filteredResults.length} decks · carrusel circular</div>
       ) : null}
     </section>
   );
