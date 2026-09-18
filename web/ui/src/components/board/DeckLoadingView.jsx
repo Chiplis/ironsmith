@@ -9,7 +9,9 @@ import {
   parseDeckList,
   parseDeckPrintPreferences,
   parseSideboardList,
+  removeSavedDeckPreset,
   saveSavedDeckPreset,
+  SAVED_DECK_PRESETS_LIMIT,
 } from "@/lib/decklists";
 import { setPreferredCardPrints } from "@/lib/scryfall";
 import CompetitiveDeckBrowser from "./CompetitiveDeckBrowser";
@@ -109,6 +111,8 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
             ? `Updated saved deck "${saveResult.entry.name}"`
             : `Saved deck "${saveResult.entry.name}"`
         );
+      } else if (saveResult.reason === "limit") {
+        setStatus(`Session limit reached (${SAVED_DECK_PRESETS_LIMIT} decks). Delete one saved deck to add another.`);
       }
     }
 
@@ -124,6 +128,15 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
     handleTextChange(catalogTargetIndex, deckText);
     setPresetName("");
   }, [catalogTargetIndex, handleTextChange]);
+
+  const handleDeleteSavedPreset = useCallback(() => {
+    if (!selectedPreset) return;
+    if (!window.confirm(ui('Delete saved deck "{0}"?', { 0: selectedPreset.name }))) return;
+    setSavedPresets(removeSavedDeckPreset(selectedPreset.name));
+    setSelectedPresetName("");
+    setPresetName("");
+    setStatus(`Deleted saved deck "${selectedPreset.name}"`);
+  }, [selectedPreset, setStatus, ui]);
 
   return (
     <main
@@ -148,14 +161,24 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
                   </option>
                 ))}
               </select>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-9 shrink-0 border border-[#9a7e52]/55 px-3 text-[12px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
-                disabled={!selectedPreset}
-                onClick={handleApplySavedPreset}
-              >{ui("Use")}</Button>
+              <div className="flex shrink-0 gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 w-[76px] max-w-[76px] truncate border border-[#9a7e52]/55 px-2 text-[12px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
+                  disabled={!selectedPreset}
+                  onClick={handleApplySavedPreset}
+                >{ui("Use")}</Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 w-[76px] max-w-[76px] truncate border border-white/10 px-2 text-[11px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
+                  disabled={!selectedPreset}
+                  onClick={handleDeleteSavedPreset}
+                >{ui("Delete")}</Button>
+              </div>
             </div>
           </label>
           <label className={labelClass}>{ui("Save As")}<input
@@ -163,7 +186,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
               placeholder={ui("Friday gauntlet")}
               value={presetName}
               onChange={(event) => setPresetName(event.target.value)}
-            />
+            /><span className="text-[10px] font-normal normal-case tracking-normal text-[#8b806b]">{savedPresets.length}/{SAVED_DECK_PRESETS_LIMIT} en esta sesión</span>
           </label>
         </div>
       </div>

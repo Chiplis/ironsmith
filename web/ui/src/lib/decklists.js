@@ -5,7 +5,8 @@ export const MATCH_FORMAT_PLANECHASE = "planechase";
 export const LOBBY_DECK_SIZE = 60;
 export const COMMANDER_DECK_SIZE = 99;
 export const PARTNER_DECK_SIZE = 98;
-const SAVED_DECK_PRESETS_STORAGE_KEY = "ironsmith.savedDeckPresets";
+const SAVED_DECK_PRESETS_STORAGE_KEY = "ironsmith.savedDeckPresets.v2";
+const SAVED_DECK_PRESETS_LIMIT = 8;
 const DEFAULT_LOBBY_DECK_STORAGE_KEY = "ironsmith.defaultLobbyDeck.v1";
 
 const MAIN_DECK_HEADER = /^Deck$/i;
@@ -69,11 +70,21 @@ function canUseLocalStorage() {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
 
+function canUseSessionStorage() {
+  return typeof window !== "undefined" && typeof window.sessionStorage !== "undefined";
+}
+
 function readSavedDeckPresets() {
-  if (!canUseLocalStorage()) return [];
+  if (!canUseSessionStorage()) return [];
 
   try {
-    const raw = window.localStorage.getItem(SAVED_DECK_PRESETS_STORAGE_KEY);
+    let raw = window.sessionStorage.getItem(SAVED_DECK_PRESETS_STORAGE_KEY);
+    // Migrate the previous persistent list once, without deleting it. The new
+    // session-scoped store is the only one written from this point on.
+    if (!raw && canUseLocalStorage()) {
+      raw = window.localStorage.getItem("ironsmith.savedDeckPresets");
+      if (raw) window.sessionStorage.setItem(SAVED_DECK_PRESETS_STORAGE_KEY, raw);
+    }
     if (!raw) return [];
 
     const parsed = JSON.parse(raw);
@@ -101,10 +112,10 @@ function readSavedDeckPresets() {
 }
 
 function writeSavedDeckPresets(entries) {
-  if (!canUseLocalStorage()) return;
+  if (!canUseSessionStorage()) return;
 
   try {
-    window.localStorage.setItem(
+    window.sessionStorage.setItem(
       SAVED_DECK_PRESETS_STORAGE_KEY,
       JSON.stringify(entries)
     );
@@ -331,6 +342,17 @@ export function saveSavedDeckPreset(name, texts) {
   );
   const replaced = existingIndex >= 0;
 
+  if (!replaced && entries.length >= SAVED_DECK_PRESETS_LIMIT) {
+    return {
+      saved: false,
+      replaced: false,
+      reason: "limit",
+      limit: SAVED_DECK_PRESETS_LIMIT,
+      entry: null,
+      entries,
+    };
+  }
+
   if (replaced) {
     entries.splice(existingIndex, 1);
   }
@@ -344,6 +366,20 @@ export function saveSavedDeckPreset(name, texts) {
     entries,
   };
 }
+
+export function removeSavedDeckPreset(name) {
+  const normalizedName = normalizeDeckPresetName(name);
+  if (!normalizedName) return readSavedDeckPresets();
+
+  const expectedKey = normalizedName.toLowerCase();
+  const entries = readSavedDeckPresets().filter(
+    (entry) => entry.name.toLowerCase() !== expectedKey,
+  );
+  writeSavedDeckPresets(entries);
+  return entries;
+}
+
+export { SAVED_DECK_PRESETS_LIMIT };
 
 export function normalizeMatchFormat(raw) {
   if (typeof raw === 'string' && Object.hasOwn(PUBLIC_FORMATS, raw)) return raw;

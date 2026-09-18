@@ -2,6 +2,7 @@ import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useSta
 import { Button } from "@/components/ui/button";
 import { deckCatalogEntryToMtgoText, importDeckCatalogEntry } from "@/lib/deck-catalog-import";
 import { loadCatalogDeckDetail, loadCatalogIndex, loadLocalCardArt, searchCatalogEntries } from "@/lib/catalog-client";
+import { ManaSymbol } from "@/lib/mana-symbols";
 
 const fieldClass = "w-full border border-[rgba(154,126,82,0.46)] bg-[#0b0d0e] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none";
 const labelClass = "grid gap-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]";
@@ -12,10 +13,12 @@ const collectionOptions = [
   { id: "major", label: "Eventos grandes" },
   { id: "top8", label: "Top 8" },
 ];
+const manaOptions = ["W", "U", "B", "R", "G", "C"];
 
 function isMajorEntry(entry) {
   const event = String(entry?.event || "").toLocaleLowerCase("en-US");
-  return /(pro tour|grand prix|regional|championship|scg|open)/.test(event);
+  const tags = (entry?.tags || []).join(" ").toLocaleLowerCase("en-US");
+  return /(pro tour|grand prix|regional|championship|scg|open|showcase|spotlight|qualifier)/.test(`${event} ${tags}`);
 }
 
 function isTop8Entry(entry) {
@@ -41,8 +44,14 @@ function matchesCollectionFilters(entry, activeCollections, recentIds) {
   });
 }
 
+function matchesManaFilters(entry, activeMana) {
+  const colors = Array.isArray(entry?.colors) ? entry.colors : [];
+  return activeMana.every((color) => colors.includes(color));
+}
+
 const CatalogDeckRow = memo(function CatalogDeckRow({ entry, isBusy, isCopying, isCopied, onSelect, onCopy }) {
   const [artUrl, setArtUrl] = useState("");
+  const colors = Array.isArray(entry.colors) ? entry.colors.filter((color) => /^[WUBRGC]$/.test(color)) : [];
 
   useEffect(() => {
     let active = true;
@@ -55,23 +64,27 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, isBusy, isCopying, 
   }, [entry]);
 
   return (
-    <article className="flex min-w-0 gap-3 rounded-sm bg-black/15 p-3 shadow-[inset_0_-1px_rgba(255,255,255,0.08)]">
+    <article className="flex min-w-0 gap-3 rounded-sm bg-black/15 p-3">
       <div className="h-[104px] w-[74px] shrink-0 overflow-hidden rounded-sm bg-[#17130e]" aria-hidden="true">
         {artUrl ? <img className="h-full w-full object-cover" src={artUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
       </div>
       <div className="min-w-0">
         <div className="truncate text-[13px] font-bold text-[#e7d9bc]">{entry.name || entry.archetype || "Deck sin nombre"}</div>
         <div className="truncate text-[11px] text-[#b8aa8e]">{entry.event || "Evento desconocido"} · {entry.date || "sin fecha"}{entry.placement ? ` · #${entry.placement}` : ""} · {entry.mainboardCount || "?"} cartas{entry.sideboardCount ? ` + ${entry.sideboardCount} SB` : ""}</div>
-        <div className="truncate text-[10px] text-[#8b806b]">
-          {(entry.colors || []).join(" ")} {(entry.mechanics || []).join(" · ")}
-          {(entry.cardNames || []).slice(0, 4).length ? ` · ${(entry.cardNames || []).slice(0, 4).join(", ")}` : ""}
+        <div className="flex min-w-0 items-center gap-1.5 truncate text-[10px] text-[#8b806b]">
+          {colors.length ? <span className="inline-flex shrink-0 items-center gap-0.5" aria-label={`Colores: ${colors.join(", ")}`}>
+            {colors.map((color) => <ManaSymbol key={color} sym={color} size={13} />)}
+          </span> : null}
+          <span className="shrink-0 uppercase">{entry.format || "modern"}</span>
+          {(entry.mechanics || []).length ? <span className="truncate">· {(entry.mechanics || []).join(" · ")}</span> : null}
+          {(entry.cardNames || []).slice(0, 3).length ? <span className="truncate">· {(entry.cardNames || []).slice(0, 3).join(", ")}</span> : null}
         </div>
       </div>
       <div className="ml-auto flex shrink-0 flex-col justify-center gap-1">
-        <Button type="button" variant="ghost" size="sm" className="h-8 border border-[#9a7e52]/55 px-2 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a]" disabled={isBusy || isCopying} onClick={() => onSelect(entry)}>
+        <Button type="button" variant="ghost" size="sm" className="h-8 w-[88px] max-w-[88px] truncate border border-[#9a7e52]/55 px-2 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a]" disabled={isBusy || isCopying} onClick={() => onSelect(entry)}>
           {isBusy ? "Cargando…" : "Usar"}
         </Button>
-        <Button type="button" variant="ghost" size="sm" className="h-7 border border-white/15 px-2 text-[10px] font-semibold text-[#b8aa8e]" disabled={isBusy || isCopying} onClick={() => onCopy(entry)}>
+        <Button type="button" variant="ghost" size="sm" className="h-7 w-[88px] max-w-[88px] truncate border border-white/15 px-2 text-[10px] font-semibold text-[#b8aa8e]" disabled={isBusy || isCopying} onClick={() => onCopy(entry)}>
           {isCopying ? "Copiando…" : isCopied ? "Copiado" : "Copiar MTGO"}
         </Button>
       </div>
@@ -88,6 +101,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
   const [copiedId, setCopiedId] = useState("");
   const [error, setError] = useState("");
   const [activeCollections, setActiveCollections] = useState([]);
+  const [activeMana, setActiveMana] = useState([]);
   const [sortMode, setSortMode] = useState("recent");
   const [carouselPage, setCarouselPage] = useState(0);
   const busyRef = useRef("");
@@ -119,16 +133,23 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
   const recentIds = useMemo(() => buildRecentIds(catalog?.decks || []), [catalog]);
 
   const filteredResults = useMemo(() => {
-    const filtered = searchResults.filter((entry) => matchesCollectionFilters(entry, activeCollections, recentIds));
-    return [...filtered].sort((left, right) => {
+    const filtered = searchResults
+      .filter((entry) => matchesCollectionFilters(entry, activeCollections, recentIds))
+      .filter((entry) => matchesManaFilters(entry, activeMana))
+      .map((entry, sourceIndex) => ({ entry, sourceIndex }));
+    return filtered.sort((leftRecord, rightRecord) => {
+      const left = leftRecord.entry;
+      const right = rightRecord.entry;
       if (sortMode === "placement") {
         return (Number(left.placement) || 9999) - (Number(right.placement) || 9999)
           || String(right.date || "").localeCompare(String(left.date || ""));
       }
       return String(right.date || "").localeCompare(String(left.date || ""))
-        || (Number(left.placement) || 9999) - (Number(right.placement) || 9999);
-    });
-  }, [activeCollections, recentIds, searchResults, sortMode]);
+        || (left.date || right.date
+          ? (Number(left.placement) || 9999) - (Number(right.placement) || 9999)
+          : leftRecord.sourceIndex - rightRecord.sourceIndex);
+    }).map(({ entry }) => entry);
+  }, [activeCollections, activeMana, recentIds, searchResults, sortMode]);
 
   const pageCount = Math.max(1, Math.ceil(filteredResults.length / CAROUSEL_SIZE));
   const visiblePage = Math.min(carouselPage, pageCount - 1);
@@ -145,6 +166,11 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
     return counts;
   }, [recentIds, searchResults]);
 
+  const availableMana = useMemo(
+    () => manaOptions.filter((color) => searchResults.some((entry) => (entry.colors || []).includes(color))),
+    [searchResults],
+  );
+
   const toggleCollection = useCallback((collection) => {
     setActiveCollections((current) => current.includes(collection)
       ? current.filter((active) => active !== collection)
@@ -154,6 +180,14 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
 
   const clearCollections = useCallback(() => {
     setActiveCollections([]);
+    setActiveMana([]);
+    setCarouselPage(0);
+  }, []);
+
+  const toggleMana = useCallback((color) => {
+    setActiveMana((current) => current.includes(color)
+      ? current.filter((active) => active !== color)
+      : [...current, color]);
     setCarouselPage(0);
   }, []);
 
@@ -203,10 +237,10 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
   }, []);
 
   return (
-    <section className="grid gap-2 border border-[rgba(154,126,82,0.42)] bg-[rgba(8,9,9,0.7)] p-3" aria-label="Competitive deck catalog">
+    <section className="grid gap-2 border-b border-[rgba(154,126,82,0.32)] bg-[rgba(8,9,9,0.46)] pb-3" aria-label="Decks">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 className="text-[13px] font-bold uppercase tracking-[0.16em] text-[#f2d9a3]">Catálogo competitivo</h2>
+          <h2 className="text-[13px] font-bold uppercase tracking-[0.16em] text-[#f2d9a3]">Decks</h2>
           <p className="text-[11px] text-[#b8aa8e]">Buscá por arquetipo, carta, evento o color. El detalle se carga sólo al elegir.</p>
         </div>
         <label className={labelClass}>Jugador destino<select className={fieldClass} value={targetIndex} onChange={(event) => onTargetChange(Number(event.target.value))}>
@@ -215,7 +249,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
       </div>
       <input className={fieldClass} value={query} onChange={(event) => { setQuery(event.target.value); setCarouselPage(0); }} placeholder="Broodscale Bloodchief, Dimir Control, Counterspell..." aria-label="Buscar en catálogo" />
       <div className="flex flex-wrap items-center gap-1.5" aria-label="Filtros del catálogo">
-        <Button type="button" variant="ghost" size="sm" className={`h-7 rounded-full px-2 text-[10px] font-bold uppercase tracking-wide ${activeCollections.length === 0 ? "bg-[#342817] text-[#f2d9a3]" : "text-[#b8aa8e] hover:bg-white/5"}`} aria-pressed={activeCollections.length === 0} onClick={clearCollections}>
+        <Button type="button" variant="ghost" size="sm" className={`h-7 rounded-full px-2 text-[10px] font-bold uppercase tracking-wide ${activeCollections.length === 0 && activeMana.length === 0 ? "bg-[#342817] text-[#f2d9a3]" : "text-[#b8aa8e] hover:bg-white/5"}`} aria-pressed={activeCollections.length === 0 && activeMana.length === 0} onClick={clearCollections}>
           {collectionOptions[0].label} ({collectionCounts.all})
         </Button>
         {collectionOptions.slice(1).map((option) => {
@@ -226,7 +260,11 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
             </Button>
           );
         })}
-        {activeCollections.length ? <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[10px] font-semibold text-[#8b806b] hover:text-[#e7d9bc]" onClick={clearCollections}>Limpiar</Button> : null}
+        {availableMana.map((color) => {
+          const isActive = activeMana.includes(color);
+          return <Button key={color} type="button" variant="ghost" size="sm" className={`h-7 w-8 max-w-8 rounded-full px-1 text-[10px] font-bold ${isActive ? "bg-[#342817] ring-1 ring-[#d8bf7a]/55" : "text-[#b8aa8e] hover:bg-white/5"}`} aria-label={`Filtrar por mana ${color}`} aria-pressed={isActive} onClick={() => toggleMana(color)}><ManaSymbol sym={color} size={15} /></Button>;
+        })}
+        {activeCollections.length || activeMana.length ? <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[10px] font-semibold text-[#8b806b] hover:text-[#e7d9bc]" onClick={clearCollections}>Limpiar</Button> : null}
         <label className="ml-auto flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e]">Ordenar
           <select className="bg-transparent px-1 py-1 text-[10px] text-[#e7d9bc]" value={sortMode} onChange={(event) => { setSortMode(event.target.value); setCarouselPage(0); }}>
             <option value="recent">Más recientes</option>
