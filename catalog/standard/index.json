@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "format": "standard",
-  "generatedAt": "2026-09-18T19:42:01.243Z",
+  "generatedAt": "2026-09-18T19:46:46.507Z",
   "decks": [
     {
       "id": "mtgtop8-90952-890717",
@@ -687,119 +687,6 @@
       ],
       "hash": "8c71bdd4f482a889",
       "detail": "details/mtgtop8-90952-890719.json"
-    },
-    {
-      "id": "mtgtop8-90952-890713",
-      "format": "standard",
-      "name": "Mono Green Aggro",
-      "archetype": "Mono Green Aggro",
-      "colors": [
-        "C",
-        "G"
-      ],
-      "mechanics": [],
-      "collections": [
-        "last-20-events"
-      ],
-      "manaProfile": {
-        "colors": [
-          "C",
-          "G"
-        ],
-        "pipCounts": {
-          "G": 44
-        },
-        "sourceCounts": {
-          "G": 17,
-          "C": 1
-        },
-        "landCount": 26,
-        "predominantColors": [
-          "G"
-        ],
-        "predominantLands": [
-          {
-            "name": "Forest",
-            "count": 15
-          },
-          {
-            "name": "Fabled Passage",
-            "count": 4
-          },
-          {
-            "name": "Escape Tunnel",
-            "count": 3
-          }
-        ],
-        "metadataCoverage": {
-          "source": "local-card-artifact",
-          "resolvedCardCount": 18,
-          "totalCardCount": 18,
-          "unresolvedCardNames": [],
-          "complete": true
-        }
-      },
-      "cardNames": [
-        "Ba Sing Se",
-        "Earthbender Ascension",
-        "Elven Passage",
-        "Escape Tunnel",
-        "Fabled Passage",
-        "Forest",
-        "Glimpse the Core",
-        "Icetill Explorer",
-        "Keen-Eyed Curator",
-        "Llanowar Elves",
-        "Meltstrider's Resolve",
-        "Mightform Harmonizer",
-        "Mossborn Hydra",
-        "Origin of Metalbending",
-        "Promising Vein",
-        "Sapling Nursery",
-        "Sazh's Chocobo",
-        "Snakeskin Veil",
-        "Soul-Guide Lantern",
-        "Surrak, Elusive Hunter",
-        "Torpor Orb",
-        "Warg Tactics"
-      ],
-      "event": "MTGO Challenge 16",
-      "date": "2026-09-17",
-      "placement": 5,
-      "mainboardCount": 60,
-      "sideboardCount": 15,
-      "commanderCount": 0,
-      "source": "mtgtop8",
-      "sourceUrl": "https://mtgtop8.com/event?e=90952&d=890713&f=ST",
-      "tags": [
-        "Top 8"
-      ],
-      "cards": [
-        "Ba Sing Se",
-        "Earthbender Ascension",
-        "Elven Passage",
-        "Escape Tunnel",
-        "Fabled Passage",
-        "Forest",
-        "Glimpse the Core",
-        "Icetill Explorer",
-        "Keen-Eyed Curator",
-        "Llanowar Elves",
-        "Meltstrider's Resolve",
-        "Mightform Harmonizer",
-        "Mossborn Hydra",
-        "Origin of Metalbending",
-        "Promising Vein",
-        "Sapling Nursery",
-        "Sazh's Chocobo",
-        "Snakeskin Veil",
-        "Soul-Guide Lantern",
-        "Surrak, Elusive Hunter",
-        "Torpor Orb",
-        "Warg Tactics"
-      ],
-      "hash": "46144be54c13318c",
-      "detail": "details/mtgtop8-90952-890713.json"
     },
     {
       "id": "mtgtop8-90842-889872",
@@ -1563,6 +1450,984 @@
       ],
       "hash": "c10ba80ce2c38334",
       "detail": "details/mtgtop8-90842-889877.json"
+    },
+    {
+      "id": "mtgtop8-90952-890713",
+      "format": "standard",
+      "name": "Mono Green Aggro",
+      "archetype": "Mono Green Aggro",
+      "colors": [
+        "C",
+        "G"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events",
+        "mono-color"
+      ],
+      "manaProfile": {
+        "colors": [
+          "C",
+          "G"
+        ],
+        "pipCounts": {
+          "G": 44
+        },
+        "sourceCounts": {
+          "G": 17,
+          "C": 1
+        },
+        "landCount": 26,
+        "predominantColors": [
+          "G"
+        ],
+        "predominantLands": [
+          {
+            "name": "Forest",
+            "count": 15
+          },
+          {
+            "name": "Fabled Passage",
+            "count": 4
+          },
+          {
+            "name": "Escape Tunnel",
+            "count": 3
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 18,
+          "totalCardCount": 18,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Ba Sing Se",
+        "Earthbender Ascension",
+        "Elven Passage",
+        "Escape Tunnel",
+        "Fabled Passage",
+        "Forest",
+        "Glimpse the Core",
+        "Icetill Explorer",
+        "Keen-Eyed Curator",
+        "Llanowar Elves",
+        "Meltstrider's Resolve",
+        "Mightform Harmonizer",
+        "Mossborn Hydra",
+        "Origin of Metalbending",
+        "Promising Vein",
+        "Sapling Nursery",
+        "Sazh's Chocobo",
+        "Snakeskin Veil",
+        "Soul-Guide Lantern",
+        "Surrak, Elusive Hunter",
+        "Torpor Orb",
+        "Warg Tactics"
+      ],
+      "event": "MTGO Challenge 16",
+      "date": "",
+      "placement": 5,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90952&d=890713&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Ba Sing Se",
+        "Earthbender Ascension",
+        "Elven Passage",
+        "Escape Tunnel",
+        "Fabled Passage",
+        "Forest",
+        "Glimpse the Core",
+        "Icetill Explorer",
+        "Keen-Eyed Curator",
+        "Llanowar Elves",
+        "Meltstrider's Resolve",
+        "Mightform Harmonizer",
+        "Mossborn Hydra",
+        "Origin of Metalbending",
+        "Promising Vein",
+        "Sapling Nursery",
+        "Sazh's Chocobo",
+        "Snakeskin Veil",
+        "Soul-Guide Lantern",
+        "Surrak, Elusive Hunter",
+        "Torpor Orb",
+        "Warg Tactics"
+      ],
+      "hash": "c13702a82aa315e8",
+      "detail": "details/mtgtop8-90952-890713.json"
+    },
+    {
+      "id": "mtgtop8-90921-890519",
+      "format": "standard",
+      "name": "Mono Green Aggro",
+      "archetype": "Mono Green Aggro",
+      "colors": [
+        "C",
+        "G"
+      ],
+      "mechanics": [],
+      "collections": [
+        "mono-color"
+      ],
+      "manaProfile": {
+        "colors": [
+          "C",
+          "G"
+        ],
+        "pipCounts": {
+          "G": 44
+        },
+        "sourceCounts": {
+          "G": 17,
+          "C": 1
+        },
+        "landCount": 26,
+        "predominantColors": [
+          "G"
+        ],
+        "predominantLands": [
+          {
+            "name": "Forest",
+            "count": 15
+          },
+          {
+            "name": "Fabled Passage",
+            "count": 4
+          },
+          {
+            "name": "Escape Tunnel",
+            "count": 3
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 18,
+          "totalCardCount": 18,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Ba Sing Se",
+        "Earthbender Ascension",
+        "Elven Passage",
+        "Escape Tunnel",
+        "Fabled Passage",
+        "Forest",
+        "Glimpse the Core",
+        "Icetill Explorer",
+        "Keen-Eyed Curator",
+        "Llanowar Elves",
+        "Meltstrider's Resolve",
+        "Mightform Harmonizer",
+        "Mossborn Hydra",
+        "Origin of Metalbending",
+        "Promising Vein",
+        "Sapling Nursery",
+        "Sazh's Chocobo",
+        "Snakeskin Veil",
+        "Soul-Guide Lantern",
+        "Surrak, Elusive Hunter",
+        "Torpor Orb",
+        "Warg Tactics"
+      ],
+      "event": "MTGO Challenge 16",
+      "date": "",
+      "placement": 2,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90921&d=890519&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Ba Sing Se",
+        "Earthbender Ascension",
+        "Elven Passage",
+        "Escape Tunnel",
+        "Fabled Passage",
+        "Forest",
+        "Glimpse the Core",
+        "Icetill Explorer",
+        "Keen-Eyed Curator",
+        "Llanowar Elves",
+        "Meltstrider's Resolve",
+        "Mightform Harmonizer",
+        "Mossborn Hydra",
+        "Origin of Metalbending",
+        "Promising Vein",
+        "Sapling Nursery",
+        "Sazh's Chocobo",
+        "Snakeskin Veil",
+        "Soul-Guide Lantern",
+        "Surrak, Elusive Hunter",
+        "Torpor Orb",
+        "Warg Tactics"
+      ],
+      "hash": "c614ad45eb54e7d9",
+      "detail": "details/mtgtop8-90921-890519.json"
+    },
+    {
+      "id": "mtgtop8-90590-887723",
+      "format": "standard",
+      "name": "Mono Red Control",
+      "archetype": "Mono Red Control",
+      "colors": [
+        "C",
+        "R"
+      ],
+      "mechanics": [],
+      "collections": [
+        "mono-color"
+      ],
+      "manaProfile": {
+        "colors": [
+          "C",
+          "R"
+        ],
+        "pipCounts": {
+          "R": 37
+        },
+        "sourceCounts": {
+          "C": 4,
+          "R": 16
+        },
+        "landCount": 24,
+        "predominantColors": [
+          "R"
+        ],
+        "predominantLands": [
+          {
+            "name": "Mountain",
+            "count": 16
+          },
+          {
+            "name": "Arid Archway",
+            "count": 4
+          },
+          {
+            "name": "Conduit Pylons",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact+scryfall",
+          "resolvedCardCount": 16,
+          "totalCardCount": 16,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Abrade",
+        "Arid Archway",
+        "Avengers Disassembled",
+        "Chomping Changeling",
+        "Conduit Pylons",
+        "Flashback",
+        "Generous Plunderer",
+        "Ghost Vacuum",
+        "Gwen Stacy",
+        "Hexing Squelcher",
+        "Improvisation Capstone",
+        "Mountain",
+        "Return the Favor",
+        "Sear",
+        "Sire of Seven Deaths",
+        "Tablet of Discovery",
+        "The Misty Mountains Cold",
+        "Thor, God of Thunder",
+        "Ugin, Eye of the Storms",
+        "Vision of Love"
+      ],
+      "event": "Central America Magic Series @ The Raccoon House (Aguascalientes, Mexico)",
+      "date": "",
+      "placement": 2,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90590&d=887723&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Abrade",
+        "Arid Archway",
+        "Avengers Disassembled",
+        "Chomping Changeling",
+        "Conduit Pylons",
+        "Flashback",
+        "Generous Plunderer",
+        "Ghost Vacuum",
+        "Gwen Stacy",
+        "Hexing Squelcher",
+        "Improvisation Capstone",
+        "Mountain",
+        "Return the Favor",
+        "Sear",
+        "Sire of Seven Deaths",
+        "Tablet of Discovery",
+        "The Misty Mountains Cold",
+        "Thor, God of Thunder",
+        "Ugin, Eye of the Storms",
+        "Vision of Love"
+      ],
+      "hash": "efcad32b4e54cd35",
+      "detail": "details/mtgtop8-90590-887723.json"
+    },
+    {
+      "id": "mtgtop8-90920-890509",
+      "format": "standard",
+      "name": "Mono Black Aggro",
+      "archetype": "Mono Black Aggro",
+      "colors": [
+        "B",
+        "C"
+      ],
+      "mechanics": [],
+      "collections": [
+        "mono-color"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "C"
+        ],
+        "pipCounts": {
+          "B": 37
+        },
+        "sourceCounts": {
+          "B": 20,
+          "C": 3
+        },
+        "landCount": 23,
+        "predominantColors": [
+          "B"
+        ],
+        "predominantLands": [
+          {
+            "name": "Swamp",
+            "count": 18
+          },
+          {
+            "name": "Soulstone Sanctuary",
+            "count": 3
+          },
+          {
+            "name": "Realm of Koh",
+            "count": 2
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 13,
+          "totalCardCount": 13,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Corpses of the Lost",
+        "Day of Black Sun",
+        "Desolation Prowler",
+        "Dissection Practice",
+        "Duress",
+        "Elegy Acolyte",
+        "Forsaken Miner",
+        "Gollum, Riddle Master",
+        "Iridescent Vinelasher",
+        "Nighthowl Pursuer",
+        "Ral Zarek, Guest Lecturer",
+        "Realm of Koh",
+        "Requiting Hex",
+        "Shoot the Sheriff",
+        "Soulstone Sanctuary",
+        "Strategic Betrayal",
+        "Sunset Saboteur",
+        "Swamp"
+      ],
+      "event": "MTGO Challenge 32",
+      "date": "",
+      "placement": 3,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90920&d=890509&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Corpses of the Lost",
+        "Day of Black Sun",
+        "Desolation Prowler",
+        "Dissection Practice",
+        "Duress",
+        "Elegy Acolyte",
+        "Forsaken Miner",
+        "Gollum, Riddle Master",
+        "Iridescent Vinelasher",
+        "Nighthowl Pursuer",
+        "Ral Zarek, Guest Lecturer",
+        "Realm of Koh",
+        "Requiting Hex",
+        "Shoot the Sheriff",
+        "Soulstone Sanctuary",
+        "Strategic Betrayal",
+        "Sunset Saboteur",
+        "Swamp"
+      ],
+      "hash": "abe31a122c8f94e1",
+      "detail": "details/mtgtop8-90920-890509.json"
+    },
+    {
+      "id": "mtgtop8-90745-889017",
+      "format": "standard",
+      "name": "Mononero Mazzovero",
+      "archetype": "Mononero Mazzovero",
+      "colors": [
+        "B",
+        "C"
+      ],
+      "mechanics": [],
+      "collections": [
+        "mono-color"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "C"
+        ],
+        "pipCounts": {
+          "B": 40
+        },
+        "sourceCounts": {
+          "B": 20,
+          "C": 3
+        },
+        "landCount": 23,
+        "predominantColors": [
+          "B"
+        ],
+        "predominantLands": [
+          {
+            "name": "Swamp",
+            "count": 17
+          },
+          {
+            "name": "Realm of Koh",
+            "count": 3
+          },
+          {
+            "name": "Soulstone Sanctuary",
+            "count": 3
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 16,
+          "totalCardCount": 16,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Archenemy's Charm",
+        "Bitter Triumph",
+        "Cecil, Dark Knight",
+        "Corpses of the Lost",
+        "Desolation Prowler",
+        "Dissection Practice",
+        "Duress",
+        "Elegy Acolyte",
+        "Forsaken Miner",
+        "Iridescent Vinelasher",
+        "Nighthowl Pursuer",
+        "Realm of Koh",
+        "Requiting Hex",
+        "Shoot the Sheriff",
+        "Soulstone Sanctuary",
+        "Strategic Betrayal",
+        "Sunset Saboteur",
+        "Swamp",
+        "Thought-Stalker Warlock"
+      ],
+      "event": "Event @ La Rocca di Darsheyalon (Montecatini Terme, Italy)",
+      "date": "",
+      "placement": 3,
+      "mainboardCount": 61,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90745&d=889017&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Archenemy's Charm",
+        "Bitter Triumph",
+        "Cecil, Dark Knight",
+        "Corpses of the Lost",
+        "Desolation Prowler",
+        "Dissection Practice",
+        "Duress",
+        "Elegy Acolyte",
+        "Forsaken Miner",
+        "Iridescent Vinelasher",
+        "Nighthowl Pursuer",
+        "Realm of Koh",
+        "Requiting Hex",
+        "Shoot the Sheriff",
+        "Soulstone Sanctuary",
+        "Strategic Betrayal",
+        "Sunset Saboteur",
+        "Swamp",
+        "Thought-Stalker Warlock"
+      ],
+      "hash": "6a4c334bb6c76e91",
+      "detail": "details/mtgtop8-90745-889017.json"
+    },
+    {
+      "id": "mtgtop8-90794-889437",
+      "format": "standard",
+      "name": "Mono Black Aggro",
+      "archetype": "Mono Black Aggro",
+      "colors": [
+        "B",
+        "C"
+      ],
+      "mechanics": [],
+      "collections": [
+        "mono-color"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "C"
+        ],
+        "pipCounts": {
+          "B": 37
+        },
+        "sourceCounts": {
+          "B": 19,
+          "C": 6
+        },
+        "landCount": 23,
+        "predominantColors": [
+          "B"
+        ],
+        "predominantLands": [
+          {
+            "name": "Swamp",
+            "count": 17
+          },
+          {
+            "name": "Soulstone Sanctuary",
+            "count": 4
+          },
+          {
+            "name": "Mudflat Village",
+            "count": 2
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact+scryfall",
+          "resolvedCardCount": 13,
+          "totalCardCount": 13,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Corpses of the Lost",
+        "Day of Black Sun",
+        "Deep-Cavern Bat",
+        "Dream Beavers",
+        "Duress",
+        "Forsaken Miner",
+        "Gollum the Abandoned",
+        "Gollum, Riddle Master",
+        "Heraldic Banner",
+        "Iridescent Vinelasher",
+        "Mudflat Village",
+        "Requiting Hex",
+        "Shoot the Sheriff",
+        "Soulstone Sanctuary",
+        "Strategic Betrayal",
+        "Swamp",
+        "Timeline Culler"
+      ],
+      "event": "Saturday ReCQ 3:00pm @ SCG CON Baltimore",
+      "date": "",
+      "placement": 3,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90794&d=889437&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Corpses of the Lost",
+        "Day of Black Sun",
+        "Deep-Cavern Bat",
+        "Dream Beavers",
+        "Duress",
+        "Forsaken Miner",
+        "Gollum the Abandoned",
+        "Gollum, Riddle Master",
+        "Heraldic Banner",
+        "Iridescent Vinelasher",
+        "Mudflat Village",
+        "Requiting Hex",
+        "Shoot the Sheriff",
+        "Soulstone Sanctuary",
+        "Strategic Betrayal",
+        "Swamp",
+        "Timeline Culler"
+      ],
+      "hash": "cc660e30badb37eb",
+      "detail": "details/mtgtop8-90794-889437.json"
+    },
+    {
+      "id": "mtgtop8-90921-890520",
+      "format": "standard",
+      "name": "Mono Green Aggro",
+      "archetype": "Mono Green Aggro",
+      "colors": [
+        "C",
+        "G"
+      ],
+      "mechanics": [],
+      "collections": [
+        "mono-color"
+      ],
+      "manaProfile": {
+        "colors": [
+          "C",
+          "G"
+        ],
+        "pipCounts": {
+          "G": 44
+        },
+        "sourceCounts": {
+          "G": 16,
+          "C": 1
+        },
+        "landCount": 25,
+        "predominantColors": [
+          "G"
+        ],
+        "predominantLands": [
+          {
+            "name": "Forest",
+            "count": 13
+          },
+          {
+            "name": "Escape Tunnel",
+            "count": 4
+          },
+          {
+            "name": "Fabled Passage",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 17,
+          "totalCardCount": 17,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Ba Sing Se",
+        "Demolition Field",
+        "Earthbender Ascension",
+        "Escape Tunnel",
+        "Esper Origins",
+        "Fabled Passage",
+        "Forest",
+        "Icetill Explorer",
+        "Keen-Eyed Curator",
+        "Leatherhead, Swamp Stalker",
+        "Llanowar Elves",
+        "Lumbering Worldwagon",
+        "Meltstrider's Resolve",
+        "Mightform Harmonizer",
+        "Mossborn Hydra",
+        "Sapling Nursery",
+        "Sazh's Chocobo",
+        "Shared Roots",
+        "Snakeskin Veil",
+        "Surrak, Elusive Hunter",
+        "Torpor Orb",
+        "Warg Tactics"
+      ],
+      "event": "MTGO Challenge 16",
+      "date": "",
+      "placement": 5,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90921&d=890520&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Ba Sing Se",
+        "Demolition Field",
+        "Earthbender Ascension",
+        "Escape Tunnel",
+        "Esper Origins",
+        "Fabled Passage",
+        "Forest",
+        "Icetill Explorer",
+        "Keen-Eyed Curator",
+        "Leatherhead, Swamp Stalker",
+        "Llanowar Elves",
+        "Lumbering Worldwagon",
+        "Meltstrider's Resolve",
+        "Mightform Harmonizer",
+        "Mossborn Hydra",
+        "Sapling Nursery",
+        "Sazh's Chocobo",
+        "Shared Roots",
+        "Snakeskin Veil",
+        "Surrak, Elusive Hunter",
+        "Torpor Orb",
+        "Warg Tactics"
+      ],
+      "hash": "c7231c67403ad6ac",
+      "detail": "details/mtgtop8-90921-890520.json"
+    },
+    {
+      "id": "mtgtop8-90921-890522",
+      "format": "standard",
+      "name": "Mono Green Landfall",
+      "archetype": "Mono Green Landfall",
+      "colors": [
+        "C",
+        "G"
+      ],
+      "mechanics": [],
+      "collections": [
+        "mono-color"
+      ],
+      "manaProfile": {
+        "colors": [
+          "C",
+          "G"
+        ],
+        "pipCounts": {
+          "G": 44
+        },
+        "sourceCounts": {
+          "G": 17,
+          "C": 1
+        },
+        "landCount": 26,
+        "predominantColors": [
+          "G"
+        ],
+        "predominantLands": [
+          {
+            "name": "Forest",
+            "count": 14
+          },
+          {
+            "name": "Escape Tunnel",
+            "count": 4
+          },
+          {
+            "name": "Fabled Passage",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 15,
+          "totalCardCount": 15,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Archdruid's Charm",
+        "Ba Sing Se",
+        "Demolition Field",
+        "Earthbender Ascension",
+        "Escape Tunnel",
+        "Esper Origins",
+        "Fabled Passage",
+        "Forest",
+        "Icetill Explorer",
+        "Llanowar Elves",
+        "Meltstrider's Resolve",
+        "Mightform Harmonizer",
+        "Mossborn Hydra",
+        "Sapling Nursery",
+        "Sazh's Chocobo",
+        "Shared Roots",
+        "Soul-Guide Lantern",
+        "Surrak, Elusive Hunter",
+        "Torpor Orb",
+        "Warg Tactics"
+      ],
+      "event": "MTGO Challenge 16",
+      "date": "",
+      "placement": 5,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90921&d=890522&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Archdruid's Charm",
+        "Ba Sing Se",
+        "Demolition Field",
+        "Earthbender Ascension",
+        "Escape Tunnel",
+        "Esper Origins",
+        "Fabled Passage",
+        "Forest",
+        "Icetill Explorer",
+        "Llanowar Elves",
+        "Meltstrider's Resolve",
+        "Mightform Harmonizer",
+        "Mossborn Hydra",
+        "Sapling Nursery",
+        "Sazh's Chocobo",
+        "Shared Roots",
+        "Soul-Guide Lantern",
+        "Surrak, Elusive Hunter",
+        "Torpor Orb",
+        "Warg Tactics"
+      ],
+      "hash": "8be5777d4ffb3b4c",
+      "detail": "details/mtgtop8-90921-890522.json"
+    },
+    {
+      "id": "mtgtop8-90734-888930",
+      "format": "standard",
+      "name": "Mono Black Aggro",
+      "archetype": "Mono Black Aggro",
+      "colors": [
+        "B",
+        "C"
+      ],
+      "mechanics": [],
+      "collections": [
+        "mono-color"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "C"
+        ],
+        "pipCounts": {
+          "B": 39
+        },
+        "sourceCounts": {
+          "B": 20,
+          "C": 2
+        },
+        "landCount": 22,
+        "predominantColors": [
+          "B"
+        ],
+        "predominantLands": [
+          {
+            "name": "Swamp",
+            "count": 18
+          },
+          {
+            "name": "Realm of Koh",
+            "count": 2
+          },
+          {
+            "name": "Soulstone Sanctuary",
+            "count": 2
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact+scryfall",
+          "resolvedCardCount": 15,
+          "totalCardCount": 15,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Bitter Triumph",
+        "Cecil, Dark Knight",
+        "Corpses of the Lost",
+        "Desolation Prowler",
+        "Dissection Practice",
+        "Duress",
+        "Elegy Acolyte",
+        "Forsaken Miner",
+        "Gollum, Riddle Master",
+        "Iridescent Vinelasher",
+        "Nighthowl Pursuer",
+        "Realm of Koh",
+        "Requiting Hex",
+        "Soul-Guide Lantern",
+        "Soulstone Sanctuary",
+        "Strategic Betrayal",
+        "Sunset Saboteur",
+        "Swamp",
+        "Timeline Culler"
+      ],
+      "event": "MTGO Challenge 32",
+      "date": "",
+      "placement": 14,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90734&d=888930&f=ST",
+      "tags": [],
+      "cards": [
+        "Bitter Triumph",
+        "Cecil, Dark Knight",
+        "Corpses of the Lost",
+        "Desolation Prowler",
+        "Dissection Practice",
+        "Duress",
+        "Elegy Acolyte",
+        "Forsaken Miner",
+        "Gollum, Riddle Master",
+        "Iridescent Vinelasher",
+        "Nighthowl Pursuer",
+        "Realm of Koh",
+        "Requiting Hex",
+        "Soul-Guide Lantern",
+        "Soulstone Sanctuary",
+        "Strategic Betrayal",
+        "Sunset Saboteur",
+        "Swamp",
+        "Timeline Culler"
+      ],
+      "hash": "3694ac767a8f10eb",
+      "detail": "details/mtgtop8-90734-888930.json"
     }
   ]
 }

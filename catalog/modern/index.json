@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "format": "modern",
-  "generatedAt": "2026-09-18T19:41:37.872Z",
+  "generatedAt": "2026-09-18T19:46:20.717Z",
   "decks": [
     {
       "id": "mtgtop8-90974-890872",
@@ -4929,6 +4929,1150 @@
       ],
       "hash": "777aabbef0c27167",
       "detail": "details/mtgtop8-90808-889613.json"
+    },
+    {
+      "id": "mtgtop8-90641-888148",
+      "format": "modern",
+      "name": "Mono Black Aggro",
+      "archetype": "Mono Black Aggro",
+      "colors": [
+        "B",
+        "C"
+      ],
+      "mechanics": [],
+      "collections": [
+        "mono-color"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "C"
+        ],
+        "pipCounts": {
+          "B": 21,
+          "C": 12
+        },
+        "sourceCounts": {
+          "C": 13,
+          "B": 10
+        },
+        "landCount": 24,
+        "predominantColors": [
+          "C"
+        ],
+        "predominantLands": [
+          {
+            "name": "Eldrazi Temple",
+            "count": 4
+          },
+          {
+            "name": "Ifnir Deadlands",
+            "count": 4
+          },
+          {
+            "name": "Prismatic Vista",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact+scryfall",
+          "resolvedCardCount": 20,
+          "totalCardCount": 20,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Ashiok, Dream Render",
+        "Break the Ice",
+        "Damping Sphere",
+        "Dismember",
+        "Dreams of Steel and Oil",
+        "Eldrazi Temple",
+        "Emperor of Bones",
+        "Fatal Push",
+        "Force of Despair",
+        "Ifnir Deadlands",
+        "Inquisition of Kozilek",
+        "Kozilek's Command",
+        "Marsh Flats",
+        "Mishra's Bauble",
+        "Nethergoyf",
+        "Nihil Spellbomb",
+        "Orcish Bowmasters",
+        "Pithing Needle",
+        "Prismatic Vista",
+        "Shadowspear",
+        "Shoot the Sheriff",
+        "Surgical Extraction",
+        "Swamp",
+        "Thought-Knot Seer",
+        "Thoughtseize",
+        "Toxic Deluge",
+        "Urborg, Tomb of Yawgmoth",
+        "Urza's Saga",
+        "Wasteland Strangler",
+        "Wastes"
+      ],
+      "event": "MTGO Challenge 32",
+      "date": "",
+      "placement": 1,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90641&d=888148&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Ashiok, Dream Render",
+        "Break the Ice",
+        "Damping Sphere",
+        "Dismember",
+        "Dreams of Steel and Oil",
+        "Eldrazi Temple",
+        "Emperor of Bones",
+        "Fatal Push",
+        "Force of Despair",
+        "Ifnir Deadlands",
+        "Inquisition of Kozilek",
+        "Kozilek's Command",
+        "Marsh Flats",
+        "Mishra's Bauble",
+        "Nethergoyf",
+        "Nihil Spellbomb",
+        "Orcish Bowmasters",
+        "Pithing Needle",
+        "Prismatic Vista",
+        "Shadowspear",
+        "Shoot the Sheriff",
+        "Surgical Extraction",
+        "Swamp",
+        "Thought-Knot Seer",
+        "Thoughtseize",
+        "Toxic Deluge",
+        "Urborg, Tomb of Yawgmoth",
+        "Urza's Saga",
+        "Wasteland Strangler",
+        "Wastes"
+      ],
+      "hash": "238c2b9568f92522",
+      "detail": "details/mtgtop8-90641-888148.json"
+    },
+    {
+      "id": "mtgtop8-90274-885241",
+      "format": "modern",
+      "name": "Mono Green Aggro",
+      "archetype": "Mono Green Aggro",
+      "colors": [
+        "G"
+      ],
+      "mechanics": [],
+      "collections": [
+        "mono-color"
+      ],
+      "manaProfile": {
+        "colors": [
+          "G"
+        ],
+        "pipCounts": {
+          "G": 52
+        },
+        "sourceCounts": {
+          "G": 9
+        },
+        "landCount": 18,
+        "predominantColors": [
+          "G"
+        ],
+        "predominantLands": [
+          {
+            "name": "Forest",
+            "count": 6
+          },
+          {
+            "name": "Verdant Catacombs",
+            "count": 4
+          },
+          {
+            "name": "Windswept Heath",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 22,
+          "totalCardCount": 22,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Ashaya, Soul of the Wild",
+        "Badgermole Cub",
+        "Birds of Paradise",
+        "Boseiju, Who Endures",
+        "Craterhoof Behemoth",
+        "Delighted Halfling",
+        "Dismember",
+        "Dryad Arbor",
+        "Endurance",
+        "Force of Vigor",
+        "Forest",
+        "Ghost Vacuum",
+        "Green Sun's Zenith",
+        "Heroic Intervention",
+        "Leyline of Abundance",
+        "Lotus Cobra",
+        "Misty Rainforest",
+        "Nature's Rhythm",
+        "Nissa, Resurgent Animist",
+        "Noble Hierarch",
+        "Ouroboroid",
+        "Quirion Ranger",
+        "Shang-Chi, Master of Kung Fu",
+        "Springheart Nantuko",
+        "Summoner's Pact",
+        "Trinisphere",
+        "Veil of Summer",
+        "Verdant Catacombs",
+        "Windswept Heath"
+      ],
+      "event": "MTGO Challenge 64",
+      "date": "",
+      "placement": 1,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90274&d=885241&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Ashaya, Soul of the Wild",
+        "Badgermole Cub",
+        "Birds of Paradise",
+        "Boseiju, Who Endures",
+        "Craterhoof Behemoth",
+        "Delighted Halfling",
+        "Dismember",
+        "Dryad Arbor",
+        "Endurance",
+        "Force of Vigor",
+        "Forest",
+        "Ghost Vacuum",
+        "Green Sun's Zenith",
+        "Heroic Intervention",
+        "Leyline of Abundance",
+        "Lotus Cobra",
+        "Misty Rainforest",
+        "Nature's Rhythm",
+        "Nissa, Resurgent Animist",
+        "Noble Hierarch",
+        "Ouroboroid",
+        "Quirion Ranger",
+        "Shang-Chi, Master of Kung Fu",
+        "Springheart Nantuko",
+        "Summoner's Pact",
+        "Trinisphere",
+        "Veil of Summer",
+        "Verdant Catacombs",
+        "Windswept Heath"
+      ],
+      "hash": "afc45b718dd5e47d",
+      "detail": "details/mtgtop8-90274-885241.json"
+    },
+    {
+      "id": "mtgtop8-88835-874295",
+      "format": "modern",
+      "name": "Mono Green Aggro",
+      "archetype": "Mono Green Aggro",
+      "colors": [
+        "G"
+      ],
+      "mechanics": [],
+      "collections": [
+        "mono-color"
+      ],
+      "manaProfile": {
+        "colors": [
+          "G"
+        ],
+        "pipCounts": {
+          "G": 49
+        },
+        "sourceCounts": {
+          "G": 9
+        },
+        "landCount": 18,
+        "predominantColors": [
+          "G"
+        ],
+        "predominantLands": [
+          {
+            "name": "Forest",
+            "count": 7
+          },
+          {
+            "name": "Misty Rainforest",
+            "count": 4
+          },
+          {
+            "name": "Windswept Heath",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact+scryfall",
+          "resolvedCardCount": 23,
+          "totalCardCount": 23,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Ashaya, Soul of the Wild",
+        "Badgermole Cub",
+        "Chomping Changeling",
+        "Collector Ouphe",
+        "Craterhoof Behemoth",
+        "Delighted Halfling",
+        "Disciple of Freyalise",
+        "Dismember",
+        "Dryad Arbor",
+        "Eladamri, Korvecdal",
+        "Endurance",
+        "Enduring Vitality",
+        "Forest",
+        "Green Sun's Zenith",
+        "Ignoble Hierarch",
+        "Leyline of Abundance",
+        "Lotus Cobra",
+        "Misty Rainforest",
+        "Nature's Rhythm",
+        "Nissa, Resurgent Animist",
+        "Ouroboroid",
+        "Quirion Ranger",
+        "Scavenging Ooze",
+        "Shang-Chi, Master of Kung Fu",
+        "Soulless Jailer",
+        "Springheart Nantuko",
+        "Summoner's Pact",
+        "Tajuru Preserver",
+        "Trinisphere",
+        "Verdant Catacombs",
+        "Windswept Heath"
+      ],
+      "event": "MTGO Challenge 64",
+      "date": "",
+      "placement": 1,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=88835&d=874295&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Ashaya, Soul of the Wild",
+        "Badgermole Cub",
+        "Chomping Changeling",
+        "Collector Ouphe",
+        "Craterhoof Behemoth",
+        "Delighted Halfling",
+        "Disciple of Freyalise",
+        "Dismember",
+        "Dryad Arbor",
+        "Eladamri, Korvecdal",
+        "Endurance",
+        "Enduring Vitality",
+        "Forest",
+        "Green Sun's Zenith",
+        "Ignoble Hierarch",
+        "Leyline of Abundance",
+        "Lotus Cobra",
+        "Misty Rainforest",
+        "Nature's Rhythm",
+        "Nissa, Resurgent Animist",
+        "Ouroboroid",
+        "Quirion Ranger",
+        "Scavenging Ooze",
+        "Shang-Chi, Master of Kung Fu",
+        "Soulless Jailer",
+        "Springheart Nantuko",
+        "Summoner's Pact",
+        "Tajuru Preserver",
+        "Trinisphere",
+        "Verdant Catacombs",
+        "Windswept Heath"
+      ],
+      "hash": "68a459ae0f16711a",
+      "detail": "details/mtgtop8-88835-874295.json"
+    },
+    {
+      "id": "mtgtop8-90965-890818",
+      "format": "modern",
+      "name": "Mono Black Aggro",
+      "archetype": "Mono Black Aggro",
+      "colors": [
+        "B",
+        "C"
+      ],
+      "mechanics": [],
+      "collections": [
+        "mono-color"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "C"
+        ],
+        "pipCounts": {
+          "B": 21,
+          "C": 12
+        },
+        "sourceCounts": {
+          "C": 13,
+          "B": 10
+        },
+        "landCount": 24,
+        "predominantColors": [
+          "C"
+        ],
+        "predominantLands": [
+          {
+            "name": "Eldrazi Temple",
+            "count": 4
+          },
+          {
+            "name": "Ifnir Deadlands",
+            "count": 4
+          },
+          {
+            "name": "Prismatic Vista",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact+scryfall",
+          "resolvedCardCount": 20,
+          "totalCardCount": 20,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Ashiok, Dream Render",
+        "Break the Ice",
+        "Damping Sphere",
+        "Dismember",
+        "Dreams of Steel and Oil",
+        "Eldrazi Temple",
+        "Emperor of Bones",
+        "Fatal Push",
+        "Force of Despair",
+        "Ifnir Deadlands",
+        "Inquisition of Kozilek",
+        "Kozilek's Command",
+        "Marsh Flats",
+        "Mishra's Bauble",
+        "Nethergoyf",
+        "Nihil Spellbomb",
+        "Orcish Bowmasters",
+        "Pithing Needle",
+        "Prismatic Vista",
+        "Shadowspear",
+        "Shoot the Sheriff",
+        "Surgical Extraction",
+        "Swamp",
+        "Thought-Knot Seer",
+        "Thoughtseize",
+        "Toxic Deluge",
+        "Urborg, Tomb of Yawgmoth",
+        "Urza's Saga",
+        "Wasteland Strangler",
+        "Wastes"
+      ],
+      "event": "MTGO Challenge 32",
+      "date": "",
+      "placement": 3,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90965&d=890818&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Ashiok, Dream Render",
+        "Break the Ice",
+        "Damping Sphere",
+        "Dismember",
+        "Dreams of Steel and Oil",
+        "Eldrazi Temple",
+        "Emperor of Bones",
+        "Fatal Push",
+        "Force of Despair",
+        "Ifnir Deadlands",
+        "Inquisition of Kozilek",
+        "Kozilek's Command",
+        "Marsh Flats",
+        "Mishra's Bauble",
+        "Nethergoyf",
+        "Nihil Spellbomb",
+        "Orcish Bowmasters",
+        "Pithing Needle",
+        "Prismatic Vista",
+        "Shadowspear",
+        "Shoot the Sheriff",
+        "Surgical Extraction",
+        "Swamp",
+        "Thought-Knot Seer",
+        "Thoughtseize",
+        "Toxic Deluge",
+        "Urborg, Tomb of Yawgmoth",
+        "Urza's Saga",
+        "Wasteland Strangler",
+        "Wastes"
+      ],
+      "hash": "4ea83b1c7ec0635a",
+      "detail": "details/mtgtop8-90965-890818.json"
+    },
+    {
+      "id": "mtgtop8-88879-874660",
+      "format": "modern",
+      "name": "Mono Green Aggro",
+      "archetype": "Mono Green Aggro",
+      "colors": [
+        "G"
+      ],
+      "mechanics": [],
+      "collections": [
+        "mono-color"
+      ],
+      "manaProfile": {
+        "colors": [
+          "G"
+        ],
+        "pipCounts": {
+          "G": 48
+        },
+        "sourceCounts": {
+          "G": 9
+        },
+        "landCount": 18,
+        "predominantColors": [
+          "G"
+        ],
+        "predominantLands": [
+          {
+            "name": "Forest",
+            "count": 7
+          },
+          {
+            "name": "Verdant Catacombs",
+            "count": 4
+          },
+          {
+            "name": "Windswept Heath",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact+scryfall",
+          "resolvedCardCount": 23,
+          "totalCardCount": 23,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Ashaya, Soul of the Wild",
+        "Badgermole Cub",
+        "Chomping Changeling",
+        "Collector Ouphe",
+        "Craterhoof Behemoth",
+        "Delighted Halfling",
+        "Disciple of Freyalise",
+        "Dryad Arbor",
+        "Endurance",
+        "Enduring Vitality",
+        "Forest",
+        "Formidable Speaker",
+        "Gaddock Teeg",
+        "Green Sun's Zenith",
+        "Kraul Harpooner",
+        "Leyline of Abundance",
+        "Lotus Cobra",
+        "Misty Rainforest",
+        "Nissa, Resurgent Animist",
+        "Nissa, Who Shakes the World",
+        "Ouroboroid",
+        "Quirion Ranger",
+        "Ruric Thar, the Unbowed",
+        "Shang-Chi, Master of Kung Fu",
+        "Springheart Nantuko",
+        "Summoner's Pact",
+        "Sylvan Safekeeper",
+        "Tajuru Preserver",
+        "Verdant Catacombs",
+        "Vexing Bauble",
+        "Windswept Heath"
+      ],
+      "event": "MTGO League",
+      "date": "",
+      "placement": 3,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=88879&d=874660&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Ashaya, Soul of the Wild",
+        "Badgermole Cub",
+        "Chomping Changeling",
+        "Collector Ouphe",
+        "Craterhoof Behemoth",
+        "Delighted Halfling",
+        "Disciple of Freyalise",
+        "Dryad Arbor",
+        "Endurance",
+        "Enduring Vitality",
+        "Forest",
+        "Formidable Speaker",
+        "Gaddock Teeg",
+        "Green Sun's Zenith",
+        "Kraul Harpooner",
+        "Leyline of Abundance",
+        "Lotus Cobra",
+        "Misty Rainforest",
+        "Nissa, Resurgent Animist",
+        "Nissa, Who Shakes the World",
+        "Ouroboroid",
+        "Quirion Ranger",
+        "Ruric Thar, the Unbowed",
+        "Shang-Chi, Master of Kung Fu",
+        "Springheart Nantuko",
+        "Summoner's Pact",
+        "Sylvan Safekeeper",
+        "Tajuru Preserver",
+        "Verdant Catacombs",
+        "Vexing Bauble",
+        "Windswept Heath"
+      ],
+      "hash": "9878e3c6a0145632",
+      "detail": "details/mtgtop8-88879-874660.json"
+    },
+    {
+      "id": "mtgtop8-90378-886039",
+      "format": "modern",
+      "name": "Mono Black Aggro",
+      "archetype": "Mono Black Aggro",
+      "colors": [
+        "B",
+        "C"
+      ],
+      "mechanics": [],
+      "collections": [
+        "mono-color"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "C"
+        ],
+        "pipCounts": {
+          "B": 21,
+          "C": 12
+        },
+        "sourceCounts": {
+          "C": 13,
+          "B": 10
+        },
+        "landCount": 24,
+        "predominantColors": [
+          "C"
+        ],
+        "predominantLands": [
+          {
+            "name": "Eldrazi Temple",
+            "count": 4
+          },
+          {
+            "name": "Ifnir Deadlands",
+            "count": 4
+          },
+          {
+            "name": "Prismatic Vista",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact+scryfall",
+          "resolvedCardCount": 20,
+          "totalCardCount": 20,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Ashiok, Dream Render",
+        "Break the Ice",
+        "Damping Sphere",
+        "Dismember",
+        "Dreams of Steel and Oil",
+        "Eldrazi Temple",
+        "Emperor of Bones",
+        "Fatal Push",
+        "Force of Despair",
+        "Ifnir Deadlands",
+        "Inquisition of Kozilek",
+        "Kozilek's Command",
+        "Marsh Flats",
+        "Mishra's Bauble",
+        "Nethergoyf",
+        "Nihil Spellbomb",
+        "Orcish Bowmasters",
+        "Pithing Needle",
+        "Prismatic Vista",
+        "Shadowspear",
+        "Shoot the Sheriff",
+        "Surgical Extraction",
+        "Swamp",
+        "Thought-Knot Seer",
+        "Thoughtseize",
+        "Toxic Deluge",
+        "Urborg, Tomb of Yawgmoth",
+        "Urza's Saga",
+        "Wasteland Strangler",
+        "Wastes"
+      ],
+      "event": "MTGO Challenge 64",
+      "date": "",
+      "placement": 5,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90378&d=886039&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Ashiok, Dream Render",
+        "Break the Ice",
+        "Damping Sphere",
+        "Dismember",
+        "Dreams of Steel and Oil",
+        "Eldrazi Temple",
+        "Emperor of Bones",
+        "Fatal Push",
+        "Force of Despair",
+        "Ifnir Deadlands",
+        "Inquisition of Kozilek",
+        "Kozilek's Command",
+        "Marsh Flats",
+        "Mishra's Bauble",
+        "Nethergoyf",
+        "Nihil Spellbomb",
+        "Orcish Bowmasters",
+        "Pithing Needle",
+        "Prismatic Vista",
+        "Shadowspear",
+        "Shoot the Sheriff",
+        "Surgical Extraction",
+        "Swamp",
+        "Thought-Knot Seer",
+        "Thoughtseize",
+        "Toxic Deluge",
+        "Urborg, Tomb of Yawgmoth",
+        "Urza's Saga",
+        "Wasteland Strangler",
+        "Wastes"
+      ],
+      "hash": "acec964cff9dd8c7",
+      "detail": "details/mtgtop8-90378-886039.json"
+    },
+    {
+      "id": "mtgtop8-89121-876363",
+      "format": "modern",
+      "name": "Mono Black Necrodominance",
+      "archetype": "Mono Black Necrodominance",
+      "colors": [
+        "B"
+      ],
+      "mechanics": [],
+      "collections": [
+        "mono-color"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B"
+        ],
+        "pipCounts": {
+          "B": 58
+        },
+        "sourceCounts": {
+          "B": 16
+        },
+        "landCount": 16,
+        "predominantColors": [
+          "B"
+        ],
+        "predominantLands": [
+          {
+            "name": "Swamp",
+            "count": 12
+          },
+          {
+            "name": "Castle Locthwain",
+            "count": 3
+          },
+          {
+            "name": "Shizo, Death's Storehouse",
+            "count": 1
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 16,
+          "totalCardCount": 16,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Boggart Trawler",
+        "Break the Ice",
+        "Castle Locthwain",
+        "Chalice of the Void",
+        "Damping Sphere",
+        "Dauthi Voidwalker",
+        "Duress",
+        "Fatal Push",
+        "Fell the Profane",
+        "Force of Despair",
+        "Inquisition of Kozilek",
+        "March of Wretched Sorrow",
+        "Necrodominance",
+        "Orcish Bowmasters",
+        "Ratchet Bomb",
+        "Sheoldred's Edict",
+        "Sheoldred, the Apocalypse",
+        "Shizo, Death's Storehouse",
+        "Soul Spike",
+        "Surgical Extraction",
+        "Swamp",
+        "The Filigree Sylex",
+        "The Meathook Massacre",
+        "Thoughtseize",
+        "Tourach, Dread Cantor"
+      ],
+      "event": "RCQ @ Mont CardShop (Campinas, Brazil)",
+      "date": "",
+      "placement": 5,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=89121&d=876363&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Boggart Trawler",
+        "Break the Ice",
+        "Castle Locthwain",
+        "Chalice of the Void",
+        "Damping Sphere",
+        "Dauthi Voidwalker",
+        "Duress",
+        "Fatal Push",
+        "Fell the Profane",
+        "Force of Despair",
+        "Inquisition of Kozilek",
+        "March of Wretched Sorrow",
+        "Necrodominance",
+        "Orcish Bowmasters",
+        "Ratchet Bomb",
+        "Sheoldred's Edict",
+        "Sheoldred, the Apocalypse",
+        "Shizo, Death's Storehouse",
+        "Soul Spike",
+        "Surgical Extraction",
+        "Swamp",
+        "The Filigree Sylex",
+        "The Meathook Massacre",
+        "Thoughtseize",
+        "Tourach, Dread Cantor"
+      ],
+      "hash": "f056596e057eda92",
+      "detail": "details/mtgtop8-89121-876363.json"
+    },
+    {
+      "id": "mtgtop8-90548-887307",
+      "format": "modern",
+      "name": "Mono Black Aggro",
+      "archetype": "Mono Black Aggro",
+      "colors": [
+        "B",
+        "C"
+      ],
+      "mechanics": [],
+      "collections": [
+        "mono-color"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "C"
+        ],
+        "pipCounts": {
+          "B": 21,
+          "C": 12
+        },
+        "sourceCounts": {
+          "C": 13,
+          "B": 10
+        },
+        "landCount": 24,
+        "predominantColors": [
+          "C"
+        ],
+        "predominantLands": [
+          {
+            "name": "Eldrazi Temple",
+            "count": 4
+          },
+          {
+            "name": "Ifnir Deadlands",
+            "count": 4
+          },
+          {
+            "name": "Prismatic Vista",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact+scryfall",
+          "resolvedCardCount": 20,
+          "totalCardCount": 20,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Ashiok, Dream Render",
+        "Break the Ice",
+        "Damping Sphere",
+        "Dismember",
+        "Dreams of Steel and Oil",
+        "Eldrazi Temple",
+        "Emperor of Bones",
+        "Fatal Push",
+        "Force of Despair",
+        "Ifnir Deadlands",
+        "Inquisition of Kozilek",
+        "Kozilek's Command",
+        "Marsh Flats",
+        "Mishra's Bauble",
+        "Nethergoyf",
+        "Nihil Spellbomb",
+        "Orcish Bowmasters",
+        "Pithing Needle",
+        "Prismatic Vista",
+        "Shadowspear",
+        "Shoot the Sheriff",
+        "Surgical Extraction",
+        "Swamp",
+        "Thought-Knot Seer",
+        "Thoughtseize",
+        "Toxic Deluge",
+        "Urborg, Tomb of Yawgmoth",
+        "Urza's Saga",
+        "Wasteland Strangler",
+        "Wastes"
+      ],
+      "event": "MTGO Challenge 64",
+      "date": "",
+      "placement": 16,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90548&d=887307&f=MO",
+      "tags": [],
+      "cards": [
+        "Ashiok, Dream Render",
+        "Break the Ice",
+        "Damping Sphere",
+        "Dismember",
+        "Dreams of Steel and Oil",
+        "Eldrazi Temple",
+        "Emperor of Bones",
+        "Fatal Push",
+        "Force of Despair",
+        "Ifnir Deadlands",
+        "Inquisition of Kozilek",
+        "Kozilek's Command",
+        "Marsh Flats",
+        "Mishra's Bauble",
+        "Nethergoyf",
+        "Nihil Spellbomb",
+        "Orcish Bowmasters",
+        "Pithing Needle",
+        "Prismatic Vista",
+        "Shadowspear",
+        "Shoot the Sheriff",
+        "Surgical Extraction",
+        "Swamp",
+        "Thought-Knot Seer",
+        "Thoughtseize",
+        "Toxic Deluge",
+        "Urborg, Tomb of Yawgmoth",
+        "Urza's Saga",
+        "Wasteland Strangler",
+        "Wastes"
+      ],
+      "hash": "fcc055d0df3ce925",
+      "detail": "details/mtgtop8-90548-887307.json"
+    },
+    {
+      "id": "mtgtop8-90572-887555",
+      "format": "modern",
+      "name": "Mono Green Aggro",
+      "archetype": "Mono Green Aggro",
+      "colors": [
+        "G"
+      ],
+      "mechanics": [],
+      "collections": [
+        "mono-color"
+      ],
+      "manaProfile": {
+        "colors": [
+          "G"
+        ],
+        "pipCounts": {
+          "G": 51
+        },
+        "sourceCounts": {
+          "G": 10
+        },
+        "landCount": 19,
+        "predominantColors": [
+          "G"
+        ],
+        "predominantLands": [
+          {
+            "name": "Forest",
+            "count": 6
+          },
+          {
+            "name": "Misty Rainforest",
+            "count": 4
+          },
+          {
+            "name": "Verdant Catacombs",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact+scryfall",
+          "resolvedCardCount": 22,
+          "totalCardCount": 22,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Ashaya, Soul of the Wild",
+        "Badgermole Cub",
+        "Boseiju, Who Endures",
+        "Chomping Changeling",
+        "Collector Ouphe",
+        "Craterhoof Behemoth",
+        "Delighted Halfling",
+        "Dismember",
+        "Dryad Arbor",
+        "Endurance",
+        "Enduring Vitality",
+        "Force of Vigor",
+        "Forest",
+        "Formidable Speaker",
+        "Ghost Vacuum",
+        "Green Sun's Zenith",
+        "Kraul Harpooner",
+        "Leyline of Abundance",
+        "Lotus Cobra",
+        "Misty Rainforest",
+        "Nissa, Resurgent Animist",
+        "Nissa, Who Shakes the World",
+        "Ouroboroid",
+        "Quirion Ranger",
+        "Scavenging Ooze",
+        "Shang-Chi, Master of Kung Fu",
+        "Springheart Nantuko",
+        "Summoner's Pact",
+        "Ulvenwald Tracker",
+        "Verdant Catacombs",
+        "Vexing Bauble",
+        "Webstrike Elite",
+        "Windswept Heath"
+      ],
+      "event": "Magic Spotlight: The Hobbit� @ SCG CON Dallas",
+      "date": "",
+      "placement": 17,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90572&d=887555&f=MO",
+      "tags": [],
+      "cards": [
+        "Ashaya, Soul of the Wild",
+        "Badgermole Cub",
+        "Boseiju, Who Endures",
+        "Chomping Changeling",
+        "Collector Ouphe",
+        "Craterhoof Behemoth",
+        "Delighted Halfling",
+        "Dismember",
+        "Dryad Arbor",
+        "Endurance",
+        "Enduring Vitality",
+        "Force of Vigor",
+        "Forest",
+        "Formidable Speaker",
+        "Ghost Vacuum",
+        "Green Sun's Zenith",
+        "Kraul Harpooner",
+        "Leyline of Abundance",
+        "Lotus Cobra",
+        "Misty Rainforest",
+        "Nissa, Resurgent Animist",
+        "Nissa, Who Shakes the World",
+        "Ouroboroid",
+        "Quirion Ranger",
+        "Scavenging Ooze",
+        "Shang-Chi, Master of Kung Fu",
+        "Springheart Nantuko",
+        "Summoner's Pact",
+        "Ulvenwald Tracker",
+        "Verdant Catacombs",
+        "Vexing Bauble",
+        "Webstrike Elite",
+        "Windswept Heath"
+      ],
+      "hash": "f9fc665a1ed18162",
+      "detail": "details/mtgtop8-90572-887555.json"
     }
   ]
 }

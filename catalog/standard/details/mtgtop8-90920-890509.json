@@ -1,0 +1,158 @@
+{
+  "id": "mtgtop8-90920-890509",
+  "format": "standard",
+  "name": "Mono Black Aggro",
+  "archetype": "Mono Black Aggro",
+  "colors": [
+    "B",
+    "C"
+  ],
+  "mechanics": [],
+  "collections": [
+    "mono-color"
+  ],
+  "cardNames": [
+    "Corpses of the Lost",
+    "Day of Black Sun",
+    "Desolation Prowler",
+    "Dissection Practice",
+    "Duress",
+    "Elegy Acolyte",
+    "Forsaken Miner",
+    "Gollum, Riddle Master",
+    "Iridescent Vinelasher",
+    "Nighthowl Pursuer",
+    "Ral Zarek, Guest Lecturer",
+    "Realm of Koh",
+    "Requiting Hex",
+    "Shoot the Sheriff",
+    "Soulstone Sanctuary",
+    "Strategic Betrayal",
+    "Sunset Saboteur",
+    "Swamp"
+  ],
+  "event": "MTGO Challenge 32",
+  "date": "",
+  "placement": 3,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=90920&d=890509&f=ST",
+  "mainboard": [
+    {
+      "name": "Corpses of the Lost",
+      "count": 4
+    },
+    {
+      "name": "Desolation Prowler",
+      "count": 4
+    },
+    {
+      "name": "Dissection Practice",
+      "count": 3
+    },
+    {
+      "name": "Forsaken Miner",
+      "count": 4
+    },
+    {
+      "name": "Gollum, Riddle Master",
+      "count": 3
+    },
+    {
+      "name": "Iridescent Vinelasher",
+      "count": 4
+    },
+    {
+      "name": "Nighthowl Pursuer",
+      "count": 4
+    },
+    {
+      "name": "Realm of Koh",
+      "count": 2
+    },
+    {
+      "name": "Requiting Hex",
+      "count": 4
+    },
+    {
+      "name": "Shoot the Sheriff",
+      "count": 3
+    },
+    {
+      "name": "Soulstone Sanctuary",
+      "count": 3
+    },
+    {
+      "name": "Sunset Saboteur",
+      "count": 4
+    },
+    {
+      "name": "Swamp",
+      "count": 18
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Day of Black Sun",
+      "count": 3
+    },
+    {
+      "name": "Duress",
+      "count": 4
+    },
+    {
+      "name": "Elegy Acolyte",
+      "count": 2
+    },
+    {
+      "name": "Ral Zarek, Guest Lecturer",
+      "count": 2
+    },
+    {
+      "name": "Strategic Betrayal",
+      "count": 4
+    }
+  ],
+  "commander": [],
+  "tags": [
+    "Top 8"
+  ],
+  "hash": "abe31a122c8f94e1",
+  "manaProfile": {
+    "colors": [
+      "B",
+      "C"
+    ],
+    "pipCounts": {
+      "B": 37
+    },
+    "sourceCounts": {
+      "B": 20,
+      "C": 3
+    },
+    "landCount": 23,
+    "predominantColors": [
+      "B"
+    ],
+    "predominantLands": [
+      {
+        "name": "Swamp",
+        "count": 18
+      },
+      {
+        "name": "Soulstone Sanctuary",
+        "count": 3
+      },
+      {
+        "name": "Realm of Koh",
+        "count": 2
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact",
+      "resolvedCardCount": 13,
+      "totalCardCount": 13,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
+}

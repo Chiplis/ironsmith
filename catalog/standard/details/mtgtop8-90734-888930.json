@@ -1,0 +1,169 @@
+{
+  "id": "mtgtop8-90734-888930",
+  "format": "standard",
+  "name": "Mono Black Aggro",
+  "archetype": "Mono Black Aggro",
+  "colors": [
+    "B",
+    "C"
+  ],
+  "mechanics": [],
+  "collections": [
+    "mono-color"
+  ],
+  "cardNames": [
+    "Bitter Triumph",
+    "Cecil, Dark Knight",
+    "Corpses of the Lost",
+    "Desolation Prowler",
+    "Dissection Practice",
+    "Duress",
+    "Elegy Acolyte",
+    "Forsaken Miner",
+    "Gollum, Riddle Master",
+    "Iridescent Vinelasher",
+    "Nighthowl Pursuer",
+    "Realm of Koh",
+    "Requiting Hex",
+    "Soul-Guide Lantern",
+    "Soulstone Sanctuary",
+    "Strategic Betrayal",
+    "Sunset Saboteur",
+    "Swamp",
+    "Timeline Culler"
+  ],
+  "event": "MTGO Challenge 32",
+  "date": "",
+  "placement": 14,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=90734&d=888930&f=ST",
+  "mainboard": [
+    {
+      "name": "Bitter Triumph",
+      "count": 3
+    },
+    {
+      "name": "Cecil, Dark Knight",
+      "count": 2
+    },
+    {
+      "name": "Corpses of the Lost",
+      "count": 4
+    },
+    {
+      "name": "Desolation Prowler",
+      "count": 4
+    },
+    {
+      "name": "Dissection Practice",
+      "count": 4
+    },
+    {
+      "name": "Forsaken Miner",
+      "count": 4
+    },
+    {
+      "name": "Gollum, Riddle Master",
+      "count": 2
+    },
+    {
+      "name": "Iridescent Vinelasher",
+      "count": 2
+    },
+    {
+      "name": "Nighthowl Pursuer",
+      "count": 4
+    },
+    {
+      "name": "Realm of Koh",
+      "count": 2
+    },
+    {
+      "name": "Requiting Hex",
+      "count": 2
+    },
+    {
+      "name": "Soulstone Sanctuary",
+      "count": 2
+    },
+    {
+      "name": "Sunset Saboteur",
+      "count": 4
+    },
+    {
+      "name": "Swamp",
+      "count": 18
+    },
+    {
+      "name": "Timeline Culler",
+      "count": 3
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Bitter Triumph",
+      "count": 1
+    },
+    {
+      "name": "Duress",
+      "count": 4
+    },
+    {
+      "name": "Elegy Acolyte",
+      "count": 2
+    },
+    {
+      "name": "Requiting Hex",
+      "count": 2
+    },
+    {
+      "name": "Soul-Guide Lantern",
+      "count": 2
+    },
+    {
+      "name": "Strategic Betrayal",
+      "count": 4
+    }
+  ],
+  "commander": [],
+  "tags": [],
+  "hash": "3694ac767a8f10eb",
+  "manaProfile": {
+    "colors": [
+      "B",
+      "C"
+    ],
+    "pipCounts": {
+      "B": 39
+    },
+    "sourceCounts": {
+      "B": 20,
+      "C": 2
+    },
+    "landCount": 22,
+    "predominantColors": [
+      "B"
+    ],
+    "predominantLands": [
+      {
+        "name": "Swamp",
+        "count": 18
+      },
+      {
+        "name": "Realm of Koh",
+        "count": 2
+      },
+      {
+        "name": "Soulstone Sanctuary",
+        "count": 2
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact+scryfall",
+      "resolvedCardCount": 15,
+      "totalCardCount": 15,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
+}

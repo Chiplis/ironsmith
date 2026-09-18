@@ -1,0 +1,224 @@
+{
+  "id": "mtgtop8-88879-874660",
+  "format": "modern",
+  "name": "Mono Green Aggro",
+  "archetype": "Mono Green Aggro",
+  "colors": [
+    "G"
+  ],
+  "mechanics": [],
+  "collections": [
+    "mono-color"
+  ],
+  "cardNames": [
+    "Ashaya, Soul of the Wild",
+    "Badgermole Cub",
+    "Chomping Changeling",
+    "Collector Ouphe",
+    "Craterhoof Behemoth",
+    "Delighted Halfling",
+    "Disciple of Freyalise",
+    "Dryad Arbor",
+    "Endurance",
+    "Enduring Vitality",
+    "Forest",
+    "Formidable Speaker",
+    "Gaddock Teeg",
+    "Green Sun's Zenith",
+    "Kraul Harpooner",
+    "Leyline of Abundance",
+    "Lotus Cobra",
+    "Misty Rainforest",
+    "Nissa, Resurgent Animist",
+    "Nissa, Who Shakes the World",
+    "Ouroboroid",
+    "Quirion Ranger",
+    "Ruric Thar, the Unbowed",
+    "Shang-Chi, Master of Kung Fu",
+    "Springheart Nantuko",
+    "Summoner's Pact",
+    "Sylvan Safekeeper",
+    "Tajuru Preserver",
+    "Verdant Catacombs",
+    "Vexing Bauble",
+    "Windswept Heath"
+  ],
+  "event": "MTGO League",
+  "date": "",
+  "placement": 3,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=88879&d=874660&f=MO",
+  "mainboard": [
+    {
+      "name": "Ashaya, Soul of the Wild",
+      "count": 1
+    },
+    {
+      "name": "Badgermole Cub",
+      "count": 4
+    },
+    {
+      "name": "Craterhoof Behemoth",
+      "count": 1
+    },
+    {
+      "name": "Delighted Halfling",
+      "count": 4
+    },
+    {
+      "name": "Disciple of Freyalise",
+      "count": 1
+    },
+    {
+      "name": "Dryad Arbor",
+      "count": 2
+    },
+    {
+      "name": "Enduring Vitality",
+      "count": 1
+    },
+    {
+      "name": "Forest",
+      "count": 7
+    },
+    {
+      "name": "Formidable Speaker",
+      "count": 1
+    },
+    {
+      "name": "Green Sun's Zenith",
+      "count": 4
+    },
+    {
+      "name": "Leyline of Abundance",
+      "count": 4
+    },
+    {
+      "name": "Lotus Cobra",
+      "count": 1
+    },
+    {
+      "name": "Misty Rainforest",
+      "count": 1
+    },
+    {
+      "name": "Nissa, Resurgent Animist",
+      "count": 1
+    },
+    {
+      "name": "Nissa, Who Shakes the World",
+      "count": 2
+    },
+    {
+      "name": "Ouroboroid",
+      "count": 1
+    },
+    {
+      "name": "Quirion Ranger",
+      "count": 4
+    },
+    {
+      "name": "Shang-Chi, Master of Kung Fu",
+      "count": 3
+    },
+    {
+      "name": "Springheart Nantuko",
+      "count": 4
+    },
+    {
+      "name": "Summoner's Pact",
+      "count": 4
+    },
+    {
+      "name": "Sylvan Safekeeper",
+      "count": 1
+    },
+    {
+      "name": "Verdant Catacombs",
+      "count": 4
+    },
+    {
+      "name": "Windswept Heath",
+      "count": 4
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Chomping Changeling",
+      "count": 1
+    },
+    {
+      "name": "Collector Ouphe",
+      "count": 1
+    },
+    {
+      "name": "Endurance",
+      "count": 3
+    },
+    {
+      "name": "Gaddock Teeg",
+      "count": 1
+    },
+    {
+      "name": "Kraul Harpooner",
+      "count": 1
+    },
+    {
+      "name": "Ouroboroid",
+      "count": 3
+    },
+    {
+      "name": "Ruric Thar, the Unbowed",
+      "count": 1
+    },
+    {
+      "name": "Tajuru Preserver",
+      "count": 1
+    },
+    {
+      "name": "Vexing Bauble",
+      "count": 3
+    }
+  ],
+  "commander": [],
+  "tags": [
+    "Top 8"
+  ],
+  "hash": "9878e3c6a0145632",
+  "manaProfile": {
+    "colors": [
+      "G"
+    ],
+    "pipCounts": {
+      "G": 48
+    },
+    "sourceCounts": {
+      "G": 9
+    },
+    "landCount": 18,
+    "predominantColors": [
+      "G"
+    ],
+    "predominantLands": [
+      {
+        "name": "Forest",
+        "count": 7
+      },
+      {
+        "name": "Verdant Catacombs",
+        "count": 4
+      },
+      {
+        "name": "Windswept Heath",
+        "count": 4
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact+scryfall",
+      "resolvedCardCount": 23,
+      "totalCardCount": 23,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
+}

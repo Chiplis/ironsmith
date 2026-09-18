@@ -1,36 +1,33 @@
 {
-  "id": "mtgtop8-90952-890713",
+  "id": "mtgtop8-90921-890522",
   "format": "standard",
-  "name": "Mono Green Aggro",
-  "archetype": "Mono Green Aggro",
+  "name": "Mono Green Landfall",
+  "archetype": "Mono Green Landfall",
   "colors": [
     "C",
     "G"
   ],
   "mechanics": [],
   "collections": [
-    "last-20-events",
     "mono-color"
   ],
   "cardNames": [
+    "Archdruid's Charm",
     "Ba Sing Se",
+    "Demolition Field",
     "Earthbender Ascension",
-    "Elven Passage",
     "Escape Tunnel",
+    "Esper Origins",
     "Fabled Passage",
     "Forest",
-    "Glimpse the Core",
     "Icetill Explorer",
-    "Keen-Eyed Curator",
     "Llanowar Elves",
     "Meltstrider's Resolve",
     "Mightform Harmonizer",
     "Mossborn Hydra",
-    "Origin of Metalbending",
-    "Promising Vein",
     "Sapling Nursery",
     "Sazh's Chocobo",
-    "Snakeskin Veil",
+    "Shared Roots",
     "Soul-Guide Lantern",
     "Surrak, Elusive Hunter",
     "Torpor Orb",
@@ -40,23 +37,31 @@
   "date": "",
   "placement": 5,
   "source": "mtgtop8",
-  "sourceUrl": "https://mtgtop8.com/event?e=90952&d=890713&f=ST",
+  "sourceUrl": "https://mtgtop8.com/event?e=90921&d=890522&f=ST",
   "mainboard": [
     {
+      "name": "Archdruid's Charm",
+      "count": 1
+    },
+    {
       "name": "Ba Sing Se",
-      "count": 2
+      "count": 3
+    },
+    {
+      "name": "Demolition Field",
+      "count": 1
     },
     {
       "name": "Earthbender Ascension",
       "count": 4
     },
     {
-      "name": "Elven Passage",
-      "count": 1
+      "name": "Escape Tunnel",
+      "count": 4
     },
     {
-      "name": "Escape Tunnel",
-      "count": 3
+      "name": "Esper Origins",
+      "count": 4
     },
     {
       "name": "Fabled Passage",
@@ -64,19 +69,11 @@
     },
     {
       "name": "Forest",
-      "count": 15
-    },
-    {
-      "name": "Glimpse the Core",
-      "count": 4
+      "count": 14
     },
     {
       "name": "Icetill Explorer",
       "count": 4
-    },
-    {
-      "name": "Keen-Eyed Curator",
-      "count": 1
     },
     {
       "name": "Llanowar Elves",
@@ -84,61 +81,41 @@
     },
     {
       "name": "Meltstrider's Resolve",
-      "count": 1
+      "count": 2
     },
     {
       "name": "Mightform Harmonizer",
       "count": 4
     },
     {
-      "name": "Mossborn Hydra",
-      "count": 4
-    },
-    {
-      "name": "Promising Vein",
-      "count": 1
-    },
-    {
       "name": "Sapling Nursery",
-      "count": 1
+      "count": 4
     },
     {
       "name": "Sazh's Chocobo",
       "count": 4
     },
     {
-      "name": "Snakeskin Veil",
-      "count": 2
-    },
-    {
-      "name": "Surrak, Elusive Hunter",
-      "count": 1
+      "name": "Shared Roots",
+      "count": 3
     }
   ],
   "sideboard": [
     {
-      "name": "Keen-Eyed Curator",
-      "count": 1
-    },
-    {
       "name": "Meltstrider's Resolve",
-      "count": 3
-    },
-    {
-      "name": "Origin of Metalbending",
       "count": 2
     },
     {
-      "name": "Sapling Nursery",
-      "count": 3
+      "name": "Mossborn Hydra",
+      "count": 4
     },
     {
       "name": "Soul-Guide Lantern",
-      "count": 1
+      "count": 2
     },
     {
       "name": "Surrak, Elusive Hunter",
-      "count": 1
+      "count": 3
     },
     {
       "name": "Torpor Orb",
@@ -153,7 +130,7 @@
   "tags": [
     "Top 8"
   ],
-  "hash": "c13702a82aa315e8",
+  "hash": "8be5777d4ffb3b4c",
   "manaProfile": {
     "colors": [
       "C",
@@ -173,21 +150,21 @@
     "predominantLands": [
       {
         "name": "Forest",
-        "count": 15
+        "count": 14
+      },
+      {
+        "name": "Escape Tunnel",
+        "count": 4
       },
       {
         "name": "Fabled Passage",
         "count": 4
-      },
-      {
-        "name": "Escape Tunnel",
-        "count": 3
       }
     ],
     "metadataCoverage": {
       "source": "local-card-artifact",
-      "resolvedCardCount": 18,
-      "totalCardCount": 18,
+      "resolvedCardCount": 15,
+      "totalCardCount": 15,
       "unresolvedCardNames": [],
       "complete": true
     }

@@ -1,5 +1,5 @@
 {
-  "id": "mtgtop8-90952-890713",
+  "id": "mtgtop8-90921-890519",
   "format": "standard",
   "name": "Mono Green Aggro",
   "archetype": "Mono Green Aggro",
@@ -9,7 +9,6 @@
   ],
   "mechanics": [],
   "collections": [
-    "last-20-events",
     "mono-color"
   ],
   "cardNames": [
@@ -38,9 +37,9 @@
   ],
   "event": "MTGO Challenge 16",
   "date": "",
-  "placement": 5,
+  "placement": 2,
   "source": "mtgtop8",
-  "sourceUrl": "https://mtgtop8.com/event?e=90952&d=890713&f=ST",
+  "sourceUrl": "https://mtgtop8.com/event?e=90921&d=890519&f=ST",
   "mainboard": [
     {
       "name": "Ba Sing Se",
@@ -153,7 +152,7 @@
   "tags": [
     "Top 8"
   ],
-  "hash": "c13702a82aa315e8",
+  "hash": "c614ad45eb54e7d9",
   "manaProfile": {
     "colors": [
       "C",

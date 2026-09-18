@@ -1,0 +1,176 @@
+{
+  "id": "mtgtop8-90590-887723",
+  "format": "standard",
+  "name": "Mono Red Control",
+  "archetype": "Mono Red Control",
+  "colors": [
+    "C",
+    "R"
+  ],
+  "mechanics": [],
+  "collections": [
+    "mono-color"
+  ],
+  "cardNames": [
+    "Abrade",
+    "Arid Archway",
+    "Avengers Disassembled",
+    "Chomping Changeling",
+    "Conduit Pylons",
+    "Flashback",
+    "Generous Plunderer",
+    "Ghost Vacuum",
+    "Gwen Stacy",
+    "Hexing Squelcher",
+    "Improvisation Capstone",
+    "Mountain",
+    "Return the Favor",
+    "Sear",
+    "Sire of Seven Deaths",
+    "Tablet of Discovery",
+    "The Misty Mountains Cold",
+    "Thor, God of Thunder",
+    "Ugin, Eye of the Storms",
+    "Vision of Love"
+  ],
+  "event": "Central America Magic Series @ The Raccoon House (Aguascalientes, Mexico)",
+  "date": "",
+  "placement": 2,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=90590&d=887723&f=ST",
+  "mainboard": [
+    {
+      "name": "Abrade",
+      "count": 2
+    },
+    {
+      "name": "Arid Archway",
+      "count": 4
+    },
+    {
+      "name": "Avengers Disassembled",
+      "count": 2
+    },
+    {
+      "name": "Conduit Pylons",
+      "count": 4
+    },
+    {
+      "name": "Flashback",
+      "count": 1
+    },
+    {
+      "name": "Generous Plunderer",
+      "count": 4
+    },
+    {
+      "name": "Gwen Stacy",
+      "count": 2
+    },
+    {
+      "name": "Improvisation Capstone",
+      "count": 4
+    },
+    {
+      "name": "Mountain",
+      "count": 16
+    },
+    {
+      "name": "Sear",
+      "count": 2
+    },
+    {
+      "name": "Sire of Seven Deaths",
+      "count": 2
+    },
+    {
+      "name": "Tablet of Discovery",
+      "count": 4
+    },
+    {
+      "name": "The Misty Mountains Cold",
+      "count": 4
+    },
+    {
+      "name": "Thor, God of Thunder",
+      "count": 3
+    },
+    {
+      "name": "Ugin, Eye of the Storms",
+      "count": 4
+    },
+    {
+      "name": "Vision of Love",
+      "count": 2
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Abrade",
+      "count": 2
+    },
+    {
+      "name": "Avengers Disassembled",
+      "count": 2
+    },
+    {
+      "name": "Chomping Changeling",
+      "count": 3
+    },
+    {
+      "name": "Ghost Vacuum",
+      "count": 3
+    },
+    {
+      "name": "Hexing Squelcher",
+      "count": 3
+    },
+    {
+      "name": "Return the Favor",
+      "count": 2
+    }
+  ],
+  "commander": [],
+  "tags": [
+    "Top 8"
+  ],
+  "hash": "efcad32b4e54cd35",
+  "manaProfile": {
+    "colors": [
+      "C",
+      "R"
+    ],
+    "pipCounts": {
+      "R": 37
+    },
+    "sourceCounts": {
+      "C": 4,
+      "R": 16
+    },
+    "landCount": 24,
+    "predominantColors": [
+      "R"
+    ],
+    "predominantLands": [
+      {
+        "name": "Mountain",
+        "count": 16
+      },
+      {
+        "name": "Arid Archway",
+        "count": 4
+      },
+      {
+        "name": "Conduit Pylons",
+        "count": 4
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact+scryfall",
+      "resolvedCardCount": 16,
+      "totalCardCount": 16,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
+}

@@ -1,0 +1,221 @@
+{
+  "id": "mtgtop8-90548-887307",
+  "format": "modern",
+  "name": "Mono Black Aggro",
+  "archetype": "Mono Black Aggro",
+  "colors": [
+    "B",
+    "C"
+  ],
+  "mechanics": [],
+  "collections": [
+    "mono-color"
+  ],
+  "cardNames": [
+    "Ashiok, Dream Render",
+    "Break the Ice",
+    "Damping Sphere",
+    "Dismember",
+    "Dreams of Steel and Oil",
+    "Eldrazi Temple",
+    "Emperor of Bones",
+    "Fatal Push",
+    "Force of Despair",
+    "Ifnir Deadlands",
+    "Inquisition of Kozilek",
+    "Kozilek's Command",
+    "Marsh Flats",
+    "Mishra's Bauble",
+    "Nethergoyf",
+    "Nihil Spellbomb",
+    "Orcish Bowmasters",
+    "Pithing Needle",
+    "Prismatic Vista",
+    "Shadowspear",
+    "Shoot the Sheriff",
+    "Surgical Extraction",
+    "Swamp",
+    "Thought-Knot Seer",
+    "Thoughtseize",
+    "Toxic Deluge",
+    "Urborg, Tomb of Yawgmoth",
+    "Urza's Saga",
+    "Wasteland Strangler",
+    "Wastes"
+  ],
+  "event": "MTGO Challenge 64",
+  "date": "",
+  "placement": 16,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=90548&d=887307&f=MO",
+  "mainboard": [
+    {
+      "name": "Eldrazi Temple",
+      "count": 4
+    },
+    {
+      "name": "Emperor of Bones",
+      "count": 4
+    },
+    {
+      "name": "Fatal Push",
+      "count": 4
+    },
+    {
+      "name": "Ifnir Deadlands",
+      "count": 4
+    },
+    {
+      "name": "Inquisition of Kozilek",
+      "count": 2
+    },
+    {
+      "name": "Kozilek's Command",
+      "count": 4
+    },
+    {
+      "name": "Marsh Flats",
+      "count": 1
+    },
+    {
+      "name": "Mishra's Bauble",
+      "count": 4
+    },
+    {
+      "name": "Nethergoyf",
+      "count": 4
+    },
+    {
+      "name": "Nihil Spellbomb",
+      "count": 1
+    },
+    {
+      "name": "Orcish Bowmasters",
+      "count": 3
+    },
+    {
+      "name": "Pithing Needle",
+      "count": 1
+    },
+    {
+      "name": "Prismatic Vista",
+      "count": 4
+    },
+    {
+      "name": "Shadowspear",
+      "count": 1
+    },
+    {
+      "name": "Swamp",
+      "count": 4
+    },
+    {
+      "name": "Thought-Knot Seer",
+      "count": 4
+    },
+    {
+      "name": "Thoughtseize",
+      "count": 4
+    },
+    {
+      "name": "Urborg, Tomb of Yawgmoth",
+      "count": 2
+    },
+    {
+      "name": "Urza's Saga",
+      "count": 4
+    },
+    {
+      "name": "Wastes",
+      "count": 1
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Ashiok, Dream Render",
+      "count": 1
+    },
+    {
+      "name": "Break the Ice",
+      "count": 2
+    },
+    {
+      "name": "Damping Sphere",
+      "count": 2
+    },
+    {
+      "name": "Dismember",
+      "count": 1
+    },
+    {
+      "name": "Dreams of Steel and Oil",
+      "count": 1
+    },
+    {
+      "name": "Force of Despair",
+      "count": 1
+    },
+    {
+      "name": "Pithing Needle",
+      "count": 2
+    },
+    {
+      "name": "Shoot the Sheriff",
+      "count": 1
+    },
+    {
+      "name": "Surgical Extraction",
+      "count": 1
+    },
+    {
+      "name": "Toxic Deluge",
+      "count": 2
+    },
+    {
+      "name": "Wasteland Strangler",
+      "count": 1
+    }
+  ],
+  "commander": [],
+  "tags": [],
+  "hash": "fcc055d0df3ce925",
+  "manaProfile": {
+    "colors": [
+      "B",
+      "C"
+    ],
+    "pipCounts": {
+      "B": 21,
+      "C": 12
+    },
+    "sourceCounts": {
+      "C": 13,
+      "B": 10
+    },
+    "landCount": 24,
+    "predominantColors": [
+      "C"
+    ],
+    "predominantLands": [
+      {
+        "name": "Eldrazi Temple",
+        "count": 4
+      },
+      {
+        "name": "Ifnir Deadlands",
+        "count": 4
+      },
+      {
+        "name": "Prismatic Vista",
+        "count": 4
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact+scryfall",
+      "resolvedCardCount": 20,
+      "totalCardCount": 20,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
+}
