@@ -388,16 +388,23 @@ export default function Shell() {
             Math.max(0, Math.min(playerCount - 1, Number(payload.perspectivePlayerIndex)))
           );
         }
-        let testPosition = null;
+        let testPositions = [];
         if (
           payload?.seedTestPosition
           && Number.isFinite(Number(payload?.perspectivePlayerIndex))
           && typeof game.seedLoadedDeckTestPosition === "function"
         ) {
-          testPosition = await game.seedLoadedDeckTestPosition(
-            Math.max(0, Math.min(playerCount - 1, Number(payload.perspectivePlayerIndex)))
-          );
+          for (let playerIndex = 0; playerIndex < playerCount; playerIndex += 1) {
+            testPositions[playerIndex] = await game.seedLoadedDeckTestPosition(playerIndex);
+          }
         }
+        const testPosition = Number.isFinite(Number(payload?.perspectivePlayerIndex))
+          ? testPositions[Math.max(0, Math.min(playerCount - 1, Number(payload.perspectivePlayerIndex)))] || null
+          : null;
+        const seededBattlefieldCount = testPositions.reduce(
+          (total, position) => total + (position?.battlefield?.length || 0),
+          0,
+        );
         setDeckLoadingMode(false);
         const loaded = result?.loaded ?? 0;
         const failed = Array.isArray(result?.failed) ? result.failed : [];
@@ -411,7 +418,7 @@ export default function Shell() {
           tone: "success",
           title: "Deck load complete",
           body: testPosition
-            ? `Loaded ${loaded} card${loaded === 1 ? "" : "s"}. Test position ready with ${testPosition.battlefield?.length || 0} battlefield cards.`
+            ? `Loaded ${loaded} card${loaded === 1 ? "" : "s"}. Test position ready for ${testPositions.length} players with ${seededBattlefieldCount} battlefield cards.`
             : `Loaded ${loaded} card${loaded === 1 ? "" : "s"}.`,
         });
         if (failed.length > 0) {
@@ -469,7 +476,7 @@ export default function Shell() {
           );
         } else {
           const positionSummary = testPosition
-            ? ` ${testPosition.battlefield?.length || 0} en battlefield, ${testPosition.graveyard?.length || 0} en cementerio y ${testPosition.exile?.length || 0} en exilio.`
+            ? ` ${seededBattlefieldCount} en battlefield, ${testPositions.reduce((total, position) => total + (position?.graveyard?.length || 0), 0)} en cementerio y ${testPositions.reduce((total, position) => total + (position?.exile?.length || 0), 0)} en exilio.`
             : "";
           await refresh(`Partida de prueba lista: ${loaded} cartas en bibliotecas y manos${testPosition ? ", con posición inicial" : ""}.${positionSummary}`);
         }
