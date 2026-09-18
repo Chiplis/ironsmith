@@ -390,6 +390,16 @@ export default function Shell() {
             Math.max(0, Math.min(playerCount - 1, Number(payload.perspectivePlayerIndex)))
           );
         }
+        let testPosition = null;
+        if (
+          payload?.seedTestPosition
+          && Number.isFinite(Number(payload?.perspectivePlayerIndex))
+          && typeof game.seedLoadedDeckTestPosition === "function"
+        ) {
+          testPosition = await game.seedLoadedDeckTestPosition(
+            Math.max(0, Math.min(playerCount - 1, Number(payload.perspectivePlayerIndex)))
+          );
+        }
         setDeckLoadingMode(false);
         const loaded = result?.loaded ?? 0;
         const failed = Array.isArray(result?.failed) ? result.failed : [];
@@ -402,7 +412,9 @@ export default function Shell() {
         pushNotice({
           tone: "success",
           title: "Deck load complete",
-          body: `Loaded ${loaded} card${loaded === 1 ? "" : "s"}.`,
+          body: testPosition
+            ? `Loaded ${loaded} card${loaded === 1 ? "" : "s"}. Test position ready with ${testPosition.battlefield?.length || 0} battlefield cards.`
+            : `Loaded ${loaded} card${loaded === 1 ? "" : "s"}.`,
         });
         if (failed.length > 0) {
           const copyActions = [
@@ -455,10 +467,13 @@ export default function Shell() {
             .filter(Boolean)
             .join(", ");
           await refresh(
-            `Partida de prueba lista: ${loaded} cartas en bibliotecas y manos iniciales. ${failed.length} fallaron${issueSummary ? ` (${issueSummary})` : ""}: ${failedStr}`
+            `Partida de prueba lista: ${loaded} cartas en bibliotecas y manos${testPosition ? ", con posición inicial" : ""}. ${failed.length} fallaron${issueSummary ? ` (${issueSummary})` : ""}: ${failedStr}`
           );
         } else {
-          await refresh(`Partida de prueba lista: ${loaded} cartas en bibliotecas y manos iniciales`);
+          const positionSummary = testPosition
+            ? ` ${testPosition.battlefield?.length || 0} en battlefield, ${testPosition.graveyard?.length || 0} en cementerio y ${testPosition.exile?.length || 0} en exilio.`
+            : "";
+          await refresh(`Partida de prueba lista: ${loaded} cartas en bibliotecas y manos${testPosition ? ", con posición inicial" : ""}.${positionSummary}`);
         }
       } catch (err) {
         setDeckLoadingMode(false);

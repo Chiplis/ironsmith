@@ -272,6 +272,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
       playerCount,
       perspectivePlayerIndex,
       preserveMissingDecks: true,
+      seedTestPosition: true,
     });
   }, [onTestDecks, setStatus, texts]);
 

@@ -3127,6 +3127,18 @@ impl WasmGame {
             .map_err(|e| JsValue::from_str(&format!("failed to serialize custom card seed: {e}")))
     }
 
+    /// Move a small random sample of the loaded deck into visible test zones.
+    /// This is intentionally separate from `loadDecks`: normal deck loading
+    /// must remain a clean match setup, while local deck tests benefit from a
+    /// playable board containing real cards from the selected deck.
+    #[wasm_bindgen(js_name = seedLoadedDeckTestPosition)]
+    pub fn seed_loaded_deck_test_position(&mut self, player_index: u8) -> Result<JsValue, JsValue> {
+        let seed = self.build_loaded_deck_test_position(player_index)?;
+        serde_wasm_bindgen::to_value(&seed).map_err(|e| {
+            JsValue::from_str(&format!("failed to serialize test position seed: {e}"))
+        })
+    }
+
     #[wasm_bindgen(js_name = previewCustomCard)]
     pub fn preview_custom_card(&self, draft_js: JsValue) -> Result<JsValue, JsValue> {
         let draft: CustomCardInput = serde_wasm_bindgen::from_value(draft_js)
