@@ -79,7 +79,11 @@ function sortDeckEntries(entries, sortMode) {
 
 function matchesManaFilters(entry, activeMana, manaMatchMode) {
   const colors = completeManaProfile(entry)?.colors || [];
-  if (manaMatchMode === "exact" && (colors.length !== activeMana.length || !activeMana.every((color) => colors.includes(color)))) return false;
+  if (manaMatchMode === "exact") {
+    const coloredColors = colors.filter((color) => color !== "C");
+    const requestedColored = activeMana.filter((color) => color !== "C");
+    if (coloredColors.length !== requestedColored.length || !requestedColored.every((color) => coloredColors.includes(color))) return false;
+  }
   return activeMana.every((color) => colors.includes(color));
 }
 
@@ -266,6 +270,11 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
     [manaFilteredResults, sortMode],
   );
 
+  const monoResults = useMemo(
+    () => sortDeckEntries(manaFilteredResults.filter((entry) => entry?.collections?.includes("mono-color")), sortMode),
+    [manaFilteredResults, sortMode],
+  );
+
   const collectionCounts = useMemo(() => {
     const counts = Object.fromEntries(collectionOptions.map(({ id }) => [id, 0]));
     counts.all = searchResults.length;
@@ -386,7 +395,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
         })}
         {activeMana.length ? <div className="flex items-center gap-0.5 rounded-full border border-white/10 p-0.5" aria-label="Modo de coincidencia de mana">
           <Button type="button" variant="ghost" size="sm" className={`h-6 rounded-full px-2 text-[9px] font-bold uppercase tracking-wide ${manaMatchMode === "include" ? "bg-[#342817] text-[#f2d9a3] ring-1 ring-[#d8bf7a]/55 shadow-[0_0_9px_rgba(216,191,122,0.28)]" : "text-[#8b806b] hover:text-[#e7d9bc]"}`} aria-pressed={manaMatchMode === "include"} title="Incluye estos colores, aunque el deck use otros" onClick={() => { setManaMatchMode("include"); resetCarousel(); }}>Incluye</Button>
-          <Button type="button" variant="ghost" size="sm" className={`h-6 rounded-full px-2 text-[9px] font-bold uppercase tracking-wide ${manaMatchMode === "exact" ? "bg-[#342817] text-[#f2d9a3] ring-1 ring-[#d8bf7a]/55 shadow-[0_0_9px_rgba(216,191,122,0.28)]" : "text-[#8b806b] hover:text-[#e7d9bc]"}`} aria-pressed={manaMatchMode === "exact"} title="Sólo decks con exactamente estos colores" onClick={() => { setManaMatchMode("exact"); resetCarousel(); }}>Sólo estos</Button>
+          <Button type="button" variant="ghost" size="sm" className={`h-6 rounded-full px-2 text-[9px] font-bold uppercase tracking-wide ${manaMatchMode === "exact" ? "bg-[#342817] text-[#f2d9a3] ring-1 ring-[#d8bf7a]/55 shadow-[0_0_9px_rgba(216,191,122,0.28)]" : "text-[#8b806b] hover:text-[#e7d9bc]"}`} aria-pressed={manaMatchMode === "exact"} title="Sólo estos colores; el maná C puede ser auxiliar" onClick={() => { setManaMatchMode("exact"); resetCarousel(); }}>Sólo estos</Button>
         </div> : null}
         {activeCollections.length || activeMana.length ? <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[10px] font-semibold text-[#8b806b] hover:text-[#e7d9bc]" onClick={clearCollections}>Limpiar</Button> : null}
         <label className="ml-auto flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e]">Ordenar
@@ -402,6 +411,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
       <DeckCarousel title="Explorar decks" entries={filteredResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
       <DeckCarousel title="Last 20 events" entries={recentResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
       <DeckCarousel title="Last major events" entries={majorResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
+      <DeckCarousel title="Mono-color" entries={monoResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
     </section>
   );
 }
