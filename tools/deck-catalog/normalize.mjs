@@ -44,7 +44,15 @@ function canonicalDeck(raw) {
   return {
     id,
     format,
+    name: text(raw.name || raw.archetype),
     archetype: text(raw.archetype),
+    colors: [...new Set((Array.isArray(raw.colors) ? raw.colors : []).map((color) => text(color).toUpperCase()).filter((color) => /^[WUBRGC]$/.test(color)))].sort(),
+    mechanics: [...new Set((Array.isArray(raw.mechanics) ? raw.mechanics : []).map(text).filter(Boolean))].sort(),
+    cardNames: [...new Set([
+      ...mainboard.map((card) => card.name),
+      ...sideboard.map((card) => card.name),
+      ...commander.map((card) => card.name),
+    ])].sort(),
     event,
     date,
     placement,
@@ -55,7 +63,7 @@ function canonicalDeck(raw) {
     commander,
     tags,
     hash: shortHash(identity),
-    _searchValues: deckTokenValues({ id, format, archetype: text(raw.archetype), event, source, tags, mainboard, sideboard }),
+    _searchValues: deckTokenValues({ id, format, name: text(raw.name || raw.archetype), archetype: text(raw.archetype), event, source, tags, mainboard, sideboard }),
   };
 }
 

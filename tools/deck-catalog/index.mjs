@@ -18,6 +18,8 @@ export function buildSearchIndex(entries, { generatedAt = "" } = {}) {
       entry.format,
       entry.name,
       entry.archetype,
+      ...(Array.isArray(entry.colors) ? entry.colors : []),
+      ...(Array.isArray(entry.mechanics) ? entry.mechanics : []),
       entry.event,
       entry.source,
       ...(Array.isArray(entry.tags) ? entry.tags : []),

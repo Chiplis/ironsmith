@@ -8,7 +8,10 @@ import {
 
 const sample = {
   format: "Modern",
+  name: "Boros Energy",
   archetype: "Boros Energy",
+  colors: ["r", "W", "invalid"],
+  mechanics: ["Energy", "Energy"],
   event: "Modern Challenge",
   date: "2026-09-17",
   placement: 1,
@@ -26,6 +29,9 @@ test("normalizes a deck deterministically", () => {
   const second = normalizeCompetitiveDeck({ ...sample, source: "mtgtop8" });
 
   assert.equal(first.format, "modern");
+  assert.equal(first.name, "Boros Energy");
+  assert.deepEqual(first.colors, ["R", "W"]);
+  assert.deepEqual(first.mechanics, ["Energy"]);
   assert.equal(first.mainboard[0].count, 5);
   assert.deepEqual(first.tags, ["Top 8"]);
   assert.equal(first.hash, second.hash);

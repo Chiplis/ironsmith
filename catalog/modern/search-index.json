@@ -1,6 +1,259 @@
 {
   "schemaVersion": 1,
   "format": "modern",
-  "generatedAt": "",
-  "tokens": {}
+  "generatedAt": "2026-09-18T17:08:41.216Z",
+  "tokens": {
+    "10": [
+      "mtgtop8-90808-889588"
+    ],
+    "90808": [
+      "mtgtop8-90808-889588"
+    ],
+    "889588": [
+      "mtgtop8-90808-889588"
+    ],
+    "00am": [
+      "mtgtop8-90808-889588"
+    ],
+    "ancient": [
+      "mtgtop8-90808-889588"
+    ],
+    "baltimore": [
+      "mtgtop8-90808-889588"
+    ],
+    "basking": [
+      "mtgtop8-90808-889588"
+    ],
+    "bauble": [
+      "mtgtop8-90808-889588"
+    ],
+    "blade": [
+      "mtgtop8-90808-889588"
+    ],
+    "bloodchief": [
+      "mtgtop8-90808-889588"
+    ],
+    "boseiju": [
+      "mtgtop8-90808-889588"
+    ],
+    "broodscale": [
+      "mtgtop8-90808-889588"
+    ],
+    "cage": [
+      "mtgtop8-90808-889588"
+    ],
+    "cavern": [
+      "mtgtop8-90808-889588"
+    ],
+    "caverns": [
+      "mtgtop8-90808-889588"
+    ],
+    "claim": [
+      "mtgtop8-90808-889588"
+    ],
+    "command": [
+      "mtgtop8-90808-889588"
+    ],
+    "con": [
+      "mtgtop8-90808-889588"
+    ],
+    "cradle": [
+      "mtgtop8-90808-889588"
+    ],
+    "deaths": [
+      "mtgtop8-90808-889588"
+    ],
+    "delighted": [
+      "mtgtop8-90808-889588"
+    ],
+    "destiny": [
+      "mtgtop8-90808-889588"
+    ],
+    "devourer": [
+      "mtgtop8-90808-889588"
+    ],
+    "dismember": [
+      "mtgtop8-90808-889588"
+    ],
+    "disruptor": [
+      "mtgtop8-90808-889588"
+    ],
+    "drum": [
+      "mtgtop8-90808-889588"
+    ],
+    "eldrazi": [
+      "mtgtop8-90808-889588"
+    ],
+    "emrakul": [
+      "mtgtop8-90808-889588"
+    ],
+    "end": [
+      "mtgtop8-90808-889588"
+    ],
+    "endures": [
+      "mtgtop8-90808-889588"
+    ],
+    "existence": [
+      "mtgtop8-90808-889588"
+    ],
+    "fleshraker": [
+      "mtgtop8-90808-889588"
+    ],
+    "flute": [
+      "mtgtop8-90808-889588"
+    ],
+    "forest": [
+      "mtgtop8-90808-889588"
+    ],
+    "gemstone": [
+      "mtgtop8-90808-889588"
+    ],
+    "glaring": [
+      "mtgtop8-90808-889588"
+    ],
+    "grafdigger": [
+      "mtgtop8-90808-889588"
+    ],
+    "growth": [
+      "mtgtop8-90808-889588"
+    ],
+    "guide": [
+      "mtgtop8-90808-889588"
+    ],
+    "halfling": [
+      "mtgtop8-90808-889588"
+    ],
+    "haywire": [
+      "mtgtop8-90808-889588"
+    ],
+    "kozilek": [
+      "mtgtop8-90808-889588"
+    ],
+    "labyrinth": [
+      "mtgtop8-90808-889588"
+    ],
+    "lantern": [
+      "mtgtop8-90808-889588"
+    ],
+    "malevolent": [
+      "mtgtop8-90808-889588"
+    ],
+    "mite": [
+      "mtgtop8-90808-889588"
+    ],
+    "modern": [
+      "mtgtop8-90808-889588"
+    ],
+    "mtgtop8": [
+      "mtgtop8-90808-889588"
+    ],
+    "mycospawn": [
+      "mtgtop8-90808-889588"
+    ],
+    "nature": [
+      "mtgtop8-90808-889588"
+    ],
+    "needle": [
+      "mtgtop8-90808-889588"
+    ],
+    "pithing": [
+      "mtgtop8-90808-889588"
+    ],
+    "promised": [
+      "mtgtop8-90808-889588"
+    ],
+    "recq": [
+      "mtgtop8-90808-889588"
+    ],
+    "rumble": [
+      "mtgtop8-90808-889588"
+    ],
+    "saga": [
+      "mtgtop8-90808-889588"
+    ],
+    "scg": [
+      "mtgtop8-90808-889588"
+    ],
+    "seven": [
+      "mtgtop8-90808-889588"
+    ],
+    "shifting": [
+      "mtgtop8-90808-889588"
+    ],
+    "sire": [
+      "mtgtop8-90808-889588"
+    ],
+    "six": [
+      "mtgtop8-90808-889588"
+    ],
+    "soul": [
+      "mtgtop8-90808-889588"
+    ],
+    "soulcleaver": [
+      "mtgtop8-90808-889588"
+    ],
+    "souls": [
+      "mtgtop8-90808-889588"
+    ],
+    "sowing": [
+      "mtgtop8-90808-889588"
+    ],
+    "springleaf": [
+      "mtgtop8-90808-889588"
+    ],
+    "stirrings": [
+      "mtgtop8-90808-889588"
+    ],
+    "tarrian": [
+      "mtgtop8-90808-889588"
+    ],
+    "temple": [
+      "mtgtop8-90808-889588"
+    ],
+    "thief": [
+      "mtgtop8-90808-889588"
+    ],
+    "top": [
+      "mtgtop8-90808-889588"
+    ],
+    "traverse": [
+      "mtgtop8-90808-889588"
+    ],
+    "trinisphere": [
+      "mtgtop8-90808-889588"
+    ],
+    "ugin": [
+      "mtgtop8-90808-889588"
+    ],
+    "ulvenwald": [
+      "mtgtop8-90808-889588"
+    ],
+    "unday": [
+      "mtgtop8-90808-889588"
+    ],
+    "uper": [
+      "mtgtop8-90808-889588"
+    ],
+    "urza": [
+      "mtgtop8-90808-889588"
+    ],
+    "vexing": [
+      "mtgtop8-90808-889588"
+    ],
+    "wail": [
+      "mtgtop8-90808-889588"
+    ],
+    "warping": [
+      "mtgtop8-90808-889588"
+    ],
+    "who": [
+      "mtgtop8-90808-889588"
+    ],
+    "woodland": [
+      "mtgtop8-90808-889588"
+    ],
+    "yavimaya": [
+      "mtgtop8-90808-889588"
+    ]
+  }
 }

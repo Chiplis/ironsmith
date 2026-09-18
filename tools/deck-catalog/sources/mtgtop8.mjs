@@ -3,8 +3,8 @@ import { normalizeCardList, text } from "../catalog-utils.mjs";
 const EVENT_LINK_RE = /href=["']?\/?event\?e=(\d+)&f=([A-Za-z0-9]+)/gi;
 const DECK_LINK_RE = /href=["']?\/?\?e=(\d+)&d=(\d+)&f=([A-Za-z0-9]+)/gi;
 const CARD_LINE_RE = /<div\s+id=((?:md|sb)[^\s>]*)\s+class=["']deck_line[^"']*["'][^>]*>\s*(\d+)\s+<span[^>]*>([\s\S]*?)<\/span>/gi;
-const ARCHETYPE_RE = /href=["']?\/?archetype\?[^"'>]*["'][^>]*>([^<]*?)\s+decks<\/a>/i;
-const EVENT_TITLE_RE = /<div\s+class=event_title[^>]*>\s*([\s\S]*?)<\/div>/i;
+const ARCHETYPE_RE = /href=["']?\/?archetype\?[^"'>]*["'][^>]*>([^<]*?)\s+decks<\/a>/gi;
+const EVENT_TITLE_RE = /<div\s+class=event_title[^>]*>\s*([\s\S]*?)<\/div>/gi;
 
 function decodeHtml(value) {
   return text(value)
@@ -69,15 +69,25 @@ export function parseDeckPage(html, {
     section.push({ name: decodeHtml(match[3]), count: Number(match[2]) });
   }
 
-  const archetype = decodeHtml(String(html || "").match(ARCHETYPE_RE)?.[1] || "");
-  const event = decodeHtml(String(html || "").match(EVENT_TITLE_RE)?.[1] || "");
-  const placementMatch = event.match(/^#(\d+)\s+/);
+  const titles = [...String(html || "").matchAll(EVENT_TITLE_RE)].map((match) => decodeHtml(match[1]));
+  const deckTitle = titles.find((title) => /^#\d+\s+/.test(title)) || "";
+  const placementMatch = deckTitle.match(/^#(\d+)\s+/);
+  const archetypeFromTitle = deckTitle
+    .replace(/^#\d+\s+/, "")
+    .replace(/\s+-\s+.*$/, "")
+    .trim();
+  const archetypeLinks = [...String(html || "").matchAll(ARCHETYPE_RE)]
+    .map((match) => decodeHtml(match[1]))
+    .filter(Boolean);
+  const archetype = archetypeFromTitle || archetypeLinks.at(-1) || "";
+  const event = titles.find((title) => !/^#\d+\s+/.test(title)) || "";
 
   return {
     id: deckId ? `mtgtop8-${eventId}-${deckId}` : "",
     format: "modern",
-    archetype: archetype || event.replace(/^#\d+\s+/, ""),
-    event: event.replace(/^#\d+\s+/, ""),
+    name: archetype,
+    archetype,
+    event,
     date,
     placement: placementMatch ? Number(placementMatch[1]) : null,
     source: "mtgtop8",

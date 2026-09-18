@@ -46,7 +46,11 @@ function catalogEntry(deck) {
   return {
     id: deck.id,
     format: deck.format,
+    name: deck.name,
     archetype: deck.archetype,
+    colors: deck.colors,
+    mechanics: deck.mechanics,
+    cardNames: deck.cardNames,
     event: deck.event,
     date: deck.date,
     placement: deck.placement,

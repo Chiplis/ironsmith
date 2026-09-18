@@ -8,6 +8,7 @@ import {
 } from "../sources/mtgtop8.mjs";
 
 const fixture = `
+<div class=event_title>Modern Challenge</div>
 <div class=event_title>#1 Dimir Control</div>
 <div class=S14><a href=archetype?a=1702>Dimir Control decks</a></div>
 <div id=mdabc001 class="deck_line hover_tr">4 <span class=L14>Psychic Frog</span></div>
@@ -40,6 +41,7 @@ test("parses mainboard, sideboard and placement from an event deck page", () => 
   });
   assert.equal(deck.id, "mtgtop8-90808-889587");
   assert.equal(deck.archetype, "Dimir Control");
+  assert.equal(deck.event, "Modern Challenge");
   assert.equal(deck.placement, 1);
   assert.deepEqual(deck.mainboard, [
     { name: "Counterspell", count: 2 },
