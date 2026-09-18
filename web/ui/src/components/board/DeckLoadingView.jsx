@@ -89,7 +89,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
     if (!selectedPreset) return;
     setTexts(fitTextsToPlayers(players, selectedPreset.texts));
     setPresetName(selectedPreset.name);
-    setPlayerSaveNames(Object.fromEntries(players.map((_, index) => [index, selectedPreset.name])));
+    setPlayerSaveNames({});
   };
 
   const saveCurrentPreset = useCallback((requestedName = presetName) => {
@@ -213,6 +213,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
       }
     }
     setPresetName("");
+    setPlayerSaveNames({});
   }, [catalogTargetIndex, handleTextChange, players, texts]);
 
   const handleDeleteSavedPreset = useCallback(() => {
@@ -221,6 +222,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
     setSavedPresets(removeSavedDeckPreset(selectedPreset.name));
     setSelectedPresetName("");
     setPresetName("");
+    setPlayerSaveNames({});
     setStatus(`Deleted saved deck "${selectedPreset.name}"`);
   }, [selectedPreset, setStatus, ui]);
 
