@@ -2974,7 +2974,9 @@ impl WasmGame {
     /// Returns a JSON object with total and categorized failures:
     /// `{ loaded, failed, failedBelowThreshold, failedToParse }`. Structured
     /// payloads may set `preserveMissingDecks` to keep the existing deck for
-    /// players whose submitted list is empty (useful for local deck testing).
+    /// players whose submitted list is empty (useful for local deck testing),
+    /// or `allowPartialDecks` to continue a local test after unresolved card
+    /// names while returning those names in the diagnostics result.
     /// Unknown cards are skipped rather than aborting the entire load.
     #[wasm_bindgen(js_name = loadDecks)]
     pub fn load_decks(&mut self, decks_js: JsValue) -> Result<JsValue, JsValue> {
@@ -2988,18 +2990,21 @@ impl WasmGame {
                 sideboards: Vec<Vec<String>>,
                 #[serde(default, alias = "preserveMissingDecks")]
                 preserve_missing_decks: bool,
+                #[serde(default, alias = "allowPartialDecks")]
+                allow_partial_decks: bool,
             },
         }
 
         let payload: DeckLoadPayload = serde_wasm_bindgen::from_value(decks_js)
             .map_err(|e| JsValue::from_str(&format!("invalid decks payload: {e}")))?;
-        let (mut decks, sideboards, preserve_missing_decks) = match payload {
-            DeckLoadPayload::Decks(decks) => (decks, Vec::new(), false),
+        let (mut decks, sideboards, preserve_missing_decks, allow_partial_decks) = match payload {
+            DeckLoadPayload::Decks(decks) => (decks, Vec::new(), false, false),
             DeckLoadPayload::Structured {
                 decks,
                 sideboards,
                 preserve_missing_decks,
-            } => (decks, sideboards, preserve_missing_decks),
+                allow_partial_decks,
+            } => (decks, sideboards, preserve_missing_decks, allow_partial_decks),
         };
 
         if decks.len() != self.game.players.len() {
@@ -3047,7 +3052,13 @@ impl WasmGame {
 
             for name in deck {
                 if let Some(definition) = self.find_card_definition(name).cloned() {
-                    if self.semantic_threshold > 0.0
+                    // A normalized MTGO line that resolves to the canonical
+                    // registry name is already an exact match.  Do not run
+                    // it through the fuzzy semantic gate: generated semantic
+                    // scores are intentionally conservative and can reject
+                    // valid decklists at the UI's default threshold.
+                    if !name.trim().eq_ignore_ascii_case(definition.name())
+                        && self.semantic_threshold > 0.0
                         && let Some(score) = self.semantic_score_for_name(definition.name())
                         && score < self.semantic_threshold
                     {
@@ -3066,7 +3077,8 @@ impl WasmGame {
             if let Some(sideboard) = sideboards.get(player_index) {
                 for name in sideboard {
                     if let Some(definition) = self.find_card_definition(name).cloned() {
-                        if self.semantic_threshold > 0.0
+                        if !name.trim().eq_ignore_ascii_case(definition.name())
+                            && self.semantic_threshold > 0.0
                             && let Some(score) = self.semantic_score_for_name(definition.name())
                             && score < self.semantic_threshold
                         {
@@ -3080,6 +3092,23 @@ impl WasmGame {
                         failed.push(name.clone());
                         failed_to_parse.push(name.clone());
                     }
+                }
+            }
+        }
+
+        if allow_partial_decks {
+            // Keep every card that resolved and report the rest, but ensure
+            // local test libraries still satisfy normal constructed's
+            // 60-card setup requirement. Padding uses only a basic land and
+            // is never enabled for normal deck/lobby loads.
+            self.ensure_card_definitions_loaded(["Plains"]);
+            let fallback = self
+                .find_card_definition("Plains")
+                .map(|definition| definition.name().to_string())
+                .ok_or_else(|| JsValue::from_str("registry has no basic land fallback"))?;
+            for deck in &mut accepted_decks {
+                while deck.len() < 60 {
+                    deck.push(fallback.clone());
                 }
             }
         }

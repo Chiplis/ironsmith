@@ -389,6 +389,7 @@ export default function Shell() {
           );
         }
         let testPositions = [];
+        const testPositionWarnings = [];
         if (
           payload?.seedTestPosition
           && typeof game.seedLoadedDeckTestPosition === "function"
@@ -400,7 +401,14 @@ export default function Shell() {
             : Array.from({ length: playerCount }, (_, index) => index);
           const seedIndices = [...new Set(requestedSeedIndices)];
           for (const playerIndex of seedIndices) {
-            testPositions[playerIndex] = await game.seedLoadedDeckTestPosition(playerIndex);
+            try {
+              testPositions[playerIndex] = await game.seedLoadedDeckTestPosition(playerIndex);
+            } catch (error) {
+              // A deck made entirely of unresolved/land cards should not
+              // cancel the test match. Keep the loaded library and report the
+              // missing test-position seed as a warning instead.
+              testPositionWarnings.push(`player ${playerIndex + 1}: ${String(error)}`);
+            }
           }
         }
         const testPosition = Number.isFinite(Number(payload?.perspectivePlayerIndex))
@@ -424,8 +432,8 @@ export default function Shell() {
           tone: "success",
           title: "Deck load complete",
           body: testPosition
-            ? `Loaded ${loaded} card${loaded === 1 ? "" : "s"}. Test position ready for ${seededPlayerCount} player${seededPlayerCount === 1 ? "" : "s"} with ${seededBattlefieldCount} battlefield cards.`
-            : `Loaded ${loaded} card${loaded === 1 ? "" : "s"}.`,
+            ? `Loaded ${loaded} card${loaded === 1 ? "" : "s"}. Test position ready for ${seededPlayerCount} player${seededPlayerCount === 1 ? "" : "s"} with ${seededBattlefieldCount} battlefield cards.${testPositionWarnings.length ? ` ${testPositionWarnings.length} position warning${testPositionWarnings.length === 1 ? "" : "s"}.` : ""}`
+            : `Loaded ${loaded} card${loaded === 1 ? "" : "s"}.${testPositionWarnings.length ? ` ${testPositionWarnings.length} position warning${testPositionWarnings.length === 1 ? "" : "s"}.` : ""}`,
         });
         if (failed.length > 0) {
           const copyActions = [
@@ -458,8 +466,8 @@ export default function Shell() {
             .filter(Boolean)
             .join(". ");
           pushNotice({
-            tone: "error",
-            title: "Deck load issues",
+            tone: payload?.allowPartialDecks ? "warning" : "error",
+            title: payload?.allowPartialDecks ? "Deck test warnings" : "Deck load issues",
             body: `${failed.length} card${failed.length === 1 ? "" : "s"} failed. ${issueSummary ? `${issueSummary}. ` : ""}Use the copy actions below.`,
             actions: copyActions,
           });

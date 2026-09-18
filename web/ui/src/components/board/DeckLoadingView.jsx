@@ -281,6 +281,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
       perspectivePlayerIndex,
       seedPlayerIndices,
       preserveMissingDecks: true,
+      allowPartialDecks: true,
       seedTestPosition: true,
     });
   }, [onTestDecks, setStatus, texts, visiblePlayerCount]);
