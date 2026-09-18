@@ -3024,6 +3024,38 @@ button:disabled,
   background-image: none !important;
 }
 
+/* Keep every themed select's chevron clear of the right edge. */
+:is(
+  select.stone-select,
+  select.fantasy-field,
+  select.card-forge-input,
+  .table-gradient select,
+  [data-slot="sheet-content"] select,
+  .setup-screen select
+) {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  padding-right: 3rem !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23b8aa8e' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.8'%3E%3Cpath d='m5 7 5 5 5-5'/%3E%3C/svg%3E") !important;
+  background-position: right 1.35rem center !important;
+  background-repeat: no-repeat !important;
+  background-size: 0.9rem !important;
+}
+
+:is(
+  select.stone-select,
+  select.fantasy-field,
+  select.card-forge-input,
+  .table-gradient select,
+  [data-slot="sheet-content"] select,
+  .setup-screen select
+):is(:hover, :focus, :disabled) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23b8aa8e' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.8'%3E%3Cpath d='m5 7 5 5 5-5'/%3E%3C/svg%3E") !important;
+  background-position: right 1.35rem center !important;
+  background-repeat: no-repeat !important;
+  background-size: 0.9rem !important;
+}
+
 .fantasy-sheet .stone-pill {
   border: 1px solid var(--ui-border-subtle) !important;
   border-radius: var(--ui-radius-control) !important;
