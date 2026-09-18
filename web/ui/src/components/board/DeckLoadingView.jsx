@@ -237,13 +237,12 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
   const handleTestInGame = useCallback(() => {
     const decks = texts.map(parseDeckList);
     const sideboards = texts.map(parseSideboardList);
-    const emptyPlayerIndex = decks.findIndex((deck) => deck.length === 0);
-    if (emptyPlayerIndex >= 0) {
-      setStatus(`Falta el mazo de ${players[emptyPlayerIndex]?.name || `jugador ${emptyPlayerIndex + 1}`}.`);
+    if (!decks.some((deck) => deck.length > 0)) {
+      setStatus("Pegá al menos un mazo para probarlo en la partida.");
       return false;
     }
-    return onTestDecks?.({ decks, sideboards });
-  }, [onTestDecks, players, setStatus, texts]);
+    return onTestDecks?.({ decks, sideboards, preserveMissingDecks: true });
+  }, [onTestDecks, setStatus, texts]);
 
   return (
     <main
