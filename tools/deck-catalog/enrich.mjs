@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildSearchIndex } from "./index.mjs";
 import { enrichDeckWithManaProfile, resolveCardMetadata } from "./card-metadata.mjs";
+import { normalizeFormat } from "./sources/mtgtop8.mjs";
 
 const DEFAULT_OUTPUT_DIR = fileURLToPath(new URL("../../catalog", import.meta.url));
 const DEFAULT_CARD_ROOT = fileURLToPath(new URL("../../web/ui/public/cards", import.meta.url));
@@ -29,13 +30,14 @@ async function writeJsonAtomic(path, value) {
 
 async function enrich() {
   const outputDir = resolve(argument("output", DEFAULT_OUTPUT_DIR));
-  const formatDir = join(outputDir, "modern");
+  const format = normalizeFormat(argument("format", "modern"));
+  const formatDir = join(outputDir, format.slug);
   const detailsDir = join(formatDir, "details");
   const indexPath = join(formatDir, "index.json");
   const searchIndexPath = join(formatDir, "search-index.json");
-  const statePath = join(outputDir, "state", "mtgtop8-modern.json");
+  const statePath = join(outputDir, "state", `mtgtop8-${format.slug}.json`);
   const metadataPath = join(outputDir, "state", "scryfall-cards.json");
-  const index = await readJson(indexPath, { schemaVersion: 1, format: "modern", decks: [] });
+  const index = await readJson(indexPath, { schemaVersion: 1, format: format.slug, decks: [] });
   const details = [];
   for (const entry of index.decks || []) {
     if (!entry.detail) continue;
@@ -62,7 +64,7 @@ async function enrich() {
   await writeJsonAtomic(metadataPath, cardMetadata);
   await writeJsonAtomic(indexPath, { ...index, generatedAt, decks: entries });
   await writeJsonAtomic(searchIndexPath, buildSearchIndex(entries, { generatedAt }));
-  const state = await readJson(statePath, { schemaVersion: 1, source: "mtgtop8", format: "modern" });
+  const state = await readJson(statePath, { schemaVersion: 1, source: "mtgtop8", format: format.slug });
   const metadataSource = [...new Set(enriched
     .map((deck) => deck.manaProfile?.metadataCoverage?.source)
     .filter(Boolean))].sort().join("+") || "none";

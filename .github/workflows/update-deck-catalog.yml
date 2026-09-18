@@ -2,9 +2,14 @@ name: Update competitive deck catalog
 
 on:
   schedule:
-    - cron: "37 4 * * 1"
+    - cron: "37 4 */3 * *"
   workflow_dispatch:
     inputs:
+      formats:
+        description: "Comma-separated formats (modern,pioneer,standard)"
+        required: false
+        default: "modern,pioneer,standard"
+        type: string
       page:
         description: "MTGTop8 page to import (0 is the newest page)"
         required: false
@@ -16,9 +21,14 @@ on:
         default: "5"
         type: string
       decks:
-        description: "Maximum decks to import"
+        description: "Maximum decks to import from a historical page"
         required: false
         default: "24"
+        type: string
+      collection_decks:
+        description: "Decks per Last 20 / Last Major collection when page is 0"
+        required: false
+        default: "12"
         type: string
       dry_run:
         description: "Fetch and validate without committing catalog files"
@@ -37,9 +47,11 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     env:
+      CATALOG_FORMATS: ${{ inputs.formats || 'modern,pioneer,standard' }}
       CATALOG_PAGE: ${{ inputs.page || '0' }}
       CATALOG_EVENTS: ${{ inputs.events || '5' }}
       CATALOG_DECKS: ${{ inputs.decks || '24' }}
+      CATALOG_COLLECTION_DECKS: ${{ inputs.collection_decks || '12' }}
       CATALOG_DRY_RUN: ${{ inputs.dry_run || false }}
     steps:
       - name: Check out repository
@@ -59,11 +71,16 @@ jobs:
       - name: Synchronize bounded catalog slice
         shell: bash
         run: |
-          args=(--page "$CATALOG_PAGE" --events "$CATALOG_EVENTS" --limit "$CATALOG_DECKS")
-          if [[ "$CATALOG_DRY_RUN" == "true" ]]; then
-            args+=(--dry-run)
-          fi
-          node tools/deck-catalog/sync.mjs "${args[@]}"
+          IFS=',' read -ra formats <<< "$CATALOG_FORMATS"
+          for format in "${formats[@]}"; do
+            format="${format//[[:space:]]/}"
+            [[ -z "$format" ]] && continue
+            args=(--format "$format" --page "$CATALOG_PAGE" --events "$CATALOG_EVENTS" --limit "$CATALOG_DECKS" --collection-limit "$CATALOG_COLLECTION_DECKS" --recent-events 20 --major-events 5)
+            if [[ "$CATALOG_DRY_RUN" == "true" ]]; then
+              args+=(--dry-run)
+            fi
+            node tools/deck-catalog/sync.mjs "${args[@]}"
+          done
 
       - name: Check generated files
         if: env.CATALOG_DRY_RUN != 'true'

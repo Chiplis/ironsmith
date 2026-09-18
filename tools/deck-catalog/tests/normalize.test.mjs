@@ -12,6 +12,7 @@ const sample = {
   archetype: "Boros Energy",
   colors: ["r", "W", "invalid"],
   mechanics: ["Energy", "Energy"],
+  collections: ["last-20-events", "last-20-events"],
   event: "Modern Challenge",
   date: "2026-09-17",
   placement: 1,
@@ -32,6 +33,7 @@ test("normalizes a deck deterministically", () => {
   assert.equal(first.name, "Boros Energy");
   assert.deepEqual(first.colors, ["R", "W"]);
   assert.deepEqual(first.mechanics, ["Energy"]);
+  assert.deepEqual(first.collections, ["last-20-events"]);
   assert.equal(first.mainboard[0].count, 5);
   assert.deepEqual(first.tags, ["Top 8"]);
   assert.equal(first.hash, second.hash);

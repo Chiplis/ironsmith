@@ -6,6 +6,17 @@ const CARD_LINE_RE = /<div\s+id=((?:md|sb)[^\s>]*)\s+class=["']deck_line[^"']*["
 const ARCHETYPE_RE = /href=["']?\/?archetype\?[^"'>]*["'][^>]*>([^<]*?)\s+decks<\/a>/gi;
 const EVENT_TITLE_RE = /<div\s+class=event_title[^>]*>\s*([\s\S]*?)<\/div>/gi;
 const PLACEMENT_TITLE_RE = /^#(\d+)(?:-\d+)?\s+/;
+const FORMAT_CODES = {
+  standard: "ST",
+  pioneer: "PI",
+  modern: "MO",
+  legacy: "LE",
+  vintage: "VI",
+  pauper: "PA",
+  historic: "HI",
+  commander: "EDH",
+  edh: "EDH",
+};
 
 function decodeHtml(value) {
   return text(value)
@@ -17,8 +28,63 @@ function decodeHtml(value) {
     .replace(/\\'/g, "'");
 }
 
+function sourceDate(value) {
+  const match = String(value || "").match(/^(\d{2})\/(\d{2})\/(\d{2})$/);
+  return match ? `20${match[3]}-${match[2]}-${match[1]}` : "";
+}
+
+function sectionHtml(html, title) {
+  const source = String(html || "");
+  const start = source.search(new RegExp(`<div class=w_title[^>]*>\\s*${title}\\b`, "i"));
+  if (start < 0) return "";
+  const body = source.slice(start);
+  const titleEnd = body.indexOf(">");
+  if (titleEnd < 0) return "";
+  const sectionBody = body.slice(titleEnd + 1);
+  const nextSection = sectionBody.search(/<div class=w_title[^>]*>/i);
+  return nextSection > 0 ? sectionBody.slice(0, nextSection) : sectionBody;
+}
+
+function extractSectionEvents(html, title, { limit = 25 } = {}) {
+  const events = [];
+  const seen = new Set();
+  const section = sectionHtml(html, title);
+  for (const rowMatch of section.matchAll(/<tr[^>]*class=hover_tr[^>]*>[\s\S]*?<\/tr>/gi)) {
+    const row = rowMatch[0];
+    const link = new RegExp(EVENT_LINK_RE.source, "i").exec(row);
+    if (!link) continue;
+    const id = link[1];
+    const format = link[2].toLowerCase();
+    if (seen.has(`${format}:${id}`)) continue;
+    seen.add(`${format}:${id}`);
+    const titleMatch = row.match(new RegExp(`href=["']?/?event\\?e=${id}&f=${format}[^>]*>([\\s\\S]*?)<\\/a>`, "i"));
+    const dateMatch = row.match(/class=S12[^>]*>\s*(\d{2}\/\d{2}\/\d{2})\s*</i);
+    events.push({
+      id,
+      format,
+      name: decodeHtml(titleMatch?.[1] || ""),
+      date: sourceDate(dateMatch?.[1]),
+      url: `https://mtgtop8.com/event?e=${id}&f=${format.toUpperCase()}`,
+    });
+    if (events.length >= limit) break;
+  }
+  return events;
+}
+
 export function modernFormatUrl({ meta = 54, page = 0 } = {}) {
-  const params = new URLSearchParams({ a: "", f: "MO", meta: String(meta) });
+  return formatUrl({ format: "MO", meta, page });
+}
+
+export function normalizeFormat(value = "modern") {
+  const token = text(value).toLocaleLowerCase("en-US");
+  const code = FORMAT_CODES[token] || token.toUpperCase();
+  const slug = Object.entries(FORMAT_CODES).find(([, formatCode]) => formatCode === code)?.[0] || token || "modern";
+  return { slug, code };
+}
+
+export function formatUrl({ format = "modern", meta = 54, page = 0 } = {}) {
+  const { code } = normalizeFormat(format);
+  const params = new URLSearchParams({ a: "", f: code, meta: String(meta) });
   if (Number(page) > 0) params.set("cp", String(page));
   return `https://mtgtop8.com/format?${params.toString()}`;
 }
@@ -36,6 +102,13 @@ export function extractEventLinks(html, { limit = 25 } = {}) {
     if (links.length >= limit) break;
   }
   return links;
+}
+
+export function extractEventCollections(html, { recentLimit = 20, majorLimit = 5 } = {}) {
+  return {
+    last20Events: extractSectionEvents(html, "LAST 20 EVENTS", { limit: recentLimit }),
+    lastMajorEvents: extractSectionEvents(html, "LAST MAJOR EVENTS", { limit: majorLimit }),
+  };
 }
 
 export function extractDeckLinks(html, { eventId = "", limit = 25 } = {}) {
@@ -62,6 +135,8 @@ export function parseDeckPage(html, {
   deckId = "",
   sourceUrl = "",
   date = "",
+  collections = [],
+  format = "modern",
 } = {}) {
   const mainboard = [];
   const sideboard = [];
@@ -85,7 +160,7 @@ export function parseDeckPage(html, {
 
   return {
     id: deckId ? `mtgtop8-${eventId}-${deckId}` : "",
-    format: "modern",
+    format: normalizeFormat(format).slug,
     name: archetype,
     archetype,
     event,
@@ -93,6 +168,7 @@ export function parseDeckPage(html, {
     placement: placementMatch ? Number(placementMatch[1]) : null,
     source: "mtgtop8",
     sourceUrl,
+    collections,
     mainboard: normalizeCardList(mainboard),
     sideboard: normalizeCardList(sideboard),
     commander: [],

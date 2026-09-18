@@ -12,6 +12,7 @@
     "archetype": { "type": "string" },
     "colors": { "type": "array", "items": { "type": "string", "pattern": "^[WUBRGC]$" }, "uniqueItems": true },
     "mechanics": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "collections": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9-]+$" }, "uniqueItems": true },
     "manaProfile": { "$ref": "#/$defs/manaProfile" },
     "cardNames": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
     "event": { "type": "string" },

@@ -3,9 +3,11 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   extractDeckLinks,
+  extractEventCollections,
   extractEventLinks,
   fetchText,
-  modernFormatUrl,
+  formatUrl,
+  normalizeFormat,
   parseDeckPage,
 } from "./sources/mtgtop8.mjs";
 import { normalizeCompetitiveDecks } from "./normalize.mjs";
@@ -61,6 +63,7 @@ function catalogEntry(deck) {
     archetype: deck.archetype,
     colors: deck.colors,
     mechanics: deck.mechanics,
+    collections: deck.collections,
     ...(deck.manaProfile ? { manaProfile: deck.manaProfile } : {}),
     cardNames: deck.cardNames,
     event: deck.event,
@@ -84,37 +87,80 @@ function catalogEntry(deck) {
 
 async function sync() {
   const outputDir = resolve(argument("output", DEFAULT_OUTPUT_DIR));
-  const formatDir = join(outputDir, "modern");
+  const format = normalizeFormat(argument("format", "modern"));
+  const formatDir = join(outputDir, format.slug);
   const detailsDir = join(formatDir, "details");
-  const statePath = join(outputDir, "state", "mtgtop8-modern.json");
+  const statePath = join(outputDir, "state", `mtgtop8-${format.slug}.json`);
   const eventLimit = integerArgument("events", 1);
-  const deckLimit = integerArgument("limit", 1);
+  const deckLimit = integerArgument("limit", 24);
+  const collectionDeckLimit = integerArgument("collection-limit", Math.max(1, Math.floor(deckLimit / 2)));
+  const recentEventLimit = integerArgument("recent-events", 20);
+  const majorEventLimit = integerArgument("major-events", 5);
   const meta = integerArgument("meta", 54);
   const page = integerArgument("page", 0);
   if (!deckLimit) throw new Error("--limit must be greater than zero");
 
   const state = await readState(statePath);
-  const formatHtml = await fetchText(modernFormatUrl({ meta, page }), { minDelayMs: 0 });
-  const events = extractEventLinks(formatHtml, { limit: eventLimit });
-  const rawDecks = [];
+  const formatHtml = await fetchText(formatUrl({ format: format.code, meta, page }), { minDelayMs: 0 });
+  const recentCollections = extractEventCollections(formatHtml, {
+    recentLimit: recentEventLimit,
+    majorLimit: majorEventLimit,
+  });
+  const events = page === 0
+    ? [
+      ...recentCollections.lastMajorEvents.map((event) => ({ ...event, collection: "last-major-events" })),
+      ...recentCollections.last20Events.map((event) => ({ ...event, collection: "last-20-events" })),
+    ]
+    : extractEventLinks(formatHtml, { limit: eventLimit });
+  const rawDecksById = new Map();
   let lastEventId = state.lastEventId || "";
+  const eventHtmlCache = new Map();
+  const deckHtmlCache = new Map();
 
-  for (const event of events) {
-    lastEventId = event.id;
-    const eventHtml = await fetchText(event.url, { minDelayMs: 750 });
-    const deckLinks = extractDeckLinks(eventHtml, { eventId: event.id, limit: deckLimit - rawDecks.length });
-    for (const deckLink of deckLinks) {
-      if (rawDecks.length >= deckLimit) break;
-      const deckHtml = await fetchText(deckLink.url, { minDelayMs: 750 });
-      rawDecks.push(parseDeckPage(deckHtml, {
-        eventId: deckLink.eventId,
-        deckId: deckLink.deckId,
-        sourceUrl: deckLink.url,
-      }));
+  const eventGroups = page === 0
+    ? [
+      { name: "last-major-events", events: recentCollections.lastMajorEvents },
+      { name: "last-20-events", events: recentCollections.last20Events },
+    ]
+    : [{ name: "history", events }];
+
+  for (const group of eventGroups) {
+    let groupDeckCount = 0;
+    for (const event of group.events) {
+      if (groupDeckCount >= (page === 0 ? collectionDeckLimit : deckLimit)) break;
+      lastEventId = event.id;
+      const eventHtml = eventHtmlCache.has(event.id)
+        ? eventHtmlCache.get(event.id)
+        : await fetchText(event.url, { minDelayMs: 750 });
+      eventHtmlCache.set(event.id, eventHtml);
+      const deckLinks = extractDeckLinks(eventHtml, {
+        eventId: event.id,
+        limit: (page === 0 ? collectionDeckLimit : deckLimit) - groupDeckCount,
+      });
+      for (const deckLink of deckLinks) {
+        if (groupDeckCount >= (page === 0 ? collectionDeckLimit : deckLimit)) break;
+        const deckHtml = deckHtmlCache.has(deckLink.deckId)
+          ? deckHtmlCache.get(deckLink.deckId)
+          : await fetchText(deckLink.url, { minDelayMs: 750 });
+        deckHtmlCache.set(deckLink.deckId, deckHtml);
+        const parsed = parseDeckPage(deckHtml, {
+          eventId: deckLink.eventId,
+          deckId: deckLink.deckId,
+          sourceUrl: deckLink.url,
+          date: event.date || "",
+          format: format.slug,
+          collections: event.collection ? [event.collection] : (group.name === "history" ? [] : [group.name]),
+        });
+        const previous = rawDecksById.get(parsed.id);
+        rawDecksById.set(parsed.id, previous
+          ? { ...parsed, collections: [...new Set([...(previous.collections || []), ...(parsed.collections || [])])] }
+          : parsed);
+        groupDeckCount += 1;
+      }
     }
-    if (rawDecks.length >= deckLimit) break;
   }
 
+  const rawDecks = [...rawDecksById.values()];
   const normalizedDecks = normalizeCompetitiveDecks(rawDecks);
   if (hasFlag("dry-run")) {
     console.log(JSON.stringify({ events: events.length, decks: normalizedDecks.length, ids: normalizedDecks.map((deck) => deck.id) }, null, 2));
@@ -138,7 +184,7 @@ async function sync() {
 
   const indexPath = join(formatDir, "index.json");
   const searchIndexPath = join(formatDir, "search-index.json");
-  let existing = { schemaVersion: 1, format: "modern", generatedAt: "", decks: [] };
+  let existing = { schemaVersion: 1, format: format.slug, generatedAt: "", decks: [] };
   try {
     existing = JSON.parse(await readFile(indexPath, "utf8"));
   } catch (error) {
@@ -151,7 +197,7 @@ async function sync() {
   await writeJsonAtomic(indexPath, {
     ...existing,
     schemaVersion: 1,
-    format: "modern",
+    format: format.slug,
     generatedAt,
     decks: indexEntries,
   });
@@ -160,7 +206,7 @@ async function sync() {
     ...state,
     schemaVersion: 1,
     source: "mtgtop8",
-    format: "modern",
+    format: format.slug,
     lastEventId,
     lastPage: page,
     updatedAt: generatedAt,

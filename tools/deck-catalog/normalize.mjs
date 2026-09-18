@@ -59,6 +59,10 @@ function canonicalDeck(raw) {
   const sideboard = normalizeCardList(raw.sideboard || raw.sideBoard);
   const commander = normalizeCardList(raw.commander);
   const tags = [...new Set((Array.isArray(raw.tags) ? raw.tags : []).map(text).filter(Boolean))].sort();
+  const collections = [...new Set((Array.isArray(raw.collections) ? raw.collections : [])
+    .map(text)
+    .map((value) => value.toLocaleLowerCase("en-US"))
+    .filter((value) => /^[a-z0-9-]+$/.test(value)))].sort();
   const manaProfile = normalizeManaProfile(raw.manaProfile);
   const identity = {
     format,
@@ -78,6 +82,7 @@ function canonicalDeck(raw) {
     archetype: text(raw.archetype),
     colors: [...new Set((Array.isArray(raw.colors) && raw.colors.length ? raw.colors : (manaProfile?.colors || [])).map((color) => text(color).toUpperCase()).filter((color) => /^[WUBRGC]$/.test(color)))].sort(),
     mechanics: [...new Set((Array.isArray(raw.mechanics) ? raw.mechanics : []).map(text).filter(Boolean))].sort(),
+    collections,
     ...(manaProfile ? { manaProfile } : {}),
     cardNames: [...new Set([
       ...mainboard.map((card) => card.name),

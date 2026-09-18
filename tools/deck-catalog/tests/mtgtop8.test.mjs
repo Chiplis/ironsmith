@@ -2,8 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   extractEventLinks,
+  extractEventCollections,
   extractDeckLinks,
+  formatUrl,
   modernFormatUrl,
+  normalizeFormat,
   parseDeckPage,
 } from "../sources/mtgtop8.mjs";
 
@@ -20,9 +23,26 @@ test("builds a bounded Modern catalog URL", () => {
   assert.equal(modernFormatUrl({ meta: 54, page: 2 }), "https://mtgtop8.com/format?a=&f=MO&meta=54&cp=2");
 });
 
+test("normalizes supported formats for MTGTop8 URLs", () => {
+  assert.deepEqual(normalizeFormat("pioneer"), { slug: "pioneer", code: "PI" });
+  assert.equal(formatUrl({ format: "standard", meta: 54 }), "https://mtgtop8.com/format?a=&f=ST&meta=54");
+});
+
 test("extracts unique event links from a format page", () => {
   const links = extractEventLinks('<a href=event?e=123&f=MO>one</a><a href=event?e=123&f=MO>duplicate</a><a href=event?e=456&f=MO>two</a>');
   assert.deepEqual(links.map((link) => link.id), ["123", "456"]);
+});
+
+test("extracts Last 20 and Last Major event collections with dates", () => {
+  const html = `
+    <div class=w_title align=center>LAST MAJOR EVENTS<div class=c_tl></div></div>
+    <table><tr class=hover_tr><td><a href=event?e=90001&f=MO>Major Open</a></td><td class=S12>13/09/26</td></tr></table>
+    <div class=w_title align=center>LAST 20 EVENTS<div class=c_tl></div></div>
+    <table><tr class=hover_tr><td><a href=event?e=90002&f=MO>Weekly Challenge</a></td><td class=S12>17/09/26</td></tr></table>
+  `;
+  const collections = extractEventCollections(html);
+  assert.deepEqual(collections.lastMajorEvents.map(({ id, date }) => ({ id, date })), [{ id: "90001", date: "2026-09-13" }]);
+  assert.deepEqual(collections.last20Events.map(({ id, date }) => ({ id, date })), [{ id: "90002", date: "2026-09-17" }]);
 });
 
 test("extracts bounded deck links from an event page", () => {
