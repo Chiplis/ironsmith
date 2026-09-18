@@ -255,11 +255,6 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
     [activeMana, manaMatchMode, searchResults],
   );
 
-  const filteredResults = useMemo(
-    () => sortDeckEntries(manaFilteredResults, sortMode, usageCounts),
-    [manaFilteredResults, sortMode, usageCounts],
-  );
-
   const recentResults = useMemo(
     () => sortDeckEntries(manaFilteredResults.filter((entry) => isRecentEntry(entry, recentIds)), sortMode, usageCounts),
     [manaFilteredResults, recentIds, sortMode, usageCounts],
@@ -379,11 +374,10 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
       </div>
       {loading ? <p className="text-[12px] text-[#b8aa8e]">Cargando índice…</p> : null}
       {error ? <p className="text-[12px] text-red-300">{error}</p> : null}
-      {!loading && !error && !filteredResults.length ? <p className="text-[12px] text-[#b8aa8e]">No hay resultados para esta búsqueda.</p> : null}
-      <DeckCarousel title="Explorar decks" entries={filteredResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
+      {!loading && !error && !manaFilteredResults.length ? <p className="text-[12px] text-[#b8aa8e]">No hay resultados para esta búsqueda.</p> : null}
+      <DeckCarousel title="Mono-color" entries={monoResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
       <DeckCarousel title="Last 20 events" entries={recentResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
       <DeckCarousel title="Last major events" entries={majorResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
-      <DeckCarousel title="Mono-color" entries={monoResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
     </section>
   );
 }
