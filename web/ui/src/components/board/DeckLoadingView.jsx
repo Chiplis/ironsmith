@@ -18,6 +18,14 @@ import CompetitiveDeckBrowser from "./CompetitiveDeckBrowser";
 
 const fieldClass =
   "w-full border border-[rgba(154,126,82,0.46)] bg-[#0b0d0e] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75";
+const selectClass = `${fieldClass} pr-12`;
+const selectStyle = {
+  appearance: "none",
+  backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23b8aa8e' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.8'%3E%3Cpath d='m5 7 5 5 5-5'/%3E%3C/svg%3E\")",
+  backgroundPosition: "right 1rem center",
+  backgroundRepeat: "no-repeat",
+  backgroundSize: "0.9rem",
+};
 const labelClass = "grid gap-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]";
 
 function ActionSpinner() {
@@ -52,11 +60,12 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
   const [texts, setTexts] = useState(() => players.map(() => ""));
   const [savedPresets, setSavedPresets] = useState(() => listSavedDeckPresets());
   const [selectedPresetName, setSelectedPresetName] = useState("");
-  const [playerSaveNames, setPlayerSaveNames] = useState({});
+  const [presetName, setPresetName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [actionBusy, setActionBusy] = useState("");
   const [copiedPlayerIndex, setCopiedPlayerIndex] = useState(null);
   const [catalogTargetIndex, setCatalogTargetIndex] = useState(0);
+  const [editorPlayerCount, setEditorPlayerCount] = useState(1);
 
   const handleTextChange = useCallback((index, value) => {
     setTexts((prev) => {
@@ -76,6 +85,9 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
   );
   const totalCards = cardCounts.reduce((a, b) => a + b, 0);
   const totalSideboardCards = sideboardCounts.reduce((a, b) => a + b, 0);
+  const visiblePlayerCount = Math.min(editorPlayerCount, players.length || 1);
+  const visiblePlayers = useMemo(() => players.slice(0, visiblePlayerCount), [players, visiblePlayerCount]);
+  const playerCountModes = [1, 2, 4].filter((count) => count <= players.length);
 
   const selectedPreset = useMemo(
     () =>
@@ -88,7 +100,6 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
   const handleApplySavedPreset = () => {
     if (!selectedPreset) return;
     setTexts(fitTextsToPlayers(players, selectedPreset.texts));
-    setPlayerSaveNames({});
   };
 
   const saveCurrentPreset = useCallback((requestedName) => {
@@ -126,9 +137,9 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
     return false;
   }, [players, setStatus, texts, ui]);
 
-  const handleSavePlayerPreset = useCallback((playerIndex) => {
-    saveCurrentPreset(playerSaveNames[playerIndex]);
-  }, [playerSaveNames, saveCurrentPreset]);
+  const handleSavePreset = useCallback(() => {
+    if (saveCurrentPreset(presetName)) setPresetName("");
+  }, [presetName, saveCurrentPreset]);
 
   const handleClearPlayer = useCallback((playerIndex) => {
     setTexts((current) => {
@@ -136,13 +147,13 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
       next[playerIndex] = "";
       return next;
     });
-    setPlayerSaveNames((current) => {
-      const next = { ...current };
-      delete next[playerIndex];
-      return next;
-    });
     setCopiedPlayerIndex((current) => current === playerIndex ? null : current);
     setCatalogTargetIndex(playerIndex);
+  }, []);
+
+  const handleEditorPlayerCountChange = useCallback((count) => {
+    setEditorPlayerCount(count);
+    setCatalogTargetIndex((current) => Math.min(current, Math.max(0, count - 1)));
   }, []);
 
   const handleCopyMtgo = useCallback(async (playerIndex = catalogTargetIndex) => {
@@ -210,24 +221,22 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
   }, [actionBusy, setStatus]);
 
   const handleCatalogSelect = useCallback(({ deckText }) => {
-    const target = players.length ? Math.min(catalogTargetIndex, players.length - 1) : 0;
+    const target = visiblePlayers.length ? Math.min(catalogTargetIndex, visiblePlayers.length - 1) : 0;
     handleTextChange(target, stripDeckHeader(deckText));
-    for (let offset = 1; offset <= players.length; offset += 1) {
-      const nextIndex = players.length ? (target + offset) % players.length : target;
+    for (let offset = 1; offset <= visiblePlayers.length; offset += 1) {
+      const nextIndex = visiblePlayers.length ? (target + offset) % visiblePlayers.length : target;
       if (!String(texts[nextIndex] || "").trim()) {
         setCatalogTargetIndex(nextIndex);
         break;
       }
     }
-    setPlayerSaveNames({});
-  }, [catalogTargetIndex, handleTextChange, players, texts]);
+  }, [catalogTargetIndex, handleTextChange, texts, visiblePlayers]);
 
   const handleDeleteSavedPreset = useCallback(() => {
     if (!selectedPreset) return;
     if (!window.confirm(ui('Delete saved deck "{0}"?', { 0: selectedPreset.name }))) return;
     setSavedPresets(removeSavedDeckPreset(selectedPreset.name));
     setSelectedPresetName("");
-    setPlayerSaveNames({});
     setStatus(`Deleted saved deck "${selectedPreset.name}"`);
   }, [selectedPreset, setStatus, ui]);
 
@@ -246,7 +255,8 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
         </div>
         <div className="grid gap-2 md:grid-cols-[minmax(200px,1fr)_minmax(150px,190px)_auto_auto]">
           <select
-            className={fieldClass}
+            className={selectClass}
+            style={selectStyle}
             value={selectedPresetName}
             onChange={(event) => setSelectedPresetName(event.target.value)}
             aria-label={ui("Saved Deck")}
@@ -258,12 +268,13 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
           </select>
           <label className={labelClass}>¿Para quién?
             <select
-              className={fieldClass}
+              className={selectClass}
+              style={selectStyle}
               value={catalogTargetIndex}
               onChange={(event) => setCatalogTargetIndex(Number(event.target.value))}
               aria-label="Jugador destino"
             >
-              {players.map((player, index) => <option key={player.id || index} value={index}>{player.name}</option>)}
+              {visiblePlayers.map((player, index) => <option key={player.id || index} value={index}>{player.name}</option>)}
             </select>
           </label>
           <Button
@@ -288,7 +299,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
       </section>
       <div className="mb-3 shrink-0">
         <CompetitiveDeckBrowser
-          players={players}
+          players={visiblePlayers}
           targetIndex={catalogTargetIndex}
           onSelect={handleCatalogSelect}
         />
@@ -298,11 +309,24 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
           <div>
             <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">Editor manual MTGO</h2>
             <p className="text-[11px] text-[#8b806b]">Pegá líneas como <span className="font-mono">4 Counterspell</span> y una sección opcional <span className="font-mono">Sideboard</span>.</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5" aria-label="Cantidad de jugadores a editar">
+              {playerCountModes.map((count) => (
+                <button
+                  key={count}
+                  type="button"
+                  className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${visiblePlayerCount === count ? "border-[#d8bf7a]/80 bg-[#d8bf7a]/15 text-[#f2d9a3]" : "border-white/10 text-[#b8aa8e] hover:border-[#d8bf7a]/45 hover:text-[#f2d9a3]"}`}
+                  aria-pressed={visiblePlayerCount === count}
+                  onClick={() => handleEditorPlayerCountChange(count)}
+                >
+                  x{count}
+                </button>
+              ))}
+            </div>
           </div>
           <span className="text-[10px] uppercase tracking-wide text-[#8b806b]">También podés editar después de usar un deck</span>
         </div>
         <div className="grid grid-cols-1 gap-3 pr-1 xl:grid-cols-2">
-          {players.map((player, i) => (
+          {visiblePlayers.map((player, i) => (
             <div
               key={player.id}
               className="setup-editor grid min-h-[290px] gap-2 border border-[rgba(154,126,82,0.42)] bg-[linear-gradient(180deg,rgba(17,17,15,0.94),rgba(8,9,9,0.96))] p-3"
@@ -327,13 +351,6 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
                 onChange={(e) => handleTextChange(i, e.target.value)}
               />
               <div className="flex flex-wrap items-center justify-end gap-2">
-                <input
-                  className={`${fieldClass} max-w-[220px] py-1.5 text-[11px]`}
-                  placeholder="Nombre tu mazo"
-                  value={playerSaveNames[i] || ""}
-                  onChange={(event) => setPlayerSaveNames((current) => ({ ...current, [i]: event.target.value }))}
-                  aria-label={`Nombre del mazo de ${player.name}`}
-                />
                 <Button
                   type="button"
                   variant="ghost"
@@ -351,14 +368,6 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-8 max-w-[88px] truncate border border-[#9a7e52]/55 px-2 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
-                  disabled={!playerSaveNames[i]?.trim() || cardCounts[i] === 0 || Boolean(actionBusy)}
-                  onClick={() => runAction(`player-save-${i}`, () => handleSavePlayerPreset(i))}
-                >{actionBusy === `player-save-${i}` ? <ActionSpinner /> : "Guardar"}</Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
                   className="h-8 w-8 max-w-8 rounded-full border border-white/15 p-0 text-[#b8aa8e] hover:border-[#d8bf7a]/55 hover:text-[#f2d9a3] disabled:text-[#665d50]"
                   disabled={cardCounts[i] === 0 || Boolean(actionBusy)}
                   onClick={() => handleClearPlayer(i)}
@@ -368,6 +377,24 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
               </div>
             </div>
           ))}
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-white/10 px-1 pt-2">
+          <span className="mr-auto text-[10px] uppercase tracking-wide text-[#8b806b]">Guardá los mazos de todos los jugadores como una configuración.</span>
+          <input
+            className={`${fieldClass} max-w-[240px] py-1.5 text-[11px]`}
+            placeholder="Nombre tu mazo"
+            value={presetName}
+            onChange={(event) => setPresetName(event.target.value)}
+            aria-label="Nombre tu mazo"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 max-w-[96px] truncate border border-[#9a7e52]/55 px-3 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
+            disabled={!presetName.trim() || totalCards === 0 || Boolean(actionBusy)}
+            onClick={() => runAction("saved-save", handleSavePreset)}
+          >{actionBusy === "saved-save" ? <ActionSpinner /> : "Guardar"}</Button>
         </div>
       </section>
       <div className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[rgba(154,126,82,0.34)] pb-4 pt-3 pr-48">
