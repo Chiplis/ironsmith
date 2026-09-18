@@ -239,12 +239,12 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
 
   const usageCounts = useMemo(() => {
     const counts = new Map();
-    for (const entry of searchResults) {
+    for (const entry of catalog?.decks || []) {
       const key = String(entry?.archetype || entry?.name || "").trim().toLocaleLowerCase("en-US");
       if (key) counts.set(key, (counts.get(key) || 0) + 1);
     }
     return counts;
-  }, [searchResults]);
+  }, [catalog]);
 
   const manaFilteredResults = useMemo(
     () => searchResults.filter((entry) => matchesManaFilters(entry, activeMana, manaMatchMode)),
