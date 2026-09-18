@@ -79,7 +79,7 @@ function matchesManaFilters(entry, activeMana, manaMatchMode) {
   return activeMana.every((color) => colors.includes(color));
 }
 
-const CatalogDeckRow = memo(function CatalogDeckRow({ entry, isBusy, isCopying, isCopied, onSelect, onCopy }) {
+const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, isCopying, isCopied, onSelect, onCopy }) {
   const [artUrl, setArtUrl] = useState("");
   const manaProfile = completeManaProfile(entry);
   const colors = (manaProfile?.colors || []).filter((color) => /^[WUBRGC]$/.test(color));
@@ -116,10 +116,10 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, isBusy, isCopying, 
         </div>
       </div>
       <div className="ml-auto flex shrink-0 flex-col justify-center gap-1">
-        <Button type="button" variant="ghost" size="sm" className="h-8 w-[88px] max-w-[88px] truncate border border-[#9a7e52]/55 px-2 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a]" disabled={isBusy || isCopying} onClick={() => onSelect(entry)}>
+        <Button type="button" variant="ghost" size="sm" className="h-8 w-[88px] max-w-[88px] truncate border border-[#9a7e52]/55 px-2 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a]" disabled={isBusy || isCopying} onClick={() => onSelect(entry, actionKey)}>
           {isBusy ? <ActionSpinner /> : "Usar"}
         </Button>
-        <Button type="button" variant="ghost" size="sm" className="h-7 w-[88px] max-w-[88px] truncate border border-white/15 px-2 text-[10px] font-semibold text-[#b8aa8e]" disabled={isBusy || isCopying} onClick={() => onCopy(entry)}>
+        <Button type="button" variant="ghost" size="sm" className="h-7 w-[88px] max-w-[88px] truncate border border-white/15 px-2 text-[10px] font-semibold text-[#b8aa8e]" disabled={isBusy || isCopying} onClick={() => onCopy(entry, actionKey)}>
           {isCopying ? <ActionSpinner /> : isCopied ? "Copiado" : "Copiar MTGO"}
         </Button>
       </div>
@@ -138,8 +138,9 @@ const DeckCarousel = memo(function DeckCarousel({ title, entries, resetKey, busy
     return Array.from({ length: trackLength }, (_, index) => ({
       entry: entries[index % entries.length],
       key: `${entries[index % entries.length].id}-${index}`,
+      actionKey: `${title}-${entries[index % entries.length].id}-${index}`,
     }));
-  }, [entries]);
+  }, [entries, title]);
 
   useEffect(() => {
     animatingRef.current = false;
@@ -181,7 +182,7 @@ const DeckCarousel = memo(function DeckCarousel({ title, entries, resetKey, busy
         </Button> : null}
         <div className="mx-9 overflow-hidden" style={{ containerType: "inline-size" }}>
           <div className="flex gap-2" style={{ transform: `translateX(calc(-${offset} * (33.333cqw + 0.1667rem)))`, transition: animating ? "transform 380ms cubic-bezier(0.22, 0.61, 0.36, 1)" : "none" }}>
-            {trackEntries.map(({ entry, key }) => <div key={key} className="min-w-0" style={{ flex: "0 0 calc(33.333cqw - 0.333rem)" }}><CatalogDeckRow entry={entry} isBusy={busyId === entry.id} isCopying={copyingId === entry.id} isCopied={copiedId === entry.id} onSelect={onSelect} onCopy={onCopy} /></div>)}
+            {trackEntries.map(({ entry, key, actionKey }) => <div key={key} className="min-w-0" style={{ flex: "0 0 calc(33.333cqw - 0.333rem)" }}><CatalogDeckRow entry={entry} actionKey={actionKey} isBusy={busyId === actionKey} isCopying={copyingId === actionKey} isCopied={copiedId === actionKey} onSelect={onSelect} onCopy={onCopy} /></div>)}
           </div>
         </div>
         {entries.length > CAROUSEL_SIZE ? <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-1/2 z-10 h-8 w-8 -translate-y-1/2 rounded-full bg-[#11110f] p-0 text-[#d8bf7a] shadow-lg hover:bg-[#28231b]" aria-label={`${title}: decks siguientes`} title="Decks siguientes" onClick={() => move(1)}>
@@ -295,10 +296,10 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
     resetCarousel();
   }, [resetCarousel]);
 
-  const handleSelect = useCallback(async (entry) => {
+  const handleSelect = useCallback(async (entry, actionKey) => {
     if (busyRef.current) return;
-    busyRef.current = entry.id;
-    setBusyId(entry.id);
+    busyRef.current = actionKey;
+    setBusyId(actionKey);
     setError("");
     try {
       const detail = await loadCatalogDeckDetail(entry, { format: catalogFormat });
@@ -311,10 +312,10 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
     }
   }, [catalogFormat, onSelect]);
 
-  const handleCopy = useCallback(async (entry) => {
+  const handleCopy = useCallback(async (entry, actionKey) => {
     if (copyingRef.current || busyRef.current) return;
-    copyingRef.current = entry.id;
-    setCopyingId(entry.id);
+    copyingRef.current = actionKey;
+    setCopyingId(actionKey);
     setError("");
     try {
       const detail = await loadCatalogDeckDetail(entry, { format: catalogFormat });
@@ -331,8 +332,8 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
         document.execCommand("copy");
         textarea.remove();
       }
-      setCopiedId(entry.id);
-      window.setTimeout(() => setCopiedId((current) => current === entry.id ? "" : current), 900);
+      setCopiedId(actionKey);
+      window.setTimeout(() => setCopiedId((current) => current === actionKey ? "" : current), 900);
     } catch (copyError) {
       setError(copyError.message || "No se pudo copiar el deck");
     } finally {
