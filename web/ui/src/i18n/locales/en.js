@@ -817,6 +817,8 @@ export const ui = {
   "Lobby and share": "Lobby and share",
   "Test in game": "Test in game",
   "Back": "Back",
+  "Confirm": "Confirm",
+  "Create a {0}-player lobby?": "Create a {0}-player lobby?",
   "Load decks failed: {0}": "Load decks failed: {0}",
   "Load Here": "Load Here",
   "Load into table": "Load into table",

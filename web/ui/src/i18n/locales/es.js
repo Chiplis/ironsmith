@@ -943,6 +943,8 @@ export const ui = {
   "Lobby and share": "Lobby y compartir",
   "Test in game": "Probar en la partida",
   "Back": "Volver",
+  "Confirm": "Confirmar",
+  "Create a {0}-player lobby?": "¿Crear un lobby de {0} jugadores?",
   "Load decks failed: {0}": "Error al cargar mazos: {0}",
   "Load Here": "Cargar aquí",
   "Load into table": "Cargar en la mesa",

@@ -1,5 +1,5 @@
 import useUiText from "@/i18n/useUiText";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
 import {
@@ -66,6 +66,9 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
   const [presetName, setPresetName] = useState("");
   const [actionBusy, setActionBusy] = useState("");
   const [showContinueChoices, setShowContinueChoices] = useState(false);
+  const [showLobbyConfirm, setShowLobbyConfirm] = useState(false);
+  const [actionNotice, setActionNotice] = useState("");
+  const actionNoticeTimerRef = useRef(null);
   const [copiedPlayerIndex, setCopiedPlayerIndex] = useState(null);
   const [catalogTargetIndex, setCatalogTargetIndex] = useState(0);
   const [editorPlayerCount, setEditorPlayerCount] = useState(1);
@@ -91,6 +94,19 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
   const visiblePlayers = useMemo(() => players.slice(0, visiblePlayerCount), [players, visiblePlayerCount]);
   const playerCountModes = [1, 2, 4].filter((count) => count <= players.length);
 
+  const showActionNotice = useCallback((message) => {
+    setActionNotice(String(message || ""));
+    if (actionNoticeTimerRef.current) window.clearTimeout(actionNoticeTimerRef.current);
+    actionNoticeTimerRef.current = window.setTimeout(() => {
+      setActionNotice("");
+      actionNoticeTimerRef.current = null;
+    }, 1800);
+  }, []);
+
+  useEffect(() => () => {
+    if (actionNoticeTimerRef.current) window.clearTimeout(actionNoticeTimerRef.current);
+  }, []);
+
   const selectedPreset = useMemo(
     () =>
       savedPresets.find(
@@ -107,6 +123,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
     setEditorPlayerCount(nextCount);
     const nextEmptyIndex = nextTexts.findIndex((text) => !String(text || "").trim());
     setCatalogTargetIndex(nextEmptyIndex >= 0 ? Math.min(nextEmptyIndex, Math.max(0, nextCount - 1)) : 0);
+    showActionNotice(`Mazo cargado en ${players[nextEmptyIndex >= 0 ? nextEmptyIndex : 0]?.name || "el editor"}`);
   };
 
   const saveCurrentPreset = useCallback((requestedName) => {
@@ -136,13 +153,14 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
           ? `Updated saved deck "${saveResult.entry.name}"`
           : `Saved deck "${saveResult.entry.name}"`
       );
+      showActionNotice(saveResult.replaced ? "Mazo guardado actualizado" : "Mazo guardado correctamente");
       return true;
     }
     if (saveResult.reason === "limit") {
       setStatus(`Session limit reached (${SAVED_DECK_PRESETS_LIMIT} decks). Delete one saved deck to add another.`);
     }
     return false;
-  }, [players, setStatus, texts, ui]);
+  }, [players, setStatus, showActionNotice, texts, ui]);
 
   const handleSavePreset = useCallback(() => {
     if (saveCurrentPreset(presetName)) setPresetName("");
@@ -156,7 +174,8 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
     });
     setCopiedPlayerIndex((current) => current === playerIndex ? null : current);
     setCatalogTargetIndex(playerIndex);
-  }, []);
+    showActionNotice(`Mazo de ${players[playerIndex]?.name || "jugador"} eliminado del editor`);
+  }, [players, showActionNotice]);
 
   const handleEditorPlayerCountChange = useCallback((count) => {
     setEditorPlayerCount(count);
@@ -185,10 +204,11 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
       }
       setCopiedPlayerIndex(playerIndex);
       window.setTimeout(() => setCopiedPlayerIndex((current) => current === playerIndex ? null : current), 900);
+      showActionNotice("MTGO copiado");
     } catch {
       setStatus("No se pudo copiar el deck.");
     }
-  }, [catalogTargetIndex, setStatus, texts]);
+  }, [catalogTargetIndex, setStatus, showActionNotice, texts]);
 
   const runAction = useCallback((key, action) => {
     if (actionBusy) return;
@@ -224,7 +244,8 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
     }
     setEditorPlayerCount(nextCount);
     setCatalogTargetIndex(nextIndex >= 0 ? nextIndex : (target + 1) % Math.max(1, nextCount));
-  }, [catalogTargetIndex, handleTextChange, players, texts, visiblePlayerCount, visiblePlayers.length]);
+    showActionNotice(`Mazo cargado en ${players[target]?.name || "el editor"}`);
+  }, [catalogTargetIndex, handleTextChange, players, showActionNotice, texts, visiblePlayerCount, visiblePlayers.length]);
 
   const handleDeleteSavedPreset = useCallback(() => {
     if (!selectedPreset) return;
@@ -232,7 +253,8 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
     setSavedPresets(removeSavedDeckPreset(selectedPreset.name));
     setSelectedPresetName("");
     setStatus(`Deleted saved deck "${selectedPreset.name}"`);
-  }, [selectedPreset, setStatus, ui]);
+    showActionNotice("Mazo guardado eliminado");
+  }, [selectedPreset, setStatus, showActionNotice, ui]);
 
   const handleTestInGame = useCallback(() => {
     const decks = texts.map(parseDeckList);
@@ -253,10 +275,24 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
     });
   }, [onTestDecks, setStatus, texts]);
 
+  const filledDeckCount = texts.filter((text) => String(text || "").trim()).length;
+  const lobbyPlayerCount = Math.max(2, Math.min(4, filledDeckCount || 2));
+  const handleConfirmLobby = useCallback(() => {
+    setShowLobbyConfirm(false);
+    onOpenLobby?.(texts);
+  }, [onOpenLobby, texts]);
+
   return (
     <main
-      className="setup-screen deck-loading-screen table-gradient flex h-full min-h-0 flex-col overflow-y-auto border border-[rgba(154,126,82,0.46)] bg-[linear-gradient(180deg,rgba(55,49,39,0.98),rgba(20,18,15,0.98))] p-3 pb-24"
+      className="setup-screen deck-loading-screen table-gradient relative flex h-full min-h-0 flex-col overflow-y-auto border border-[rgba(154,126,82,0.46)] bg-[linear-gradient(180deg,rgba(55,49,39,0.98),rgba(20,18,15,0.98))] p-3 pb-24"
     >
+      {actionNotice ? (
+        <div className="pointer-events-none sticky top-0 z-30 flex justify-end" role="status" aria-live="polite">
+          <div className="border border-[#d8bf7a]/55 bg-[#211a10]/95 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-[#f2d9a3] shadow-lg">
+            {actionNotice}
+          </div>
+        </div>
+      ) : null}
       <div className="mb-3 shrink-0 border-b border-[rgba(154,126,82,0.34)] pb-3">
         <h1 className="text-[18px] font-bold uppercase tracking-wide text-[#f2d9a3]">{ui("Load Decks")}</h1>
         <div className="mt-1 text-[12px] font-semibold text-[#b8aa8e]">{ui("Paste main deck lists with optional Sideboard sections.")}</div>
@@ -398,7 +434,27 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
         </div>
       </section>
       <div className="mt-3 flex shrink-0 justify-end border-t border-[rgba(154,126,82,0.34)] pb-4 pt-3 pr-48">
-        {showContinueChoices ? (
+        {showLobbyConfirm ? (
+          <div className="mr-2 flex flex-wrap items-center justify-end gap-2 border border-[#d8bf7a]/45 bg-[#211a10] px-2 py-1.5">
+            <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-[#f2d9a3]">{ui("Create a {0}-player lobby?", { 0: lobbyPlayerCount })}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 border border-[#f2d9a3]/55 px-3 text-[10px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
+              disabled={Boolean(actionBusy)}
+              onClick={handleConfirmLobby}
+            >{ui("Confirm")}</Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 border border-white/15 px-2 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317]"
+              disabled={Boolean(actionBusy)}
+              onClick={() => setShowLobbyConfirm(false)}
+            >{ui("Cancel")}</Button>
+          </div>
+        ) : showContinueChoices ? (
           <div className="mr-2 flex flex-wrap items-center justify-end gap-2">
             <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-[#b8aa8e]">{ui("Continue with these decks")}</span>
             <Button
@@ -407,7 +463,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
               size="sm"
               className="h-9 border border-[#f2d9a3]/45 bg-[#211a10] px-3 text-[11px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
               disabled={Boolean(actionBusy)}
-              onClick={() => onOpenLobby?.(texts)}
+              onClick={() => setShowLobbyConfirm(true)}
             >{ui("Lobby and share")}</Button>
             <Button
               type="button"
