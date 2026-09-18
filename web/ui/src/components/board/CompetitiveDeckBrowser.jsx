@@ -5,7 +5,7 @@ import { loadCatalogDeckDetail, loadCatalogIndex, loadLocalCardArt, searchCatalo
 
 const fieldClass = "w-full border border-[rgba(154,126,82,0.46)] bg-[#0b0d0e] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none";
 const labelClass = "grid gap-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]";
-const PAGE_SIZE = 6;
+const CAROUSEL_SIZE = 4;
 const collectionOptions = [
   { id: "all", label: "Todos" },
   { id: "recent", label: "Recientes" },
@@ -76,7 +76,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
   const [error, setError] = useState("");
   const [collection, setCollection] = useState("all");
   const [sortMode, setSortMode] = useState("recent");
-  const [page, setPage] = useState(0);
+  const [carouselStart, setCarouselStart] = useState(0);
   const busyRef = useRef("");
   const copyingRef = useRef("");
   const deferredQuery = useDeferredValue(query);
@@ -115,9 +115,13 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
     });
   }, [collection, searchResults, sortMode]);
 
-  const pageCount = Math.max(1, Math.ceil(filteredResults.length / PAGE_SIZE));
-  const visiblePage = Math.min(page, pageCount - 1);
-  const results = filteredResults.slice(visiblePage * PAGE_SIZE, (visiblePage + 1) * PAGE_SIZE);
+  const carouselEntries = useMemo(() => {
+    if (!filteredResults.length) return [];
+    const start = carouselStart % filteredResults.length;
+    return Array.from({ length: Math.min(CAROUSEL_SIZE, filteredResults.length) }, (_, offset) => (
+      filteredResults[(start + offset) % filteredResults.length]
+    ));
+  }, [carouselStart, filteredResults]);
 
   const collectionCounts = useMemo(() => {
     const counts = Object.fromEntries(collectionOptions.map(({ id }) => [id, 0]));
@@ -186,15 +190,15 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
           {players.map((player, index) => <option key={player.id || index} value={index}>{player.name}</option>)}
         </select></label>
       </div>
-      <input className={fieldClass} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Broodscale Bloodchief, Dimir Control, Counterspell..." aria-label="Buscar en catálogo" />
+      <input className={fieldClass} value={query} onChange={(event) => { setQuery(event.target.value); setCarouselStart(0); }} placeholder="Broodscale Bloodchief, Dimir Control, Counterspell..." aria-label="Buscar en catálogo" />
       <div className="flex flex-wrap items-center gap-1.5" aria-label="Filtros del catálogo">
         {collectionOptions.map((option) => (
-          <Button key={option.id} type="button" variant="ghost" size="sm" className={`h-7 border px-2 text-[10px] font-bold uppercase tracking-wide ${collection === option.id ? "border-[#d8bf7a] bg-[#342817] text-[#f2d9a3]" : "border-white/15 text-[#b8aa8e]"}`} onClick={() => { setCollection(option.id); setPage(0); }}>
+          <Button key={option.id} type="button" variant="ghost" size="sm" className={`h-7 border px-2 text-[10px] font-bold uppercase tracking-wide ${collection === option.id ? "border-[#d8bf7a] bg-[#342817] text-[#f2d9a3]" : "border-white/15 text-[#b8aa8e]"}`} onClick={() => { setCollection(option.id); setCarouselStart(0); }}>
             {option.label} ({collectionCounts[option.id]})
           </Button>
         ))}
         <label className="ml-auto flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e]">Ordenar
-          <select className="border border-white/15 bg-[#0b0d0e] px-2 py-1 text-[10px] text-[#e7d9bc]" value={sortMode} onChange={(event) => { setSortMode(event.target.value); setPage(0); }}>
+          <select className="border border-white/15 bg-[#0b0d0e] px-2 py-1 text-[10px] text-[#e7d9bc]" value={sortMode} onChange={(event) => { setSortMode(event.target.value); setCarouselStart(0); }}>
             <option value="recent">Más recientes</option>
             <option value="placement">Mejor puesto</option>
           </select>
@@ -202,15 +206,15 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
       </div>
       {loading ? <p className="text-[12px] text-[#b8aa8e]">Cargando índice…</p> : null}
       {error ? <p className="text-[12px] text-red-300">{error}</p> : null}
-      {!loading && !error && results.length === 0 ? <p className="text-[12px] text-[#b8aa8e]">No hay resultados para esta búsqueda.</p> : null}
-      <div className="grid max-h-[260px] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
-        {results.map((entry) => <CatalogDeckRow key={entry.id} entry={entry} isBusy={busyId === entry.id} isCopying={copyingId === entry.id} isCopied={copiedId === entry.id} onSelect={handleSelect} onCopy={handleCopy} />)}
+      {!loading && !error && carouselEntries.length === 0 ? <p className="text-[12px] text-[#b8aa8e]">No hay resultados para esta búsqueda.</p> : null}
+      <div className="flex snap-x gap-2 overflow-x-auto overflow-y-hidden pb-1 pr-1">
+        {carouselEntries.map((entry) => <div key={entry.id} className="min-w-[290px] snap-start lg:min-w-0 lg:flex-1"><CatalogDeckRow entry={entry} isBusy={busyId === entry.id} isCopying={copyingId === entry.id} isCopied={copiedId === entry.id} onSelect={handleSelect} onCopy={handleCopy} /></div>)}
       </div>
-      {filteredResults.length > PAGE_SIZE ? (
+      {filteredResults.length > 1 ? (
         <div className="flex items-center justify-between gap-2 border-t border-white/10 pt-2">
-          <Button type="button" variant="ghost" size="sm" className="h-7 border border-white/15 px-2 text-[10px] uppercase tracking-wide text-[#b8aa8e]" disabled={visiblePage === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>Anterior</Button>
-          <span className="text-[10px] uppercase tracking-wide text-[#b8aa8e]">Página {visiblePage + 1} / {pageCount} · {filteredResults.length} decks</span>
-          <Button type="button" variant="ghost" size="sm" className="h-7 border border-white/15 px-2 text-[10px] uppercase tracking-wide text-[#b8aa8e]" disabled={visiblePage >= pageCount - 1} onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}>Siguiente</Button>
+          <Button type="button" variant="ghost" size="sm" className="h-7 border border-white/15 px-2 text-[10px] uppercase tracking-wide text-[#b8aa8e]" onClick={() => setCarouselStart((current) => (current - 1 + filteredResults.length) % filteredResults.length)}>Anterior</Button>
+          <span className="text-[10px] uppercase tracking-wide text-[#b8aa8e]">Carrusel circular · {filteredResults.length} decks</span>
+          <Button type="button" variant="ghost" size="sm" className="h-7 border border-white/15 px-2 text-[10px] uppercase tracking-wide text-[#b8aa8e]" onClick={() => setCarouselStart((current) => (current + 1) % filteredResults.length)}>Siguiente</Button>
         </div>
       ) : null}
     </section>

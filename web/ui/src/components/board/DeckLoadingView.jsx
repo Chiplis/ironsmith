@@ -175,36 +175,43 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
           onSelect={handleCatalogSelect}
         />
       </div>
-      <div
-        className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto pr-1 xl:grid-cols-2"
-      >
-        {players.map((player, i) => (
-          <div
-            key={player.id}
-            className="setup-editor grid min-h-[260px] gap-2 border border-[rgba(154,126,82,0.42)] bg-[linear-gradient(180deg,rgba(17,17,15,0.94),rgba(8,9,9,0.96))] p-3"
-            style={{ gridTemplateRows: "auto minmax(180px,1fr)" }}
-          >
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="min-w-0 truncate text-[15px] font-bold uppercase tracking-wide text-[#f2d9a3]">
-                {player.name}
-              </span>
-              <div className="shrink-0 text-right text-[12px] font-semibold text-[#b8aa8e]">
-                <span>{cardCounts[i]}{" " + ui("main")}</span>
-                <span className="mx-1.5 text-[#776b58]">/</span>
-                <span>{sideboardCounts[i]}{" " + ui("sideboard")}</span>
-              </div>
-            </div>
-            <textarea
-              aria-label={ui("{0} decklist", { 0: player.name })}
-              spellCheck={false}
-              className="h-full min-h-0 w-full resize-none border border-[rgba(154,126,82,0.48)] bg-[#080b0d] p-2 font-mono text-[13px] leading-snug text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75"
-              placeholder={ui("Paste {0}'s list...\n\nDeck\n4 Lightning Bolt\n2 Counterspell\n20 Island\n\nSideboard\n2 Pyroblast\n1 Tormod's Crypt", { 0: player.name })}
-              value={texts[i] || ""}
-              onChange={(e) => handleTextChange(i, e.target.value)}
-            />
+      <section className="grid min-h-[230px] min-w-0 flex-1 gap-2 overflow-hidden border border-[rgba(154,126,82,0.42)] bg-[rgba(8,9,9,0.55)] p-2" aria-label="Editor manual de decklists">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-1 pb-2">
+          <div>
+            <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">Editor manual MTGO</h2>
+            <p className="text-[11px] text-[#8b806b]">Pegá líneas como <span className="font-mono">4 Counterspell</span> y una sección opcional <span className="font-mono">Sideboard</span>.</p>
           </div>
-        ))}
-      </div>
+          <span className="text-[10px] uppercase tracking-wide text-[#8b806b]">También podés editar después de usar un deck</span>
+        </div>
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto pr-1 xl:grid-cols-2">
+          {players.map((player, i) => (
+            <div
+              key={player.id}
+              className="setup-editor grid min-h-[210px] gap-2 border border-[rgba(154,126,82,0.42)] bg-[linear-gradient(180deg,rgba(17,17,15,0.94),rgba(8,9,9,0.96))] p-3"
+              style={{ gridTemplateRows: "auto minmax(150px,1fr)" }}
+            >
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="min-w-0 truncate text-[15px] font-bold uppercase tracking-wide text-[#f2d9a3]">
+                  {player.name}
+                </span>
+                <div className="shrink-0 text-right text-[12px] font-semibold text-[#b8aa8e]">
+                  <span>{cardCounts[i]}{" " + ui("main")}</span>
+                  <span className="mx-1.5 text-[#776b58]">/</span>
+                  <span>{sideboardCounts[i]}{" " + ui("sideboard")}</span>
+                </div>
+              </div>
+              <textarea
+                aria-label={ui("{0} decklist", { 0: player.name })}
+                spellCheck={false}
+                className="h-full min-h-0 w-full resize-none border border-[rgba(154,126,82,0.48)] bg-[#080b0d] p-2 font-mono text-[13px] leading-snug text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75"
+                placeholder={ui("Paste {0}'s list...\n\nDeck\n4 Lightning Bolt\n2 Counterspell\n20 Island\n\nSideboard\n2 Pyroblast\n1 Tormod's Crypt", { 0: player.name })}
+                value={texts[i] || ""}
+                onChange={(e) => handleTextChange(i, e.target.value)}
+              />
+            </div>
+          ))}
+        </div>
+      </section>
       <div className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[rgba(154,126,82,0.34)] pt-3">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <span className="whitespace-nowrap text-[12px] font-semibold uppercase tracking-wide text-[#d8bf7a]">{ui("Min similarity")}</span>
