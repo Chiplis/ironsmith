@@ -66,34 +66,45 @@ function PrintingImage({ imageUrl, name, imageOnly = false }) {
   />;
 }
 
-// When text regions cannot be masked, preserve the printing. Live rules and
-// actions remain available in an explicit details panel, not a fake card frame.
+// Masking failed, so the live wording is only guaranteed here: open the
+// disclosure by default rather than hiding the card's rules behind a summary.
+export function CardDetailsDisclosure({ name, rulesView, onActivate, highlighted, flavorText, stats, counters, detailsLabel }) {
+  const ui = useUiText();
+  return <details className="original-card-details" open>
+    <summary>{ui(detailsLabel)}</summary>
+    <div className="original-card-details__body">
+      <strong>{name}</strong>
+      {(stats || counters) && <p>{[stats, counters].filter(Boolean).join(' · ')}</p>}
+      {rulesView.lines.map((line, index) => {
+        const actions = rulesView.actions.get(index) || [];
+        const action = actions.find(action => !action.payment_pending && action.mana_payment_available !== false);
+        const available = Boolean(action && onActivate);
+        return <div key={index} className="inspector-ability-section" data-stack-highlighted={highlighted.has(index) ? 'true' : undefined}>
+          {rulesView.manaGroups.has(index) ? <GroupedManaAbility group={rulesView.manaGroups.get(index)} name={name} onActivate={onActivate} />
+            : actions.length || /[:：]/u.test(line) ? <button type="button" className="inspector-oracle-line-action"
+              data-available={available ? 'true' : 'false'} disabled={!available}
+              aria-label={ui("{0}: {1}", { 0: name || 'Card', 1: line })}
+              onPointerDown={event => event.stopPropagation()}
+              onClick={event => { event.stopPropagation(); if (available) onActivate(action); }}>
+              <SymbolText text={line} />
+            </button> : <SymbolText text={line} />}
+        </div>;
+      })}
+      {flavorText && <p aria-label={ui("Flavor text")}><em>{flavorText}</em></p>}
+    </div>
+  </details>;
+}
+
+// When text regions cannot be masked and no container could be placed over the
+// printing either, preserve the scan and keep the live rules in the details
+// panel, not in a fake card frame.
 export default function OriginalCardFallback({ imageUrl, name, rulesView, onActivate, highlighted, flavorText, stats, counters, detailsLabel, showDetails = true }) {
   const ui = useUiText();
   return <article className="original-card-fallback" data-image-only={!showDetails || undefined} aria-label={name || ui('Card details')}>
     {imageUrl && <PrintingImage imageUrl={imageUrl} name={name} imageOnly={!showDetails} />}
-    {showDetails && <details className="original-card-details" open={!imageUrl || undefined}>
-      <summary>{ui(detailsLabel)}</summary>
-      <div className="original-card-details__body">
-        <strong>{name}</strong>
-        {(stats || counters) && <p>{[stats, counters].filter(Boolean).join(' · ')}</p>}
-        {rulesView.lines.map((line, index) => {
-          const actions = rulesView.actions.get(index) || [];
-          const action = actions.find(action => !action.payment_pending && action.mana_payment_available !== false);
-          const available = Boolean(action && onActivate);
-          return <div key={index} className="inspector-ability-section" data-stack-highlighted={highlighted.has(index) ? 'true' : undefined}>
-            {rulesView.manaGroups.has(index) ? <GroupedManaAbility group={rulesView.manaGroups.get(index)} name={name} onActivate={onActivate} />
-              : actions.length || /[:：]/u.test(line) ? <button type="button" className="inspector-oracle-line-action"
-                data-available={available ? 'true' : 'false'} disabled={!available}
-                aria-label={ui("{0}: {1}", { 0: name || 'Card', 1: line })}
-                onPointerDown={event => event.stopPropagation()}
-                onClick={event => { event.stopPropagation(); if (available) onActivate(action); }}>
-                <SymbolText text={line} />
-              </button> : <SymbolText text={line} />}
-          </div>;
-        })}
-        {flavorText && <p aria-label={ui("Flavor text")}><em>{flavorText}</em></p>}
-      </div>
-    </details>}
+    {showDetails && <CardDetailsDisclosure
+      name={name} rulesView={rulesView} onActivate={onActivate} highlighted={highlighted}
+      flavorText={flavorText} stats={stats} counters={counters} detailsLabel={detailsLabel}
+    />}
   </article>;
 }

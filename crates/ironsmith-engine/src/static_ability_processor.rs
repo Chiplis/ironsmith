@@ -812,7 +812,11 @@ mod tests {
 
         assert_eq!(effects.len(), 1);
         let effect = &effects[0];
-        assert!(matches!(effect.modification, Modification::AddAbility(_)));
+        // One grant kind now emits one modification for both surfaces.
+        assert!(matches!(
+            effect.modification,
+            Modification::AddAbilityGeneric(_)
+        ));
     }
 
     #[test]

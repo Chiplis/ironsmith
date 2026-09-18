@@ -521,8 +521,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         ability: Box<StaticAbility<T, E, C, Cond, ICond>>,
         condition: ICond,
     },
-    GrantAbility(Box<GrantAbility<T, E, C, Cond, ICond>>),
-    GrantObjectAbilityForFilter(Box<GrantObjectAbilityForFilter<T, E, C, Cond>>),
+    GrantObjectAbilityForFilter(Box<GrantObjectAbilityForFilter<T, E, C, Cond, ICond>>),
     CopyActivatedAbilities(CopyActivatedAbilities),
     CopyStaticAbilityVariants(CopyStaticAbilityVariants),
     CopyTriggeredAbilities(CopyTriggeredAbilities),
@@ -1624,21 +1623,6 @@ where
                     condition: map_intervening(condition)?,
                 }
             }
-            StaticAbilityPayload::GrantAbility(grant) => {
-                let grant = *grant;
-                StaticAbilityPayload::GrantAbility(Box::new(GrantAbility {
-                    filter: grant.filter,
-                    ability: map_ability(
-                        grant.ability,
-                        map_trigger,
-                        map_effect,
-                        map_cost,
-                        map_intervening,
-                    )?,
-                    condition: grant.condition.map(&mut *map_intervening).transpose()?,
-                    set_quantifier_surface: grant.set_quantifier_surface,
-                }))
-            }
             StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
                 let grant = *grant;
                 StaticAbilityPayload::GrantObjectAbilityForFilter(Box::new(
@@ -1649,16 +1633,25 @@ where
                             map_trigger,
                             map_effect,
                             map_cost,
-                            &mut Ok,
+                            map_intervening,
                         )?,
                         additional_abilities: grant
                             .additional_abilities
                             .into_iter()
-                            .map(|ability| map_ability(ability, map_trigger, map_effect, map_cost, &mut Ok))
+                            .map(|ability| {
+                                map_ability(
+                                    ability,
+                                    map_trigger,
+                                    map_effect,
+                                    map_cost,
+                                    map_intervening,
+                                )
+                            })
                             .collect::<Result<Vec<_>, _>>()?,
                         display: grant.display,
-                        condition: grant.condition,
+                        condition: grant.condition.map(&mut *map_intervening).transpose()?,
                         set_quantifier_surface: grant.set_quantifier_surface,
+                        derived_ability_display: grant.derived_ability_display,
                     },
                 ))
             }
@@ -2841,19 +2834,22 @@ impl<
                 payload: StaticAbilityPayload::AttachedChosenLandwalkGrant(payload.clone()),
             };
         }
-        if let Some(payload) = label_any.downcast_ref::<GrantAbility<T, E, C, Cond, ICond>>() {
-            return Self {
-                id: Some(StaticAbilityId::GrantAbility),
-                label: "grant ability".to_string(),
-                payload: StaticAbilityPayload::GrantAbility(Box::new(payload.clone())),
-            };
-        }
         if let Some(payload) =
-            label_any.downcast_ref::<GrantObjectAbilityForFilter<T, E, C, Cond>>()
+            label_any.downcast_ref::<GrantObjectAbilityForFilter<T, E, C, Cond, ICond>>()
         {
+            // One grant model, two surfaces. The id and label still tell the
+            // two apart for text reconstruction; the payload no longer does.
+            let (id, label) = if payload.derived_ability_display {
+                (StaticAbilityId::GrantAbility, "grant ability".to_string())
+            } else {
+                (
+                    StaticAbilityId::GrantObjectAbilityForFilter,
+                    payload.display.clone(),
+                )
+            };
             return Self {
-                id: Some(StaticAbilityId::GrantObjectAbilityForFilter),
-                label: payload.display.clone(),
+                id: Some(id),
+                label,
                 payload: StaticAbilityPayload::GrantObjectAbilityForFilter(Box::new(
                     payload.clone(),
                 )),

@@ -3787,3 +3787,66 @@ pub(super) fn granted_split_second_spell_is_still_castable() {
         "the hand object must have moved to the stack instead of rolling back"
     );
 }
+
+
+/// A conditional grant must not impose its restrictions while the condition is
+/// false. Restriction collection gates candidates on `is_active`, so both grant
+/// representations have to answer it the same way.
+#[test]
+pub(super) fn conditional_granted_split_second_respects_its_condition() {
+    use crate::zone::Zone;
+
+    fn probe(with_wizard: bool) -> bool {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = alice;
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+
+        let mut granted_filter = ObjectFilter::spell().cast_by(PlayerFilter::You);
+        granted_filter.zone = Some(Zone::Stack);
+        granted_filter.card_types = vec![CardType::Instant];
+        let granter = CardDefinitionBuilder::new(CardId::new(), "Conditional Granter Probe")
+            .card_types(vec![CardType::Enchantment])
+            .with_ability(Ability::static_ability(
+                StaticAbility::grant_object_ability_for_filter(
+                    granted_filter,
+                    Ability::static_ability(StaticAbility::split_second()),
+                    "split second".to_string(),
+                )
+                .with_condition(crate::ConditionExpr::YouControl(
+                    ObjectFilter::creature().with_subtype(Subtype::Wizard),
+                ))
+                .expect("grant should accept a static condition"),
+            ))
+            .build();
+        game.create_object_from_definition(&granter, alice, Zone::Battlefield);
+
+        if with_wizard {
+            let wizard = CardBuilder::new(CardId::new(), "Probe Wizard")
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Wizard])
+                .power_toughness(PowerToughness::fixed(1, 1))
+                .build();
+            game.create_object_from_card(&wizard, alice, Zone::Battlefield);
+        }
+
+        let spell_definition = CardDefinitionBuilder::new(CardId::new(), "Conditional Spell Probe")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let spell_id = game.create_object_from_definition(&spell_definition, alice, Zone::Stack);
+        game.push_to_stack(crate::game_state::StackEntry::new(spell_id, alice));
+        game.refresh_continuous_state();
+        !game.can_cast_spells(bob)
+    }
+
+    assert!(
+        probe(true),
+        "with the condition met the granted split second must lock opponents out"
+    );
+    assert!(
+        !probe(false),
+        "with the condition unmet the grant must impose nothing"
+    );
+}

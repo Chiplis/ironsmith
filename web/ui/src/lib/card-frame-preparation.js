@@ -80,15 +80,16 @@ export function prepareCardFrame(imageUrl, typeLine = '') {
     }
     const registeredScan = registeredScanUrl && registeredScanUrl !== scanUrl
       ? decodeImage(registeredScanUrl).then(() => true, () => false) : Promise.resolve(true);
-    let style = invalidRegistration
-      ? {'--source-frame-status': 'original', '--source-frame-fallback-reason': 'registration-geometry'}
-      : registration ? {} : await sampleCardFrameColors(scanUrl, {
+    // An unusable registration is not a reason to stop: the pixel pipeline
+    // still masks the scan, or places its containers over it.
+    let style = registration ? {} : await sampleCardFrameColors(scanUrl, {
       typography: preparedTypography, printing, setSymbolUrl: await setSymbolRequest,
     });
+    if (invalidRegistration && style) style['--registration-fallback-reason'] = 'registration-geometry';
     // Retry offscreen, publishing only a complete mask. The stage's preview
     // continues to use imageUrl, and a failed English attempt leaves the
     // original localized fallback intact (including its typography/flavor).
-    if (!registration && !style?.['--source-frame-image'] && printing?.lang && printing.lang !== 'en') {
+    if (!registration && style?.['--source-frame-status'] !== 'masked' && printing?.lang && printing.lang !== 'en') {
       try {
         const english = await resolveScryfallEnglishPrinting(imageUrl, printing);
         const englishUrl = english?.image_uris?.normal
@@ -99,7 +100,7 @@ export function prepareCardFrame(imageUrl, typeLine = '') {
             typography: englishTypography, printing: english,
             setSymbolUrl: await resolveScryfallSetSymbol(english),
           });
-          if (englishStyle?.['--source-frame-image']) {
+          if (englishStyle?.['--source-frame-status'] === 'masked') {
             style = englishStyle;
             preparedTypography = englishTypography;
             framePrinting = english;

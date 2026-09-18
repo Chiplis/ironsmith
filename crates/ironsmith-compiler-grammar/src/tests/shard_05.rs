@@ -3912,7 +3912,11 @@ pub(super) fn jubilant_skybonder_full_document_keeps_quoted_tax_as_a_filtered_gr
         .iter()
         .find_map(|ability| match &ability.kind {
             AbilityKind::Static(static_ability) => match &static_ability.payload {
-                StaticAbilityPayload::GrantAbility(grant) => Some(grant.as_ref()),
+                StaticAbilityPayload::GrantObjectAbilityForFilter(grant)
+                    if grant.derived_ability_display =>
+                {
+                    Some(grant.as_ref())
+                }
                 _ => None,
             },
             _ => None,

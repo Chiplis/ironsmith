@@ -187,43 +187,6 @@ impl AttachedChosenLandwalkGrant {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
-pub struct GrantAbility<T, E, C, Cond, ICond = Condition> {
-    pub filter: ObjectFilter,
-    pub ability: AbilityModel<T, E, C, Cond, ICond>,
-    pub condition: Option<ICond>,
-    /// Original leading set quantifier, retained only for compiled-text surface.
-    pub set_quantifier_surface: Option<SetQuantifierSurface>,
-}
-
-impl<T, E, C, Cond, ICond> GrantAbility<T, E, C, Cond, ICond> {
-    pub fn new(filter: ObjectFilter, ability: AbilityModel<T, E, C, Cond, ICond>) -> Self {
-        Self {
-            filter,
-            ability,
-            condition: None,
-            set_quantifier_surface: None,
-        }
-    }
-    pub fn source(ability: impl Into<AbilityModel<T, E, C, Cond, ICond>>) -> Self {
-        Self {
-            filter: ObjectFilter::source(),
-            ability: ability.into(),
-            condition: None,
-            set_quantifier_surface: None,
-        }
-    }
-    pub fn with_condition(mut self, condition: ICond) -> Self {
-        self.condition = Some(condition);
-        self
-    }
-    pub fn with_set_quantifier_surface(mut self, surface: Option<SetQuantifierSurface>) -> Self {
-        self.set_quantifier_surface = surface;
-        self
-    }
-}
-
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, PartialEq, TagKeyWalk)]
 pub struct GrantObjectAbilityForFilter<T, E, C, Cond, ICond = Condition> {
     pub filter: ObjectFilter,
@@ -233,14 +196,22 @@ pub struct GrantObjectAbilityForFilter<T, E, C, Cond, ICond = Condition> {
     pub condition: Option<ICond>,
     /// Original leading set quantifier, retained only for compiled-text surface.
     pub set_quantifier_surface: Option<SetQuantifierSurface>,
+    /// Render the granted ability's own text instead of the authored `display`.
+    ///
+    /// This is the only thing that used to separate a `GrantAbility` payload
+    /// from this one. Carrying it as data keeps a single grant model, so a
+    /// consumer cannot implement one form and silently forget the other.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub derived_ability_display: bool,
 }
 
-impl<T, E, C, Cond> std::fmt::Debug for GrantObjectAbilityForFilter<T, E, C, Cond>
+impl<T, E, C, Cond, ICond> std::fmt::Debug for GrantObjectAbilityForFilter<T, E, C, Cond, ICond>
 where
     T: std::fmt::Debug,
     E: std::fmt::Debug,
     C: std::fmt::Debug,
     Cond: std::fmt::Debug,
+    ICond: std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GrantObjectAbilityForFilter")
@@ -254,6 +225,7 @@ where
             .field("display", &self.display)
             .field("condition", &self.condition)
             .field("set_quantifier_surface", &self.set_quantifier_surface)
+            .field("derived_ability_display", &self.derived_ability_display)
             .finish()
     }
 }
@@ -271,8 +243,23 @@ impl<T, E, C, Cond, ICond> GrantObjectAbilityForFilter<T, E, C, Cond, ICond> {
             display: display.into(),
             condition: None,
             set_quantifier_surface: None,
+            derived_ability_display: false,
         }
     }
+
+    /// A source-only grant that renders the granted ability's own text.
+    pub fn source(ability: impl Into<AbilityModel<T, E, C, Cond, ICond>>) -> Self {
+        Self::from_static_grant(ObjectFilter::source(), ability.into())
+    }
+
+    /// A grant that renders the granted ability's own text.
+    pub fn from_static_grant(filter: ObjectFilter, ability: AbilityModel<T, E, C, Cond, ICond>) -> Self {
+        Self {
+            derived_ability_display: true,
+            ..Self::new(filter, ability, String::new())
+        }
+    }
+
     pub fn with_additional_abilities(
         mut self,
         abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>,

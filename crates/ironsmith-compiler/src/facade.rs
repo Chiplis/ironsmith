@@ -49,12 +49,14 @@ fn fallback_static_ability_issue(
         StaticAbilityPayload::Conditional { ability, .. } => {
             fallback_static_ability_issue(ability, "conditional static ability")
         }
-        StaticAbilityPayload::GrantAbility(grant) => {
-            fallback_ability_issue(&grant.ability, "granted ability")
-        }
-        StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
-            fallback_ability_issue(&grant.ability, "granted object ability")
-        }
+        StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => fallback_ability_issue(
+            &grant.ability,
+            if grant.derived_ability_display {
+                "granted ability"
+            } else {
+                "granted object ability"
+            },
+        ),
         StaticAbilityPayload::LevelAbility(level) => level
             .abilities
             .iter()

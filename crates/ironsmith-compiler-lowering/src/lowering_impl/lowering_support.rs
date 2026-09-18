@@ -4011,7 +4011,11 @@ fn lower_conditional_static_ability(
         .with_condition(condition.clone())
         .unwrap_or_else(|| {
             StaticAbility::new(
-                crate::static_abilities::GrantAbility::source(lowered).with_condition(condition),
+                crate::static_abilities::GrantObjectAbilityForFilter::from_static_grant(
+                    crate::filter::ObjectFilter::source(),
+                    lowered.into(),
+                )
+                .with_condition(condition),
             )
         }))
 }
@@ -4031,7 +4035,7 @@ fn lower_grant_static_ability(
         );
     }
 
-    let mut grant = crate::static_abilities::GrantAbility::new(
+    let mut grant = crate::static_abilities::GrantObjectAbilityForFilter::from_static_grant(
         filter,
         lower_static_ability_ast(ability)?.into(),
     );
@@ -4047,9 +4051,6 @@ fn lower_static_set_quantifier_surface(
 ) -> Result<StaticAbility, CardTextError> {
     let mut lowered = lower_static_ability_ast(ability)?;
     match &mut lowered.payload {
-        crate::static_abilities::StaticAbilityPayload::GrantAbility(grant) => {
-            grant.set_quantifier_surface = Some(surface);
-        }
         crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
             grant.set_quantifier_surface = Some(surface);
         }

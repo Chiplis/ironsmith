@@ -202,6 +202,17 @@ fn resolve_set_pt_modification(
         return Ok(Modification::AddAbility(materialized));
     }
 
+    // The generic grant carries the same static ability one level in, so it
+    // has to materialize its resolution values too.
+    if let Modification::AddAbilityGeneric(granted) = modification
+        && let crate::ability::AbilityKind::Static(ability) = &granted.kind
+        && let Some(materialized) = ability.materialize_resolution_values(game, ctx)?
+    {
+        let mut granted = granted.clone();
+        granted.kind = crate::ability::AbilityKind::Static(materialized);
+        return Ok(Modification::AddAbilityGeneric(granted));
+    }
+
     if !effect.resolve_set_pt_values_at_resolution {
         return Ok(modification.clone());
     }
@@ -656,11 +667,30 @@ fn materialize_granted_entry_counter_source(
         }
     }
 
-    let Modification::AddAbility(ability) = modification else {
-        return modification;
-    };
+    // Unwrap either grant representation to the static ability it carries, and
+    // remember how to put it back.
+    let (ability, rewrap): (_, Box<dyn FnOnce(crate::static_abilities::StaticAbility) -> Modification>) =
+        match modification {
+            Modification::AddAbility(ability) => {
+                (ability, Box::new(Modification::AddAbility))
+            }
+            Modification::AddAbilityGeneric(granted) => {
+                let crate::ability::AbilityKind::Static(ability) = granted.kind.clone() else {
+                    return Modification::AddAbilityGeneric(granted);
+                };
+                (
+                    ability,
+                    Box::new(move |materialized| {
+                        let mut granted = granted.clone();
+                        granted.kind = crate::ability::AbilityKind::Static(materialized);
+                        Modification::AddAbilityGeneric(granted)
+                    }),
+                )
+            }
+            other => return other,
+        };
     let Some(mut model) = ability.compiled_model().cloned() else {
-        return Modification::AddAbility(ability);
+        return rewrap(ability);
     };
     let ironsmith_core::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
         count,
@@ -668,13 +698,13 @@ fn materialize_granted_entry_counter_source(
         ..
     } = &mut model.payload
     else {
-        return Modification::AddAbility(ability);
+        return rewrap(ability);
     };
     materialize_value(count, outer_source);
     if let Some(otherwise_count) = otherwise_count {
         materialize_value(otherwise_count, outer_source);
     }
-    Modification::AddAbility(crate::static_abilities::StaticAbility::from_model(model))
+    rewrap(crate::static_abilities::StaticAbility::from_model(model))
 }
 
 impl EffectExecutor for ApplyContinuousEffect {

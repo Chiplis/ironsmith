@@ -905,8 +905,10 @@ export function basicLandBoxIsTextless(printing) {
 }
 
 async function sample(fullUrl, typography, printing, setSymbolUrl, execute) {
+  // Layouts whose live text does not fit one rules box are never masked, but
+  // their regions are still measured: the frame places its own containers over
+  // the printing rather than leaving the scan without live text.
   const layoutGap=sourceMaskLayoutGap(printing);
-  if(layoutGap)return {'--source-frame-status':'original','--source-frame-fallback-reason':layoutGap};
   const artUrl = /^https:\/\/cards\.scryfall\.io\/normal\//.test(fullUrl) ? fullUrl.replace('/normal/', '/art_crop/') : '';
   const [image, art] = await Promise.all([loadImage(fullUrl), artUrl ? loadImage(artUrl).catch(() => null) : null]);
   const canvas = document.createElement('canvas');
@@ -922,26 +924,108 @@ async function sample(fullUrl, typography, printing, setSymbolUrl, execute) {
     cropCtx.drawImage(art, 0, 0, crop.width, crop.height);
     artScan = cropCtx.getImageData(0, 0, crop.width, crop.height);
   }
-  const symbolScan = setSymbolUrl ? await loadImage(setSymbolUrl).then(symbol => {
+  const symbolScan = setSymbolUrl && !layoutGap ? await loadImage(setSymbolUrl).then(symbol => {
     const icon = frameCanvas(48, Math.max(1, Math.round(symbol.height * 48 / symbol.width)));
     const context = icon.getContext('2d', {willReadFrequently:true});
     context.drawImage(symbol, 0, 0, icon.width, icon.height);
     return context.getImageData(0, 0, icon.width, icon.height);
   }).catch(() => null) : null;
-  const icons = await manaTemplates(printing?.mana_cost).catch(() => []);
-  const task = {fullScan, artScan, symbolScan, icons, typography, printing};
-  return execute ? execute(task) : sampleCardFramePixels(task);
+  const icons = layoutGap ? [] : await manaTemplates(printing?.mana_cost).catch(() => []);
+  const task = {fullScan, artScan, symbolScan, icons, typography, printing, layoutGap};
+  const style = await (execute ? execute(task) : sampleCardFramePixels(task));
+  // Placed containers cover the printed lettering they replace with opaque
+  // panels, so the frame shows the untouched scan behind them.
+  if (style && style['--source-frame-status'] === 'unmasked' && !style['--source-frame-image'])
+    style['--source-frame-image'] = `url("${fullUrl}")`;
+  return style;
 }
 
-export async function sampleCardFramePixels({fullScan, artScan, symbolScan, icons: preparedIcons, typography, printing}, inpaint = inpaintGlyphMask) {
+// Conventional fractions of a normal printing, measured on the 488x680 scan
+// Scryfall serves. They are the last resort for a container whose region the
+// scan analysis could not find at all, never a replacement for a measurement.
+const DEFAULT_FRAME_REGIONS = {
+  title: {x:.0615, y:.0559, width:.877, height:.0618},
+  art:   {x:.0615, y:.1265, width:.877, height:.4206},
+  type:  {x:.0615, y:.5529, width:.877, height:.0500},
+  rules: {x:.0615, y:.6088, width:.877, height:.2735},
+};
+
+export function defaultFrameBoxes(scan) {
+  return Object.fromEntries(Object.entries(DEFAULT_FRAME_REGIONS).map(([name, region]) => [name, {
+    x: Math.round(region.x * scan.width), y: Math.round(region.y * scan.height),
+    width: Math.round(region.width * scan.width), height: Math.round(region.height * scan.height),
+  }]));
+}
+
+// A detected region is only worth placing a container on when it lies inside
+// the scan and is large enough to hold a line of text. Anything else (a bevel
+// mistaken for a panel, a sliver of artwork) would misplace the live text far
+// worse than the conventional proportions do.
+function usableRegion(box, scan) {
+  if (!box || ['x','y','width','height'].some(key => !Number.isFinite(box[key]))) return false;
+  if (box.width < scan.width * .25 || box.height < scan.height * .015) return false;
+  return box.x >= -2 && box.y >= -2
+    && box.x + box.width <= scan.width + 2 && box.y + box.height <= scan.height + 2;
+}
+
+// Container-query lengths are relative to the stage, while these measurements
+// share the scan's coordinate system. Restate them against the frame's own unit.
+function scaleSourceUnits(style) {
+  if (!style['--printed-scan-width']) return style;
+  for (const [key, value] of Object.entries(style)) {
+    if (typeof value === 'string' && !value.includes('url(')) {
+      style[key] = value.replace(/(-?\d+(?:\.\d+)?)cqw/g, 'calc($1 * var(--card-frame-width-unit))');
+    }
+  }
+  return style;
+}
+
+// Masking is best effort; placement is not. When no mask can be published the
+// frame still lays its own name/type/rules/stats containers over the printing,
+// using every region the scan analysis did find and conventional proportions
+// for the rest. Callers render these containers opaquely, so the printed
+// lettering underneath never shows through the live text.
+export function placedFrameStyle(measured, scan, printing, reason) {
+  const style = {...measured};
+  delete style['--source-frame-image'];
+  const candidates = JSON.parse(style['--printed-layout-candidates'] || 'null') || {};
+  const published = JSON.parse(style['--printed-layout'] || 'null') || {};
+  const defaults = defaultFrameBoxes(scan);
+  const boxes = {};
+  for (const name of ['title', 'art', 'type', 'rules']) {
+    const detected = [published[name], candidates[name]].find(box => usableRegion(box, scan));
+    boxes[name] = detected || defaults[name];
+  }
+  style['--printed-box-sizing'] = 'measured';
+  style['--printed-layout'] = JSON.stringify(boxes);
+  for (const [name, box] of Object.entries(boxes)) {
+    for (const dimension of ['x', 'y', 'width', 'height']) style[`--printed-${name}-${dimension}`] = box[dimension];
+  }
+  // The P/T container keeps the detected plaque when the scan has one, and the
+  // conventional lower-right corner of the text box otherwise.
+  if (printing?.power != null && printing?.toughness != null && style['--printed-pt-position'] !== 'rules') {
+    style['--printed-pt-position'] = 'rules';
+    style['--printed-pt-left'] = '87%';
+    style['--printed-pt-drop'] = '0cqw';
+  }
+  if (!style['--printed-type-text-width'])
+    style['--printed-type-text-width'] = `${boxes.type.width * .86 / scan.width * 100}cqw`;
+  style['--source-frame-status'] = 'unmasked';
+  style['--source-frame-fallback-reason'] = reason;
+  return scaleSourceUnits(style);
+}
+
+export async function sampleCardFramePixels({fullScan, artScan, symbolScan, icons: preparedIcons, typography, printing, layoutGap}, inpaint = inpaintGlyphMask) {
   const canvas = frameCanvas(fullScan.width, fullScan.height);
   const ctx = canvas.getContext('2d', {willReadFrequently: true});
   ctx.putImageData(new ImageData(fullScan.data, fullScan.width, fullScan.height), 0, 0);
   // Geometry is evidence for placing editable text, never a recipe for a
-  // replacement frame. If it cannot be measured, retain the original card.
+  // replacement frame. Whatever it finds is kept: a failed mask still places
+  // its containers over the printing from these regions.
   const future = printing?.frame === 'future';
   const style = future ? futureFrameGeometry(fullScan) : measureFrameGeometry(fullScan, artScan, true);
-  const fallback = reason => ({'--source-frame-status':'original','--source-frame-fallback-reason':reason});
+  const fallback = reason => placedFrameStyle(style, fullScan, printing, reason);
+  if (layoutGap) return fallback(layoutGap);
   if (!typography || !printing) return fallback('printing-metadata');
   if (!style['--printed-layout']) return fallback(!matchArtBounds(fullScan,artScan) ? 'art-registration' : 'text-regions');
   const titlePanel = future ? {kind:'integrated'} : {kind:style['--title-panel-kind'] || classifyTitlePanel(fullScan).kind}, typePanel = future ? {kind:'integrated'} : classifyTypePanel(fullScan);
@@ -1121,16 +1205,9 @@ export async function sampleCardFramePixels({fullScan, artScan, symbolScan, icon
   }
   if (!style['--source-frame-image']) return fallback('glyph-mask');
   style['--source-frame-status'] = 'masked';
-  if (style['--printed-scan-width']) {
-    // Typography, bevels, and P/T offsets use the same scale as the boxes,
-    // including previews constrained by height instead of width.
-    for (const [key, value] of Object.entries(style)) {
-      if (typeof value === 'string' && !value.includes('url(')) {
-        style[key] = value.replace(/(-?\d+(?:\.\d+)?)cqw/g, 'calc($1 * var(--card-frame-width-unit))');
-      }
-    }
-  }
-  return style;
+  // Typography, bevels, and P/T offsets use the same scale as the boxes,
+  // including previews constrained by height instead of width.
+  return scaleSourceUnits(style);
 }
 
 export function sampleCardFrameColors(fullUrl, { typography, printing, setSymbolUrl, execute } = {}) {

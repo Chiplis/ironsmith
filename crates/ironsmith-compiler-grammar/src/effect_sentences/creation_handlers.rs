@@ -659,8 +659,7 @@ fn parse_inline_token_granted_abilities(
                     | StaticAbilityAst::GrantObjectAbility { .. } => true,
                     StaticAbilityAst::Static(static_ability) => matches!(
                         &static_ability.payload,
-                        ironsmith_core::StaticAbilityPayload::GrantAbility(_)
-                            | ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(_)
+                        ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(_)
                     ),
                     _ => false,
                 },
@@ -671,8 +670,7 @@ fn parse_inline_token_granted_abilities(
                     };
                     matches!(
                         &ability.payload,
-                        ironsmith_core::StaticAbilityPayload::GrantAbility(_)
-                            | ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(_)
+                        ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(_)
                     )
                 }
                 _ => false,

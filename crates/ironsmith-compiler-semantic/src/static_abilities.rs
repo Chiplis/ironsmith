@@ -43,7 +43,7 @@ pub type AttachedAbilityGrant = ironsmith_core::AttachedAbilityGrant<
     crate::costs::Cost,
     ThisSpellCostCondition,
 >;
-pub type GrantAbility = ironsmith_core::GrantAbility<
+pub type GrantAbility = ironsmith_core::GrantObjectAbilityForFilter<
     crate::triggers::Trigger,
     crate::effect::Effect,
     crate::costs::Cost,

@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 
 pub const FORMAT_VERSION: u32 = 3;
 pub const ENGINE_SCHEMA_HASH: &str =
-    "1bd9697f2fe94a47ca56213313de037949dfc7e3df8ea5db33e92d35b82fa99a";
+    "ae7c0125d24414668cf49f94857c3ae4bf6a8245dd483582822a22faf9d56421";
 
 /// A compiler effect transported without linking compiler code into the
 /// engine. The payload is decoded lazily into the exact canonical schema type

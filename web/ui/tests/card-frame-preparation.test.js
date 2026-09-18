@@ -12,7 +12,9 @@ async function fixture({lang='es', localMask=false, englishMask=true, reject=fal
     resolveScryfallSetSymbol:async()=>null,
     resolveScryfallEnglishPrinting:async()=>{calls.push('english');await gate;if(reject)throw Error('Offline');return {lang:'en',image_uris:{normal:'english'}};},
     fullCardImageUrl:url=>url||'', preloadCardFrameSource:async()=>{},
-    sampleCardFrameColors:async url=>{calls.push(url);return (url==='localized'?localMask:englishMask)?{'--source-frame-image':`url("${url}-mask")`}:{'--source-frame-status':'original'};},
+    sampleCardFrameColors:async url=>{calls.push(url);return (url==='localized'?localMask:englishMask)
+      ?{'--source-frame-status':'masked','--source-frame-image':`url("${url}-mask")`}
+      :{'--source-frame-status':'unmasked','--source-frame-fallback-reason':'glyph-mask','--printed-layout':'{}'};},
     registrationForImage:()=>null,registrationForPrinting:()=>null,registrationGeometryIsUsable:()=>true,
   };
   globalThis.Image=class {async decode(){calls.push(`decode:${this.src}`);}};
@@ -43,7 +45,7 @@ for(const options of [{englishMask:false},{reject:true}])test(`failed retry pres
   const result=await module.prepareCardFrame('localized');
   assert.equal(result.originalImageUrl,'localized');
   assert.equal(result.typography.lang,'es');
-  assert.equal(result.style['--source-frame-status'],'original');
+  assert.equal(result.style['--source-frame-status'],'unmasked');
 });
 for(const options of [{lang:'en'},{localMask:true}])test(`no unnecessary retry ${JSON.stringify(options)}`,async()=>{
   const {module,calls}=await fixture(options);

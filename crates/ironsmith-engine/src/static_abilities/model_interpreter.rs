@@ -1036,17 +1036,6 @@ impl StaticAbilityModelInterpreter {
                     )
                 })
             }
-            ironsmith_core::StaticAbilityPayload::GrantAbility(grant) => {
-                let mut converted = crate::static_abilities::GrantAbility::new(
-                    grant.filter.clone(),
-                    Self::static_ability_from_ability_model(&grant.ability)?,
-                )
-                .with_set_quantifier_surface(grant.set_quantifier_surface);
-                if let Some(condition) = &grant.condition {
-                    converted = converted.with_condition(condition.clone());
-                }
-                StaticAbility::new(converted)
-            }
             ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
                 let mut converted = crate::static_abilities::GrantObjectAbilityForFilter::new(
                     grant.filter.clone(),
@@ -1061,6 +1050,7 @@ impl StaticAbilityModelInterpreter {
                         .collect(),
                 )
                 .with_set_quantifier_surface(grant.set_quantifier_surface);
+                converted.derived_ability_display = grant.derived_ability_display;
                 if let Some(condition) = &grant.condition {
                     converted = converted.with_condition(condition.clone());
                 }
@@ -3008,8 +2998,7 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     fn grants_abilities(&self) -> bool {
         matches!(
             self.payload(),
-            ironsmith_core::StaticAbilityPayload::GrantAbility(_)
-                | ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(_)
+            ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(_)
                 | ironsmith_core::StaticAbilityPayload::AttachedAbilityGrant(_)
         )
     }

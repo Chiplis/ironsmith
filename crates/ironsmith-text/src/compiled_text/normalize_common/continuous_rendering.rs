@@ -2634,9 +2634,6 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
                         .compiled_model()
                         .is_some_and(|model| match &model.payload {
                             ironsmith_core::StaticAbilityPayload::Conditional { .. } => true,
-                            ironsmith_core::StaticAbilityPayload::GrantAbility(grant) => {
-                                grant.condition.is_some()
-                            }
                             ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(
                                 grant,
                             ) => grant.condition.is_some(),

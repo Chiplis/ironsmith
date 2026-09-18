@@ -87,8 +87,16 @@ fn replacement_effects_from_granted_abilities(
             crate::continuous::continuous_effect_duration_and_condition_are_active(effect, game)
         })
         .filter_map(|effect| {
-            let Modification::AddAbility(granted_ability) = effect.modification else {
-                return None;
+            // Both grant representations reach here: `AddAbility` carries a
+            // static ability directly, `AddAbilityGeneric` carries a full
+            // ability whose static kind is the one that can replace an event.
+            let granted_ability = match effect.modification {
+                Modification::AddAbility(granted_ability) => granted_ability,
+                Modification::AddAbilityGeneric(ability) => match ability.kind {
+                    crate::ability::AbilityKind::Static(granted_ability) => granted_ability,
+                    _ => return None,
+                },
+                _ => return None,
             };
             let mut replacement =
                 granted_ability.generate_replacement_effect(source, controller)?;

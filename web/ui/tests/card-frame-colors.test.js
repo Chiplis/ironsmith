@@ -266,3 +266,53 @@ test('a band that merged two tightly leaded lines is split at the blank row betw
   // Neither is a band too short to give both halves a readable line.
   assert.deepEqual(splitMergedLineBands([{top: 440, bottom: 453}], counts), [{top: 440, bottom: 453}]);
 });
+
+test('a failed mask still places every container, measured where it could be', async () => {
+  const {placedFrameStyle, defaultFrameBoxes} = await import('../src/lib/card-frame-colors.js');
+  const scan = {width: 488, height: 680};
+  const defaults = defaultFrameBoxes(scan);
+  // Only the title and rules regions were found; the type bar's candidate is a
+  // sliver of a bevel and the art was never matched at all.
+  const measured = {
+    '--printed-scan-width': 488, '--printed-scan-height': 680,
+    '--printed-layout-candidates': JSON.stringify({
+      title: {x: 30, y: 38, width: 428, height: 42},
+      type: {x: 30, y: 376, width: 12, height: 34},
+      rules: {x: 30, y: 414, width: 428, height: 186},
+      art: null,
+    }),
+  };
+  const style = placedFrameStyle(measured, scan, {power: '2', toughness: '3'}, 'glyph-mask');
+
+  assert.equal(style['--source-frame-status'], 'unmasked');
+  assert.equal(style['--source-frame-fallback-reason'], 'glyph-mask');
+  assert.equal(style['--source-frame-image'], undefined);
+  assert.equal(style['--printed-box-sizing'], 'measured');
+  assert.deepEqual(JSON.parse(style['--printed-layout']), {
+    title: {x: 30, y: 38, width: 428, height: 42},
+    art: defaults.art,
+    type: defaults.type,
+    rules: {x: 30, y: 414, width: 428, height: 186},
+  });
+  assert.equal(style['--printed-title-y'], 38);
+  assert.equal(style['--printed-type-height'], defaults.type.height);
+  // A printing whose P/T plaque was never located keeps the container in the
+  // text box's lower-right corner rather than dropping it.
+  assert.equal(style['--printed-pt-position'], 'rules');
+  assert.equal(style['--printed-pt-drop'], 'calc(0 * var(--card-frame-width-unit))');
+});
+
+test('placed containers keep a partial mask out of the published frame', async () => {
+  const {placedFrameStyle} = await import('../src/lib/card-frame-colors.js');
+  const scan = {width: 488, height: 680};
+  const style = placedFrameStyle({
+    '--printed-scan-width': 488, '--printed-scan-height': 680,
+    '--source-frame-image': 'url("data:image/webp;base64,partial")',
+    '--printed-layout': JSON.stringify({title: {x: 30, y: 38, width: 428, height: 42},
+      art: {x: 30, y: 86, width: 428, height: 286}, type: {x: 30, y: 376, width: 428, height: 34},
+      rules: {x: 30, y: 414, width: 428, height: 186}}),
+  }, scan, {}, 'residual-text-title');
+  assert.equal(style['--source-frame-image'], undefined);
+  assert.equal(JSON.parse(style['--printed-layout']).type.width, 428);
+  assert.equal(style['--printed-pt-position'], undefined);
+});

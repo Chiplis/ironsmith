@@ -4,7 +4,7 @@ import RegisteredCardFrame from './RegisteredCardFrame';
 import GroupedManaAbility from "./GroupedManaAbility";
 import { cardArtCropUrl } from "@/lib/card-image-variants";
 import { cachedInspectorDetails, requestInspectorDetails } from "@/lib/inspector-details-cache";
-import OriginalCardFallback from "./OriginalCardFallback";
+import OriginalCardFallback, { CardDetailsDisclosure } from "./OriginalCardFallback";
 import { stripInspectorAbilityPrefixes, normalizeAbilityMatchText, lineAbilityMatchScore, activatedAbilityLineIndices, interactiveRulesView } from "@/lib/inspector-ability-lines";
 import "@/styles/card-typography.css";
 import CardFrameRulesBox from "./CardFrameRulesBox";
@@ -2341,7 +2341,14 @@ export default function HoverArtOverlay({
 
   if (isCardFrameMode) {
     const frameTone = inspectorCardFrameTone(displayManaCost, displayTypeLine);
-    const hasSourceMask = Boolean(cardFrameColors?.["--source-frame-image"]);
+    const hasSourceMask = cardFrameColors?.["--source-frame-status"] === "masked"
+      && Boolean(cardFrameColors?.["--source-frame-image"]);
+    // Masking failed, but the regions were still measured (or defaulted): lay
+    // the live containers over the untouched printing instead of dropping to
+    // the scan and a disclosure alone.
+    const placedFrame = !hasSourceMask
+      && cardFrameColors?.["--source-frame-status"] === "unmasked"
+      && Boolean(cardFrameColors?.["--printed-layout"]);
     const columnMana = cardFrameColors?.["--printed-mana-placement"] === "column"
       ? JSON.parse(cardFrameColors["--printed-mana-symbols"] || "null") : null;
     const manaTokens = String(displayManaCost || "").match(/\{[^}]+\}/g) || [];
@@ -2355,11 +2362,11 @@ export default function HoverArtOverlay({
         className="interactive-card-frame-stage absolute inset-0 z-30 pointer-events-auto"
         data-card-frame-tone={frameTone}
         data-printing-ready={typography.printingReady || undefined}
-        data-source-frame={cardFrameColors?.["--source-frame-image"] ? "true" : undefined}
+        data-source-frame={hasSourceMask || placedFrame ? "true" : undefined}
         data-box-sizing={cardFrameColors?.["--printed-box-sizing"] || undefined}
         data-frame-geometry={cardFrameColors && Object.keys(cardFrameColors).some(key => key.startsWith("--printed-gap-")) ? "true" : undefined}
         data-card-colors={hasSourceMask ? "sampled" : undefined}
-        data-frame-mode={preparedFrame?.registration ? "registered" : hasSourceMask ? "masked" : "original"}
+        data-frame-mode={preparedFrame?.registration ? "registered" : hasSourceMask ? "masked" : placedFrame ? "placed" : "original"}
         data-frame-presentation={isMiniatureFrame ? "miniature" : "inspector"}
         data-frame-fallback-reason={cardFrameColors?.["--source-frame-fallback-reason"] || undefined}
         data-inspected-object-id={detailsObjectIdKey || undefined}
@@ -2381,7 +2388,7 @@ export default function HoverArtOverlay({
           interactive={!isMiniatureFrame}
           typeLine={displayTypeLine} stats={displayStatsText} flavorText={flavorText}
           onActivate={onInteractiveAction} highlighted={highlightedRuleLineIndices}
-        /> : !hasSourceMask ? <OriginalCardFallback
+        /> : !hasSourceMask && !placedFrame ? <OriginalCardFallback
           showDetails={!isMiniatureFrame}
           imageUrl={preparedFrame?.originalImageUrl || sourceImageUrl || imageUrl}
           name={displayObjectName} rulesView={rulesView} onActivate={onInteractiveAction}
@@ -2523,6 +2530,12 @@ export default function HoverArtOverlay({
               </footer>
             )}
           </div>
+          {placedFrame && !isMiniatureFrame && <CardDetailsDisclosure
+            name={displayObjectName} rulesView={rulesView} onActivate={onInteractiveAction}
+            highlighted={highlightedRuleLineIndices} flavorText={flavorText}
+            stats={displayStatsText} counters={displayCountersLine}
+            detailsLabel={t("card.previewDetails", null, "Card details")}
+          />}
         </article>}
       </CardFrameStage>
     );

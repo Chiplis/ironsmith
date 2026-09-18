@@ -6,7 +6,7 @@ use crate::effect::Effect;
 use crate::filter::{TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::static_abilities::{Anthem, GrantAbility, StaticAbility};
+use crate::static_abilities::{Anthem, GrantObjectAbilityForFilter, StaticAbility};
 use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
@@ -312,7 +312,10 @@ pub fn monster_role_token_definition() -> CardDefinition {
             crate::static_abilities::Anthem::<crate::ConditionExpr>::new(enchanted.clone(), 1, 1),
         )))
         .with_ability(crate::ability::Ability::static_ability(StaticAbility::new(
-            GrantAbility::new(enchanted, StaticAbility::trample().into()),
+            GrantObjectAbilityForFilter::from_static_grant(
+                enchanted,
+                StaticAbility::trample().into(),
+            ),
         )))
         .build()
 }

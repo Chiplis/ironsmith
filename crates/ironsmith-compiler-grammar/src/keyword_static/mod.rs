@@ -2558,7 +2558,6 @@ fn static_ability_ast_has_explicit_condition(ability: &StaticAbilityAst) -> bool
         StaticAbilityAst::Static(ability) => match &ability.payload {
             ironsmith_core::StaticAbilityPayload::Conditional { .. } => true,
             ironsmith_core::StaticAbilityPayload::Anthem(anthem) => anthem.condition.is_some(),
-            ironsmith_core::StaticAbilityPayload::GrantAbility(grant) => grant.condition.is_some(),
             ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
                 grant.condition.is_some()
             }

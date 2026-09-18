@@ -58,6 +58,12 @@ fn granted_conspire_count(game: &GameState, spell_id: ObjectId, caster: PlayerId
             crate::continuous::Modification::AddAbility(ability) => {
                 static_ability_is_granted_conspire_marker(ability)
             }
+            // A conspire marker granted through the generic representation is
+            // the same marker one level in.
+            crate::continuous::Modification::AddAbilityGeneric(granted) => {
+                matches!(&granted.kind, crate::ability::AbilityKind::Static(ability)
+                    if static_ability_is_granted_conspire_marker(ability))
+            }
             _ => false,
         })
         .filter(|effect| match &effect.applies_to {

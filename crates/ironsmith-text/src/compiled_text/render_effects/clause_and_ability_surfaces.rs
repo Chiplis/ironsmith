@@ -10243,7 +10243,9 @@ pub(crate) fn restore_modeled_value_surface(
                 }
             }
         }
-        ironsmith_core::StaticAbilityPayload::GrantAbility(grant) => {
+        ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant)
+            if grant.derived_ability_display =>
+        {
             let granted =
                 crate::static_abilities::StaticAbilityModelInterpreter::ability_from_model(
                     &grant.ability,

@@ -2547,9 +2547,13 @@ fn modeled_filter_static_grant(
         return None;
     };
     let model = static_ability.compiled_model()?;
-    let ironsmith_core::StaticAbilityPayload::GrantAbility(grant) = &model.payload else {
+    let ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) = &model.payload
+    else {
         return None;
     };
+    if !grant.derived_ability_display {
+        return None;
+    }
     if grant.ability.functional_zones.as_slice() != [Zone::Battlefield] {
         return None;
     }
@@ -2982,7 +2986,11 @@ mod quoted_static_grant_bundle_tests {
         .expect("quoted commander cost reduction should compile");
         let debug = format!("{definition:#?}");
 
-        assert!(debug.contains("GrantAbility(GrantAbility"), "{debug}");
+        assert!(
+            debug.contains("GrantObjectAbilityForFilter(GrantObjectAbilityForFilter"),
+            "{debug}"
+        );
+        assert!(debug.contains("derived_ability_display: true"), "{debug}");
         assert!(debug.contains("is_commander: true"), "{debug}");
         assert!(debug.contains("CostReduction"), "{debug}");
         assert_eq!(
@@ -3082,10 +3090,12 @@ mod can_block_additional_grant_tests {
             functional_zones: vec![Zone::Battlefield],
         };
         let grant_ability_model: crate::static_abilities::CompiledStaticAbility =
-            ironsmith_core::StaticAbility::new(ironsmith_core::GrantAbility::new(
-                filter.clone(),
-                granted.clone(),
-            ));
+            ironsmith_core::StaticAbility::new(
+                ironsmith_core::GrantObjectAbilityForFilter::from_static_grant(
+                    filter.clone(),
+                    granted.clone(),
+                ),
+            );
         let grant_object_model: crate::static_abilities::CompiledStaticAbility =
             ironsmith_core::StaticAbility::new(ironsmith_core::GrantObjectAbilityForFilter::new(
                 filter,
@@ -11893,9 +11903,14 @@ fn describe_cross_segment_each_player_token_characteristic_window(
         characteristic.clone()
     } else {
         let model = characteristic.compiled_model()?;
-        let ironsmith_core::StaticAbilityPayload::GrantAbility(grant) = &model.payload else {
+        let ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) =
+            &model.payload
+        else {
             return None;
         };
+        if !grant.derived_ability_display {
+            return None;
+        }
         if grant.condition.is_some()
             || grant.set_quantifier_surface.is_some()
             || grant.ability.functional_zones.as_slice() != [Zone::Battlefield]
@@ -33925,8 +33940,9 @@ fn describe_source_line_type_addition_grant_group(abilities: &[Ability]) -> Opti
         };
         let model = static_ability.compiled_model()?;
         match &model.payload {
-            ironsmith_core::StaticAbilityPayload::GrantAbility(grant)
-                if &grant.filter == affected_filter
+            ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant)
+                if grant.derived_ability_display
+                    && &grant.filter == affected_filter
                     && grant.condition.is_none()
                     && grant.set_quantifier_surface.is_none()
                     && grant.ability.functional_zones.as_slice() == [Zone::Battlefield] =>

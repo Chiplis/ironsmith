@@ -41,7 +41,7 @@ pub type CompilerPowerToughnessChoiceOptionCore = ironsmith_core::PowerToughness
     ironsmith_core::ThisSpellCostCondition,
     super::ast::PredicateAst,
 >;
-pub type CompilerGrantAbilityCore = ironsmith_core::GrantAbility<
+pub type CompilerGrantAbilityCore = ironsmith_core::GrantObjectAbilityForFilter<
     TriggerSpec,
     EffectAst,
     crate::model::CompilerCost,

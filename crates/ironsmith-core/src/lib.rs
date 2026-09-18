@@ -219,7 +219,7 @@ pub use static_ability_model::{
     CopyTriggeredAbilities, CostIncrease, CostIncreaseManaCost, CostReduction,
     CostReductionCharacteristicIntersection, CostReductionManaCost, CounterRemovalFollowUp,
     CounterRemovalPreventionSurface, DefendingPlayerAttackCondition, EnterAsCopyAsEntersSpec,
-    EnterAsCopyLinkedExilePairSpec, EscalateSpec, GrantAbility, GrantObjectAbilityForFilter,
+    EnterAsCopyLinkedExilePairSpec, EscalateSpec, GrantObjectAbilityForFilter,
     GraveyardCountMetric, LandwalkKind, OptionalLifeAdditionalCost, PowerToughnessChoiceOption,
     PregameActionKind, PregameBeginOnBattlefieldSpec, PregameRevealFromOpeningHandSpec,
     PreventAllDamageToSelfFromSourcesMatchingSpec, RemoveCardTypesForFilter, SetColorsForFilter,
