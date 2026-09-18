@@ -2,18 +2,15 @@ import useUiText from "@/i18n/useUiText";
 import { useCallback, useMemo, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
 import {
   findSavedDeckPreset,
   listSavedDeckPresets,
   parseDeckList,
-  parseDeckPrintPreferences,
   parseSideboardList,
   removeSavedDeckPreset,
   saveSavedDeckPreset,
   SAVED_DECK_PRESETS_LIMIT,
 } from "@/lib/decklists";
-import { setPreferredCardPrints } from "@/lib/scryfall";
 import CompetitiveDeckBrowser from "./CompetitiveDeckBrowser";
 
 const fieldClass =
@@ -56,21 +53,17 @@ function editorCountForTexts(players, texts) {
   return Math.min(4, players.length);
 }
 
-export default function DeckLoadingView({ onLoad, onCancel }) {
+export default function DeckLoadingView({ onOpenLobby, onCancel }) {
   const ui = useUiText();
   const {
     state,
     setStatus,
-    semanticThreshold,
-    setSemanticThreshold,
-    cardsMeetingThreshold,
   } = useGame();
   const players = useMemo(() => state?.players || [], [state?.players]);
   const [texts, setTexts] = useState(() => players.map(() => ""));
   const [savedPresets, setSavedPresets] = useState(() => listSavedDeckPresets());
   const [selectedPresetName, setSelectedPresetName] = useState("");
   const [presetName, setPresetName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [actionBusy, setActionBusy] = useState("");
   const [copiedPlayerIndex, setCopiedPlayerIndex] = useState(null);
   const [catalogTargetIndex, setCatalogTargetIndex] = useState(0);
@@ -93,7 +86,6 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
     [texts]
   );
   const totalCards = cardCounts.reduce((a, b) => a + b, 0);
-  const totalSideboardCards = sideboardCounts.reduce((a, b) => a + b, 0);
   const visiblePlayerCount = Math.min(editorPlayerCount, players.length || 1);
   const visiblePlayers = useMemo(() => players.slice(0, visiblePlayerCount), [players, visiblePlayerCount]);
   const playerCountModes = [1, 2, 4].filter((count) => count <= players.length);
@@ -196,25 +188,6 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
       setStatus("No se pudo copiar el deck.");
     }
   }, [catalogTargetIndex, setStatus, texts]);
-
-  const handleLoad = async () => {
-    if (submitting) return;
-    const decks = texts.map(parseDeckList);
-    const sideboards = texts.map(parseSideboardList);
-    const emptyPlayerIndex = decks.findIndex((deck) => deck.length === 0);
-    if (emptyPlayerIndex >= 0) {
-      setStatus(`Falta el mazo de ${players[emptyPlayerIndex]?.name || `jugador ${emptyPlayerIndex + 1}`}.`);
-      return;
-    }
-    setPreferredCardPrints(texts.flatMap(parseDeckPrintPreferences));
-
-    setSubmitting(true);
-    try {
-      await onLoad({ decks, sideboards });
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const runAction = useCallback((key, action) => {
     if (actionBusy) return;
@@ -404,41 +377,23 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
           >{actionBusy === "saved-save" ? <ActionSpinner /> : "Guardar"}</Button>
         </div>
       </section>
-      <div className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[rgba(154,126,82,0.34)] pb-4 pt-3 pr-48">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          <span className="whitespace-nowrap text-[12px] font-semibold uppercase tracking-wide text-[#d8bf7a]">{ui("Min similarity")}</span>
-          <Slider
-            aria-label={ui("Card fidelity threshold")}
-            className="w-28"
-            min={0}
-            max={100}
-            step={1}
-            value={[Math.round(semanticThreshold)]}
-            onValueChange={([value]) => setSemanticThreshold(value)}
-          />
-          <span className="whitespace-nowrap text-[12px] text-[#b8aa8e]">
-            {semanticThreshold > 0 ? `${Math.round(semanticThreshold)}%` : ui("Off")} ({cardsMeetingThreshold})
-          </span>
-        </div>
-        <div className="flex items-center justify-center gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="ui-primary-action h-9 border border-[#f2d9a3]/45 bg-[#211a10] px-4 text-[12px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
-            disabled={totalCards === 0 || submitting || Boolean(actionBusy)}
-            onClick={() => runAction("load", handleLoad)}
-          >{submitting || actionBusy === "load" ? <ActionSpinner /> : ui("Update current decks")}{!submitting && !actionBusy && totalCards > 0 ? ui(" ({0} main{1})", { 0: totalCards, 1: totalSideboardCards > 0 ? `, ${totalSideboardCards} sideboard` : "" }) : ""}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-9 border border-[#9a7e52]/45 px-3 text-[12px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317]"
-            disabled={Boolean(actionBusy)}
-            onClick={onCancel}
-          >{ui("Cancel")}</Button>
-        </div>
+      <div className="mt-3 flex shrink-0 justify-end border-t border-[rgba(154,126,82,0.34)] pb-4 pt-3 pr-48">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="mr-2 h-9 border border-[#f2d9a3]/45 bg-[#211a10] px-3 text-[12px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
+          disabled={Boolean(actionBusy)}
+          onClick={() => onOpenLobby?.(texts)}
+        >{ui("Build lobby")}</Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-9 border border-[#9a7e52]/45 px-3 text-[12px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317]"
+          disabled={Boolean(actionBusy)}
+          onClick={onCancel}
+        >{ui("Cancel")}</Button>
       </div>
     </main>
   );

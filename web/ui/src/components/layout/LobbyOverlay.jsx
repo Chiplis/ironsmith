@@ -149,6 +149,7 @@ export default function LobbyOverlay({
   initialCreateDeckText = "",
   initialCreateCommanderText = "",
   initialCreateSecurityMode = MULTIPLAYER_SECURITY_TRUSTED,
+  initialDesiredPlayers = 2,
   initialJoinCode = "",
   initialJoinName = "",
   initialJoinDeckText = "",
@@ -190,7 +191,7 @@ export default function LobbyOverlay({
   );
   const [joinName, setJoinName] = useState(String(initialJoinName || defaultName));
   const [joinCode, setJoinCode] = useState(String(initialJoinCode || ""));
-  const [desiredPlayers, setDesiredPlayers] = useState(2);
+  const [desiredPlayers, setDesiredPlayers] = useState(() => Math.max(2, Math.min(4, Number(initialDesiredPlayers) || 2)));
   const [createSecurityMode, setCreateSecurityMode] = useState(
     normalizeMultiplayerSecurityMode(
       initialCreateSecurityMode,

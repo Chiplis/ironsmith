@@ -715,6 +715,7 @@ export default function Workspace({
   deckLoadingMode,
   puzzleSetupMode = false,
   onLoadDecks,
+  onOpenLobby,
   onCancelDeckLoading,
   onLoadPuzzle,
   onCancelPuzzleSetup,
@@ -1939,6 +1940,7 @@ export default function Workspace({
             deckLoadingMode={deckLoadingMode}
             puzzleSetupMode={puzzleSetupMode}
             onLoadDecks={onLoadDecks}
+            onOpenLobby={onOpenLobby}
             onCancelDeckLoading={onCancelDeckLoading}
             onLoadPuzzle={onLoadPuzzle}
             onCancelPuzzleSetup={onCancelPuzzleSetup}

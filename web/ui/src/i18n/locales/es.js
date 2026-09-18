@@ -937,7 +937,7 @@ export const ui = {
   "Live preview is compiled by the engine, so the compiled card uses the same runtime path as built-in cards.": "El motor compila la vista previa, por lo que la carta compilada usa la misma ruta de ejecución que las cartas integradas.",
   "Load": "Cargar",
   "Load Decks": "Cargar mazos",
-  "Update current decks": "Actualizar mazos actuales",
+  "Build lobby": "Armar lobby",
   "Load decks failed: {0}": "Error al cargar mazos: {0}",
   "Load Here": "Cargar aquí",
   "Load into table": "Cargar en la mesa",

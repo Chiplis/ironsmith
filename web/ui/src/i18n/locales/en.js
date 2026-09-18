@@ -811,7 +811,7 @@ export const ui = {
   "Live preview is compiled by the engine, so the compiled card uses the same runtime path as built-in cards.": "Live preview is compiled by the engine, so the compiled card uses the same runtime path as built-in cards.",
   "Load": "Load",
   "Load Decks": "Load Decks",
-  "Update current decks": "Update current decks",
+  "Build lobby": "Build lobby",
   "Load decks failed: {0}": "Load decks failed: {0}",
   "Load Here": "Load Here",
   "Load into table": "Load into table",

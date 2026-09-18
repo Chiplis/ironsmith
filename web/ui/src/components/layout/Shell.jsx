@@ -437,6 +437,24 @@ export default function Shell() {
     });
   }, [game, multiplayer.mode, pushNotice, refresh, runWasmInteraction, setStatus]);
 
+  const handleOpenLobbyFromDecks = useCallback((deckTexts) => {
+    const texts = Array.isArray(deckTexts) ? deckTexts : [];
+    const filledTexts = texts.filter((text) => String(text || "").trim());
+    const desiredPlayers = Math.max(2, Math.min(4, filledTexts.length || 2));
+    const firstDeckText = String(
+      texts.find((text) => String(text || "").trim()) || ""
+    );
+
+    setLobbyOverlayInitial({
+      ...buildLobbyOverlayInitialState(null, "create"),
+      desiredPlayers,
+      createDeckText: firstDeckText,
+    });
+    setDeckLoadingMode(false);
+    setPuzzleSetupMode(false);
+    setLobbyOpen(true);
+  }, []);
+
   const handleChangePerspective = useCallback(
     async (playerIndex) => {
       return runWasmInteraction(async () => {
@@ -657,6 +675,7 @@ export default function Shell() {
         deckLoadingMode={deckLoadingMode}
         puzzleSetupMode={puzzleSetupMode}
         onLoadDecks={handleLoadCustomDecks}
+        onOpenLobby={handleOpenLobbyFromDecks}
         onCancelDeckLoading={() => setDeckLoadingMode(false)}
         onLoadPuzzle={(payload, successMessage) => runWasmInteraction(
           () => loadPuzzle(payload, successMessage)
@@ -688,6 +707,7 @@ export default function Shell() {
           initialCreateDeckText={lobbyOverlayInitial.createDeckText}
           initialCreateCommanderText={lobbyOverlayInitial.createCommanderText}
           initialCreateSecurityMode={lobbyOverlayInitial.createSecurityMode}
+          initialDesiredPlayers={lobbyOverlayInitial.desiredPlayers}
           initialJoinCode={lobbyOverlayInitial.joinCode}
           initialJoinName={lobbyOverlayInitial.joinName}
           initialJoinDeckText={lobbyOverlayInitial.joinDeckText}
@@ -887,6 +907,7 @@ function buildLobbyOverlayInitialState(query, mode = null) {
       query?.securityMode,
       MULTIPLAYER_SECURITY_TRUSTED
     ),
+    desiredPlayers: Math.max(2, Math.min(4, Number(query?.desiredPlayers) || 2)),
     joinCode: String(query?.lobbyId || "").trim(),
     joinName: String(query?.name || "").trim(),
     joinDeckText: String(query?.deckText || ""),
