@@ -1,0 +1,218 @@
+{
+  "id": "mtgtop8-90808-889600",
+  "format": "modern",
+  "name": "Esper Blink",
+  "archetype": "Esper Blink",
+  "colors": [
+    "B",
+    "U",
+    "W"
+  ],
+  "mechanics": [],
+  "cardNames": [
+    "Bleachbone Verge",
+    "Boggart Trawler",
+    "Clarion Conqueror",
+    "Consign to Memory",
+    "Containment Priest",
+    "Elesh Norn, Mother of Machines",
+    "Emperor of Bones",
+    "Ephemerate",
+    "Fatal Push",
+    "Flickerwisp",
+    "Flooded Strand",
+    "Godless Shrine",
+    "Hallowed Fountain",
+    "High Noon",
+    "Marsh Flats",
+    "Meticulous Archive",
+    "Overlord of the Balemurk",
+    "Phelia, Exuberant Shepherd",
+    "Plains",
+    "Quantum Riddler",
+    "Shadowy Backstreet",
+    "Solitude",
+    "Swamp",
+    "Teferi, Time Raveler",
+    "Thoughtseize",
+    "Undercity Sewers",
+    "Vampire Hexmage",
+    "Watery Grave",
+    "Witch Enchanter",
+    "Wrath of the Skies"
+  ],
+  "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
+  "date": "",
+  "placement": 9,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889600&f=MO",
+  "mainboard": [
+    {
+      "name": "Bleachbone Verge",
+      "count": 1
+    },
+    {
+      "name": "Boggart Trawler",
+      "count": 1
+    },
+    {
+      "name": "Emperor of Bones",
+      "count": 3
+    },
+    {
+      "name": "Ephemerate",
+      "count": 3
+    },
+    {
+      "name": "Fatal Push",
+      "count": 4
+    },
+    {
+      "name": "Flickerwisp",
+      "count": 3
+    },
+    {
+      "name": "Flooded Strand",
+      "count": 4
+    },
+    {
+      "name": "Godless Shrine",
+      "count": 2
+    },
+    {
+      "name": "Hallowed Fountain",
+      "count": 1
+    },
+    {
+      "name": "Marsh Flats",
+      "count": 4
+    },
+    {
+      "name": "Meticulous Archive",
+      "count": 1
+    },
+    {
+      "name": "Overlord of the Balemurk",
+      "count": 4
+    },
+    {
+      "name": "Phelia, Exuberant Shepherd",
+      "count": 4
+    },
+    {
+      "name": "Plains",
+      "count": 2
+    },
+    {
+      "name": "Quantum Riddler",
+      "count": 4
+    },
+    {
+      "name": "Shadowy Backstreet",
+      "count": 1
+    },
+    {
+      "name": "Solitude",
+      "count": 4
+    },
+    {
+      "name": "Swamp",
+      "count": 1
+    },
+    {
+      "name": "Teferi, Time Raveler",
+      "count": 2
+    },
+    {
+      "name": "Thoughtseize",
+      "count": 4
+    },
+    {
+      "name": "Undercity Sewers",
+      "count": 1
+    },
+    {
+      "name": "Vampire Hexmage",
+      "count": 1
+    },
+    {
+      "name": "Watery Grave",
+      "count": 1
+    },
+    {
+      "name": "Witch Enchanter",
+      "count": 4
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Clarion Conqueror",
+      "count": 2
+    },
+    {
+      "name": "Consign to Memory",
+      "count": 4
+    },
+    {
+      "name": "Containment Priest",
+      "count": 2
+    },
+    {
+      "name": "Elesh Norn, Mother of Machines",
+      "count": 1
+    },
+    {
+      "name": "High Noon",
+      "count": 3
+    },
+    {
+      "name": "Wrath of the Skies",
+      "count": 3
+    }
+  ],
+  "commander": [],
+  "tags": [],
+  "hash": "9d528256383c5ade",
+  "manaProfile": {
+    "colors": [
+      "B",
+      "U",
+      "W"
+    ],
+    "pipCounts": {
+      "B": 21,
+      "W": 23,
+      "U": 10
+    },
+    "sourceCounts": {
+      "B": 7,
+      "W": 8,
+      "U": 4
+    },
+    "landCount": 19,
+    "predominantColors": [
+      "W"
+    ],
+    "predominantLands": [
+      {
+        "name": "Flooded Strand",
+        "count": 4
+      },
+      {
+        "name": "Marsh Flats",
+        "count": 4
+      },
+      {
+        "name": "Godless Shrine",
+        "count": 2
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact",
+      "resolvedCardCount": 24,
+      "totalCardCount": 24,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
+}

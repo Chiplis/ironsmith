@@ -1,0 +1,277 @@
+{
+  "id": "mtgtop8-90808-889612",
+  "format": "modern",
+  "name": "Devoted Combo",
+  "archetype": "Devoted Combo",
+  "colors": [
+    "B",
+    "G",
+    "W"
+  ],
+  "mechanics": [],
+  "cardNames": [
+    "Abrupt Decay",
+    "Agatha's Soul Cauldron",
+    "Badgermole Cub",
+    "Birds of Paradise",
+    "Boromir, Warden of the Tower",
+    "Boseiju, Who Endures",
+    "Chalice of the Void",
+    "Chomping Changeling",
+    "Craterhoof Behemoth",
+    "Delighted Halfling",
+    "Devoted Druid",
+    "Dryad Arbor",
+    "Duskwatch Recruiter",
+    "Endurance",
+    "Fiend Artisan",
+    "Forest",
+    "Formidable Speaker",
+    "Gemstone Caverns",
+    "Green Sun's Zenith",
+    "Grist, the Hunger Tide",
+    "Guerrilla Gorilla",
+    "Horizon Canopy",
+    "Icetill Explorer",
+    "Kraul Harpooner",
+    "Leyline of Abundance",
+    "Misty Rainforest",
+    "Nature's Rhythm",
+    "Nurturing Peatland",
+    "Overgrown Tomb",
+    "Pick Your Poison",
+    "Shang-Chi, Master of Kung Fu",
+    "Temple Garden",
+    "Thoughtseize",
+    "Tyvar, Jubilant Brawler",
+    "Tyvar, the Pummeler",
+    "Underground Mortuary",
+    "Verdant Catacombs",
+    "Vexing Bauble",
+    "Vizier of Remedies",
+    "Windswept Heath",
+    "Wooded Foothills"
+  ],
+  "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
+  "date": "",
+  "placement": 17,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889612&f=MO",
+  "mainboard": [
+    {
+      "name": "Agatha's Soul Cauldron",
+      "count": 1
+    },
+    {
+      "name": "Badgermole Cub",
+      "count": 4
+    },
+    {
+      "name": "Birds of Paradise",
+      "count": 2
+    },
+    {
+      "name": "Boseiju, Who Endures",
+      "count": 2
+    },
+    {
+      "name": "Craterhoof Behemoth",
+      "count": 1
+    },
+    {
+      "name": "Delighted Halfling",
+      "count": 4
+    },
+    {
+      "name": "Devoted Druid",
+      "count": 4
+    },
+    {
+      "name": "Dryad Arbor",
+      "count": 2
+    },
+    {
+      "name": "Duskwatch Recruiter",
+      "count": 1
+    },
+    {
+      "name": "Fiend Artisan",
+      "count": 1
+    },
+    {
+      "name": "Forest",
+      "count": 2
+    },
+    {
+      "name": "Formidable Speaker",
+      "count": 1
+    },
+    {
+      "name": "Gemstone Caverns",
+      "count": 1
+    },
+    {
+      "name": "Green Sun's Zenith",
+      "count": 4
+    },
+    {
+      "name": "Horizon Canopy",
+      "count": 1
+    },
+    {
+      "name": "Leyline of Abundance",
+      "count": 4
+    },
+    {
+      "name": "Misty Rainforest",
+      "count": 2
+    },
+    {
+      "name": "Nature's Rhythm",
+      "count": 4
+    },
+    {
+      "name": "Nurturing Peatland",
+      "count": 1
+    },
+    {
+      "name": "Overgrown Tomb",
+      "count": 2
+    },
+    {
+      "name": "Shang-Chi, Master of Kung Fu",
+      "count": 1
+    },
+    {
+      "name": "Temple Garden",
+      "count": 1
+    },
+    {
+      "name": "Tyvar, Jubilant Brawler",
+      "count": 4
+    },
+    {
+      "name": "Tyvar, the Pummeler",
+      "count": 1
+    },
+    {
+      "name": "Underground Mortuary",
+      "count": 1
+    },
+    {
+      "name": "Verdant Catacombs",
+      "count": 2
+    },
+    {
+      "name": "Vexing Bauble",
+      "count": 1
+    },
+    {
+      "name": "Vizier of Remedies",
+      "count": 1
+    },
+    {
+      "name": "Windswept Heath",
+      "count": 2
+    },
+    {
+      "name": "Wooded Foothills",
+      "count": 2
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Abrupt Decay",
+      "count": 2
+    },
+    {
+      "name": "Boromir, Warden of the Tower",
+      "count": 1
+    },
+    {
+      "name": "Chalice of the Void",
+      "count": 2
+    },
+    {
+      "name": "Chomping Changeling",
+      "count": 1
+    },
+    {
+      "name": "Endurance",
+      "count": 1
+    },
+    {
+      "name": "Grist, the Hunger Tide",
+      "count": 1
+    },
+    {
+      "name": "Guerrilla Gorilla",
+      "count": 1
+    },
+    {
+      "name": "Icetill Explorer",
+      "count": 1
+    },
+    {
+      "name": "Kraul Harpooner",
+      "count": 1
+    },
+    {
+      "name": "Pick Your Poison",
+      "count": 1
+    },
+    {
+      "name": "Thoughtseize",
+      "count": 2
+    },
+    {
+      "name": "Vexing Bauble",
+      "count": 1
+    }
+  ],
+  "commander": [],
+  "tags": [],
+  "hash": "ce93c736922051e6",
+  "manaProfile": {
+    "colors": [
+      "B",
+      "G",
+      "W"
+    ],
+    "pipCounts": {
+      "G": 47,
+      "B": 6,
+      "W": 1
+    },
+    "sourceCounts": {
+      "G": 12,
+      "W": 2,
+      "B": 4
+    },
+    "landCount": 21,
+    "predominantColors": [
+      "G"
+    ],
+    "predominantLands": [
+      {
+        "name": "Boseiju, Who Endures",
+        "count": 2
+      },
+      {
+        "name": "Dryad Arbor",
+        "count": 2
+      },
+      {
+        "name": "Forest",
+        "count": 2
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact+scryfall",
+      "resolvedCardCount": 30,
+      "totalCardCount": 30,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
+}

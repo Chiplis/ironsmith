@@ -1,0 +1,241 @@
+{
+  "id": "mtgtop8-90808-889595",
+  "format": "modern",
+  "name": "Esper Blink",
+  "archetype": "Esper Blink",
+  "colors": [
+    "B",
+    "U",
+    "W"
+  ],
+  "mechanics": [],
+  "cardNames": [
+    "Bleachbone Verge",
+    "Boggart Trawler",
+    "Consign to Memory",
+    "Emperor of Bones",
+    "Ephemerate",
+    "Fatal Push",
+    "Flickerwisp",
+    "Flooded Strand",
+    "Godless Shrine",
+    "Grafdigger's Cage",
+    "Hallowed Fountain",
+    "High Noon",
+    "Ketramose, the New Dawn",
+    "Marsh Flats",
+    "Meticulous Archive",
+    "Overlord of the Balemurk",
+    "Pest Control",
+    "Phelia, Exuberant Shepherd",
+    "Plains",
+    "Polluted Delta",
+    "Prismatic Ending",
+    "Psychic Frog",
+    "Relic of Progenitus",
+    "Shadowy Backstreet",
+    "Solitude",
+    "Strategic Betrayal",
+    "Swamp",
+    "Thoughtseize",
+    "Vindicate",
+    "Watery Grave",
+    "White Orchid Phantom",
+    "Witch Enchanter",
+    "Wrath of the Skies"
+  ],
+  "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
+  "date": "",
+  "placement": 9,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889595&f=MO",
+  "mainboard": [
+    {
+      "name": "Bleachbone Verge",
+      "count": 1
+    },
+    {
+      "name": "Boggart Trawler",
+      "count": 1
+    },
+    {
+      "name": "Emperor of Bones",
+      "count": 2
+    },
+    {
+      "name": "Ephemerate",
+      "count": 3
+    },
+    {
+      "name": "Fatal Push",
+      "count": 4
+    },
+    {
+      "name": "Flickerwisp",
+      "count": 3
+    },
+    {
+      "name": "Flooded Strand",
+      "count": 4
+    },
+    {
+      "name": "Godless Shrine",
+      "count": 2
+    },
+    {
+      "name": "Hallowed Fountain",
+      "count": 1
+    },
+    {
+      "name": "Ketramose, the New Dawn",
+      "count": 3
+    },
+    {
+      "name": "Marsh Flats",
+      "count": 4
+    },
+    {
+      "name": "Meticulous Archive",
+      "count": 1
+    },
+    {
+      "name": "Overlord of the Balemurk",
+      "count": 4
+    },
+    {
+      "name": "Phelia, Exuberant Shepherd",
+      "count": 3
+    },
+    {
+      "name": "Plains",
+      "count": 2
+    },
+    {
+      "name": "Polluted Delta",
+      "count": 2
+    },
+    {
+      "name": "Prismatic Ending",
+      "count": 1
+    },
+    {
+      "name": "Psychic Frog",
+      "count": 3
+    },
+    {
+      "name": "Relic of Progenitus",
+      "count": 2
+    },
+    {
+      "name": "Shadowy Backstreet",
+      "count": 1
+    },
+    {
+      "name": "Solitude",
+      "count": 4
+    },
+    {
+      "name": "Swamp",
+      "count": 1
+    },
+    {
+      "name": "Thoughtseize",
+      "count": 3
+    },
+    {
+      "name": "Watery Grave",
+      "count": 1
+    },
+    {
+      "name": "Witch Enchanter",
+      "count": 3
+    },
+    {
+      "name": "Wrath of the Skies",
+      "count": 1
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Consign to Memory",
+      "count": 4
+    },
+    {
+      "name": "Grafdigger's Cage",
+      "count": 1
+    },
+    {
+      "name": "High Noon",
+      "count": 2
+    },
+    {
+      "name": "Pest Control",
+      "count": 1
+    },
+    {
+      "name": "Strategic Betrayal",
+      "count": 1
+    },
+    {
+      "name": "Thoughtseize",
+      "count": 1
+    },
+    {
+      "name": "Vindicate",
+      "count": 2
+    },
+    {
+      "name": "White Orchid Phantom",
+      "count": 2
+    },
+    {
+      "name": "Wrath of the Skies",
+      "count": 1
+    }
+  ],
+  "commander": [],
+  "tags": [],
+  "hash": "3c103ea94f6e642d",
+  "manaProfile": {
+    "colors": [
+      "B",
+      "U",
+      "W"
+    ],
+    "pipCounts": {
+      "B": 23,
+      "W": 26,
+      "U": 3
+    },
+    "sourceCounts": {
+      "B": 6,
+      "W": 8,
+      "U": 3
+    },
+    "landCount": 20,
+    "predominantColors": [
+      "W"
+    ],
+    "predominantLands": [
+      {
+        "name": "Flooded Strand",
+        "count": 4
+      },
+      {
+        "name": "Marsh Flats",
+        "count": 4
+      },
+      {
+        "name": "Godless Shrine",
+        "count": 2
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact",
+      "resolvedCardCount": 26,
+      "totalCardCount": 26,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
+}

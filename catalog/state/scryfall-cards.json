@@ -1775,5 +1775,840 @@
     ],
     "manaCost": "",
     "typeLine": "Land"
+  },
+  "abstergo entertainment": {
+    "name": "Abstergo Entertainment",
+    "status": "ok",
+    "source": "scryfall",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "C",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Legendary Land"
+  },
+  "agatha's soul cauldron": {
+    "name": "Agatha's Soul Cauldron",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{2}",
+    "typeLine": "Artifact"
+  },
+  "arena of glory": {
+    "name": "Arena of Glory",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "R"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "assault strobe": {
+    "name": "Assault Strobe",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "R"
+    ],
+    "colorIdentity": [
+      "R"
+    ],
+    "producedMana": [],
+    "manaCost": "{R}",
+    "typeLine": "Sorcery"
+  },
+  "badgermole cub": {
+    "name": "Badgermole Cub",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [
+      "G"
+    ],
+    "manaCost": "{1}{G}",
+    "typeLine": "Creature"
+  },
+  "birds of paradise": {
+    "name": "Birds of Paradise",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [
+      "B",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "manaCost": "{G}",
+    "typeLine": "Creature"
+  },
+  "bleachbone verge": {
+    "name": "Bleachbone Verge",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "blood crypt": {
+    "name": "Blood Crypt",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "R"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "boggart trawler": {
+    "name": "Boggart Trawler",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B"
+    ],
+    "colorIdentity": [
+      "B"
+    ],
+    "producedMana": [
+      "B"
+    ],
+    "manaCost": "",
+    "typeLine": "Creature"
+  },
+  "consign to memory": {
+    "name": "Consign to Memory",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{U}",
+    "typeLine": "Instant"
+  },
+  "craterhoof behemoth": {
+    "name": "Craterhoof Behemoth",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [],
+    "manaCost": "{5}{G}{G}{G}",
+    "typeLine": "Creature"
+  },
+  "devoted druid": {
+    "name": "Devoted Druid",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [
+      "G"
+    ],
+    "manaCost": "{1}{G}",
+    "typeLine": "Creature"
+  },
+  "dryad arbor": {
+    "name": "Dryad Arbor",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "G"
+    ],
+    "manaCost": "",
+    "typeLine": "Land — Creature"
+  },
+  "duskwatch recruiter": {
+    "name": "Duskwatch Recruiter",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [],
+    "manaCost": "",
+    "typeLine": "Creature"
+  },
+  "emperor of bones": {
+    "name": "Emperor of Bones",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B"
+    ],
+    "colorIdentity": [
+      "B"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{B}",
+    "typeLine": "Creature"
+  },
+  "field of ruin": {
+    "name": "Field of Ruin",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "C"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "fiend artisan": {
+    "name": "Fiend Artisan",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B",
+      "G"
+    ],
+    "colorIdentity": [
+      "B",
+      "G"
+    ],
+    "producedMana": [],
+    "manaCost": "{B/G}{B/G}",
+    "typeLine": "Creature"
+  },
+  "flickerwisp": {
+    "name": "Flickerwisp",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "W"
+    ],
+    "colorIdentity": [
+      "W"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{W}{W}",
+    "typeLine": "Creature"
+  },
+  "formidable speaker": {
+    "name": "Formidable Speaker",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [],
+    "manaCost": "{2}{G}",
+    "typeLine": "Creature"
+  },
+  "gloomlake verge": {
+    "name": "Gloomlake Verge",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "U"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "green sun's zenith": {
+    "name": "Green Sun's Zenith",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [],
+    "manaCost": "{X}{G}",
+    "typeLine": "Sorcery"
+  },
+  "hedge maze": {
+    "name": "Hedge Maze",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "G",
+      "U"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "horizon canopy": {
+    "name": "Horizon Canopy",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "G",
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "indatha triome": {
+    "name": "Indatha Triome",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "G",
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "karn liberated": {
+    "name": "Karn Liberated",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{7}",
+    "typeLine": "Planeswalker"
+  },
+  "ketramose, the new dawn": {
+    "name": "Ketramose, the New Dawn",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B",
+      "W"
+    ],
+    "colorIdentity": [
+      "B",
+      "W"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{W}{B}",
+    "typeLine": "Creature"
+  },
+  "leyline binding": {
+    "name": "Leyline Binding",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "W"
+    ],
+    "colorIdentity": [
+      "W"
+    ],
+    "producedMana": [],
+    "manaCost": "{5}{W}",
+    "typeLine": "Enchantment"
+  },
+  "leyline of abundance": {
+    "name": "Leyline of Abundance",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [
+      "G"
+    ],
+    "manaCost": "{2}{G}{G}",
+    "typeLine": "Enchantment"
+  },
+  "leyline of the guildpact": {
+    "name": "Leyline of the Guildpact",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "colorIdentity": [
+      "B",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "producedMana": [],
+    "manaCost": "{G/W}{G/U}{B/G}{R/G}",
+    "typeLine": "Enchantment"
+  },
+  "logic knot": {
+    "name": "Logic Knot",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{X}{U}{U}",
+    "typeLine": "Instant"
+  },
+  "lush portico": {
+    "name": "Lush Portico",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "G",
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "mind stone": {
+    "name": "Mind Stone",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "C"
+    ],
+    "manaCost": "{2}",
+    "typeLine": "Artifact"
+  },
+  "misty rainforest": {
+    "name": "Misty Rainforest",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "monstrous rage": {
+    "name": "Monstrous Rage",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "R"
+    ],
+    "colorIdentity": [
+      "R"
+    ],
+    "producedMana": [],
+    "manaCost": "{R}",
+    "typeLine": "Instant"
+  },
+  "nature's rhythm": {
+    "name": "Nature's Rhythm",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [],
+    "manaCost": "{X}{G}{G}",
+    "typeLine": "Sorcery"
+  },
+  "nurturing peatland": {
+    "name": "Nurturing Peatland",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "G"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "ouroboroid": {
+    "name": "Ouroboroid",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [],
+    "manaCost": "{2}{G}{G}",
+    "typeLine": "Creature"
+  },
+  "overgrown tomb": {
+    "name": "Overgrown Tomb",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "G"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "overlord of the balemurk": {
+    "name": "Overlord of the Balemurk",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B"
+    ],
+    "colorIdentity": [
+      "B"
+    ],
+    "producedMana": [],
+    "manaCost": "{3}{B}{B}",
+    "typeLine": "Enchantment — Creature"
+  },
+  "phelia, exuberant shepherd": {
+    "name": "Phelia, Exuberant Shepherd",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "W"
+    ],
+    "colorIdentity": [
+      "W"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{W}",
+    "typeLine": "Creature"
+  },
+  "ragavan, nimble pilferer": {
+    "name": "Ragavan, Nimble Pilferer",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "R"
+    ],
+    "colorIdentity": [
+      "R"
+    ],
+    "producedMana": [],
+    "manaCost": "{R}",
+    "typeLine": "Creature"
+  },
+  "scion of draco": {
+    "name": "Scion of Draco",
+    "status": "ok",
+    "source": "scryfall",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "{12}",
+    "typeLine": "Artifact Creature — Dragon"
+  },
+  "shang-chi, master of kung fu": {
+    "name": "Shang-Chi, Master of Kung Fu",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [
+      "B",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "manaCost": "{1}{G}",
+    "typeLine": "Creature"
+  },
+  "snapcaster mage": {
+    "name": "Snapcaster Mage",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{U}",
+    "typeLine": "Creature"
+  },
+  "spell pierce": {
+    "name": "Spell Pierce",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{U}",
+    "typeLine": "Instant"
+  },
+  "stubborn denial": {
+    "name": "Stubborn Denial",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{U}",
+    "typeLine": "Instant"
+  },
+  "tasigur, the golden fang": {
+    "name": "Tasigur, the Golden Fang",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B"
+    ],
+    "colorIdentity": [
+      "B"
+    ],
+    "producedMana": [],
+    "manaCost": "{5}{B}",
+    "typeLine": "Creature"
+  },
+  "temple garden": {
+    "name": "Temple Garden",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "G",
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "territorial kavu": {
+    "name": "Territorial Kavu",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G",
+      "R"
+    ],
+    "colorIdentity": [
+      "G",
+      "R"
+    ],
+    "producedMana": [],
+    "manaCost": "{R}{G}",
+    "typeLine": "Creature"
+  },
+  "tribal flames": {
+    "name": "Tribal Flames",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "R"
+    ],
+    "colorIdentity": [
+      "R"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{R}",
+    "typeLine": "Sorcery"
+  },
+  "tyvar, jubilant brawler": {
+    "name": "Tyvar, Jubilant Brawler",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B",
+      "G"
+    ],
+    "colorIdentity": [
+      "B",
+      "G"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{B}{G}",
+    "typeLine": "Planeswalker"
+  },
+  "tyvar, the pummeler": {
+    "name": "Tyvar, the Pummeler",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "G"
+    ],
+    "colorIdentity": [
+      "G"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{G}{G}",
+    "typeLine": "Creature"
+  },
+  "underground mortuary": {
+    "name": "Underground Mortuary",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [
+      "B",
+      "G"
+    ],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "vampire hexmage": {
+    "name": "Vampire Hexmage",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "B"
+    ],
+    "colorIdentity": [
+      "B"
+    ],
+    "producedMana": [],
+    "manaCost": "{B}{B}",
+    "typeLine": "Creature"
+  },
+  "verdant catacombs": {
+    "name": "Verdant Catacombs",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "vizier of remedies": {
+    "name": "Vizier of Remedies",
+    "status": "ok",
+    "source": "scryfall",
+    "colors": [
+      "W"
+    ],
+    "colorIdentity": [
+      "W"
+    ],
+    "producedMana": [],
+    "manaCost": "{1}{W}",
+    "typeLine": "Creature — Human Cleric"
+  },
+  "wan shi tong, librarian": {
+    "name": "Wan Shi Tong, Librarian",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "U"
+    ],
+    "colorIdentity": [
+      "U"
+    ],
+    "producedMana": [],
+    "manaCost": "{X}{U}{U}",
+    "typeLine": "Creature"
+  },
+  "windswept heath": {
+    "name": "Windswept Heath",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "",
+    "typeLine": "Land"
+  },
+  "witch enchanter": {
+    "name": "Witch Enchanter",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [
+      "W"
+    ],
+    "colorIdentity": [
+      "W"
+    ],
+    "producedMana": [
+      "W"
+    ],
+    "manaCost": "",
+    "typeLine": "Creature"
+  },
+  "wooded foothills": {
+    "name": "Wooded Foothills",
+    "status": "ok",
+    "source": "local-card-artifact",
+    "colors": [],
+    "colorIdentity": [],
+    "producedMana": [],
+    "manaCost": "",
+    "typeLine": "Land"
   }
 }
