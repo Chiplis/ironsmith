@@ -270,11 +270,16 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
     const perspectivePlayerIndex = Math.max(0, decks.findIndex((deck) => deck.length > 0));
     const playerDecks = decks.slice(0, playerCount);
     const playerSideboards = sideboards.slice(0, playerCount);
+    const seedPlayerIndices = playerDecks.reduce(
+      (indices, deck, index) => (deck.length > 0 ? [...indices, index] : indices),
+      [],
+    );
     return onTestDecks?.({
       decks: playerDecks,
       sideboards: playerSideboards,
       playerCount,
       perspectivePlayerIndex,
+      seedPlayerIndices,
       preserveMissingDecks: true,
       seedTestPosition: true,
     });

@@ -391,16 +391,22 @@ export default function Shell() {
         let testPositions = [];
         if (
           payload?.seedTestPosition
-          && Number.isFinite(Number(payload?.perspectivePlayerIndex))
           && typeof game.seedLoadedDeckTestPosition === "function"
         ) {
-          for (let playerIndex = 0; playerIndex < playerCount; playerIndex += 1) {
+          const requestedSeedIndices = Array.isArray(payload?.seedPlayerIndices)
+            ? payload.seedPlayerIndices
+              .map((index) => Number(index))
+              .filter((index) => Number.isInteger(index) && index >= 0 && index < playerCount)
+            : Array.from({ length: playerCount }, (_, index) => index);
+          const seedIndices = [...new Set(requestedSeedIndices)];
+          for (const playerIndex of seedIndices) {
             testPositions[playerIndex] = await game.seedLoadedDeckTestPosition(playerIndex);
           }
         }
         const testPosition = Number.isFinite(Number(payload?.perspectivePlayerIndex))
           ? testPositions[Math.max(0, Math.min(playerCount - 1, Number(payload.perspectivePlayerIndex)))] || null
           : null;
+        const seededPlayerCount = testPositions.filter(Boolean).length;
         const seededBattlefieldCount = testPositions.reduce(
           (total, position) => total + (position?.battlefield?.length || 0),
           0,
@@ -418,7 +424,7 @@ export default function Shell() {
           tone: "success",
           title: "Deck load complete",
           body: testPosition
-            ? `Loaded ${loaded} card${loaded === 1 ? "" : "s"}. Test position ready for ${testPositions.length} players with ${seededBattlefieldCount} battlefield cards.`
+            ? `Loaded ${loaded} card${loaded === 1 ? "" : "s"}. Test position ready for ${seededPlayerCount} player${seededPlayerCount === 1 ? "" : "s"} with ${seededBattlefieldCount} battlefield cards.`
             : `Loaded ${loaded} card${loaded === 1 ? "" : "s"}.`,
         });
         if (failed.length > 0) {
