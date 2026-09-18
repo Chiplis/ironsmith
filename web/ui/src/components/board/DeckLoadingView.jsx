@@ -52,7 +52,6 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
   const [texts, setTexts] = useState(() => players.map(() => ""));
   const [savedPresets, setSavedPresets] = useState(() => listSavedDeckPresets());
   const [selectedPresetName, setSelectedPresetName] = useState("");
-  const [presetName, setPresetName] = useState("");
   const [playerSaveNames, setPlayerSaveNames] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [actionBusy, setActionBusy] = useState("");
@@ -89,11 +88,10 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
   const handleApplySavedPreset = () => {
     if (!selectedPreset) return;
     setTexts(fitTextsToPlayers(players, selectedPreset.texts));
-    setPresetName(selectedPreset.name);
     setPlayerSaveNames({});
   };
 
-  const saveCurrentPreset = useCallback((requestedName = presetName) => {
+  const saveCurrentPreset = useCallback((requestedName) => {
     const normalizedPresetName = String(requestedName || "").trim();
     if (!normalizedPresetName) {
       setStatus("Elegí un nombre para guardar este mazo.");
@@ -115,7 +113,6 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
     if (saveResult.saved) {
       setSavedPresets(saveResult.entries);
       setSelectedPresetName(saveResult.entry.name);
-      setPresetName(saveResult.entry.name);
       setStatus(
         saveResult.replaced
           ? `Updated saved deck "${saveResult.entry.name}"`
@@ -127,15 +124,26 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
       setStatus(`Session limit reached (${SAVED_DECK_PRESETS_LIMIT} decks). Delete one saved deck to add another.`);
     }
     return false;
-  }, [players, presetName, setStatus, texts, ui]);
-
-  const handleSavePreset = useCallback(() => {
-    saveCurrentPreset(presetName);
-  }, [presetName, saveCurrentPreset]);
+  }, [players, setStatus, texts, ui]);
 
   const handleSavePlayerPreset = useCallback((playerIndex) => {
     saveCurrentPreset(playerSaveNames[playerIndex]);
   }, [playerSaveNames, saveCurrentPreset]);
+
+  const handleClearPlayer = useCallback((playerIndex) => {
+    setTexts((current) => {
+      const next = [...current];
+      next[playerIndex] = "";
+      return next;
+    });
+    setPlayerSaveNames((current) => {
+      const next = { ...current };
+      delete next[playerIndex];
+      return next;
+    });
+    setCopiedPlayerIndex((current) => current === playerIndex ? null : current);
+    setCatalogTargetIndex(playerIndex);
+  }, []);
 
   const handleCopyMtgo = useCallback(async (playerIndex = catalogTargetIndex) => {
     const text = String(texts[playerIndex] || "").trim();
@@ -175,8 +183,6 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
     }
     setPreferredCardPrints(texts.flatMap(parseDeckPrintPreferences));
 
-    if (presetName.trim()) saveCurrentPreset();
-
     setSubmitting(true);
     try {
       await onLoad({ decks, sideboards });
@@ -213,7 +219,6 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
         break;
       }
     }
-    setPresetName("");
     setPlayerSaveNames({});
   }, [catalogTargetIndex, handleTextChange, players, texts]);
 
@@ -222,7 +227,6 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
     if (!window.confirm(ui('Delete saved deck "{0}"?', { 0: selectedPreset.name }))) return;
     setSavedPresets(removeSavedDeckPreset(selectedPreset.name));
     setSelectedPresetName("");
-    setPresetName("");
     setPlayerSaveNames({});
     setStatus(`Deleted saved deck "${selectedPreset.name}"`);
   }, [selectedPreset, setStatus, ui]);
@@ -240,7 +244,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
           <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">Mazos guardados</h2>
           <span className="text-[10px] uppercase tracking-wide text-[#8b806b]">{savedPresets.length}/{SAVED_DECK_PRESETS_LIMIT} disponibles en esta sesión</span>
         </div>
-        <div className="grid gap-2 md:grid-cols-[minmax(200px,1fr)_minmax(150px,190px)_auto_minmax(180px,260px)_auto]">
+        <div className="grid gap-2 md:grid-cols-[minmax(200px,1fr)_minmax(150px,190px)_auto_auto]">
           <select
             className={fieldClass}
             value={selectedPresetName}
@@ -270,22 +274,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
             disabled={!selectedPreset || Boolean(actionBusy)}
             onClick={() => runAction("saved-use", handleApplySavedPreset)}
           >{actionBusy === "saved-use" ? <ActionSpinner /> : ui("Use")}</Button>
-          <input
-            className={fieldClass}
-            placeholder="Nombre tu mazo"
-            value={presetName}
-            onChange={(event) => setPresetName(event.target.value)}
-            aria-label="Nombre tu mazo"
-          />
           <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-9 max-w-[128px] truncate border border-[#9a7e52]/55 px-3 text-[11px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
-              disabled={!presetName.trim() || totalCards === 0 || Boolean(actionBusy)}
-              onClick={() => runAction("saved-save", handleSavePreset)}
-            >{actionBusy === "saved-save" ? <ActionSpinner /> : "Guardar"}</Button>
             <Button
               type="button"
               variant="ghost"
@@ -366,6 +355,16 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
                   disabled={!playerSaveNames[i]?.trim() || cardCounts[i] === 0 || Boolean(actionBusy)}
                   onClick={() => runAction(`player-save-${i}`, () => handleSavePlayerPreset(i))}
                 >{actionBusy === `player-save-${i}` ? <ActionSpinner /> : "Guardar"}</Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 max-w-8 rounded-full border border-white/15 p-0 text-[#b8aa8e] hover:border-[#d8bf7a]/55 hover:text-[#f2d9a3] disabled:text-[#665d50]"
+                  disabled={cardCounts[i] === 0 || Boolean(actionBusy)}
+                  onClick={() => handleClearPlayer(i)}
+                  title={`Vaciar mazo de ${player.name}`}
+                  aria-label={`Vaciar mazo de ${player.name}`}
+                ><svg viewBox="0 0 20 20" className="h-3.5 w-3.5" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg></Button>
               </div>
             </div>
           ))}

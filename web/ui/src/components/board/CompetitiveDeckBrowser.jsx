@@ -119,7 +119,7 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, targetPl
         <Button type="button" variant="ghost" size="sm" className="h-8 w-[112px] max-w-[112px] truncate border border-[#9a7e52]/55 px-2 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a]" disabled={isBusy || isCopying} onClick={() => onSelect(entry, actionKey)} title={`Usar en ${targetPlayerName}`}>
           {isBusy ? <ActionSpinner /> : `Usar en ${targetPlayerName}`}
         </Button>
-        <Button type="button" variant="ghost" size="sm" className="h-7 w-[88px] max-w-[88px] truncate border border-white/15 px-2 text-[10px] font-semibold text-[#b8aa8e]" disabled={isBusy || isCopying} onClick={() => onCopy(entry, actionKey)}>
+        <Button type="button" variant="ghost" size="sm" className="h-7 w-[112px] max-w-[112px] truncate border border-white/15 px-2 text-[10px] font-semibold text-[#b8aa8e]" disabled={isBusy || isCopying} onClick={() => onCopy(entry, actionKey)}>
           {isCopying ? <ActionSpinner /> : isCopied ? "Copiado" : "Copiar MTGO"}
         </Button>
       </div>
