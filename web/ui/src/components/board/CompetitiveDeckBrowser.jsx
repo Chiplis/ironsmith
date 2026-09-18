@@ -45,14 +45,22 @@ function matchesCollectionFilters(entry, activeCollections, recentIds) {
   });
 }
 
+function completeManaProfile(entry) {
+  const profile = entry?.manaProfile;
+  return profile?.metadataCoverage?.complete === true ? profile : null;
+}
+
 function matchesManaFilters(entry, activeMana) {
-  const colors = Array.isArray(entry?.colors) ? entry.colors : [];
+  const colors = completeManaProfile(entry)?.colors || [];
   return activeMana.every((color) => colors.includes(color));
 }
 
 const CatalogDeckRow = memo(function CatalogDeckRow({ entry, isBusy, isCopying, isCopied, onSelect, onCopy }) {
   const [artUrl, setArtUrl] = useState("");
-  const colors = Array.isArray(entry.colors) ? entry.colors.filter((color) => /^[WUBRGC]$/.test(color)) : [];
+  const manaProfile = completeManaProfile(entry);
+  const colors = (manaProfile?.colors || []).filter((color) => /^[WUBRGC]$/.test(color));
+  const predominantColors = manaProfile?.predominantColors || [];
+  const predominantLands = (manaProfile?.predominantLands || []).slice(0, 2);
 
   useEffect(() => {
     let active = true;
@@ -73,10 +81,12 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, isBusy, isCopying, 
         <div className="truncate text-[13px] font-bold text-[#e7d9bc]">{entry.name || entry.archetype || "Deck sin nombre"}</div>
         <div className="truncate text-[11px] text-[#b8aa8e]">{entry.event || "Evento desconocido"} · {entry.date || "sin fecha"}{entry.placement ? ` · #${entry.placement}` : ""} · {entry.mainboardCount || "?"} cartas{entry.sideboardCount ? ` + ${entry.sideboardCount} SB` : ""}</div>
         <div className="flex min-w-0 items-center gap-1.5 truncate text-[10px] text-[#8b806b]">
-          {colors.length ? <span className="inline-flex shrink-0 items-center gap-0.5" aria-label={`Colores: ${colors.join(", ")}`}>
+          {colors.length ? <span className="inline-flex shrink-0 items-center gap-0.5" aria-label={`Colores: ${colors.join(", ")}`} title={`Mana predominante: ${predominantColors.join(", ") || "sin predominio"}`}>
             {colors.map((color) => <ManaSymbol key={color} sym={color} size={13} />)}
           </span> : null}
           <span className="shrink-0 uppercase">{entry.format || "modern"}</span>
+          {manaProfile ? <span className="shrink-0">· {manaProfile.landCount} tierras</span> : null}
+          {predominantLands.length ? <span className="truncate" title={`Tierras predominantes: ${predominantLands.map(({ name, count }) => `${name} (${count})`).join(", ")}`}>· {predominantLands.map(({ name, count }) => `${name} ${count}`).join(", ")}</span> : null}
           {(entry.mechanics || []).length ? <span className="truncate">· {(entry.mechanics || []).join(" · ")}</span> : null}
           {(entry.cardNames || []).slice(0, 3).length ? <span className="truncate">· {(entry.cardNames || []).slice(0, 3).join(", ")}</span> : null}
         </div>
@@ -208,7 +218,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
   }, [recentIds, searchResults]);
 
   const availableMana = useMemo(
-    () => manaOptions.filter((color) => searchResults.some((entry) => (entry.colors || []).includes(color))),
+    () => manaOptions.filter((color) => searchResults.some((entry) => (completeManaProfile(entry)?.colors || []).includes(color))),
     [searchResults],
   );
 
