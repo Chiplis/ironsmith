@@ -40,6 +40,17 @@ export function deckCatalogEntryToLobbyTexts(entry) {
   };
 }
 
+export function deckCatalogEntryToMtgoText(entry) {
+  const mainboard = normalizeCards(entry?.mainboard);
+  const sideboard = normalizeCards(entry?.sideboard);
+  const commander = normalizeCards(entry?.commander);
+  return [
+    ...(commander.length ? ["Commander", ...cardLines(commander), ""] : []),
+    ...cardLines(mainboard),
+    ...(sideboard.length ? ["", "Sideboard", ...cardLines(sideboard)] : []),
+  ].join("\n");
+}
+
 export function validateDeckCatalogEntry(entry, { format = entry?.format || "normal" } = {}) {
   const errors = [];
   const mainboard = normalizeCards(entry?.mainboard);

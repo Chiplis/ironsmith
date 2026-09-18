@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   DeckCatalogImportError,
   deckCatalogEntryToLobbyTexts,
+  deckCatalogEntryToMtgoText,
   importDeckCatalogEntry,
   validateDeckCatalogEntry,
 } from "../src/lib/deck-catalog-import.js";
@@ -23,6 +24,13 @@ test("converts a catalog deck to the existing lobby text format", () => {
   assert.equal(result.commanderText, "");
 });
 
+test("keeps an MTGO copy format without a Deck header", () => {
+  const result = deckCatalogEntryToMtgoText(entry);
+  assert.match(result, /^60 Mountain/);
+  assert.doesNotMatch(result, /^Deck/m);
+  assert.match(result, /\nSideboard\n2 Relic of Progenitus/);
+});
+
 test("validates counts before import", () => {
   const result = validateDeckCatalogEntry(entry);
   assert.equal(result.valid, true);
@@ -41,4 +49,5 @@ test("enforces Commander structure separately", () => {
   };
   assert.equal(validateDeckCatalogEntry(commander).valid, true);
   assert.equal(validateDeckCatalogEntry({ ...commander, commander: [] }).valid, false);
+  assert.match(deckCatalogEntryToMtgoText(commander), /^Commander\n1 Kraum, Ludevic's Opus\n\n99 Island/);
 });

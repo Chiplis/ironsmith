@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "format": "modern",
-  "generatedAt": "2026-09-18T17:18:09.643Z",
+  "generatedAt": "2026-09-18T17:26:49.815Z",
   "decks": [
     {
       "id": "mtgtop8-90808-889588",
@@ -50,6 +50,9 @@
       "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
       "date": "",
       "placement": 2,
+      "mainboardCount": 61,
+      "sideboardCount": 15,
+      "commanderCount": 0,
       "source": "mtgtop8",
       "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889588&f=MO",
       "tags": [
@@ -142,6 +145,9 @@
       "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
       "date": "",
       "placement": 1,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
       "source": "mtgtop8",
       "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889587&f=MO",
       "tags": [

@@ -1,3 +1,5 @@
+import { cardRouteKey } from "./scryfall.js";
+
 function normalize(value) {
   return String(value || "")
     .normalize("NFKD")
@@ -9,6 +11,15 @@ function normalize(value) {
 
 const catalogIndexCache = new Map();
 const catalogIndexRequests = new Map();
+const catalogDetailCache = new Map();
+const catalogDetailRequests = new Map();
+const cardArtCache = new Map();
+const cardArtRequests = new Map();
+
+function assetUrl(path) {
+  const configured = typeof import.meta !== "undefined" ? import.meta.env?.BASE_URL : null;
+  return new URL(path, new URL(configured || "/", globalThis?.location?.href || "http://localhost/")).href;
+}
 
 function searchTokens(query) {
   return catalogQueryTokens(query);
@@ -77,7 +88,46 @@ export async function loadCatalogIndex({ format = "modern", fetchImpl = globalTh
 
 export async function loadCatalogDeckDetail(entry, { format = "modern", fetchImpl = globalThis.fetch } = {}) {
   if (!entry?.detail) throw new Error("Catalog entry has no detail path");
-  const response = await fetchImpl(`/catalog/${format}/${entry.detail}`, { cache: "no-store" });
-  if (!response?.ok) throw new Error(`Catalog deck request failed (${response?.status || "unknown"})`);
-  return response.json();
+  const cacheKey = `${format}/${entry.detail}`;
+  const cacheable = fetchImpl === globalThis.fetch;
+  if (cacheable && catalogDetailCache.has(cacheKey)) return catalogDetailCache.get(cacheKey);
+  if (cacheable && catalogDetailRequests.has(cacheKey)) return catalogDetailRequests.get(cacheKey);
+  const request = fetchImpl(`/catalog/${format}/${entry.detail}`, { cache: "force-cache" })
+    .then((response) => {
+      if (!response?.ok) throw new Error(`Catalog deck request failed (${response?.status || "unknown"})`);
+      return response.json();
+    });
+  if (!cacheable) return request;
+  catalogDetailRequests.set(cacheKey, request);
+  try {
+    const detail = await request;
+    catalogDetailCache.set(cacheKey, detail);
+    return detail;
+  } finally {
+    catalogDetailRequests.delete(cacheKey);
+  }
+}
+
+export async function loadLocalCardArt(cardName, { fetchImpl = globalThis.fetch } = {}) {
+  const route = cardRouteKey(cardName);
+  if (!route) return "";
+  if (cardArtCache.has(route)) return cardArtCache.get(route);
+  if (cardArtRequests.has(route)) return cardArtRequests.get(route);
+  const request = fetchImpl(assetUrl(`cards/${route}.json`), { cache: "force-cache" })
+    .then(async (response) => {
+      if (!response?.ok) return "";
+      const payload = await response.json();
+      return payload?.scryfall?.image_uris?.art_crop
+        || payload?.scryfall?.image_uris?.normal
+        || "";
+    })
+    .catch(() => "");
+  cardArtRequests.set(route, request);
+  try {
+    const imageUrl = await request;
+    if (imageUrl) cardArtCache.set(route, imageUrl);
+    return imageUrl;
+  } finally {
+    cardArtRequests.delete(route);
+  }
 }

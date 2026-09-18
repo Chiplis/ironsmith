@@ -1,26 +1,46 @@
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { importDeckCatalogEntry } from "@/lib/deck-catalog-import";
-import { loadCatalogDeckDetail, loadCatalogIndex, searchCatalogEntries } from "@/lib/catalog-client";
+import { deckCatalogEntryToMtgoText, importDeckCatalogEntry } from "@/lib/deck-catalog-import";
+import { loadCatalogDeckDetail, loadCatalogIndex, loadLocalCardArt, searchCatalogEntries } from "@/lib/catalog-client";
 
 const fieldClass = "w-full border border-[rgba(154,126,82,0.46)] bg-[#0b0d0e] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none";
 const labelClass = "grid gap-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]";
 
-const CatalogDeckRow = memo(function CatalogDeckRow({ entry, isBusy, onSelect }) {
+const CatalogDeckRow = memo(function CatalogDeckRow({ entry, isBusy, isCopying, isCopied, onSelect, onCopy }) {
+  const [artUrl, setArtUrl] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    loadLocalCardArt(entry.cardNames?.[0]).then((url) => {
+      if (active) setArtUrl(url);
+    });
+    return () => {
+      active = false;
+    };
+  }, [entry]);
+
   return (
-    <div className="flex items-center justify-between gap-3 border border-white/10 px-2 py-2">
+    <article className="flex min-w-0 gap-2 border border-white/10 bg-black/10 p-2">
+      <div className="h-[76px] w-[54px] shrink-0 overflow-hidden rounded border border-[#9a7e52]/40 bg-[#17130e]" aria-hidden="true">
+        {artUrl ? <img className="h-full w-full object-cover" src={artUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
+      </div>
       <div className="min-w-0">
         <div className="truncate text-[13px] font-bold text-[#e7d9bc]">{entry.name || entry.archetype || "Deck sin nombre"}</div>
-        <div className="truncate text-[11px] text-[#b8aa8e]">{entry.event || "Evento desconocido"} · {entry.date || "sin fecha"}{entry.placement ? ` · #${entry.placement}` : ""}</div>
+        <div className="truncate text-[11px] text-[#b8aa8e]">{entry.event || "Evento desconocido"} · {entry.date || "sin fecha"}{entry.placement ? ` · #${entry.placement}` : ""} · {entry.mainboardCount || "?"} cartas{entry.sideboardCount ? ` + ${entry.sideboardCount} SB` : ""}</div>
         <div className="truncate text-[10px] text-[#8b806b]">
           {(entry.colors || []).join(" ")} {(entry.mechanics || []).join(" · ")}
           {(entry.cardNames || []).slice(0, 4).length ? ` · ${(entry.cardNames || []).slice(0, 4).join(", ")}` : ""}
         </div>
       </div>
-      <Button type="button" variant="ghost" size="sm" className="h-8 shrink-0 border border-[#9a7e52]/55 px-3 text-[11px] font-bold uppercase tracking-wide text-[#d8bf7a]" disabled={isBusy} onClick={() => onSelect(entry)}>
-        {isBusy ? "Cargando…" : "Usar"}
-      </Button>
-    </div>
+      <div className="ml-auto flex shrink-0 flex-col justify-center gap-1">
+        <Button type="button" variant="ghost" size="sm" className="h-8 border border-[#9a7e52]/55 px-2 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a]" disabled={isBusy || isCopying} onClick={() => onSelect(entry)}>
+          {isBusy ? "Cargando…" : "Usar"}
+        </Button>
+        <Button type="button" variant="ghost" size="sm" className="h-7 border border-white/15 px-2 text-[10px] font-semibold text-[#b8aa8e]" disabled={isBusy || isCopying} onClick={() => onCopy(entry)}>
+          {isCopying ? "Copiando…" : isCopied ? "Copiado" : "Copiar MTGO"}
+        </Button>
+      </div>
+    </article>
   );
 });
 
@@ -29,8 +49,11 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
+  const [copyingId, setCopyingId] = useState("");
+  const [copiedId, setCopiedId] = useState("");
   const [error, setError] = useState("");
   const busyRef = useRef("");
+  const copyingRef = useRef("");
   const deferredQuery = useDeferredValue(query);
 
   useEffect(() => {
@@ -63,13 +86,42 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
     try {
       const detail = await loadCatalogDeckDetail(entry);
       onSelect(importDeckCatalogEntry(detail));
-  } catch (selectError) {
+    } catch (selectError) {
       setError(selectError.message || "Could not import this deck");
-  } finally {
+    } finally {
       busyRef.current = "";
       setBusyId("");
     }
   }, [onSelect]);
+
+  const handleCopy = useCallback(async (entry) => {
+    if (copyingRef.current || busyRef.current) return;
+    copyingRef.current = entry.id;
+    setCopyingId(entry.id);
+    setError("");
+    try {
+      const detail = await loadCatalogDeckDetail(entry);
+      const text = deckCatalogEntryToMtgoText(detail);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        textarea.remove();
+      }
+      setCopiedId(entry.id);
+    } catch (copyError) {
+      setError(copyError.message || "No se pudo copiar el deck");
+    } finally {
+      copyingRef.current = "";
+      setCopyingId("");
+    }
+  }, []);
 
   return (
     <section className="grid gap-2 border border-[rgba(154,126,82,0.42)] bg-[rgba(8,9,9,0.7)] p-3" aria-label="Competitive deck catalog">
@@ -86,8 +138,8 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
       {loading ? <p className="text-[12px] text-[#b8aa8e]">Cargando índice…</p> : null}
       {error ? <p className="text-[12px] text-red-300">{error}</p> : null}
       {!loading && !error && results.length === 0 ? <p className="text-[12px] text-[#b8aa8e]">No hay resultados para esta búsqueda.</p> : null}
-      <div className="grid max-h-[220px] gap-2 overflow-y-auto pr-1">
-        {results.map((entry) => <CatalogDeckRow key={entry.id} entry={entry} isBusy={busyId === entry.id} onSelect={handleSelect} />)}
+      <div className="grid max-h-[260px] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+        {results.map((entry) => <CatalogDeckRow key={entry.id} entry={entry} isBusy={busyId === entry.id} isCopying={copyingId === entry.id} isCopied={copiedId === entry.id} onSelect={handleSelect} onCopy={handleCopy} />)}
       </div>
     </section>
   );
