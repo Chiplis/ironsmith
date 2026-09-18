@@ -367,13 +367,11 @@ export default function Shell() {
           : null;
         const names = parseNames(playerNames);
         const testNames = playerCount
-          ? names.slice(0, playerCount)
+          ? Array.from({ length: playerCount }, (_, index) => (
+            names[index] || (index === 0 ? "Player 1" : `Bot ${index + 1}`)
+          ))
           : names;
-        if (playerCount && testNames.length !== playerCount) {
-          setStatus(`Se necesitan ${playerCount} nombres de jugador para probar esta partida.`, true);
-          return;
-        }
-        if (playerCount && testNames.length !== names.length) {
+        if (playerCount && testNames.join(",") !== names.join(",")) {
           await game.reset(testNames, startingLife);
           setPlayerNames(testNames.join(","));
         }
@@ -482,10 +480,13 @@ export default function Shell() {
     });
   }, [game, multiplayer.mode, playerNames, pushNotice, refresh, runWasmInteraction, setStatus, startingLife]);
 
-  const handleOpenLobbyFromDecks = useCallback((deckTexts) => {
+  const handleOpenLobbyFromDecks = useCallback((deckTexts, requestedPlayerCount) => {
     const texts = Array.isArray(deckTexts) ? deckTexts : [];
     const filledTexts = texts.filter((text) => String(text || "").trim());
-    const desiredPlayers = Math.max(2, Math.min(4, filledTexts.length || 2));
+    const requestedCount = Number(requestedPlayerCount);
+    const desiredPlayers = Number.isFinite(requestedCount)
+      ? Math.max(2, Math.min(4, Math.floor(requestedCount)))
+      : Math.max(2, Math.min(4, filledTexts.length || 2));
     const firstDeckText = String(
       texts.find((text) => String(text || "").trim()) || ""
     );

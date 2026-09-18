@@ -263,25 +263,28 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
       setStatus("Pegá al menos un mazo para probarlo en la partida.");
       return false;
     }
-    const filledCount = decks.filter((deck) => deck.length > 0).length;
-    const playerCount = Math.max(2, Math.min(4, filledCount));
+    // The x1/x2/x4 selector is the source of truth for the match size. Empty
+    // slots are intentional: the engine can preserve the bot/demo deck for
+    // those players, while slicing by filled decks silently dropped them.
+    const playerCount = Math.max(2, Math.min(4, visiblePlayerCount));
     const perspectivePlayerIndex = Math.max(0, decks.findIndex((deck) => deck.length > 0));
+    const playerDecks = decks.slice(0, playerCount);
+    const playerSideboards = sideboards.slice(0, playerCount);
     return onTestDecks?.({
-      decks: decks.slice(0, playerCount),
-      sideboards: sideboards.slice(0, playerCount),
+      decks: playerDecks,
+      sideboards: playerSideboards,
       playerCount,
       perspectivePlayerIndex,
       preserveMissingDecks: true,
       seedTestPosition: true,
     });
-  }, [onTestDecks, setStatus, texts]);
+  }, [onTestDecks, setStatus, texts, visiblePlayerCount]);
 
-  const filledDeckCount = texts.filter((text) => String(text || "").trim()).length;
-  const lobbyPlayerCount = Math.max(2, Math.min(4, filledDeckCount || 2));
+  const lobbyPlayerCount = Math.max(2, Math.min(4, visiblePlayerCount));
   const handleConfirmLobby = useCallback(() => {
     setShowLobbyConfirm(false);
-    onOpenLobby?.(texts);
-  }, [onOpenLobby, texts]);
+    onOpenLobby?.(texts, lobbyPlayerCount);
+  }, [lobbyPlayerCount, onOpenLobby, texts]);
 
   return (
     <main
