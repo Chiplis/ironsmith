@@ -50,8 +50,9 @@ function completeManaProfile(entry) {
   return profile?.metadataCoverage?.complete === true ? profile : null;
 }
 
-function matchesManaFilters(entry, activeMana) {
+function matchesManaFilters(entry, activeMana, monoMana) {
   const colors = completeManaProfile(entry)?.colors || [];
+  if (monoMana && colors.length !== 1) return false;
   return activeMana.every((color) => colors.includes(color));
 }
 
@@ -113,6 +114,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
   const [error, setError] = useState("");
   const [activeCollections, setActiveCollections] = useState([]);
   const [activeMana, setActiveMana] = useState([]);
+  const [monoMana, setMonoMana] = useState(false);
   const [sortMode, setSortMode] = useState("recent");
   const [carouselOffset, setCarouselOffset] = useState(0);
   const [carouselAnimating, setCarouselAnimating] = useState(false);
@@ -154,7 +156,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
   const filteredResults = useMemo(() => {
     const filtered = searchResults
       .filter((entry) => matchesCollectionFilters(entry, activeCollections, recentIds))
-      .filter((entry) => matchesManaFilters(entry, activeMana))
+      .filter((entry) => matchesManaFilters(entry, activeMana, monoMana))
       .map((entry, sourceIndex) => ({ entry, sourceIndex }));
     return filtered.sort((leftRecord, rightRecord) => {
       const left = leftRecord.entry;
@@ -168,7 +170,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
           ? (Number(left.placement) || 9999) - (Number(right.placement) || 9999)
           : leftRecord.sourceIndex - rightRecord.sourceIndex);
     }).map(({ entry }) => entry);
-  }, [activeCollections, activeMana, recentIds, searchResults, sortMode]);
+  }, [activeCollections, activeMana, monoMana, recentIds, searchResults, sortMode]);
 
   const carouselCenterOffset = filteredResults.length * 2;
   const carouselTrackEntries = useMemo(() => {
@@ -232,6 +234,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
   const clearCollections = useCallback(() => {
     setActiveCollections([]);
     setActiveMana([]);
+    setMonoMana(false);
     resetCarousel();
   }, [resetCarousel]);
 
@@ -300,7 +303,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
       </div>
       <input className={fieldClass} value={query} onChange={(event) => { setQuery(event.target.value); resetCarousel(); }} placeholder="Broodscale Bloodchief, Dimir Control, Counterspell..." aria-label="Buscar en catálogo" />
       <div className="flex flex-wrap items-center gap-1.5" aria-label="Filtros del catálogo">
-        <Button type="button" variant="ghost" size="sm" className={`h-7 rounded-full px-2 text-[10px] font-bold uppercase tracking-wide ${activeCollections.length === 0 && activeMana.length === 0 ? "bg-[#342817] text-[#f2d9a3]" : "text-[#b8aa8e] hover:bg-white/5"}`} aria-pressed={activeCollections.length === 0 && activeMana.length === 0} onClick={clearCollections}>
+        <Button type="button" variant="ghost" size="sm" className={`h-7 rounded-full px-2 text-[10px] font-bold uppercase tracking-wide ${activeCollections.length === 0 && activeMana.length === 0 && !monoMana ? "bg-[#342817] text-[#f2d9a3]" : "text-[#b8aa8e] hover:bg-white/5"}`} aria-pressed={activeCollections.length === 0 && activeMana.length === 0 && !monoMana} onClick={clearCollections}>
           {collectionOptions[0].label} ({collectionCounts.all})
         </Button>
         {collectionOptions.slice(1).map((option) => {
@@ -311,11 +314,14 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
             </Button>
           );
         })}
+        <Button type="button" variant="ghost" size="sm" className={`h-7 rounded-full px-2 text-[10px] font-bold uppercase tracking-wide ${monoMana ? "bg-[#342817] text-[#f2d9a3] ring-1 ring-[#d8bf7a]/55" : "text-[#b8aa8e] hover:bg-white/5"}`} aria-pressed={monoMana} title="Mostrar sólo decks de una identidad de maná" onClick={() => { setMonoMana((current) => !current); resetCarousel(); }}>
+          {monoMana ? "✓ " : ""}Mono
+        </Button>
         {availableMana.map((color) => {
           const isActive = activeMana.includes(color);
           return <Button key={color} type="button" variant="ghost" size="sm" className={`h-7 w-8 max-w-8 rounded-full px-1 text-[10px] font-bold ${isActive ? "bg-[#342817] ring-1 ring-[#d8bf7a]/55" : "text-[#b8aa8e] hover:bg-white/5"}`} aria-label={`Filtrar por mana ${color}`} aria-pressed={isActive} onClick={() => toggleMana(color)}><ManaSymbol sym={color} size={15} /></Button>;
         })}
-        {activeCollections.length || activeMana.length ? <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[10px] font-semibold text-[#8b806b] hover:text-[#e7d9bc]" onClick={clearCollections}>Limpiar</Button> : null}
+        {activeCollections.length || activeMana.length || monoMana ? <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[10px] font-semibold text-[#8b806b] hover:text-[#e7d9bc]" onClick={clearCollections}>Limpiar</Button> : null}
         <label className="ml-auto flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e]">Ordenar
           <select className="bg-transparent px-1 py-1 text-[10px] text-[#e7d9bc]" value={sortMode} onChange={(event) => { setSortMode(event.target.value); resetCarousel(); }}>
             <option value="recent">Más recientes</option>
