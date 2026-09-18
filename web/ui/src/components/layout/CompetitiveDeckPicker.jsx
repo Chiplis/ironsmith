@@ -5,6 +5,7 @@ import {
   loadCompetitiveDeckCatalog,
   searchCompetitiveDecks,
 } from "@/lib/competitive-deck-catalog";
+import { listSavedDeckPresets, parseDeckList } from "@/lib/decklists";
 
 const fieldClass = "fantasy-field w-full px-3 py-2 text-[13px] text-foreground outline-none";
 
@@ -13,6 +14,8 @@ export default function CompetitiveDeckPicker({ onApply, format = "modern" }) {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [savedPresets] = useState(() => listSavedDeckPresets());
+  const [selectedSavedDeckKey, setSelectedSavedDeckKey] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -37,8 +40,25 @@ export default function CompetitiveDeckPicker({ onApply, format = "modern" }) {
     [catalog, format, query],
   );
 
+  const savedDeckOptions = useMemo(
+    () => savedPresets.flatMap((preset) => (preset.texts || [])
+      .map((text, playerIndex) => ({
+        key: `${preset.name}:${playerIndex}`,
+        label: `${preset.name} · ${preset.playerNames?.[playerIndex] || `Jugador ${playerIndex + 1}`}`,
+        text,
+      }))
+      .filter((option) => parseDeckList(option.text).length > 0)),
+    [savedPresets],
+  );
+
   function applyDeck(deck) {
     onApply?.({ ...competitiveDeckToLobbyText(deck), deck });
+  }
+
+  function applySavedDeck(option) {
+    if (!option) return;
+    setSelectedSavedDeckKey(option.key);
+    onApply?.({ deckText: option.text, commanderText: "", deck: option });
   }
 
   return (
@@ -54,6 +74,20 @@ export default function CompetitiveDeckPicker({ onApply, format = "modern" }) {
         </div>
         <span className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{format}</span>
       </div>
+      {savedDeckOptions.length ? (
+        <label className="grid gap-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          Mazos guardados de esta sesión
+          <select
+            className={fieldClass}
+            value={selectedSavedDeckKey}
+            onChange={(event) => applySavedDeck(savedDeckOptions.find((option) => option.key === event.target.value))}
+            aria-label="Elegir un mazo guardado para el lobby"
+          >
+            <option value="">Elegir Alice, Bob u otro mazo guardado</option>
+            {savedDeckOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+          </select>
+        </label>
+      ) : null}
       <input
         className={fieldClass}
         value={query}

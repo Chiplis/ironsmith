@@ -142,12 +142,13 @@ test("empty lobby deck submissions do not clear the saved default", () => {
 test("saved deck presets stay in the browser session and stop at five", () => {
   withMockSessionStorage(() => {
     for (let index = 0; index < SAVED_DECK_PRESETS_LIMIT; index += 1) {
-      assert.equal(saveSavedDeckPreset(`Deck ${index}`, [`${index} Island`]).saved, true);
+      assert.equal(saveSavedDeckPreset(`Deck ${index}`, [`${index} Island`], index === 0 ? ["Alice", "Bob"] : []).saved, true);
     }
 
     const rejected = saveSavedDeckPreset("Deck extra", ["1 Island"]);
     assert.equal(rejected.saved, false);
     assert.equal(rejected.reason, "limit");
     assert.equal(listSavedDeckPresets().length, SAVED_DECK_PRESETS_LIMIT);
+    assert.deepEqual(listSavedDeckPresets().find((entry) => entry.name === "Deck 0")?.playerNames, ["Alice", "Bob"]);
   });
 });

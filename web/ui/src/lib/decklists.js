@@ -66,6 +66,11 @@ function sanitizeDeckPresetTexts(texts) {
   return texts.map((text) => String(text || ""));
 }
 
+function sanitizeDeckPresetPlayerNames(names) {
+  if (!Array.isArray(names)) return [];
+  return names.map((name) => String(name || "").trim());
+}
+
 function canUseSessionStorage() {
   return typeof window !== "undefined" && typeof window.sessionStorage !== "undefined";
 }
@@ -91,6 +96,7 @@ function readSavedDeckPresets() {
         return {
           name,
           texts: sanitizeDeckPresetTexts(entry?.texts),
+          playerNames: sanitizeDeckPresetPlayerNames(entry?.playerNames),
           updatedAt: Number(entry?.updatedAt) || 0,
         };
       })
@@ -312,7 +318,7 @@ export function findSavedDeckPreset(name) {
   );
 }
 
-export function saveSavedDeckPreset(name, texts) {
+export function saveSavedDeckPreset(name, texts, playerNames = []) {
   const normalizedName = normalizeDeckPresetName(name);
   if (!normalizedName) {
     return {
@@ -327,6 +333,7 @@ export function saveSavedDeckPreset(name, texts) {
   const nextEntry = {
     name: normalizedName,
     texts: sanitizeDeckPresetTexts(texts),
+    playerNames: sanitizeDeckPresetPlayerNames(playerNames),
     updatedAt: now,
   };
   const normalizedKey = normalizedName.toLowerCase();

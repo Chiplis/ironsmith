@@ -347,16 +347,14 @@ export default function CompetitiveDeckBrowser({ onSelect }) {
     <section className="grid gap-2 border-b border-[rgba(154,126,82,0.32)] bg-transparent pb-3" aria-label="Decks">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <h2 className="text-[13px] font-bold uppercase tracking-[0.16em] text-[#f2d9a3]">Decks</h2>
-            <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">Formato
-              <select className={selectClass.replace("w-full", "w-auto min-w-[136px]")} style={selectStyle} value={catalogFormat} onChange={(event) => { setCatalogFormat(event.target.value); resetCarousel(); }}>
-                {catalogFormats.map((formatOption) => <option key={formatOption.id} value={formatOption.id}>{formatOption.label}</option>)}
-              </select>
-            </label>
-          </div>
+          <h2 className="text-[13px] font-bold uppercase tracking-[0.16em] text-[#f2d9a3]">Decks</h2>
           <p className="text-[11px] text-[#b8aa8e]">Buscá por arquetipo, carta, evento o color. El detalle se carga sólo al elegir.</p>
         </div>
+        <label className="grid gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">Formato
+          <select className={selectClass.replace("w-full", "w-auto min-w-[136px]")} style={selectStyle} value={catalogFormat} onChange={(event) => { setCatalogFormat(event.target.value); resetCarousel(); }}>
+            {catalogFormats.map((formatOption) => <option key={formatOption.id} value={formatOption.id}>{formatOption.label}</option>)}
+          </select>
+        </label>
       </div>
       <input className={fieldClass} value={query} onChange={(event) => { setQuery(event.target.value); resetCarousel(); }} placeholder="Broodscale Bloodchief, Dimir Control, Counterspell..." aria-label="Buscar en catálogo" />
       <div className="flex flex-wrap items-center gap-1.5" aria-label="Filtros del catálogo">

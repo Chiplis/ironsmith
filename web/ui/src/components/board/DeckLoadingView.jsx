@@ -134,7 +134,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
       return false;
     }
 
-    const saveResult = saveSavedDeckPreset(normalizedPresetName, nextTexts);
+    const saveResult = saveSavedDeckPreset(normalizedPresetName, nextTexts, players.map((player) => player.name));
     if (saveResult.saved) {
       setSavedPresets(saveResult.entries);
       setSelectedPresetName(saveResult.entry.name);
@@ -428,7 +428,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
             className="ui-primary-action h-9 border border-[#f2d9a3]/45 bg-[#211a10] px-4 text-[12px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
             disabled={totalCards === 0 || submitting || Boolean(actionBusy)}
             onClick={() => runAction("load", handleLoad)}
-          >{submitting || actionBusy === "load" ? <ActionSpinner /> : ui("Load")}{!submitting && !actionBusy && totalCards > 0 ? ui(" ({0} main{1})", { 0: totalCards, 1: totalSideboardCards > 0 ? `, ${totalSideboardCards} sideboard` : "" }) : ""}
+          >{submitting || actionBusy === "load" ? <ActionSpinner /> : ui("Update current decks")}{!submitting && !actionBusy && totalCards > 0 ? ui(" ({0} main{1})", { 0: totalCards, 1: totalSideboardCards > 0 ? `, ${totalSideboardCards} sideboard` : "" }) : ""}
           </Button>
           <Button
             type="button"
