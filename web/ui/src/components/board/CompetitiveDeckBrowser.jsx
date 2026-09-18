@@ -15,6 +15,13 @@ const collectionOptions = [
   { id: "top8", label: "Top 8" },
 ];
 const manaOptions = ["W", "U", "B", "R", "G", "C"];
+const catalogFormats = [
+  { id: "modern", label: "Modern" },
+  { id: "pioneer", label: "Pioneer" },
+  { id: "standard", label: "Standard" },
+  { id: "legacy", label: "Legacy" },
+  { id: "pauper", label: "Pauper" },
+];
 
 function isMajorEntry(entry) {
   const event = String(entry?.event || "").toLocaleLowerCase("en-US");
@@ -38,8 +45,8 @@ function buildRecentIds(entries) {
 
 function matchesCollectionFilters(entry, activeCollections, recentIds) {
   return activeCollections.every((collection) => {
-    if (collection === "recent") return recentIds.has(entry?.id);
-    if (collection === "major") return isMajorEntry(entry);
+    if (collection === "recent") return isRecentEntry(entry, recentIds);
+    if (collection === "major") return isMajorCollectionEntry(entry);
     if (collection === "top8") return isTop8Entry(entry);
     return true;
   });
@@ -48,6 +55,26 @@ function matchesCollectionFilters(entry, activeCollections, recentIds) {
 function completeManaProfile(entry) {
   const profile = entry?.manaProfile;
   return profile?.metadataCoverage?.complete === true ? profile : null;
+}
+
+function isRecentEntry(entry, recentIds) {
+  return entry?.collections?.includes("last-20-events") || recentIds.has(entry?.id);
+}
+
+function isMajorCollectionEntry(entry) {
+  return entry?.collections?.includes("last-major-events") || isMajorEntry(entry);
+}
+
+function sortDeckEntries(entries, sortMode) {
+  return [...entries].sort((left, right) => {
+    if (sortMode === "placement") {
+      return (Number(left.placement) || 9999) - (Number(right.placement) || 9999)
+        || String(right.date || "").localeCompare(String(left.date || ""));
+    }
+    return String(right.date || "").localeCompare(String(left.date || ""))
+      || (Number(left.placement) || 9999) - (Number(right.placement) || 9999)
+      || String(left.id || "").localeCompare(String(right.id || ""));
+  });
 }
 
 function matchesManaFilters(entry, activeMana, manaMatchMode) {
@@ -104,8 +131,75 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, isBusy, isCopying, 
   );
 });
 
+const DeckCarousel = memo(function DeckCarousel({ title, entries, resetKey, busyId, copyingId, copiedId, onSelect, onCopy }) {
+  const [offset, setOffset] = useState(0);
+  const [animating, setAnimating] = useState(false);
+  const animatingRef = useRef(false);
+  const centerOffset = entries.length * 2;
+  const trackEntries = useMemo(() => {
+    if (!entries.length) return [];
+    const trackLength = Math.max(CAROUSEL_SIZE, entries.length * 5 + CAROUSEL_SIZE);
+    return Array.from({ length: trackLength }, (_, index) => ({
+      entry: entries[index % entries.length],
+      key: `${entries[index % entries.length].id}-${index}`,
+    }));
+  }, [entries]);
+
+  useEffect(() => {
+    animatingRef.current = false;
+    const timer = window.setTimeout(() => {
+      setAnimating(false);
+      setOffset(centerOffset);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [centerOffset, resetKey]);
+
+  useEffect(() => {
+    if (!animating || !entries.length) return undefined;
+    const timer = window.setTimeout(() => {
+      const count = entries.length;
+      setOffset((current) => {
+        const relative = ((current - (count * 2)) % count + count) % count;
+        return (count * 2) + relative;
+      });
+      animatingRef.current = false;
+      setAnimating(false);
+    }, 380);
+    return () => window.clearTimeout(timer);
+  }, [animating, entries.length]);
+
+  const move = useCallback((direction) => {
+    if (entries.length <= CAROUSEL_SIZE || animatingRef.current) return;
+    animatingRef.current = true;
+    setAnimating(true);
+    setOffset((current) => current + direction * CAROUSEL_STEP);
+  }, [entries.length]);
+
+  if (!entries.length) return null;
+  return (
+    <section className="grid gap-1 border-t border-white/10 pt-2" aria-label={title}>
+      <h3 className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{title}</h3>
+      <div className="relative">
+        {entries.length > CAROUSEL_SIZE ? <Button type="button" variant="ghost" size="sm" className="absolute left-0 top-1/2 z-10 h-8 w-8 -translate-y-1/2 rounded-full bg-[#11110f] p-0 text-[#d8bf7a] shadow-lg hover:bg-[#28231b]" aria-label={`${title}: decks anteriores`} title="Decks anteriores" onClick={() => move(-1)}>
+          <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
+        </Button> : null}
+        <div className="mx-9 overflow-hidden" style={{ containerType: "inline-size" }}>
+          <div className="flex gap-2" style={{ transform: `translateX(calc(-${offset} * (33.333cqw + 0.1667rem)))`, transition: animating ? "transform 380ms cubic-bezier(0.22, 0.61, 0.36, 1)" : "none" }}>
+            {trackEntries.map(({ entry, key }) => <div key={key} className="min-w-0" style={{ flex: "0 0 calc(33.333cqw - 0.333rem)" }}><CatalogDeckRow entry={entry} isBusy={busyId === entry.id} isCopying={copyingId === entry.id} isCopied={copiedId === entry.id} onSelect={onSelect} onCopy={onCopy} /></div>)}
+          </div>
+        </div>
+        {entries.length > CAROUSEL_SIZE ? <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-1/2 z-10 h-8 w-8 -translate-y-1/2 rounded-full bg-[#11110f] p-0 text-[#d8bf7a] shadow-lg hover:bg-[#28231b]" aria-label={`${title}: decks siguientes`} title="Decks siguientes" onClick={() => move(1)}>
+          <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true"><path d="m7.5 4.5 5.5 5.5-5.5 5.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
+        </Button> : null}
+      </div>
+      {entries.length > CAROUSEL_SIZE ? <div className="text-center text-[9px] uppercase tracking-wide text-[#8b806b]">3 visibles · paso 2 · carrusel infinito</div> : null}
+    </section>
+  );
+});
+
 export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetChange, onSelect }) {
   const [catalog, setCatalog] = useState(null);
+  const [catalogFormat, setCatalogFormat] = useState("modern");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
@@ -116,22 +210,21 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
   const [activeMana, setActiveMana] = useState([]);
   const [manaMatchMode, setManaMatchMode] = useState("include");
   const [sortMode, setSortMode] = useState("recent");
-  const [carouselOffset, setCarouselOffset] = useState(0);
-  const [carouselAnimating, setCarouselAnimating] = useState(false);
+  const [carouselResetKey, setCarouselResetKey] = useState(0);
   const busyRef = useRef("");
   const copyingRef = useRef("");
-  const carouselAnimatingRef = useRef(false);
   const deferredQuery = useDeferredValue(query);
 
   const resetCarousel = useCallback(() => {
-    carouselAnimatingRef.current = false;
-    setCarouselAnimating(false);
-    setCarouselOffset(0);
+    setCarouselResetKey((current) => current + 1);
   }, []);
 
   useEffect(() => {
     let active = true;
-    loadCatalogIndex()
+    setCatalog(null);
+    setLoading(true);
+    setError("");
+    loadCatalogIndex({ format: catalogFormat })
       .then((nextCatalog) => {
         if (active) setCatalog(nextCatalog);
       })
@@ -144,7 +237,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
     return () => {
       active = false;
     };
-  }, []);
+  }, [catalogFormat]);
 
   const searchResults = useMemo(
     () => searchCatalogEntries(catalog?.decks, deferredQuery, { limit: 240, searchIndex: catalog?.searchIndex }),
@@ -153,67 +246,32 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
 
   const recentIds = useMemo(() => buildRecentIds(catalog?.decks || []), [catalog]);
 
-  const filteredResults = useMemo(() => {
-    const filtered = searchResults
-      .filter((entry) => matchesCollectionFilters(entry, activeCollections, recentIds))
-      .filter((entry) => matchesManaFilters(entry, activeMana, manaMatchMode))
-      .map((entry, sourceIndex) => ({ entry, sourceIndex }));
-    return filtered.sort((leftRecord, rightRecord) => {
-      const left = leftRecord.entry;
-      const right = rightRecord.entry;
-      if (sortMode === "placement") {
-        return (Number(left.placement) || 9999) - (Number(right.placement) || 9999)
-          || String(right.date || "").localeCompare(String(left.date || ""));
-      }
-      return String(right.date || "").localeCompare(String(left.date || ""))
-        || (left.date || right.date
-          ? (Number(left.placement) || 9999) - (Number(right.placement) || 9999)
-          : leftRecord.sourceIndex - rightRecord.sourceIndex);
-    }).map(({ entry }) => entry);
-  }, [activeCollections, activeMana, manaMatchMode, recentIds, searchResults, sortMode]);
+  const manaFilteredResults = useMemo(
+    () => searchResults.filter((entry) => matchesManaFilters(entry, activeMana, manaMatchMode)),
+    [activeMana, manaMatchMode, searchResults],
+  );
 
-  const carouselCenterOffset = filteredResults.length * 2;
-  const carouselTrackEntries = useMemo(() => {
-    if (!filteredResults.length) return [];
-    const trackLength = Math.max(CAROUSEL_SIZE, filteredResults.length * 5 + CAROUSEL_SIZE);
-    return Array.from({ length: trackLength }, (_, index) => ({
-      entry: filteredResults[index % filteredResults.length],
-      key: `${filteredResults[index % filteredResults.length].id}-${index}`,
-    }));
-  }, [filteredResults]);
+  const filteredResults = useMemo(
+    () => sortDeckEntries(manaFilteredResults.filter((entry) => matchesCollectionFilters(entry, activeCollections, recentIds)), sortMode),
+    [activeCollections, manaFilteredResults, recentIds, sortMode],
+  );
 
-  useEffect(() => {
-    resetCarousel();
-    setCarouselOffset(carouselCenterOffset);
-  }, [carouselCenterOffset, filteredResults, resetCarousel]);
+  const recentResults = useMemo(
+    () => sortDeckEntries(manaFilteredResults.filter((entry) => isRecentEntry(entry, recentIds)), sortMode),
+    [manaFilteredResults, recentIds, sortMode],
+  );
 
-  useEffect(() => {
-    if (!carouselAnimating || !filteredResults.length) return undefined;
-    const timer = window.setTimeout(() => {
-      const count = filteredResults.length;
-      setCarouselOffset((current) => {
-        const relative = ((current - (count * 2)) % count + count) % count;
-        return (count * 2) + relative;
-      });
-      carouselAnimatingRef.current = false;
-      setCarouselAnimating(false);
-    }, 380);
-    return () => window.clearTimeout(timer);
-  }, [carouselAnimating, filteredResults.length]);
-
-  const moveCarousel = useCallback((direction) => {
-    if (filteredResults.length <= CAROUSEL_SIZE || carouselAnimatingRef.current) return;
-    carouselAnimatingRef.current = true;
-    setCarouselAnimating(true);
-    setCarouselOffset((current) => current + direction * CAROUSEL_STEP);
-  }, [filteredResults.length]);
+  const majorResults = useMemo(
+    () => sortDeckEntries(manaFilteredResults.filter(isMajorCollectionEntry), sortMode),
+    [manaFilteredResults, sortMode],
+  );
 
   const collectionCounts = useMemo(() => {
     const counts = Object.fromEntries(collectionOptions.map(({ id }) => [id, 0]));
     counts.all = searchResults.length;
-    counts.recent = searchResults.filter((entry) => recentIds.has(entry?.id)).length;
+    counts.recent = searchResults.filter((entry) => isRecentEntry(entry, recentIds)).length;
     for (const entry of searchResults) {
-      if (isMajorEntry(entry)) counts.major += 1;
+      if (isMajorCollectionEntry(entry)) counts.major += 1;
       if (isTop8Entry(entry)) counts.top8 += 1;
     }
     return counts;
@@ -254,7 +312,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
     setBusyId(entry.id);
     setError("");
     try {
-      const detail = await loadCatalogDeckDetail(entry);
+      const detail = await loadCatalogDeckDetail(entry, { format: catalogFormat });
       onSelect(importDeckCatalogEntry(detail));
     } catch (selectError) {
       setError(selectError.message || "Could not import this deck");
@@ -262,7 +320,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
       busyRef.current = "";
       setBusyId("");
     }
-  }, [onSelect]);
+  }, [catalogFormat, onSelect]);
 
   const handleCopy = useCallback(async (entry) => {
     if (copyingRef.current || busyRef.current) return;
@@ -270,7 +328,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
     setCopyingId(entry.id);
     setError("");
     try {
-      const detail = await loadCatalogDeckDetail(entry);
+      const detail = await loadCatalogDeckDetail(entry, { format: catalogFormat });
       const text = deckCatalogEntryToMtgoText(detail);
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
@@ -291,7 +349,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
       copyingRef.current = "";
       setCopyingId("");
     }
-  }, []);
+  }, [catalogFormat]);
 
   return (
     <section className="grid gap-2 border-b border-[rgba(154,126,82,0.32)] bg-transparent pb-3" aria-label="Decks">
@@ -300,9 +358,14 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
           <h2 className="text-[13px] font-bold uppercase tracking-[0.16em] text-[#f2d9a3]">Decks</h2>
           <p className="text-[11px] text-[#b8aa8e]">Buscá por arquetipo, carta, evento o color. El detalle se carga sólo al elegir.</p>
         </div>
-        <label className={labelClass}>Jugador destino<select className={fieldClass} value={targetIndex} onChange={(event) => onTargetChange(Number(event.target.value))}>
-          {players.map((player, index) => <option key={player.id || index} value={index}>{player.name}</option>)}
-        </select></label>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className={labelClass}>Formato<select className={fieldClass} value={catalogFormat} onChange={(event) => { setCatalogFormat(event.target.value); resetCarousel(); }}>
+            {catalogFormats.map((formatOption) => <option key={formatOption.id} value={formatOption.id}>{formatOption.label}</option>)}
+          </select></label>
+          <label className={labelClass}>Jugador destino<select className={fieldClass} value={targetIndex} onChange={(event) => onTargetChange(Number(event.target.value))}>
+            {players.map((player, index) => <option key={player.id || index} value={index}>{player.name}</option>)}
+          </select></label>
+        </div>
       </div>
       <input className={fieldClass} value={query} onChange={(event) => { setQuery(event.target.value); resetCarousel(); }} placeholder="Broodscale Bloodchief, Dimir Control, Counterspell..." aria-label="Buscar en catálogo" />
       <div className="flex flex-wrap items-center gap-1.5" aria-label="Filtros del catálogo">
@@ -336,26 +399,9 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
       {loading ? <p className="text-[12px] text-[#b8aa8e]">Cargando índice…</p> : null}
       {error ? <p className="text-[12px] text-red-300">{error}</p> : null}
       {!loading && !error && !filteredResults.length ? <p className="text-[12px] text-[#b8aa8e]">No hay resultados para esta búsqueda.</p> : null}
-      {filteredResults.length ? <div className="relative">
-        {filteredResults.length > CAROUSEL_SIZE ? (
-          <Button type="button" variant="ghost" size="sm" className="absolute left-0 top-1/2 z-10 h-9 w-9 -translate-y-1/2 rounded-full bg-[#11110f] p-0 text-[#d8bf7a] shadow-lg hover:bg-[#28231b]" aria-label="Decks anteriores" title="Decks anteriores" onClick={() => moveCarousel(-1)}>
-            <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
-          </Button>
-        ) : null}
-        <div className="mx-9 overflow-hidden" style={{ containerType: "inline-size" }}>
-          <div className="flex gap-2" style={{ transform: `translateX(calc(-${carouselOffset} * (33.333cqw + 0.1667rem)))`, transition: carouselAnimating ? "transform 380ms cubic-bezier(0.22, 0.61, 0.36, 1)" : "none" }}>
-            {carouselTrackEntries.map(({ entry, key }) => <div key={key} className="min-w-0" style={{ flex: "0 0 calc(33.333cqw - 0.333rem)" }}><CatalogDeckRow entry={entry} isBusy={busyId === entry.id} isCopying={copyingId === entry.id} isCopied={copiedId === entry.id} onSelect={handleSelect} onCopy={handleCopy} /></div>)}
-          </div>
-        </div>
-        {filteredResults.length > CAROUSEL_SIZE ? (
-          <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-1/2 z-10 h-9 w-9 -translate-y-1/2 rounded-full bg-[#11110f] p-0 text-[#d8bf7a] shadow-lg hover:bg-[#28231b]" aria-label="Decks siguientes" title="Decks siguientes" onClick={() => moveCarousel(1)}>
-            <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true"><path d="m7.5 4.5 5.5 5.5-5.5 5.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
-          </Button>
-        ) : null}
-      </div> : null}
-      {filteredResults.length > CAROUSEL_SIZE ? (
-        <div className="pt-1 text-center text-[10px] uppercase tracking-wide text-[#8b806b]">3 visibles · {filteredResults.length} decks · paso 2 · carrusel infinito</div>
-      ) : null}
+      <DeckCarousel title="Explorar decks" entries={filteredResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
+      <DeckCarousel title="Last 20 events" entries={recentResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
+      <DeckCarousel title="Last major events" entries={majorResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
     </section>
   );
 }
