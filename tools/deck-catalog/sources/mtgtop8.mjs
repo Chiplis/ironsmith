@@ -1,7 +1,7 @@
 import { normalizeCardList, text } from "../catalog-utils.mjs";
 
 const EVENT_LINK_RE = /href=["']?\/?event\?e=(\d+)&f=([A-Za-z0-9]+)/gi;
-const DECK_LINK_RE = /href=["']?\/?\?e=(\d+)&d=(\d+)&f=([A-Za-z0-9]+)/gi;
+const DECK_LINK_RE = /href=["']?\/?(?:event)?\?e=(\d+)&d=(\d+)&f=([A-Za-z0-9]+)/gi;
 const CARD_LINE_RE = /<div\s+id=((?:md|sb)[^\s>]*)\s+class=["']deck_line[^"']*["'][^>]*>\s*(\d+)\s+<span[^>]*>([\s\S]*?)<\/span>/gi;
 const ARCHETYPE_RE = /href=["']?\/?archetype\?[^"'>]*["'][^>]*>([^<]*?)\s+decks<\/a>/gi;
 const EVENT_TITLE_RE = /<div\s+class=event_title[^>]*>\s*([\s\S]*?)<\/div>/gi;
@@ -109,6 +109,23 @@ export function extractEventCollections(html, { recentLimit = 20, majorLimit = 5
     last20Events: extractSectionEvents(html, "LAST 20 EVENTS", { limit: recentLimit }),
     lastMajorEvents: extractSectionEvents(html, "LAST MAJOR EVENTS", { limit: majorLimit }),
   };
+}
+
+export function extractArchetypeLinks(html, { namePattern = /mono/i, limit = 12 } = {}) {
+  const links = [];
+  const seen = new Set();
+  const pattern = /href=["']?\/?archetype\?([^"'>]+)["']?[^>]*>([^<]+)<\/a>/gi;
+  for (const match of String(html || "").matchAll(pattern)) {
+    const name = decodeHtml(match[2]).trim();
+    if (!name || (namePattern && !namePattern.test(name))) continue;
+    const query = match[1];
+    const key = `${query}:${name.toLocaleLowerCase("en-US")}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    links.push({ name, url: `https://mtgtop8.com/archetype?${query}` });
+    if (links.length >= limit) break;
+  }
+  return links;
 }
 
 export function extractDeckLinks(html, { eventId = "", limit = 25 } = {}) {

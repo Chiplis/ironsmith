@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   extractEventLinks,
   extractEventCollections,
+  extractArchetypeLinks,
   extractDeckLinks,
   formatUrl,
   modernFormatUrl,
@@ -51,6 +52,14 @@ test("extracts bounded deck links from an event page", () => {
     { eventId: "90808", limit: 2 },
   );
   assert.deepEqual(links.map((link) => link.deckId), ["889587", "889588"]);
+});
+
+test("extracts mono archetype sources for targeted catalog seeding", () => {
+  const links = extractArchetypeLinks('<a href=archetype?a=819&meta=51&f=MO>Mono Black Aggro</a><a href=archetype?a=474&meta=51&f=MO>Mono Green Aggro</a><a href=archetype?a=1&meta=51&f=MO>Dimir Control</a>', { limit: 2 });
+  assert.deepEqual(links, [
+    { name: "Mono Black Aggro", url: "https://mtgtop8.com/archetype?a=819&meta=51&f=MO" },
+    { name: "Mono Green Aggro", url: "https://mtgtop8.com/archetype?a=474&meta=51&f=MO" },
+  ]);
 });
 
 test("parses mainboard, sideboard and placement from an event deck page", () => {

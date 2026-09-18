@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   extractDeckLinks,
+  extractArchetypeLinks,
   extractEventCollections,
   extractEventLinks,
   fetchText,
@@ -98,10 +99,20 @@ async function sync() {
   const majorEventLimit = integerArgument("major-events", 5);
   const meta = integerArgument("meta", 54);
   const page = integerArgument("page", 0);
+  const monoMeta = integerArgument("mono-meta", 51);
+  const archetypeLimit = integerArgument("archetype-limit", 6);
+  const archetypeDeckLimit = integerArgument("archetype-decks", 4);
+  const includeMono = hasFlag("include-mono") || page === 0;
   if (!deckLimit) throw new Error("--limit must be greater than zero");
 
   const state = await readState(statePath);
   const formatHtml = await fetchText(formatUrl({ format: format.code, meta, page }), { minDelayMs: 0 });
+  const monoFormatHtml = includeMono && monoMeta !== meta
+    ? await fetchText(formatUrl({ format: format.code, meta: monoMeta, page: 0 }), { minDelayMs: 0 })
+    : formatHtml;
+  const monoArchetypes = includeMono
+    ? extractArchetypeLinks(monoFormatHtml, { limit: archetypeLimit })
+    : [];
   const recentCollections = extractEventCollections(formatHtml, {
     recentLimit: recentEventLimit,
     majorLimit: majorEventLimit,
@@ -160,10 +171,39 @@ async function sync() {
     }
   }
 
+  for (const archetype of monoArchetypes) {
+    const archetypeHtml = await fetchText(archetype.url, { minDelayMs: 750 });
+    const deckLinks = extractDeckLinks(archetypeHtml, { limit: archetypeDeckLimit });
+    for (const deckLink of deckLinks) {
+      const deckHtml = deckHtmlCache.has(deckLink.deckId)
+        ? deckHtmlCache.get(deckLink.deckId)
+        : await fetchText(deckLink.url, { minDelayMs: 750 });
+      deckHtmlCache.set(deckLink.deckId, deckHtml);
+      const parsed = parseDeckPage(deckHtml, {
+        eventId: deckLink.eventId,
+        deckId: deckLink.deckId,
+        sourceUrl: deckLink.url,
+        format: format.slug,
+        collections: ["mono-color"],
+      });
+      const previous = rawDecksById.get(parsed.id);
+      rawDecksById.set(parsed.id, previous
+        ? { ...parsed, collections: [...new Set([...(previous.collections || []), ...(parsed.collections || [])])] }
+        : parsed);
+    }
+  }
+
   const rawDecks = [...rawDecksById.values()];
   const normalizedDecks = normalizeCompetitiveDecks(rawDecks);
   if (hasFlag("dry-run")) {
-    console.log(JSON.stringify({ events: events.length, decks: normalizedDecks.length, ids: normalizedDecks.map((deck) => deck.id) }, null, 2));
+    console.log(JSON.stringify({
+      events: events.length,
+      archetypes: monoArchetypes.length,
+      decks: normalizedDecks.length,
+      collections: Object.fromEntries([...new Set(normalizedDecks.flatMap((deck) => deck.collections || []))]
+        .map((collection) => [collection, normalizedDecks.filter((deck) => deck.collections?.includes(collection)).length])),
+      ids: normalizedDecks.map((deck) => deck.id),
+    }, null, 2));
     return;
   }
 
