@@ -2635,6 +2635,24 @@ pub(super) fn continue_spell_next_cost_or_finalize(
 
     match pending.stage {
         CastStage::ChoosingNextCost => {
+            // Same as the activation path: a component that asks the player for
+            // nothing is paid here instead of appearing on the ordering menu.
+            if let Some(index) = pending
+                .remaining_cost_steps
+                .iter()
+                .position(is_atomic_cost_step)
+            {
+                pending.remaining_cost_steps.swap(0, index);
+                pending.stage = CastStage::ProcessingCosts;
+                return continue_spell_cost_payment(
+                    game,
+                    trigger_queue,
+                    state,
+                    pending,
+                    decision_maker,
+                );
+            }
+
             let source_name = game
                 .object(pending.spell_id)
                 .map(|o| o.name.to_string())
@@ -4480,6 +4498,25 @@ pub(super) fn describe_pending_cost_step(step: &ActivationCostStep) -> String {
     }
 }
 
+/// A cost component the player pays without supplying anything further.
+///
+/// CR 601.2h lets the components of a total cost be paid in any order, so
+/// asking which of these to pay first is a prompt whose every answer leads to
+/// the same place. Anything that opens its own selection — mana, sacrifice,
+/// card choices, staged counter removal — still belongs on the ordering menu.
+pub(super) fn is_atomic_cost_step(step: &ActivationCostStep) -> bool {
+    match step {
+        ActivationCostStep::Cost(cost) => {
+            // Counter removal spread "from among" permanents reports an
+            // immediate processing mode but stages its own distribution
+            // prompt, so it is not atomic.
+            remove_any_counters_among_effect(cost).is_none()
+                && !cost.processing_mode().needs_player_choice()
+        }
+        ActivationCostStep::Sacrifice { .. } | ActivationCostStep::CardChoice(_) => false,
+    }
+}
+
 pub(super) fn delve_cost_step() -> ActivationCostStep {
     ActivationCostStep::CardChoice(ActivationCardCostChoice::ExileFromGraveyard {
         cost: crate::costs::Cost::exile_from_graveyard(1, None),
@@ -4783,7 +4820,7 @@ pub(super) fn build_next_cost_context(
         1,
     )
     .with_context_text(
-        "Tapping resolves immediately. Other costs may open a follow-up payment prompt.",
+        "Costs that need nothing from you are already paid. Each choice left here opens its own payment prompt.",
     )
 }
 
@@ -5511,6 +5548,20 @@ pub(super) fn continue_activation(
                     } else {
                         pending.stage = ActivationStage::ProcessingCosts;
                     }
+                    continue;
+                }
+
+                // Pay the components that take no further input rather than
+                // listing them as an order to choose. Yawgmoth's life payment
+                // resolves on activation, leaving the sacrifice as the only
+                // remaining option, which the branch above walks straight into.
+                if let Some(index) = pending
+                    .remaining_cost_steps
+                    .iter()
+                    .position(is_atomic_cost_step)
+                {
+                    pending.remaining_cost_steps.swap(0, index);
+                    pending.stage = ActivationStage::ProcessingCosts;
                     continue;
                 }
 

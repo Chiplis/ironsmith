@@ -1048,11 +1048,32 @@ pub(crate) fn violates_any_cant_cast_restriction(
     player: PlayerId,
     spell: &crate::object::Object,
 ) -> bool {
+    violates_any_cant_cast_restriction_from_other_sources(game, player, spell, None)
+}
+
+/// As [`violates_any_cant_cast_restriction`], ignoring prohibitions that one
+/// object imposes on itself.
+///
+/// CR 601.2a puts a spell on the stack before the rest of its announcement, so
+/// a spell whose own stack-zone ability prohibits casting spells — split second
+/// (CR 702.61b) is the printed case — is already restricting the game when
+/// CR 601.2e revalidates its completed proposal. That prohibition governs
+/// *beginning* to cast a spell, which this spell did legally, so it cannot
+/// retroactively invalidate the announcement that created it.
+pub(crate) fn violates_any_cant_cast_restriction_from_other_sources(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    ignore_source: Option<ObjectId>,
+) -> bool {
     game.effect_store
         .cant_effects
         .cast_filters_for_player(player)
         .is_some_and(|filters| {
             filters.iter().any(|restriction| {
+                if ignore_source.is_some() && restriction.source == ignore_source {
+                    return false;
+                }
                 let mut ctx = crate::target::FilterContext::default();
                 if let Some(source) = restriction.source {
                     ctx = ctx.with_source(source);
@@ -1962,7 +1983,7 @@ fn completed_cast_proposal_is_legal_with_timing_permission(
     casting_method: &CastingMethod,
     timing_permission_from_effect: bool,
 ) -> bool {
-    if violates_any_cant_cast_restriction(game, player, spell)
+    if violates_any_cant_cast_restriction_from_other_sources(game, player, spell, Some(spell.id))
         || violates_any_cast_limit(game, player, spell)
         || spell.is_land()
         || !spell_cast_restrictions_allow(game, player, spell)

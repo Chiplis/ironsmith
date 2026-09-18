@@ -423,37 +423,15 @@ pub(super) fn test_yawgmoth_sacrifice_activation_targets_before_paying_costs() {
     )
     .expect("Yawgmoth target choice should continue activation");
 
-    let next_cost_ctx = match progress {
-        crate::decision::GameProgress::NeedsDecisionCtx(
-            crate::decisions::context::DecisionContext::SelectOptions(ctx),
-        ) => ctx,
-        other => panic!(
-            "expected next-cost chooser after Yawgmoth target selection, got {:?}",
-            other
-        ),
-    };
-    let life_cost_index = next_cost_ctx
-        .options
-        .iter()
-        .find(|opt| opt.description.to_ascii_lowercase().contains("life"))
-        .map(|opt| opt.index)
-        .expect("expected a life-payment option");
-    let choose_life_first = PriorityResponse::NextCostChoice(life_cost_index);
-    let progress = apply_priority_response_with_dm(
-        &mut game,
-        &mut trigger_queue,
-        &mut state,
-        &choose_life_first,
-        &mut dm,
-    )
-    .expect("Yawgmoth should accept paying life first");
-
+    // Paying 1 life takes no further input, so it is paid on activation rather
+    // than offered as one half of a cost-ordering menu. That leaves the
+    // sacrifice as the only remaining component, which prompts immediately.
     match progress {
         crate::decision::GameProgress::NeedsDecisionCtx(
             crate::decisions::context::DecisionContext::SelectObjects(_),
         ) => {}
         other => panic!(
-            "expected sacrifice selection prompt after Yawgmoth life payment, got {:?}",
+            "expected the sacrifice prompt directly after Yawgmoth target selection, got {:?}",
             other
         ),
     }

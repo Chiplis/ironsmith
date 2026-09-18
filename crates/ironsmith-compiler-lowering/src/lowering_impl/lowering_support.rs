@@ -3768,9 +3768,61 @@ pub fn lower_keyword_action_to_object_abilities(
     if let Some(abilities) = executable_object_abilities_for_keyword_action(&action) {
         return Ok(abilities);
     }
-    Ok(vec![Ability::static_ability(lower_keyword_action_or_err(
-        action,
-    )?)])
+    let static_ability = lower_keyword_action_or_err(action.clone())?;
+    // A granted keyword functions wherever the printed keyword functions, so
+    // ask the printed lowering path instead of keeping a second list of zones
+    // in sync with it. `Ability::static_ability` would default to the
+    // battlefield, which leaves every keyword the builders place elsewhere
+    // (split second, cascade and rebound on the stack; embalm, unearth and
+    // scavenge in the graveyard; suspend in exile; ninjutsu in hand; undaunted
+    // in both hand and stack) inert on the objects a grant lands it on: the
+    // object carries the ability while `functions_in` denies it.
+    Ok(vec![with_printed_keyword_zones(
+        &action,
+        Ability::static_ability(static_ability),
+    )])
+}
+
+/// Give a granted keyword's ability the zones the printed keyword functions in.
+///
+/// Both granted-keyword routes in this crate funnel through here — the static
+/// grant path above and the effect path in `runtime_static_ability_helpers`
+/// ("target creature gains ... until end of turn") — so neither can drift from
+/// the printed form. `Ability::static_ability` alone would default to the
+/// battlefield and leave every keyword the builders place elsewhere inert.
+pub(crate) fn with_printed_keyword_zones(action: &KeywordAction, ability: Ability) -> Ability {
+    match printed_functional_zones(action, &ability) {
+        Some(zones) => ability.in_zones(zones),
+        None => ability,
+    }
+}
+
+/// The zones the printed form of `action` gives the ability carrying `id`.
+///
+/// This folds the keyword into a throwaway card definition through the same
+/// `apply_keyword_action` the printed path uses, then reads the zones back off
+/// the ability it produced. Keywords whose printed form expands to something
+/// other than this static ability report `None`, leaving the caller's default.
+fn printed_functional_zones(
+    action: &KeywordAction,
+    granted: &Ability,
+) -> Option<Vec<crate::zone::Zone>> {
+    let AbilityKind::Static(granted_static) = &granted.kind else {
+        return None;
+    };
+    let printed = crate::keyword_actions::apply_keyword_action(
+        crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::from_raw(0),
+            "keyword zone probe",
+        ),
+        action.clone(),
+    );
+    printed.abilities.iter().find_map(|ability| match &ability.kind {
+        AbilityKind::Static(printed_static) if printed_static.id() == granted_static.id() => {
+            Some(ability.functional_zones.clone())
+        }
+        _ => None,
+    })
 }
 
 fn bind_source_grant_condition(condition: crate::ConditionExpr) -> crate::ConditionExpr {
@@ -5164,6 +5216,86 @@ pub fn validate_iterated_player_bindings_in_lowered_effects(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A granted keyword must function in the same zones as the printed one.
+    ///
+    /// This is the invariant, not a list of keywords: the grant path derives
+    /// its zones from `apply_keyword_action`, so a keyword whose printed form
+    /// moves zones cannot silently leave the grant behind on the battlefield.
+    /// The cases below only span the zone families the builders actually use.
+    #[test]
+    fn granted_keyword_zones_match_the_printed_keyword() {
+        let cases = [
+            KeywordAction::Flying,
+            KeywordAction::Vigilance,
+            KeywordAction::SplitSecond,
+            KeywordAction::Cascade,
+            KeywordAction::Rebound,
+            KeywordAction::Undaunted,
+            KeywordAction::Assist,
+            KeywordAction::ReadAhead,
+        ];
+
+        let mut checked = Vec::new();
+        for action in cases {
+            // Some keywords (undaunted's cost reduction, for one) have no
+            // static-ability grant form at all. They are not this test's
+            // subject, and the assertion below keeps the skip honest.
+            let Ok(granted) = lower_keyword_action_to_object_abilities(action.clone()) else {
+                continue;
+            };
+            // The effect route ("target creature gains ... until end of turn")
+            // expands the same keyword through its own dispatch; it must agree.
+            let granted_by_effect =
+                crate::runtime_static_ability_helpers::lower_granted_abilities_ast_to_object_abilities(
+                    std::slice::from_ref(&crate::cards::builders::GrantedAbilityAst::KeywordAction(
+                        Box::new(action.clone()),
+                    )),
+                )
+                .unwrap_or_default();
+            let printed = crate::keyword_actions::apply_keyword_action(
+                crate::cards::builders::CardDefinitionBuilder::new(
+                    crate::ids::CardId::from_raw(0),
+                    "printed zone probe",
+                ),
+                action.clone(),
+            );
+
+            for granted_ability in granted.iter().chain(granted_by_effect.iter()) {
+                let AbilityKind::Static(granted_static) = &granted_ability.kind else {
+                    continue;
+                };
+                let Some(printed_ability) = printed.abilities.iter().find(|candidate| {
+                    matches!(
+                        &candidate.kind,
+                        AbilityKind::Static(printed_static)
+                            if printed_static.id() == granted_static.id()
+                    )
+                }) else {
+                    continue;
+                };
+                assert_eq!(
+                    granted_ability.functional_zones, printed_ability.functional_zones,
+                    "{action:?}: granted zones must match the printed keyword's zones"
+                );
+                checked.push(granted_static.id());
+            }
+        }
+
+        // The keywords the builders place off the battlefield are the whole
+        // point; a skip must never quietly empty this test.
+        for required in [
+            crate::static_abilities::StaticAbilityId::SplitSecond,
+            crate::static_abilities::StaticAbilityId::Cascade,
+            crate::static_abilities::StaticAbilityId::Rebound,
+            crate::static_abilities::StaticAbilityId::Flying,
+        ] {
+            assert!(
+                checked.contains(&required),
+                "{required:?} must be covered, got {checked:?}"
+            );
+        }
+    }
 
     #[test]
     fn source_keyword_grant_binds_predicate_without_rebinding_other_grants() {

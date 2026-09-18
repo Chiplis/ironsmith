@@ -163,6 +163,7 @@ export default function MobileStackRail({
     <>
       <aside
         className={cn("mobile-mtga-stack-rail", className)}
+        data-stack-preview-anchor="true"
         aria-label={ui("Stack ({0} item{1})", { 0: objects.length, 1: objects.length === 1 ? "" : "s" })}
       >
         {visible.map((entry) => (

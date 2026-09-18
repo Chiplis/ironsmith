@@ -1,5 +1,7 @@
 import { getPlayerAccent } from "./player-colors.js";
 
+const PILE_ZONES = ["graveyard", "exile"];
+
 export const STACK_TARGET_ZONE_ORDER = [
   "battlefield",
   "hand",
@@ -110,6 +112,24 @@ function resolveActiveStackObject(stackObjects = [], selectedObjectId = null) {
   }
 
   return stackObjects[0] || null;
+}
+
+// A decision option linked to an object needs that object on screen. A
+// battlefield permanent already is; one sitting in a pile has no element to
+// highlight and nothing for a card frame to sit beside until the pile opens.
+// Returns the zones to open on top of the ones the player opened themselves.
+export function hoveredObjectZoneViews(state, hoveredObjectId, zoneViews = []) {
+  if (hoveredObjectId == null) return [];
+  const resolved = buildRenderableObjectIndex(state).get(String(hoveredObjectId));
+  // The library is never browsable and the stack has its own presentation.
+  if (!resolved || resolved.zone === "stack" || resolved.zone === "library") return [];
+  // Graveyard and exile are piles, not inline zone bodies (shouldShowZoneBody
+  // refuses them), so a zone view cannot reveal them -- and changing the view
+  // remounts the pile, throwing away the open state it is opening itself with.
+  // ZonePile watches the hovered object directly instead.
+  if (PILE_ZONES.includes(resolved.zone)) return [];
+  const activeZones = new Set(normalizeZoneViews(zoneViews));
+  return activeZones.has(resolved.zone) ? [] : [resolved.zone];
 }
 
 export function buildStackTargetPresentation(state, zoneViews = [], selectedObjectId = null) {

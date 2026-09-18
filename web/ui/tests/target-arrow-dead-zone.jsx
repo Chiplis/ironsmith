@@ -11,10 +11,10 @@ import ArrowOverlay from "../src/components/overlays/ArrowOverlay";
 import TableCore from "../src/components/board/TableCore";
 import "../src/index.css";
 
-const creature = (id, controller) => ({
+const creature = (id, controller, name) => ({
   id,
   stable_id: id,
-  name: controller === 0 ? "Grizzly Bears" : "Goblin Piker",
+  name: name || (controller === 0 ? "Grizzly Bears" : "Goblin Piker"),
   controller,
   owner: controller,
   lane: "creatures",
@@ -34,7 +34,13 @@ const decision = {
     description: "any target",
     min_targets: 1,
     max_targets: 1,
-    legal_targets: [{ kind: "object", object: 20, name: "Goblin Piker" }],
+    // Two legal creatures: this fixture is about aiming and abandoning a cast,
+    // which only happens when the player has a choice to make. A single legal
+    // target is placed for them instead (see forced-target-auto-pick).
+    legal_targets: [
+      { kind: "object", object: 20, name: "Goblin Piker" },
+      { kind: "object", object: 21, name: "Raging Goblin" },
+    ],
   }],
 };
 
@@ -53,7 +59,9 @@ const state = {
     index: id,
     name: id ? "Bob" : "Alice",
     life: 20,
-    battlefield: [creature(id === 0 ? 10 : 20, id)],
+    battlefield: id === 0
+      ? [creature(10, 0)]
+      : [creature(20, 1), creature(21, 1, "Raging Goblin")],
     hand_cards: [],
     graveyard_cards: [],
     exile_cards: [],

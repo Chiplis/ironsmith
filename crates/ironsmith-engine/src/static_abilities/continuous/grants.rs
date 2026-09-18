@@ -385,6 +385,56 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
         StaticAbilityId::GrantObjectAbilityForFilter
     }
 
+    /// Grants of a restriction-bearing static ability have to register that
+    /// restriction for each object they reach, exactly as `GrantAbility` does.
+    /// Without this the layer system still puts the ability on the object —
+    /// so it renders and answers `current_has_static_ability_id` — while no
+    /// player is ever actually prohibited from anything.
+    ///
+    /// Stack objects are candidates alongside permanents: a filter that selects
+    /// spells (split second, CR 702.61b) only ever matches on the stack.
+    fn apply_restrictions(
+        &self,
+        game: &mut crate::game_state::GameState,
+        _source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) {
+        let granted = self
+            .additional_abilities
+            .iter()
+            .chain(std::iter::once(&self.ability))
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.clone()),
+                _ => None,
+            })
+            // Keywords like flying or vigilance never populate the cant
+            // tracker, so a grant of one must not pay for an object scan.
+            .filter(crate::game_state::GameState::static_ability_requires_cant_update)
+            .collect::<Vec<_>>();
+        if granted.is_empty() {
+            return;
+        }
+
+        let filter_ctx = game.filter_context_for(controller, None);
+        let matching: Vec<crate::ids::ObjectId> = game
+            .battlefield
+            .iter()
+            .copied()
+            .chain(game.stack.iter().map(|entry| entry.object_id))
+            .filter(|&id| {
+                game.object(id)
+                    .map(|obj| self.filter.matches(obj, &filter_ctx, game))
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        for object_id in matching {
+            for static_ability in &granted {
+                static_ability.apply_restrictions(game, object_id, controller);
+            }
+        }
+    }
+
     fn display(&self) -> String {
         let mut ability_text = normalize_symbol_case(&self.display);
         if let AbilityKind::Activated(activated) = &self.ability.kind

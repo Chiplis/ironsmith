@@ -6,7 +6,7 @@ import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useR
 import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import { useDragActions, useDragSession, usePlacementActions } from "@/context/DragContext";
-import { useHoverActions } from "@/context/HoverContext";
+import { useHoverActions, useHoveredObjectId } from "@/context/HoverContext";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import useManabrewHandScale from "@/hooks/useManabrewHandScale";
 import TableCore from "@/components/board/TableCore";
@@ -28,8 +28,10 @@ import {
   getVisibleStackObjects,
   normalizeZoneViews,
   stackInspectObjectId,
+  hoveredObjectZoneViews,
   stackSelectionKeys,
 } from "@/lib/stack-targets";
+import { optionForClickedObject } from "@/lib/decision-object-meta";
 import { samePlayerId } from "@/lib/player-display";
 import { sameActionRef } from "@/lib/sync-commands";
 import {
@@ -772,6 +774,7 @@ export default function Workspace({
     stagePlacement,
   } = usePlacementActions();
   const { clearAnchoredCardPreview, clearHover, hoverCard } = useHoverActions();
+  const hoveredObjectId = useHoveredObjectId();
   const { nonDesktopViewport, tabletCompactViewport } = useViewportLayout();
   const handScale = useManabrewHandScale();
   const HAND_PEEK_HEIGHT = Math.round(HAND_PEEK_HEIGHT_DEFAULT * handScale);
@@ -826,9 +829,20 @@ export default function Workspace({
     () => buildStackTargetPresentation(state, zoneViews, focusedStackObjectId ?? selectedObjectId),
     [focusedStackObjectId, selectedObjectId, state, zoneViews]
   );
+  // Hovering a decision option that stands for a card in a pile opens that
+  // pile, so the card has something on screen to highlight and to sit beside.
+  const hoveredObjectZones = useMemo(
+    () => (combatDeclarationActive ? [] : hoveredObjectZoneViews(state, hoveredObjectId, zoneViews)),
+    [combatDeclarationActive, hoveredObjectId, state, zoneViews]
+  );
   const temporaryZoneViews = useMemo(
-    () => (combatDeclarationActive ? [] : stackTargetPresentation.temporaryZoneViews),
-    [combatDeclarationActive, stackTargetPresentation.temporaryZoneViews]
+    () => (combatDeclarationActive
+      ? []
+      : Array.from(new Set([
+        ...stackTargetPresentation.temporaryZoneViews,
+        ...hoveredObjectZones,
+      ]))),
+    [combatDeclarationActive, hoveredObjectZones, stackTargetPresentation.temporaryZoneViews]
   );
   const effectiveZoneViews = useMemo(() => {
     const merged = new Set(normalizeZoneViews(zoneViews));
@@ -1242,6 +1256,32 @@ export default function Workspace({
           );
         }
         return;
+      }
+      // An option that names an object can be taken by clicking the object
+      // itself: the creature to sacrifice, the cards to put back on a mulligan.
+      // Routed through the same event the option row uses, so single-select
+      // submits and multi-select toggles exactly as they do from the list.
+      if (
+        !detailOnly
+        && decision?.kind === "select_options"
+        && samePlayerId(decision.player, state?.perspective)
+      ) {
+        // A merged permanent is clicked as a group; the option may name one of
+        // its members, so try every id the click stands for.
+        const clickedIds = Array.isArray(options?.candidateObjectIds) && options.candidateObjectIds.length > 0
+          ? options.candidateObjectIds
+          : [objectId];
+        const option = clickedIds
+          .map((candidateId) => optionForClickedObject(decision, candidateId))
+          .find(Boolean);
+        if (option) {
+          window.dispatchEvent(
+            new CustomEvent("ironsmith:select-option-choice", {
+              detail: { optionIndex: option.index },
+            })
+          );
+          return;
+        }
       }
       if (
         !detailOnly

@@ -55,7 +55,7 @@ const ENGINE_PHRASES = [
     params: (match, card) => ({ source: card(match[1]) }),
   },
   {
-    pattern: /^Tapping resolves immediately\. Other costs may open a follow-up payment prompt\.$/u,
+    pattern: /^Costs that need nothing from you are already paid\. Each choice left here opens its own payment prompt\.$/u,
     key: "decision.nextCostHint",
     params: () => ({}),
   },

@@ -4148,7 +4148,7 @@ impl GameState {
         }
     }
 
-    fn static_ability_requires_cant_update(
+    pub(crate) fn static_ability_requires_cant_update(
         static_ability: &crate::static_abilities::StaticAbility,
     ) -> bool {
         use crate::static_abilities::StaticAbilityId;

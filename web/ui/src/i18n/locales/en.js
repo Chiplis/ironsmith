@@ -175,7 +175,7 @@ export const messages = {
   "decision.followUp": "Follow-up: {text}",
   "decision.chooseNextCostAbility": "Choose the next cost to pay for {card}'s ability",
   "decision.chooseNextCost": "Choose the next cost to pay for {source}",
-  "decision.nextCostHint": "Tapping resolves immediately. Other costs may open a follow-up payment prompt.",
+  "decision.nextCostHint": "Costs that need nothing from you are already paid. Each choice left here opens its own payment prompt.",
   "decision.manaOption": "Mana: {cost}",
   "decision.tapThisPermanent": "Tap this permanent",
   "decision.untapThisPermanent": "Untap this permanent",

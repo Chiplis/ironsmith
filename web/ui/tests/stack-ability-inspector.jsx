@@ -18,7 +18,7 @@ function Fixture() {
   return <GameContext.Provider value={{state,game,dispatch:()=>{}}}><HoverProvider><DragProvider>
     <button onClick={()=>setEnabled(!enabled)}>Toggle availability</button>
     <button onClick={()=>setPinned('10')}>Inspect source</button>
-    <div style={{width:230,marginTop:80,marginLeft:20}}>{entries.map(entry=><StackCard key={entry.id} entry={entry} onClick={(_id,meta)=>setPinned(String(meta.stackEntry.id))}/>)}</div>
+    <div data-stack-preview-anchor="true" style={{width:230,marginTop:80,marginLeft:20}}>{entries.map(entry=><StackCard key={entry.id} entry={entry} onClick={(_id,meta)=>setPinned(String(meta.stackEntry.id))}/>)}</div>
     <FloatingCardPreview pinnedObjectId={pinned}/>
   </DragProvider></HoverProvider></GameContext.Provider>;
 }

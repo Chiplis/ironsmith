@@ -256,43 +256,25 @@ pub(super) fn test_force_of_will_alternative_cost_casting_flow() {
         &mut dm,
     );
 
-    let next_cost_ctx = match result {
+    // Paying 1 life asks the player for nothing, so it is paid here instead of
+    // sharing a cost-ordering menu with the exile. The exile is then the only
+    // component left and prompts straight away.
+    match result {
         Ok(GameProgress::NeedsDecisionCtx(
-            crate::decisions::context::DecisionContext::SelectOptions(ctx),
-        )) => ctx,
-        other => panic!(
-            "expected next-cost chooser for Force of Will alternative cost, got {:?}",
-            other
-        ),
-    };
-    let exile_cost_index = next_cost_ctx
-        .options
-        .iter()
-        .find(|opt| opt.description.to_ascii_lowercase().contains("exile"))
-        .map(|opt| opt.index)
-        .expect("expected an exile cost option");
-
-    let mut dm = crate::decision::AutoPassDecisionMaker;
-    let choose_exile_cost = PriorityResponse::NextCostChoice(exile_cost_index);
-    let progress = apply_priority_response_with_dm(
-        &mut game,
-        &mut trigger_queue,
-        &mut state,
-        &choose_exile_cost,
-        &mut dm,
-    )
-    .expect("should choose exile cost first");
-
-    match progress {
-        GameProgress::NeedsDecisionCtx(
             crate::decisions::context::DecisionContext::SelectObjects(_),
-        ) => {}
+        )) => {}
         other => panic!(
-            "expected exile-from-hand chooser after selecting Force of Will exile cost, got {:?}",
+            "expected the exile-from-hand chooser for Force of Will, got {:?}",
             other
         ),
     }
+    assert_eq!(
+        game.player(alice).expect("Alice exists").life,
+        19,
+        "Force of Will's life component should be paid without an ordering prompt"
+    );
 
+    let mut dm = crate::decision::AutoPassDecisionMaker;
     let blue_card_id = game
         .player(alice)
         .expect("Alice exists")

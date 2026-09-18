@@ -3933,22 +3933,29 @@ impl StaticAbilityKind for GrantAbility {
             return;
         }
 
-        // Find permanents matching the filter
+        // Find the objects matching the filter. Stack objects are candidates
+        // alongside permanents: a grant whose filter selects spells (split
+        // second is the printed case, CR 702.61b) only ever matches while the
+        // spell is on the stack, and restriction tracking reads printed
+        // abilities outside the battlefield, so the grant has to reach them
+        // here or its restriction never takes effect.
         let filter_ctx = game.filter_context_for(controller, None);
-        let matching: Vec<ObjectId> = game
+        let candidates = game
             .battlefield
             .iter()
-            .filter(|&&id| {
+            .copied()
+            .chain(game.stack.iter().map(|entry| entry.object_id));
+        let matching: Vec<ObjectId> = candidates
+            .filter(|&id| {
                 game.object(id)
                     .map(|obj| self.filter.matches(obj, &filter_ctx, game))
                     .unwrap_or(false)
             })
-            .copied()
             .collect();
 
-        // Apply the granted ability's restrictions to each matching permanent
-        for perm_id in matching {
-            self.ability.apply_restrictions(game, perm_id, controller);
+        // Apply the granted ability's restrictions to each matching object
+        for object_id in matching {
+            self.ability.apply_restrictions(game, object_id, controller);
         }
     }
 

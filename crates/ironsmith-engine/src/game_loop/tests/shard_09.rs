@@ -3512,3 +3512,278 @@ pub(super) fn test_indomitable_might_blocked_combat_defaults_to_blocker_damage_a
     assert_eq!(game.damage_on(blocker_id), 5);
     assert_eq!(game.player(bob).expect("defender should exist").life, 20);
 }
+
+/// A split-second spell must be castable. CR 601.2a puts the spell on the stack
+/// before the rest of the announcement, so its own "players can't cast spells"
+/// restriction (CR 702.61b) is already live when CR 601.2e revalidates the
+/// completed proposal. That prohibition governs beginning to cast a spell, which
+/// this spell already did legally, so it must not cancel its own announcement.
+#[test]
+pub(super) fn split_second_spell_survives_its_own_cr_601_2e_revalidation() {
+    use crate::decision::LegalAction;
+    use crate::zone::Zone;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let mut trigger_queue = TriggerQueue::new();
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Split Second Probe")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Green]))
+        .split_second()
+        .with_spell_effect(vec![Effect::draw(1)])
+        .build();
+    let spell_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Green, 3);
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("split second must not cancel its own cast under CR 601.2e");
+
+    assert!(
+        matches!(
+            progress,
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::ManaPayment(_)
+            )
+        ),
+        "cast should reach mana payment, got {progress:?}"
+    );
+    assert!(
+        game.object(spell_id).is_none(),
+        "the hand object must have moved to the stack instead of rolling back"
+    );
+}
+
+/// While a split-second spell is on the stack no player may respond, including
+/// the spell's own controller (CR 702.61b). Mana abilities stay available.
+#[test]
+pub(super) fn split_second_on_the_stack_locks_out_every_player() {
+    use crate::decision::{LegalAction, compute_legal_actions};
+    use crate::zone::Zone;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Split Second Probe")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Blue]))
+        .split_second()
+        .build();
+    let split_second_id = game.create_object_from_definition(&definition, alice, Zone::Stack);
+    game.push_to_stack(crate::game_state::StackEntry::new(split_second_id, alice));
+
+    let response = CardBuilder::new(CardId::new(), "Split Second Response Probe")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Red]))
+        .build();
+    let alice_response = game.create_object_from_card(&response, alice, Zone::Hand);
+    let bob_response = game.create_object_from_card(&response, bob, Zone::Hand);
+    for player in [alice, bob] {
+        game.player_mut(player)
+            .expect("player exists")
+            .mana_pool
+            .add(ManaSymbol::Red, 5);
+    }
+
+    let forest = CardBuilder::new(CardId::new(), "Split Second Probe Forest")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Forest])
+        .build();
+    let forest_id = game.create_object_from_card(&forest, alice, Zone::Battlefield);
+
+    game.refresh_continuous_state();
+
+    let alice_actions = compute_legal_actions(&game, alice);
+    assert!(
+        !alice_actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell { spell_id, .. } if *spell_id == alice_response
+        )),
+        "the controller must not respond to their own split second spell: {alice_actions:?}"
+    );
+    assert!(
+        alice_actions.iter().any(|action| matches!(
+            action,
+            LegalAction::ActivateManaAbility { source, .. } if *source == forest_id
+        )),
+        "mana abilities stay available under split second: {alice_actions:?}"
+    );
+
+    game.turn.priority_player = Some(bob);
+    let bob_actions = compute_legal_actions(&game, bob);
+    assert!(
+        !bob_actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell { spell_id, .. } if *spell_id == bob_response
+        )),
+        "opponents must not respond to a split second spell: {bob_actions:?}"
+    );
+}
+
+/// A granted split second has to bite. `GrantAbility` reaches the objects its
+/// filter selects, and a filter that selects spells only ever matches on the
+/// stack, so restriction tracking must see stack objects too. Without that the
+/// spell carries the ability (the layer system grants it) while no player is
+/// actually locked out.
+#[test]
+pub(super) fn granted_split_second_locks_out_players_from_the_stack() {
+    use crate::static_abilities::{GrantAbility, StaticAbilityId};
+    use crate::zone::Zone;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    // "Instant spells you control have split second."
+    let mut granted_filter = ObjectFilter::spell().cast_by(PlayerFilter::You);
+    granted_filter.zone = Some(Zone::Stack);
+    granted_filter.card_types = vec![CardType::Instant];
+    let granter = CardDefinitionBuilder::new(CardId::new(), "Split Second Granter Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .with_ability(Ability::static_ability(StaticAbility::new(
+            GrantAbility::new(granted_filter, StaticAbility::split_second()),
+        )))
+        .build();
+    game.create_object_from_definition(&granter, alice, Zone::Battlefield);
+
+    let spell_definition = CardDefinitionBuilder::new(CardId::new(), "Granted Split Second Probe")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell_definition, alice, Zone::Stack);
+    game.push_to_stack(crate::game_state::StackEntry::new(spell_id, alice));
+
+    let response = CardBuilder::new(CardId::new(), "Granted Response Probe")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Red]))
+        .build();
+    let bob_response = game.create_object_from_card(&response, bob, Zone::Hand);
+    game.player_mut(bob)
+        .expect("bob exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 5);
+
+    game.refresh_continuous_state();
+
+    assert!(
+        game.current_has_static_ability_id(spell_id, StaticAbilityId::SplitSecond),
+        "the grant should put split second on the spell"
+    );
+    assert!(
+        !game.can_cast_spells(bob),
+        "a granted split second must prohibit casting, not just appear on the spell"
+    );
+    assert!(
+        !game.can_activate_non_mana_abilities(bob),
+        "a granted split second must also prohibit non-mana activated abilities"
+    );
+
+    game.turn.priority_player = Some(bob);
+    let bob_actions = crate::decision::compute_legal_actions(&game, bob);
+    assert!(
+        !bob_actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::CastSpell { spell_id, .. } if *spell_id == bob_response
+        )),
+        "opponents must not respond under a granted split second: {bob_actions:?}"
+    );
+}
+
+/// The granted case must still be castable, for the same CR 601.2e reason as
+/// printed split second: the restriction is sourced from the spell itself, so
+/// the completed-proposal revalidation has to ignore it.
+#[test]
+pub(super) fn granted_split_second_spell_is_still_castable() {
+    use crate::decision::LegalAction;
+    use crate::static_abilities::GrantAbility;
+    use crate::zone::Zone;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let mut trigger_queue = TriggerQueue::new();
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let mut granted_filter = ObjectFilter::spell().cast_by(PlayerFilter::You);
+    granted_filter.zone = Some(Zone::Stack);
+    granted_filter.card_types = vec![CardType::Instant];
+    let granter = CardDefinitionBuilder::new(CardId::new(), "Split Second Granter Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .with_ability(Ability::static_ability(StaticAbility::new(
+            GrantAbility::new(granted_filter, StaticAbility::split_second()),
+        )))
+        .build();
+    game.create_object_from_definition(&granter, alice, Zone::Battlefield);
+
+    let spell_definition = CardDefinitionBuilder::new(CardId::new(), "Granted Cast Probe")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Green]))
+        .with_spell_effect(vec![Effect::draw(1)])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell_definition, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Green, 3);
+    game.refresh_continuous_state();
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("a granted split second must not cancel the cast it applies to");
+
+    assert!(
+        matches!(
+            progress,
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::ManaPayment(_)
+            )
+        ),
+        "cast should reach mana payment, got {progress:?}"
+    );
+    assert!(
+        game.object(spell_id).is_none(),
+        "the hand object must have moved to the stack instead of rolling back"
+    );
+}

@@ -27,6 +27,8 @@ import {
   buildInspectableObjectIdSet,
   buildObjectControllerById,
   buildObjectNameById,
+  optionObjectIds,
+  optionReferencesObject,
 } from "@/lib/decision-object-meta";
 import { useHoverSuppressedWhileScrolling } from "@/lib/useHoverSuppressedWhileScrolling";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
@@ -134,23 +136,6 @@ function buildContextualOptions(
     options: contextualOptions,
     waitingForHover: !hasMatchedHover,
   };
-}
-
-function optionObjectIds(opt) {
-  const ids = [];
-  if (opt?.object_id != null) ids.push(String(opt.object_id));
-  if (Array.isArray(opt?.related_object_ids)) {
-    for (const relatedId of opt.related_object_ids) {
-      if (relatedId != null) ids.push(String(relatedId));
-    }
-  }
-  return Array.from(new Set(ids));
-}
-
-function optionReferencesObject(opt, objectId) {
-  if (objectId == null) return false;
-  const normalizedId = String(objectId);
-  return optionObjectIds(opt).some((id) => id === normalizedId);
 }
 
 function buildObjectFamilyIds(players, objectId) {
@@ -413,6 +398,9 @@ function OptionButton({
       )}
       style={decisionOptionAccentVars(accent)}
       aria-pressed={isSelected}
+      // An option that stands for an object: hovering it is a request to see
+      // that card, which the preview's panel guard has to let through.
+      data-decision-option-object={opt?.object_id != null ? String(opt.object_id) : undefined}
       disabled={disabled}
       onPointerDown={(e) => {
         if (disabled || !registerPointerDown(e)) return;
@@ -591,6 +579,7 @@ function SingleSelectDecision({
   const localizeDecisionText = useTranslatedDecisionText(decision);
   const {
     hoveredObjectId,
+    hoverCard,
     clearHover,
     showAnchoredCardPreview,
   } = useHover();
@@ -970,6 +959,8 @@ function SingleSelectDecision({
                     opt,
                     playerAccentOverrides,
                   )}
+                  onMouseEnter={() => objId && hoverCard(objId)}
+                  onMouseLeave={() => objId && clearHover()}
                   onClick={() => {
                     const selectedOption = opt.grouped_options?.find(
                       (candidate) => candidate.legal !== false,
@@ -1020,6 +1011,7 @@ function MultiSelectDecision({
   const localizeDecisionText = useTranslatedDecisionText(decision);
   const {
     hoveredObjectId,
+    hoverCard,
     clearHover,
     showAnchoredCardPreview,
   } = useHover();
@@ -1224,6 +1216,8 @@ function MultiSelectDecision({
                     opt,
                     playerAccentOverrides,
                   )}
+                  onMouseEnter={() => objId && hoverCard(objId)}
+                  onMouseLeave={() => objId && clearHover()}
                   onClick={() => opt.legal !== false && toggle(opt.index)}
                 />
               );

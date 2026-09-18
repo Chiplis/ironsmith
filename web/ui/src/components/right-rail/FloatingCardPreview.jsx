@@ -252,6 +252,33 @@ function previewPosition(objectId, size) {
   };
 }
 
+// The stack's preview sits immediately to the right of the stack itself, not
+// beside whichever tile is under the pointer. Two reasons it is anchored to the
+// whole stack: the frame does not jump between tiles, and it is flush against
+// them, so the pointer can travel into it without crossing a gap that would
+// close it on the way.
+function stackAnchoredPreviewPosition(anchorRect, size) {
+  if (!anchorRect || typeof window === "undefined") return null;
+  const margin = 8;
+  const availableHeight = Math.max(0, window.innerHeight - (margin * 2));
+  const height = Math.min(size.height, availableHeight);
+  const width = Math.min(size.width, height * (63 / 88));
+  const left = Math.min(
+    Math.max(margin, anchorRect.right),
+    Math.max(margin, window.innerWidth - width - margin)
+  );
+  const top = Math.min(
+    Math.max(margin, anchorRect.top),
+    Math.max(margin, window.innerHeight - margin - height)
+  );
+  return {
+    left: Math.round(left),
+    top: Math.round(top),
+    right: "auto",
+    height: `${Math.max(0, Math.floor(height))}px`,
+  };
+}
+
 function anchoredPreviewPosition(anchorRect, size) {
   if (!anchorRect || typeof document === "undefined" || typeof window === "undefined") return null;
   const battlefield = document.querySelector(".table-shell[data-drop-zone]");
@@ -302,7 +329,7 @@ export default function FloatingCardPreview({
   const manaPaymentActions = useMemo(() => manaPaymentActionMap(state), [state]);
   const hoveredObjectId = useHoveredObjectId();
   const anchoredCardPreview = useAnchoredCardPreview();
-  const { clearAnchoredCardPreview } = useHoverActions();
+  const { clearAnchoredCardPreview, cancelAnchoredCardPreviewClear } = useHoverActions();
   const dragState = useDragSession();
   const castIntent = useCastTargeting();
   const targetingMode = Boolean(castIntent) || state?.decision?.kind === "targets";
@@ -323,7 +350,13 @@ export default function FloatingCardPreview({
   const directlyRequestedObjectId = (
     !disabled
     && !dragState
-    && !(typeof document !== "undefined" && document.querySelector(".priority-inline-panel:hover"))
+    // The priority panel suppresses previews that would cover it -- except for
+    // an option that stands for an object, where seeing the card is the point.
+    && !(
+      typeof document !== "undefined"
+      && document.querySelector(".priority-inline-panel:hover")
+      && !document.querySelector("[data-decision-option-object]:hover")
+    )
     && hoveredObjectId != null
     && !manaPaymentActions.has(Number(hoveredObjectId))
     && canHoverInspectorObject(state, hoveredObjectId)
@@ -506,14 +539,27 @@ export default function FloatingCardPreview({
   const visible = requestedObjectId != null && renderedObjectId === requestedObjectId
     && (readyObjectId === renderedObjectId || zoneImagePreview);
   const positionStyle = useMemo(
-    () => (
-      anchoredObjectId != null && renderedObjectId === anchoredObjectId
-        ? anchoredCardPreview?.placement === "zone"
-          ? zoneAnchoredPreviewPosition(anchoredCardPreview?.anchorRect, anchoredCardPreview?.objectId, size)
-          : anchoredPreviewPosition(anchoredCardPreview?.anchorRect, size)
-        : previewPosition(renderedObjectId, size)
-    ),
-    [anchoredCardPreview?.anchorRect, anchoredCardPreview?.objectId, anchoredCardPreview?.placement, anchoredObjectId, renderedObjectId, size]
+    () => {
+      if (anchoredObjectId != null && renderedObjectId === anchoredObjectId) {
+        if (anchoredCardPreview?.placement === "zone") {
+          return zoneAnchoredPreviewPosition(anchoredCardPreview?.anchorRect, anchoredCardPreview?.objectId, size);
+        }
+        if (anchoredCardPreview?.placement === "stack") {
+          return stackAnchoredPreviewPosition(anchoredCardPreview?.anchorRect, size);
+        }
+        return anchoredPreviewPosition(anchoredCardPreview?.anchorRect, size);
+      }
+      // A stack preview locked in by a click keeps the place the hover preview
+      // held, so committing to an entry never makes the frame jump.
+      if (stackPreview && typeof document !== "undefined") {
+        const stackRect = document
+          .querySelector("[data-stack-preview-anchor]")
+          ?.getBoundingClientRect?.();
+        if (stackRect) return stackAnchoredPreviewPosition(stackRect, size);
+      }
+      return previewPosition(renderedObjectId, size);
+    },
+    [anchoredCardPreview?.anchorRect, anchoredCardPreview?.objectId, anchoredCardPreview?.placement, anchoredObjectId, renderedObjectId, size, stackPreview]
   );
   const accentStyle = accent
     ? {
@@ -533,15 +579,32 @@ export default function FloatingCardPreview({
       data-preview-object-id={renderedObjectId || undefined}
       data-visible={visible ? "true" : "false"}
       data-locked={lockedObjectId != null ? "true" : "false"}
-      data-placement={anchoredObjectId != null ? "below-decision" : "near-card"}
+      data-placement={anchoredCardPreview?.placement === "stack" && anchoredObjectId != null
+        ? "beside-stack"
+        : anchoredObjectId != null
+          ? "below-decision"
+          : stackPreview
+            ? "beside-stack"
+            : "near-card"}
       data-interactive={interactiveActions.length > 0 ? "true" : "false"}
       aria-hidden={!visible}
       inert={!visible}
-      style={{ ...accentStyle, ...(positionStyle || {}) }}
+      // Closing is a fade, and the position keeps being recomputed underneath
+      // it. Once there is nothing left to anchor to, previewPosition returns
+      // null and the stylesheet's default corner takes over -- the frame jumps
+      // across the screen for the few frames it is still on its way out. With
+      // no place to be, it is not shown at all.
+      style={{ ...accentStyle, ...(positionStyle || { visibility: "hidden" }) }}
       onMouseEnter={() => {
+        // Always call off a pending close, targeting or not: reaching the frame
+        // is exactly what the grace period was held open for.
+        cancelAnchoredCardPreviewClear();
         if (!targetingMode) setPreviewHovered(true);
       }}
-      onMouseLeave={() => setPreviewHovered(false)}
+      onMouseLeave={() => {
+        setPreviewHovered(false);
+        if (anchoredObjectId != null) clearAnchoredCardPreview();
+      }}
     >
       {renderedObjectId != null ? (
         <HoverArtOverlay

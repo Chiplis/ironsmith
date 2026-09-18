@@ -2,7 +2,7 @@ import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHoverActions } from "@/context/HoverContext";
-import { stackInspectObjectId } from "@/lib/stack-targets";
+import { resolveStackInspectObjectId } from "@/lib/inspector-selection";
 import PlayerStackAlert from "@/components/board/PlayerStackAlert";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
@@ -28,7 +28,12 @@ export default function StackCard({
 }) {
   const ui = useUiText();
   const { state } = useGame();
-  const { hoverCard, clearHover } = useHoverActions();
+  const {
+    hoverCard,
+    clearHover,
+    showAnchoredCardPreview,
+    scheduleAnchoredCardPreviewClear,
+  } = useHoverActions();
   const name = entry.name || `Object#${entry.id}`;
   const artUrl = useScryfallImageUrl(name, "art_crop");
   const scryfallUrl = useScryfallImageUrl(name);
@@ -52,14 +57,43 @@ export default function StackCard({
   // A stack tile's click belongs to whatever is live -- a target pick, a
   // resolve, an inspector request. Hover is the one read path nothing else
   // claims, so it is what keeps the spell or ability readable mid-decision.
-  const inspectObjectId = stackInspectObjectId(entry);
-  const handleHoverEnter = useCallback(() => {
+  //
+  // It has to be the *anchored* preview, not a plain hoverCard: the passive
+  // hover surface rejects anything a visible stack entry refers to
+  // (canHoverInspectorObject), and every Workspace inspector dock is mounted
+  // with allowHoverFallback={false}. The anchored path is the one that exists
+  // precisely so a spell or ability on the stack can still be previewed.
+  const inspectObjectId = resolveStackInspectObjectId(state, entry);
+  // The stack entry itself: what the frame keys its ability highlight off.
+  // Falls back to the card when an entry has no id of its own.
+  const previewObjectId = entry?.id ?? inspectObjectId;
+  const handleHoverEnter = useCallback((event) => {
     if (isLeaving || inspectObjectId == null) return;
     hoverCard(inspectObjectId);
-  }, [hoverCard, inspectObjectId, isLeaving]);
+    // Anchor to the stack, not to this tile: the frame then holds one position
+    // for every entry, and sits flush against the stack so the pointer can
+    // reach it. Falling back to the tile keeps standalone usages working.
+    const anchor = event.currentTarget.closest("[data-stack-preview-anchor]") || event.currentTarget;
+    // Previewed by *this entry's* id, not the card's. That is what the frame
+    // matches to highlight the one ability that is on the stack, and it is
+    // what a click would have set -- so a click has nothing left to change.
+    showAnchoredCardPreview(previewObjectId, anchor, { placement: "stack" });
+  }, [hoverCard, inspectObjectId, isLeaving, previewObjectId, showAnchoredCardPreview]);
   const handleHoverLeave = useCallback(() => {
     clearHover();
-  }, [clearHover]);
+    // Not a dismissal: the pointer may be on its way into the frame, which
+    // cancels this. Moving anywhere else lets it close.
+    scheduleAnchoredCardPreviewClear();
+  }, [clearHover, scheduleAnchoredCardPreviewClear]);
+  // The click does not touch the preview. Hovering already shows this entry,
+  // so there is nothing for a click to reveal -- and clearing it here made the
+  // frame blink out and reappear from the pinned path instead.
+  const handleClick = useCallback(() => {
+    onClick?.(entry.inspect_object_id ?? entry.id, {
+      source: "stack",
+      stackEntry: entry,
+    });
+  }, [entry, onClick]);
   const rootRef = useRef(null);
   const motionRef = useRef(null);
 
@@ -118,10 +152,7 @@ export default function StackCard({
         data-object-id={entry.id}
         data-card-image-url={artUrl || ''}
         data-card-name={name}
-        onClick={() => onClick?.(entry.inspect_object_id ?? entry.id, {
-          source: "stack",
-          stackEntry: entry,
-        })}
+        onClick={handleClick}
         onMouseEnter={handleHoverEnter}
         onMouseLeave={handleHoverLeave}
         style={stackAccentStyle}
@@ -159,10 +190,7 @@ export default function StackCard({
       data-object-id={entry.id}
       data-card-image-url={artUrl || ''}
       data-card-name={name}
-      onClick={() => onClick?.(entry.inspect_object_id ?? entry.id, {
-        source: "stack",
-        stackEntry: entry,
-      })}
+      onClick={handleClick}
       onMouseEnter={handleHoverEnter}
       onMouseLeave={handleHoverLeave}
       style={stackAccentStyle}

@@ -100,7 +100,7 @@ export default function StackPanel({
   }, [hasContent, itemCount, expanded, onContentHeightChange]);
 
   return (
-    <section ref={panelRef} className="h-full p-2 flex flex-col gap-1.5 overflow-hidden bg-[#0b1118]">
+    <section ref={panelRef} data-stack-preview-anchor="true" className="h-full p-2 flex flex-col gap-1.5 overflow-hidden bg-[#0b1118]">
       <div className="flex items-center gap-1 shrink-0">
         {showToggle ? (
           <button

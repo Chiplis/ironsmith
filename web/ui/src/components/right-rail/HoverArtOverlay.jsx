@@ -21,6 +21,7 @@ import useScryfallFlavorText from "@/hooks/useScryfallFlavorText";
 import useInspectorPaymentActions from "@/hooks/useInspectorPaymentActions";
 import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
 import { getPlayerAccent } from "@/lib/player-colors";
+import { resolveStackInspectObjectId } from "@/lib/inspector-selection";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
 import { cn } from "@/lib/utils";
 import { animate, cancelMotion, uiSpring } from "@/lib/motion/anime";
@@ -393,7 +394,10 @@ function resolveObjectDetailsId(state, objectIdNum) {
   if (Number.isFinite(representativeId)) return representativeId;
 
   const stackEntry = getVisibleStackObjects(state).find((entry) => Number(entry?.id) === objectIdNum);
-  const stackInspectId = Number(stackEntry?.inspect_object_id);
+  // Not inspect_object_id directly: it names the zone the entry was created in,
+  // so a dies trigger's source is already in the graveyard under a new object
+  // id by now. The stable id survives that move and finds the card again.
+  const stackInspectId = Number(resolveStackInspectObjectId(state, stackEntry));
   if (Number.isFinite(stackInspectId)) return stackInspectId;
 
   return objectIdNum;

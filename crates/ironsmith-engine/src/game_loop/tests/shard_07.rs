@@ -2034,6 +2034,7 @@ pub(super) fn test_enter_as_copy_applies_copied_enters_with_echo_counter() {
         .with_ability(Ability::static_ability(
             StaticAbility::with_enter_as_copy_as_enters(
                 EnterAsCopyAsEntersSpec {
+                    conditional_additional_counters: Vec::new(),
                     filter: crate::target::ObjectFilter::creature(),
                     affected_filter: None,
                     may: false,
@@ -2100,6 +2101,7 @@ pub(super) fn test_enter_as_copy_can_set_base_power_toughness_from_entering_obje
         .with_ability(Ability::static_ability(
             StaticAbility::with_enter_as_copy_as_enters(
                 EnterAsCopyAsEntersSpec {
+                    conditional_additional_counters: Vec::new(),
                     filter: crate::target::ObjectFilter::creature(),
                     affected_filter: None,
                     may: false,
@@ -2159,6 +2161,7 @@ pub(super) fn test_enter_as_copy_can_set_base_power_toughness_from_entering_stac
         .with_ability(Ability::static_ability(
             StaticAbility::with_enter_as_copy_as_enters(
                 EnterAsCopyAsEntersSpec {
+                    conditional_additional_counters: Vec::new(),
                     filter: crate::target::ObjectFilter::creature(),
                     affected_filter: None,
                     may: false,
@@ -2212,6 +2215,7 @@ pub(super) fn test_static_source_can_make_matching_creatures_enter_as_copy_of_it
         .with_ability(Ability::static_ability(
             StaticAbility::with_enter_as_copy_as_enters(
                 EnterAsCopyAsEntersSpec {
+                    conditional_additional_counters: Vec::new(),
                     filter: crate::target::ObjectFilter::source(),
                     affected_filter: Some(crate::target::ObjectFilter::creature().you_control()),
                     may: false,
@@ -2279,6 +2283,7 @@ pub(super) fn test_enter_as_copy_can_remove_legendary_add_artifact_and_add_myria
         .with_ability(Ability::static_ability(
             StaticAbility::with_enter_as_copy_as_enters(
                 EnterAsCopyAsEntersSpec {
+                    conditional_additional_counters: Vec::new(),
                     filter: crate::target::ObjectFilter::creature(),
                     affected_filter: None,
                     may: false,
@@ -2372,6 +2377,7 @@ pub(super) fn test_enter_as_copy_with_no_candidates_keeps_original_characteristi
         .with_ability(Ability::static_ability(
             StaticAbility::with_enter_as_copy_as_enters(
                 EnterAsCopyAsEntersSpec {
+                    conditional_additional_counters: Vec::new(),
                     filter: crate::target::ObjectFilter::creature(),
                     affected_filter: None,
                     may: false,

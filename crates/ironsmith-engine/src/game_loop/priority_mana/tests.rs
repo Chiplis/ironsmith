@@ -146,7 +146,20 @@ fn mana_payment_waits_until_selected_from_the_total_cost_order() {
         stack_spell,
     );
     pending.mana_cost_to_pay = Some(cost);
-    pending.remaining_cost_steps = vec![ActivationCostStep::Cost(crate::costs::Cost::life(1))];
+    // A discard keeps two genuine options on the ordering menu. An atomic
+    // component such as a life payment is paid without asking, which
+    // `atomic_cost_components_are_paid_without_an_ordering_choice` covers.
+    let discard_fodder = CardDefinitionBuilder::new(CardId::new(), "Ordering Fodder")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_definition(&discard_fodder, alice, Zone::Hand);
+    pending.remaining_cost_steps = vec![ActivationCostStep::CardChoice(
+        ActivationCardCostChoice::Discard {
+            cost: crate::costs::Cost::discard(1, None),
+            card_types: Vec::new(),
+            description: "Discard a card".to_string(),
+        },
+    )];
     let mut state = PriorityLoopState::new(2);
     let mut trigger_queue = TriggerQueue::new();
     let mut dm = SelectFirstDecisionMaker;
@@ -212,6 +225,100 @@ fn mana_payment_waits_until_selected_from_the_total_cost_order() {
         progress,
         GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::ManaPayment(_))
     ));
+    assert!(game.is_tapped(land));
+    assert_eq!(game.player(alice).expect("player").mana_pool.total(), 0);
+}
+
+#[test]
+fn atomic_cost_components_are_paid_without_an_ordering_choice() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let land_definition = CardDefinitionBuilder::new(CardId::new(), "Atomic Mountain")
+        .card_types(vec![CardType::Land])
+        .with_ability(Ability::mana(
+            TotalCost::from_cost(crate::costs::Cost::tap()),
+            vec![ManaSymbol::Red],
+        ))
+        .build();
+    let land = game.create_object_from_definition(&land_definition, alice, Zone::Battlefield);
+    let cost = ManaCost::from_symbols(vec![ManaSymbol::Red]);
+    let spell_definition = CardDefinitionBuilder::new(CardId::new(), "Atomic Payment Probe")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(cost.clone())
+        .build();
+    let hand_spell = game.create_object_from_definition(&spell_definition, alice, Zone::Hand);
+    let stack_spell = game
+        .move_object(
+            hand_spell,
+            Zone::Stack,
+            crate::events::cause::EventCause::effect(),
+        )
+        .expect("spell should move to the stack during announcement");
+    let mut pending = PendingCast::new(
+        stack_spell,
+        Zone::Hand,
+        alice,
+        crate::provenance::ProvNodeId::default(),
+        CastStage::ChoosingNextCost,
+        None,
+        Vec::new(),
+        crate::alternative_cast::CastingMethod::Normal,
+        crate::cost::OptionalCostsPaid::default(),
+        None,
+        stack_spell,
+    );
+    pending.mana_cost_to_pay = Some(cost);
+    pending.remaining_cost_steps = vec![ActivationCostStep::Cost(crate::costs::Cost::life(1))];
+    let mut state = PriorityLoopState::new(2);
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+
+    let starting_life = game.player(alice).expect("player").life;
+    let progress = continue_spell_next_cost_or_finalize(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        pending,
+        &mut dm,
+    )
+    .expect("the authoritative proposal must precede every cost payment");
+    let payment = match progress {
+        GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::ManaPayment(context),
+        ) => context,
+        other => panic!("expected a pre-cost mana-payment proposal, got {other:?}"),
+    };
+    assert_eq!(
+        game.player(alice).expect("player").life,
+        starting_life,
+        "nothing is paid while the plan is only proposed"
+    );
+
+    let progress = apply_mana_payment_plan_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::mana_payment::ManaPaymentResponse::Confirm {
+            plan_id: payment.plan.id,
+            request_hash: payment.plan.request_hash,
+        },
+        &mut dm,
+    )
+    .expect("confirming should pay the life component and commit the mana");
+    assert!(
+        !matches!(
+            progress,
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(_)
+            )
+        ),
+        "a life payment is not a choice, so no cost-ordering prompt should appear, got {progress:?}"
+    );
+    assert_eq!(
+        game.player(alice).expect("player").life,
+        starting_life - 1,
+        "the life component should be paid automatically"
+    );
     assert!(game.is_tapped(land));
     assert_eq!(game.player(alice).expect("player").mana_pool.total(), 0);
 }

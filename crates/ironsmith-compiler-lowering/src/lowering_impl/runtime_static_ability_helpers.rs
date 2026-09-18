@@ -527,7 +527,12 @@ pub fn lower_granted_ability_ast_to_object_ability(
                 );
             }
             let static_ability = lower_keyword_action_or_err((**action).clone())?;
-            Ok(Ability::static_ability(static_ability))
+            // Same rule as the static grant path: the granted keyword functions
+            // where the printed keyword functions.
+            Ok(crate::lowering_support::with_printed_keyword_zones(
+                action,
+                Ability::static_ability(static_ability),
+            ))
         }
         GrantedAbilityAst::StaticAbility(static_ability) => Ok(Ability::static_ability(
             crate::lowering_support::lower_static_ability_ast((**static_ability).clone())?,

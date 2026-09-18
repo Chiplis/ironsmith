@@ -142,13 +142,20 @@ pub(super) fn yawgmoth_activation_stays_cancelable_through_target_and_cost_promp
     )
     .expect("choosing Yawgmoth's target should continue activation");
 
-    let next_cost_ctx = match wasm.pending_decision.as_ref() {
-        Some(DecisionContext::SelectOptions(ctx)) => ctx,
-        other => panic!("expected next-cost prompt after Yawgmoth target, got {other:?}"),
+    // The life payment asks nothing of the player, so it is paid on the way to
+    // the one component that does: which creature to sacrifice.
+    let sacrifice_ctx = match wasm.pending_decision.as_ref() {
+        Some(DecisionContext::SelectObjects(ctx)) => ctx,
+        other => panic!("expected sacrifice prompt after Yawgmoth target, got {other:?}"),
     };
     assert_eq!(
-        next_cost_ctx.player, alice,
-        "Yawgmoth next-cost prompt should belong to the activating player"
+        sacrifice_ctx.player, alice,
+        "Yawgmoth sacrifice prompt should belong to the activating player"
+    );
+    assert_eq!(
+        wasm.game.player(alice).expect("Alice exists").life,
+        19,
+        "Yawgmoth's life component should be paid without a cost-ordering prompt"
     );
     assert!(
         wasm.pending_replay_action.is_some(),
@@ -181,7 +188,7 @@ pub(super) fn yawgmoth_activation_stays_cancelable_through_target_and_cost_promp
     );
     assert!(
         snapshot.cancelable,
-        "snapshot should expose Yawgmoth next-cost prompt as cancelable"
+        "snapshot should expose Yawgmoth's sacrifice prompt as cancelable"
     );
     assert!(
         snapshot.resolving_stack_object.is_none(),
@@ -189,14 +196,27 @@ pub(super) fn yawgmoth_activation_stays_cancelable_through_target_and_cost_promp
     );
     let decision = snapshot
         .decision
-        .expect("snapshot should still include the next-cost decision");
+        .expect("snapshot should still include the sacrifice decision");
     match decision {
-        super::DecisionView::SelectOptions { player, reason, .. } => {
+        super::DecisionView::SelectObjects { player, .. } => {
             assert_eq!(player, alice.0);
-            assert_eq!(reason.as_deref(), Some("Next cost"));
         }
-        other => panic!("expected next-cost decision snapshot, got {other:?}"),
+        other => panic!("expected sacrifice decision snapshot, got {other:?}"),
     }
+
+    // Backing out here must undo the automatic life payment too.
+    wasm.cancel_decision()
+        .expect("cancelling Yawgmoth's sacrifice prompt should roll the activation back");
+    assert_eq!(
+        wasm.game.player(alice).expect("Alice exists").life,
+        20,
+        "cancelling the activation should refund the automatically paid life"
+    );
+    assert!(
+        matches!(wasm.pending_decision, Some(DecisionContext::Priority(_))),
+        "cancelling should return Alice to priority, got {:?}",
+        wasm.pending_decision
+    );
 }
 
 #[test]

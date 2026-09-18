@@ -176,7 +176,7 @@ export const messages = {
   "decision.followUp": "Despues: {text}",
   "decision.chooseNextCostAbility": "Elige el siguiente coste a pagar de la habilidad de {card}",
   "decision.chooseNextCost": "Elige el siguiente coste a pagar de {source}",
-  "decision.nextCostHint": "Girar se resuelve de inmediato. Otros costes pueden abrir un aviso de pago posterior.",
+  "decision.nextCostHint": "Los costes que no requieren nada de ti ya están pagados. Cada opción restante abre su propio aviso de pago.",
   "decision.manaOption": "Mana: {cost}",
   "decision.tapThisPermanent": "Girar este permanente",
   "decision.untapThisPermanent": "Enderezar este permanente",

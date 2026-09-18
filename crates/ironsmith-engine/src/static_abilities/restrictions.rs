@@ -295,13 +295,17 @@ impl StaticAbilityKind for SplitSecond {
         true
     }
 
-    fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
         let mut tracker = CantEffectTracker::default();
+        // Record the spell as the restriction's source. CR 601.2e revalidates a
+        // completed proposal while the spell is already on the stack, so the
+        // announcement has to be able to tell this prohibition apart from one
+        // that some other object imposes.
         Restriction::cast_spells(PlayerFilter::Any).apply(
             game,
             &mut tracker,
             controller,
-            None,
+            Some(source),
             None,
         );
         Restriction::activate_non_mana_abilities(PlayerFilter::Any).apply(

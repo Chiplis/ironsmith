@@ -1,3 +1,35 @@
+// The objects an option stands for: the one it names, plus any it drags along.
+export function optionObjectIds(opt) {
+  const ids = [];
+  if (opt?.object_id != null) ids.push(String(opt.object_id));
+  if (Array.isArray(opt?.related_object_ids)) {
+    for (const relatedId of opt.related_object_ids) {
+      if (relatedId != null) ids.push(String(relatedId));
+    }
+  }
+  return Array.from(new Set(ids));
+}
+
+export function optionReferencesObject(opt, objectId) {
+  if (objectId == null) return false;
+  const normalizedId = String(objectId);
+  return optionObjectIds(opt).some((id) => id === normalizedId);
+}
+
+// The option to take when the player clicks an object on the board. Equivalent
+// options are grouped, so the group's own card may not be the one clicked.
+export function optionForClickedObject(decision, objectId) {
+  if (!decision || decision.kind !== "select_options" || objectId == null) return null;
+  for (const opt of decision.options || []) {
+    if (opt?.legal === false) continue;
+    if (optionReferencesObject(opt, objectId)) return opt;
+    const grouped = (opt?.grouped_options || [])
+      .find((candidate) => candidate?.legal !== false && optionReferencesObject(candidate, objectId));
+    if (grouped) return grouped;
+  }
+  return null;
+}
+
 import { getPlayerAccent } from "./player-colors.js";
 import { getVisibleStackObjects } from "./stack-targets.js";
 

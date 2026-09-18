@@ -35,7 +35,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
   const { state } = useGame();
   const { t } = useI18n();
   const chosenObjectIds = useChosenObjectIds();
-  const { hoverCard, clearHover, clearAnchoredCardPreview, showAnchoredCardPreview } = useHover();
+  const { hoveredObjectId, hoverCard, clearHover, clearAnchoredCardPreview, showAnchoredCardPreview } = useHover();
   const castIntent = useCastTargeting();
   const castZoneHovered = useCastZoneHovered(player.id ?? player.index, zone);
   const [open, setOpen] = useState(false);
@@ -100,6 +100,25 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     const timer = setTimeout(() => setOpen(true), 160);
     return () => clearTimeout(timer);
   }, [hoverOpensZone]);
+  // A decision option can stand for a card sitting in this pile, and graveyard
+  // and exile never expand inline (see shouldShowZoneBody) -- the pile is the
+  // only way to see into them. So hovering such an option opens the pile, and
+  // moving on closes it, at the same unhurried pace a pointer gets. Only a
+  // pile opened this way closes again, so one the player is holding stays put.
+  const holdsHoveredCard = hoveredObjectId != null
+    && cards.some((card) => String(card?.id) === String(hoveredObjectId));
+  const openedByHoverRef = useRef(false);
+  useEffect(() => {
+    if (holdsHoveredCard) {
+      openedByHoverRef.current = true;
+      const timer = setTimeout(() => setOpen(true), 160);
+      return () => clearTimeout(timer);
+    }
+    if (!openedByHoverRef.current) return undefined;
+    openedByHoverRef.current = false;
+    const timer = setTimeout(() => setOpen(false), 160);
+    return () => clearTimeout(timer);
+  }, [holdsHoveredCard]);
   useEffect(() => {
     const openTargetZone = (event) => {
       if (event.detail?.zone === zone && String(event.detail?.playerId) === String(player.id ?? player.index)) setOpen(true);

@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState, useCallback, useMemo, useLayoutEffect } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, useLayoutEffect, useRef } from "react";
 
 const HoverStateContext = createContext(undefined);
 const HoverLinkedObjectsContext = createContext(undefined);
@@ -7,6 +7,10 @@ const AnchoredCardPreviewContext = createContext(undefined);
 const HoverActionsContext = createContext(undefined);
 const CardPreviewSuppressedContext = createContext(false);
 const CardPreviewSuppressionActionsContext = createContext(null);
+
+// Long enough for the pointer to cross from an anchor into the frame it opened,
+// short enough that a preview never lingers once the pointer has gone.
+const ANCHORED_PREVIEW_CLOSE_DELAY_MS = 220;
 
 function normalizeAnchorRect(anchor) {
   const rect = typeof anchor?.getBoundingClientRect === "function"
@@ -66,19 +70,42 @@ export function HoverProvider({ children }) {
     setPreviewLinkedObjectIds(new Set());
   }, []);
 
+  const anchoredClearTimerRef = useRef(null);
+
+  const cancelAnchoredCardPreviewClear = useCallback(() => {
+    if (anchoredClearTimerRef.current == null) return;
+    clearTimeout(anchoredClearTimerRef.current);
+    anchoredClearTimerRef.current = null;
+  }, []);
+
   const showAnchoredCardPreview = useCallback((objectId, anchor, options = null) => {
     const anchorRect = normalizeAnchorRect(anchor);
     if (objectId == null || !anchorRect) return;
+    cancelAnchoredCardPreviewClear();
     setAnchoredCardPreview({
       objectId: String(objectId),
       anchorRect,
       placement: options?.placement || "default",
     });
-  }, []);
+  }, [cancelAnchoredCardPreviewClear]);
 
   const clearAnchoredCardPreview = useCallback(() => {
+    cancelAnchoredCardPreviewClear();
     setAnchoredCardPreview(null);
-  }, []);
+  }, [cancelAnchoredCardPreviewClear]);
+
+  // Leaving the anchor is not the same as dismissing the preview: the pointer
+  // is often on its way into the frame to scroll it or click inside it. Hold
+  // the preview open briefly so entering the frame can call the close off.
+  const scheduleAnchoredCardPreviewClear = useCallback((delayMs = ANCHORED_PREVIEW_CLOSE_DELAY_MS) => {
+    cancelAnchoredCardPreviewClear();
+    anchoredClearTimerRef.current = setTimeout(() => {
+      anchoredClearTimerRef.current = null;
+      setAnchoredCardPreview(null);
+    }, delayMs);
+  }, [cancelAnchoredCardPreviewClear]);
+
+  useEffect(() => cancelAnchoredCardPreviewClear, [cancelAnchoredCardPreviewClear]);
 
   const clearHover = useCallback(() => {
     setHoveredObjectId(null);
@@ -95,6 +122,8 @@ export function HoverProvider({ children }) {
       clearPreviewLinkedObjects,
       showAnchoredCardPreview,
       clearAnchoredCardPreview,
+      scheduleAnchoredCardPreviewClear,
+      cancelAnchoredCardPreviewClear,
     }),
     [
       hoverCard,
@@ -105,6 +134,8 @@ export function HoverProvider({ children }) {
       clearPreviewLinkedObjects,
       showAnchoredCardPreview,
       clearAnchoredCardPreview,
+      scheduleAnchoredCardPreviewClear,
+      cancelAnchoredCardPreviewClear,
     ]
   );
 
@@ -167,6 +198,8 @@ export function useHover() {
     clearPreviewLinkedObjects,
     showAnchoredCardPreview,
     clearAnchoredCardPreview,
+    scheduleAnchoredCardPreviewClear,
+    cancelAnchoredCardPreviewClear,
   } = useHoverActions();
   return {
     hoveredObjectId,
@@ -179,6 +212,8 @@ export function useHover() {
     clearPreviewLinkedObjects,
     showAnchoredCardPreview,
     clearAnchoredCardPreview,
+    scheduleAnchoredCardPreviewClear,
+    cancelAnchoredCardPreviewClear,
   };
 }
 
