@@ -12,6 +12,7 @@ import {
   saveSavedDeckPreset,
 } from "@/lib/decklists";
 import { setPreferredCardPrints } from "@/lib/scryfall";
+import CompetitiveDeckBrowser from "./CompetitiveDeckBrowser";
 
 const fieldClass =
   "w-full border border-[rgba(154,126,82,0.46)] bg-[#0b0d0e] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75";
@@ -43,6 +44,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
   const [selectedPresetName, setSelectedPresetName] = useState("");
   const [presetName, setPresetName] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [catalogTargetIndex, setCatalogTargetIndex] = useState(0);
 
   const handleTextChange = (index, value) => {
     setTexts((prev) => {
@@ -118,6 +120,11 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
     }
   };
 
+  const handleCatalogSelect = ({ deckText }) => {
+    handleTextChange(catalogTargetIndex, deckText);
+    setPresetName("");
+  };
+
   return (
     <main
       className="setup-screen deck-loading-screen table-gradient flex h-full min-h-0 flex-col overflow-hidden border border-[rgba(154,126,82,0.46)] bg-[linear-gradient(180deg,rgba(55,49,39,0.98),rgba(20,18,15,0.98))] p-3"
@@ -159,6 +166,14 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
             />
           </label>
         </div>
+      </div>
+      <div className="mb-3 shrink-0">
+        <CompetitiveDeckBrowser
+          players={players}
+          targetIndex={catalogTargetIndex}
+          onTargetChange={setCatalogTargetIndex}
+          onSelect={handleCatalogSelect}
+        />
       </div>
       <div
         className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto pr-1 xl:grid-cols-2"
