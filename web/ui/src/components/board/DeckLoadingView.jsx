@@ -18,6 +18,7 @@ import CompetitiveDeckBrowser from "./CompetitiveDeckBrowser";
 
 const fieldClass =
   "w-full border border-[rgba(154,126,82,0.46)] bg-[#0b0d0e] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75";
+const labelClass = "grid gap-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]";
 
 function ActionSpinner() {
   return <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 animate-spin" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" /><path d="M17 10a7 7 0 0 0-7-7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>;
@@ -239,7 +240,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
           <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">Mazos guardados</h2>
           <span className="text-[10px] uppercase tracking-wide text-[#8b806b]">{savedPresets.length}/{SAVED_DECK_PRESETS_LIMIT} disponibles en esta sesión</span>
         </div>
-        <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_auto_minmax(180px,260px)_auto]">
+        <div className="grid gap-2 md:grid-cols-[minmax(200px,1fr)_minmax(150px,190px)_auto_minmax(180px,260px)_auto]">
           <select
             className={fieldClass}
             value={selectedPresetName}
@@ -251,6 +252,16 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
               <option key={preset.name} value={preset.name}>{preset.name}</option>
             ))}
           </select>
+          <label className={labelClass}>¿Para quién?
+            <select
+              className={fieldClass}
+              value={catalogTargetIndex}
+              onChange={(event) => setCatalogTargetIndex(Number(event.target.value))}
+              aria-label="Jugador destino"
+            >
+              {players.map((player, index) => <option key={player.id || index} value={index}>{player.name}</option>)}
+            </select>
+          </label>
           <Button
             type="button"
             variant="ghost"
@@ -290,7 +301,6 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
         <CompetitiveDeckBrowser
           players={players}
           targetIndex={catalogTargetIndex}
-          onTargetChange={setCatalogTargetIndex}
           onSelect={handleCatalogSelect}
         />
       </div>

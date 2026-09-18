@@ -193,7 +193,7 @@ const DeckCarousel = memo(function DeckCarousel({ title, entries, targetPlayerNa
   );
 });
 
-export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetChange, onSelect }) {
+export default function CompetitiveDeckBrowser({ players, targetIndex, onSelect }) {
   const [catalog, setCatalog] = useState(null);
   const [catalogFormat, setCatalogFormat] = useState("modern");
   const [query, setQuery] = useState("");
@@ -349,9 +349,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
           <label className={labelClass}>Formato<select className={fieldClass} value={catalogFormat} onChange={(event) => { setCatalogFormat(event.target.value); resetCarousel(); }}>
             {catalogFormats.map((formatOption) => <option key={formatOption.id} value={formatOption.id}>{formatOption.label}</option>)}
           </select></label>
-          <label className={labelClass}>¿Para quién?<select className={fieldClass} value={targetIndex} onChange={(event) => onTargetChange(Number(event.target.value))}>
-            {players.map((player, index) => <option key={player.id || index} value={index}>{player.name}</option>)}
-          </select><span className="text-[10px] font-normal normal-case tracking-normal text-[#8b806b]" aria-live="polite">El deck elegido se pondrá en {targetPlayerName}.</span></label>
+          <span className="text-[10px] text-[#8b806b]" aria-live="polite">El deck elegido se pondrá en {targetPlayerName}.</span>
         </div>
       </div>
       <input className={fieldClass} value={query} onChange={(event) => { setQuery(event.target.value); resetCarousel(); }} placeholder="Broodscale Bloodchief, Dimir Control, Counterspell..." aria-label="Buscar en catálogo" />
