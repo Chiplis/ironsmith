@@ -1,8 +1,8 @@
 {
-  "id": "mtgtop8-90808-889594",
+  "id": "mtgtop8-90964-890812",
   "format": "modern",
-  "name": "UR Cutter Prowess",
-  "archetype": "UR Cutter Prowess",
+  "name": "UR Aggro",
+  "archetype": "UR Aggro",
   "colors": [
     "G",
     "R",
@@ -10,47 +10,56 @@
   ],
   "mechanics": [],
   "collections": [
-    "last-major-events"
+    "last-20-events"
   ],
   "cardNames": [
+    "Academic Dispute",
     "Arid Mesa",
-    "Bloodstained Mire",
+    "Boomerang Basics",
     "Consign to Memory",
     "Cori-Steel Cutter",
     "Dragon's Rage Channeler",
     "Expressive Iteration",
-    "Fiery Islet",
+    "Firebending Lesson",
+    "Island",
+    "It'll Quench Ya!",
     "Lava Dart",
     "Lightning Bolt",
     "Mishra's Bauble",
     "Monastery Swiftspear",
     "Mountain",
-    "Murktide Regent",
     "Mutagenic Growth",
+    "Obsidian Charmaw",
+    "Origin of Metalbending",
+    "Polluted Delta",
     "Preordain",
     "Scalding Tarn",
     "Slickshot Show-Off",
     "Spell Pierce",
-    "Spell Snare",
     "Steam Vents",
-    "Surgical Extraction",
+    "Stomping Ground",
+    "Stormchaser's Talent",
     "Thundering Falls",
     "Tormod's Crypt",
     "Unholy Heat",
-    "Violent Urge"
+    "Wooded Foothills"
   ],
-  "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-  "date": "2026-09-13",
-  "placement": 5,
+  "event": "MTGO League",
+  "date": "2026-09-17",
+  "placement": 7,
   "source": "mtgtop8",
-  "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889594&f=MO",
+  "sourceUrl": "https://mtgtop8.com/event?e=90964&d=890812&f=MO",
   "mainboard": [
     {
-      "name": "Arid Mesa",
+      "name": "Academic Dispute",
       "count": 3
     },
     {
-      "name": "Bloodstained Mire",
+      "name": "Arid Mesa",
+      "count": 1
+    },
+    {
+      "name": "Boomerang Basics",
       "count": 3
     },
     {
@@ -63,11 +72,11 @@
     },
     {
       "name": "Expressive Iteration",
-      "count": 4
+      "count": 2
     },
     {
-      "name": "Fiery Islet",
-      "count": 2
+      "name": "Island",
+      "count": 1
     },
     {
       "name": "Lava Dart",
@@ -75,7 +84,7 @@
     },
     {
       "name": "Lightning Bolt",
-      "count": 4
+      "count": 3
     },
     {
       "name": "Mishra's Bauble",
@@ -87,11 +96,15 @@
     },
     {
       "name": "Mountain",
-      "count": 3
+      "count": 2
     },
     {
       "name": "Mutagenic Growth",
-      "count": 4
+      "count": 2
+    },
+    {
+      "name": "Polluted Delta",
+      "count": 3
     },
     {
       "name": "Preordain",
@@ -99,14 +112,22 @@
     },
     {
       "name": "Scalding Tarn",
-      "count": 3
-    },
-    {
-      "name": "Slickshot Show-Off",
       "count": 4
     },
     {
+      "name": "Slickshot Show-Off",
+      "count": 2
+    },
+    {
       "name": "Steam Vents",
+      "count": 3
+    },
+    {
+      "name": "Stomping Ground",
+      "count": 1
+    },
+    {
+      "name": "Stormchaser's Talent",
       "count": 3
     },
     {
@@ -114,29 +135,37 @@
       "count": 1
     },
     {
-      "name": "Violent Urge",
+      "name": "Wooded Foothills",
       "count": 2
     }
   ],
   "sideboard": [
     {
-      "name": "Consign to Memory",
-      "count": 4
+      "name": "Boomerang Basics",
+      "count": 1
     },
     {
-      "name": "Murktide Regent",
+      "name": "Consign to Memory",
+      "count": 3
+    },
+    {
+      "name": "Firebending Lesson",
+      "count": 2
+    },
+    {
+      "name": "It'll Quench Ya!",
+      "count": 1
+    },
+    {
+      "name": "Obsidian Charmaw",
+      "count": 2
+    },
+    {
+      "name": "Origin of Metalbending",
       "count": 1
     },
     {
       "name": "Spell Pierce",
-      "count": 1
-    },
-    {
-      "name": "Spell Snare",
-      "count": 3
-    },
-    {
-      "name": "Surgical Extraction",
       "count": 1
     },
     {
@@ -145,14 +174,14 @@
     },
     {
       "name": "Unholy Heat",
-      "count": 4
+      "count": 3
     }
   ],
   "commander": [],
   "tags": [
     "Top 8"
   ],
-  "hash": "89aeb22732449737",
+  "hash": "bd513a53a360e24d",
   "manaProfile": {
     "colors": [
       "G",
@@ -160,13 +189,14 @@
       "U"
     ],
     "pipCounts": {
-      "R": 30,
-      "U": 8,
-      "G": 4
+      "R": 26,
+      "U": 12,
+      "G": 2
     },
     "sourceCounts": {
-      "R": 9,
-      "U": 6
+      "U": 5,
+      "R": 7,
+      "G": 1
     },
     "landCount": 18,
     "predominantColors": [
@@ -174,22 +204,22 @@
     ],
     "predominantLands": [
       {
-        "name": "Arid Mesa",
+        "name": "Scalding Tarn",
+        "count": 4
+      },
+      {
+        "name": "Polluted Delta",
         "count": 3
       },
       {
-        "name": "Bloodstained Mire",
-        "count": 3
-      },
-      {
-        "name": "Mountain",
+        "name": "Steam Vents",
         "count": 3
       }
     ],
     "metadataCoverage": {
       "source": "local-card-artifact",
-      "resolvedCardCount": 18,
-      "totalCardCount": 18,
+      "resolvedCardCount": 22,
+      "totalCardCount": 22,
       "unresolvedCardNames": [],
       "complete": true
     }

@@ -1,0 +1,194 @@
+{
+  "id": "mtgtop8-90928-890575",
+  "format": "pioneer",
+  "name": "Golgari Aggro",
+  "archetype": "Golgari Aggro",
+  "colors": [
+    "B",
+    "G"
+  ],
+  "mechanics": [],
+  "collections": [
+    "last-20-events"
+  ],
+  "cardNames": [
+    "Abrupt Decay",
+    "Ba Sing Se",
+    "Badgermole Cub",
+    "Blooming Marsh",
+    "Boseiju, Who Endures",
+    "Craterhoof Behemoth",
+    "Elvish Mystic",
+    "Enduring Vitality",
+    "Fatal Push",
+    "Fiend Artisan",
+    "Forest",
+    "Formidable Speaker",
+    "Keen-Eyed Curator",
+    "Kraul Harpooner",
+    "Lair of the Hydra",
+    "Llanowar Elves",
+    "Llanowar Wastes",
+    "Nature's Rhythm",
+    "Nykthos, Shrine to Nyx",
+    "Overgrown Tomb",
+    "Shang-Chi, Master of Kung Fu",
+    "Surrak, Elusive Hunter",
+    "The Unbeatable Squirrel Girl",
+    "Thoughtseize",
+    "Tyvar, Jubilant Brawler"
+  ],
+  "event": "MTGO League",
+  "date": "2026-09-16",
+  "placement": 3,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=90928&d=890575&f=PI",
+  "mainboard": [
+    {
+      "name": "Badgermole Cub",
+      "count": 4
+    },
+    {
+      "name": "Blooming Marsh",
+      "count": 4
+    },
+    {
+      "name": "Boseiju, Who Endures",
+      "count": 2
+    },
+    {
+      "name": "Craterhoof Behemoth",
+      "count": 1
+    },
+    {
+      "name": "Elvish Mystic",
+      "count": 4
+    },
+    {
+      "name": "Enduring Vitality",
+      "count": 4
+    },
+    {
+      "name": "Fiend Artisan",
+      "count": 4
+    },
+    {
+      "name": "Forest",
+      "count": 3
+    },
+    {
+      "name": "Formidable Speaker",
+      "count": 2
+    },
+    {
+      "name": "Lair of the Hydra",
+      "count": 1
+    },
+    {
+      "name": "Llanowar Elves",
+      "count": 4
+    },
+    {
+      "name": "Llanowar Wastes",
+      "count": 4
+    },
+    {
+      "name": "Nature's Rhythm",
+      "count": 4
+    },
+    {
+      "name": "Nykthos, Shrine to Nyx",
+      "count": 4
+    },
+    {
+      "name": "Overgrown Tomb",
+      "count": 4
+    },
+    {
+      "name": "Shang-Chi, Master of Kung Fu",
+      "count": 3
+    },
+    {
+      "name": "The Unbeatable Squirrel Girl",
+      "count": 4
+    },
+    {
+      "name": "Tyvar, Jubilant Brawler",
+      "count": 4
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Abrupt Decay",
+      "count": 2
+    },
+    {
+      "name": "Ba Sing Se",
+      "count": 1
+    },
+    {
+      "name": "Fatal Push",
+      "count": 2
+    },
+    {
+      "name": "Keen-Eyed Curator",
+      "count": 3
+    },
+    {
+      "name": "Kraul Harpooner",
+      "count": 1
+    },
+    {
+      "name": "Surrak, Elusive Hunter",
+      "count": 3
+    },
+    {
+      "name": "Thoughtseize",
+      "count": 3
+    }
+  ],
+  "commander": [],
+  "tags": [
+    "Top 8"
+  ],
+  "hash": "eba515d993398b6d",
+  "manaProfile": {
+    "colors": [
+      "B",
+      "G"
+    ],
+    "pipCounts": {
+      "G": 60,
+      "B": 12
+    },
+    "sourceCounts": {
+      "B": 8,
+      "G": 14
+    },
+    "landCount": 22,
+    "predominantColors": [
+      "G"
+    ],
+    "predominantLands": [
+      {
+        "name": "Blooming Marsh",
+        "count": 4
+      },
+      {
+        "name": "Llanowar Wastes",
+        "count": 4
+      },
+      {
+        "name": "Nykthos, Shrine to Nyx",
+        "count": 4
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact+scryfall",
+      "resolvedCardCount": 18,
+      "totalCardCount": 18,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
+}

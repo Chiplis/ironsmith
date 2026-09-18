@@ -10,6 +10,9 @@
     "W"
   ],
   "mechanics": [],
+  "collections": [
+    "last-major-events"
+  ],
   "cardNames": [
     "Arid Mesa",
     "Ashiok, Dream Render",
@@ -45,7 +48,7 @@
     "Wrath of the Skies"
   ],
   "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-  "date": "",
+  "date": "2026-09-13",
   "placement": 3,
   "source": "mtgtop8",
   "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889589&f=MO",
@@ -193,7 +196,7 @@
   "tags": [
     "Top 8"
   ],
-  "hash": "5a999fed997a895c",
+  "hash": "8ca185bd15c7437b",
   "manaProfile": {
     "colors": [
       "C",

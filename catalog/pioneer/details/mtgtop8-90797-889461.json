@@ -1,0 +1,255 @@
+{
+  "id": "mtgtop8-90797-889461",
+  "format": "pioneer",
+  "name": "Jeskai Control",
+  "archetype": "Jeskai Control",
+  "colors": [
+    "R",
+    "U",
+    "W"
+  ],
+  "mechanics": [],
+  "collections": [
+    "last-major-events"
+  ],
+  "cardNames": [
+    "Abandon Attachments",
+    "Abrade",
+    "Accumulate Wisdom",
+    "Airbender's Reversal",
+    "Anger of the Gods",
+    "Annul",
+    "Change the Equation",
+    "Combustion Technique",
+    "Deserted Beach",
+    "Divide by Zero",
+    "Firebending Lesson",
+    "Ghost Vacuum",
+    "Gran-Gran",
+    "Great Hall of the Biblioplex",
+    "Hallowed Fountain",
+    "Improvisation Capstone",
+    "Iroh's Demonstration",
+    "Island",
+    "It'll Quench Ya!",
+    "Jeskai Revelation",
+    "Negate",
+    "Pop Quiz",
+    "Price of Freedom",
+    "Riverglide Pathway",
+    "Riverpyre Verge",
+    "Sokka's Haiku",
+    "Soul-Guide Lantern",
+    "Spell Pierce",
+    "Spirebluff Canal",
+    "Steam Vents",
+    "Stock Up",
+    "Tablet of Discovery",
+    "Teachings of the Archaics",
+    "Thor, God of Thunder"
+  ],
+  "event": "MTGO RC Qualifier",
+  "date": "2026-09-13",
+  "placement": 5,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=90797&d=889461&f=PI",
+  "mainboard": [
+    {
+      "name": "Abandon Attachments",
+      "count": 3
+    },
+    {
+      "name": "Accumulate Wisdom",
+      "count": 3
+    },
+    {
+      "name": "Combustion Technique",
+      "count": 3
+    },
+    {
+      "name": "Deserted Beach",
+      "count": 1
+    },
+    {
+      "name": "Divide by Zero",
+      "count": 4
+    },
+    {
+      "name": "Firebending Lesson",
+      "count": 4
+    },
+    {
+      "name": "Gran-Gran",
+      "count": 4
+    },
+    {
+      "name": "Great Hall of the Biblioplex",
+      "count": 3
+    },
+    {
+      "name": "Hallowed Fountain",
+      "count": 3
+    },
+    {
+      "name": "Iroh's Demonstration",
+      "count": 1
+    },
+    {
+      "name": "Island",
+      "count": 3
+    },
+    {
+      "name": "It'll Quench Ya!",
+      "count": 2
+    },
+    {
+      "name": "Jeskai Revelation",
+      "count": 4
+    },
+    {
+      "name": "Pop Quiz",
+      "count": 1
+    },
+    {
+      "name": "Riverglide Pathway",
+      "count": 3
+    },
+    {
+      "name": "Riverpyre Verge",
+      "count": 2
+    },
+    {
+      "name": "Spell Pierce",
+      "count": 1
+    },
+    {
+      "name": "Spirebluff Canal",
+      "count": 4
+    },
+    {
+      "name": "Steam Vents",
+      "count": 4
+    },
+    {
+      "name": "Stock Up",
+      "count": 1
+    },
+    {
+      "name": "Tablet of Discovery",
+      "count": 4
+    },
+    {
+      "name": "Thor, God of Thunder",
+      "count": 2
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Abrade",
+      "count": 1
+    },
+    {
+      "name": "Accumulate Wisdom",
+      "count": 1
+    },
+    {
+      "name": "Airbender's Reversal",
+      "count": 1
+    },
+    {
+      "name": "Anger of the Gods",
+      "count": 1
+    },
+    {
+      "name": "Annul",
+      "count": 1
+    },
+    {
+      "name": "Change the Equation",
+      "count": 1
+    },
+    {
+      "name": "Combustion Technique",
+      "count": 1
+    },
+    {
+      "name": "Ghost Vacuum",
+      "count": 1
+    },
+    {
+      "name": "Improvisation Capstone",
+      "count": 1
+    },
+    {
+      "name": "Iroh's Demonstration",
+      "count": 1
+    },
+    {
+      "name": "Negate",
+      "count": 1
+    },
+    {
+      "name": "Price of Freedom",
+      "count": 1
+    },
+    {
+      "name": "Sokka's Haiku",
+      "count": 1
+    },
+    {
+      "name": "Soul-Guide Lantern",
+      "count": 1
+    },
+    {
+      "name": "Teachings of the Archaics",
+      "count": 1
+    }
+  ],
+  "commander": [],
+  "tags": [
+    "Top 8"
+  ],
+  "hash": "c6f8427d6488e103",
+  "manaProfile": {
+    "colors": [
+      "R",
+      "U",
+      "W"
+    ],
+    "pipCounts": {
+      "U": 23,
+      "R": 23,
+      "W": 4
+    },
+    "sourceCounts": {
+      "U": 20,
+      "W": 4,
+      "R": 13
+    },
+    "landCount": 23,
+    "predominantColors": [
+      "U"
+    ],
+    "predominantLands": [
+      {
+        "name": "Spirebluff Canal",
+        "count": 4
+      },
+      {
+        "name": "Steam Vents",
+        "count": 4
+      },
+      {
+        "name": "Great Hall of the Biblioplex",
+        "count": 3
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact+scryfall",
+      "resolvedCardCount": 22,
+      "totalCardCount": 22,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "id": "mtgtop8-90808-889598",
+  "id": "mtgtop8-90964-890808",
   "format": "modern",
   "name": "Broodscale Bloodchief",
   "archetype": "Broodscale Bloodchief",
@@ -10,7 +10,7 @@
   ],
   "mechanics": [],
   "collections": [
-    "last-major-events"
+    "last-20-events"
   ],
   "cardNames": [
     "Ancient Stirrings",
@@ -20,6 +20,7 @@
     "Cavern of Souls",
     "Devourer of Destiny",
     "Dismember",
+    "Disruptor Flute",
     "Eldrazi Temple",
     "Emrakul, the Promised End",
     "Forest",
@@ -30,8 +31,6 @@
     "Kozilek's Command",
     "Malevolent Rumble",
     "Nature's Claim",
-    "Pithing Needle",
-    "Run Afoul",
     "Shifting Woodland",
     "Sire of Seven Deaths",
     "Six",
@@ -46,11 +45,11 @@
     "Warping Wail",
     "Yavimaya, Cradle of Growth"
   ],
-  "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-  "date": "2026-09-13",
-  "placement": 9,
+  "event": "MTGO League",
+  "date": "2026-09-17",
+  "placement": 3,
   "source": "mtgtop8",
-  "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889598&f=MO",
+  "sourceUrl": "https://mtgtop8.com/event?e=90964&d=890808&f=MO",
   "mainboard": [
     {
       "name": "Ancient Stirrings",
@@ -74,7 +73,7 @@
     },
     {
       "name": "Devourer of Destiny",
-      "count": 2
+      "count": 3
     },
     {
       "name": "Dismember",
@@ -138,7 +137,7 @@
     },
     {
       "name": "Vexing Bauble",
-      "count": 2
+      "count": 1
     },
     {
       "name": "Yavimaya, Cradle of Growth",
@@ -147,24 +146,20 @@
   ],
   "sideboard": [
     {
-      "name": "Dismember",
+      "name": "Disruptor Flute",
+      "count": 2
+    },
+    {
+      "name": "Gemstone Caverns",
       "count": 1
     },
     {
       "name": "Grafdigger's Cage",
-      "count": 2
+      "count": 1
     },
     {
       "name": "Nature's Claim",
       "count": 2
-    },
-    {
-      "name": "Pithing Needle",
-      "count": 1
-    },
-    {
-      "name": "Run Afoul",
-      "count": 1
     },
     {
       "name": "Sire of Seven Deaths",
@@ -172,7 +167,7 @@
     },
     {
       "name": "Six",
-      "count": 2
+      "count": 1
     },
     {
       "name": "Thief of Existence",
@@ -180,11 +175,11 @@
     },
     {
       "name": "Trinisphere",
-      "count": 2
+      "count": 3
     },
     {
       "name": "Vexing Bauble",
-      "count": 1
+      "count": 2
     },
     {
       "name": "Warping Wail",
@@ -192,8 +187,10 @@
     }
   ],
   "commander": [],
-  "tags": [],
-  "hash": "0250380106d30c78",
+  "tags": [
+    "Top 8"
+  ],
+  "hash": "055ce300f681fe34",
   "manaProfile": {
     "colors": [
       "B",
@@ -202,7 +199,7 @@
     ],
     "pipCounts": {
       "G": 16,
-      "C": 13,
+      "C": 15,
       "B": 4
     },
     "sourceCounts": {

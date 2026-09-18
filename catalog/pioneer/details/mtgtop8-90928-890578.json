@@ -1,0 +1,206 @@
+{
+  "id": "mtgtop8-90928-890578",
+  "format": "pioneer",
+  "name": "Spirit Aggro",
+  "archetype": "Spirit Aggro",
+  "colors": [
+    "C",
+    "U",
+    "W"
+  ],
+  "mechanics": [],
+  "collections": [
+    "last-20-events"
+  ],
+  "cardNames": [
+    "Adarkar Wastes",
+    "Brazen Borrower",
+    "Curious Obsession",
+    "Destroy Evil",
+    "Disdainful Stroke",
+    "Eiganjo, Seat of the Empire",
+    "Enduring Curiosity",
+    "Enduring Innocence",
+    "Geistlight Snare",
+    "Hallowed Fountain",
+    "Hengegate Pathway",
+    "Island",
+    "Mausoleum Wanderer",
+    "Mutavault",
+    "Otawara, Soaring City",
+    "Plains",
+    "Portable Hole",
+    "Rattlechains",
+    "Rest in Peace",
+    "Seachrome Coast",
+    "Seam Rip",
+    "Sheltered by Ghosts",
+    "Skyclave Apparition",
+    "Spectral Sailor",
+    "Spell Queller",
+    "Supreme Phantom"
+  ],
+  "event": "MTGO League",
+  "date": "2026-09-16",
+  "placement": 6,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=90928&d=890578&f=PI",
+  "mainboard": [
+    {
+      "name": "Adarkar Wastes",
+      "count": 4
+    },
+    {
+      "name": "Brazen Borrower",
+      "count": 2
+    },
+    {
+      "name": "Curious Obsession",
+      "count": 3
+    },
+    {
+      "name": "Eiganjo, Seat of the Empire",
+      "count": 1
+    },
+    {
+      "name": "Enduring Curiosity",
+      "count": 2
+    },
+    {
+      "name": "Geistlight Snare",
+      "count": 4
+    },
+    {
+      "name": "Hallowed Fountain",
+      "count": 4
+    },
+    {
+      "name": "Hengegate Pathway",
+      "count": 4
+    },
+    {
+      "name": "Island",
+      "count": 2
+    },
+    {
+      "name": "Mausoleum Wanderer",
+      "count": 4
+    },
+    {
+      "name": "Mutavault",
+      "count": 2
+    },
+    {
+      "name": "Otawara, Soaring City",
+      "count": 1
+    },
+    {
+      "name": "Plains",
+      "count": 1
+    },
+    {
+      "name": "Rattlechains",
+      "count": 4
+    },
+    {
+      "name": "Seachrome Coast",
+      "count": 4
+    },
+    {
+      "name": "Seam Rip",
+      "count": 4
+    },
+    {
+      "name": "Sheltered by Ghosts",
+      "count": 2
+    },
+    {
+      "name": "Spectral Sailor",
+      "count": 4
+    },
+    {
+      "name": "Spell Queller",
+      "count": 4
+    },
+    {
+      "name": "Supreme Phantom",
+      "count": 4
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Destroy Evil",
+      "count": 2
+    },
+    {
+      "name": "Disdainful Stroke",
+      "count": 2
+    },
+    {
+      "name": "Enduring Innocence",
+      "count": 3
+    },
+    {
+      "name": "Plains",
+      "count": 1
+    },
+    {
+      "name": "Portable Hole",
+      "count": 2
+    },
+    {
+      "name": "Rest in Peace",
+      "count": 2
+    },
+    {
+      "name": "Skyclave Apparition",
+      "count": 3
+    }
+  ],
+  "commander": [],
+  "tags": [
+    "Top 8"
+  ],
+  "hash": "0b19736e2e39e552",
+  "manaProfile": {
+    "colors": [
+      "C",
+      "U",
+      "W"
+    ],
+    "pipCounts": {
+      "U": 37,
+      "W": 10
+    },
+    "sourceCounts": {
+      "W": 14,
+      "U": 15,
+      "C": 2
+    },
+    "landCount": 23,
+    "predominantColors": [
+      "U"
+    ],
+    "predominantLands": [
+      {
+        "name": "Adarkar Wastes",
+        "count": 4
+      },
+      {
+        "name": "Hallowed Fountain",
+        "count": 4
+      },
+      {
+        "name": "Hengegate Pathway",
+        "count": 4
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact+scryfall",
+      "resolvedCardCount": 20,
+      "totalCardCount": 20,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
+}

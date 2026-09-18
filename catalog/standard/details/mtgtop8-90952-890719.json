@@ -1,0 +1,212 @@
+{
+  "id": "mtgtop8-90952-890719",
+  "format": "standard",
+  "name": "Jund Sacrifice",
+  "archetype": "Jund Sacrifice",
+  "colors": [
+    "B",
+    "G",
+    "R"
+  ],
+  "mechanics": [],
+  "collections": [
+    "last-20-events"
+  ],
+  "cardNames": [
+    "Biotech Specialist",
+    "Blazemire Verge",
+    "Blood Crypt",
+    "Blooming Marsh",
+    "Callous Inspector",
+    "Deadly Precision",
+    "Duress",
+    "Fanatical Offering",
+    "Forest",
+    "Gene Pollinator",
+    "Greedy Freebooter",
+    "Guerrilla Gorilla",
+    "Mutagen Man, Living Ooze",
+    "Obsessive Pursuit",
+    "Overgrown Tomb",
+    "Professor Dellian Fel",
+    "Requiting Hex",
+    "Rottenmouth Viper",
+    "Starting Town",
+    "Stomping Ground",
+    "Strategic Betrayal",
+    "Swamp",
+    "The Ooze",
+    "The Sackville-Bagginses",
+    "Umbral Collar Zealot",
+    "Vinereap Mentor",
+    "Wastewood Verge"
+  ],
+  "event": "MTGO Challenge 16",
+  "date": "2026-09-17",
+  "placement": 5,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=90952&d=890719&f=ST",
+  "mainboard": [
+    {
+      "name": "Biotech Specialist",
+      "count": 4
+    },
+    {
+      "name": "Blazemire Verge",
+      "count": 4
+    },
+    {
+      "name": "Blood Crypt",
+      "count": 1
+    },
+    {
+      "name": "Blooming Marsh",
+      "count": 4
+    },
+    {
+      "name": "Callous Inspector",
+      "count": 4
+    },
+    {
+      "name": "Deadly Precision",
+      "count": 1
+    },
+    {
+      "name": "Fanatical Offering",
+      "count": 2
+    },
+    {
+      "name": "Forest",
+      "count": 1
+    },
+    {
+      "name": "Gene Pollinator",
+      "count": 4
+    },
+    {
+      "name": "Greedy Freebooter",
+      "count": 4
+    },
+    {
+      "name": "Mutagen Man, Living Ooze",
+      "count": 2
+    },
+    {
+      "name": "Obsessive Pursuit",
+      "count": 4
+    },
+    {
+      "name": "Overgrown Tomb",
+      "count": 3
+    },
+    {
+      "name": "Requiting Hex",
+      "count": 2
+    },
+    {
+      "name": "Rottenmouth Viper",
+      "count": 4
+    },
+    {
+      "name": "Starting Town",
+      "count": 4
+    },
+    {
+      "name": "Stomping Ground",
+      "count": 3
+    },
+    {
+      "name": "Swamp",
+      "count": 1
+    },
+    {
+      "name": "The Sackville-Bagginses",
+      "count": 4
+    },
+    {
+      "name": "Umbral Collar Zealot",
+      "count": 1
+    },
+    {
+      "name": "Vinereap Mentor",
+      "count": 2
+    },
+    {
+      "name": "Wastewood Verge",
+      "count": 1
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Duress",
+      "count": 2
+    },
+    {
+      "name": "Guerrilla Gorilla",
+      "count": 2
+    },
+    {
+      "name": "Professor Dellian Fel",
+      "count": 3
+    },
+    {
+      "name": "Requiting Hex",
+      "count": 2
+    },
+    {
+      "name": "Strategic Betrayal",
+      "count": 4
+    },
+    {
+      "name": "The Ooze",
+      "count": 2
+    }
+  ],
+  "commander": [],
+  "tags": [
+    "Top 8"
+  ],
+  "hash": "8c71bdd4f482a889",
+  "manaProfile": {
+    "colors": [
+      "B",
+      "G",
+      "R"
+    ],
+    "pipCounts": {
+      "R": 4,
+      "G": 14,
+      "B": 28
+    },
+    "sourceCounts": {
+      "B": 14,
+      "R": 8,
+      "G": 12
+    },
+    "landCount": 22,
+    "predominantColors": [
+      "B"
+    ],
+    "predominantLands": [
+      {
+        "name": "Blazemire Verge",
+        "count": 4
+      },
+      {
+        "name": "Blooming Marsh",
+        "count": 4
+      },
+      {
+        "name": "Starting Town",
+        "count": 4
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact",
+      "resolvedCardCount": 22,
+      "totalCardCount": 22,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
+}

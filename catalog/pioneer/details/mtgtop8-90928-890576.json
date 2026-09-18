@@ -1,0 +1,221 @@
+{
+  "id": "mtgtop8-90928-890576",
+  "format": "pioneer",
+  "name": "Greasefang Parhelion",
+  "archetype": "Greasefang Parhelion",
+  "colors": [
+    "B",
+    "C",
+    "W"
+  ],
+  "mechanics": [],
+  "collections": [
+    "last-20-events"
+  ],
+  "cardNames": [
+    "Bitter Triumph",
+    "Bleachbone Verge",
+    "Brightclimb Pathway",
+    "Concealed Courtyard",
+    "Doorkeeper Thrull",
+    "Eiganjo, Seat of the Empire",
+    "Fatal Push",
+    "Fleeting Spirit",
+    "Geier Reach Sanitarium",
+    "Godless Shrine",
+    "Greasefang, Okiba Boss",
+    "Guardian of New Benalia",
+    "Iron-Shield Elf",
+    "Lively Dirge",
+    "Loran of the Third Path",
+    "Monument to Endurance",
+    "Parhelion II",
+    "Pest Control",
+    "Plains",
+    "Ral Zarek, Guest Lecturer",
+    "Shadowy Backstreet",
+    "Sheltered by Ghosts",
+    "Soul-Guide Lantern",
+    "Swamp",
+    "Takenuma, Abandoned Mire",
+    "The Mycosynth Gardens",
+    "Thoughtseize",
+    "Urborg, Tomb of Yawgmoth",
+    "Vanishing Verse"
+  ],
+  "event": "MTGO League",
+  "date": "2026-09-16",
+  "placement": 4,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=90928&d=890576&f=PI",
+  "mainboard": [
+    {
+      "name": "Bleachbone Verge",
+      "count": 2
+    },
+    {
+      "name": "Brightclimb Pathway",
+      "count": 2
+    },
+    {
+      "name": "Concealed Courtyard",
+      "count": 4
+    },
+    {
+      "name": "Eiganjo, Seat of the Empire",
+      "count": 1
+    },
+    {
+      "name": "Fatal Push",
+      "count": 4
+    },
+    {
+      "name": "Fleeting Spirit",
+      "count": 4
+    },
+    {
+      "name": "Geier Reach Sanitarium",
+      "count": 1
+    },
+    {
+      "name": "Godless Shrine",
+      "count": 4
+    },
+    {
+      "name": "Greasefang, Okiba Boss",
+      "count": 4
+    },
+    {
+      "name": "Guardian of New Benalia",
+      "count": 3
+    },
+    {
+      "name": "Iron-Shield Elf",
+      "count": 4
+    },
+    {
+      "name": "Lively Dirge",
+      "count": 1
+    },
+    {
+      "name": "Monument to Endurance",
+      "count": 4
+    },
+    {
+      "name": "Parhelion II",
+      "count": 4
+    },
+    {
+      "name": "Plains",
+      "count": 1
+    },
+    {
+      "name": "Shadowy Backstreet",
+      "count": 2
+    },
+    {
+      "name": "Sheltered by Ghosts",
+      "count": 2
+    },
+    {
+      "name": "Swamp",
+      "count": 1
+    },
+    {
+      "name": "Takenuma, Abandoned Mire",
+      "count": 1
+    },
+    {
+      "name": "The Mycosynth Gardens",
+      "count": 4
+    },
+    {
+      "name": "Thoughtseize",
+      "count": 4
+    },
+    {
+      "name": "Urborg, Tomb of Yawgmoth",
+      "count": 1
+    },
+    {
+      "name": "Vanishing Verse",
+      "count": 2
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Bitter Triumph",
+      "count": 2
+    },
+    {
+      "name": "Doorkeeper Thrull",
+      "count": 4
+    },
+    {
+      "name": "Loran of the Third Path",
+      "count": 2
+    },
+    {
+      "name": "Pest Control",
+      "count": 2
+    },
+    {
+      "name": "Ral Zarek, Guest Lecturer",
+      "count": 2
+    },
+    {
+      "name": "Soul-Guide Lantern",
+      "count": 2
+    },
+    {
+      "name": "Vanishing Verse",
+      "count": 1
+    }
+  ],
+  "commander": [],
+  "tags": [
+    "Top 8"
+  ],
+  "hash": "82898eed48f9c788",
+  "manaProfile": {
+    "colors": [
+      "B",
+      "C",
+      "W"
+    ],
+    "pipCounts": {
+      "B": 19,
+      "W": 23
+    },
+    "sourceCounts": {
+      "B": 17,
+      "W": 16,
+      "C": 1
+    },
+    "landCount": 24,
+    "predominantColors": [
+      "B"
+    ],
+    "predominantLands": [
+      {
+        "name": "Concealed Courtyard",
+        "count": 4
+      },
+      {
+        "name": "Godless Shrine",
+        "count": 4
+      },
+      {
+        "name": "The Mycosynth Gardens",
+        "count": 4
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact",
+      "resolvedCardCount": 23,
+      "totalCardCount": 23,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
+}

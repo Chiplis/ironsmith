@@ -1,5 +1,5 @@
 {
-  "id": "mtgtop8-90808-889594",
+  "id": "mtgtop8-90964-890813",
   "format": "modern",
   "name": "UR Cutter Prowess",
   "archetype": "UR Cutter Prowess",
@@ -10,7 +10,7 @@
   ],
   "mechanics": [],
   "collections": [
-    "last-major-events"
+    "last-20-events"
   ],
   "cardNames": [
     "Arid Mesa",
@@ -25,8 +25,8 @@
     "Mishra's Bauble",
     "Monastery Swiftspear",
     "Mountain",
-    "Murktide Regent",
     "Mutagenic Growth",
+    "Mystical Dispute",
     "Preordain",
     "Scalding Tarn",
     "Slickshot Show-Off",
@@ -37,17 +37,18 @@
     "Thundering Falls",
     "Tormod's Crypt",
     "Unholy Heat",
-    "Violent Urge"
+    "Violent Urge",
+    "Wooded Foothills"
   ],
-  "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-  "date": "2026-09-13",
-  "placement": 5,
+  "event": "MTGO League",
+  "date": "2026-09-17",
+  "placement": 8,
   "source": "mtgtop8",
-  "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889594&f=MO",
+  "sourceUrl": "https://mtgtop8.com/event?e=90964&d=890813&f=MO",
   "mainboard": [
     {
       "name": "Arid Mesa",
-      "count": 3
+      "count": 2
     },
     {
       "name": "Bloodstained Mire",
@@ -99,7 +100,7 @@
     },
     {
       "name": "Scalding Tarn",
-      "count": 3
+      "count": 2
     },
     {
       "name": "Slickshot Show-Off",
@@ -116,6 +117,10 @@
     {
       "name": "Violent Urge",
       "count": 2
+    },
+    {
+      "name": "Wooded Foothills",
+      "count": 2
     }
   ],
   "sideboard": [
@@ -124,7 +129,7 @@
       "count": 4
     },
     {
-      "name": "Murktide Regent",
+      "name": "Mystical Dispute",
       "count": 1
     },
     {
@@ -152,7 +157,7 @@
   "tags": [
     "Top 8"
   ],
-  "hash": "89aeb22732449737",
+  "hash": "1f50c4d5f0b49bb1",
   "manaProfile": {
     "colors": [
       "G",
@@ -174,22 +179,22 @@
     ],
     "predominantLands": [
       {
-        "name": "Arid Mesa",
-        "count": 3
-      },
-      {
         "name": "Bloodstained Mire",
         "count": 3
       },
       {
         "name": "Mountain",
         "count": 3
+      },
+      {
+        "name": "Steam Vents",
+        "count": 3
       }
     ],
     "metadataCoverage": {
       "source": "local-card-artifact",
-      "resolvedCardCount": 18,
-      "totalCardCount": 18,
+      "resolvedCardCount": 19,
+      "totalCardCount": 19,
       "unresolvedCardNames": [],
       "complete": true
     }

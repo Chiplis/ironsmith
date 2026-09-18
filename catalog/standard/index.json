@@ -1,0 +1,1568 @@
+{
+  "schemaVersion": 1,
+  "format": "standard",
+  "generatedAt": "2026-09-18T19:42:01.243Z",
+  "decks": [
+    {
+      "id": "mtgtop8-90952-890717",
+      "format": "standard",
+      "name": "Boros Dragons",
+      "archetype": "Boros Dragons",
+      "colors": [
+        "R",
+        "W"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "R",
+          "W"
+        ],
+        "pipCounts": {
+          "R": 36,
+          "W": 14
+        },
+        "sourceCounts": {
+          "R": 13,
+          "W": 13
+        },
+        "landCount": 24,
+        "predominantColors": [
+          "R",
+          "W"
+        ],
+        "predominantLands": [
+          {
+            "name": "Inspiring Vantage",
+            "count": 4
+          },
+          {
+            "name": "Maelstrom of the Spirit Dragon",
+            "count": 4
+          },
+          {
+            "name": "Multiversal Passage",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 19,
+          "totalCardCount": 19,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Burst Lightning",
+        "Cavern of Souls",
+        "Clarion Conqueror",
+        "Dawn's Truce",
+        "Desolation of Smaug",
+        "Get Lost",
+        "Inspiring Vantage",
+        "Maelstrom of the Spirit Dragon",
+        "Magda, the Hoardmaster",
+        "Magmatic Hellkite",
+        "Momo, Friendly Flier",
+        "Mountain",
+        "Multiversal Passage",
+        "Nova Hellkite",
+        "Plains",
+        "Pyroclasm",
+        "Rest in Peace",
+        "Sacred Foundry",
+        "Sarkhan, Dragon Ascendant",
+        "Seam Rip",
+        "Smaug the Magnificent",
+        "Sunbillow Verge",
+        "The Legend of Roku",
+        "Twinmaw Stormbrood",
+        "Voice of Victory"
+      ],
+      "event": "MTGO Challenge 16",
+      "date": "2026-09-17",
+      "placement": 1,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90952&d=890717&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Burst Lightning",
+        "Cavern of Souls",
+        "Clarion Conqueror",
+        "Dawn's Truce",
+        "Desolation of Smaug",
+        "Get Lost",
+        "Inspiring Vantage",
+        "Maelstrom of the Spirit Dragon",
+        "Magda, the Hoardmaster",
+        "Magmatic Hellkite",
+        "Momo, Friendly Flier",
+        "Mountain",
+        "Multiversal Passage",
+        "Nova Hellkite",
+        "Plains",
+        "Pyroclasm",
+        "Rest in Peace",
+        "Sacred Foundry",
+        "Sarkhan, Dragon Ascendant",
+        "Seam Rip",
+        "Smaug the Magnificent",
+        "Sunbillow Verge",
+        "The Legend of Roku",
+        "Twinmaw Stormbrood",
+        "Voice of Victory"
+      ],
+      "hash": "661cc1ebdaf7f11e",
+      "detail": "details/mtgtop8-90952-890717.json"
+    },
+    {
+      "id": "mtgtop8-90952-890715",
+      "format": "standard",
+      "name": "Jeskai Control",
+      "archetype": "Jeskai Control",
+      "colors": [
+        "R",
+        "U",
+        "W"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "R",
+          "U",
+          "W"
+        ],
+        "pipCounts": {
+          "U": 23,
+          "R": 35,
+          "W": 3
+        },
+        "sourceCounts": {
+          "U": 17,
+          "W": 4,
+          "R": 16
+        },
+        "landCount": 25,
+        "predominantColors": [
+          "U"
+        ],
+        "predominantLands": [
+          {
+            "name": "Riverpyre Verge",
+            "count": 4
+          },
+          {
+            "name": "Great Hall of the Biblioplex",
+            "count": 2
+          },
+          {
+            "name": "Hallowed Fountain",
+            "count": 2
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact+scryfall",
+          "resolvedCardCount": 29,
+          "totalCardCount": 29,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Ashling's Command",
+        "Avengers Disassembled",
+        "Colorstorm Stallion",
+        "Disdainful Stroke",
+        "Fire Magic",
+        "Firebending Lesson",
+        "Flashfreeze",
+        "Ghost Vacuum",
+        "Great Hall of the Biblioplex",
+        "Hallowed Fountain",
+        "Impractical Joke",
+        "Improvisation Capstone",
+        "Into the Flood Maw",
+        "Island",
+        "Jeskai Revelation",
+        "Mistrise Village",
+        "Molten-Core Maestro",
+        "Mountain",
+        "Negate",
+        "Octopus Form",
+        "Return the Favor",
+        "Riverpyre Verge",
+        "Sanar, Unfinished Genius",
+        "Sear",
+        "Sorceress's Schemes",
+        "Soul-Guide Lantern",
+        "Spell Pierce",
+        "Spirebluff Canal",
+        "Splatter Technique",
+        "Starting Town",
+        "Steam Vents",
+        "Stock Up",
+        "Stormcarved Coast",
+        "Sundown Pass",
+        "Tablet of Discovery",
+        "Three Steps Ahead",
+        "Thundering Falls",
+        "Traumatic Critique"
+      ],
+      "event": "MTGO Challenge 16",
+      "date": "2026-09-17",
+      "placement": 2,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90952&d=890715&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Ashling's Command",
+        "Avengers Disassembled",
+        "Colorstorm Stallion",
+        "Disdainful Stroke",
+        "Fire Magic",
+        "Firebending Lesson",
+        "Flashfreeze",
+        "Ghost Vacuum",
+        "Great Hall of the Biblioplex",
+        "Hallowed Fountain",
+        "Impractical Joke",
+        "Improvisation Capstone",
+        "Into the Flood Maw",
+        "Island",
+        "Jeskai Revelation",
+        "Mistrise Village",
+        "Molten-Core Maestro",
+        "Mountain",
+        "Negate",
+        "Octopus Form",
+        "Return the Favor",
+        "Riverpyre Verge",
+        "Sanar, Unfinished Genius",
+        "Sear",
+        "Sorceress's Schemes",
+        "Soul-Guide Lantern",
+        "Spell Pierce",
+        "Spirebluff Canal",
+        "Splatter Technique",
+        "Starting Town",
+        "Steam Vents",
+        "Stock Up",
+        "Stormcarved Coast",
+        "Sundown Pass",
+        "Tablet of Discovery",
+        "Three Steps Ahead",
+        "Thundering Falls",
+        "Traumatic Critique"
+      ],
+      "hash": "e64c627fa759d49f",
+      "detail": "details/mtgtop8-90952-890715.json"
+    },
+    {
+      "id": "mtgtop8-90952-890712",
+      "format": "standard",
+      "name": "4/5C Control",
+      "archetype": "4/5C Control",
+      "colors": [
+        "B",
+        "R",
+        "U",
+        "W"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "R",
+          "U",
+          "W"
+        ],
+        "pipCounts": {
+          "B": 26,
+          "U": 10,
+          "R": 7,
+          "W": 4
+        },
+        "sourceCounts": {
+          "B": 13,
+          "R": 8,
+          "W": 7,
+          "U": 8
+        },
+        "landCount": 25,
+        "predominantColors": [
+          "B"
+        ],
+        "predominantLands": [
+          {
+            "name": "Great Hall of the Biblioplex",
+            "count": 4
+          },
+          {
+            "name": "Bleachbone Verge",
+            "count": 3
+          },
+          {
+            "name": "Watery Grave",
+            "count": 3
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact+scryfall",
+          "resolvedCardCount": 30,
+          "totalCardCount": 30,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Annul",
+        "Blazemire Verge",
+        "Bleachbone Verge",
+        "Blood Crypt",
+        "Day of Black Sun",
+        "Deadly Cover-Up",
+        "Disdainful Stroke",
+        "Dispelling Exhale",
+        "Duress",
+        "Firdoch Core",
+        "Flashback",
+        "Flashfreeze",
+        "Ghost Vacuum",
+        "Great Hall of the Biblioplex",
+        "Inevitable Defeat",
+        "Intimidation Tactics",
+        "Island",
+        "Jeskai Revelation",
+        "Mountain",
+        "Nowhere to Run",
+        "Plains",
+        "Plunder the Trollshaws",
+        "Requiting Hex",
+        "Riverpyre Verge",
+        "Sacred Foundry",
+        "Shattered Sanctum",
+        "Shoot the Sheriff",
+        "Starting Town",
+        "Steam Vents",
+        "Stock Up",
+        "Strategic Betrayal",
+        "Sundown Pass",
+        "Swamp",
+        "Tablet of Discovery",
+        "Together as One",
+        "Undercity Sewers",
+        "Unholy Annex / Ritual Chamber",
+        "Watery Grave"
+      ],
+      "event": "MTGO Challenge 16",
+      "date": "2026-09-17",
+      "placement": 3,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90952&d=890712&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Annul",
+        "Blazemire Verge",
+        "Bleachbone Verge",
+        "Blood Crypt",
+        "Day of Black Sun",
+        "Deadly Cover-Up",
+        "Disdainful Stroke",
+        "Dispelling Exhale",
+        "Duress",
+        "Firdoch Core",
+        "Flashback",
+        "Flashfreeze",
+        "Ghost Vacuum",
+        "Great Hall of the Biblioplex",
+        "Inevitable Defeat",
+        "Intimidation Tactics",
+        "Island",
+        "Jeskai Revelation",
+        "Mountain",
+        "Nowhere to Run",
+        "Plains",
+        "Plunder the Trollshaws",
+        "Requiting Hex",
+        "Riverpyre Verge",
+        "Sacred Foundry",
+        "Shattered Sanctum",
+        "Shoot the Sheriff",
+        "Starting Town",
+        "Steam Vents",
+        "Stock Up",
+        "Strategic Betrayal",
+        "Sundown Pass",
+        "Swamp",
+        "Tablet of Discovery",
+        "Together as One",
+        "Undercity Sewers",
+        "Unholy Annex / Ritual Chamber",
+        "Watery Grave"
+      ],
+      "hash": "f3419ed5737e312d",
+      "detail": "details/mtgtop8-90952-890712.json"
+    },
+    {
+      "id": "mtgtop8-90952-890714",
+      "format": "standard",
+      "name": "Mardu Aggro",
+      "archetype": "Mardu Aggro",
+      "colors": [
+        "B",
+        "R",
+        "W"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "R",
+          "W"
+        ],
+        "pipCounts": {
+          "B": 18,
+          "R": 17,
+          "W": 10
+        },
+        "sourceCounts": {
+          "B": 11,
+          "R": 11,
+          "W": 12
+        },
+        "landCount": 22,
+        "predominantColors": [
+          "W"
+        ],
+        "predominantLands": [
+          {
+            "name": "Blood Crypt",
+            "count": 4
+          },
+          {
+            "name": "Sacred Foundry",
+            "count": 4
+          },
+          {
+            "name": "Concealed Courtyard",
+            "count": 3
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 22,
+          "totalCardCount": 22,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Blood Crypt",
+        "Bloodghast",
+        "Case of the Crimson Pulse",
+        "Casey Jones, Vigilante",
+        "Cecil, Dark Knight",
+        "Concealed Courtyard",
+        "Cool but Rude",
+        "Day of Judgment",
+        "Erode",
+        "Godless Shrine",
+        "Hardened Academic",
+        "Inspiring Vantage",
+        "Inti, Seneschal of the Sun",
+        "Iron-Shield Elf",
+        "Marauding Mako",
+        "Monument to Endurance",
+        "Moonshadow",
+        "Mountain",
+        "Multiversal Passage",
+        "Practiced Offense",
+        "Requisition Raid",
+        "Requiting Hex",
+        "Sacred Foundry",
+        "Sheltered by Ghosts",
+        "Shoot the Sheriff",
+        "Starting Town",
+        "Strategic Betrayal",
+        "Swamp",
+        "Tersa Lightshatter"
+      ],
+      "event": "MTGO Challenge 16",
+      "date": "2026-09-17",
+      "placement": 3,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90952&d=890714&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Blood Crypt",
+        "Bloodghast",
+        "Case of the Crimson Pulse",
+        "Casey Jones, Vigilante",
+        "Cecil, Dark Knight",
+        "Concealed Courtyard",
+        "Cool but Rude",
+        "Day of Judgment",
+        "Erode",
+        "Godless Shrine",
+        "Hardened Academic",
+        "Inspiring Vantage",
+        "Inti, Seneschal of the Sun",
+        "Iron-Shield Elf",
+        "Marauding Mako",
+        "Monument to Endurance",
+        "Moonshadow",
+        "Mountain",
+        "Multiversal Passage",
+        "Practiced Offense",
+        "Requisition Raid",
+        "Requiting Hex",
+        "Sacred Foundry",
+        "Sheltered by Ghosts",
+        "Shoot the Sheriff",
+        "Starting Town",
+        "Strategic Betrayal",
+        "Swamp",
+        "Tersa Lightshatter"
+      ],
+      "hash": "550d73bbcdb0e643",
+      "detail": "details/mtgtop8-90952-890714.json"
+    },
+    {
+      "id": "mtgtop8-90952-890719",
+      "format": "standard",
+      "name": "Jund Sacrifice",
+      "archetype": "Jund Sacrifice",
+      "colors": [
+        "B",
+        "G",
+        "R"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "G",
+          "R"
+        ],
+        "pipCounts": {
+          "R": 4,
+          "G": 14,
+          "B": 28
+        },
+        "sourceCounts": {
+          "B": 14,
+          "R": 8,
+          "G": 12
+        },
+        "landCount": 22,
+        "predominantColors": [
+          "B"
+        ],
+        "predominantLands": [
+          {
+            "name": "Blazemire Verge",
+            "count": 4
+          },
+          {
+            "name": "Blooming Marsh",
+            "count": 4
+          },
+          {
+            "name": "Starting Town",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 22,
+          "totalCardCount": 22,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Biotech Specialist",
+        "Blazemire Verge",
+        "Blood Crypt",
+        "Blooming Marsh",
+        "Callous Inspector",
+        "Deadly Precision",
+        "Duress",
+        "Fanatical Offering",
+        "Forest",
+        "Gene Pollinator",
+        "Greedy Freebooter",
+        "Guerrilla Gorilla",
+        "Mutagen Man, Living Ooze",
+        "Obsessive Pursuit",
+        "Overgrown Tomb",
+        "Professor Dellian Fel",
+        "Requiting Hex",
+        "Rottenmouth Viper",
+        "Starting Town",
+        "Stomping Ground",
+        "Strategic Betrayal",
+        "Swamp",
+        "The Ooze",
+        "The Sackville-Bagginses",
+        "Umbral Collar Zealot",
+        "Vinereap Mentor",
+        "Wastewood Verge"
+      ],
+      "event": "MTGO Challenge 16",
+      "date": "2026-09-17",
+      "placement": 5,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90952&d=890719&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Biotech Specialist",
+        "Blazemire Verge",
+        "Blood Crypt",
+        "Blooming Marsh",
+        "Callous Inspector",
+        "Deadly Precision",
+        "Duress",
+        "Fanatical Offering",
+        "Forest",
+        "Gene Pollinator",
+        "Greedy Freebooter",
+        "Guerrilla Gorilla",
+        "Mutagen Man, Living Ooze",
+        "Obsessive Pursuit",
+        "Overgrown Tomb",
+        "Professor Dellian Fel",
+        "Requiting Hex",
+        "Rottenmouth Viper",
+        "Starting Town",
+        "Stomping Ground",
+        "Strategic Betrayal",
+        "Swamp",
+        "The Ooze",
+        "The Sackville-Bagginses",
+        "Umbral Collar Zealot",
+        "Vinereap Mentor",
+        "Wastewood Verge"
+      ],
+      "hash": "8c71bdd4f482a889",
+      "detail": "details/mtgtop8-90952-890719.json"
+    },
+    {
+      "id": "mtgtop8-90952-890713",
+      "format": "standard",
+      "name": "Mono Green Aggro",
+      "archetype": "Mono Green Aggro",
+      "colors": [
+        "C",
+        "G"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "C",
+          "G"
+        ],
+        "pipCounts": {
+          "G": 44
+        },
+        "sourceCounts": {
+          "G": 17,
+          "C": 1
+        },
+        "landCount": 26,
+        "predominantColors": [
+          "G"
+        ],
+        "predominantLands": [
+          {
+            "name": "Forest",
+            "count": 15
+          },
+          {
+            "name": "Fabled Passage",
+            "count": 4
+          },
+          {
+            "name": "Escape Tunnel",
+            "count": 3
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 18,
+          "totalCardCount": 18,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Ba Sing Se",
+        "Earthbender Ascension",
+        "Elven Passage",
+        "Escape Tunnel",
+        "Fabled Passage",
+        "Forest",
+        "Glimpse the Core",
+        "Icetill Explorer",
+        "Keen-Eyed Curator",
+        "Llanowar Elves",
+        "Meltstrider's Resolve",
+        "Mightform Harmonizer",
+        "Mossborn Hydra",
+        "Origin of Metalbending",
+        "Promising Vein",
+        "Sapling Nursery",
+        "Sazh's Chocobo",
+        "Snakeskin Veil",
+        "Soul-Guide Lantern",
+        "Surrak, Elusive Hunter",
+        "Torpor Orb",
+        "Warg Tactics"
+      ],
+      "event": "MTGO Challenge 16",
+      "date": "2026-09-17",
+      "placement": 5,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90952&d=890713&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Ba Sing Se",
+        "Earthbender Ascension",
+        "Elven Passage",
+        "Escape Tunnel",
+        "Fabled Passage",
+        "Forest",
+        "Glimpse the Core",
+        "Icetill Explorer",
+        "Keen-Eyed Curator",
+        "Llanowar Elves",
+        "Meltstrider's Resolve",
+        "Mightform Harmonizer",
+        "Mossborn Hydra",
+        "Origin of Metalbending",
+        "Promising Vein",
+        "Sapling Nursery",
+        "Sazh's Chocobo",
+        "Snakeskin Veil",
+        "Soul-Guide Lantern",
+        "Surrak, Elusive Hunter",
+        "Torpor Orb",
+        "Warg Tactics"
+      ],
+      "hash": "46144be54c13318c",
+      "detail": "details/mtgtop8-90952-890713.json"
+    },
+    {
+      "id": "mtgtop8-90842-889872",
+      "format": "standard",
+      "name": "Jund Aggro",
+      "archetype": "Jund Aggro",
+      "colors": [
+        "B",
+        "G",
+        "R"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-major-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "G",
+          "R"
+        ],
+        "pipCounts": {
+          "R": 4,
+          "G": 13,
+          "B": 28
+        },
+        "sourceCounts": {
+          "B": 13,
+          "R": 6,
+          "G": 12
+        },
+        "landCount": 21,
+        "predominantColors": [
+          "B"
+        ],
+        "predominantLands": [
+          {
+            "name": "Blooming Marsh",
+            "count": 4
+          },
+          {
+            "name": "Overgrown Tomb",
+            "count": 4
+          },
+          {
+            "name": "Starting Town",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 20,
+          "totalCardCount": 20,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Biotech Specialist",
+        "Blazemire Verge",
+        "Blooming Marsh",
+        "Callous Inspector",
+        "Deadly Precision",
+        "Duress",
+        "Forest",
+        "Gene Pollinator",
+        "Goldvein Hydra",
+        "Greedy Freebooter",
+        "Lively Dirge",
+        "Mutagen Man, Living Ooze",
+        "Obsessive Pursuit",
+        "Overgrown Tomb",
+        "Phoenix Fleet Airship",
+        "Professor Dellian Fel",
+        "Rottenmouth Viper",
+        "Shoot the Sheriff",
+        "Starting Town",
+        "Stomping Ground",
+        "Strategic Betrayal",
+        "Surrak, Elusive Hunter",
+        "Swamp",
+        "The Ooze",
+        "The Sackville-Bagginses",
+        "Tragic Trajectory",
+        "Umbral Collar Zealot",
+        "Urgent Necropsy",
+        "Vicious Rivalry"
+      ],
+      "event": "Champions Cup Premium Qualifier @ TC (Tokyo, Japan)",
+      "date": "2026-09-12",
+      "placement": 1,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90842&d=889872&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Biotech Specialist",
+        "Blazemire Verge",
+        "Blooming Marsh",
+        "Callous Inspector",
+        "Deadly Precision",
+        "Duress",
+        "Forest",
+        "Gene Pollinator",
+        "Goldvein Hydra",
+        "Greedy Freebooter",
+        "Lively Dirge",
+        "Mutagen Man, Living Ooze",
+        "Obsessive Pursuit",
+        "Overgrown Tomb",
+        "Phoenix Fleet Airship",
+        "Professor Dellian Fel",
+        "Rottenmouth Viper",
+        "Shoot the Sheriff",
+        "Starting Town",
+        "Stomping Ground",
+        "Strategic Betrayal",
+        "Surrak, Elusive Hunter",
+        "Swamp",
+        "The Ooze",
+        "The Sackville-Bagginses",
+        "Tragic Trajectory",
+        "Umbral Collar Zealot",
+        "Urgent Necropsy",
+        "Vicious Rivalry"
+      ],
+      "hash": "e50488fb52c84eda",
+      "detail": "details/mtgtop8-90842-889872.json"
+    },
+    {
+      "id": "mtgtop8-90842-889873",
+      "format": "standard",
+      "name": "Jund Aggro",
+      "archetype": "Jund Aggro",
+      "colors": [
+        "B",
+        "G",
+        "R"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-major-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "G",
+          "R"
+        ],
+        "pipCounts": {
+          "R": 4,
+          "G": 12,
+          "B": 28
+        },
+        "sourceCounts": {
+          "B": 13,
+          "R": 7,
+          "G": 13
+        },
+        "landCount": 22,
+        "predominantColors": [
+          "B",
+          "G"
+        ],
+        "predominantLands": [
+          {
+            "name": "Blooming Marsh",
+            "count": 4
+          },
+          {
+            "name": "Overgrown Tomb",
+            "count": 4
+          },
+          {
+            "name": "Starting Town",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 21,
+          "totalCardCount": 21,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Biotech Specialist",
+        "Blazemire Verge",
+        "Blooming Marsh",
+        "Callous Inspector",
+        "Chandra, Spark Hunter",
+        "Deadly Precision",
+        "Duress",
+        "Fire Magic",
+        "Forest",
+        "Gene Pollinator",
+        "Greedy Freebooter",
+        "Lively Dirge",
+        "Mountain",
+        "Mutagen Man, Living Ooze",
+        "Obsessive Pursuit",
+        "Overgrown Tomb",
+        "Professor Dellian Fel",
+        "Shoot the Sheriff",
+        "Starting Town",
+        "Stomping Ground",
+        "Strategic Betrayal",
+        "Super Shredder",
+        "Surrak, Elusive Hunter",
+        "Swamp",
+        "The Ooze",
+        "The Sackville-Bagginses",
+        "Tragic Trajectory",
+        "Umbral Collar Zealot",
+        "Urgent Necropsy",
+        "Wastewood Verge"
+      ],
+      "event": "Champions Cup Premium Qualifier @ TC (Tokyo, Japan)",
+      "date": "2026-09-12",
+      "placement": 2,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90842&d=889873&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Biotech Specialist",
+        "Blazemire Verge",
+        "Blooming Marsh",
+        "Callous Inspector",
+        "Chandra, Spark Hunter",
+        "Deadly Precision",
+        "Duress",
+        "Fire Magic",
+        "Forest",
+        "Gene Pollinator",
+        "Greedy Freebooter",
+        "Lively Dirge",
+        "Mountain",
+        "Mutagen Man, Living Ooze",
+        "Obsessive Pursuit",
+        "Overgrown Tomb",
+        "Professor Dellian Fel",
+        "Shoot the Sheriff",
+        "Starting Town",
+        "Stomping Ground",
+        "Strategic Betrayal",
+        "Super Shredder",
+        "Surrak, Elusive Hunter",
+        "Swamp",
+        "The Ooze",
+        "The Sackville-Bagginses",
+        "Tragic Trajectory",
+        "Umbral Collar Zealot",
+        "Urgent Necropsy",
+        "Wastewood Verge"
+      ],
+      "hash": "f94ea67a573c76a3",
+      "detail": "details/mtgtop8-90842-889873.json"
+    },
+    {
+      "id": "mtgtop8-90842-889875",
+      "format": "standard",
+      "name": "Boros Aggro",
+      "archetype": "Boros Aggro",
+      "colors": [
+        "R",
+        "W"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-major-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "R",
+          "W"
+        ],
+        "pipCounts": {
+          "R": 14,
+          "W": 4
+        },
+        "sourceCounts": {
+          "R": 17,
+          "W": 14
+        },
+        "landCount": 23,
+        "predominantColors": [
+          "R"
+        ],
+        "predominantLands": [
+          {
+            "name": "Cavern of Souls",
+            "count": 4
+          },
+          {
+            "name": "Inspiring Vantage",
+            "count": 4
+          },
+          {
+            "name": "Sacred Foundry",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact+scryfall",
+          "resolvedCardCount": 17,
+          "totalCardCount": 19,
+          "unresolvedCardNames": [
+            "D�in's Company",
+            "K�li the Resourceful"
+          ],
+          "complete": false
+        }
+      },
+      "cardNames": [
+        "Basilisk Collar",
+        "Bofur, Reliable Guardian",
+        "Cavern of Souls",
+        "Chainsaw",
+        "Dawn's Truce",
+        "Dragonfire Blade",
+        "Dwalin, Weaponmaster",
+        "Dwarven Mauler",
+        "D�in's Company",
+        "Erode",
+        "Giott, King of the Dwarves",
+        "Inspiring Vantage",
+        "Iron Man Armor",
+        "K�li the Resourceful",
+        "Lavaspur Boots",
+        "Leyline Axe",
+        "Mj�lnir, Hammer of Thor",
+        "Mountain",
+        "Plains",
+        "Rest in Peace",
+        "Sacred Foundry",
+        "Shattered Acolyte",
+        "Sunbillow Verge",
+        "Sunspine Lynx",
+        "The Lonely Mountain",
+        "Thorin, Mountain-king",
+        "Voice of Victory"
+      ],
+      "event": "Champions Cup Premium Qualifier @ TC (Tokyo, Japan)",
+      "date": "2026-09-12",
+      "placement": 3,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90842&d=889875&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Basilisk Collar",
+        "Bofur, Reliable Guardian",
+        "Cavern of Souls",
+        "Chainsaw",
+        "Dawn's Truce",
+        "Dragonfire Blade",
+        "Dwalin, Weaponmaster",
+        "Dwarven Mauler",
+        "D�in's Company",
+        "Erode",
+        "Giott, King of the Dwarves",
+        "Inspiring Vantage",
+        "Iron Man Armor",
+        "K�li the Resourceful",
+        "Lavaspur Boots",
+        "Leyline Axe",
+        "Mj�lnir, Hammer of Thor",
+        "Mountain",
+        "Plains",
+        "Rest in Peace",
+        "Sacred Foundry",
+        "Shattered Acolyte",
+        "Sunbillow Verge",
+        "Sunspine Lynx",
+        "The Lonely Mountain",
+        "Thorin, Mountain-king",
+        "Voice of Victory"
+      ],
+      "hash": "4a205ecbdcb7eeeb",
+      "detail": "details/mtgtop8-90842-889875.json"
+    },
+    {
+      "id": "mtgtop8-90842-889874",
+      "format": "standard",
+      "name": "Jund Aggro",
+      "archetype": "Jund Aggro",
+      "colors": [
+        "B",
+        "G",
+        "R"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-major-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "G",
+          "R"
+        ],
+        "pipCounts": {
+          "R": 4,
+          "G": 12,
+          "B": 29
+        },
+        "sourceCounts": {
+          "B": 13,
+          "R": 7,
+          "G": 12
+        },
+        "landCount": 21,
+        "predominantColors": [
+          "B"
+        ],
+        "predominantLands": [
+          {
+            "name": "Blooming Marsh",
+            "count": 4
+          },
+          {
+            "name": "Overgrown Tomb",
+            "count": 4
+          },
+          {
+            "name": "Starting Town",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 20,
+          "totalCardCount": 20,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Biotech Specialist",
+        "Blazemire Verge",
+        "Blood Crypt",
+        "Blooming Marsh",
+        "Callous Inspector",
+        "Deadly Precision",
+        "Duress",
+        "Forest",
+        "Gene Pollinator",
+        "Greedy Freebooter",
+        "Lively Dirge",
+        "Mutagen Man, Living Ooze",
+        "Obsessive Pursuit",
+        "Overgrown Tomb",
+        "Phoenix Fleet Airship",
+        "Professor Dellian Fel",
+        "Rottenmouth Viper",
+        "Shoot the Sheriff",
+        "Starting Town",
+        "Stomping Ground",
+        "Strategic Betrayal",
+        "Swamp",
+        "The Ooze",
+        "The Sackville-Bagginses",
+        "Tragic Trajectory",
+        "Umbral Collar Zealot",
+        "Ygra, Eater of All"
+      ],
+      "event": "Champions Cup Premium Qualifier @ TC (Tokyo, Japan)",
+      "date": "2026-09-12",
+      "placement": 3,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90842&d=889874&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Biotech Specialist",
+        "Blazemire Verge",
+        "Blood Crypt",
+        "Blooming Marsh",
+        "Callous Inspector",
+        "Deadly Precision",
+        "Duress",
+        "Forest",
+        "Gene Pollinator",
+        "Greedy Freebooter",
+        "Lively Dirge",
+        "Mutagen Man, Living Ooze",
+        "Obsessive Pursuit",
+        "Overgrown Tomb",
+        "Phoenix Fleet Airship",
+        "Professor Dellian Fel",
+        "Rottenmouth Viper",
+        "Shoot the Sheriff",
+        "Starting Town",
+        "Stomping Ground",
+        "Strategic Betrayal",
+        "Swamp",
+        "The Ooze",
+        "The Sackville-Bagginses",
+        "Tragic Trajectory",
+        "Umbral Collar Zealot",
+        "Ygra, Eater of All"
+      ],
+      "hash": "8f601441d91e99b6",
+      "detail": "details/mtgtop8-90842-889874.json"
+    },
+    {
+      "id": "mtgtop8-90842-889876",
+      "format": "standard",
+      "name": "Dimir Aggro",
+      "archetype": "Dimir Aggro",
+      "colors": [
+        "B",
+        "U"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-major-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "U"
+        ],
+        "pipCounts": {
+          "B": 16,
+          "U": 26
+        },
+        "sourceCounts": {
+          "B": 16,
+          "U": 16
+        },
+        "landCount": 24,
+        "predominantColors": [
+          "B",
+          "U"
+        ],
+        "predominantLands": [
+          {
+            "name": "Island",
+            "count": 5
+          },
+          {
+            "name": "Swamp",
+            "count": 5
+          },
+          {
+            "name": "Gloomlake Verge",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact+scryfall",
+          "resolvedCardCount": 17,
+          "totalCardCount": 17,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Cecil, Dark Knight",
+        "Day of Black Sun",
+        "Dream Beavers",
+        "Enduring Curiosity",
+        "Flashfreeze",
+        "Ghost Vacuum",
+        "Gloomlake Verge",
+        "Head of the Hunt",
+        "Hidden Lair",
+        "Island",
+        "Kaito, Bane of Nightmares",
+        "Lord Skitter, Sewer King",
+        "Requiting Hex",
+        "Restless Reef",
+        "Shoot the Sheriff",
+        "Spectral Sailor",
+        "Spell Pierce",
+        "Spell Snare",
+        "Spyglass Siren",
+        "Strategic Betrayal",
+        "Swamp",
+        "Wan Shi Tong, Librarian",
+        "Watery Grave",
+        "We Say Thee Nay!"
+      ],
+      "event": "Champions Cup Premium Qualifier @ TC (Tokyo, Japan)",
+      "date": "2026-09-12",
+      "placement": 5,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90842&d=889876&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Cecil, Dark Knight",
+        "Day of Black Sun",
+        "Dream Beavers",
+        "Enduring Curiosity",
+        "Flashfreeze",
+        "Ghost Vacuum",
+        "Gloomlake Verge",
+        "Head of the Hunt",
+        "Hidden Lair",
+        "Island",
+        "Kaito, Bane of Nightmares",
+        "Lord Skitter, Sewer King",
+        "Requiting Hex",
+        "Restless Reef",
+        "Shoot the Sheriff",
+        "Spectral Sailor",
+        "Spell Pierce",
+        "Spell Snare",
+        "Spyglass Siren",
+        "Strategic Betrayal",
+        "Swamp",
+        "Wan Shi Tong, Librarian",
+        "Watery Grave",
+        "We Say Thee Nay!"
+      ],
+      "hash": "974eb611227645ed",
+      "detail": "details/mtgtop8-90842-889876.json"
+    },
+    {
+      "id": "mtgtop8-90842-889877",
+      "format": "standard",
+      "name": "Izzet Spellementals",
+      "archetype": "Izzet Spellementals",
+      "colors": [
+        "R",
+        "U"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-major-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "R",
+          "U"
+        ],
+        "pipCounts": {
+          "R": 20,
+          "U": 43
+        },
+        "sourceCounts": {
+          "U": 18,
+          "R": 12
+        },
+        "landCount": 20,
+        "predominantColors": [
+          "U"
+        ],
+        "predominantLands": [
+          {
+            "name": "Island",
+            "count": 6
+          },
+          {
+            "name": "Riverpyre Verge",
+            "count": 4
+          },
+          {
+            "name": "Spirebluff Canal",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 18,
+          "totalCardCount": 18,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Abrade",
+        "Annul",
+        "Burst Lightning",
+        "Colorstorm Stallion",
+        "Disdainful Stroke",
+        "Eddymurk Crab",
+        "Fire Magic",
+        "Flashfreeze",
+        "Get Out",
+        "Hearth Elemental",
+        "Impractical Joke",
+        "Island",
+        "Multiversal Passage",
+        "Opt",
+        "Prismari Charm",
+        "Riverpyre Verge",
+        "Sear",
+        "Sleight of Hand",
+        "Spell Pierce",
+        "Spell Snare",
+        "Spirebluff Canal",
+        "Steam Vents",
+        "Sunderflock",
+        "Traumatic Critique",
+        "Wan Shi Tong, Librarian",
+        "Winternight Stories"
+      ],
+      "event": "Champions Cup Premium Qualifier @ TC (Tokyo, Japan)",
+      "date": "2026-09-12",
+      "placement": 5,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90842&d=889877&f=ST",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Abrade",
+        "Annul",
+        "Burst Lightning",
+        "Colorstorm Stallion",
+        "Disdainful Stroke",
+        "Eddymurk Crab",
+        "Fire Magic",
+        "Flashfreeze",
+        "Get Out",
+        "Hearth Elemental",
+        "Impractical Joke",
+        "Island",
+        "Multiversal Passage",
+        "Opt",
+        "Prismari Charm",
+        "Riverpyre Verge",
+        "Sear",
+        "Sleight of Hand",
+        "Spell Pierce",
+        "Spell Snare",
+        "Spirebluff Canal",
+        "Steam Vents",
+        "Sunderflock",
+        "Traumatic Critique",
+        "Wan Shi Tong, Librarian",
+        "Winternight Stories"
+      ],
+      "hash": "c10ba80ce2c38334",
+      "detail": "details/mtgtop8-90842-889877.json"
+    }
+  ]
+}

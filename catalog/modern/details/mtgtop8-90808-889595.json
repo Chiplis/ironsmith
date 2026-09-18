@@ -9,6 +9,9 @@
     "W"
   ],
   "mechanics": [],
+  "collections": [
+    "last-major-events"
+  ],
   "cardNames": [
     "Bleachbone Verge",
     "Boggart Trawler",
@@ -45,7 +48,7 @@
     "Wrath of the Skies"
   ],
   "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-  "date": "",
+  "date": "2026-09-13",
   "placement": 9,
   "source": "mtgtop8",
   "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889595&f=MO",
@@ -195,7 +198,7 @@
   ],
   "commander": [],
   "tags": [],
-  "hash": "3c103ea94f6e642d",
+  "hash": "4c0d61c76a40d225",
   "manaProfile": {
     "colors": [
       "B",

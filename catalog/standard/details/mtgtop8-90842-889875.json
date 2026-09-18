@@ -1,0 +1,211 @@
+{
+  "id": "mtgtop8-90842-889875",
+  "format": "standard",
+  "name": "Boros Aggro",
+  "archetype": "Boros Aggro",
+  "colors": [
+    "R",
+    "W"
+  ],
+  "mechanics": [],
+  "collections": [
+    "last-major-events"
+  ],
+  "cardNames": [
+    "Basilisk Collar",
+    "Bofur, Reliable Guardian",
+    "Cavern of Souls",
+    "Chainsaw",
+    "Dawn's Truce",
+    "Dragonfire Blade",
+    "Dwalin, Weaponmaster",
+    "Dwarven Mauler",
+    "D�in's Company",
+    "Erode",
+    "Giott, King of the Dwarves",
+    "Inspiring Vantage",
+    "Iron Man Armor",
+    "K�li the Resourceful",
+    "Lavaspur Boots",
+    "Leyline Axe",
+    "Mj�lnir, Hammer of Thor",
+    "Mountain",
+    "Plains",
+    "Rest in Peace",
+    "Sacred Foundry",
+    "Shattered Acolyte",
+    "Sunbillow Verge",
+    "Sunspine Lynx",
+    "The Lonely Mountain",
+    "Thorin, Mountain-king",
+    "Voice of Victory"
+  ],
+  "event": "Champions Cup Premium Qualifier @ TC (Tokyo, Japan)",
+  "date": "2026-09-12",
+  "placement": 3,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=90842&d=889875&f=ST",
+  "mainboard": [
+    {
+      "name": "Basilisk Collar",
+      "count": 2
+    },
+    {
+      "name": "Cavern of Souls",
+      "count": 4
+    },
+    {
+      "name": "Chainsaw",
+      "count": 2
+    },
+    {
+      "name": "Dragonfire Blade",
+      "count": 4
+    },
+    {
+      "name": "Dwalin, Weaponmaster",
+      "count": 3
+    },
+    {
+      "name": "Dwarven Mauler",
+      "count": 4
+    },
+    {
+      "name": "D�in's Company",
+      "count": 4
+    },
+    {
+      "name": "Giott, King of the Dwarves",
+      "count": 1
+    },
+    {
+      "name": "Inspiring Vantage",
+      "count": 4
+    },
+    {
+      "name": "Iron Man Armor",
+      "count": 1
+    },
+    {
+      "name": "K�li the Resourceful",
+      "count": 4
+    },
+    {
+      "name": "Lavaspur Boots",
+      "count": 4
+    },
+    {
+      "name": "Leyline Axe",
+      "count": 4
+    },
+    {
+      "name": "Mountain",
+      "count": 1
+    },
+    {
+      "name": "Plains",
+      "count": 2
+    },
+    {
+      "name": "Sacred Foundry",
+      "count": 4
+    },
+    {
+      "name": "Sunbillow Verge",
+      "count": 4
+    },
+    {
+      "name": "The Lonely Mountain",
+      "count": 4
+    },
+    {
+      "name": "Thorin, Mountain-king",
+      "count": 4
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Bofur, Reliable Guardian",
+      "count": 2
+    },
+    {
+      "name": "Chainsaw",
+      "count": 1
+    },
+    {
+      "name": "Dawn's Truce",
+      "count": 1
+    },
+    {
+      "name": "Erode",
+      "count": 2
+    },
+    {
+      "name": "Mj�lnir, Hammer of Thor",
+      "count": 1
+    },
+    {
+      "name": "Rest in Peace",
+      "count": 3
+    },
+    {
+      "name": "Shattered Acolyte",
+      "count": 2
+    },
+    {
+      "name": "Sunspine Lynx",
+      "count": 1
+    },
+    {
+      "name": "Voice of Victory",
+      "count": 2
+    }
+  ],
+  "commander": [],
+  "tags": [
+    "Top 8"
+  ],
+  "hash": "4a205ecbdcb7eeeb",
+  "manaProfile": {
+    "colors": [
+      "R",
+      "W"
+    ],
+    "pipCounts": {
+      "R": 14,
+      "W": 4
+    },
+    "sourceCounts": {
+      "R": 17,
+      "W": 14
+    },
+    "landCount": 23,
+    "predominantColors": [
+      "R"
+    ],
+    "predominantLands": [
+      {
+        "name": "Cavern of Souls",
+        "count": 4
+      },
+      {
+        "name": "Inspiring Vantage",
+        "count": 4
+      },
+      {
+        "name": "Sacred Foundry",
+        "count": 4
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact+scryfall",
+      "resolvedCardCount": 17,
+      "totalCardCount": 19,
+      "unresolvedCardNames": [
+        "D�in's Company",
+        "K�li the Resourceful"
+      ],
+      "complete": false
+    }
+  }
+}

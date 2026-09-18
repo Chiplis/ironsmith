@@ -10,6 +10,9 @@
     "W"
   ],
   "mechanics": [],
+  "collections": [
+    "last-major-events"
+  ],
   "cardNames": [
     "Atraxa, Grand Unifier",
     "Breeding Pool",
@@ -45,7 +48,7 @@
     "Wrath of the Skies"
   ],
   "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-  "date": "",
+  "date": "2026-09-13",
   "placement": 5,
   "source": "mtgtop8",
   "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889591&f=MO",
@@ -189,7 +192,7 @@
   "tags": [
     "Top 8"
   ],
-  "hash": "684c5f3542b59f5d",
+  "hash": "9e6a4381e53d4fb8",
   "manaProfile": {
     "colors": [
       "B",

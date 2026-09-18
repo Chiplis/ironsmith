@@ -10,6 +10,9 @@
     "W"
   ],
   "mechanics": [],
+  "collections": [
+    "last-major-events"
+  ],
   "cardNames": [
     "Consign to Memory",
     "Damping Sphere",
@@ -46,7 +49,7 @@
     "Welding Jar"
   ],
   "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-  "date": "",
+  "date": "2026-09-13",
   "placement": 5,
   "source": "mtgtop8",
   "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889593&f=MO",
@@ -194,7 +197,7 @@
   "tags": [
     "Top 8"
   ],
-  "hash": "b19216bc3599272c",
+  "hash": "c05198598a17c06c",
   "manaProfile": {
     "colors": [
       "C",

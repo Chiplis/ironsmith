@@ -1,0 +1,199 @@
+{
+  "id": "mtgtop8-90952-890717",
+  "format": "standard",
+  "name": "Boros Dragons",
+  "archetype": "Boros Dragons",
+  "colors": [
+    "R",
+    "W"
+  ],
+  "mechanics": [],
+  "collections": [
+    "last-20-events"
+  ],
+  "cardNames": [
+    "Burst Lightning",
+    "Cavern of Souls",
+    "Clarion Conqueror",
+    "Dawn's Truce",
+    "Desolation of Smaug",
+    "Get Lost",
+    "Inspiring Vantage",
+    "Maelstrom of the Spirit Dragon",
+    "Magda, the Hoardmaster",
+    "Magmatic Hellkite",
+    "Momo, Friendly Flier",
+    "Mountain",
+    "Multiversal Passage",
+    "Nova Hellkite",
+    "Plains",
+    "Pyroclasm",
+    "Rest in Peace",
+    "Sacred Foundry",
+    "Sarkhan, Dragon Ascendant",
+    "Seam Rip",
+    "Smaug the Magnificent",
+    "Sunbillow Verge",
+    "The Legend of Roku",
+    "Twinmaw Stormbrood",
+    "Voice of Victory"
+  ],
+  "event": "MTGO Challenge 16",
+  "date": "2026-09-17",
+  "placement": 1,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=90952&d=890717&f=ST",
+  "mainboard": [
+    {
+      "name": "Burst Lightning",
+      "count": 4
+    },
+    {
+      "name": "Cavern of Souls",
+      "count": 2
+    },
+    {
+      "name": "Clarion Conqueror",
+      "count": 4
+    },
+    {
+      "name": "Get Lost",
+      "count": 2
+    },
+    {
+      "name": "Inspiring Vantage",
+      "count": 4
+    },
+    {
+      "name": "Maelstrom of the Spirit Dragon",
+      "count": 4
+    },
+    {
+      "name": "Magda, the Hoardmaster",
+      "count": 2
+    },
+    {
+      "name": "Magmatic Hellkite",
+      "count": 4
+    },
+    {
+      "name": "Momo, Friendly Flier",
+      "count": 4
+    },
+    {
+      "name": "Mountain",
+      "count": 1
+    },
+    {
+      "name": "Multiversal Passage",
+      "count": 4
+    },
+    {
+      "name": "Nova Hellkite",
+      "count": 4
+    },
+    {
+      "name": "Plains",
+      "count": 1
+    },
+    {
+      "name": "Sacred Foundry",
+      "count": 4
+    },
+    {
+      "name": "Sarkhan, Dragon Ascendant",
+      "count": 4
+    },
+    {
+      "name": "Smaug the Magnificent",
+      "count": 4
+    },
+    {
+      "name": "Sunbillow Verge",
+      "count": 4
+    },
+    {
+      "name": "Twinmaw Stormbrood",
+      "count": 2
+    },
+    {
+      "name": "Voice of Victory",
+      "count": 2
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Dawn's Truce",
+      "count": 3
+    },
+    {
+      "name": "Desolation of Smaug",
+      "count": 1
+    },
+    {
+      "name": "Get Lost",
+      "count": 1
+    },
+    {
+      "name": "Pyroclasm",
+      "count": 2
+    },
+    {
+      "name": "Rest in Peace",
+      "count": 3
+    },
+    {
+      "name": "Seam Rip",
+      "count": 4
+    },
+    {
+      "name": "The Legend of Roku",
+      "count": 1
+    }
+  ],
+  "commander": [],
+  "tags": [
+    "Top 8"
+  ],
+  "hash": "661cc1ebdaf7f11e",
+  "manaProfile": {
+    "colors": [
+      "R",
+      "W"
+    ],
+    "pipCounts": {
+      "R": 36,
+      "W": 14
+    },
+    "sourceCounts": {
+      "R": 13,
+      "W": 13
+    },
+    "landCount": 24,
+    "predominantColors": [
+      "R",
+      "W"
+    ],
+    "predominantLands": [
+      {
+        "name": "Inspiring Vantage",
+        "count": 4
+      },
+      {
+        "name": "Maelstrom of the Spirit Dragon",
+        "count": 4
+      },
+      {
+        "name": "Multiversal Passage",
+        "count": 4
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact",
+      "resolvedCardCount": 19,
+      "totalCardCount": 19,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
+}

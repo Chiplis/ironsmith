@@ -1,5 +1,5 @@
 {
-  "id": "mtgtop8-90808-889597",
+  "id": "mtgtop8-90974-890873",
   "format": "modern",
   "name": "Esper Blink",
   "archetype": "Esper Blink",
@@ -10,7 +10,7 @@
   ],
   "mechanics": [],
   "collections": [
-    "last-major-events"
+    "last-20-events"
   ],
   "cardNames": [
     "Boggart Trawler",
@@ -22,10 +22,8 @@
     "Flickerwisp",
     "Flooded Strand",
     "Godless Shrine",
-    "Grafdigger's Cage",
     "Hallowed Fountain",
     "High Noon",
-    "Island",
     "Marsh Flats",
     "Meticulous Archive",
     "Nihil Spellbomb",
@@ -46,23 +44,19 @@
     "Witch Enchanter",
     "Wrath of the Skies"
   ],
-  "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-  "date": "2026-09-13",
-  "placement": 9,
+  "event": "3� Etapa CLM @ Mont CardShop (Campinas, Brazil)",
+  "date": "2026-09-17",
+  "placement": 3,
   "source": "mtgtop8",
-  "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889597&f=MO",
+  "sourceUrl": "https://mtgtop8.com/event?e=90974&d=890873&f=MO",
   "mainboard": [
     {
       "name": "Boggart Trawler",
       "count": 1
     },
     {
-      "name": "Consign to Memory",
-      "count": 1
-    },
-    {
       "name": "Emperor of Bones",
-      "count": 2
+      "count": 3
     },
     {
       "name": "Ephemerate",
@@ -89,12 +83,8 @@
       "count": 1
     },
     {
-      "name": "Island",
-      "count": 2
-    },
-    {
       "name": "Marsh Flats",
-      "count": 3
+      "count": 4
     },
     {
       "name": "Meticulous Archive",
@@ -110,11 +100,11 @@
     },
     {
       "name": "Plains",
-      "count": 1
+      "count": 2
     },
     {
       "name": "Polluted Delta",
-      "count": 2
+      "count": 1
     },
     {
       "name": "Prismatic Ending",
@@ -154,21 +144,17 @@
     },
     {
       "name": "Witch Enchanter",
-      "count": 3
+      "count": 4
     }
   ],
   "sideboard": [
     {
       "name": "Clarion Conqueror",
-      "count": 1
+      "count": 2
     },
     {
       "name": "Consign to Memory",
       "count": 3
-    },
-    {
-      "name": "Grafdigger's Cage",
-      "count": 2
     },
     {
       "name": "High Noon",
@@ -176,7 +162,7 @@
     },
     {
       "name": "Nihil Spellbomb",
-      "count": 1
+      "count": 2
     },
     {
       "name": "White Orchid Phantom",
@@ -188,8 +174,10 @@
     }
   ],
   "commander": [],
-  "tags": [],
-  "hash": "eef9bd615d843ef0",
+  "tags": [
+    "Top 8"
+  ],
+  "hash": "930a04ee3e45e68b",
   "manaProfile": {
     "colors": [
       "B",
@@ -197,20 +185,18 @@
       "W"
     ],
     "pipCounts": {
-      "U": 11,
-      "B": 18,
-      "W": 24
+      "B": 19,
+      "W": 24,
+      "U": 10
     },
     "sourceCounts": {
       "B": 6,
-      "W": 6,
-      "U": 6
+      "W": 7,
+      "U": 4
     },
-    "landCount": 20,
+    "landCount": 19,
     "predominantColors": [
-      "B",
-      "W",
-      "U"
+      "W"
     ],
     "predominantLands": [
       {
@@ -219,7 +205,7 @@
       },
       {
         "name": "Marsh Flats",
-        "count": 3
+        "count": 4
       },
       {
         "name": "Godless Shrine",
@@ -228,8 +214,8 @@
     ],
     "metadataCoverage": {
       "source": "local-card-artifact",
-      "resolvedCardCount": 26,
-      "totalCardCount": 26,
+      "resolvedCardCount": 24,
+      "totalCardCount": 24,
       "unresolvedCardNames": [],
       "complete": true
     }

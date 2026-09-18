@@ -1,8 +1,1641 @@
 {
   "schemaVersion": 1,
   "format": "modern",
-  "generatedAt": "2026-09-18T19:15:58.856Z",
+  "generatedAt": "2026-09-18T19:41:37.872Z",
   "decks": [
+    {
+      "id": "mtgtop8-90974-890872",
+      "format": "modern",
+      "name": "Song of Creation",
+      "archetype": "Song of Creation",
+      "colors": [
+        "C",
+        "G",
+        "R",
+        "U"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "C",
+          "G",
+          "R",
+          "U"
+        ],
+        "pipCounts": {
+          "U": 15,
+          "G": 11,
+          "R": 4
+        },
+        "sourceCounts": {
+          "G": 4,
+          "U": 7,
+          "R": 2,
+          "C": 3
+        },
+        "landCount": 19,
+        "predominantColors": [
+          "U"
+        ],
+        "predominantLands": [
+          {
+            "name": "Misty Rainforest",
+            "count": 4
+          },
+          {
+            "name": "Urza's Saga",
+            "count": 3
+          },
+          {
+            "name": "Island",
+            "count": 2
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 26,
+          "totalCardCount": 26,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Boseiju, Who Endures",
+        "Breeding Pool",
+        "Consign to Memory",
+        "Emry, Lurker of the Loch",
+        "Endurance",
+        "Engineered Explosives",
+        "Fire Magic",
+        "Flame of Anor",
+        "Flusterstorm",
+        "Force of Negation",
+        "Haywire Mite",
+        "Hedge Maze",
+        "Island",
+        "Jace, Wielder of Mysteries",
+        "Malevolent Rumble",
+        "Mishra's Bauble",
+        "Misty Rainforest",
+        "Mox Amber",
+        "Mox Opal",
+        "Nature's Claim",
+        "Otawara, Soaring City",
+        "Pithing Needle",
+        "Polluted Delta",
+        "Pyrite Spellbomb",
+        "Repeal",
+        "Scalding Tarn",
+        "Shifting Woodland",
+        "Six",
+        "Song of Creation",
+        "Steam Vents",
+        "Swan Song",
+        "Tamiyo, Inquisitive Student",
+        "Thundering Falls",
+        "Tormod's Crypt",
+        "Unholy Heat",
+        "Urza's Saga"
+      ],
+      "event": "3� Etapa CLM @ Mont CardShop (Campinas, Brazil)",
+      "date": "2026-09-17",
+      "placement": 1,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90974&d=890872&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Boseiju, Who Endures",
+        "Breeding Pool",
+        "Consign to Memory",
+        "Emry, Lurker of the Loch",
+        "Endurance",
+        "Engineered Explosives",
+        "Fire Magic",
+        "Flame of Anor",
+        "Flusterstorm",
+        "Force of Negation",
+        "Haywire Mite",
+        "Hedge Maze",
+        "Island",
+        "Jace, Wielder of Mysteries",
+        "Malevolent Rumble",
+        "Mishra's Bauble",
+        "Misty Rainforest",
+        "Mox Amber",
+        "Mox Opal",
+        "Nature's Claim",
+        "Otawara, Soaring City",
+        "Pithing Needle",
+        "Polluted Delta",
+        "Pyrite Spellbomb",
+        "Repeal",
+        "Scalding Tarn",
+        "Shifting Woodland",
+        "Six",
+        "Song of Creation",
+        "Steam Vents",
+        "Swan Song",
+        "Tamiyo, Inquisitive Student",
+        "Thundering Falls",
+        "Tormod's Crypt",
+        "Unholy Heat",
+        "Urza's Saga"
+      ],
+      "hash": "1fe0c6ec7ef742ad",
+      "detail": "details/mtgtop8-90974-890872.json"
+    },
+    {
+      "id": "mtgtop8-90964-890806",
+      "format": "modern",
+      "name": "Devoted Combo",
+      "archetype": "Devoted Combo",
+      "colors": [
+        "B",
+        "G",
+        "W"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "G",
+          "W"
+        ],
+        "pipCounts": {
+          "G": 48,
+          "B": 7,
+          "W": 1
+        },
+        "sourceCounts": {
+          "G": 12,
+          "W": 2,
+          "B": 4
+        },
+        "landCount": 21,
+        "predominantColors": [
+          "G"
+        ],
+        "predominantLands": [
+          {
+            "name": "Windswept Heath",
+            "count": 3
+          },
+          {
+            "name": "Boseiju, Who Endures",
+            "count": 2
+          },
+          {
+            "name": "Dryad Arbor",
+            "count": 2
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact+scryfall",
+          "resolvedCardCount": 30,
+          "totalCardCount": 30,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Abrupt Decay",
+        "Agatha's Soul Cauldron",
+        "Badgermole Cub",
+        "Birds of Paradise",
+        "Boseiju, Who Endures",
+        "Craterhoof Behemoth",
+        "Crystal Barricade",
+        "Delighted Halfling",
+        "Devoted Druid",
+        "Doorkeeper Thrull",
+        "Dryad Arbor",
+        "Duskwatch Recruiter",
+        "Endurance",
+        "Fiend Artisan",
+        "Forest",
+        "Gemstone Caverns",
+        "Green Sun's Zenith",
+        "Grist, the Hunger Tide",
+        "Guerrilla Gorilla",
+        "Horizon Canopy",
+        "Icetill Explorer",
+        "Keen-Eyed Curator",
+        "Kraul Harpooner",
+        "Leyline of Abundance",
+        "Misty Rainforest",
+        "Nature's Rhythm",
+        "Nurturing Peatland",
+        "Ouroboroid",
+        "Overgrown Tomb",
+        "Pick Your Poison",
+        "Postmortem Lunge",
+        "Reclamation Sage",
+        "Shang-Chi, Master of Kung Fu",
+        "Temple Garden",
+        "Thoughtseize",
+        "Tyvar, Jubilant Brawler",
+        "Tyvar, the Pummeler",
+        "Underground Mortuary",
+        "Verdant Catacombs",
+        "Vizier of Remedies",
+        "Windswept Heath",
+        "Wooded Foothills"
+      ],
+      "event": "MTGO League",
+      "date": "2026-09-17",
+      "placement": 1,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90964&d=890806&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Abrupt Decay",
+        "Agatha's Soul Cauldron",
+        "Badgermole Cub",
+        "Birds of Paradise",
+        "Boseiju, Who Endures",
+        "Craterhoof Behemoth",
+        "Crystal Barricade",
+        "Delighted Halfling",
+        "Devoted Druid",
+        "Doorkeeper Thrull",
+        "Dryad Arbor",
+        "Duskwatch Recruiter",
+        "Endurance",
+        "Fiend Artisan",
+        "Forest",
+        "Gemstone Caverns",
+        "Green Sun's Zenith",
+        "Grist, the Hunger Tide",
+        "Guerrilla Gorilla",
+        "Horizon Canopy",
+        "Icetill Explorer",
+        "Keen-Eyed Curator",
+        "Kraul Harpooner",
+        "Leyline of Abundance",
+        "Misty Rainforest",
+        "Nature's Rhythm",
+        "Nurturing Peatland",
+        "Ouroboroid",
+        "Overgrown Tomb",
+        "Pick Your Poison",
+        "Postmortem Lunge",
+        "Reclamation Sage",
+        "Shang-Chi, Master of Kung Fu",
+        "Temple Garden",
+        "Thoughtseize",
+        "Tyvar, Jubilant Brawler",
+        "Tyvar, the Pummeler",
+        "Underground Mortuary",
+        "Verdant Catacombs",
+        "Vizier of Remedies",
+        "Windswept Heath",
+        "Wooded Foothills"
+      ],
+      "hash": "7ca1b50124443795",
+      "detail": "details/mtgtop8-90964-890806.json"
+    },
+    {
+      "id": "mtgtop8-90964-890807",
+      "format": "modern",
+      "name": "Hollow One",
+      "archetype": "Hollow One",
+      "colors": [
+        "B",
+        "G",
+        "R",
+        "W"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "G",
+          "R",
+          "W"
+        ],
+        "pipCounts": {
+          "R": 28,
+          "W": 6,
+          "B": 8,
+          "G": 8
+        },
+        "sourceCounts": {
+          "R": 8,
+          "W": 5
+        },
+        "landCount": 18,
+        "predominantColors": [
+          "R"
+        ],
+        "predominantLands": [
+          {
+            "name": "Sacred Foundry",
+            "count": 4
+          },
+          {
+            "name": "Scalding Tarn",
+            "count": 4
+          },
+          {
+            "name": "Bloodstained Mire",
+            "count": 3
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact+scryfall",
+          "resolvedCardCount": 19,
+          "totalCardCount": 19,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Arena of Glory",
+        "Arid Mesa",
+        "Blazing Rootwalla",
+        "Bloodstained Mire",
+        "Burning Inquiry",
+        "Damping Sphere",
+        "Deafening Silence",
+        "Detective's Phoenix",
+        "Elegant Parlor",
+        "Faithless Looting",
+        "Hardened Academic",
+        "Hollow One",
+        "Lightning Bolt",
+        "Marauding Mako",
+        "Mountain",
+        "Obsidian Charmaw",
+        "Practiced Offense",
+        "Prismatic Ending",
+        "Rough / Tumble",
+        "Sacred Foundry",
+        "Scalding Tarn",
+        "Soul-Guide Lantern",
+        "Street Wraith",
+        "Surgical Extraction",
+        "Vengevine",
+        "Vexing Bauble",
+        "Wear / Tear",
+        "Wooded Foothills"
+      ],
+      "event": "MTGO League",
+      "date": "2026-09-17",
+      "placement": 2,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90964&d=890807&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Arena of Glory",
+        "Arid Mesa",
+        "Blazing Rootwalla",
+        "Bloodstained Mire",
+        "Burning Inquiry",
+        "Damping Sphere",
+        "Deafening Silence",
+        "Detective's Phoenix",
+        "Elegant Parlor",
+        "Faithless Looting",
+        "Hardened Academic",
+        "Hollow One",
+        "Lightning Bolt",
+        "Marauding Mako",
+        "Mountain",
+        "Obsidian Charmaw",
+        "Practiced Offense",
+        "Prismatic Ending",
+        "Rough / Tumble",
+        "Sacred Foundry",
+        "Scalding Tarn",
+        "Soul-Guide Lantern",
+        "Street Wraith",
+        "Surgical Extraction",
+        "Vengevine",
+        "Vexing Bauble",
+        "Wear / Tear",
+        "Wooded Foothills"
+      ],
+      "hash": "8bbd9a2b018fe58e",
+      "detail": "details/mtgtop8-90964-890807.json"
+    },
+    {
+      "id": "mtgtop8-90974-890873",
+      "format": "modern",
+      "name": "Esper Blink",
+      "archetype": "Esper Blink",
+      "colors": [
+        "B",
+        "U",
+        "W"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "U",
+          "W"
+        ],
+        "pipCounts": {
+          "B": 19,
+          "W": 24,
+          "U": 10
+        },
+        "sourceCounts": {
+          "B": 6,
+          "W": 7,
+          "U": 4
+        },
+        "landCount": 19,
+        "predominantColors": [
+          "W"
+        ],
+        "predominantLands": [
+          {
+            "name": "Flooded Strand",
+            "count": 4
+          },
+          {
+            "name": "Marsh Flats",
+            "count": 4
+          },
+          {
+            "name": "Godless Shrine",
+            "count": 2
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 24,
+          "totalCardCount": 24,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Boggart Trawler",
+        "Clarion Conqueror",
+        "Consign to Memory",
+        "Emperor of Bones",
+        "Ephemerate",
+        "Fatal Push",
+        "Flickerwisp",
+        "Flooded Strand",
+        "Godless Shrine",
+        "Hallowed Fountain",
+        "High Noon",
+        "Marsh Flats",
+        "Meticulous Archive",
+        "Nihil Spellbomb",
+        "Overlord of the Balemurk",
+        "Phelia, Exuberant Shepherd",
+        "Plains",
+        "Polluted Delta",
+        "Prismatic Ending",
+        "Quantum Riddler",
+        "Shadowy Backstreet",
+        "Solitude",
+        "Swamp",
+        "Teferi, Time Raveler",
+        "Thoughtseize",
+        "Undercity Sewers",
+        "Watery Grave",
+        "White Orchid Phantom",
+        "Witch Enchanter",
+        "Wrath of the Skies"
+      ],
+      "event": "3� Etapa CLM @ Mont CardShop (Campinas, Brazil)",
+      "date": "2026-09-17",
+      "placement": 3,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90974&d=890873&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Boggart Trawler",
+        "Clarion Conqueror",
+        "Consign to Memory",
+        "Emperor of Bones",
+        "Ephemerate",
+        "Fatal Push",
+        "Flickerwisp",
+        "Flooded Strand",
+        "Godless Shrine",
+        "Hallowed Fountain",
+        "High Noon",
+        "Marsh Flats",
+        "Meticulous Archive",
+        "Nihil Spellbomb",
+        "Overlord of the Balemurk",
+        "Phelia, Exuberant Shepherd",
+        "Plains",
+        "Polluted Delta",
+        "Prismatic Ending",
+        "Quantum Riddler",
+        "Shadowy Backstreet",
+        "Solitude",
+        "Swamp",
+        "Teferi, Time Raveler",
+        "Thoughtseize",
+        "Undercity Sewers",
+        "Watery Grave",
+        "White Orchid Phantom",
+        "Witch Enchanter",
+        "Wrath of the Skies"
+      ],
+      "hash": "930a04ee3e45e68b",
+      "detail": "details/mtgtop8-90974-890873.json"
+    },
+    {
+      "id": "mtgtop8-90964-890808",
+      "format": "modern",
+      "name": "Broodscale Bloodchief",
+      "archetype": "Broodscale Bloodchief",
+      "colors": [
+        "B",
+        "C",
+        "G"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "C",
+          "G"
+        ],
+        "pipCounts": {
+          "G": 16,
+          "C": 15,
+          "B": 4
+        },
+        "sourceCounts": {
+          "G": 10,
+          "C": 11
+        },
+        "landCount": 23,
+        "predominantColors": [
+          "C"
+        ],
+        "predominantLands": [
+          {
+            "name": "Forest",
+            "count": 6
+          },
+          {
+            "name": "Eldrazi Temple",
+            "count": 4
+          },
+          {
+            "name": "Urza's Saga",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 23,
+          "totalCardCount": 23,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Ancient Stirrings",
+        "Basking Broodscale",
+        "Blade of the Bloodchief",
+        "Boseiju, Who Endures",
+        "Cavern of Souls",
+        "Devourer of Destiny",
+        "Dismember",
+        "Disruptor Flute",
+        "Eldrazi Temple",
+        "Emrakul, the Promised End",
+        "Forest",
+        "Gemstone Caverns",
+        "Glaring Fleshraker",
+        "Grafdigger's Cage",
+        "Haywire Mite",
+        "Kozilek's Command",
+        "Malevolent Rumble",
+        "Nature's Claim",
+        "Shifting Woodland",
+        "Sire of Seven Deaths",
+        "Six",
+        "Soul-Guide Lantern",
+        "Sowing Mycospawn",
+        "Springleaf Drum",
+        "Thief of Existence",
+        "Trinisphere",
+        "Ugin's Labyrinth",
+        "Urza's Saga",
+        "Vexing Bauble",
+        "Warping Wail",
+        "Yavimaya, Cradle of Growth"
+      ],
+      "event": "MTGO League",
+      "date": "2026-09-17",
+      "placement": 3,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90964&d=890808&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Ancient Stirrings",
+        "Basking Broodscale",
+        "Blade of the Bloodchief",
+        "Boseiju, Who Endures",
+        "Cavern of Souls",
+        "Devourer of Destiny",
+        "Dismember",
+        "Disruptor Flute",
+        "Eldrazi Temple",
+        "Emrakul, the Promised End",
+        "Forest",
+        "Gemstone Caverns",
+        "Glaring Fleshraker",
+        "Grafdigger's Cage",
+        "Haywire Mite",
+        "Kozilek's Command",
+        "Malevolent Rumble",
+        "Nature's Claim",
+        "Shifting Woodland",
+        "Sire of Seven Deaths",
+        "Six",
+        "Soul-Guide Lantern",
+        "Sowing Mycospawn",
+        "Springleaf Drum",
+        "Thief of Existence",
+        "Trinisphere",
+        "Ugin's Labyrinth",
+        "Urza's Saga",
+        "Vexing Bauble",
+        "Warping Wail",
+        "Yavimaya, Cradle of Growth"
+      ],
+      "hash": "055ce300f681fe34",
+      "detail": "details/mtgtop8-90964-890808.json"
+    },
+    {
+      "id": "mtgtop8-90964-890809",
+      "format": "modern",
+      "name": "Dimir Control",
+      "archetype": "Dimir Control",
+      "colors": [
+        "B",
+        "U"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "U"
+        ],
+        "pipCounts": {
+          "U": 37,
+          "B": 18
+        },
+        "sourceCounts": {
+          "B": 8,
+          "U": 11
+        },
+        "landCount": 20,
+        "predominantColors": [
+          "U"
+        ],
+        "predominantLands": [
+          {
+            "name": "Polluted Delta",
+            "count": 4
+          },
+          {
+            "name": "Island",
+            "count": 3
+          },
+          {
+            "name": "Watery Grave",
+            "count": 3
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 27,
+          "totalCardCount": 27,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Consign to Memory",
+        "Counterspell",
+        "Darkslick Shores",
+        "Drown in the Loch",
+        "Engineered Explosives",
+        "Fatal Push",
+        "Flooded Strand",
+        "Force of Negation",
+        "Gloomlake Verge",
+        "Harbinger of the Seas",
+        "Island",
+        "Kaito, Bane of Nightmares",
+        "Marsh Flats",
+        "Murktide Regent",
+        "Mystical Dispute",
+        "Nihil Spellbomb",
+        "Orcish Bowmasters",
+        "Otawara, Soaring City",
+        "Polluted Delta",
+        "Psychic Frog",
+        "Quantum Riddler",
+        "Requiting Hex",
+        "Sheoldred's Edict",
+        "Sink into Stupor",
+        "Spell Snare",
+        "Stern Scolding",
+        "Subtlety",
+        "Swamp",
+        "Tamiyo, Inquisitive Student",
+        "Thoughtseize",
+        "Toxic Deluge",
+        "Undercity Sewers",
+        "Wan Shi Tong, Librarian",
+        "Watery Grave"
+      ],
+      "event": "MTGO League",
+      "date": "2026-09-17",
+      "placement": 4,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90964&d=890809&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Consign to Memory",
+        "Counterspell",
+        "Darkslick Shores",
+        "Drown in the Loch",
+        "Engineered Explosives",
+        "Fatal Push",
+        "Flooded Strand",
+        "Force of Negation",
+        "Gloomlake Verge",
+        "Harbinger of the Seas",
+        "Island",
+        "Kaito, Bane of Nightmares",
+        "Marsh Flats",
+        "Murktide Regent",
+        "Mystical Dispute",
+        "Nihil Spellbomb",
+        "Orcish Bowmasters",
+        "Otawara, Soaring City",
+        "Polluted Delta",
+        "Psychic Frog",
+        "Quantum Riddler",
+        "Requiting Hex",
+        "Sheoldred's Edict",
+        "Sink into Stupor",
+        "Spell Snare",
+        "Stern Scolding",
+        "Subtlety",
+        "Swamp",
+        "Tamiyo, Inquisitive Student",
+        "Thoughtseize",
+        "Toxic Deluge",
+        "Undercity Sewers",
+        "Wan Shi Tong, Librarian",
+        "Watery Grave"
+      ],
+      "hash": "e6e153899ea9d6b0",
+      "detail": "details/mtgtop8-90964-890809.json"
+    },
+    {
+      "id": "mtgtop8-90964-890810",
+      "format": "modern",
+      "name": "UR Murktide",
+      "archetype": "UR Murktide",
+      "colors": [
+        "R",
+        "U"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "R",
+          "U"
+        ],
+        "pipCounts": {
+          "U": 33,
+          "R": 19
+        },
+        "sourceCounts": {
+          "U": 11,
+          "R": 8
+        },
+        "landCount": 18,
+        "predominantColors": [
+          "U"
+        ],
+        "predominantLands": [
+          {
+            "name": "Spirebluff Canal",
+            "count": 4
+          },
+          {
+            "name": "Island",
+            "count": 3
+          },
+          {
+            "name": "Scalding Tarn",
+            "count": 3
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 21,
+          "totalCardCount": 21,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Blood Moon",
+        "Consign to Memory",
+        "Counterspell",
+        "Dragon's Rage Channeler",
+        "Expressive Iteration",
+        "Fire Magic",
+        "Force of Negation",
+        "Hurkyl's Recall",
+        "Island",
+        "Lightning Bolt",
+        "Meltdown",
+        "Mishra's Bauble",
+        "Misty Rainforest",
+        "Murktide Regent",
+        "Mystical Dispute",
+        "Narset, Parter of Veils",
+        "Obsidian Charmaw",
+        "Polluted Delta",
+        "Preordain",
+        "Ragavan, Nimble Pilferer",
+        "Scalding Tarn",
+        "Spell Pierce",
+        "Spell Snare",
+        "Spirebluff Canal",
+        "Steam Vents",
+        "Stern Scolding",
+        "Subtlety",
+        "Surgical Extraction",
+        "Thundering Falls",
+        "Unholy Heat"
+      ],
+      "event": "MTGO League",
+      "date": "2026-09-17",
+      "placement": 5,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90964&d=890810&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Blood Moon",
+        "Consign to Memory",
+        "Counterspell",
+        "Dragon's Rage Channeler",
+        "Expressive Iteration",
+        "Fire Magic",
+        "Force of Negation",
+        "Hurkyl's Recall",
+        "Island",
+        "Lightning Bolt",
+        "Meltdown",
+        "Mishra's Bauble",
+        "Misty Rainforest",
+        "Murktide Regent",
+        "Mystical Dispute",
+        "Narset, Parter of Veils",
+        "Obsidian Charmaw",
+        "Polluted Delta",
+        "Preordain",
+        "Ragavan, Nimble Pilferer",
+        "Scalding Tarn",
+        "Spell Pierce",
+        "Spell Snare",
+        "Spirebluff Canal",
+        "Steam Vents",
+        "Stern Scolding",
+        "Subtlety",
+        "Surgical Extraction",
+        "Thundering Falls",
+        "Unholy Heat"
+      ],
+      "hash": "936ba1a414d3c2d3",
+      "detail": "details/mtgtop8-90964-890810.json"
+    },
+    {
+      "id": "mtgtop8-90964-890811",
+      "format": "modern",
+      "name": "UrzaTron",
+      "archetype": "UrzaTron",
+      "colors": [
+        "B",
+        "C",
+        "G"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "B",
+          "C",
+          "G"
+        ],
+        "pipCounts": {
+          "C": 14,
+          "B": 4,
+          "G": 4
+        },
+        "sourceCounts": {
+          "C": 19,
+          "G": 2
+        },
+        "landCount": 21,
+        "predominantColors": [
+          "C"
+        ],
+        "predominantLands": [
+          {
+            "name": "Ugin's Labyrinth",
+            "count": 4
+          },
+          {
+            "name": "Urza's Mine",
+            "count": 4
+          },
+          {
+            "name": "Urza's Power Plant",
+            "count": 4
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 22,
+          "totalCardCount": 22,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "All Is Dust",
+        "Chalice of the Void",
+        "Cityscape Leveler",
+        "Cursed Totem",
+        "Devourer of Destiny",
+        "Dismember",
+        "Disruptor Flute",
+        "Eldrazi Temple",
+        "Emrakul, the Aeons Torn",
+        "Emrakul, the Promised End",
+        "Ensnaring Bridge",
+        "Expedition Map",
+        "Extinguisher Battleship",
+        "Forest",
+        "Giant's Boulder",
+        "Grafdigger's Cage",
+        "Haywire Mite",
+        "Karn, the Great Creator",
+        "Kozilek's Command",
+        "Liquimetal Coating",
+        "Sowing Mycospawn",
+        "Talisman of Resilience",
+        "The Filigree Sylex",
+        "The Stone Brain",
+        "Tormod's Crypt",
+        "Torpor Orb",
+        "Trinisphere",
+        "Ugin's Labyrinth",
+        "Ugin, Eye of the Storms",
+        "Ulamog, the Ceaseless Hunger",
+        "Urza's Mine",
+        "Urza's Power Plant",
+        "Urza's Tower",
+        "Vexing Bauble",
+        "Walking Ballista"
+      ],
+      "event": "MTGO League",
+      "date": "2026-09-17",
+      "placement": 6,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90964&d=890811&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "All Is Dust",
+        "Chalice of the Void",
+        "Cityscape Leveler",
+        "Cursed Totem",
+        "Devourer of Destiny",
+        "Dismember",
+        "Disruptor Flute",
+        "Eldrazi Temple",
+        "Emrakul, the Aeons Torn",
+        "Emrakul, the Promised End",
+        "Ensnaring Bridge",
+        "Expedition Map",
+        "Extinguisher Battleship",
+        "Forest",
+        "Giant's Boulder",
+        "Grafdigger's Cage",
+        "Haywire Mite",
+        "Karn, the Great Creator",
+        "Kozilek's Command",
+        "Liquimetal Coating",
+        "Sowing Mycospawn",
+        "Talisman of Resilience",
+        "The Filigree Sylex",
+        "The Stone Brain",
+        "Tormod's Crypt",
+        "Torpor Orb",
+        "Trinisphere",
+        "Ugin's Labyrinth",
+        "Ugin, Eye of the Storms",
+        "Ulamog, the Ceaseless Hunger",
+        "Urza's Mine",
+        "Urza's Power Plant",
+        "Urza's Tower",
+        "Vexing Bauble",
+        "Walking Ballista"
+      ],
+      "hash": "7927a7a3ac89ed17",
+      "detail": "details/mtgtop8-90964-890811.json"
+    },
+    {
+      "id": "mtgtop8-90964-890812",
+      "format": "modern",
+      "name": "UR Aggro",
+      "archetype": "UR Aggro",
+      "colors": [
+        "G",
+        "R",
+        "U"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "G",
+          "R",
+          "U"
+        ],
+        "pipCounts": {
+          "R": 26,
+          "U": 12,
+          "G": 2
+        },
+        "sourceCounts": {
+          "U": 5,
+          "R": 7,
+          "G": 1
+        },
+        "landCount": 18,
+        "predominantColors": [
+          "R"
+        ],
+        "predominantLands": [
+          {
+            "name": "Scalding Tarn",
+            "count": 4
+          },
+          {
+            "name": "Polluted Delta",
+            "count": 3
+          },
+          {
+            "name": "Steam Vents",
+            "count": 3
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 22,
+          "totalCardCount": 22,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Academic Dispute",
+        "Arid Mesa",
+        "Boomerang Basics",
+        "Consign to Memory",
+        "Cori-Steel Cutter",
+        "Dragon's Rage Channeler",
+        "Expressive Iteration",
+        "Firebending Lesson",
+        "Island",
+        "It'll Quench Ya!",
+        "Lava Dart",
+        "Lightning Bolt",
+        "Mishra's Bauble",
+        "Monastery Swiftspear",
+        "Mountain",
+        "Mutagenic Growth",
+        "Obsidian Charmaw",
+        "Origin of Metalbending",
+        "Polluted Delta",
+        "Preordain",
+        "Scalding Tarn",
+        "Slickshot Show-Off",
+        "Spell Pierce",
+        "Steam Vents",
+        "Stomping Ground",
+        "Stormchaser's Talent",
+        "Thundering Falls",
+        "Tormod's Crypt",
+        "Unholy Heat",
+        "Wooded Foothills"
+      ],
+      "event": "MTGO League",
+      "date": "2026-09-17",
+      "placement": 7,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90964&d=890812&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Academic Dispute",
+        "Arid Mesa",
+        "Boomerang Basics",
+        "Consign to Memory",
+        "Cori-Steel Cutter",
+        "Dragon's Rage Channeler",
+        "Expressive Iteration",
+        "Firebending Lesson",
+        "Island",
+        "It'll Quench Ya!",
+        "Lava Dart",
+        "Lightning Bolt",
+        "Mishra's Bauble",
+        "Monastery Swiftspear",
+        "Mountain",
+        "Mutagenic Growth",
+        "Obsidian Charmaw",
+        "Origin of Metalbending",
+        "Polluted Delta",
+        "Preordain",
+        "Scalding Tarn",
+        "Slickshot Show-Off",
+        "Spell Pierce",
+        "Steam Vents",
+        "Stomping Ground",
+        "Stormchaser's Talent",
+        "Thundering Falls",
+        "Tormod's Crypt",
+        "Unholy Heat",
+        "Wooded Foothills"
+      ],
+      "hash": "bd513a53a360e24d",
+      "detail": "details/mtgtop8-90964-890812.json"
+    },
+    {
+      "id": "mtgtop8-90964-890813",
+      "format": "modern",
+      "name": "UR Cutter Prowess",
+      "archetype": "UR Cutter Prowess",
+      "colors": [
+        "G",
+        "R",
+        "U"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "G",
+          "R",
+          "U"
+        ],
+        "pipCounts": {
+          "R": 30,
+          "U": 8,
+          "G": 4
+        },
+        "sourceCounts": {
+          "R": 9,
+          "U": 6
+        },
+        "landCount": 18,
+        "predominantColors": [
+          "R"
+        ],
+        "predominantLands": [
+          {
+            "name": "Bloodstained Mire",
+            "count": 3
+          },
+          {
+            "name": "Mountain",
+            "count": 3
+          },
+          {
+            "name": "Steam Vents",
+            "count": 3
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 19,
+          "totalCardCount": 19,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Arid Mesa",
+        "Bloodstained Mire",
+        "Consign to Memory",
+        "Cori-Steel Cutter",
+        "Dragon's Rage Channeler",
+        "Expressive Iteration",
+        "Fiery Islet",
+        "Lava Dart",
+        "Lightning Bolt",
+        "Mishra's Bauble",
+        "Monastery Swiftspear",
+        "Mountain",
+        "Mutagenic Growth",
+        "Mystical Dispute",
+        "Preordain",
+        "Scalding Tarn",
+        "Slickshot Show-Off",
+        "Spell Pierce",
+        "Spell Snare",
+        "Steam Vents",
+        "Surgical Extraction",
+        "Thundering Falls",
+        "Tormod's Crypt",
+        "Unholy Heat",
+        "Violent Urge",
+        "Wooded Foothills"
+      ],
+      "event": "MTGO League",
+      "date": "2026-09-17",
+      "placement": 8,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90964&d=890813&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Arid Mesa",
+        "Bloodstained Mire",
+        "Consign to Memory",
+        "Cori-Steel Cutter",
+        "Dragon's Rage Channeler",
+        "Expressive Iteration",
+        "Fiery Islet",
+        "Lava Dart",
+        "Lightning Bolt",
+        "Mishra's Bauble",
+        "Monastery Swiftspear",
+        "Mountain",
+        "Mutagenic Growth",
+        "Mystical Dispute",
+        "Preordain",
+        "Scalding Tarn",
+        "Slickshot Show-Off",
+        "Spell Pierce",
+        "Spell Snare",
+        "Steam Vents",
+        "Surgical Extraction",
+        "Thundering Falls",
+        "Tormod's Crypt",
+        "Unholy Heat",
+        "Violent Urge",
+        "Wooded Foothills"
+      ],
+      "hash": "1f50c4d5f0b49bb1",
+      "detail": "details/mtgtop8-90964-890813.json"
+    },
+    {
+      "id": "mtgtop8-90965-890829",
+      "format": "modern",
+      "name": "UR Cutter Prowess",
+      "archetype": "UR Cutter Prowess",
+      "colors": [
+        "G",
+        "R",
+        "U"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "G",
+          "R",
+          "U"
+        ],
+        "pipCounts": {
+          "R": 30,
+          "U": 8,
+          "G": 4
+        },
+        "sourceCounts": {
+          "R": 9,
+          "U": 6
+        },
+        "landCount": 18,
+        "predominantColors": [
+          "R"
+        ],
+        "predominantLands": [
+          {
+            "name": "Mountain",
+            "count": 3
+          },
+          {
+            "name": "Scalding Tarn",
+            "count": 3
+          },
+          {
+            "name": "Steam Vents",
+            "count": 3
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 19,
+          "totalCardCount": 19,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Arid Mesa",
+        "Bloodstained Mire",
+        "Consign to Memory",
+        "Cori-Steel Cutter",
+        "Dragon's Rage Channeler",
+        "Expressive Iteration",
+        "Fiery Islet",
+        "Lava Dart",
+        "Lightning Bolt",
+        "Meltdown",
+        "Mishra's Bauble",
+        "Monastery Swiftspear",
+        "Mountain",
+        "Mutagenic Growth",
+        "Mystical Dispute",
+        "Preordain",
+        "Scalding Tarn",
+        "Slickshot Show-Off",
+        "Spell Pierce",
+        "Spell Snare",
+        "Steam Vents",
+        "Surgical Extraction",
+        "Thundering Falls",
+        "Unholy Heat",
+        "Violent Urge",
+        "Wooded Foothills"
+      ],
+      "event": "MTGO Challenge 32",
+      "date": "2026-09-16",
+      "placement": 1,
+      "mainboardCount": 60,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90965&d=890829&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Arid Mesa",
+        "Bloodstained Mire",
+        "Consign to Memory",
+        "Cori-Steel Cutter",
+        "Dragon's Rage Channeler",
+        "Expressive Iteration",
+        "Fiery Islet",
+        "Lava Dart",
+        "Lightning Bolt",
+        "Meltdown",
+        "Mishra's Bauble",
+        "Monastery Swiftspear",
+        "Mountain",
+        "Mutagenic Growth",
+        "Mystical Dispute",
+        "Preordain",
+        "Scalding Tarn",
+        "Slickshot Show-Off",
+        "Spell Pierce",
+        "Spell Snare",
+        "Steam Vents",
+        "Surgical Extraction",
+        "Thundering Falls",
+        "Unholy Heat",
+        "Violent Urge",
+        "Wooded Foothills"
+      ],
+      "hash": "9ecd948fa25a227e",
+      "detail": "details/mtgtop8-90965-890829.json"
+    },
+    {
+      "id": "mtgtop8-90965-890825",
+      "format": "modern",
+      "name": "Boros Burn",
+      "archetype": "Boros Burn",
+      "colors": [
+        "R",
+        "W"
+      ],
+      "mechanics": [],
+      "collections": [
+        "last-20-events"
+      ],
+      "manaProfile": {
+        "colors": [
+          "R",
+          "W"
+        ],
+        "pipCounts": {
+          "R": 46,
+          "W": 8
+        },
+        "sourceCounts": {
+          "R": 15,
+          "W": 9
+        },
+        "landCount": 20,
+        "predominantColors": [
+          "R"
+        ],
+        "predominantLands": [
+          {
+            "name": "Barbarian Ring",
+            "count": 3
+          },
+          {
+            "name": "Inspiring Vantage",
+            "count": 3
+          },
+          {
+            "name": "Mountain",
+            "count": 3
+          }
+        ],
+        "metadataCoverage": {
+          "source": "local-card-artifact",
+          "resolvedCardCount": 20,
+          "totalCardCount": 20,
+          "unresolvedCardNames": [],
+          "complete": true
+        }
+      },
+      "cardNames": [
+        "Arid Mesa",
+        "Barbarian Ring",
+        "Bloodstained Mire",
+        "Boltwave",
+        "Boros Charm",
+        "Damping Sphere",
+        "Deflecting Palm",
+        "Eidolon of the Great Revel",
+        "Elegant Parlor",
+        "Goblin Guide",
+        "Inspiring Vantage",
+        "Lava Spike",
+        "Lightning Bolt",
+        "Lightning Helix",
+        "Monastery Swiftspear",
+        "Mountain",
+        "Obsidian Charmaw",
+        "Orim's Chant",
+        "Path to Exile",
+        "Rest in Peace",
+        "Rift Bolt",
+        "Roiling Vortex",
+        "Sacred Foundry",
+        "Searing Blaze",
+        "Skewer the Critics",
+        "Smash to Smithereens",
+        "Soul-Guide Lantern",
+        "Sunbaked Canyon",
+        "Surgical Extraction",
+        "Wooded Foothills"
+      ],
+      "event": "MTGO Challenge 32",
+      "date": "2026-09-16",
+      "placement": 2,
+      "mainboardCount": 61,
+      "sideboardCount": 15,
+      "commanderCount": 0,
+      "source": "mtgtop8",
+      "sourceUrl": "https://mtgtop8.com/event?e=90965&d=890825&f=MO",
+      "tags": [
+        "Top 8"
+      ],
+      "cards": [
+        "Arid Mesa",
+        "Barbarian Ring",
+        "Bloodstained Mire",
+        "Boltwave",
+        "Boros Charm",
+        "Damping Sphere",
+        "Deflecting Palm",
+        "Eidolon of the Great Revel",
+        "Elegant Parlor",
+        "Goblin Guide",
+        "Inspiring Vantage",
+        "Lava Spike",
+        "Lightning Bolt",
+        "Lightning Helix",
+        "Monastery Swiftspear",
+        "Mountain",
+        "Obsidian Charmaw",
+        "Orim's Chant",
+        "Path to Exile",
+        "Rest in Peace",
+        "Rift Bolt",
+        "Roiling Vortex",
+        "Sacred Foundry",
+        "Searing Blaze",
+        "Skewer the Critics",
+        "Smash to Smithereens",
+        "Soul-Guide Lantern",
+        "Sunbaked Canyon",
+        "Surgical Extraction",
+        "Wooded Foothills"
+      ],
+      "hash": "c20af1dbaea91327",
+      "detail": "details/mtgtop8-90965-890825.json"
+    },
     {
       "id": "mtgtop8-90808-889588",
       "format": "modern",
@@ -14,6 +1647,9 @@
         "G"
       ],
       "mechanics": [],
+      "collections": [
+        "last-major-events"
+      ],
       "manaProfile": {
         "colors": [
           "B",
@@ -93,7 +1729,7 @@
         "Yavimaya, Cradle of Growth"
       ],
       "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-      "date": "",
+      "date": "2026-09-13",
       "placement": 2,
       "mainboardCount": 61,
       "sideboardCount": 15,
@@ -140,7 +1776,7 @@
         "Warping Wail",
         "Yavimaya, Cradle of Growth"
       ],
-      "hash": "e3abdaa5666c7120",
+      "hash": "ba9a02f559c1f1bf",
       "detail": "details/mtgtop8-90808-889588.json"
     },
     {
@@ -153,6 +1789,9 @@
         "U"
       ],
       "mechanics": [],
+      "collections": [
+        "last-major-events"
+      ],
       "manaProfile": {
         "colors": [
           "B",
@@ -230,7 +1869,7 @@
         "Watery Grave"
       ],
       "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-      "date": "",
+      "date": "2026-09-13",
       "placement": 1,
       "mainboardCount": 60,
       "sideboardCount": 15,
@@ -277,7 +1916,7 @@
         "Undercity Sewers",
         "Watery Grave"
       ],
-      "hash": "20febbec6c3b59a8",
+      "hash": "5c440473bcffe591",
       "detail": "details/mtgtop8-90808-889587.json"
     },
     {
@@ -292,6 +1931,9 @@
         "W"
       ],
       "mechanics": [],
+      "collections": [
+        "last-major-events"
+      ],
       "manaProfile": {
         "colors": [
           "C",
@@ -371,7 +2013,7 @@
         "Wrath of the Skies"
       ],
       "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-      "date": "",
+      "date": "2026-09-13",
       "placement": 3,
       "mainboardCount": 60,
       "sideboardCount": 14,
@@ -415,7 +2057,7 @@
         "Thundering Falls",
         "Wrath of the Skies"
       ],
-      "hash": "5a999fed997a895c",
+      "hash": "8ca185bd15c7437b",
       "detail": "details/mtgtop8-90808-889589.json"
     },
     {
@@ -429,6 +2071,9 @@
         "G"
       ],
       "mechanics": [],
+      "collections": [
+        "last-major-events"
+      ],
       "manaProfile": {
         "colors": [
           "B",
@@ -508,7 +2153,7 @@
         "Wastes"
       ],
       "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-      "date": "",
+      "date": "2026-09-13",
       "placement": 3,
       "mainboardCount": 60,
       "sideboardCount": 15,
@@ -555,7 +2200,7 @@
         "Walking Ballista",
         "Wastes"
       ],
-      "hash": "83eecd7e3035e02b",
+      "hash": "16684bb7f19b79b7",
       "detail": "details/mtgtop8-90808-889590.json"
     },
     {
@@ -570,6 +2215,9 @@
         "W"
       ],
       "mechanics": [],
+      "collections": [
+        "last-major-events"
+      ],
       "manaProfile": {
         "colors": [
           "B",
@@ -650,7 +2298,7 @@
         "Wrath of the Skies"
       ],
       "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-      "date": "",
+      "date": "2026-09-13",
       "placement": 5,
       "mainboardCount": 60,
       "sideboardCount": 15,
@@ -694,7 +2342,7 @@
         "Watery Grave",
         "Wrath of the Skies"
       ],
-      "hash": "684c5f3542b59f5d",
+      "hash": "9e6a4381e53d4fb8",
       "detail": "details/mtgtop8-90808-889591.json"
     },
     {
@@ -708,6 +2356,9 @@
         "U"
       ],
       "mechanics": [],
+      "collections": [
+        "last-major-events"
+      ],
       "manaProfile": {
         "colors": [
           "C",
@@ -783,7 +2434,7 @@
         "Whipflare"
       ],
       "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-      "date": "",
+      "date": "2026-09-13",
       "placement": 5,
       "mainboardCount": 60,
       "sideboardCount": 15,
@@ -826,7 +2477,7 @@
         "Welding Jar",
         "Whipflare"
       ],
-      "hash": "1b0292119f4a1287",
+      "hash": "b963cf2bcdf296b9",
       "detail": "details/mtgtop8-90808-889592.json"
     },
     {
@@ -841,6 +2492,9 @@
         "W"
       ],
       "mechanics": [],
+      "collections": [
+        "last-major-events"
+      ],
       "manaProfile": {
         "colors": [
           "C",
@@ -921,7 +2575,7 @@
         "Welding Jar"
       ],
       "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-      "date": "",
+      "date": "2026-09-13",
       "placement": 5,
       "mainboardCount": 60,
       "sideboardCount": 15,
@@ -966,7 +2620,7 @@
         "Vexing Bauble",
         "Welding Jar"
       ],
-      "hash": "b19216bc3599272c",
+      "hash": "c05198598a17c06c",
       "detail": "details/mtgtop8-90808-889593.json"
     },
     {
@@ -980,6 +2634,9 @@
         "U"
       ],
       "mechanics": [],
+      "collections": [
+        "last-major-events"
+      ],
       "manaProfile": {
         "colors": [
           "G",
@@ -1049,7 +2706,7 @@
         "Violent Urge"
       ],
       "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-      "date": "",
+      "date": "2026-09-13",
       "placement": 5,
       "mainboardCount": 60,
       "sideboardCount": 15,
@@ -1086,7 +2743,7 @@
         "Unholy Heat",
         "Violent Urge"
       ],
-      "hash": "c720c28dd2756a47",
+      "hash": "89aeb22732449737",
       "detail": "details/mtgtop8-90808-889594.json"
     },
     {
@@ -1100,6 +2757,9 @@
         "G"
       ],
       "mechanics": [],
+      "collections": [
+        "last-major-events"
+      ],
       "manaProfile": {
         "colors": [
           "B",
@@ -1176,7 +2836,7 @@
         "Yavimaya, Cradle of Growth"
       ],
       "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-      "date": "",
+      "date": "2026-09-13",
       "placement": 9,
       "mainboardCount": 60,
       "sideboardCount": 15,
@@ -1218,7 +2878,7 @@
         "Warping Wail",
         "Yavimaya, Cradle of Growth"
       ],
-      "hash": "d0b33c36c6944d7a",
+      "hash": "0250380106d30c78",
       "detail": "details/mtgtop8-90808-889598.json"
     },
     {
@@ -1232,6 +2892,9 @@
         "G"
       ],
       "mechanics": [],
+      "collections": [
+        "last-major-events"
+      ],
       "manaProfile": {
         "colors": [
           "B",
@@ -1308,7 +2971,7 @@
         "Yavimaya, Cradle of Growth"
       ],
       "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-      "date": "",
+      "date": "2026-09-13",
       "placement": 9,
       "mainboardCount": 60,
       "sideboardCount": 15,
@@ -1350,7 +3013,7 @@
         "Warping Wail",
         "Yavimaya, Cradle of Growth"
       ],
-      "hash": "e34bc463d1e70262",
+      "hash": "e3b8f36ff6415d88",
       "detail": "details/mtgtop8-90808-889599.json"
     },
     {
@@ -1364,6 +3027,9 @@
         "W"
       ],
       "mechanics": [],
+      "collections": [
+        "last-major-events"
+      ],
       "manaProfile": {
         "colors": [
           "B",
@@ -1442,7 +3108,7 @@
         "Wrath of the Skies"
       ],
       "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-      "date": "",
+      "date": "2026-09-13",
       "placement": 9,
       "mainboardCount": 60,
       "sideboardCount": 15,
@@ -1485,7 +3151,7 @@
         "Witch Enchanter",
         "Wrath of the Skies"
       ],
-      "hash": "3c103ea94f6e642d",
+      "hash": "4c0d61c76a40d225",
       "detail": "details/mtgtop8-90808-889595.json"
     },
     {
@@ -1499,6 +3165,9 @@
         "W"
       ],
       "mechanics": [],
+      "collections": [
+        "last-major-events"
+      ],
       "manaProfile": {
         "colors": [
           "B",
@@ -1578,7 +3247,7 @@
         "Wrath of the Skies"
       ],
       "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-      "date": "",
+      "date": "2026-09-13",
       "placement": 9,
       "mainboardCount": 60,
       "sideboardCount": 15,
@@ -1620,7 +3289,7 @@
         "Witch Enchanter",
         "Wrath of the Skies"
       ],
-      "hash": "ac42bb3f9dea45cf",
+      "hash": "eef9bd615d843ef0",
       "detail": "details/mtgtop8-90808-889597.json"
     },
     {

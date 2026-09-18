@@ -1,5 +1,5 @@
 {
-  "id": "mtgtop8-90808-889587",
+  "id": "mtgtop8-90964-890809",
   "format": "modern",
   "name": "Dimir Control",
   "archetype": "Dimir Control",
@@ -9,10 +9,9 @@
   ],
   "mechanics": [],
   "collections": [
-    "last-major-events"
+    "last-20-events"
   ],
   "cardNames": [
-    "Cling to Dust",
     "Consign to Memory",
     "Counterspell",
     "Darkslick Shores",
@@ -21,6 +20,7 @@
     "Fatal Push",
     "Flooded Strand",
     "Force of Negation",
+    "Gloomlake Verge",
     "Harbinger of the Seas",
     "Island",
     "Kaito, Bane of Nightmares",
@@ -31,11 +31,9 @@
     "Orcish Bowmasters",
     "Otawara, Soaring City",
     "Polluted Delta",
-    "Preordain",
     "Psychic Frog",
     "Quantum Riddler",
     "Requiting Hex",
-    "Scalding Tarn",
     "Sheoldred's Edict",
     "Sink into Stupor",
     "Spell Snare",
@@ -46,25 +44,26 @@
     "Thoughtseize",
     "Toxic Deluge",
     "Undercity Sewers",
+    "Wan Shi Tong, Librarian",
     "Watery Grave"
   ],
-  "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-  "date": "2026-09-13",
-  "placement": 1,
+  "event": "MTGO League",
+  "date": "2026-09-17",
+  "placement": 4,
   "source": "mtgtop8",
-  "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889587&f=MO",
+  "sourceUrl": "https://mtgtop8.com/event?e=90964&d=890809&f=MO",
   "mainboard": [
     {
-      "name": "Cling to Dust",
-      "count": 1
+      "name": "Consign to Memory",
+      "count": 2
     },
     {
       "name": "Counterspell",
-      "count": 4
+      "count": 2
     },
     {
       "name": "Darkslick Shores",
-      "count": 2
+      "count": 1
     },
     {
       "name": "Drown in the Loch",
@@ -76,15 +75,19 @@
     },
     {
       "name": "Flooded Strand",
-      "count": 3
+      "count": 2
     },
     {
       "name": "Force of Negation",
-      "count": 3
+      "count": 2
+    },
+    {
+      "name": "Gloomlake Verge",
+      "count": 1
     },
     {
       "name": "Island",
-      "count": 2
+      "count": 3
     },
     {
       "name": "Kaito, Bane of Nightmares",
@@ -92,7 +95,7 @@
     },
     {
       "name": "Marsh Flats",
-      "count": 1
+      "count": 2
     },
     {
       "name": "Murktide Regent",
@@ -111,20 +114,12 @@
       "count": 4
     },
     {
-      "name": "Preordain",
-      "count": 2
-    },
-    {
       "name": "Psychic Frog",
       "count": 4
     },
     {
       "name": "Quantum Riddler",
-      "count": 3
-    },
-    {
-      "name": "Scalding Tarn",
-      "count": 1
+      "count": 4
     },
     {
       "name": "Sheoldred's Edict",
@@ -136,7 +131,7 @@
     },
     {
       "name": "Spell Snare",
-      "count": 2
+      "count": 3
     },
     {
       "name": "Subtlety",
@@ -152,11 +147,15 @@
     },
     {
       "name": "Thoughtseize",
-      "count": 3
+      "count": 4
     },
     {
       "name": "Undercity Sewers",
       "count": 2
+    },
+    {
+      "name": "Wan Shi Tong, Librarian",
+      "count": 1
     },
     {
       "name": "Watery Grave",
@@ -166,15 +165,19 @@
   "sideboard": [
     {
       "name": "Consign to Memory",
-      "count": 4
+      "count": 2
     },
     {
       "name": "Engineered Explosives",
-      "count": 2
+      "count": 1
     },
     {
       "name": "Harbinger of the Seas",
       "count": 2
+    },
+    {
+      "name": "Murktide Regent",
+      "count": 1
     },
     {
       "name": "Mystical Dispute",
@@ -189,31 +192,35 @@
       "count": 1
     },
     {
+      "name": "Sheoldred's Edict",
+      "count": 1
+    },
+    {
       "name": "Stern Scolding",
       "count": 1
     },
     {
       "name": "Toxic Deluge",
-      "count": 1
+      "count": 2
     }
   ],
   "commander": [],
   "tags": [
     "Top 8"
   ],
-  "hash": "5c440473bcffe591",
+  "hash": "e6e153899ea9d6b0",
   "manaProfile": {
     "colors": [
       "B",
       "U"
     ],
     "pipCounts": {
-      "B": 18,
-      "U": 38
+      "U": 37,
+      "B": 18
     },
     "sourceCounts": {
       "B": 8,
-      "U": 10
+      "U": 11
     },
     "landCount": 20,
     "predominantColors": [
@@ -225,7 +232,7 @@
         "count": 4
       },
       {
-        "name": "Flooded Strand",
+        "name": "Island",
         "count": 3
       },
       {

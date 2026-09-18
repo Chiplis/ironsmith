@@ -9,6 +9,9 @@
     "G"
   ],
   "mechanics": [],
+  "collections": [
+    "last-major-events"
+  ],
   "cardNames": [
     "Ancient Stirrings",
     "Basking Broodscale",
@@ -44,7 +47,7 @@
     "Yavimaya, Cradle of Growth"
   ],
   "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-  "date": "",
+  "date": "2026-09-13",
   "placement": 9,
   "source": "mtgtop8",
   "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889599&f=MO",
@@ -190,7 +193,7 @@
   ],
   "commander": [],
   "tags": [],
-  "hash": "e34bc463d1e70262",
+  "hash": "e3b8f36ff6415d88",
   "manaProfile": {
     "colors": [
       "B",

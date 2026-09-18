@@ -1,0 +1,194 @@
+{
+  "id": "mtgtop8-90952-890713",
+  "format": "standard",
+  "name": "Mono Green Aggro",
+  "archetype": "Mono Green Aggro",
+  "colors": [
+    "C",
+    "G"
+  ],
+  "mechanics": [],
+  "collections": [
+    "last-20-events"
+  ],
+  "cardNames": [
+    "Ba Sing Se",
+    "Earthbender Ascension",
+    "Elven Passage",
+    "Escape Tunnel",
+    "Fabled Passage",
+    "Forest",
+    "Glimpse the Core",
+    "Icetill Explorer",
+    "Keen-Eyed Curator",
+    "Llanowar Elves",
+    "Meltstrider's Resolve",
+    "Mightform Harmonizer",
+    "Mossborn Hydra",
+    "Origin of Metalbending",
+    "Promising Vein",
+    "Sapling Nursery",
+    "Sazh's Chocobo",
+    "Snakeskin Veil",
+    "Soul-Guide Lantern",
+    "Surrak, Elusive Hunter",
+    "Torpor Orb",
+    "Warg Tactics"
+  ],
+  "event": "MTGO Challenge 16",
+  "date": "2026-09-17",
+  "placement": 5,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=90952&d=890713&f=ST",
+  "mainboard": [
+    {
+      "name": "Ba Sing Se",
+      "count": 2
+    },
+    {
+      "name": "Earthbender Ascension",
+      "count": 4
+    },
+    {
+      "name": "Elven Passage",
+      "count": 1
+    },
+    {
+      "name": "Escape Tunnel",
+      "count": 3
+    },
+    {
+      "name": "Fabled Passage",
+      "count": 4
+    },
+    {
+      "name": "Forest",
+      "count": 15
+    },
+    {
+      "name": "Glimpse the Core",
+      "count": 4
+    },
+    {
+      "name": "Icetill Explorer",
+      "count": 4
+    },
+    {
+      "name": "Keen-Eyed Curator",
+      "count": 1
+    },
+    {
+      "name": "Llanowar Elves",
+      "count": 4
+    },
+    {
+      "name": "Meltstrider's Resolve",
+      "count": 1
+    },
+    {
+      "name": "Mightform Harmonizer",
+      "count": 4
+    },
+    {
+      "name": "Mossborn Hydra",
+      "count": 4
+    },
+    {
+      "name": "Promising Vein",
+      "count": 1
+    },
+    {
+      "name": "Sapling Nursery",
+      "count": 1
+    },
+    {
+      "name": "Sazh's Chocobo",
+      "count": 4
+    },
+    {
+      "name": "Snakeskin Veil",
+      "count": 2
+    },
+    {
+      "name": "Surrak, Elusive Hunter",
+      "count": 1
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Keen-Eyed Curator",
+      "count": 1
+    },
+    {
+      "name": "Meltstrider's Resolve",
+      "count": 3
+    },
+    {
+      "name": "Origin of Metalbending",
+      "count": 2
+    },
+    {
+      "name": "Sapling Nursery",
+      "count": 3
+    },
+    {
+      "name": "Soul-Guide Lantern",
+      "count": 1
+    },
+    {
+      "name": "Surrak, Elusive Hunter",
+      "count": 1
+    },
+    {
+      "name": "Torpor Orb",
+      "count": 2
+    },
+    {
+      "name": "Warg Tactics",
+      "count": 2
+    }
+  ],
+  "commander": [],
+  "tags": [
+    "Top 8"
+  ],
+  "hash": "46144be54c13318c",
+  "manaProfile": {
+    "colors": [
+      "C",
+      "G"
+    ],
+    "pipCounts": {
+      "G": 44
+    },
+    "sourceCounts": {
+      "G": 17,
+      "C": 1
+    },
+    "landCount": 26,
+    "predominantColors": [
+      "G"
+    ],
+    "predominantLands": [
+      {
+        "name": "Forest",
+        "count": 15
+      },
+      {
+        "name": "Fabled Passage",
+        "count": 4
+      },
+      {
+        "name": "Escape Tunnel",
+        "count": 3
+      }
+    ],
+    "metadataCoverage": {
+      "source": "local-card-artifact",
+      "resolvedCardCount": 18,
+      "totalCardCount": 18,
+      "unresolvedCardNames": [],
+      "complete": true
+    }
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "id": "mtgtop8-90808-889594",
+  "id": "mtgtop8-90965-890829",
   "format": "modern",
   "name": "UR Cutter Prowess",
   "archetype": "UR Cutter Prowess",
@@ -10,7 +10,7 @@
   ],
   "mechanics": [],
   "collections": [
-    "last-major-events"
+    "last-20-events"
   ],
   "cardNames": [
     "Arid Mesa",
@@ -22,11 +22,12 @@
     "Fiery Islet",
     "Lava Dart",
     "Lightning Bolt",
+    "Meltdown",
     "Mishra's Bauble",
     "Monastery Swiftspear",
     "Mountain",
-    "Murktide Regent",
     "Mutagenic Growth",
+    "Mystical Dispute",
     "Preordain",
     "Scalding Tarn",
     "Slickshot Show-Off",
@@ -35,23 +36,23 @@
     "Steam Vents",
     "Surgical Extraction",
     "Thundering Falls",
-    "Tormod's Crypt",
     "Unholy Heat",
-    "Violent Urge"
+    "Violent Urge",
+    "Wooded Foothills"
   ],
-  "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-  "date": "2026-09-13",
-  "placement": 5,
+  "event": "MTGO Challenge 32",
+  "date": "2026-09-16",
+  "placement": 1,
   "source": "mtgtop8",
-  "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889594&f=MO",
+  "sourceUrl": "https://mtgtop8.com/event?e=90965&d=890829&f=MO",
   "mainboard": [
     {
       "name": "Arid Mesa",
-      "count": 3
+      "count": 1
     },
     {
       "name": "Bloodstained Mire",
-      "count": 3
+      "count": 2
     },
     {
       "name": "Cori-Steel Cutter",
@@ -116,6 +117,10 @@
     {
       "name": "Violent Urge",
       "count": 2
+    },
+    {
+      "name": "Wooded Foothills",
+      "count": 3
     }
   ],
   "sideboard": [
@@ -124,7 +129,11 @@
       "count": 4
     },
     {
-      "name": "Murktide Regent",
+      "name": "Meltdown",
+      "count": 2
+    },
+    {
+      "name": "Mystical Dispute",
       "count": 1
     },
     {
@@ -133,14 +142,10 @@
     },
     {
       "name": "Spell Snare",
-      "count": 3
+      "count": 2
     },
     {
       "name": "Surgical Extraction",
-      "count": 1
-    },
-    {
-      "name": "Tormod's Crypt",
       "count": 1
     },
     {
@@ -152,7 +157,7 @@
   "tags": [
     "Top 8"
   ],
-  "hash": "89aeb22732449737",
+  "hash": "9ecd948fa25a227e",
   "manaProfile": {
     "colors": [
       "G",
@@ -174,22 +179,22 @@
     ],
     "predominantLands": [
       {
-        "name": "Arid Mesa",
-        "count": 3
-      },
-      {
-        "name": "Bloodstained Mire",
-        "count": 3
-      },
-      {
         "name": "Mountain",
+        "count": 3
+      },
+      {
+        "name": "Scalding Tarn",
+        "count": 3
+      },
+      {
+        "name": "Steam Vents",
         "count": 3
       }
     ],
     "metadataCoverage": {
       "source": "local-card-artifact",
-      "resolvedCardCount": 18,
-      "totalCardCount": 18,
+      "resolvedCardCount": 19,
+      "totalCardCount": 19,
       "unresolvedCardNames": [],
       "complete": true
     }

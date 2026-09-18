@@ -9,6 +9,9 @@
     "U"
   ],
   "mechanics": [],
+  "collections": [
+    "last-major-events"
+  ],
   "cardNames": [
     "Arcbound Ravager",
     "Blood Moon",
@@ -43,7 +46,7 @@
     "Whipflare"
   ],
   "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
-  "date": "",
+  "date": "2026-09-13",
   "placement": 5,
   "source": "mtgtop8",
   "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889592&f=MO",
@@ -183,7 +186,7 @@
   "tags": [
     "Top 8"
   ],
-  "hash": "1b0292119f4a1287",
+  "hash": "b963cf2bcdf296b9",
   "manaProfile": {
     "colors": [
       "C",
