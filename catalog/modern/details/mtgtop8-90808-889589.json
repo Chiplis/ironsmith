@@ -1,0 +1,192 @@
+{
+  "id": "mtgtop8-90808-889589",
+  "format": "modern",
+  "name": "Scepter Chant",
+  "archetype": "Scepter Chant",
+  "colors": [],
+  "mechanics": [],
+  "cardNames": [
+    "Arid Mesa",
+    "Ashiok, Dream Render",
+    "Consign to Memory",
+    "Consult the Star Charts",
+    "Counterspell",
+    "Day's Undoing",
+    "Elegant Parlor",
+    "Flooded Strand",
+    "Force of Negation",
+    "Galvanic Discharge",
+    "Geier Reach Sanitarium",
+    "Hallowed Fountain",
+    "High Noon",
+    "Island",
+    "Isochron Scepter",
+    "Meticulous Archive",
+    "Monumental Henge",
+    "Mystic Gate",
+    "Mystical Dispute",
+    "Narset, Parter of Veils",
+    "Orim's Chant",
+    "Plains",
+    "Prismatic Ending",
+    "Rest in Peace",
+    "Scalding Tarn",
+    "Solitude",
+    "Spell Snare",
+    "Steam Vents",
+    "Supreme Verdict",
+    "Teferi, Time Raveler",
+    "Thundering Falls",
+    "Wrath of the Skies"
+  ],
+  "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
+  "date": "",
+  "placement": 3,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889589&f=MO",
+  "mainboard": [
+    {
+      "name": "Arid Mesa",
+      "count": 4
+    },
+    {
+      "name": "Consult the Star Charts",
+      "count": 4
+    },
+    {
+      "name": "Counterspell",
+      "count": 3
+    },
+    {
+      "name": "Day's Undoing",
+      "count": 1
+    },
+    {
+      "name": "Elegant Parlor",
+      "count": 1
+    },
+    {
+      "name": "Flooded Strand",
+      "count": 4
+    },
+    {
+      "name": "Force of Negation",
+      "count": 1
+    },
+    {
+      "name": "Galvanic Discharge",
+      "count": 3
+    },
+    {
+      "name": "Geier Reach Sanitarium",
+      "count": 1
+    },
+    {
+      "name": "Hallowed Fountain",
+      "count": 2
+    },
+    {
+      "name": "Island",
+      "count": 2
+    },
+    {
+      "name": "Isochron Scepter",
+      "count": 2
+    },
+    {
+      "name": "Meticulous Archive",
+      "count": 1
+    },
+    {
+      "name": "Monumental Henge",
+      "count": 1
+    },
+    {
+      "name": "Mystic Gate",
+      "count": 1
+    },
+    {
+      "name": "Narset, Parter of Veils",
+      "count": 4
+    },
+    {
+      "name": "Orim's Chant",
+      "count": 4
+    },
+    {
+      "name": "Plains",
+      "count": 2
+    },
+    {
+      "name": "Prismatic Ending",
+      "count": 2
+    },
+    {
+      "name": "Scalding Tarn",
+      "count": 2
+    },
+    {
+      "name": "Solitude",
+      "count": 3
+    },
+    {
+      "name": "Spell Snare",
+      "count": 2
+    },
+    {
+      "name": "Steam Vents",
+      "count": 2
+    },
+    {
+      "name": "Supreme Verdict",
+      "count": 2
+    },
+    {
+      "name": "Teferi, Time Raveler",
+      "count": 3
+    },
+    {
+      "name": "Thundering Falls",
+      "count": 1
+    },
+    {
+      "name": "Wrath of the Skies",
+      "count": 2
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Ashiok, Dream Render",
+      "count": 1
+    },
+    {
+      "name": "Consign to Memory",
+      "count": 4
+    },
+    {
+      "name": "Day's Undoing",
+      "count": 1
+    },
+    {
+      "name": "High Noon",
+      "count": 2
+    },
+    {
+      "name": "Mystical Dispute",
+      "count": 4
+    },
+    {
+      "name": "Rest in Peace",
+      "count": 1
+    },
+    {
+      "name": "Wrath of the Skies",
+      "count": 1
+    }
+  ],
+  "commander": [],
+  "tags": [
+    "Top 8"
+  ],
+  "hash": "5a999fed997a895c"
+}

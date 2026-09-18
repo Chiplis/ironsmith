@@ -1,0 +1,183 @@
+{
+  "id": "mtgtop8-90808-889592",
+  "format": "modern",
+  "name": "Pinnacle Affinity",
+  "archetype": "Pinnacle Affinity",
+  "colors": [],
+  "mechanics": [],
+  "cardNames": [
+    "Arcbound Ravager",
+    "Blood Moon",
+    "Claws of Gix",
+    "Consign to Memory",
+    "Damping Sphere",
+    "Emry, Lurker of the Loch",
+    "Engineered Explosives",
+    "Fiery Islet",
+    "Galvanic Blast",
+    "Island",
+    "Kappa Cannoneer",
+    "Metallic Rebuke",
+    "Mishra's Bauble",
+    "Mox Opal",
+    "Mystical Dispute",
+    "Pinnacle Emissary",
+    "Pithing Needle",
+    "Preordain",
+    "Shadowspear",
+    "Shivan Reef",
+    "Sink into Stupor",
+    "Skateboard",
+    "Spirebluff Canal",
+    "Steam Vents",
+    "Swan Song",
+    "Tormod's Crypt",
+    "Urza's Saga",
+    "Vexing Bauble",
+    "Weapons Manufacturing",
+    "Welding Jar",
+    "Whipflare"
+  ],
+  "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
+  "date": "",
+  "placement": 5,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889592&f=MO",
+  "mainboard": [
+    {
+      "name": "Arcbound Ravager",
+      "count": 1
+    },
+    {
+      "name": "Claws of Gix",
+      "count": 3
+    },
+    {
+      "name": "Emry, Lurker of the Loch",
+      "count": 2
+    },
+    {
+      "name": "Engineered Explosives",
+      "count": 4
+    },
+    {
+      "name": "Fiery Islet",
+      "count": 4
+    },
+    {
+      "name": "Island",
+      "count": 2
+    },
+    {
+      "name": "Kappa Cannoneer",
+      "count": 4
+    },
+    {
+      "name": "Metallic Rebuke",
+      "count": 3
+    },
+    {
+      "name": "Mishra's Bauble",
+      "count": 4
+    },
+    {
+      "name": "Mox Opal",
+      "count": 4
+    },
+    {
+      "name": "Pinnacle Emissary",
+      "count": 4
+    },
+    {
+      "name": "Pithing Needle",
+      "count": 1
+    },
+    {
+      "name": "Preordain",
+      "count": 2
+    },
+    {
+      "name": "Shadowspear",
+      "count": 1
+    },
+    {
+      "name": "Shivan Reef",
+      "count": 1
+    },
+    {
+      "name": "Sink into Stupor",
+      "count": 1
+    },
+    {
+      "name": "Skateboard",
+      "count": 1
+    },
+    {
+      "name": "Spirebluff Canal",
+      "count": 4
+    },
+    {
+      "name": "Steam Vents",
+      "count": 1
+    },
+    {
+      "name": "Tormod's Crypt",
+      "count": 4
+    },
+    {
+      "name": "Urza's Saga",
+      "count": 4
+    },
+    {
+      "name": "Weapons Manufacturing",
+      "count": 4
+    },
+    {
+      "name": "Welding Jar",
+      "count": 1
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Blood Moon",
+      "count": 1
+    },
+    {
+      "name": "Consign to Memory",
+      "count": 3
+    },
+    {
+      "name": "Damping Sphere",
+      "count": 2
+    },
+    {
+      "name": "Galvanic Blast",
+      "count": 3
+    },
+    {
+      "name": "Metallic Rebuke",
+      "count": 1
+    },
+    {
+      "name": "Mystical Dispute",
+      "count": 2
+    },
+    {
+      "name": "Swan Song",
+      "count": 1
+    },
+    {
+      "name": "Vexing Bauble",
+      "count": 1
+    },
+    {
+      "name": "Whipflare",
+      "count": 1
+    }
+  ],
+  "commander": [],
+  "tags": [
+    "Top 8"
+  ],
+  "hash": "1b0292119f4a1287"
+}

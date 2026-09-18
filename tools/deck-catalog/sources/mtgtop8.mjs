@@ -5,6 +5,7 @@ const DECK_LINK_RE = /href=["']?\/?\?e=(\d+)&d=(\d+)&f=([A-Za-z0-9]+)/gi;
 const CARD_LINE_RE = /<div\s+id=((?:md|sb)[^\s>]*)\s+class=["']deck_line[^"']*["'][^>]*>\s*(\d+)\s+<span[^>]*>([\s\S]*?)<\/span>/gi;
 const ARCHETYPE_RE = /href=["']?\/?archetype\?[^"'>]*["'][^>]*>([^<]*?)\s+decks<\/a>/gi;
 const EVENT_TITLE_RE = /<div\s+class=event_title[^>]*>\s*([\s\S]*?)<\/div>/gi;
+const PLACEMENT_TITLE_RE = /^#(\d+)(?:-\d+)?\s+/;
 
 function decodeHtml(value) {
   return text(value)
@@ -70,17 +71,17 @@ export function parseDeckPage(html, {
   }
 
   const titles = [...String(html || "").matchAll(EVENT_TITLE_RE)].map((match) => decodeHtml(match[1]));
-  const deckTitle = titles.find((title) => /^#\d+\s+/.test(title)) || "";
-  const placementMatch = deckTitle.match(/^#(\d+)\s+/);
+  const deckTitle = titles.find((title) => PLACEMENT_TITLE_RE.test(title)) || "";
+  const placementMatch = deckTitle.match(PLACEMENT_TITLE_RE);
   const archetypeFromTitle = deckTitle
-    .replace(/^#\d+\s+/, "")
+    .replace(PLACEMENT_TITLE_RE, "")
     .replace(/\s+-\s+.*$/, "")
     .trim();
   const archetypeLinks = [...String(html || "").matchAll(ARCHETYPE_RE)]
     .map((match) => decodeHtml(match[1]))
     .filter(Boolean);
   const archetype = archetypeFromTitle || archetypeLinks.at(-1) || "";
-  const event = titles.find((title) => !/^#\d+\s+/.test(title)) || "";
+  const event = titles.find((title) => !PLACEMENT_TITLE_RE.test(title)) || "";
 
   return {
     id: deckId ? `mtgtop8-${eventId}-${deckId}` : "",

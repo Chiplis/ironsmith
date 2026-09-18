@@ -5,6 +5,28 @@ import { loadCatalogDeckDetail, loadCatalogIndex, loadLocalCardArt, searchCatalo
 
 const fieldClass = "w-full border border-[rgba(154,126,82,0.46)] bg-[#0b0d0e] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none";
 const labelClass = "grid gap-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]";
+const PAGE_SIZE = 6;
+const collectionOptions = [
+  { id: "all", label: "Todos" },
+  { id: "recent", label: "Recientes" },
+  { id: "major", label: "Eventos grandes" },
+  { id: "top8", label: "Top 8" },
+];
+
+function isMajorEntry(entry) {
+  const event = String(entry?.event || "").toLocaleLowerCase("en-US");
+  return /(pro tour|grand prix|regional|championship|scg|open)/.test(event);
+}
+
+function isTop8Entry(entry) {
+  return Number(entry?.placement) > 0 && Number(entry.placement) <= 8;
+}
+
+function matchesCollection(entry, collection) {
+  if (collection === "major") return isMajorEntry(entry);
+  if (collection === "top8") return isTop8Entry(entry);
+  return true;
+}
 
 const CatalogDeckRow = memo(function CatalogDeckRow({ entry, isBusy, isCopying, isCopied, onSelect, onCopy }) {
   const [artUrl, setArtUrl] = useState("");
@@ -52,6 +74,9 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
   const [copyingId, setCopyingId] = useState("");
   const [copiedId, setCopiedId] = useState("");
   const [error, setError] = useState("");
+  const [collection, setCollection] = useState("all");
+  const [sortMode, setSortMode] = useState("recent");
+  const [page, setPage] = useState(0);
   const busyRef = useRef("");
   const copyingRef = useRef("");
   const deferredQuery = useDeferredValue(query);
@@ -73,10 +98,37 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
     };
   }, []);
 
-  const results = useMemo(
-    () => searchCatalogEntries(catalog?.decks, deferredQuery, { searchIndex: catalog?.searchIndex }),
+  const searchResults = useMemo(
+    () => searchCatalogEntries(catalog?.decks, deferredQuery, { limit: 240, searchIndex: catalog?.searchIndex }),
     [catalog, deferredQuery],
   );
+
+  const filteredResults = useMemo(() => {
+    const filtered = searchResults.filter((entry) => matchesCollection(entry, collection));
+    return [...filtered].sort((left, right) => {
+      if (sortMode === "placement") {
+        return (Number(left.placement) || 9999) - (Number(right.placement) || 9999)
+          || String(right.date || "").localeCompare(String(left.date || ""));
+      }
+      return String(right.date || "").localeCompare(String(left.date || ""))
+        || (Number(left.placement) || 9999) - (Number(right.placement) || 9999);
+    });
+  }, [collection, searchResults, sortMode]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredResults.length / PAGE_SIZE));
+  const visiblePage = Math.min(page, pageCount - 1);
+  const results = filteredResults.slice(visiblePage * PAGE_SIZE, (visiblePage + 1) * PAGE_SIZE);
+
+  const collectionCounts = useMemo(() => {
+    const counts = Object.fromEntries(collectionOptions.map(({ id }) => [id, 0]));
+    counts.all = searchResults.length;
+    counts.recent = searchResults.length;
+    for (const entry of searchResults) {
+      if (isMajorEntry(entry)) counts.major += 1;
+      if (isTop8Entry(entry)) counts.top8 += 1;
+    }
+    return counts;
+  }, [searchResults]);
 
   const handleSelect = useCallback(async (entry) => {
     if (busyRef.current) return;
@@ -135,12 +187,32 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
         </select></label>
       </div>
       <input className={fieldClass} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Broodscale Bloodchief, Dimir Control, Counterspell..." aria-label="Buscar en catálogo" />
+      <div className="flex flex-wrap items-center gap-1.5" aria-label="Filtros del catálogo">
+        {collectionOptions.map((option) => (
+          <Button key={option.id} type="button" variant="ghost" size="sm" className={`h-7 border px-2 text-[10px] font-bold uppercase tracking-wide ${collection === option.id ? "border-[#d8bf7a] bg-[#342817] text-[#f2d9a3]" : "border-white/15 text-[#b8aa8e]"}`} onClick={() => { setCollection(option.id); setPage(0); }}>
+            {option.label} ({collectionCounts[option.id]})
+          </Button>
+        ))}
+        <label className="ml-auto flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e]">Ordenar
+          <select className="border border-white/15 bg-[#0b0d0e] px-2 py-1 text-[10px] text-[#e7d9bc]" value={sortMode} onChange={(event) => { setSortMode(event.target.value); setPage(0); }}>
+            <option value="recent">Más recientes</option>
+            <option value="placement">Mejor puesto</option>
+          </select>
+        </label>
+      </div>
       {loading ? <p className="text-[12px] text-[#b8aa8e]">Cargando índice…</p> : null}
       {error ? <p className="text-[12px] text-red-300">{error}</p> : null}
       {!loading && !error && results.length === 0 ? <p className="text-[12px] text-[#b8aa8e]">No hay resultados para esta búsqueda.</p> : null}
       <div className="grid max-h-[260px] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
         {results.map((entry) => <CatalogDeckRow key={entry.id} entry={entry} isBusy={busyId === entry.id} isCopying={copyingId === entry.id} isCopied={copiedId === entry.id} onSelect={handleSelect} onCopy={handleCopy} />)}
       </div>
+      {filteredResults.length > PAGE_SIZE ? (
+        <div className="flex items-center justify-between gap-2 border-t border-white/10 pt-2">
+          <Button type="button" variant="ghost" size="sm" className="h-7 border border-white/15 px-2 text-[10px] uppercase tracking-wide text-[#b8aa8e]" disabled={visiblePage === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>Anterior</Button>
+          <span className="text-[10px] uppercase tracking-wide text-[#b8aa8e]">Página {visiblePage + 1} / {pageCount} · {filteredResults.length} decks</span>
+          <Button type="button" variant="ghost" size="sm" className="h-7 border border-white/15 px-2 text-[10px] uppercase tracking-wide text-[#b8aa8e]" disabled={visiblePage >= pageCount - 1} onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}>Siguiente</Button>
+        </div>
+      ) : null}
     </section>
   );
 }

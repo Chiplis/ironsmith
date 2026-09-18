@@ -49,3 +49,15 @@ test("parses mainboard, sideboard and placement from an event deck page", () => 
   ]);
   assert.deepEqual(deck.sideboard, [{ name: "Rest in Peace", count: 2 }]);
 });
+
+test("parses shared placements such as #3-4", () => {
+  const html = `
+    <div class=event_title>Modern Challenge</div>
+    <div class=event_title>#3-4 Scepter Chant - <a class=player_big>Player</a></div>
+    <div id=md1 class="deck_line"><span>4</span></div>
+    <div id=mdx class="deck_line">4 <span>Counterspell</span></div>
+  `;
+  const deck = parseDeckPage(html, { eventId: "1", deckId: "2" });
+  assert.equal(deck.placement, 3);
+  assert.equal(deck.archetype, "Scepter Chant");
+});
