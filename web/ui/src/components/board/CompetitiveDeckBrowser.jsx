@@ -169,10 +169,6 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
       key: `${filteredResults[index % filteredResults.length].id}-${index}`,
     }));
   }, [filteredResults]);
-  const carouselTrackLength = carouselTrackEntries.length;
-  const carouselCardWidthPercent = carouselTrackLength ? 100 / carouselTrackLength : 0;
-  const carouselTranslatePercent = carouselTrackLength ? (carouselOffset * 100) / carouselTrackLength : 0;
-  const carouselTranslateGap = carouselOffset * 8;
 
   useEffect(() => {
     resetCarousel();
@@ -326,9 +322,9 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
             <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
           </Button>
         ) : null}
-        <div className="mx-9 overflow-hidden">
-          <div className="flex gap-2" style={{ width: `${(carouselTrackLength / CAROUSEL_SIZE) * 100}%`, transform: `translateX(calc(-${carouselTranslatePercent}% - ${carouselTranslateGap}px))`, transition: carouselAnimating ? "transform 380ms cubic-bezier(0.22, 0.61, 0.36, 1)" : "none" }}>
-            {carouselTrackEntries.map(({ entry, key }) => <div key={key} className="min-w-0" style={{ flex: `0 0 ${carouselCardWidthPercent}%` }}><CatalogDeckRow entry={entry} isBusy={busyId === entry.id} isCopying={copyingId === entry.id} isCopied={copiedId === entry.id} onSelect={handleSelect} onCopy={handleCopy} /></div>)}
+        <div className="mx-9 overflow-hidden" style={{ containerType: "inline-size" }}>
+          <div className="flex gap-2" style={{ transform: `translateX(calc(-${carouselOffset} * (33.333cqw + 0.1667rem)))`, transition: carouselAnimating ? "transform 380ms cubic-bezier(0.22, 0.61, 0.36, 1)" : "none" }}>
+            {carouselTrackEntries.map(({ entry, key }) => <div key={key} className="min-w-0" style={{ flex: "0 0 calc(33.333cqw - 0.333rem)" }}><CatalogDeckRow entry={entry} isBusy={busyId === entry.id} isCopying={copyingId === entry.id} isCopied={copiedId === entry.id} onSelect={handleSelect} onCopy={handleCopy} /></div>)}
           </div>
         </div>
         {filteredResults.length > CAROUSEL_SIZE ? (
