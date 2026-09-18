@@ -23,6 +23,10 @@ function ActionSpinner() {
   return <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 animate-spin" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" /><path d="M17 10a7 7 0 0 0-7-7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>;
 }
 
+function stripDeckHeader(text) {
+  return String(text || "").replace(/^\s*Deck\s*\r?\n/i, "");
+}
+
 function samePresetTexts(left, right) {
   const leftTexts = Array.isArray(left) ? left : [];
   const rightTexts = Array.isArray(right) ? right : [];
@@ -31,7 +35,7 @@ function samePresetTexts(left, right) {
 }
 
 function fitTextsToPlayers(players, texts) {
-  return players.map((_, index) => String(texts?.[index] || ""));
+  return players.map((_, index) => stripDeckHeader(texts?.[index]));
 }
 
 export default function DeckLoadingView({ onLoad, onCancel }) {
@@ -163,6 +167,11 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
     if (submitting) return;
     const decks = texts.map(parseDeckList);
     const sideboards = texts.map(parseSideboardList);
+    const emptyPlayerIndex = decks.findIndex((deck) => deck.length === 0);
+    if (emptyPlayerIndex >= 0) {
+      setStatus(`Falta el mazo de ${players[emptyPlayerIndex]?.name || `jugador ${emptyPlayerIndex + 1}`}.`);
+      return;
+    }
     setPreferredCardPrints(texts.flatMap(parseDeckPrintPreferences));
 
     if (presetName.trim()) saveCurrentPreset();
@@ -195,7 +204,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
 
   const handleCatalogSelect = useCallback(({ deckText }) => {
     const target = players.length ? Math.min(catalogTargetIndex, players.length - 1) : 0;
-    handleTextChange(target, deckText);
+    handleTextChange(target, stripDeckHeader(deckText));
     for (let offset = 1; offset <= players.length; offset += 1) {
       const nextIndex = players.length ? (target + offset) % players.length : target;
       if (!String(texts[nextIndex] || "").trim()) {
@@ -217,7 +226,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
 
   return (
     <main
-      className="setup-screen deck-loading-screen table-gradient flex h-full min-h-0 flex-col overflow-y-auto border border-[rgba(154,126,82,0.46)] bg-[linear-gradient(180deg,rgba(55,49,39,0.98),rgba(20,18,15,0.98))] p-3"
+      className="setup-screen deck-loading-screen table-gradient flex h-full min-h-0 flex-col overflow-y-auto border border-[rgba(154,126,82,0.46)] bg-[linear-gradient(180deg,rgba(55,49,39,0.98),rgba(20,18,15,0.98))] p-3 pb-24"
     >
       <div className="mb-3 shrink-0 border-b border-[rgba(154,126,82,0.34)] pb-3">
         <h1 className="text-[18px] font-bold uppercase tracking-wide text-[#f2d9a3]">{ui("Load Decks")}</h1>
@@ -312,7 +321,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
                 aria-label={ui("{0} decklist", { 0: player.name })}
                 spellCheck={false}
                 className="min-h-[240px] w-full resize-y border border-[rgba(154,126,82,0.48)] bg-[#080b0d] p-2 font-mono text-[13px] leading-snug text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75"
-                placeholder={ui("Paste {0}'s list...\n\nDeck\n4 Lightning Bolt\n2 Counterspell\n20 Island\n\nSideboard\n2 Pyroblast\n1 Tormod's Crypt", { 0: player.name })}
+                placeholder={stripDeckHeader(ui("Paste {0}'s list...\n\nDeck\n4 Lightning Bolt\n2 Counterspell\n20 Island\n\nSideboard\n2 Pyroblast\n1 Tormod's Crypt", { 0: player.name }))}
                 value={texts[i] || ""}
                 onChange={(e) => handleTextChange(i, e.target.value)}
               />
