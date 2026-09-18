@@ -22,10 +22,23 @@ function isTop8Entry(entry) {
   return Number(entry?.placement) > 0 && Number(entry.placement) <= 8;
 }
 
-function matchesCollection(entry, collection) {
-  if (collection === "major") return isMajorEntry(entry);
-  if (collection === "top8") return isTop8Entry(entry);
-  return true;
+function buildRecentIds(entries) {
+  const datedEntries = entries
+    .map((entry) => ({ id: entry?.id, timestamp: Date.parse(entry?.date || "") }))
+    .filter(({ id, timestamp }) => id && Number.isFinite(timestamp));
+  if (!datedEntries.length) return new Set(entries.map((entry) => entry?.id).filter(Boolean));
+  const newestTimestamp = Math.max(...datedEntries.map(({ timestamp }) => timestamp));
+  const recentCutoff = newestTimestamp - (1000 * 60 * 60 * 24 * 30);
+  return new Set(datedEntries.filter(({ timestamp }) => timestamp >= recentCutoff).map(({ id }) => id));
+}
+
+function matchesCollectionFilters(entry, activeCollections, recentIds) {
+  return activeCollections.every((collection) => {
+    if (collection === "recent") return recentIds.has(entry?.id);
+    if (collection === "major") return isMajorEntry(entry);
+    if (collection === "top8") return isTop8Entry(entry);
+    return true;
+  });
 }
 
 const CatalogDeckRow = memo(function CatalogDeckRow({ entry, isBusy, isCopying, isCopied, onSelect, onCopy }) {
@@ -74,7 +87,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
   const [copyingId, setCopyingId] = useState("");
   const [copiedId, setCopiedId] = useState("");
   const [error, setError] = useState("");
-  const [collection, setCollection] = useState("all");
+  const [activeCollections, setActiveCollections] = useState([]);
   const [sortMode, setSortMode] = useState("recent");
   const [carouselPage, setCarouselPage] = useState(0);
   const busyRef = useRef("");
@@ -103,8 +116,10 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
     [catalog, deferredQuery],
   );
 
+  const recentIds = useMemo(() => buildRecentIds(catalog?.decks || []), [catalog]);
+
   const filteredResults = useMemo(() => {
-    const filtered = searchResults.filter((entry) => matchesCollection(entry, collection));
+    const filtered = searchResults.filter((entry) => matchesCollectionFilters(entry, activeCollections, recentIds));
     return [...filtered].sort((left, right) => {
       if (sortMode === "placement") {
         return (Number(left.placement) || 9999) - (Number(right.placement) || 9999)
@@ -113,7 +128,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
       return String(right.date || "").localeCompare(String(left.date || ""))
         || (Number(left.placement) || 9999) - (Number(right.placement) || 9999);
     });
-  }, [collection, searchResults, sortMode]);
+  }, [activeCollections, recentIds, searchResults, sortMode]);
 
   const pageCount = Math.max(1, Math.ceil(filteredResults.length / CAROUSEL_SIZE));
   const visiblePage = Math.min(carouselPage, pageCount - 1);
@@ -122,13 +137,25 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
   const collectionCounts = useMemo(() => {
     const counts = Object.fromEntries(collectionOptions.map(({ id }) => [id, 0]));
     counts.all = searchResults.length;
-    counts.recent = searchResults.length;
+    counts.recent = searchResults.filter((entry) => recentIds.has(entry?.id)).length;
     for (const entry of searchResults) {
       if (isMajorEntry(entry)) counts.major += 1;
       if (isTop8Entry(entry)) counts.top8 += 1;
     }
     return counts;
-  }, [searchResults]);
+  }, [recentIds, searchResults]);
+
+  const toggleCollection = useCallback((collection) => {
+    setActiveCollections((current) => current.includes(collection)
+      ? current.filter((active) => active !== collection)
+      : [...current, collection]);
+    setCarouselPage(0);
+  }, []);
+
+  const clearCollections = useCallback(() => {
+    setActiveCollections([]);
+    setCarouselPage(0);
+  }, []);
 
   const handleSelect = useCallback(async (entry) => {
     if (busyRef.current) return;
@@ -188,11 +215,18 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
       </div>
       <input className={fieldClass} value={query} onChange={(event) => { setQuery(event.target.value); setCarouselPage(0); }} placeholder="Broodscale Bloodchief, Dimir Control, Counterspell..." aria-label="Buscar en catálogo" />
       <div className="flex flex-wrap items-center gap-1.5" aria-label="Filtros del catálogo">
-        {collectionOptions.map((option) => (
-          <Button key={option.id} type="button" variant="ghost" size="sm" className={`h-7 rounded-full px-2 text-[10px] font-bold uppercase tracking-wide ${collection === option.id ? "bg-[#342817] text-[#f2d9a3]" : "text-[#b8aa8e] hover:bg-white/5"}`} onClick={() => { setCollection(option.id); setCarouselPage(0); }}>
-            {option.label} ({collectionCounts[option.id]})
-          </Button>
-        ))}
+        <Button type="button" variant="ghost" size="sm" className={`h-7 rounded-full px-2 text-[10px] font-bold uppercase tracking-wide ${activeCollections.length === 0 ? "bg-[#342817] text-[#f2d9a3]" : "text-[#b8aa8e] hover:bg-white/5"}`} aria-pressed={activeCollections.length === 0} onClick={clearCollections}>
+          {collectionOptions[0].label} ({collectionCounts.all})
+        </Button>
+        {collectionOptions.slice(1).map((option) => {
+          const isActive = activeCollections.includes(option.id);
+          return (
+            <Button key={option.id} type="button" variant="ghost" size="sm" className={`h-7 rounded-full px-2 text-[10px] font-bold uppercase tracking-wide ${isActive ? "bg-[#342817] text-[#f2d9a3] ring-1 ring-[#d8bf7a]/55" : "text-[#b8aa8e] hover:bg-white/5"}`} aria-pressed={isActive} onClick={() => toggleCollection(option.id)}>
+              {isActive ? "✓ " : ""}{option.label} ({collectionCounts[option.id]})
+            </Button>
+          );
+        })}
+        {activeCollections.length ? <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[10px] font-semibold text-[#8b806b] hover:text-[#e7d9bc]" onClick={clearCollections}>Limpiar</Button> : null}
         <label className="ml-auto flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e]">Ordenar
           <select className="bg-transparent px-1 py-1 text-[10px] text-[#e7d9bc]" value={sortMode} onChange={(event) => { setSortMode(event.target.value); setCarouselPage(0); }}>
             <option value="recent">Más recientes</option>
