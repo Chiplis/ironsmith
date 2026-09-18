@@ -19,6 +19,10 @@ import CompetitiveDeckBrowser from "./CompetitiveDeckBrowser";
 const fieldClass =
   "w-full border border-[rgba(154,126,82,0.46)] bg-[#0b0d0e] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75";
 
+function ActionSpinner() {
+  return <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 animate-spin" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" /><path d="M17 10a7 7 0 0 0-7-7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>;
+}
+
 function samePresetTexts(left, right) {
   const leftTexts = Array.isArray(left) ? left : [];
   const rightTexts = Array.isArray(right) ? right : [];
@@ -46,6 +50,8 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
   const [presetName, setPresetName] = useState("");
   const [playerSaveNames, setPlayerSaveNames] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [actionBusy, setActionBusy] = useState("");
+  const [copiedPlayerIndex, setCopiedPlayerIndex] = useState(null);
   const [catalogTargetIndex, setCatalogTargetIndex] = useState(0);
 
   const handleTextChange = useCallback((index, value) => {
@@ -146,11 +152,12 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
         document.execCommand("copy");
         textarea.remove();
       }
-      setStatus(`Deck de ${players[playerIndex]?.name || "jugador"} copiado en formato MTGO.`);
+      setCopiedPlayerIndex(playerIndex);
+      window.setTimeout(() => setCopiedPlayerIndex((current) => current === playerIndex ? null : current), 900);
     } catch {
       setStatus("No se pudo copiar el deck.");
     }
-  }, [catalogTargetIndex, players, setStatus, texts]);
+  }, [catalogTargetIndex, setStatus, texts]);
 
   const handleLoad = async () => {
     if (submitting) return;
@@ -168,10 +175,36 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
     }
   };
 
+  const runAction = useCallback((key, action) => {
+    if (actionBusy) return;
+    setActionBusy(key);
+    let result;
+    try {
+      result = action();
+    } catch (error) {
+      setStatus(error?.message || "No se pudo completar la acción.");
+      setActionBusy("");
+      return;
+    }
+    Promise.resolve(result)
+      .catch((error) => setStatus(error?.message || "No se pudo completar la acción."))
+      .finally(() => {
+        window.setTimeout(() => setActionBusy((current) => current === key ? "" : current), 180);
+      });
+  }, [actionBusy, setStatus]);
+
   const handleCatalogSelect = useCallback(({ deckText }) => {
-    handleTextChange(catalogTargetIndex, deckText);
+    const target = players.length ? Math.min(catalogTargetIndex, players.length - 1) : 0;
+    handleTextChange(target, deckText);
+    for (let offset = 1; offset <= players.length; offset += 1) {
+      const nextIndex = players.length ? (target + offset) % players.length : target;
+      if (!String(texts[nextIndex] || "").trim()) {
+        setCatalogTargetIndex(nextIndex);
+        break;
+      }
+    }
     setPresetName("");
-  }, [catalogTargetIndex, handleTextChange]);
+  }, [catalogTargetIndex, handleTextChange, players, texts]);
 
   const handleDeleteSavedPreset = useCallback(() => {
     if (!selectedPreset) return;
@@ -212,9 +245,9 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
             variant="ghost"
             size="sm"
             className="h-9 max-w-[96px] truncate border border-[#9a7e52]/55 px-3 text-[11px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
-            disabled={!selectedPreset}
-            onClick={handleApplySavedPreset}
-          >{ui("Use")}</Button>
+            disabled={!selectedPreset || Boolean(actionBusy)}
+            onClick={() => runAction("saved-use", handleApplySavedPreset)}
+          >{actionBusy === "saved-use" ? <ActionSpinner /> : ui("Use")}</Button>
           <input
             className={fieldClass}
             placeholder="Nombre tu mazo"
@@ -228,17 +261,17 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
               variant="ghost"
               size="sm"
               className="h-9 max-w-[128px] truncate border border-[#9a7e52]/55 px-3 text-[11px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
-              disabled={!presetName.trim() || totalCards === 0}
-              onClick={handleSavePreset}
-            >Guardar</Button>
+              disabled={!presetName.trim() || totalCards === 0 || Boolean(actionBusy)}
+              onClick={() => runAction("saved-save", handleSavePreset)}
+            >{actionBusy === "saved-save" ? <ActionSpinner /> : "Guardar"}</Button>
             <Button
               type="button"
               variant="ghost"
               size="sm"
               className="h-9 max-w-[96px] truncate border border-white/15 px-3 text-[11px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
-              disabled={!selectedPreset}
-              onClick={handleDeleteSavedPreset}
-            >{ui("Delete")}</Button>
+              disabled={!selectedPreset || Boolean(actionBusy)}
+              onClick={() => runAction("saved-delete", handleDeleteSavedPreset)}
+            >{actionBusy === "saved-delete" ? <ActionSpinner /> : ui("Delete")}</Button>
           </div>
         </div>
       </section>
@@ -296,22 +329,22 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
                   variant="ghost"
                   size="sm"
                   className="h-8 max-w-[132px] truncate border border-white/15 px-2 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
-                  disabled={cardCounts[i] === 0}
-                  onClick={() => handleCopyMtgo(i)}
+                  disabled={cardCounts[i] === 0 || Boolean(actionBusy)}
+                  onClick={() => runAction(`copy-${i}`, () => handleCopyMtgo(i))}
                   title={`Copiar MTGO de ${player.name}`}
                   aria-label={`Copiar MTGO de ${player.name}`}
                 >
                   <svg viewBox="0 0 20 20" className="mr-1 h-3.5 w-3.5" aria-hidden="true"><rect x="6.5" y="6.5" width="9" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M13 6.5V4.8A1.3 1.3 0 0 0 11.7 3.5H5A1.5 1.5 0 0 0 3.5 5v8A1.3 1.3 0 0 0 4.8 14.3h1.7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.4" /></svg>
-                  Copiar
+                  {actionBusy === `copy-${i}` ? <ActionSpinner /> : copiedPlayerIndex === i ? "Copiado" : "Copiar"}
                 </Button>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   className="h-8 max-w-[88px] truncate border border-[#9a7e52]/55 px-2 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
-                  disabled={!playerSaveNames[i]?.trim() || cardCounts[i] === 0}
-                  onClick={() => handleSavePlayerPreset(i)}
-                >Guardar</Button>
+                  disabled={!playerSaveNames[i]?.trim() || cardCounts[i] === 0 || Boolean(actionBusy)}
+                  onClick={() => runAction(`player-save-${i}`, () => handleSavePlayerPreset(i))}
+                >{actionBusy === `player-save-${i}` ? <ActionSpinner /> : "Guardar"}</Button>
               </div>
             </div>
           ))}
@@ -339,15 +372,16 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
             variant="ghost"
             size="sm"
             className="ui-primary-action h-9 border border-[#f2d9a3]/45 bg-[#211a10] px-4 text-[12px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
-            disabled={totalCards === 0 || submitting}
-            onClick={handleLoad}
-          >{submitting ? ui("Loading…") : ui("Load")}{!submitting && totalCards > 0 ? ui(" ({0} main{1})", { 0: totalCards, 1: totalSideboardCards > 0 ? `, ${totalSideboardCards} sideboard` : "" }) : ""}
+            disabled={totalCards === 0 || submitting || Boolean(actionBusy)}
+            onClick={() => runAction("load", handleLoad)}
+          >{submitting || actionBusy === "load" ? <ActionSpinner /> : ui("Load")}{!submitting && !actionBusy && totalCards > 0 ? ui(" ({0} main{1})", { 0: totalCards, 1: totalSideboardCards > 0 ? `, ${totalSideboardCards} sideboard` : "" }) : ""}
           </Button>
           <Button
             type="button"
             variant="ghost"
             size="sm"
             className="h-9 border border-[#9a7e52]/45 px-3 text-[12px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317]"
+            disabled={Boolean(actionBusy)}
             onClick={onCancel}
           >{ui("Cancel")}</Button>
         </div>

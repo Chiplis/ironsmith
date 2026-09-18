@@ -17,6 +17,10 @@ const catalogFormats = [
   { id: "pauper", label: "Pauper" },
 ];
 
+function ActionSpinner() {
+  return <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 animate-spin" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" /><path d="M17 10a7 7 0 0 0-7-7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>;
+}
+
 function isMajorEntry(entry) {
   const event = String(entry?.event || "").toLocaleLowerCase("en-US");
   const tags = (entry?.tags || []).join(" ").toLocaleLowerCase("en-US");
@@ -113,10 +117,10 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, isBusy, isCopying, 
       </div>
       <div className="ml-auto flex shrink-0 flex-col justify-center gap-1">
         <Button type="button" variant="ghost" size="sm" className="h-8 w-[88px] max-w-[88px] truncate border border-[#9a7e52]/55 px-2 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a]" disabled={isBusy || isCopying} onClick={() => onSelect(entry)}>
-          {isBusy ? "Cargando…" : "Usar"}
+          {isBusy ? <ActionSpinner /> : "Usar"}
         </Button>
         <Button type="button" variant="ghost" size="sm" className="h-7 w-[88px] max-w-[88px] truncate border border-white/15 px-2 text-[10px] font-semibold text-[#b8aa8e]" disabled={isBusy || isCopying} onClick={() => onCopy(entry)}>
-          {isCopying ? "Copiando…" : isCopied ? "Copiado" : "Copiar MTGO"}
+          {isCopying ? <ActionSpinner /> : isCopied ? "Copiado" : "Copiar MTGO"}
         </Button>
       </div>
     </article>
@@ -184,7 +188,6 @@ const DeckCarousel = memo(function DeckCarousel({ title, entries, resetKey, busy
           <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true"><path d="m7.5 4.5 5.5 5.5-5.5 5.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
         </Button> : null}
       </div>
-      {entries.length > CAROUSEL_SIZE ? <div className="text-center text-[9px] uppercase tracking-wide text-[#8b806b]">3 visibles · paso 2 · carrusel infinito</div> : null}
     </section>
   );
 });
@@ -329,6 +332,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
         textarea.remove();
       }
       setCopiedId(entry.id);
+      window.setTimeout(() => setCopiedId((current) => current === entry.id ? "" : current), 900);
     } catch (copyError) {
       setError(copyError.message || "No se pudo copiar el deck");
     } finally {
