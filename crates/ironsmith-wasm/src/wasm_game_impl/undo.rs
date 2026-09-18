@@ -1377,7 +1377,9 @@ impl WasmGame {
                 ironsmith::zone::Zone::Battlefield,
             ));
         }
-        for _ in 0..3 {
+        // Put four real lands on the battlefield so the test match can start
+        // casting spells immediately without fabricating cards.
+        for _ in 0..4 {
             let Some(position) = candidates.iter().position(|candidate| candidate.is_land) else {
                 break;
             };
@@ -1390,7 +1392,7 @@ impl WasmGame {
             .iter()
             .filter(|(_, zone)| *zone == ironsmith::zone::Zone::Battlefield)
             .count()
-            < 5
+            < 6
         {
             let Some(candidate) = candidates.pop() else { break };
             selected.push((candidate, ironsmith::zone::Zone::Battlefield));
