@@ -7,6 +7,7 @@ import { ManaSymbol } from "@/lib/mana-symbols";
 const fieldClass = "w-full border border-[rgba(154,126,82,0.46)] bg-[#0b0d0e] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none";
 const labelClass = "grid gap-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]";
 const CAROUSEL_SIZE = 3;
+const CAROUSEL_STEP = 2;
 const collectionOptions = [
   { id: "all", label: "Todos" },
   { id: "recent", label: "Recientes" },
@@ -103,10 +104,18 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
   const [activeCollections, setActiveCollections] = useState([]);
   const [activeMana, setActiveMana] = useState([]);
   const [sortMode, setSortMode] = useState("recent");
-  const [carouselPage, setCarouselPage] = useState(0);
+  const [carouselOffset, setCarouselOffset] = useState(0);
+  const [carouselAnimating, setCarouselAnimating] = useState(false);
   const busyRef = useRef("");
   const copyingRef = useRef("");
+  const carouselAnimatingRef = useRef(false);
   const deferredQuery = useDeferredValue(query);
+
+  const resetCarousel = useCallback(() => {
+    carouselAnimatingRef.current = false;
+    setCarouselAnimating(false);
+    setCarouselOffset(0);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -151,9 +160,41 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
     }).map(({ entry }) => entry);
   }, [activeCollections, activeMana, recentIds, searchResults, sortMode]);
 
-  const pageCount = Math.max(1, Math.ceil(filteredResults.length / CAROUSEL_SIZE));
-  const visiblePage = Math.min(carouselPage, pageCount - 1);
-  const carouselEntries = filteredResults.slice(visiblePage * CAROUSEL_SIZE, (visiblePage + 1) * CAROUSEL_SIZE);
+  const carouselCenterOffset = filteredResults.length * 2;
+  const carouselTrackEntries = useMemo(() => {
+    if (!filteredResults.length) return [];
+    const trackLength = Math.max(CAROUSEL_SIZE, filteredResults.length * 5 + CAROUSEL_SIZE);
+    return Array.from({ length: trackLength }, (_, index) => ({
+      entry: filteredResults[index % filteredResults.length],
+      key: `${filteredResults[index % filteredResults.length].id}-${index}`,
+    }));
+  }, [filteredResults]);
+
+  useEffect(() => {
+    resetCarousel();
+    setCarouselOffset(carouselCenterOffset);
+  }, [carouselCenterOffset, filteredResults, resetCarousel]);
+
+  useEffect(() => {
+    if (!carouselAnimating || !filteredResults.length) return undefined;
+    const timer = window.setTimeout(() => {
+      const count = filteredResults.length;
+      setCarouselOffset((current) => {
+        const relative = ((current - (count * 2)) % count + count) % count;
+        return (count * 2) + relative;
+      });
+      carouselAnimatingRef.current = false;
+      setCarouselAnimating(false);
+    }, 380);
+    return () => window.clearTimeout(timer);
+  }, [carouselAnimating, filteredResults.length]);
+
+  const moveCarousel = useCallback((direction) => {
+    if (filteredResults.length <= CAROUSEL_SIZE || carouselAnimatingRef.current) return;
+    carouselAnimatingRef.current = true;
+    setCarouselAnimating(true);
+    setCarouselOffset((current) => current + direction * CAROUSEL_STEP);
+  }, [filteredResults.length]);
 
   const collectionCounts = useMemo(() => {
     const counts = Object.fromEntries(collectionOptions.map(({ id }) => [id, 0]));
@@ -175,21 +216,21 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
     setActiveCollections((current) => current.includes(collection)
       ? current.filter((active) => active !== collection)
       : [...current, collection]);
-    setCarouselPage(0);
-  }, []);
+    resetCarousel();
+  }, [resetCarousel]);
 
   const clearCollections = useCallback(() => {
     setActiveCollections([]);
     setActiveMana([]);
-    setCarouselPage(0);
-  }, []);
+    resetCarousel();
+  }, [resetCarousel]);
 
   const toggleMana = useCallback((color) => {
     setActiveMana((current) => current.includes(color)
       ? current.filter((active) => active !== color)
       : [...current, color]);
-    setCarouselPage(0);
-  }, []);
+    resetCarousel();
+  }, [resetCarousel]);
 
   const handleSelect = useCallback(async (entry) => {
     if (busyRef.current) return;
@@ -247,7 +288,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
           {players.map((player, index) => <option key={player.id || index} value={index}>{player.name}</option>)}
         </select></label>
       </div>
-      <input className={fieldClass} value={query} onChange={(event) => { setQuery(event.target.value); setCarouselPage(0); }} placeholder="Broodscale Bloodchief, Dimir Control, Counterspell..." aria-label="Buscar en catálogo" />
+      <input className={fieldClass} value={query} onChange={(event) => { setQuery(event.target.value); resetCarousel(); }} placeholder="Broodscale Bloodchief, Dimir Control, Counterspell..." aria-label="Buscar en catálogo" />
       <div className="flex flex-wrap items-center gap-1.5" aria-label="Filtros del catálogo">
         <Button type="button" variant="ghost" size="sm" className={`h-7 rounded-full px-2 text-[10px] font-bold uppercase tracking-wide ${activeCollections.length === 0 && activeMana.length === 0 ? "bg-[#342817] text-[#f2d9a3]" : "text-[#b8aa8e] hover:bg-white/5"}`} aria-pressed={activeCollections.length === 0 && activeMana.length === 0} onClick={clearCollections}>
           {collectionOptions[0].label} ({collectionCounts.all})
@@ -266,7 +307,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
         })}
         {activeCollections.length || activeMana.length ? <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[10px] font-semibold text-[#8b806b] hover:text-[#e7d9bc]" onClick={clearCollections}>Limpiar</Button> : null}
         <label className="ml-auto flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e]">Ordenar
-          <select className="bg-transparent px-1 py-1 text-[10px] text-[#e7d9bc]" value={sortMode} onChange={(event) => { setSortMode(event.target.value); setCarouselPage(0); }}>
+          <select className="bg-transparent px-1 py-1 text-[10px] text-[#e7d9bc]" value={sortMode} onChange={(event) => { setSortMode(event.target.value); resetCarousel(); }}>
             <option value="recent">Más recientes</option>
             <option value="placement">Mejor puesto</option>
           </select>
@@ -274,24 +315,24 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
       </div>
       {loading ? <p className="text-[12px] text-[#b8aa8e]">Cargando índice…</p> : null}
       {error ? <p className="text-[12px] text-red-300">{error}</p> : null}
-      {!loading && !error && carouselEntries.length === 0 ? <p className="text-[12px] text-[#b8aa8e]">No hay resultados para esta búsqueda.</p> : null}
-      <div className="relative px-0 sm:px-9">
+      {!loading && !error && !filteredResults.length ? <p className="text-[12px] text-[#b8aa8e]">No hay resultados para esta búsqueda.</p> : null}
+      {filteredResults.length ? <div className="relative overflow-hidden px-0 sm:px-9">
         {filteredResults.length > CAROUSEL_SIZE ? (
-          <Button type="button" variant="ghost" size="sm" className="absolute left-0 top-1/2 z-10 h-9 w-9 -translate-y-1/2 rounded-full bg-[#17130e]/85 p-0 text-[#d8bf7a] shadow-lg hover:bg-[#342817]" aria-label="Decks anteriores" title="Decks anteriores" onClick={() => setCarouselPage((current) => (current - 1 + pageCount) % pageCount)}>
+          <Button type="button" variant="ghost" size="sm" className="absolute left-0 top-1/2 z-10 h-9 w-9 -translate-y-1/2 rounded-full bg-[#17130e]/90 p-0 text-[#d8bf7a] shadow-lg hover:bg-[#342817]" aria-label="Decks anteriores" title="Decks anteriores" onClick={() => moveCarousel(-1)}>
             <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
           </Button>
         ) : null}
-        <div className="grid items-stretch gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {carouselEntries.map((entry) => <CatalogDeckRow key={entry.id} entry={entry} isBusy={busyId === entry.id} isCopying={copyingId === entry.id} isCopied={copiedId === entry.id} onSelect={handleSelect} onCopy={handleCopy} />)}
+        <div className="flex gap-2" style={{ transform: `translateX(calc(-${carouselOffset} * ((100% + 0.5rem) / 3)))`, transition: carouselAnimating ? "transform 380ms cubic-bezier(0.22, 0.61, 0.36, 1)" : "none" }}>
+          {carouselTrackEntries.map(({ entry, key }) => <div key={key} className="min-w-0" style={{ flex: "0 0 calc((100% - 1rem) / 3)" }}><CatalogDeckRow entry={entry} isBusy={busyId === entry.id} isCopying={copyingId === entry.id} isCopied={copiedId === entry.id} onSelect={handleSelect} onCopy={handleCopy} /></div>)}
         </div>
         {filteredResults.length > CAROUSEL_SIZE ? (
-          <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-1/2 z-10 h-9 w-9 -translate-y-1/2 rounded-full bg-[#17130e]/85 p-0 text-[#d8bf7a] shadow-lg hover:bg-[#342817]" aria-label="Decks siguientes" title="Decks siguientes" onClick={() => setCarouselPage((current) => (current + 1) % pageCount)}>
+          <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-1/2 z-10 h-9 w-9 -translate-y-1/2 rounded-full bg-[#17130e]/90 p-0 text-[#d8bf7a] shadow-lg hover:bg-[#342817]" aria-label="Decks siguientes" title="Decks siguientes" onClick={() => moveCarousel(1)}>
             <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true"><path d="m7.5 4.5 5.5 5.5-5.5 5.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
           </Button>
         ) : null}
-      </div>
+      </div> : null}
       {filteredResults.length > CAROUSEL_SIZE ? (
-        <div className="pt-1 text-center text-[10px] uppercase tracking-wide text-[#8b806b]">{visiblePage + 1} / {pageCount} · {filteredResults.length} decks · carrusel circular</div>
+        <div className="pt-1 text-center text-[10px] uppercase tracking-wide text-[#8b806b]">3 visibles · {filteredResults.length} decks · paso 2 · carrusel infinito</div>
       ) : null}
     </section>
   );
