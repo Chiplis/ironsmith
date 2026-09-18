@@ -65,7 +65,7 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, isBusy, isCopying, 
   }, [entry]);
 
   return (
-    <article className="flex min-w-0 gap-3 rounded-sm bg-black/15 p-3">
+    <article className="flex min-w-0 gap-3 rounded-sm bg-transparent p-3">
       <div className="h-[104px] w-[74px] shrink-0 overflow-hidden rounded-sm bg-[#17130e]" aria-hidden="true">
         {artUrl ? <img className="h-full w-full object-cover" src={artUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
       </div>
@@ -278,7 +278,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
   }, []);
 
   return (
-    <section className="grid gap-2 border-b border-[rgba(154,126,82,0.32)] bg-[rgba(8,9,9,0.46)] pb-3" aria-label="Decks">
+    <section className="grid gap-2 border-b border-[rgba(154,126,82,0.32)] bg-transparent pb-3" aria-label="Decks">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h2 className="text-[13px] font-bold uppercase tracking-[0.16em] text-[#f2d9a3]">Decks</h2>
@@ -316,17 +316,19 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
       {loading ? <p className="text-[12px] text-[#b8aa8e]">Cargando índice…</p> : null}
       {error ? <p className="text-[12px] text-red-300">{error}</p> : null}
       {!loading && !error && !filteredResults.length ? <p className="text-[12px] text-[#b8aa8e]">No hay resultados para esta búsqueda.</p> : null}
-      {filteredResults.length ? <div className="relative overflow-hidden px-0 sm:px-9">
+      {filteredResults.length ? <div className="relative">
         {filteredResults.length > CAROUSEL_SIZE ? (
-          <Button type="button" variant="ghost" size="sm" className="absolute left-0 top-1/2 z-10 h-9 w-9 -translate-y-1/2 rounded-full bg-[#17130e]/90 p-0 text-[#d8bf7a] shadow-lg hover:bg-[#342817]" aria-label="Decks anteriores" title="Decks anteriores" onClick={() => moveCarousel(-1)}>
+          <Button type="button" variant="ghost" size="sm" className="absolute left-0 top-1/2 z-10 h-9 w-9 -translate-y-1/2 rounded-full bg-[#11110f] p-0 text-[#d8bf7a] shadow-lg hover:bg-[#28231b]" aria-label="Decks anteriores" title="Decks anteriores" onClick={() => moveCarousel(-1)}>
             <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
           </Button>
         ) : null}
-        <div className="flex gap-2" style={{ transform: `translateX(calc(-${carouselOffset} * ((100% + 0.5rem) / 3)))`, transition: carouselAnimating ? "transform 380ms cubic-bezier(0.22, 0.61, 0.36, 1)" : "none" }}>
-          {carouselTrackEntries.map(({ entry, key }) => <div key={key} className="min-w-0" style={{ flex: "0 0 calc((100% - 1rem) / 3)" }}><CatalogDeckRow entry={entry} isBusy={busyId === entry.id} isCopying={copyingId === entry.id} isCopied={copiedId === entry.id} onSelect={handleSelect} onCopy={handleCopy} /></div>)}
+        <div className="mx-9 overflow-hidden">
+          <div className="flex gap-2" style={{ transform: `translateX(calc(-${carouselOffset} * ((100% + 0.5rem) / 3)))`, transition: carouselAnimating ? "transform 380ms cubic-bezier(0.22, 0.61, 0.36, 1)" : "none" }}>
+            {carouselTrackEntries.map(({ entry, key }) => <div key={key} className="min-w-0" style={{ flex: "0 0 calc((100% - 1rem) / 3)" }}><CatalogDeckRow entry={entry} isBusy={busyId === entry.id} isCopying={copyingId === entry.id} isCopied={copiedId === entry.id} onSelect={handleSelect} onCopy={handleCopy} /></div>)}
+          </div>
         </div>
         {filteredResults.length > CAROUSEL_SIZE ? (
-          <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-1/2 z-10 h-9 w-9 -translate-y-1/2 rounded-full bg-[#17130e]/90 p-0 text-[#d8bf7a] shadow-lg hover:bg-[#342817]" aria-label="Decks siguientes" title="Decks siguientes" onClick={() => moveCarousel(1)}>
+          <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-1/2 z-10 h-9 w-9 -translate-y-1/2 rounded-full bg-[#11110f] p-0 text-[#d8bf7a] shadow-lg hover:bg-[#28231b]" aria-label="Decks siguientes" title="Decks siguientes" onClick={() => moveCarousel(1)}>
             <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true"><path d="m7.5 4.5 5.5 5.5-5.5 5.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
           </Button>
         ) : null}
