@@ -360,6 +360,7 @@ export default function Shell() {
         return;
       }
       try {
+        setStatus("Preparando partida de prueba con bots...");
         const requestedPlayerCount = Number(payload?.playerCount);
         const playerCount = payload?.preserveMissingDecks && Number.isFinite(requestedPlayerCount)
           ? Math.max(2, Math.min(4, Math.floor(requestedPlayerCount)))
@@ -454,12 +455,13 @@ export default function Shell() {
             .filter(Boolean)
             .join(", ");
           await refresh(
-            `Loaded ${loaded} cards. ${failed.length} failed${issueSummary ? ` (${issueSummary})` : ""}: ${failedStr}`
+            `Partida de prueba lista: ${loaded} cartas en bibliotecas y manos iniciales. ${failed.length} fallaron${issueSummary ? ` (${issueSummary})` : ""}: ${failedStr}`
           );
         } else {
-          await refresh(`Loaded ${loaded} cards`);
+          await refresh(`Partida de prueba lista: ${loaded} cartas en bibliotecas y manos iniciales`);
         }
       } catch (err) {
+        setDeckLoadingMode(false);
         setStatus(`Load decks failed: ${err}`, true);
       }
     });
