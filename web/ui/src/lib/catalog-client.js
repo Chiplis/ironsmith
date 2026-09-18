@@ -29,6 +29,28 @@ export function catalogQueryTokens(query) {
   return [...new Set(normalize(query).split(/\s+/).filter((token) => token.length >= 2))];
 }
 
+export function catalogSearchScore(entry, query) {
+  const normalizedQuery = normalize(query);
+  if (!normalizedQuery) return 0;
+  const tokens = catalogQueryTokens(query);
+  const name = normalize(entry?.name);
+  const archetype = normalize(entry?.archetype);
+  const event = normalize(entry?.event);
+  const cards = normalize((entry?.cardNames || entry?.cards || []).join(" "));
+  let score = 0;
+  if (name === normalizedQuery) score += 1000;
+  if (archetype === normalizedQuery) score += 800;
+  if (name.startsWith(normalizedQuery)) score += 500;
+  if (archetype.startsWith(normalizedQuery)) score += 400;
+  for (const token of tokens) {
+    if (name.includes(token)) score += 80;
+    if (archetype.includes(token)) score += 60;
+    if (cards.includes(token)) score += 35;
+    if (event.includes(token)) score += 15;
+  }
+  return score;
+}
+
 export function searchCatalogEntries(entries, query, { limit = 30, searchIndex } = {}) {
   const tokens = searchTokens(query);
   let candidates = Array.isArray(entries) ? entries : [];
@@ -55,6 +77,8 @@ export function searchCatalogEntries(entries, query, { limit = 30, searchIndex }
   });
   return results
     .sort((left, right) => {
+      const scoreOrder = catalogSearchScore(right, query) - catalogSearchScore(left, query);
+      if (scoreOrder) return scoreOrder;
       const dateOrder = String(right.date || "").localeCompare(String(left.date || ""));
       return dateOrder || (Number(left.placement || 9999) - Number(right.placement || 9999));
     })

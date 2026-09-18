@@ -20,3 +20,11 @@ test("uses the generated token index to narrow candidates", () => {
   );
   assert.deepEqual(searchCatalogEntries(entries, "missing", { searchIndex }), []);
 });
+
+test("ranks exact deck names ahead of card-only matches", () => {
+  const results = searchCatalogEntries([
+    { id: "card-match", name: "Control Shell", cardNames: ["Dimir Control"] },
+    { id: "name-match", name: "Dimir Control", cardNames: ["Counterspell"] },
+  ], "Dimir Control");
+  assert.deepEqual(results.map((entry) => entry.id), ["name-match", "card-match"]);
+});
