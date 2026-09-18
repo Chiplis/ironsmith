@@ -361,7 +361,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
           ))}
         </div>
       </section>
-      <div className="sticky bottom-0 z-20 -mx-3 mt-3 flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[rgba(154,126,82,0.34)] bg-[#14120f]/95 px-3 pb-4 pt-3 pr-48 backdrop-blur-sm">
+      <div className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[rgba(154,126,82,0.34)] pb-4 pt-3 pr-48">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <span className="whitespace-nowrap text-[12px] font-semibold uppercase tracking-wide text-[#d8bf7a]">{ui("Min similarity")}</span>
           <Slider
