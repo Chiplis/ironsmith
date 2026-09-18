@@ -4241,16 +4241,13 @@ select.stone-select,
 select.fantasy-field,
 select.card-forge-input,
 .table-gradient select {
-  appearance: none !important;
-  -webkit-appearance: none !important;
+  appearance: auto !important;
+  -webkit-appearance: auto !important;
   color-scheme: dark;
   cursor: pointer;
   padding-right: 2.1rem !important;
   border: 1px solid rgba(146, 122, 87, 0.4) !important;
-  background:
-    linear-gradient(45deg, transparent 50%, #d8c6a0 50%) calc(100% - 15px) 50% / 5px 5px no-repeat,
-    linear-gradient(135deg, #d8c6a0 50%, transparent 50%) calc(100% - 10px) 50% / 5px 5px no-repeat,
-    linear-gradient(180deg, rgba(58, 52, 48, 0.96), rgba(27, 24, 23, 0.98)) 0 0 / 100% 100% no-repeat !important;
+  background: linear-gradient(180deg, rgba(58, 52, 48, 0.96), rgba(27, 24, 23, 0.98)) !important;
   color: #eadbbb !important;
   box-shadow:
     inset 0 1px 0 rgba(255, 244, 219, 0.08),
@@ -4274,10 +4271,7 @@ select.fantasy-field:hover:not(:disabled),
 select.card-forge-input:hover:not(:disabled),
 .table-gradient select:hover:not(:disabled) {
   border-color: rgba(184, 150, 96, 0.52) !important;
-  background:
-    linear-gradient(45deg, transparent 50%, #fff0ca 50%) calc(100% - 15px) 50% / 5px 5px no-repeat,
-    linear-gradient(135deg, #fff0ca 50%, transparent 50%) calc(100% - 10px) 50% / 5px 5px no-repeat,
-    linear-gradient(180deg, rgba(70, 61, 52, 0.98), rgba(35, 30, 27, 0.98)) 0 0 / 100% 100% no-repeat !important;
+  background: linear-gradient(180deg, rgba(70, 61, 52, 0.98), rgba(35, 30, 27, 0.98)) !important;
   color: #fff0ca !important;
 }
 
