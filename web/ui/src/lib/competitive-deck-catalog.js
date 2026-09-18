@@ -5,7 +5,18 @@
  * directly. Source adapters can normalize their records into this shape.
  */
 export const COMPETITIVE_DECK_CATALOG_VERSION = 1;
-export const DEFAULT_COMPETITIVE_DECK_CATALOG_URL = "/decks/modern.json";
+export const DEFAULT_COMPETITIVE_DECK_CATALOG_PATH = "decks/modern.json";
+
+// The site is served from a subdirectory, so a root-absolute path would miss.
+function assetBaseUrl() {
+  const configured = typeof import.meta !== "undefined" ? import.meta.env?.BASE_URL : null;
+  return new URL(configured || "/", globalThis?.location?.href || "http://localhost/").href;
+}
+
+export const DEFAULT_COMPETITIVE_DECK_CATALOG_URL = new URL(
+  DEFAULT_COMPETITIVE_DECK_CATALOG_PATH,
+  assetBaseUrl(),
+).href;
 
 function text(value) {
   return String(value ?? "").trim();

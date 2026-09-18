@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   competitiveDeckToLobbyText,
-  DEFAULT_COMPETITIVE_DECK_CATALOG_URL,
+  DEFAULT_COMPETITIVE_DECK_CATALOG_PATH,
   loadCompetitiveDeckCatalog,
   searchCompetitiveDecks,
 } from "@/lib/competitive-deck-catalog";
@@ -98,7 +98,7 @@ export default function CompetitiveDeckPicker({ onApply, format = "modern" }) {
       {loading ? <p className="text-[12px] text-muted-foreground">Cargando catálogo…</p> : null}
       {error ? (
         <p className="text-[12px] text-red-300">
-          {error}. Fuente: {DEFAULT_COMPETITIVE_DECK_CATALOG_URL}
+          {error}. Fuente: {DEFAULT_COMPETITIVE_DECK_CATALOG_PATH}
         </p>
       ) : null}
       {!loading && !error && decks.length === 0 ? (

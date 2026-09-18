@@ -6,7 +6,7 @@ https://chiplis.com/ironsmith
 
 ## Competitive deck catalog
 
-The deck browser is backed by a versioned, repository-local catalog. The browser
+The deck browser is backed by a local catalog under `catalog/`. The browser
 loads `catalog/<format>/index.json` and its search index first, then fetches an
 individual `details/<deck-id>.json` only when a player selects or copies a deck.
 This keeps the initial page fast and avoids making requests to MTGTop8 from a
@@ -14,27 +14,37 @@ player's browser. Catalog entries include the event, placement, card lists,
 mana metadata, source URL, and collection tags such as `last-20-events`,
 `last-major-events`, and `mono-color`.
 
+`catalog/` is generated, not committed: it is gitignored, and so is the
+`web/ui/public/catalog/` copy the Vite `prebuild` hook makes from it. A checkout
+without a catalog builds and runs normally; the deck browser reports that no
+catalog was downloaded and every other feature is unaffected.
+
 The bounded synchronizer lives in `tools/deck-catalog/`. It prioritizes the
 latest event collections and a small mono-colour sample, then merges new deck
-IDs into the existing history without deleting older records. To run a local
-dry run without writing files:
+IDs into the existing catalog without deleting older records, so repeated runs
+accumulate history:
 
 ```sh
 node tools/deck-catalog/sync.mjs --format modern --page 0 --events 5 --limit 24 \
-  --collection-limit 12 --recent-events 20 --major-events 5 --dry-run
+  --collection-limit 12 --recent-events 20 --major-events 5
 ```
 
-`.github/workflows/update-deck-catalog.yml` runs this bounded sync every three
-days and can also be started manually with format, page, and size limits. It
-validates the catalog tests before fetching, commits only changes under
-`catalog/`, and relies on GitHub Actions' free quota. The scheduled job runs
-from the repository's default branch; after this feature branch is merged into
-`Chiplis/ironsmith`'s `main`, updates will arrive there automatically. Manual
-runs are useful for testing a smaller slice before enabling a larger historical
-backfill.
+Add `--dry-run` to fetch and report without writing files, `--output <dir>` to
+write somewhere other than `catalog/`, and `--format pioneer|standard` for the
+other supported formats. `--page 0` takes the newest decks (Last 20 Events, Last
+Major Events, and a mono-colour sample); `--page N` backfills history. The
+source waits 750 ms between requests, so a three-format refresh takes a few
+minutes. `tools/deck-catalog/enrich.mjs` recomputes colours and mana profiles
+from decks already downloaded, and accepts `--offline`.
 
-After changing catalog files, the Vite prebuild hook copies them to the ignored
-`web/ui/public/catalog/` directory. Do not commit that generated copy.
+`tools/deck-catalog/sync-all.sh` runs that bounded refresh for every supported
+format, or for the formats named as arguments. Run it before building whenever
+you want newer decks:
+
+```sh
+./tools/deck-catalog/sync-all.sh
+cd web/ui && pnpm build
+```
 
 ## Run it locally
 

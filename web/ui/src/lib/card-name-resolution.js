@@ -1,5 +1,3 @@
-import { resolveScryfallCanonicalCardName } from "./scryfall.js";
-
 function compactNames(names) {
   return [...new Set((names || []).map((name) => String(name || "").trim()).filter(Boolean))];
 }
@@ -7,9 +5,14 @@ function compactNames(names) {
 // The engine registry is the source of truth for mutations. Scryfall is only a
 // multilingual identity resolver; it must never cause an unembedded card to be
 // injected or replace a card with a similarly named face.
-export async function resolveCardNameForGame({ game, cardName, locale, resolveExternal = resolveScryfallCanonicalCardName }) {
+// `resolveExternal` is supplied by the caller: no multilingual identity
+// resolver ships with the frontend yet, so there is no default to fall back on.
+export async function resolveCardNameForGame({ game, cardName, locale, resolveExternal }) {
   const requestedName = String(cardName || "").trim();
   if (!requestedName) return { status: "empty" };
+  if (typeof resolveExternal !== "function") {
+    throw new Error("resolveCardNameForGame requires a resolveExternal implementation");
+  }
   if (!game || typeof game.filterKnownCardNames !== "function") {
     return { status: "registry-unavailable", requestedName };
   }
