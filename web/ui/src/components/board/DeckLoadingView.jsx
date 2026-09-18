@@ -287,10 +287,20 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
   }, [onTestDecks, setStatus, texts, visiblePlayerCount]);
 
   const lobbyPlayerCount = Math.max(2, Math.min(4, visiblePlayerCount));
+  const lobbyDeckOptions = useMemo(
+    () => texts
+      .map((text, index) => ({
+        id: `editor-${index}`,
+        label: players[index]?.name || `Deck ${index + 1}`,
+        deckText: String(text || ""),
+      }))
+      .filter((option) => option.deckText.trim()),
+    [players, texts],
+  );
   const handleConfirmLobby = useCallback(() => {
     setShowLobbyConfirm(false);
-    onOpenLobby?.(texts, lobbyPlayerCount);
-  }, [lobbyPlayerCount, onOpenLobby, texts]);
+    onOpenLobby?.(texts, lobbyPlayerCount, lobbyDeckOptions);
+  }, [lobbyDeckOptions, lobbyPlayerCount, onOpenLobby, texts]);
 
   return (
     <main

@@ -501,7 +501,7 @@ export default function Shell() {
     });
   }, [game, multiplayer.mode, playerNames, pushNotice, refresh, runWasmInteraction, setStatus, startingLife]);
 
-  const handleOpenLobbyFromDecks = useCallback((deckTexts, requestedPlayerCount) => {
+  const handleOpenLobbyFromDecks = useCallback((deckTexts, requestedPlayerCount, requestedDeckOptions) => {
     const texts = Array.isArray(deckTexts) ? deckTexts : [];
     const filledTexts = texts.filter((text) => String(text || "").trim());
     const requestedCount = Number(requestedPlayerCount);
@@ -511,11 +511,20 @@ export default function Shell() {
     const firstDeckText = String(
       texts.find((text) => String(text || "").trim()) || ""
     );
+    const deckOptions = (Array.isArray(requestedDeckOptions) ? requestedDeckOptions : [])
+      .filter((option) => String(option?.deckText || "").trim())
+      .slice(0, 8)
+      .map((option, index) => ({
+        id: String(option?.id || `editor-${index}`),
+        label: String(option?.label || `Deck ${index + 1}`),
+        deckText: String(option.deckText),
+      }));
 
     setLobbyOverlayInitial({
       ...buildLobbyOverlayInitialState(null, "create"),
       desiredPlayers,
       createDeckText: firstDeckText,
+      createDeckOptions: deckOptions,
     });
     setDeckLoadingMode(false);
     setPuzzleSetupMode(false);
@@ -773,6 +782,7 @@ export default function Shell() {
           initialCreateFormat={lobbyOverlayInitial.createFormat}
           initialCreateName={lobbyOverlayInitial.createName}
           initialCreateDeckText={lobbyOverlayInitial.createDeckText}
+          initialCreateDeckOptions={lobbyOverlayInitial.createDeckOptions}
           initialCreateCommanderText={lobbyOverlayInitial.createCommanderText}
           initialCreateSecurityMode={lobbyOverlayInitial.createSecurityMode}
           initialDesiredPlayers={lobbyOverlayInitial.desiredPlayers}
@@ -970,6 +980,7 @@ function buildLobbyOverlayInitialState(query, mode = null) {
     createFormat: inferCreateFormatFromLobbyQuery(query),
     createName: String(query?.name || "").trim(),
     createDeckText: String(query?.deckText || ""),
+    createDeckOptions: [],
     createCommanderText: String(query?.commanderText || ""),
     createSecurityMode: normalizeMultiplayerSecurityMode(
       query?.securityMode,

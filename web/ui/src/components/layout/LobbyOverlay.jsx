@@ -23,6 +23,7 @@ import {
   MATCH_FORMAT_NORMAL,
   MATCH_FORMAT_PLANECHASE,
   PARTNER_DECK_SIZE,
+  listSavedDeckPresets,
   normalizeMatchFormat,
   parseCommanderList,
   parseDeckList,
@@ -147,6 +148,7 @@ export default function LobbyOverlay({
   initialCreateFormat = MATCH_FORMAT_NORMAL,
   initialCreateName = "",
   initialCreateDeckText = "",
+  initialCreateDeckOptions = [],
   initialCreateCommanderText = "",
   initialCreateSecurityMode = MULTIPLAYER_SECURITY_TRUSTED,
   initialDesiredPlayers = 2,
@@ -263,6 +265,34 @@ export default function LobbyOverlay({
     (player) => player.peerId === multiplayer.localPeerId
   );
   const localReady = Boolean(localPlayer?.ready);
+  const savedDeckOptions = useMemo(
+    () => listSavedDeckPresets().flatMap((preset) => (Array.isArray(preset?.texts) ? preset.texts : [])
+      .map((deckText, index) => ({
+        id: `saved:${preset.name}:${index}`,
+        label: `${preset.name}${preset.texts.length > 1 ? ` #${index + 1}` : ""}`,
+        deckText: String(deckText || ""),
+      }))
+      .filter((option) => option.deckText.trim())),
+    [],
+  );
+  const deckOptions = useMemo(() => {
+    const prepared = Array.isArray(multiplayer.deckOptions) && multiplayer.deckOptions.length > 0
+      ? multiplayer.deckOptions
+      : initialCreateDeckOptions;
+    const seen = new Set();
+    return [...prepared, ...savedDeckOptions]
+      .filter((option) => {
+        const key = String(option?.deckText || "");
+        if (!key.trim() || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 12);
+  }, [initialCreateDeckOptions, multiplayer.deckOptions, savedDeckOptions]);
+  const selectedDeckOptionId = useMemo(() => {
+    const current = String(multiplayer.localDeckText || "");
+    return deckOptions.find((option) => String(option?.deckText || "") === current)?.id || "";
+  }, [deckOptions, multiplayer.localDeckText]);
   const startPending = !multiplayer.matchStarted && multiplayer.mode === "starting";
   const activeCommanderTarget = commanderDeckTarget(multiplayer.localCommanderCount);
   const createCommanderTarget = commanderDeckTarget(createCommanderCount);
@@ -331,6 +361,7 @@ export default function LobbyOverlay({
           : createSecurityMode,
       deckText: createDeckText,
       commanderText: createCommanderText,
+      deckOptions: initialCreateDeckOptions,
     });
   };
 
@@ -675,7 +706,7 @@ export default function LobbyOverlay({
 
                 {!multiplayer.matchStarted ? (
                   <div className="lobby-sheet-panel fantasy-sheet-section grid gap-3 p-4">
-                    <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center justify-between gap-3">
                       <span className="text-[11px] uppercase tracking-[0.22em] text-[#c3a774]">{ui("Invite Link")}</span>
                       <button
                         type="button"
@@ -742,7 +773,27 @@ export default function LobbyOverlay({
                       <span className="text-[11px] uppercase tracking-[0.22em] text-[#c3a774]">{ui("Your Deck")}</span>
                       <span className="text-[13px] text-muted-foreground">{ui("Format:") + " "}{ui(formatName(activeFormat))}
                       </span>
-                    </div>
+                  </div>
+                    {deckOptions.length > 1 ? (
+                      <label className={labelClass}>
+                        {ui("Choose a prepared deck")}
+                        <select
+                          className={inputClass}
+                          value={selectedDeckOptionId}
+                          disabled={startPending}
+                          onChange={(event) => {
+                            const option = deckOptions.find((entry) => entry.id === event.target.value);
+                            if (!option) return;
+                            updateLobbyDeck({ deckText: option.deckText, commanderText: "" });
+                          }}
+                        >
+                          <option value="">{ui("Custom / edit below")}</option>
+                          {deckOptions.map((option) => (
+                            <option key={option.id} value={option.id}>{ui(option.label)}</option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
                     <textarea
                       className={textareaClass}
                       disabled={startPending}
