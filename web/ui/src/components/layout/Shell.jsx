@@ -676,6 +676,7 @@ export default function Shell() {
         puzzleSetupMode={puzzleSetupMode}
         onLoadDecks={handleLoadCustomDecks}
         onOpenLobby={handleOpenLobbyFromDecks}
+        onTestDecks={handleLoadCustomDecks}
         onCancelDeckLoading={() => setDeckLoadingMode(false)}
         onLoadPuzzle={(payload, successMessage) => runWasmInteraction(
           () => loadPuzzle(payload, successMessage)

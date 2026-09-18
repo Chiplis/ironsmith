@@ -53,7 +53,7 @@ function editorCountForTexts(players, texts) {
   return Math.min(4, players.length);
 }
 
-export default function DeckLoadingView({ onOpenLobby, onCancel }) {
+export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) {
   const ui = useUiText();
   const {
     state,
@@ -65,6 +65,7 @@ export default function DeckLoadingView({ onOpenLobby, onCancel }) {
   const [selectedPresetName, setSelectedPresetName] = useState("");
   const [presetName, setPresetName] = useState("");
   const [actionBusy, setActionBusy] = useState("");
+  const [showContinueChoices, setShowContinueChoices] = useState(false);
   const [copiedPlayerIndex, setCopiedPlayerIndex] = useState(null);
   const [catalogTargetIndex, setCatalogTargetIndex] = useState(0);
   const [editorPlayerCount, setEditorPlayerCount] = useState(1);
@@ -233,6 +234,17 @@ export default function DeckLoadingView({ onOpenLobby, onCancel }) {
     setStatus(`Deleted saved deck "${selectedPreset.name}"`);
   }, [selectedPreset, setStatus, ui]);
 
+  const handleTestInGame = useCallback(() => {
+    const decks = texts.map(parseDeckList);
+    const sideboards = texts.map(parseSideboardList);
+    const emptyPlayerIndex = decks.findIndex((deck) => deck.length === 0);
+    if (emptyPlayerIndex >= 0) {
+      setStatus(`Falta el mazo de ${players[emptyPlayerIndex]?.name || `jugador ${emptyPlayerIndex + 1}`}.`);
+      return false;
+    }
+    return onTestDecks?.({ decks, sideboards });
+  }, [onTestDecks, players, setStatus, texts]);
+
   return (
     <main
       className="setup-screen deck-loading-screen table-gradient flex h-full min-h-0 flex-col overflow-y-auto border border-[rgba(154,126,82,0.46)] bg-[linear-gradient(180deg,rgba(55,49,39,0.98),rgba(20,18,15,0.98))] p-3 pb-24"
@@ -378,14 +390,44 @@ export default function DeckLoadingView({ onOpenLobby, onCancel }) {
         </div>
       </section>
       <div className="mt-3 flex shrink-0 justify-end border-t border-[rgba(154,126,82,0.34)] pb-4 pt-3 pr-48">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="mr-2 h-9 border border-[#f2d9a3]/45 bg-[#211a10] px-3 text-[12px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
-          disabled={Boolean(actionBusy)}
-          onClick={() => onOpenLobby?.(texts)}
-        >{ui("Build lobby")}</Button>
+        {showContinueChoices ? (
+          <div className="mr-2 flex flex-wrap items-center justify-end gap-2">
+            <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-[#b8aa8e]">{ui("Continue with these decks")}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-9 border border-[#f2d9a3]/45 bg-[#211a10] px-3 text-[11px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
+              disabled={Boolean(actionBusy)}
+              onClick={() => onOpenLobby?.(texts)}
+            >{ui("Lobby and share")}</Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-9 border border-[#9a7e52]/55 px-3 text-[11px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317]"
+              disabled={Boolean(actionBusy)}
+              onClick={() => runAction("test", handleTestInGame)}
+            >{actionBusy === "test" ? <ActionSpinner /> : ui("Test in game")}</Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-9 border border-white/15 px-2 text-[11px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317]"
+              disabled={Boolean(actionBusy)}
+              onClick={() => setShowContinueChoices(false)}
+            >{ui("Back")}</Button>
+          </div>
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mr-2 h-9 border border-[#f2d9a3]/45 bg-[#211a10] px-3 text-[12px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
+            disabled={Boolean(actionBusy)}
+            onClick={() => setShowContinueChoices(true)}
+          >{ui("Build lobby")}</Button>
+        )}
         <Button
           type="button"
           variant="ghost"

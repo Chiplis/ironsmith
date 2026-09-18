@@ -46,6 +46,7 @@ export default function TableCore({
   deckLoadingMode,
   puzzleSetupMode = false,
   onOpenLobby,
+  onTestDecks,
   onCancelDeckLoading,
   onLoadPuzzle,
   onCancelPuzzleSetup,
@@ -185,7 +186,7 @@ export default function TableCore({
   }
 
   if (deckLoadingMode) {
-    return <DeckLoadingView onOpenLobby={onOpenLobby} onCancel={onCancelDeckLoading} />;
+    return <DeckLoadingView onOpenLobby={onOpenLobby} onTestDecks={onTestDecks} onCancel={onCancelDeckLoading} />;
   }
 
   if (puzzleSetupMode) {
