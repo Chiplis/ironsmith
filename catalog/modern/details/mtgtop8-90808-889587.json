@@ -1,0 +1,199 @@
+{
+  "id": "mtgtop8-90808-889587",
+  "format": "modern",
+  "name": "Dimir Control",
+  "archetype": "Dimir Control",
+  "colors": [],
+  "mechanics": [],
+  "cardNames": [
+    "Cling to Dust",
+    "Consign to Memory",
+    "Counterspell",
+    "Darkslick Shores",
+    "Drown in the Loch",
+    "Engineered Explosives",
+    "Fatal Push",
+    "Flooded Strand",
+    "Force of Negation",
+    "Harbinger of the Seas",
+    "Island",
+    "Kaito, Bane of Nightmares",
+    "Marsh Flats",
+    "Murktide Regent",
+    "Mystical Dispute",
+    "Nihil Spellbomb",
+    "Orcish Bowmasters",
+    "Otawara, Soaring City",
+    "Polluted Delta",
+    "Preordain",
+    "Psychic Frog",
+    "Quantum Riddler",
+    "Requiting Hex",
+    "Scalding Tarn",
+    "Sheoldred's Edict",
+    "Sink into Stupor",
+    "Spell Snare",
+    "Stern Scolding",
+    "Subtlety",
+    "Swamp",
+    "Tamiyo, Inquisitive Student",
+    "Thoughtseize",
+    "Toxic Deluge",
+    "Undercity Sewers",
+    "Watery Grave"
+  ],
+  "event": "$uper $unday ReCQ 10:00am @ SCG CON Baltimore",
+  "date": "",
+  "placement": 1,
+  "source": "mtgtop8",
+  "sourceUrl": "https://mtgtop8.com/event?e=90808&d=889587&f=MO",
+  "mainboard": [
+    {
+      "name": "Cling to Dust",
+      "count": 1
+    },
+    {
+      "name": "Counterspell",
+      "count": 4
+    },
+    {
+      "name": "Darkslick Shores",
+      "count": 2
+    },
+    {
+      "name": "Drown in the Loch",
+      "count": 1
+    },
+    {
+      "name": "Fatal Push",
+      "count": 4
+    },
+    {
+      "name": "Flooded Strand",
+      "count": 3
+    },
+    {
+      "name": "Force of Negation",
+      "count": 3
+    },
+    {
+      "name": "Island",
+      "count": 2
+    },
+    {
+      "name": "Kaito, Bane of Nightmares",
+      "count": 1
+    },
+    {
+      "name": "Marsh Flats",
+      "count": 1
+    },
+    {
+      "name": "Murktide Regent",
+      "count": 1
+    },
+    {
+      "name": "Orcish Bowmasters",
+      "count": 3
+    },
+    {
+      "name": "Otawara, Soaring City",
+      "count": 1
+    },
+    {
+      "name": "Polluted Delta",
+      "count": 4
+    },
+    {
+      "name": "Preordain",
+      "count": 2
+    },
+    {
+      "name": "Psychic Frog",
+      "count": 4
+    },
+    {
+      "name": "Quantum Riddler",
+      "count": 3
+    },
+    {
+      "name": "Scalding Tarn",
+      "count": 1
+    },
+    {
+      "name": "Sheoldred's Edict",
+      "count": 1
+    },
+    {
+      "name": "Sink into Stupor",
+      "count": 2
+    },
+    {
+      "name": "Spell Snare",
+      "count": 2
+    },
+    {
+      "name": "Subtlety",
+      "count": 3
+    },
+    {
+      "name": "Swamp",
+      "count": 1
+    },
+    {
+      "name": "Tamiyo, Inquisitive Student",
+      "count": 2
+    },
+    {
+      "name": "Thoughtseize",
+      "count": 3
+    },
+    {
+      "name": "Undercity Sewers",
+      "count": 2
+    },
+    {
+      "name": "Watery Grave",
+      "count": 3
+    }
+  ],
+  "sideboard": [
+    {
+      "name": "Consign to Memory",
+      "count": 4
+    },
+    {
+      "name": "Engineered Explosives",
+      "count": 2
+    },
+    {
+      "name": "Harbinger of the Seas",
+      "count": 2
+    },
+    {
+      "name": "Mystical Dispute",
+      "count": 2
+    },
+    {
+      "name": "Nihil Spellbomb",
+      "count": 2
+    },
+    {
+      "name": "Requiting Hex",
+      "count": 1
+    },
+    {
+      "name": "Stern Scolding",
+      "count": 1
+    },
+    {
+      "name": "Toxic Deluge",
+      "count": 1
+    }
+  ],
+  "commander": [],
+  "tags": [
+    "Top 8"
+  ],
+  "hash": "20febbec6c3b59a8"
+}

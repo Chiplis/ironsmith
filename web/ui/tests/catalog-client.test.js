@@ -11,3 +11,12 @@ test("searches catalog entries by deck and card terms", () => {
   assert.deepEqual(searchCatalogEntries(entries, "Boros" ).map((entry) => entry.id), ["energy"]);
   assert.deepEqual(searchCatalogEntries(entries, "Guide Souls").map((entry) => entry.id), ["energy"]);
 });
+
+test("uses the generated token index to narrow candidates", () => {
+  const searchIndex = { tokens: { counterspell: ["control"], dimir: ["control"] } };
+  assert.deepEqual(
+    searchCatalogEntries(entries, "Dimir Counterspell", { searchIndex }).map((entry) => entry.id),
+    ["control"],
+  );
+  assert.deepEqual(searchCatalogEntries(entries, "missing", { searchIndex }), []);
+});

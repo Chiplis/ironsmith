@@ -1,5 +1,5 @@
 import useUiText from "@/i18n/useUiText";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -46,13 +46,13 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
   const [submitting, setSubmitting] = useState(false);
   const [catalogTargetIndex, setCatalogTargetIndex] = useState(0);
 
-  const handleTextChange = (index, value) => {
+  const handleTextChange = useCallback((index, value) => {
     setTexts((prev) => {
       const next = [...prev];
       next[index] = value;
       return next;
     });
-  };
+  }, []);
 
   const cardCounts = useMemo(
     () => texts.map((t) => parseDeckList(t).length),
@@ -120,10 +120,10 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
     }
   };
 
-  const handleCatalogSelect = ({ deckText }) => {
+  const handleCatalogSelect = useCallback(({ deckText }) => {
     handleTextChange(catalogTargetIndex, deckText);
     setPresetName("");
-  };
+  }, [catalogTargetIndex, handleTextChange]);
 
   return (
     <main

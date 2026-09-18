@@ -7,13 +7,29 @@ function normalize(value) {
     .trim();
 }
 
+const catalogIndexCache = new Map();
+const catalogIndexRequests = new Map();
+
+function searchTokens(query) {
+  return catalogQueryTokens(query);
+}
+
 export function catalogQueryTokens(query) {
   return [...new Set(normalize(query).split(/\s+/).filter((token) => token.length >= 2))];
 }
 
-export function searchCatalogEntries(entries, query, { limit = 30 } = {}) {
-  const tokens = catalogQueryTokens(query);
-  const results = (Array.isArray(entries) ? entries : []).filter((entry) => {
+export function searchCatalogEntries(entries, query, { limit = 30, searchIndex } = {}) {
+  const tokens = searchTokens(query);
+  let candidates = Array.isArray(entries) ? entries : [];
+  if (tokens.length && searchIndex?.tokens) {
+    const ids = tokens.map((token) => new Set(searchIndex.tokens[token] || []));
+    const matchingIds = ids.slice(1).reduce(
+      (current, next) => new Set([...current].filter((id) => next.has(id))),
+      ids[0],
+    );
+    candidates = candidates.filter((entry) => matchingIds.has(entry?.id));
+  }
+  const results = candidates.filter((entry) => {
     const haystack = normalize([
       entry?.name,
       entry?.archetype,
@@ -35,9 +51,28 @@ export function searchCatalogEntries(entries, query, { limit = 30 } = {}) {
 }
 
 export async function loadCatalogIndex({ format = "modern", fetchImpl = globalThis.fetch } = {}) {
-  const response = await fetchImpl(`/catalog/${format}/index.json`, { cache: "no-store" });
-  if (!response?.ok) throw new Error(`Catalog index request failed (${response?.status || "unknown"})`);
-  return response.json();
+  const cacheable = fetchImpl === globalThis.fetch;
+  if (cacheable && catalogIndexCache.has(format)) return catalogIndexCache.get(format);
+  if (cacheable && catalogIndexRequests.has(format)) return catalogIndexRequests.get(format);
+
+  const request = Promise.all([
+    fetchImpl(`/catalog/${format}/index.json`, { cache: "no-store" }),
+    fetchImpl(`/catalog/${format}/search-index.json`, { cache: "no-store" }),
+  ]).then(async ([response, searchResponse]) => {
+    if (!response?.ok) throw new Error(`Catalog index request failed (${response?.status || "unknown"})`);
+    const catalog = await response.json();
+    const searchIndex = searchResponse?.ok ? await searchResponse.json() : null;
+    return { ...catalog, searchIndex };
+  });
+  if (!cacheable) return request;
+  catalogIndexRequests.set(format, request);
+  try {
+    const catalog = await request;
+    catalogIndexCache.set(format, catalog);
+    return catalog;
+  } finally {
+    catalogIndexRequests.delete(format);
+  }
 }
 
 export async function loadCatalogDeckDetail(entry, { format = "modern", fetchImpl = globalThis.fetch } = {}) {
