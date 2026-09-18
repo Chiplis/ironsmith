@@ -169,6 +169,10 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
       key: `${filteredResults[index % filteredResults.length].id}-${index}`,
     }));
   }, [filteredResults]);
+  const carouselTrackLength = carouselTrackEntries.length;
+  const carouselCardWidthPercent = carouselTrackLength ? 100 / carouselTrackLength : 0;
+  const carouselTranslatePercent = carouselTrackLength ? (carouselOffset * 100) / carouselTrackLength : 0;
+  const carouselTranslateGap = carouselOffset * 8;
 
   useEffect(() => {
     resetCarousel();
@@ -323,8 +327,8 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
           </Button>
         ) : null}
         <div className="mx-9 overflow-hidden">
-          <div className="flex gap-2" style={{ transform: `translateX(calc(-${carouselOffset} * ((100% + 0.5rem) / 3)))`, transition: carouselAnimating ? "transform 380ms cubic-bezier(0.22, 0.61, 0.36, 1)" : "none" }}>
-            {carouselTrackEntries.map(({ entry, key }) => <div key={key} className="min-w-0" style={{ flex: "0 0 calc((100% - 1rem) / 3)" }}><CatalogDeckRow entry={entry} isBusy={busyId === entry.id} isCopying={copyingId === entry.id} isCopied={copiedId === entry.id} onSelect={handleSelect} onCopy={handleCopy} /></div>)}
+          <div className="flex gap-2" style={{ width: `${(carouselTrackLength / CAROUSEL_SIZE) * 100}%`, transform: `translateX(calc(-${carouselTranslatePercent}% - ${carouselTranslateGap}px))`, transition: carouselAnimating ? "transform 380ms cubic-bezier(0.22, 0.61, 0.36, 1)" : "none" }}>
+            {carouselTrackEntries.map(({ entry, key }) => <div key={key} className="min-w-0" style={{ flex: `0 0 ${carouselCardWidthPercent}%` }}><CatalogDeckRow entry={entry} isBusy={busyId === entry.id} isCopying={copyingId === entry.id} isCopied={copiedId === entry.id} onSelect={handleSelect} onCopy={handleCopy} /></div>)}
           </div>
         </div>
         {filteredResults.length > CAROUSEL_SIZE ? (
