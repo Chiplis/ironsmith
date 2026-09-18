@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   extractEventLinks,
+  extractDeckLinks,
   modernFormatUrl,
   parseDeckPage,
 } from "../sources/mtgtop8.mjs";
@@ -21,6 +22,14 @@ test("builds a bounded Modern catalog URL", () => {
 test("extracts unique event links from a format page", () => {
   const links = extractEventLinks('<a href=event?e=123&f=MO>one</a><a href=event?e=123&f=MO>duplicate</a><a href=event?e=456&f=MO>two</a>');
   assert.deepEqual(links.map((link) => link.id), ["123", "456"]);
+});
+
+test("extracts bounded deck links from an event page", () => {
+  const links = extractDeckLinks(
+    '<a href=?e=90808&d=889587&f=MO>one</a><a href=?e=90808&d=889588&f=MO>two</a><a href=?e=90808&d=889587&f=MO>duplicate</a>',
+    { eventId: "90808", limit: 2 },
+  );
+  assert.deepEqual(links.map((link) => link.deckId), ["889587", "889588"]);
 });
 
 test("parses mainboard, sideboard and placement from an event deck page", () => {

@@ -1,6 +1,7 @@
 import { normalizeCardList, text } from "../catalog-utils.mjs";
 
 const EVENT_LINK_RE = /href=["']?\/?event\?e=(\d+)&f=([A-Za-z0-9]+)/gi;
+const DECK_LINK_RE = /href=["']?\/?\?e=(\d+)&d=(\d+)&f=([A-Za-z0-9]+)/gi;
 const CARD_LINE_RE = /<div\s+id=((?:md|sb)[^\s>]*)\s+class=["']deck_line[^"']*["'][^>]*>\s*(\d+)\s+<span[^>]*>([\s\S]*?)<\/span>/gi;
 const ARCHETYPE_RE = /href=["']?\/?archetype\?[^"'>]*["'][^>]*>([^<]*?)\s+decks<\/a>/i;
 const EVENT_TITLE_RE = /<div\s+class=event_title[^>]*>\s*([\s\S]*?)<\/div>/i;
@@ -31,6 +32,25 @@ export function extractEventLinks(html, { limit = 25 } = {}) {
     if (seen.has(key)) continue;
     seen.add(key);
     links.push({ id, format, url: `https://mtgtop8.com/event?e=${id}&f=${format.toUpperCase()}` });
+    if (links.length >= limit) break;
+  }
+  return links;
+}
+
+export function extractDeckLinks(html, { eventId = "", limit = 25 } = {}) {
+  const links = [];
+  const seen = new Set();
+  for (const match of String(html || "").matchAll(DECK_LINK_RE)) {
+    if (eventId && match[1] !== String(eventId)) continue;
+    const key = `${match[1]}:${match[2]}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    links.push({
+      eventId: match[1],
+      deckId: match[2],
+      format: match[3].toLowerCase(),
+      url: `https://mtgtop8.com/event?e=${match[1]}&d=${match[2]}&f=${match[3].toUpperCase()}`,
+    });
     if (links.length >= limit) break;
   }
   return links;
