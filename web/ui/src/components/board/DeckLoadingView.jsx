@@ -26,7 +26,6 @@ const selectStyle = {
   backgroundRepeat: "no-repeat",
   backgroundSize: "0.9rem",
 };
-const labelClass = "grid gap-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]";
 
 function ActionSpinner() {
   return <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 animate-spin" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" /><path d="M17 10a7 7 0 0 0-7-7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>;
@@ -45,6 +44,16 @@ function samePresetTexts(left, right) {
 
 function fitTextsToPlayers(players, texts) {
   return players.map((_, index) => stripDeckHeader(texts?.[index]));
+}
+
+function editorCountForTexts(players, texts) {
+  const highestFilledIndex = texts.reduce(
+    (highest, text, index) => String(text || "").trim() ? index : highest,
+    -1,
+  );
+  if (highestFilledIndex < 1) return Math.min(1, players.length);
+  if (highestFilledIndex < 2) return Math.min(2, players.length);
+  return Math.min(4, players.length);
 }
 
 export default function DeckLoadingView({ onLoad, onCancel }) {
@@ -99,7 +108,12 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
 
   const handleApplySavedPreset = () => {
     if (!selectedPreset) return;
-    setTexts(fitTextsToPlayers(players, selectedPreset.texts));
+    const nextTexts = fitTextsToPlayers(players, selectedPreset.texts);
+    const nextCount = editorCountForTexts(players, nextTexts);
+    setTexts(nextTexts);
+    setEditorPlayerCount(nextCount);
+    const nextEmptyIndex = nextTexts.findIndex((text) => !String(text || "").trim());
+    setCatalogTargetIndex(nextEmptyIndex >= 0 ? Math.min(nextEmptyIndex, Math.max(0, nextCount - 1)) : 0);
   };
 
   const saveCurrentPreset = useCallback((requestedName) => {
@@ -222,15 +236,21 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
 
   const handleCatalogSelect = useCallback(({ deckText }) => {
     const target = visiblePlayers.length ? Math.min(catalogTargetIndex, visiblePlayers.length - 1) : 0;
-    handleTextChange(target, stripDeckHeader(deckText));
-    for (let offset = 1; offset <= visiblePlayers.length; offset += 1) {
-      const nextIndex = visiblePlayers.length ? (target + offset) % visiblePlayers.length : target;
-      if (!String(texts[nextIndex] || "").trim()) {
-        setCatalogTargetIndex(nextIndex);
-        break;
-      }
+    const importedText = stripDeckHeader(deckText);
+    const nextTexts = [...texts];
+    nextTexts[target] = importedText;
+    handleTextChange(target, importedText);
+
+    const findEmptyPlayer = (count) => players.slice(0, count).findIndex((_, index) => !String(nextTexts[index] || "").trim());
+    let nextCount = visiblePlayerCount;
+    let nextIndex = findEmptyPlayer(nextCount);
+    if (nextIndex < 0 && nextCount < players.length) {
+      nextCount = [1, 2, 4].find((count) => count > nextCount && count <= players.length) || players.length;
+      nextIndex = findEmptyPlayer(nextCount);
     }
-  }, [catalogTargetIndex, handleTextChange, texts, visiblePlayers]);
+    setEditorPlayerCount(nextCount);
+    setCatalogTargetIndex(nextIndex >= 0 ? nextIndex : (target + 1) % Math.max(1, nextCount));
+  }, [catalogTargetIndex, handleTextChange, players, texts, visiblePlayerCount, visiblePlayers.length]);
 
   const handleDeleteSavedPreset = useCallback(() => {
     if (!selectedPreset) return;
@@ -253,7 +273,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
           <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">Mazos guardados</h2>
           <span className="text-[10px] uppercase tracking-wide text-[#8b806b]">{savedPresets.length}/{SAVED_DECK_PRESETS_LIMIT} disponibles en esta sesión</span>
         </div>
-        <div className="grid gap-2 md:grid-cols-[minmax(200px,1fr)_minmax(150px,190px)_auto_auto]">
+        <div className="grid gap-2 md:grid-cols-[minmax(200px,1fr)_auto_auto]">
           <select
             className={selectClass}
             style={selectStyle}
@@ -266,17 +286,6 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
               <option key={preset.name} value={preset.name}>{preset.name}</option>
             ))}
           </select>
-          <label className={labelClass}>¿Para quién?
-            <select
-              className={selectClass}
-              style={selectStyle}
-              value={catalogTargetIndex}
-              onChange={(event) => setCatalogTargetIndex(Number(event.target.value))}
-              aria-label="Jugador destino"
-            >
-              {visiblePlayers.map((player, index) => <option key={player.id || index} value={index}>{player.name}</option>)}
-            </select>
-          </label>
           <Button
             type="button"
             variant="ghost"
@@ -299,8 +308,6 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
       </section>
       <div className="mb-3 shrink-0">
         <CompetitiveDeckBrowser
-          players={visiblePlayers}
-          targetIndex={catalogTargetIndex}
           onSelect={handleCatalogSelect}
         />
       </div>

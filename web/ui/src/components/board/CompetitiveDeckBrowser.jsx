@@ -13,7 +13,6 @@ const selectStyle = {
   backgroundRepeat: "no-repeat",
   backgroundSize: "0.9rem",
 };
-const labelClass = "grid gap-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]";
 const CAROUSEL_SIZE = 3;
 const CAROUSEL_STEP = 2;
 const manaOptions = ["W", "U", "B", "R", "G", "C"];
@@ -87,7 +86,7 @@ function matchesManaFilters(entry, activeMana, manaMatchMode) {
   return activeMana.every((color) => colors.includes(color));
 }
 
-const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, targetPlayerName, isBusy, isCopying, isCopied, onSelect, onCopy }) {
+const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, isCopying, isCopied, onSelect, onCopy }) {
   const [artUrl, setArtUrl] = useState("");
   const manaProfile = completeManaProfile(entry);
   const colors = (manaProfile?.colors || []).filter((color) => /^[WUBRGC]$/.test(color));
@@ -124,8 +123,8 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, targetPl
         </div>
       </div>
       <div className="ml-auto flex shrink-0 flex-col justify-center gap-1">
-        <Button type="button" variant="ghost" size="sm" className="h-8 w-[112px] max-w-[112px] truncate border border-[#9a7e52]/55 px-2 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a]" disabled={isBusy || isCopying} onClick={() => onSelect(entry, actionKey)} title={`Usar en ${targetPlayerName}`}>
-          {isBusy ? <ActionSpinner /> : `Usar en ${targetPlayerName}`}
+        <Button type="button" variant="ghost" size="sm" className="h-8 w-[112px] max-w-[112px] truncate border border-[#9a7e52]/55 px-2 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a]" disabled={isBusy || isCopying} onClick={() => onSelect(entry, actionKey)} title="Usar deck">
+          {isBusy ? <ActionSpinner /> : "Usar"}
         </Button>
         <Button type="button" variant="ghost" size="sm" className="h-7 w-[112px] max-w-[112px] truncate border border-white/15 px-2 text-[10px] font-semibold text-[#b8aa8e]" disabled={isBusy || isCopying} onClick={() => onCopy(entry, actionKey)}>
           {isCopying ? <ActionSpinner /> : isCopied ? "Copiado" : "Copiar MTGO"}
@@ -135,7 +134,7 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, targetPl
   );
 });
 
-const DeckCarousel = memo(function DeckCarousel({ title, entries, targetPlayerName, resetKey, busyId, copyingId, copiedId, onSelect, onCopy }) {
+const DeckCarousel = memo(function DeckCarousel({ title, entries, resetKey, busyId, copyingId, copiedId, onSelect, onCopy }) {
   const [offset, setOffset] = useState(0);
   const [animating, setAnimating] = useState(false);
   const animatingRef = useRef(false);
@@ -190,7 +189,7 @@ const DeckCarousel = memo(function DeckCarousel({ title, entries, targetPlayerNa
         </Button> : null}
         <div className="mx-9 overflow-hidden" style={{ containerType: "inline-size" }}>
           <div className="flex gap-2" style={{ transform: `translateX(calc(-${offset} * (33.333cqw + 0.1667rem)))`, transition: animating ? "transform 380ms cubic-bezier(0.22, 0.61, 0.36, 1)" : "none" }}>
-            {trackEntries.map(({ entry, key, actionKey }) => <div key={key} className="min-w-0" style={{ flex: "0 0 calc(33.333cqw - 0.333rem)" }}><CatalogDeckRow entry={entry} actionKey={actionKey} targetPlayerName={targetPlayerName} isBusy={busyId === actionKey} isCopying={copyingId === actionKey} isCopied={copiedId === actionKey} onSelect={onSelect} onCopy={onCopy} /></div>)}
+            {trackEntries.map(({ entry, key, actionKey }) => <div key={key} className="min-w-0" style={{ flex: "0 0 calc(33.333cqw - 0.333rem)" }}><CatalogDeckRow entry={entry} actionKey={actionKey} isBusy={busyId === actionKey} isCopying={copyingId === actionKey} isCopied={copiedId === actionKey} onSelect={onSelect} onCopy={onCopy} /></div>)}
           </div>
         </div>
         {entries.length > CAROUSEL_SIZE ? <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-1/2 z-10 h-8 w-8 -translate-y-1/2 rounded-full bg-[#11110f] p-0 text-[#d8bf7a] shadow-lg hover:bg-[#28231b]" aria-label={`${title}: decks siguientes`} title="Decks siguientes" onClick={() => move(1)}>
@@ -201,7 +200,7 @@ const DeckCarousel = memo(function DeckCarousel({ title, entries, targetPlayerNa
   );
 });
 
-export default function CompetitiveDeckBrowser({ players, targetIndex, onSelect }) {
+export default function CompetitiveDeckBrowser({ onSelect }) {
   const [catalog, setCatalog] = useState(null);
   const [catalogFormat, setCatalogFormat] = useState("modern");
   const [query, setQuery] = useState("");
@@ -217,8 +216,6 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onSelect 
   const busyRef = useRef("");
   const copyingRef = useRef("");
   const deferredQuery = useDeferredValue(query);
-  const targetPlayerName = players[targetIndex]?.name || "jugador";
-
   const resetCarousel = useCallback(() => {
     setCarouselResetKey((current) => current + 1);
   }, []);
@@ -348,16 +345,17 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onSelect 
 
   return (
     <section className="grid gap-2 border-b border-[rgba(154,126,82,0.32)] bg-transparent pb-3" aria-label="Decks">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h2 className="text-[13px] font-bold uppercase tracking-[0.16em] text-[#f2d9a3]">Decks</h2>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h2 className="text-[13px] font-bold uppercase tracking-[0.16em] text-[#f2d9a3]">Decks</h2>
+            <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">Formato
+              <select className={selectClass.replace("w-full", "w-auto min-w-[136px]")} style={selectStyle} value={catalogFormat} onChange={(event) => { setCatalogFormat(event.target.value); resetCarousel(); }}>
+                {catalogFormats.map((formatOption) => <option key={formatOption.id} value={formatOption.id}>{formatOption.label}</option>)}
+              </select>
+            </label>
+          </div>
           <p className="text-[11px] text-[#b8aa8e]">Buscá por arquetipo, carta, evento o color. El detalle se carga sólo al elegir.</p>
-        </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <label className={labelClass}>Formato<select className={selectClass} style={selectStyle} value={catalogFormat} onChange={(event) => { setCatalogFormat(event.target.value); resetCarousel(); }}>
-            {catalogFormats.map((formatOption) => <option key={formatOption.id} value={formatOption.id}>{formatOption.label}</option>)}
-          </select></label>
-          <span className="text-[10px] text-[#8b806b]" aria-live="polite">El deck elegido se pondrá en {targetPlayerName}.</span>
         </div>
       </div>
       <input className={fieldClass} value={query} onChange={(event) => { setQuery(event.target.value); resetCarousel(); }} placeholder="Broodscale Bloodchief, Dimir Control, Counterspell..." aria-label="Buscar en catálogo" />
@@ -382,9 +380,9 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onSelect 
       {loading ? <p className="text-[12px] text-[#b8aa8e]">Cargando índice…</p> : null}
       {error ? <p className="text-[12px] text-red-300">{error}</p> : null}
       {!loading && !error && !manaFilteredResults.length ? <p className="text-[12px] text-[#b8aa8e]">No hay resultados para esta búsqueda.</p> : null}
-      <DeckCarousel title="Mono-color" entries={monoResults} targetPlayerName={targetPlayerName} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
-      <DeckCarousel title="Last major events" entries={majorResults} targetPlayerName={targetPlayerName} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
-      <DeckCarousel title="Last 20 events" entries={recentResults} targetPlayerName={targetPlayerName} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
+      <DeckCarousel title="Mono-color" entries={monoResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
+      <DeckCarousel title="Last major events" entries={majorResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
+      <DeckCarousel title="Last 20 events" entries={recentResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
     </section>
   );
 }
