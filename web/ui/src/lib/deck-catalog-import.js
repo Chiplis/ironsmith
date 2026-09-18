@@ -83,10 +83,13 @@ export function validateDeckCatalogEntry(entry, { format = entry?.format || "nor
 export function importDeckCatalogEntry(entry, options = {}) {
   const validation = validateDeckCatalogEntry(entry, options);
   if (!validation.valid) throw new DeckCatalogImportError(validation.errors);
+  const deckName = text(entry?.name || entry?.archetype || "Deck sin nombre");
   return {
     ...deckCatalogEntryToLobbyTexts(entry),
     counts: validation.counts,
     deckId: text(entry?.id),
+    deckName,
+    archetype: text(entry?.archetype),
     sourceUrl: text(entry?.sourceUrl),
   };
 }

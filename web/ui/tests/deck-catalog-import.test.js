@@ -41,6 +41,16 @@ test("validates counts before import", () => {
   );
 });
 
+test("keeps the deck name for prepared lobby choices", () => {
+  const result = importDeckCatalogEntry({
+    ...entry,
+    name: "Dimir Control",
+    archetype: "Control",
+  });
+  assert.equal(result.deckName, "Dimir Control");
+  assert.equal(result.archetype, "Control");
+});
+
 test("enforces Commander structure separately", () => {
   const commander = {
     format: "commander",

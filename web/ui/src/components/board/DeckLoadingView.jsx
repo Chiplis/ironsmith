@@ -61,6 +61,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
   } = useGame();
   const players = useMemo(() => state?.players || [], [state?.players]);
   const [texts, setTexts] = useState(() => players.map(() => ""));
+  const [deckLabels, setDeckLabels] = useState(() => players.map(() => ""));
   const [savedPresets, setSavedPresets] = useState(() => listSavedDeckPresets());
   const [selectedPresetName, setSelectedPresetName] = useState("");
   const [presetName, setPresetName] = useState("");
@@ -120,6 +121,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
     const nextTexts = fitTextsToPlayers(players, selectedPreset.texts);
     const nextCount = editorCountForTexts(players, nextTexts);
     setTexts(nextTexts);
+    setDeckLabels(nextTexts.map((text) => String(text || "").trim() ? selectedPreset.name : ""));
     setEditorPlayerCount(nextCount);
     const nextEmptyIndex = nextTexts.findIndex((text) => !String(text || "").trim());
     setCatalogTargetIndex(nextEmptyIndex >= 0 ? Math.min(nextEmptyIndex, Math.max(0, nextCount - 1)) : 0);
@@ -168,6 +170,11 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
 
   const handleClearPlayer = useCallback((playerIndex) => {
     setTexts((current) => {
+      const next = [...current];
+      next[playerIndex] = "";
+      return next;
+    });
+    setDeckLabels((current) => {
       const next = [...current];
       next[playerIndex] = "";
       return next;
@@ -228,12 +235,20 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
       });
   }, [actionBusy, setStatus]);
 
-  const handleCatalogSelect = useCallback(({ deckText }) => {
+  const handleCatalogSelect = useCallback(({ deckText, deckName, name, archetype }) => {
     const target = visiblePlayers.length ? Math.min(catalogTargetIndex, visiblePlayers.length - 1) : 0;
     const importedText = stripDeckHeader(deckText);
+    const importedName = String(deckName || name || archetype || "").trim();
     const nextTexts = [...texts];
     nextTexts[target] = importedText;
     handleTextChange(target, importedText);
+    if (importedName) {
+      setDeckLabels((current) => {
+        const next = [...current];
+        next[target] = importedName;
+        return next;
+      });
+    }
 
     const findEmptyPlayer = (count) => players.slice(0, count).findIndex((_, index) => !String(nextTexts[index] || "").trim());
     let nextCount = visiblePlayerCount;
@@ -291,11 +306,11 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
     () => texts
       .map((text, index) => ({
         id: `editor-${index}`,
-        label: players[index]?.name || `Deck ${index + 1}`,
+        label: `${deckLabels[index] || `Deck ${index + 1}`} (${players[index]?.name || `Jugador ${index + 1}`})`,
         deckText: String(text || ""),
       }))
       .filter((option) => option.deckText.trim()),
-    [players, texts],
+    [deckLabels, players, texts],
   );
   const handleConfirmLobby = useCallback(() => {
     setShowLobbyConfirm(false);

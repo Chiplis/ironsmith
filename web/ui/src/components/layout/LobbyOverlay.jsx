@@ -269,7 +269,7 @@ export default function LobbyOverlay({
     () => listSavedDeckPresets().flatMap((preset) => (Array.isArray(preset?.texts) ? preset.texts : [])
       .map((deckText, index) => ({
         id: `saved:${preset.name}:${index}`,
-        label: `${preset.name}${preset.texts.length > 1 ? ` #${index + 1}` : ""}`,
+        label: `${preset.name}${preset.texts.length > 1 ? ` #${index + 1}` : ""} (${preset.playerNames?.[index] || `Jugador ${index + 1}`})`,
         deckText: String(deckText || ""),
       }))
       .filter((option) => option.deckText.trim())),
@@ -776,7 +776,7 @@ export default function LobbyOverlay({
                   </div>
                     {deckOptions.length > 1 ? (
                       <label className={labelClass}>
-                        {ui("Choose a prepared deck")}
+                        {ui("Deck disponible")}
                         <select
                           className={inputClass}
                           value={selectedDeckOptionId}
