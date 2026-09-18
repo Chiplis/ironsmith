@@ -241,7 +241,16 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
       setStatus("Pegá al menos un mazo para probarlo en la partida.");
       return false;
     }
-    return onTestDecks?.({ decks, sideboards, preserveMissingDecks: true });
+    const filledCount = decks.filter((deck) => deck.length > 0).length;
+    const playerCount = Math.max(2, Math.min(4, filledCount));
+    const perspectivePlayerIndex = Math.max(0, decks.findIndex((deck) => deck.length > 0));
+    return onTestDecks?.({
+      decks: decks.slice(0, playerCount),
+      sideboards: sideboards.slice(0, playerCount),
+      playerCount,
+      perspectivePlayerIndex,
+      preserveMissingDecks: true,
+    });
   }, [onTestDecks, setStatus, texts]);
 
   return (

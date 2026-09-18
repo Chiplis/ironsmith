@@ -360,7 +360,35 @@ export default function Shell() {
         return;
       }
       try {
-        const result = await game.loadDecks(payload);
+        const requestedPlayerCount = Number(payload?.playerCount);
+        const playerCount = payload?.preserveMissingDecks && Number.isFinite(requestedPlayerCount)
+          ? Math.max(2, Math.min(4, Math.floor(requestedPlayerCount)))
+          : null;
+        const names = parseNames(playerNames);
+        const testNames = playerCount
+          ? names.slice(0, playerCount)
+          : names;
+        if (playerCount && testNames.length !== playerCount) {
+          setStatus(`Se necesitan ${playerCount} nombres de jugador para probar esta partida.`, true);
+          return;
+        }
+        if (playerCount && testNames.length !== names.length) {
+          await game.reset(testNames, startingLife);
+          setPlayerNames(testNames.join(","));
+        }
+        const loadPayload = playerCount
+          ? {
+              ...payload,
+              decks: Array.isArray(payload?.decks) ? payload.decks.slice(0, playerCount) : [],
+              sideboards: Array.isArray(payload?.sideboards) ? payload.sideboards.slice(0, playerCount) : [],
+            }
+          : payload;
+        const result = await game.loadDecks(loadPayload);
+        if (playerCount && Number.isFinite(Number(payload?.perspectivePlayerIndex))) {
+          await game.setPerspective(
+            Math.max(0, Math.min(playerCount - 1, Number(payload.perspectivePlayerIndex)))
+          );
+        }
         setDeckLoadingMode(false);
         const loaded = result?.loaded ?? 0;
         const failed = Array.isArray(result?.failed) ? result.failed : [];
@@ -435,7 +463,7 @@ export default function Shell() {
         setStatus(`Load decks failed: ${err}`, true);
       }
     });
-  }, [game, multiplayer.mode, pushNotice, refresh, runWasmInteraction, setStatus]);
+  }, [game, multiplayer.mode, playerNames, pushNotice, refresh, runWasmInteraction, setStatus, startingLife]);
 
   const handleOpenLobbyFromDecks = useCallback((deckTexts) => {
     const texts = Array.isArray(deckTexts) ? deckTexts : [];
