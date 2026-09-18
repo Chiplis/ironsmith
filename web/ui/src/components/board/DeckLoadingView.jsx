@@ -18,7 +18,6 @@ import CompetitiveDeckBrowser from "./CompetitiveDeckBrowser";
 
 const fieldClass =
   "w-full border border-[rgba(154,126,82,0.46)] bg-[#0b0d0e] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75";
-const labelClass = "grid gap-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]";
 
 function samePresetTexts(left, right) {
   const leftTexts = Array.isArray(left) ? left : [];
@@ -40,7 +39,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
     setSemanticThreshold,
     cardsMeetingThreshold,
   } = useGame();
-  const players = state?.players || [];
+  const players = useMemo(() => state?.players || [], [state?.players]);
   const [texts, setTexts] = useState(() => players.map(() => ""));
   const [savedPresets, setSavedPresets] = useState(() => listSavedDeckPresets());
   const [selectedPresetName, setSelectedPresetName] = useState("");
@@ -81,40 +80,79 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
     setPresetName(selectedPreset.name);
   };
 
+  const saveCurrentPreset = useCallback(() => {
+    const normalizedPresetName = presetName.trim();
+    if (!normalizedPresetName) {
+      setStatus("Elegí un nombre para guardar este mazo.");
+      return false;
+    }
+
+    const existingPreset = findSavedDeckPreset(normalizedPresetName);
+    const nextTexts = fitTextsToPlayers(players, texts);
+    const shouldConfirmOverride =
+      existingPreset && !samePresetTexts(existingPreset.texts, nextTexts);
+    if (
+      shouldConfirmOverride
+      && !window.confirm(ui('A saved deck named "{0}" already exists. Override it?', { 0: existingPreset.name }))
+    ) {
+      return false;
+    }
+
+    const saveResult = saveSavedDeckPreset(normalizedPresetName, nextTexts);
+    if (saveResult.saved) {
+      setSavedPresets(saveResult.entries);
+      setSelectedPresetName(saveResult.entry.name);
+      setPresetName(saveResult.entry.name);
+      setStatus(
+        saveResult.replaced
+          ? `Updated saved deck "${saveResult.entry.name}"`
+          : `Saved deck "${saveResult.entry.name}"`
+      );
+      return true;
+    }
+    if (saveResult.reason === "limit") {
+      setStatus(`Session limit reached (${SAVED_DECK_PRESETS_LIMIT} decks). Delete one saved deck to add another.`);
+    }
+    return false;
+  }, [players, presetName, setStatus, texts, ui]);
+
+  const handleSavePreset = useCallback(() => {
+    saveCurrentPreset();
+  }, [saveCurrentPreset]);
+
+  const handleCopyMtgo = useCallback(async () => {
+    const text = String(texts[catalogTargetIndex] || "").trim();
+    if (!text) {
+      setStatus("No hay un deck para copiar.");
+      return;
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        textarea.remove();
+      }
+      setStatus("Deck copiado en formato MTGO.");
+    } catch {
+      setStatus("No se pudo copiar el deck.");
+    }
+  }, [catalogTargetIndex, setStatus, texts]);
+
   const handleLoad = async () => {
     if (submitting) return;
     const decks = texts.map(parseDeckList);
     const sideboards = texts.map(parseSideboardList);
-    const normalizedPresetName = presetName.trim();
     setPreferredCardPrints(texts.flatMap(parseDeckPrintPreferences));
 
-    if (normalizedPresetName) {
-      const existingPreset = findSavedDeckPreset(normalizedPresetName);
-      const nextTexts = fitTextsToPlayers(players, texts);
-      const shouldConfirmOverride =
-        existingPreset && !samePresetTexts(existingPreset.texts, nextTexts);
-      if (
-        shouldConfirmOverride
-        && !window.confirm(ui('A saved deck named "{0}" already exists. Override it?', { 0: existingPreset.name }))
-      ) {
-        await onLoad({ decks, sideboards });
-        return;
-      }
-
-      const saveResult = saveSavedDeckPreset(normalizedPresetName, nextTexts);
-      if (saveResult.saved) {
-        setSavedPresets(saveResult.entries);
-        setSelectedPresetName(saveResult.entry.name);
-        setPresetName(saveResult.entry.name);
-        setStatus(
-          saveResult.replaced
-            ? `Updated saved deck "${saveResult.entry.name}"`
-            : `Saved deck "${saveResult.entry.name}"`
-        );
-      } else if (saveResult.reason === "limit") {
-        setStatus(`Session limit reached (${SAVED_DECK_PRESETS_LIMIT} decks). Delete one saved deck to add another.`);
-      }
-    }
+    if (presetName.trim()) saveCurrentPreset();
 
     setSubmitting(true);
     try {
@@ -140,55 +178,11 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
 
   return (
     <main
-      className="setup-screen deck-loading-screen table-gradient flex h-full min-h-0 flex-col overflow-hidden border border-[rgba(154,126,82,0.46)] bg-[linear-gradient(180deg,rgba(55,49,39,0.98),rgba(20,18,15,0.98))] p-3"
+      className="setup-screen deck-loading-screen table-gradient flex h-full min-h-0 flex-col overflow-y-auto border border-[rgba(154,126,82,0.46)] bg-[linear-gradient(180deg,rgba(55,49,39,0.98),rgba(20,18,15,0.98))] p-3"
     >
-      <div className="mb-3 grid shrink-0 gap-3 border-b border-[rgba(154,126,82,0.34)] pb-3 xl:grid-cols-[minmax(180px,260px)_minmax(0,1fr)]">
-        <div className="min-w-[220px]">
-          <h1 className="text-[18px] font-bold uppercase tracking-wide text-[#f2d9a3]">{ui("Load Decks")}</h1>
-          <div className="mt-1 text-[12px] font-semibold text-[#b8aa8e]">{ui("Paste main deck lists with optional Sideboard sections.")}</div>
-        </div>
-        <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(220px,300px)]">
-          <label className={labelClass}>{ui("Saved Deck")}<div className="flex gap-2">
-              <select
-                className={fieldClass}
-                value={selectedPresetName}
-                onChange={(event) => setSelectedPresetName(event.target.value)}
-              >
-                <option value="">{ui("Select a saved deck")}</option>
-                {savedPresets.map((preset) => (
-                  <option key={preset.name} value={preset.name}>
-                    {preset.name}
-                  </option>
-                ))}
-              </select>
-              <div className="flex shrink-0 gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-9 w-[76px] max-w-[76px] truncate border border-[#9a7e52]/55 px-2 text-[12px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
-                  disabled={!selectedPreset}
-                  onClick={handleApplySavedPreset}
-                >{ui("Use")}</Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-9 w-[76px] max-w-[76px] truncate border border-white/10 px-2 text-[11px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
-                  disabled={!selectedPreset}
-                  onClick={handleDeleteSavedPreset}
-                >{ui("Delete")}</Button>
-              </div>
-            </div>
-          </label>
-          <label className={labelClass}>{ui("Save As")}<input
-              className={fieldClass}
-              placeholder={ui("Friday gauntlet")}
-              value={presetName}
-              onChange={(event) => setPresetName(event.target.value)}
-            /><span className="text-[10px] font-normal normal-case tracking-normal text-[#8b806b]">{savedPresets.length}/{SAVED_DECK_PRESETS_LIMIT} en esta sesión</span>
-          </label>
-        </div>
+      <div className="mb-3 shrink-0 border-b border-[rgba(154,126,82,0.34)] pb-3">
+        <h1 className="text-[18px] font-bold uppercase tracking-wide text-[#f2d9a3]">{ui("Load Decks")}</h1>
+        <div className="mt-1 text-[12px] font-semibold text-[#b8aa8e]">{ui("Paste main deck lists with optional Sideboard sections.")}</div>
       </div>
       <div className="mb-3 shrink-0">
         <CompetitiveDeckBrowser
@@ -198,7 +192,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
           onSelect={handleCatalogSelect}
         />
       </div>
-      <section className="grid min-h-[230px] min-w-0 flex-1 gap-2 overflow-hidden border border-[rgba(154,126,82,0.42)] bg-[rgba(8,9,9,0.55)] p-2" aria-label="Editor manual de decklists">
+      <section className="grid min-h-[420px] min-w-0 shrink-0 gap-2 border border-[rgba(154,126,82,0.42)] bg-[rgba(8,9,9,0.55)] p-2" aria-label="Editor manual de decklists">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-1 pb-2">
           <div>
             <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">Editor manual MTGO</h2>
@@ -206,12 +200,12 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
           </div>
           <span className="text-[10px] uppercase tracking-wide text-[#8b806b]">También podés editar después de usar un deck</span>
         </div>
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto pr-1 xl:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 pr-1 xl:grid-cols-2">
           {players.map((player, i) => (
             <div
               key={player.id}
-              className="setup-editor grid min-h-[210px] gap-2 border border-[rgba(154,126,82,0.42)] bg-[linear-gradient(180deg,rgba(17,17,15,0.94),rgba(8,9,9,0.96))] p-3"
-              style={{ gridTemplateRows: "auto minmax(150px,1fr)" }}
+              className="setup-editor grid min-h-[290px] gap-2 border border-[rgba(154,126,82,0.42)] bg-[linear-gradient(180deg,rgba(17,17,15,0.94),rgba(8,9,9,0.96))] p-3"
+              style={{ gridTemplateRows: "auto minmax(240px,1fr)" }}
             >
               <div className="flex items-baseline justify-between gap-3">
                 <span className="min-w-0 truncate text-[15px] font-bold uppercase tracking-wide text-[#f2d9a3]">
@@ -226,13 +220,77 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
               <textarea
                 aria-label={ui("{0} decklist", { 0: player.name })}
                 spellCheck={false}
-                className="h-full min-h-0 w-full resize-none border border-[rgba(154,126,82,0.48)] bg-[#080b0d] p-2 font-mono text-[13px] leading-snug text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75"
+                className="min-h-[240px] w-full resize-y border border-[rgba(154,126,82,0.48)] bg-[#080b0d] p-2 font-mono text-[13px] leading-snug text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75"
                 placeholder={ui("Paste {0}'s list...\n\nDeck\n4 Lightning Bolt\n2 Counterspell\n20 Island\n\nSideboard\n2 Pyroblast\n1 Tormod's Crypt", { 0: player.name })}
                 value={texts[i] || ""}
                 onChange={(e) => handleTextChange(i, e.target.value)}
               />
             </div>
           ))}
+        </div>
+      </section>
+      <section className="mt-3 shrink-0 border-t border-[rgba(154,126,82,0.34)] pt-3" aria-label="Mazos guardados">
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">Mazos guardados</h2>
+            <p className="text-[11px] text-[#8b806b]">Se conservan sólo durante esta sesión del navegador.</p>
+          </div>
+          <span className="text-[10px] uppercase tracking-wide text-[#8b806b]">{savedPresets.length}/{SAVED_DECK_PRESETS_LIMIT} disponibles</span>
+        </div>
+        <div className="grid gap-2 xl:grid-cols-[minmax(220px,1fr)_auto_minmax(180px,260px)_auto_auto]">
+          <select
+            className={fieldClass}
+            value={selectedPresetName}
+            onChange={(event) => setSelectedPresetName(event.target.value)}
+            aria-label={ui("Saved Deck")}
+          >
+            <option value="">{ui("Select a saved deck")}</option>
+            {savedPresets.map((preset) => (
+              <option key={preset.name} value={preset.name}>{preset.name}</option>
+            ))}
+          </select>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-9 max-w-[96px] truncate border border-[#9a7e52]/55 px-3 text-[11px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
+            disabled={!selectedPreset}
+            onClick={handleApplySavedPreset}
+          >{ui("Use")}</Button>
+          <input
+            className={fieldClass}
+            placeholder={ui("Friday gauntlet")}
+            value={presetName}
+            onChange={(event) => setPresetName(event.target.value)}
+            aria-label={ui("Save As")}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-9 max-w-[140px] truncate border border-[#9a7e52]/55 px-3 text-[11px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
+            disabled={!presetName.trim() || totalCards === 0}
+            onClick={handleSavePreset}
+          >Guardar mazo</Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-9 max-w-[128px] truncate border border-white/15 px-3 text-[11px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
+            disabled={!selectedPreset}
+            onClick={handleDeleteSavedPreset}
+          >{ui("Delete")}</Button>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[10px] text-[#8b806b]">Elegí un nombre, guardá hasta cinco y cambialos con Usar.</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 max-w-[160px] truncate border border-white/15 px-3 text-[11px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
+            disabled={totalCards === 0}
+            onClick={handleCopyMtgo}
+          >Copiar MTGO ({players[catalogTargetIndex]?.name || "jugador"})</Button>
         </div>
       </section>
       <div className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[rgba(154,126,82,0.34)] pt-3">

@@ -5,8 +5,8 @@ export const MATCH_FORMAT_PLANECHASE = "planechase";
 export const LOBBY_DECK_SIZE = 60;
 export const COMMANDER_DECK_SIZE = 99;
 export const PARTNER_DECK_SIZE = 98;
-const SAVED_DECK_PRESETS_STORAGE_KEY = "ironsmith.savedDeckPresets.v2";
-const SAVED_DECK_PRESETS_LIMIT = 8;
+const SAVED_DECK_PRESETS_STORAGE_KEY = "ironsmith.savedDeckPresets.v3";
+const SAVED_DECK_PRESETS_LIMIT = 5;
 const DEFAULT_LOBBY_DECK_STORAGE_KEY = "ironsmith.defaultLobbyDeck.v1";
 
 const MAIN_DECK_HEADER = /^Deck$/i;
@@ -66,25 +66,19 @@ function sanitizeDeckPresetTexts(texts) {
   return texts.map((text) => String(text || ""));
 }
 
-function canUseLocalStorage() {
-  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
-}
-
 function canUseSessionStorage() {
   return typeof window !== "undefined" && typeof window.sessionStorage !== "undefined";
+}
+
+function canUseLocalStorage() {
+  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
 
 function readSavedDeckPresets() {
   if (!canUseSessionStorage()) return [];
 
   try {
-    let raw = window.sessionStorage.getItem(SAVED_DECK_PRESETS_STORAGE_KEY);
-    // Migrate the previous persistent list once, without deleting it. The new
-    // session-scoped store is the only one written from this point on.
-    if (!raw && canUseLocalStorage()) {
-      raw = window.localStorage.getItem("ironsmith.savedDeckPresets");
-      if (raw) window.sessionStorage.setItem(SAVED_DECK_PRESETS_STORAGE_KEY, raw);
-    }
+    const raw = window.sessionStorage.getItem(SAVED_DECK_PRESETS_STORAGE_KEY);
     if (!raw) return [];
 
     const parsed = JSON.parse(raw);
