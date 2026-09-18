@@ -8,12 +8,6 @@ const fieldClass = "w-full border border-[rgba(154,126,82,0.46)] bg-[#0b0d0e] px
 const labelClass = "grid gap-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]";
 const CAROUSEL_SIZE = 3;
 const CAROUSEL_STEP = 2;
-const collectionOptions = [
-  { id: "all", label: "Todos" },
-  { id: "recent", label: "Recientes" },
-  { id: "major", label: "Eventos grandes" },
-  { id: "top8", label: "Top 8" },
-];
 const manaOptions = ["W", "U", "B", "R", "G", "C"];
 const catalogFormats = [
   { id: "modern", label: "Modern" },
@@ -29,10 +23,6 @@ function isMajorEntry(entry) {
   return /(pro tour|grand prix|regional|championship|scg|open|showcase|spotlight|qualifier)/.test(`${event} ${tags}`);
 }
 
-function isTop8Entry(entry) {
-  return Number(entry?.placement) > 0 && Number(entry.placement) <= 8;
-}
-
 function buildRecentIds(entries) {
   const datedEntries = entries
     .map((entry) => ({ id: entry?.id, timestamp: Date.parse(entry?.date || "") }))
@@ -41,15 +31,6 @@ function buildRecentIds(entries) {
   const newestTimestamp = Math.max(...datedEntries.map(({ timestamp }) => timestamp));
   const recentCutoff = newestTimestamp - (1000 * 60 * 60 * 24 * 30);
   return new Set(datedEntries.filter(({ timestamp }) => timestamp >= recentCutoff).map(({ id }) => id));
-}
-
-function matchesCollectionFilters(entry, activeCollections, recentIds) {
-  return activeCollections.every((collection) => {
-    if (collection === "recent") return isRecentEntry(entry, recentIds);
-    if (collection === "major") return isMajorCollectionEntry(entry);
-    if (collection === "top8") return isTop8Entry(entry);
-    return true;
-  });
 }
 
 function completeManaProfile(entry) {
@@ -65,8 +46,15 @@ function isMajorCollectionEntry(entry) {
   return entry?.collections?.includes("last-major-events") || isMajorEntry(entry);
 }
 
-function sortDeckEntries(entries, sortMode) {
+function sortDeckEntries(entries, sortMode, usageCounts) {
   return [...entries].sort((left, right) => {
+    if (sortMode === "usage") {
+      const leftKey = String(left?.archetype || left?.name || "").trim().toLocaleLowerCase("en-US");
+      const rightKey = String(right?.archetype || right?.name || "").trim().toLocaleLowerCase("en-US");
+      return (usageCounts.get(rightKey) || 0) - (usageCounts.get(leftKey) || 0)
+        || String(right.date || "").localeCompare(String(left.date || ""))
+        || String(left.id || "").localeCompare(String(right.id || ""));
+    }
     if (sortMode === "placement") {
       return (Number(left.placement) || 9999) - (Number(right.placement) || 9999)
         || String(right.date || "").localeCompare(String(left.date || ""));
@@ -210,7 +198,6 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
   const [copyingId, setCopyingId] = useState("");
   const [copiedId, setCopiedId] = useState("");
   const [error, setError] = useState("");
-  const [activeCollections, setActiveCollections] = useState([]);
   const [activeMana, setActiveMana] = useState([]);
   const [manaMatchMode, setManaMatchMode] = useState("include");
   const [sortMode, setSortMode] = useState("recent");
@@ -250,56 +237,46 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
 
   const recentIds = useMemo(() => buildRecentIds(catalog?.decks || []), [catalog]);
 
+  const usageCounts = useMemo(() => {
+    const counts = new Map();
+    for (const entry of searchResults) {
+      const key = String(entry?.archetype || entry?.name || "").trim().toLocaleLowerCase("en-US");
+      if (key) counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return counts;
+  }, [searchResults]);
+
   const manaFilteredResults = useMemo(
     () => searchResults.filter((entry) => matchesManaFilters(entry, activeMana, manaMatchMode)),
     [activeMana, manaMatchMode, searchResults],
   );
 
   const filteredResults = useMemo(
-    () => sortDeckEntries(manaFilteredResults.filter((entry) => matchesCollectionFilters(entry, activeCollections, recentIds)), sortMode),
-    [activeCollections, manaFilteredResults, recentIds, sortMode],
+    () => sortDeckEntries(manaFilteredResults, sortMode, usageCounts),
+    [manaFilteredResults, sortMode, usageCounts],
   );
 
   const recentResults = useMemo(
-    () => sortDeckEntries(manaFilteredResults.filter((entry) => isRecentEntry(entry, recentIds)), sortMode),
-    [manaFilteredResults, recentIds, sortMode],
+    () => sortDeckEntries(manaFilteredResults.filter((entry) => isRecentEntry(entry, recentIds)), sortMode, usageCounts),
+    [manaFilteredResults, recentIds, sortMode, usageCounts],
   );
 
   const majorResults = useMemo(
-    () => sortDeckEntries(manaFilteredResults.filter(isMajorCollectionEntry), sortMode),
-    [manaFilteredResults, sortMode],
+    () => sortDeckEntries(manaFilteredResults.filter(isMajorCollectionEntry), sortMode, usageCounts),
+    [manaFilteredResults, sortMode, usageCounts],
   );
 
   const monoResults = useMemo(
-    () => sortDeckEntries(manaFilteredResults.filter((entry) => entry?.collections?.includes("mono-color")), sortMode),
-    [manaFilteredResults, sortMode],
+    () => sortDeckEntries(manaFilteredResults.filter((entry) => entry?.collections?.includes("mono-color")), sortMode, usageCounts),
+    [manaFilteredResults, sortMode, usageCounts],
   );
-
-  const collectionCounts = useMemo(() => {
-    const counts = Object.fromEntries(collectionOptions.map(({ id }) => [id, 0]));
-    counts.all = searchResults.length;
-    counts.recent = searchResults.filter((entry) => isRecentEntry(entry, recentIds)).length;
-    for (const entry of searchResults) {
-      if (isMajorCollectionEntry(entry)) counts.major += 1;
-      if (isTop8Entry(entry)) counts.top8 += 1;
-    }
-    return counts;
-  }, [recentIds, searchResults]);
 
   const availableMana = useMemo(
     () => manaOptions.filter((color) => searchResults.some((entry) => (completeManaProfile(entry)?.colors || []).includes(color))),
     [searchResults],
   );
 
-  const toggleCollection = useCallback((collection) => {
-    setActiveCollections((current) => current.includes(collection)
-      ? current.filter((active) => active !== collection)
-      : [...current, collection]);
-    resetCarousel();
-  }, [resetCarousel]);
-
-  const clearCollections = useCallback(() => {
-    setActiveCollections([]);
+  const clearFilters = useCallback(() => {
     setActiveMana([]);
     setManaMatchMode("include");
     resetCarousel();
@@ -378,17 +355,6 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
       </div>
       <input className={fieldClass} value={query} onChange={(event) => { setQuery(event.target.value); resetCarousel(); }} placeholder="Broodscale Bloodchief, Dimir Control, Counterspell..." aria-label="Buscar en catálogo" />
       <div className="flex flex-wrap items-center gap-1.5" aria-label="Filtros del catálogo">
-        <Button type="button" variant="ghost" size="sm" className={`h-7 rounded-full px-2 text-[10px] font-bold uppercase tracking-wide ${activeCollections.length === 0 && activeMana.length === 0 ? "bg-[#342817] text-[#f2d9a3]" : "text-[#b8aa8e] hover:bg-white/5"}`} aria-pressed={activeCollections.length === 0 && activeMana.length === 0} onClick={clearCollections}>
-          {collectionOptions[0].label} ({collectionCounts.all})
-        </Button>
-        {collectionOptions.slice(1).map((option) => {
-          const isActive = activeCollections.includes(option.id);
-          return (
-            <Button key={option.id} type="button" variant="ghost" size="sm" className={`h-7 rounded-full px-2 text-[10px] font-bold uppercase tracking-wide ${isActive ? "bg-[#342817] text-[#f2d9a3] ring-1 ring-[#d8bf7a]/55" : "text-[#b8aa8e] hover:bg-white/5"}`} aria-pressed={isActive} onClick={() => toggleCollection(option.id)}>
-              {isActive ? "✓ " : ""}{option.label} ({collectionCounts[option.id]})
-            </Button>
-          );
-        })}
         {availableMana.map((color) => {
           const isActive = activeMana.includes(color);
           return <Button key={color} type="button" variant="ghost" size="sm" className={`h-7 w-8 max-w-8 rounded-full px-1 text-[10px] font-bold ${isActive ? "bg-[#342817] ring-1 ring-[#d8bf7a]/55" : "text-[#b8aa8e] hover:bg-white/5"}`} aria-label={`Filtrar por mana ${color}`} aria-pressed={isActive} onClick={() => toggleMana(color)}><ManaSymbol sym={color} size={15} /></Button>;
@@ -397,11 +363,12 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onTargetC
           <Button type="button" variant="ghost" size="sm" className={`h-6 rounded-full px-2 text-[9px] font-bold uppercase tracking-wide ${manaMatchMode === "include" ? "bg-[#342817] text-[#f2d9a3] ring-1 ring-[#d8bf7a]/55 shadow-[0_0_9px_rgba(216,191,122,0.28)]" : "text-[#8b806b] hover:text-[#e7d9bc]"}`} aria-pressed={manaMatchMode === "include"} title="Incluye estos colores, aunque el deck use otros" onClick={() => { setManaMatchMode("include"); resetCarousel(); }}>Incluye</Button>
           <Button type="button" variant="ghost" size="sm" className={`h-6 rounded-full px-2 text-[9px] font-bold uppercase tracking-wide ${manaMatchMode === "exact" ? "bg-[#342817] text-[#f2d9a3] ring-1 ring-[#d8bf7a]/55 shadow-[0_0_9px_rgba(216,191,122,0.28)]" : "text-[#8b806b] hover:text-[#e7d9bc]"}`} aria-pressed={manaMatchMode === "exact"} title="Sólo estos colores; el maná C puede ser auxiliar" onClick={() => { setManaMatchMode("exact"); resetCarousel(); }}>Sólo estos</Button>
         </div> : null}
-        {activeCollections.length || activeMana.length ? <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[10px] font-semibold text-[#8b806b] hover:text-[#e7d9bc]" onClick={clearCollections}>Limpiar</Button> : null}
+        {activeMana.length ? <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[10px] font-semibold text-[#8b806b] hover:text-[#e7d9bc]" onClick={clearFilters}>Limpiar</Button> : null}
         <label className="ml-auto flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e]">Ordenar
           <select className="bg-transparent px-1 py-1 text-[10px] text-[#e7d9bc]" value={sortMode} onChange={(event) => { setSortMode(event.target.value); resetCarousel(); }}>
             <option value="recent">Más recientes</option>
             <option value="placement">Mejor puesto</option>
+            <option value="usage">Más usados</option>
           </select>
         </label>
       </div>
