@@ -801,7 +801,10 @@ function handleCall(msg) {
     const prepared = await preparation;
     if (prepared.error) throw prepared.error;
     if (prepared.sources?.length) {
-      registerFetchedCardSources([...new Set(prepared.sources)]);
+      const registration = registerFetchedCardSources([...new Set(prepared.sources)]);
+      if (registration?.failed?.length) {
+        console.warn("[ironsmith] on-demand card registration warnings", registration.failed);
+      }
       for (const source of prepared.sources) {
         const names = [source.canonicalName, source.group?.name, source.group?.combinedName,
           ...(source.group?.faces || []).map(face => face.name)];
