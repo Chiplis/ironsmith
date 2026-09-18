@@ -9,6 +9,7 @@ import {
   parseDeckPage,
 } from "./sources/mtgtop8.mjs";
 import { normalizeCompetitiveDecks } from "./normalize.mjs";
+import { buildSearchIndex } from "./index.mjs";
 
 const DEFAULT_OUTPUT_DIR = fileURLToPath(new URL("../../catalog", import.meta.url));
 
@@ -52,6 +53,11 @@ function catalogEntry(deck) {
     source: deck.source,
     sourceUrl: deck.sourceUrl,
     tags: deck.tags,
+    cards: [...new Set([
+      ...deck.mainboard.map((card) => card.name),
+      ...deck.sideboard.map((card) => card.name),
+      ...deck.commander.map((card) => card.name),
+    ])].sort(),
     hash: deck.hash,
     detail: `details/${deck.id}.json`,
   };
@@ -103,6 +109,7 @@ async function sync() {
   }
 
   const indexPath = join(formatDir, "index.json");
+  const searchIndexPath = join(formatDir, "search-index.json");
   let existing = { schemaVersion: 1, format: "modern", generatedAt: "", decks: [] };
   try {
     existing = JSON.parse(await readFile(indexPath, "utf8"));
@@ -111,13 +118,16 @@ async function sync() {
   }
   const merged = new Map((existing.decks || []).map((entry) => [entry.id, entry]));
   for (const deck of decks) merged.set(deck.id, catalogEntry(deck));
+  const generatedAt = new Date().toISOString();
+  const indexEntries = [...merged.values()].sort((left, right) => right.date.localeCompare(left.date));
   await writeJsonAtomic(indexPath, {
     ...existing,
     schemaVersion: 1,
     format: "modern",
-    generatedAt: new Date().toISOString(),
-    decks: [...merged.values()].sort((left, right) => right.date.localeCompare(left.date)),
+    generatedAt,
+    decks: indexEntries,
   });
+  await writeJsonAtomic(searchIndexPath, buildSearchIndex(indexEntries, { generatedAt }));
   await writeJsonAtomic(statePath, {
     ...state,
     schemaVersion: 1,
@@ -125,7 +135,7 @@ async function sync() {
     format: "modern",
     lastEventId,
     lastPage: page,
-    updatedAt: new Date().toISOString(),
+    updatedAt: generatedAt,
   });
   console.log(JSON.stringify({ events: events.length, decks: decks.length, outputDir }, null, 2));
 }
