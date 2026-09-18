@@ -9,7 +9,7 @@ const selectClass = `${fieldClass} pr-12`;
 const selectStyle = {
   appearance: "none",
   backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23b8aa8e' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.8'%3E%3Cpath d='m5 7 5 5 5-5'/%3E%3C/svg%3E\")",
-  backgroundPosition: "right 1rem center",
+  backgroundPosition: "right 1.35rem center",
   backgroundRepeat: "no-repeat",
   backgroundSize: "0.9rem",
 };
@@ -372,7 +372,7 @@ export default function CompetitiveDeckBrowser({ players, targetIndex, onSelect 
         </div> : null}
         {activeMana.length ? <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[10px] font-semibold text-[#8b806b] hover:text-[#e7d9bc]" onClick={clearFilters}>Limpiar</Button> : null}
         <label className="ml-auto flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e]">Ordenar
-          <select className="bg-transparent px-1 py-1 pr-8 text-[10px] text-[#e7d9bc]" style={{ ...selectStyle, backgroundPosition: "right 0.5rem center", backgroundSize: "0.75rem" }} value={sortMode} onChange={(event) => { setSortMode(event.target.value); resetCarousel(); }}>
+          <select className="bg-transparent px-1 py-1 pr-8 text-[10px] text-[#e7d9bc]" style={{ ...selectStyle, backgroundPosition: "right 0.75rem center", backgroundSize: "0.75rem" }} value={sortMode} onChange={(event) => { setSortMode(event.target.value); resetCarousel(); }}>
             <option value="recent">Más recientes</option>
             <option value="placement">Mejor puesto</option>
             <option value="usage">Más usados</option>

@@ -22,7 +22,7 @@ const selectClass = `${fieldClass} pr-12`;
 const selectStyle = {
   appearance: "none",
   backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23b8aa8e' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.8'%3E%3Cpath d='m5 7 5 5 5-5'/%3E%3C/svg%3E\")",
-  backgroundPosition: "right 1rem center",
+  backgroundPosition: "right 1.35rem center",
   backgroundRepeat: "no-repeat",
   backgroundSize: "0.9rem",
 };
