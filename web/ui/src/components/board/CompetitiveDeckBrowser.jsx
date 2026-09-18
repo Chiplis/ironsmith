@@ -276,6 +276,11 @@ export default function CompetitiveDeckBrowser({ onSelect }) {
     [manaFilteredResults, sortMode, usageCounts],
   );
 
+  const queryResults = useMemo(
+    () => sortDeckEntries(manaFilteredResults, sortMode, usageCounts),
+    [manaFilteredResults, sortMode, usageCounts],
+  );
+
   const availableMana = useMemo(
     () => manaOptions.filter((color) => searchResults.some((entry) => (completeManaProfile(entry)?.colors || []).includes(color))),
     [searchResults],
@@ -378,9 +383,13 @@ export default function CompetitiveDeckBrowser({ onSelect }) {
       {loading ? <p className="text-[12px] text-[#b8aa8e]">Cargando índice…</p> : null}
       {error ? <p className="text-[12px] text-red-300">{error}</p> : null}
       {!loading && !error && !manaFilteredResults.length ? <p className="text-[12px] text-[#b8aa8e]">No hay resultados para esta búsqueda.</p> : null}
-      <DeckCarousel title="Mono-color" entries={monoResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
-      <DeckCarousel title="Last major events" entries={majorResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
-      <DeckCarousel title="Last 20 events" entries={recentResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
+      {deferredQuery.trim() ? (
+        <DeckCarousel title="Resultados" entries={queryResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
+      ) : <>
+        <DeckCarousel title="Mono-color" entries={monoResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
+        <DeckCarousel title="Last major events" entries={majorResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
+        <DeckCarousel title="Last 20 events" entries={recentResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
+      </>}
     </section>
   );
 }

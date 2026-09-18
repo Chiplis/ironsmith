@@ -54,7 +54,10 @@ export function catalogSearchScore(entry, query) {
 export function searchCatalogEntries(entries, query, { limit = 30, searchIndex } = {}) {
   const tokens = searchTokens(query);
   let candidates = Array.isArray(entries) ? entries : [];
-  if (tokens.length && searchIndex?.tokens) {
+  const hasPostingsForEveryToken = tokens.length > 0
+    && searchIndex?.tokens
+    && tokens.every((token) => Object.hasOwn(searchIndex.tokens, token));
+  if (hasPostingsForEveryToken) {
     const ids = tokens.map((token) => new Set(searchIndex.tokens[token] || []));
     const matchingIds = ids.slice(1).reduce(
       (current, next) => new Set([...current].filter((id) => next.has(id))),

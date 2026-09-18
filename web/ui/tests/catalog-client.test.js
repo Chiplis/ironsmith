@@ -21,6 +21,16 @@ test("uses the generated token index to narrow candidates", () => {
   assert.deepEqual(searchCatalogEntries(entries, "missing", { searchIndex }), []);
 });
 
+test("falls back to catalog fields when the token index omits common words", () => {
+  const searchIndex = { tokens: { song: ["song"], creation: ["song"] } };
+  assert.deepEqual(
+    searchCatalogEntries([
+      { id: "song", name: "Song of Creation", cardNames: [] },
+    ], "Song of Creation", { searchIndex }).map((entry) => entry.id),
+    ["song"],
+  );
+});
+
 test("ranks exact deck names ahead of card-only matches", () => {
   const results = searchCatalogEntries([
     { id: "card-match", name: "Control Shell", cardNames: ["Dimir Control"] },
