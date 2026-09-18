@@ -18,6 +18,8 @@ scripts/__pycache__*
 !/web/ui/package.json
 !/web/ui/tests/card-frame-regression-cases.json
 !/web/ui/public/decks/*.json
+!/catalog/**/*.json
+!/tools/deck-catalog/package.json
 !/npm/ironsmith-wasm/package.template.json
 *.csv
 web/ui/node_modules
