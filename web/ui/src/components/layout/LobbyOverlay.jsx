@@ -4,6 +4,7 @@ import { PUBLIC_FORMATS, isRelayId, relayBaseUrl } from '@/lib/relay/formats';
 import { validateFormatDeck, formatCatalogDate } from '@/lib/relay/format-legality';
 import { useMemo, useState } from "react";
 import LocalLobbySearch from "./LocalLobbySearch";
+import CompetitiveDeckPicker from "./CompetitiveDeckPicker";
 import { useGame } from "@/context/GameContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -505,6 +506,15 @@ export default function LobbyOverlay({
                         })}
                       </div>
                     </fieldset>
+                    {createFormat === MATCH_FORMAT_NORMAL ? (
+                      <CompetitiveDeckPicker
+                        format="modern"
+                        onApply={({ deckText, commanderText }) => {
+                          setCreateDeckText(deckText);
+                          setCreateCommanderText(commanderText);
+                        }}
+                      />
+                    ) : null}
                     <label className={labelClass}>{ui("Main Deck")}<textarea
                         className={textareaClass}
                         value={createDeckText}
@@ -582,6 +592,13 @@ export default function LobbyOverlay({
                     </div>
                     {relayBaseUrl() && <PublicLobbySearch onSelect={setJoinCode} />}
                     {import.meta.env.VITE_LAN_LOBBY === "true" && <LocalLobbySearch onSelect={setJoinCode} />}
+                    <CompetitiveDeckPicker
+                      format="modern"
+                      onApply={({ deckText, commanderText }) => {
+                        setJoinDeckText(deckText);
+                        setJoinCommanderText(commanderText);
+                      }}
+                    />
                     <label className={labelClass}>{ui("Main Deck")}<textarea
                         className={textareaClass}
                         value={joinDeckText}
