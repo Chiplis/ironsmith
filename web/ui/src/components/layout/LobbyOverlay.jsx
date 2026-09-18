@@ -388,9 +388,18 @@ export default function LobbyOverlay({
     }
   };
 
+  const handleClose = () => {
+    // Closing an unfinished lobby must release the multiplayer lock. Once a
+    // match has started, closing only hides the sheet so the match can continue.
+    if (lobbyActive && !multiplayer.matchStarted) {
+      leaveLobby("Lobby closed");
+    }
+    onClose();
+  };
+
   return (
     <Sheet open onOpenChange={(open) => {
-      if (!open) onClose();
+      if (!open) handleClose();
     }}>
       <SheetContent
         side="center"
