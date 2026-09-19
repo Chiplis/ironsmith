@@ -76,6 +76,8 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
   const [copiedPlayerIndex, setCopiedPlayerIndex] = useState(null);
   const [catalogTargetIndex, setCatalogTargetIndex] = useState(0);
   const [editorPlayerCount, setEditorPlayerCount] = useState(1);
+  const [assignTab, setAssignTab] = useState("list");
+  const catalogSearchRef = useRef(null);
 
   const handleTextChange = useCallback((index, value) => {
     setTexts((prev) => {
@@ -98,7 +100,8 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
   const visiblePlayers = useMemo(() => players.slice(0, visiblePlayerCount), [players, visiblePlayerCount]);
   const playerCountModes = [1, 2, 4].filter((count) => count <= players.length);
   const targetIndex = Math.min(catalogTargetIndex, Math.max(0, visiblePlayerCount - 1));
-  const targetPlayerName = visiblePlayers[targetIndex]?.name || "";
+  const targetPlayer = visiblePlayers[targetIndex] || null;
+  const targetPlayerName = targetPlayer?.name || "";
 
   const showActionNotice = useCallback((message) => {
     setActionNotice(String(message || ""));
@@ -222,6 +225,21 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
     }
   }, [catalogTargetIndex, setStatus, showActionNotice, texts, ui]);
 
+  const handlePasteFromClipboard = useCallback(async () => {
+    if (!navigator.clipboard?.readText) {
+      setStatus(ui("This browser does not allow reading the clipboard."));
+      return;
+    }
+    const pasted = stripDeckHeader(await navigator.clipboard.readText());
+    if (!pasted.trim()) {
+      setStatus(ui("The clipboard has no deck list."));
+      return;
+    }
+    handleTextChange(targetIndex, pasted);
+    setAssignTab("list");
+    showActionNotice(ui("Deck loaded into {0}", { 0: targetPlayerName || ui("the editor") }));
+  }, [handleTextChange, setStatus, showActionNotice, targetIndex, targetPlayerName, ui]);
+
   const runAction = useCallback((key, action) => {
     if (actionBusy) return;
     setActionBusy(key);
@@ -333,156 +351,199 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
           </div>
         </div>
       ) : null}
-      <div className="mb-3 shrink-0 border-b border-[rgba(154,126,82,0.34)] pb-3">
-        <h1 className="text-[18px] font-bold uppercase tracking-wide text-[#f2d9a3]">{ui("Load Decks")}</h1>
-        <div className="mt-1 text-[12px] font-semibold text-[#b8aa8e]">{ui("Paste main deck lists with optional Sideboard sections.")}</div>
+      <div className="mb-3 flex shrink-0 flex-wrap items-start justify-between gap-3 border-b border-[rgba(154,126,82,0.34)] pb-3">
+        <div className="min-w-0">
+          <h1 className="text-[18px] font-bold uppercase tracking-wide text-[#f2d9a3]">{ui("Load Decks")}</h1>
+          <div className="mt-1 text-[12px] font-semibold text-[#b8aa8e]">{ui("Select decks from the catalog or paste lists to assign them to players.")}</div>
+        </div>
+        {/* The match is still built in one screen; the steps only say where
+            the player is in that flow. */}
+        <ol className="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em]" aria-label={ui("Steps")}>
+          {[ui("Load Decks"), ui("Configure"), ui("Start")].map((step, index) => (
+            <li key={step} className="flex items-center gap-2">
+              {index ? <span className="text-[#5b5245]" aria-hidden="true">›</span> : null}
+              <span
+                className={index === 0 ? "border-b-2 border-[#d8bf7a] pb-0.5 text-[#f2d9a3]" : "text-[#6f6759]"}
+                aria-current={index === 0 ? "step" : undefined}
+              >{index + 1}. {step}</span>
+            </li>
+          ))}
+        </ol>
       </div>
-      <section className="mb-3 shrink-0 border-b border-[rgba(154,126,82,0.34)] pb-3" aria-label={ui("Saved decks")}>
-        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Saved decks")}</h2>
-          <span className="text-[10px] uppercase tracking-wide text-[#8b806b]">{ui("{0}/{1} available this session", { 0: savedPresets.length, 1: SAVED_DECK_PRESETS_LIMIT })}</span>
-        </div>
-        <div className="grid gap-2 md:grid-cols-[minmax(200px,1fr)_auto_auto]">
-          <select
-            className={selectClass}
-            style={selectStyle}
-            value={selectedPresetName}
-            onChange={(event) => setSelectedPresetName(event.target.value)}
-            aria-label={ui("Saved Deck")}
-          >
-            <option value="">{ui("Select a saved deck")}</option>
-            {savedPresets.map((preset) => (
-              <option key={preset.name} value={preset.name}>{preset.name}</option>
-            ))}
-          </select>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-9 max-w-[96px] truncate border border-[#9a7e52]/55 px-3 text-[11px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
-            disabled={!selectedPreset || Boolean(actionBusy)}
-            onClick={() => runAction("saved-use", handleApplySavedPreset)}
-          >{actionBusy === "saved-use" ? <ActionSpinner /> : ui("Use")}</Button>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-9 max-w-[96px] truncate border border-white/15 px-3 text-[11px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
-              disabled={!selectedPreset || Boolean(actionBusy)}
-              onClick={() => runAction("saved-delete", handleDeleteSavedPreset)}
-            >{actionBusy === "saved-delete" ? <ActionSpinner /> : ui("Delete")}</Button>
-          </div>
-        </div>
-      </section>
+
       <section
-        className="mb-3 flex min-h-0 flex-1 flex-col gap-3 border border-[rgba(154,126,82,0.42)] bg-[rgba(8,9,9,0.55)] p-2 lg:flex-row"
+        className="mb-3 flex min-h-0 flex-1 flex-col gap-3 lg:flex-row"
         aria-label={ui("Deck catalog and player decks")}
         data-deck-workspace=""
       >
-        <div className="flex min-h-[360px] min-w-0 flex-col border-b border-[rgba(154,126,82,0.28)] pb-3 lg:min-h-0 lg:w-[clamp(320px,34%,440px)] lg:shrink-0 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-3">
-          <CompetitiveDeckBrowser onSelect={handleCatalogSelect} targetName={targetPlayerName} />
+        <div className="flex min-h-[360px] min-w-0 flex-col border border-[rgba(154,126,82,0.42)] bg-[rgba(8,9,9,0.55)] p-2.5 lg:min-h-0 lg:w-[clamp(360px,40%,540px)] lg:shrink-0">
+          <CompetitiveDeckBrowser
+            onSelect={handleCatalogSelect}
+            targetName={targetPlayerName}
+            savedDecks={savedPresets}
+            searchRef={catalogSearchRef}
+          />
         </div>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-1 pb-2">
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 border border-[rgba(154,126,82,0.42)] bg-[rgba(8,9,9,0.55)] p-2.5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Player decks")}</h2>
-              <p className="text-[11px] text-[#8b806b]">
-                {ui("Pick a player, then use a catalog deck or paste a list like")}{" "}
-                <span className="font-mono">{MTGO_EXAMPLE_LINE}</span>
-              </p>
+              <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Players / deck assignment")}</h2>
+              <p className="max-w-[46ch] text-[11px] text-[#8b806b]">{ui("Pick a player and assign their deck. You can paste a list, use a catalog deck, or import from MTGO.")}</p>
             </div>
-            <div className="flex flex-wrap gap-1.5" aria-label={ui("Number of players to edit")}>
-              {playerCountModes.map((count) => (
-                <button
-                  key={count}
-                  type="button"
-                  className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${visiblePlayerCount === count ? "border-[#d8bf7a]/80 bg-[#d8bf7a]/15 text-[#f2d9a3]" : "border-white/10 text-[#b8aa8e] hover:border-[#d8bf7a]/45 hover:text-[#f2d9a3]"}`}
-                  aria-pressed={visiblePlayerCount === count}
-                  onClick={() => handleEditorPlayerCountChange(count)}
-                >
-                  x{count}
-                </button>
-              ))}
+            <div className="flex shrink-0 flex-wrap gap-1" aria-label={ui("Players")} data-player-tabs="">
+              {visiblePlayers.map((player, index) => {
+                const isTarget = index === targetIndex;
+                return (
+                  <button
+                    key={player.id}
+                    type="button"
+                    className={`flex items-center gap-1.5 border px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wide transition-colors ${isTarget
+                      ? "border-[#d8bf7a]/80 bg-[#d8bf7a]/10 text-[#f2d9a3]"
+                      : "border-white/10 text-[#8b806b] hover:border-[#d8bf7a]/45 hover:text-[#e7d9bc]"}`}
+                    aria-pressed={isTarget}
+                    data-player-tab={index}
+                    onClick={() => setCatalogTargetIndex(index)}
+                  >
+                    <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" aria-hidden="true"><circle cx="10" cy="7" r="3.2" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M4.5 16.5a5.5 5.5 0 0 1 11 0" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" /></svg>
+                    <span className="max-w-[9ch] truncate">{player.name}</span>
+                    {cardCounts[index] > 0 ? <span className="text-[#d8bf7a]" aria-hidden="true">•</span> : null}
+                  </button>
+                );
+              })}
             </div>
           </div>
-          <div
-            className="grid min-h-0 flex-1 auto-rows-fr gap-2 overflow-y-auto pr-1 sm:grid-cols-2"
-            data-player-grid={visiblePlayerCount}
-          >
-            {visiblePlayers.map((player, i) => {
-              const isTarget = i === targetIndex;
-              // One player fills the container; an odd last player spans the
-              // pair so the grid still reads as a square.
-              const spansRow = visiblePlayerCount === 1
-                || (i === visiblePlayerCount - 1 && visiblePlayerCount % 2 === 1);
-              return (
-                <div
-                  key={player.id}
-                  data-player-slot={i}
-                  data-catalog-target={isTarget ? "true" : "false"}
-                  onFocusCapture={() => setCatalogTargetIndex(i)}
-                  onMouseDown={() => setCatalogTargetIndex(i)}
-                  className={`setup-editor flex min-h-[200px] min-w-0 flex-col gap-2 border p-2.5 transition-colors ${spansRow ? "sm:col-span-2" : ""} ${isTarget
-                    ? "border-[#d8bf7a]/70 bg-[linear-gradient(180deg,rgba(33,26,16,0.94),rgba(8,9,9,0.96))]"
-                    : "border-[rgba(154,126,82,0.42)] bg-[linear-gradient(180deg,rgba(17,17,15,0.94),rgba(8,9,9,0.96))]"}`}
-                >
-                  <div className="flex items-baseline justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex min-w-0 items-baseline gap-1.5">
-                        <span className="min-w-0 truncate text-[14px] font-bold uppercase tracking-wide text-[#f2d9a3]">{player.name}</span>
-                        {isTarget ? <span className="shrink-0 rounded-full border border-[#d8bf7a]/60 px-1.5 text-[9px] font-bold uppercase tracking-wide text-[#d8bf7a]">{ui("Target")}</span> : null}
-                      </div>
-                      <div className="truncate text-[10px] text-[#b8aa8e]">{deckLabels[i] || ui("No deck assigned")}</div>
+          <div className="flex flex-wrap items-center gap-1.5" aria-label={ui("Number of players to edit")}>
+            <span className="text-[10px] uppercase tracking-wide text-[#8b806b]">{ui("Players")}</span>
+            {playerCountModes.map((count) => (
+              <button
+                key={count}
+                type="button"
+                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${visiblePlayerCount === count ? "border-[#d8bf7a]/80 bg-[#d8bf7a]/15 text-[#f2d9a3]" : "border-white/10 text-[#b8aa8e] hover:border-[#d8bf7a]/45 hover:text-[#f2d9a3]"}`}
+                aria-pressed={visiblePlayerCount === count}
+                onClick={() => handleEditorPlayerCountChange(count)}
+              >
+                x{count}
+              </button>
+            ))}
+          </div>
+
+          {targetPlayer ? (
+            <div className="flex min-h-0 flex-1 flex-col gap-3 border border-[rgba(154,126,82,0.42)] bg-[linear-gradient(180deg,rgba(17,17,15,0.94),rgba(8,9,9,0.96))] p-3" data-player-panel={targetIndex}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#9a7e52]/55 bg-[#17130e] text-[18px] font-bold text-[#d8bf7a]" aria-hidden="true">
+                    {targetPlayer.name.slice(0, 1).toLocaleUpperCase("en-US")}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-baseline gap-2">
+                      <span className="min-w-0 truncate text-[16px] font-bold uppercase tracking-wide text-[#f2d9a3]">{targetPlayer.name}</span>
+                      <span className="shrink-0 rounded-full border border-[#d8bf7a]/60 px-1.5 text-[9px] font-bold uppercase tracking-wide text-[#d8bf7a]">{ui("Target")}</span>
                     </div>
-                    <div className="shrink-0 text-right text-[11px] font-semibold text-[#b8aa8e]">
-                      <span>{cardCounts[i]}{" " + ui("main")}</span>
-                      <span className="mx-1 text-[#776b58]">/</span>
-                      <span>{sideboardCounts[i]}{" " + ui("sideboard")}</span>
-                    </div>
-                  </div>
-                  <textarea
-                    aria-label={ui("{0} decklist", { 0: player.name })}
-                    spellCheck={false}
-                    className="min-h-[96px] w-full flex-1 resize-none border border-[rgba(154,126,82,0.48)] bg-[#080b0d] p-2 font-mono text-[12px] leading-snug text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75"
-                    placeholder={stripDeckHeader(ui("Paste {0}'s list...\n\nDeck\n4 Lightning Bolt\n2 Counterspell\n20 Island\n\nSideboard\n2 Pyroblast\n1 Tormod's Crypt", { 0: player.name }))}
-                    value={texts[i] || ""}
-                    onChange={(e) => handleTextChange(i, e.target.value)}
-                  />
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 max-w-[120px] truncate border border-white/15 px-2 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
-                      disabled={cardCounts[i] === 0 || Boolean(actionBusy)}
-                      onClick={() => runAction(`copy-${i}`, () => handleCopyMtgo(i))}
-                      title={ui("Copy {0}'s MTGO list", { 0: player.name })}
-                      aria-label={ui("Copy {0}'s MTGO list", { 0: player.name })}
-                    >
-                      <svg viewBox="0 0 20 20" className="mr-1 h-3.5 w-3.5" aria-hidden="true"><rect x="6.5" y="6.5" width="9" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M13 6.5V4.8A1.3 1.3 0 0 0 11.7 3.5H5A1.5 1.5 0 0 0 3.5 5v8A1.3 1.3 0 0 0 4.8 14.3h1.7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.4" /></svg>
-                      {actionBusy === `copy-${i}` ? <ActionSpinner /> : copiedPlayerIndex === i ? ui("Copied") : ui("Copy")}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 max-w-7 rounded-full border border-white/15 p-0 text-[#b8aa8e] hover:border-[#d8bf7a]/55 hover:text-[#f2d9a3] disabled:text-[#665d50]"
-                      disabled={cardCounts[i] === 0 || Boolean(actionBusy)}
-                      onClick={() => handleClearPlayer(i)}
-                      title={ui("Clear {0}'s deck", { 0: player.name })}
-                      aria-label={ui("Clear {0}'s deck", { 0: player.name })}
-                    ><svg viewBox="0 0 20 20" className="h-3.5 w-3.5" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg></Button>
+                    <div className="truncate text-[11px] text-[#b8aa8e]">{deckLabels[targetIndex] || ui("No deck assigned")}</div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-white/10 px-1 pt-2">
-            <span className="mr-auto text-[10px] uppercase tracking-wide text-[#8b806b]">{ui("Save every player's deck as one configuration.")}</span>
+                <div className="shrink-0 text-right text-[12px] font-semibold text-[#b8aa8e]">
+                  <span className="text-[#e7d9bc]">{cardCounts[targetIndex]}</span> {ui("main")}
+                  <span className="mx-1.5 text-[#776b58]">/</span>
+                  <span className="text-[#e7d9bc]">{sideboardCounts[targetIndex]}</span> {ui("sideboard")}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-4 border-b border-white/10" role="tablist" aria-label={ui("Deck assignment")}>
+                {[
+                  { id: "list", label: ui("Deck list") },
+                  { id: "mtgo", label: ui("Import from MTGO") },
+                  { id: "catalog", label: ui("Use from catalog") },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={assignTab === tab.id}
+                    data-assign-tab={tab.id}
+                    className={`-mb-px border-b-2 px-0.5 pb-1.5 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${assignTab === tab.id ? "border-[#d8bf7a] text-[#f2d9a3]" : "border-transparent text-[#8b806b] hover:text-[#e7d9bc]"}`}
+                    onClick={() => setAssignTab(tab.id)}
+                  >{tab.label}</button>
+                ))}
+              </div>
+
+              {assignTab === "list" ? (
+                <textarea
+                  aria-label={ui("{0} decklist", { 0: targetPlayer.name })}
+                  spellCheck={false}
+                  className="min-h-[160px] w-full flex-1 resize-none border border-[rgba(154,126,82,0.48)] bg-[#080b0d] p-2.5 font-mono text-[13px] leading-snug text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75"
+                  placeholder={stripDeckHeader(ui("Paste {0}'s list...\n\nDeck\n4 Lightning Bolt\n2 Counterspell\n20 Island\n\nSideboard\n2 Pyroblast\n1 Tormod's Crypt", { 0: targetPlayer.name }))}
+                  value={texts[targetIndex] || ""}
+                  onChange={(event) => handleTextChange(targetIndex, event.target.value)}
+                />
+              ) : null}
+              {assignTab === "mtgo" ? (
+                <div className="flex min-h-[160px] flex-1 flex-col items-start justify-center gap-3 border border-dashed border-[rgba(154,126,82,0.4)] bg-[#080b0d] p-4">
+                  <p className="text-[12px] text-[#b8aa8e]">{ui("Copy a deck in MTGO from the game client, then paste it into {0}'s list.", { 0: targetPlayer.name })}</p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 border border-[#9a7e52]/55 px-3 text-[11px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317]"
+                    disabled={Boolean(actionBusy)}
+                    onClick={() => runAction("paste", handlePasteFromClipboard)}
+                  >{actionBusy === "paste" ? <ActionSpinner /> : ui("Paste from clipboard")}</Button>
+                  <p className="text-[11px] text-[#8b806b]">{ui("A browser that blocks clipboard reads still accepts a paste into the deck list.")}</p>
+                </div>
+              ) : null}
+              {assignTab === "catalog" ? (
+                <div className="flex min-h-[160px] flex-1 flex-col items-start justify-center gap-3 border border-dashed border-[rgba(154,126,82,0.4)] bg-[#080b0d] p-4">
+                  <p className="text-[12px] text-[#b8aa8e]">{ui("Use on any catalog deck assigns it to {0}.", { 0: targetPlayer.name })}</p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 border border-[#9a7e52]/55 px-3 text-[11px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317]"
+                    onClick={() => catalogSearchRef.current?.focus?.()}
+                  >{ui("Search the catalog")}</Button>
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 max-w-[140px] truncate border border-white/15 px-2.5 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
+                  disabled={cardCounts[targetIndex] === 0 || Boolean(actionBusy)}
+                  onClick={() => runAction(`copy-${targetIndex}`, () => handleCopyMtgo(targetIndex))}
+                  title={ui("Copy {0}'s MTGO list", { 0: targetPlayer.name })}
+                  aria-label={ui("Copy {0}'s MTGO list", { 0: targetPlayer.name })}
+                >
+                  <svg viewBox="0 0 20 20" className="mr-1 h-3.5 w-3.5" aria-hidden="true"><rect x="6.5" y="6.5" width="9" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M13 6.5V4.8A1.3 1.3 0 0 0 11.7 3.5H5A1.5 1.5 0 0 0 3.5 5v8A1.3 1.3 0 0 0 4.8 14.3h1.7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.4" /></svg>
+                  {actionBusy === `copy-${targetIndex}` ? <ActionSpinner /> : copiedPlayerIndex === targetIndex ? ui("Copied") : ui("Copy")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 max-w-[140px] truncate border border-white/15 px-2.5 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
+                  disabled={cardCounts[targetIndex] === 0 || Boolean(actionBusy)}
+                  onClick={() => handleClearPlayer(targetIndex)}
+                  title={ui("Clear {0}'s deck", { 0: targetPlayer.name })}
+                  aria-label={ui("Clear {0}'s deck", { 0: targetPlayer.name })}
+                >
+                  <svg viewBox="0 0 20 20" className="mr-1 h-3.5 w-3.5" aria-hidden="true"><path d="M5 6.5h10M8 6.5V5h4v1.5M6.5 6.5 7 16h6l.5-9.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.4" /></svg>
+                  {ui("Clear")}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="grid shrink-0 gap-2 border border-[rgba(154,126,82,0.32)] bg-[rgba(12,13,14,0.7)] p-3 sm:grid-cols-[minmax(0,1fr)_minmax(180px,240px)_auto] sm:items-end">
+            <div className="min-w-0">
+              <h3 className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Save configuration")}</h3>
+              <p className="text-[11px] text-[#8b806b]">{ui("Save every player's deck as one configuration.")}</p>
+            </div>
             <input
-              className={`${fieldClass} max-w-[240px] py-1.5 text-[11px]`}
-              placeholder={ui("Name your deck")}
+              className={`${fieldClass} py-1.5 text-[11px]`}
+              placeholder={ui("Configuration name…")}
               value={presetName}
               onChange={(event) => setPresetName(event.target.value)}
               aria-label={ui("Name your deck")}
@@ -491,16 +552,49 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
               type="button"
               variant="ghost"
               size="sm"
-              className="h-8 max-w-[96px] truncate border border-[#9a7e52]/55 px-3 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
+              className="h-9 max-w-[120px] truncate border border-[#9a7e52]/55 px-3 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
               disabled={!presetName.trim() || totalCards === 0 || Boolean(actionBusy)}
               onClick={() => runAction("saved-save", handleSavePreset)}
             >{actionBusy === "saved-save" ? <ActionSpinner /> : ui("Save")}</Button>
           </div>
         </div>
       </section>
-      <div className="flex shrink-0 justify-end border-t border-[rgba(154,126,82,0.34)] pb-4 pt-3 pr-48 lg:pb-0">
+
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[rgba(154,126,82,0.34)] pb-4 pt-3 lg:pb-0">
+        {savedPresets.length ? (
+          <div className="mr-auto flex min-w-0 items-center gap-2">
+            <select
+              className={`${selectClass} max-w-[240px] py-1.5 text-[11px]`}
+              style={selectStyle}
+              value={selectedPresetName}
+              onChange={(event) => setSelectedPresetName(event.target.value)}
+              aria-label={ui("Saved Deck")}
+            >
+              <option value="">{ui("Select a saved deck")}</option>
+              {savedPresets.map((preset) => (
+                <option key={preset.name} value={preset.name}>{preset.name}</option>
+              ))}
+            </select>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 max-w-[96px] truncate border border-[#9a7e52]/55 px-3 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
+              disabled={!selectedPreset || Boolean(actionBusy)}
+              onClick={() => runAction("saved-use", handleApplySavedPreset)}
+            >{actionBusy === "saved-use" ? <ActionSpinner /> : ui("Use")}</Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 max-w-[96px] truncate border border-white/15 px-3 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
+              disabled={!selectedPreset || Boolean(actionBusy)}
+              onClick={() => runAction("saved-delete", handleDeleteSavedPreset)}
+            >{actionBusy === "saved-delete" ? <ActionSpinner /> : ui("Delete")}</Button>
+          </div>
+        ) : null}
         {showLobbyConfirm ? (
-          <div className="mr-2 flex flex-wrap items-center justify-end gap-2 border border-[#d8bf7a]/45 bg-[#211a10] px-2 py-1.5">
+          <div className="flex flex-wrap items-center justify-end gap-2 border border-[#d8bf7a]/45 bg-[#211a10] px-2 py-1.5">
             <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-[#f2d9a3]">{ui("Create a {0}-player lobby?", { 0: lobbyPlayerCount })}</span>
             <Button
               type="button"
@@ -520,7 +614,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
             >{ui("Cancel")}</Button>
           </div>
         ) : showContinueChoices ? (
-          <div className="mr-2 flex flex-wrap items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-[#b8aa8e]">{ui("Continue with these decks")}</span>
             <Button
               type="button"
@@ -552,7 +646,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
             type="button"
             variant="ghost"
             size="sm"
-            className="mr-2 h-9 border border-[#f2d9a3]/45 bg-[#211a10] px-3 text-[12px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
+            className="h-10 border border-[#f2d9a3]/45 bg-[#211a10] px-5 text-[12px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
             disabled={Boolean(actionBusy)}
             onClick={() => setShowContinueChoices(true)}
           >{ui("Build lobby")}</Button>
@@ -561,7 +655,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
           type="button"
           variant="ghost"
           size="sm"
-          className="h-9 border border-[#9a7e52]/45 px-3 text-[12px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317]"
+          className="h-10 border border-[#9a7e52]/45 px-4 text-[12px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317]"
           disabled={Boolean(actionBusy)}
           onClick={onCancel}
         >{ui("Cancel")}</Button>
