@@ -82,6 +82,8 @@ export default function TopbarMenuSheet({
     setAutoPassEnabled,
     holdRule,
     setHoldRule,
+    fixedStartingBoard,
+    setFixedStartingBoard,
     inspectorDebug,
     setInspectorDebug,
     setStatus,
@@ -431,6 +433,18 @@ export default function TopbarMenuSheet({
                   onChange={(event) => setStartingLife(Number(event.target.value) || 20)}
                 />
               </label>
+            </div>
+            <div className="grid gap-2">
+              <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
+                <Checkbox
+                  checked={fixedStartingBoard}
+                  onCheckedChange={(value) => setFixedStartingBoard(value === true)}
+                />
+                {t("settings.fixedStartingBoard")}
+              </label>
+              <p className="m-0 text-[13px] leading-5 text-muted-foreground">
+                {t("settings.fixedStartingBoard.description")}
+              </p>
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               <Button

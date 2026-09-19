@@ -26,6 +26,7 @@ import Workspace from "./Workspace";
 import MobileLandscapeGate from "./MobileLandscapeGate";
 import LogDrawer from "@/components/overlays/LogDrawer";
 import { copyTextToClipboard } from "@/lib/clipboard";
+import { addFixedStartingBoardPreset, buildRandomStartingBoard } from "@/lib/starting-board";
 
 export default function Shell() {
   const ui = useUiText();
@@ -43,6 +44,7 @@ export default function Shell() {
     setStatus,
     multiplayer,
     semanticThreshold,
+    fixedStartingBoard,
     joinLobby,
   } = useGame();
   useTabAttention();
@@ -273,8 +275,7 @@ export default function Shell() {
           await refresh(`Puzzle loaded from link${skippedSuffix}`);
         } else {
           const names = parseNames(playerNames);
-          await game.reset(names, startingLife);
-          await addStartingBoardPreset(game, names.length);
+          await resetStartingBoard(game, names, startingLife, fixedStartingBoard, semanticThreshold);
           await refresh("WASM loaded");
         }
       } catch (err) {
@@ -341,15 +342,14 @@ export default function Shell() {
       }
       try {
         const names = parseNames(playerNames);
-        await game.reset(names, startingLife);
-        await addStartingBoardPreset(game, names.length);
+        await resetStartingBoard(game, names, startingLife, fixedStartingBoard, semanticThreshold);
         setDeckLoadingMode(false);
         await refresh("Game reset");
       } catch (err) {
         setStatus(`Reset failed: ${err}`, true);
       }
     });
-  }, [game, multiplayer.mode, playerNames, refresh, runWasmInteraction, setStatus, startingLife]);
+  }, [game, multiplayer.mode, playerNames, refresh, runWasmInteraction, setStatus, startingLife, fixedStartingBoard, semanticThreshold]);
 
   const handleLoadCustomDecks = useCallback(async (payload) => {
     return runWasmInteraction(async () => {
@@ -793,51 +793,6 @@ export default function Shell() {
   );
 }
 
-async function addStartingBoardPreset(game, playerCount = 2) {
-  const openingBattlefield = [
-    "Omniscience",
-    "Forest",
-    "Plains",
-    "Island",
-    "Mountain",
-    "Swamp",
-    "Tropical Island",
-    "Volcanic Island",
-    "Yawgmoth, Thran Physician",
-    "Ornithopter",
-    "Myr Moonvessel",
-  ];
-  const openingGraveyard = ["Plains", "Plains", "Plains", "Plains", "Plains"];
-  const openingExile = ["Swamp", "Swamp"];
-
-  for (const playerIndex of [0, 1]) {
-    for (const cardName of openingBattlefield) {
-      try {
-        await game.addCardToZone(playerIndex, cardName, "battlefield", true);
-      } catch (err) {
-        console.warn(`Skipping startup battlefield card "${cardName}":`, err);
-      }
-    }
-  }
-
-  for (let playerIndex = 0; playerIndex < playerCount; playerIndex += 1) {
-    for (const cardName of openingGraveyard) {
-      try {
-        await game.addCardToZone(playerIndex, cardName, "graveyard", true);
-      } catch (err) {
-        console.warn(`Skipping startup graveyard card "${cardName}":`, err);
-      }
-    }
-    for (const cardName of openingExile) {
-      try {
-        await game.addCardToZone(playerIndex, cardName, "exile", true);
-      } catch (err) {
-        console.warn(`Skipping startup exile card "${cardName}":`, err);
-      }
-    }
-  }
-}
-
 function emptyLobbyQueryParams() {
   return {
     lobbyId: "",
@@ -864,6 +819,16 @@ function initialPuzzleStartingLife(payload) {
   const normalized = normalizePuzzlePayload(payload);
   if (!normalized) return null;
   return Number(normalized.players[0]?.life) || 20;
+}
+
+async function resetStartingBoard(game, names, startingLife, fixed, semanticThreshold) {
+  if (fixed) {
+    await game.reset(names, startingLife);
+    await addFixedStartingBoardPreset(game, names.length);
+    return;
+  }
+  const payload = await buildRandomStartingBoard(names, startingLife, semanticThreshold);
+  await applyPuzzleToGame(game, payload);
 }
 
 async function applyPuzzleToGame(game, payload) {

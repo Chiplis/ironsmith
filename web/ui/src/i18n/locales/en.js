@@ -28,6 +28,8 @@ export const messages = {
   "settings.playerNames": "Player Names",
   "settings.player": "Player",
   "settings.startingLife": "Starting Life",
+  "settings.fixedStartingBoard": "Load a fixed board",
+  "settings.fixedStartingBoard.description": "Use the original starting board instead of a random board. Remembered for future visits; applies on reload or Reset Match.",
   "settings.view": "View",
   "settings.cardsCompiled": "Cards Compiled",
   "settings.lobby": "Lobby",

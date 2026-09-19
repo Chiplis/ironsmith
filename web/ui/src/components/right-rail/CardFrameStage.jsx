@@ -6,7 +6,7 @@ import './card-frame-stage.css';
 // frames. Live DOM/layout and game actions are still recomputed for each view.
 const renderedFrames = new WeakSet();
 
-export default function CardFrameStage({ preparation, assets = preparation, previewUrl, previewName, onReadyChange, children, style, ...props }) {
+export default function CardFrameStage({ preparation, assets = preparation, showLoadingFrame = false, previewUrl, previewName, onReadyChange, children, style, ...props }) {
   const ui = useUiText();
   const ref = useRef(null);
   const [decodedPreview, setDecodedPreview] = useState(null);
@@ -17,6 +17,10 @@ export default function CardFrameStage({ preparation, assets = preparation, prev
   }
   const ready = Boolean(preparation && finished === preparation);
   const previewReady = Boolean(!presentation.reuse && previewUrl && decodedPreview === previewUrl);
+  // The live placeholder has no image assets to wait for. Keep it readable
+  // until either the printing preview or the prepared frame can take over.
+  const loadingFrameVisible = showLoadingFrame && !previewReady;
+  const frameVisible = ready || loadingFrameVisible;
 
   useEffect(() => {
     if (!previewUrl || presentation.reuse) return undefined;
@@ -50,14 +54,15 @@ export default function CardFrameStage({ preparation, assets = preparation, prev
     return () => { active = false; cancelAnimationFrame(frame); };
   }, [preparation]);
 
-  useLayoutEffect(() => { onReadyChange?.(ready || previewReady); }, [onReadyChange, ready, previewReady]);
+  useLayoutEffect(() => { onReadyChange?.(frameVisible || previewReady); }, [onReadyChange, frameVisible, previewReady]);
   return <div className="card-frame-preview-shell">
     {previewReady && <img className="card-frame-art-preview" src={previewUrl}
       alt={previewName || ui('Card artwork')} referrerPolicy="no-referrer"
       data-frame-ready={ready ? 'true' : 'false'} aria-hidden={ready} />}
     <div {...props} ref={ref} data-render-ready={ready ? 'true' : 'false'} data-frame-reused={presentation.reuse ? 'true' : 'false'}
-    aria-hidden={!ready} inert={!ready}
-    style={{...style, opacity: ready ? 1 : 0, ...(presentation.reuse ? {transition: 'none'} : {}), ...(!ready ? {pointerEvents: 'none'} : {})}}>
+    data-loading-frame={loadingFrameVisible ? 'true' : undefined}
+    aria-hidden={!frameVisible} inert={!frameVisible}
+    style={{...style, opacity: frameVisible ? 1 : 0, ...(presentation.reuse ? {transition: 'none'} : {}), ...(!frameVisible ? {pointerEvents: 'none'} : {})}}>
     {children}
   </div></div>;
 }

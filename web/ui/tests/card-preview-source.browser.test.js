@@ -3,6 +3,37 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
+test('battlefield hover shows a live frame while card images are still downloading', { timeout: 60000 }, async () => {
+  const vite = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
+  await vite.listen();
+  const browser = await chromium.launch();
+  let releaseImages;
+  const imageGate = new Promise(resolve => { releaseImages = resolve; });
+  try {
+    const page = await browser.newPage();
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.route('https://cards.scryfall.io/**', async route => {
+      await imageGate;
+      await route.fulfill({ contentType: 'image/svg+xml', headers: { 'access-control-allow-origin': '*' }, body: '<svg xmlns="http://www.w3.org/2000/svg" width="488" height="684"><rect width="488" height="684" fill="#917659"/></svg>' });
+    });
+    await page.route('https://api.scryfall.com/**', route => route.fulfill({ status: 404, body: '' }));
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-preview-source.html`, { waitUntil: 'domcontentloaded' });
+    await page.getByAltText('Field card 1').hover();
+    const frame = page.locator('[data-card-hover-preview][data-visible="true"] [data-loading-frame="true"]');
+    await frame.waitFor();
+    assert.equal(await frame.getAttribute('aria-hidden'), 'false');
+    assert.match(await frame.innerText(), /Same name, different field images/);
+    assert.match(await frame.innerText(), /Flying/);
+    assert.match(await frame.innerText(), /Artifact/);
+    assert.equal(await frame.locator('.interactive-card-frame__art-fallback').count(), 1);
+    releaseImages();
+    await page.waitForFunction(() => !document.querySelector('[data-card-hover-preview] [data-loading-frame="true"]'));
+    await page.locator('[data-card-hover-preview][data-visible="true"] .card-frame-art-preview').waitFor();
+    assert.deepEqual(errors, []);
+  } finally { releaseImages(); await browser.close(); await vite.close(); }
+});
+
 test('hover reuses the displayed object image and follows per-object changes', { timeout: 60000 }, async () => {
   const vite = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
   await vite.listen();
@@ -28,12 +59,12 @@ test('hover reuses the displayed object image and follows per-object changes', {
     await page.waitForFunction(() => document.querySelector('.card-frame-art-preview')?.getAttribute('src') === document.querySelector('[alt="Field card 1"]').getAttribute('src'));
     await page.getByAltText('Field card 2').hover();
     await page.waitForFunction(() => document.querySelector('[data-card-hover-preview][data-visible="true"]')?.dataset.previewObjectId === '2');
-    // A per-object image the sampler cannot read is still the card's face: it
-    // is shown whole, either as the retained printing or, when the frame lays
-    // its own containers over it, as the frame's source image.
+    // A per-object image remains authoritative in every frame mode, including
+    // a custom frame that displays it inside the art box.
     const fieldTwoSource = await page.getByAltText('Field card 2').getAttribute('src');
+    await page.locator('[data-card-hover-preview][data-preview-object-id="2"] [data-render-ready="true"]').waitFor();
     const previewSource = await page.locator('[data-card-hover-preview][data-visible="true"] .interactive-card-frame-stage').evaluate(node =>
-      node.querySelector('.original-card-fallback > img')?.getAttribute('src') || node.style.getPropertyValue('--source-frame-image'));
+      node.querySelector('.original-card-fallback > img, .interactive-card-frame__art img')?.getAttribute('src') || node.style.getPropertyValue('--source-frame-image'));
     assert.ok([fieldTwoSource, `url("${fieldTwoSource}")`].includes(previewSource), previewSource);
     assert.equal(requests.some(url => url.includes('/cards/named') || url.includes('/cards/same-name-different-field-images')), false, 'displayed assets must not trigger a name-based image lookup');
     assert.equal(requests.filter(url => url.includes('cards.scryfall.io')).every(url => url.includes('/back/a/b/aaaaaaaa-bbbb-cccc-dddd-000000000077.jpg?printing=selected')), true);

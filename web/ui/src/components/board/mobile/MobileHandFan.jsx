@@ -25,6 +25,20 @@ export default function MobileHandFan({
   const suppressNextClickRef = useRef(false);
   const suppressClickTimerRef = useRef(null);
 
+  useEffect(() => {
+    const collapseOutside = (event) => {
+      if (fanRef.current?.contains(event.target)) return;
+      setFanned(false);
+      pendingTapRef.current = null;
+      suppressNextClickRef.current = false;
+      window.clearTimeout(suppressClickTimerRef.current);
+      suppressClickTimerRef.current = null;
+    };
+    // Capture before battlefield controls and portaled menus stop propagation.
+    window.addEventListener("pointerdown", collapseOutside, true);
+    return () => window.removeEventListener("pointerdown", collapseOutside, true);
+  }, []);
+
   useEffect(() => () => {
     if (suppressClickTimerRef.current != null) {
       window.clearTimeout(suppressClickTimerRef.current);

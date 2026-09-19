@@ -28,6 +28,8 @@ export const messages = {
   "settings.playerNames": "Nombres",
   "settings.player": "Jugador",
   "settings.startingLife": "Vida inicial",
+  "settings.fixedStartingBoard": "Cargar una mesa fija",
+  "settings.fixedStartingBoard.description": "Usa la mesa inicial original en lugar de una aleatoria. Se guarda para futuras visitas y se aplica al recargar o reiniciar la partida.",
   "settings.view": "Vista",
   "settings.cardsCompiled": "Cartas compiladas",
   "settings.lobby": "Lobby",

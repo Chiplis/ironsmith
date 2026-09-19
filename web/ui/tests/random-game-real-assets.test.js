@@ -14,6 +14,7 @@ import {
   zoneAcceptsCard,
 } from "../src/lib/random-game.js";
 import { normalizePuzzlePayload, PUZZLE_ZONE_ORDER } from "../src/lib/puzzles.js";
+import { buildRandomStartingBoard } from "../src/lib/starting-board.js";
 
 const CARDS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../public/cards");
 const built = await stat(path.join(CARDS_DIR, "index.json")).then(() => true, () => false);
@@ -28,6 +29,42 @@ const fileFetch = async (url) => {
     return { ok: false, status: 404, json: async () => ({}) };
   }
 };
+
+test("startup samples the full catalogue for hands, libraries and board zones", { skip: !built }, async () => {
+  const names = ["Alice", "Bob", "Charlie", "Diana"];
+  const requested = new Set();
+  const fetchImpl = async (url) => {
+    requested.add(String(url));
+    return fileFetch(url);
+  };
+  const first = await buildRandomStartingBoard(names, 25, 96, {
+    rng: createSeededRng("startup-catalogue"), fetchImpl,
+  });
+  const second = await buildRandomStartingBoard(names, 25, 96, {
+    rng: createSeededRng("another-startup"), fetchImpl,
+  });
+  assert.deepEqual(first.players.map((player) => player.name), names);
+  assert.ok(first.players.every((player) => player.life === 25));
+  assert.ok(requested.has("http://localhost/cards/index.json"));
+  const index = await fileFetch("http://localhost/cards/index.json").then((response) => response.json());
+  const catalog = new Map(index.cards.map((card) => [card.name, card]));
+  const basics = new Set(["Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes"]);
+  const uniqueNonbasics = new Set();
+  for (const [index, player] of first.players.entries()) {
+    for (const zone of ["battlefield", "hand", "library", "graveyard", "exile"]) {
+      assert.ok(player.zones[zone].length > 0, `${zone} is populated`);
+      assert.notDeepEqual(player.zones[zone], second.players[index].zones[zone], `${zone} changes on each load`);
+      for (const name of player.zones[zone]) {
+        assert.ok(catalog.has(name), `${name} comes from the full catalogue`);
+        if (!basics.has(name) && name !== "Omniscience") {
+          uniqueNonbasics.add(name);
+          assert.ok(catalog.get(name).score >= 0.96, `${name} meets the fidelity setting`);
+        }
+      }
+    }
+  }
+  assert.ok(uniqueNonbasics.size > 30, "startup is not limited to the old small card pool");
+});
 
 test("a table generated from the real card assets is one the engine can be handed", { skip: !built, timeout: 120000 }, async () => {
   const config = {

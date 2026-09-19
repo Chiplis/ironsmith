@@ -50,6 +50,9 @@ export default function MobileBattlefieldBand({
     battlefieldSide, selectedObjectId, onInspect, onCardClick, onCardPointerDown,
     onMobileCardActionMenu, onMobileCardLongPress, activatableMap, legalTargetObjectIds,
   };
+  // Keep six pixels clear on each side of the center line without moving HUDs.
+  const combatCardHeight = Math.max(24, cardHeight - 6);
+  const creatureCardWidth = Math.floor(cardWidth * combatCardHeight / cardHeight);
   const resourceRow = <div className="arena-resource-row" key="resources">
     <MobileBattlefieldLane {...laneProps} cards={rows.backCards} cardHeight={landHeight}
       cardWidth={Math.floor(landHeight * 1.35)} className="arena-land-lane" />
@@ -58,10 +61,10 @@ export default function MobileBattlefieldBand({
       cardWidth={Math.floor(landHeight * 1.24)} className="arena-support-lane" />
   </div>;
   const combatRow = <div className="arena-combat-row" key="combat">
-    <MobileBattlefieldLane {...laneProps} cards={rows.frontCards} cardHeight={cardHeight}
-      cardWidth={cardWidth} className="arena-creature-lane" />
+    <MobileBattlefieldLane {...laneProps} cards={rows.frontCards} cardHeight={combatCardHeight}
+      cardWidth={creatureCardWidth} className="arena-creature-lane" />
     {rows.specialCards?.length > 0 && <MobileBattlefieldLane {...laneProps} cards={rows.specialCards}
-      cardHeight={cardHeight} cardWidth={cardWidth} className="arena-special-lane" />}
+      cardHeight={combatCardHeight} cardWidth={cardWidth} className="arena-special-lane" />}
   </div>;
 
   return (

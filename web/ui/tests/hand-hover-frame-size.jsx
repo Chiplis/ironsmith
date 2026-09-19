@@ -16,11 +16,11 @@ import "../src/index.css";
 const card = {
   name: "Myr Moonvessel", controller: 0, owner: 0,
   type_line: "Artifact Creature — Myr", power: 1, toughness: 1,
-  oracle_text: "", semantic_score: 1,
+  oracle_text: "When this creature dies, add {C}.", mana_cost: "{1}", power_toughness: "1/1", semantic_score: 1,
 };
 
 const context = {
-  state: { perspective: 0, priority_player: 0, active_player: 0, stack: [], decision: { kind: "priority", player: 0 } },
+  state: { perspective: 0, priority_player: 0, active_player: 0, stack: [], decision: window.__handDecision || { kind: "priority", player: 0 } },
   multiplayer: { mode: "idle" }, playerAccentOverrides: {}, game: null,
   dispatch: async () => {}, dispatchInBackground: async () => {},
 };

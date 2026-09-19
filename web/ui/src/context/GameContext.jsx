@@ -42,6 +42,7 @@ import {
   normalizeTriggerOrderingOrder,
 } from "@/lib/trigger-ordering";
 import { DEFAULT_UI_FONT, uiFontStack } from "@/lib/ui-fonts";
+import { readFixedStartingBoard, storeFixedStartingBoard } from "@/lib/starting-board";
 import { hexToRgbString } from "@/lib/player-colors";
 import { samePlayerId } from "@/lib/player-display";
 
@@ -831,6 +832,7 @@ export function GameProvider({ children }) {
   const [status, setStatusRaw] = useState({ msg: "Loading WASM...", isError: false });
   const [autoPassEnabled, setAutoPassEnabled] = useState(true);
   const [holdRule, setHoldRule] = useState("never");
+  const [fixedStartingBoard, setFixedStartingBoard] = useState(readFixedStartingBoard);
   const [uiFont, setUiFont] = useState(() => {
     if (typeof window === "undefined") return DEFAULT_UI_FONT;
     return window.localStorage.getItem(UI_FONT_STORAGE_KEY) || DEFAULT_UI_FONT;
@@ -882,6 +884,10 @@ export function GameProvider({ children }) {
   useEffect(() => {
     window.localStorage.setItem(PLAYER_ACCENTS_STORAGE_KEY, JSON.stringify(playerAccentOverrides));
   }, [playerAccentOverrides]);
+
+  useEffect(() => {
+    storeFixedStartingBoard(fixedStartingBoard);
+  }, [fixedStartingBoard]);
 
   const setPlayerAccentOverride = useCallback((playerId, color) => {
     const numericPlayerId = Number(playerId);
@@ -2805,6 +2811,8 @@ export function GameProvider({ children }) {
       setAutoPassEnabled,
       holdRule,
       setHoldRule,
+      fixedStartingBoard,
+      setFixedStartingBoard,
       uiFont,
       setUiFont,
       playerAccentOverrides,
@@ -2855,7 +2863,7 @@ export function GameProvider({ children }) {
       setStatus,
       runWasmInteraction,
       dispatch, dispatchInBackground, cancelBackgroundDispatch, cancelDecision, refresh, autoPassEnabled, holdRule, uiFont,
-      playerAccentOverrides, setPlayerAccentOverride, inspectorDebug,
+      playerAccentOverrides, setPlayerAccentOverride, inspectorDebug, fixedStartingBoard,
       activeTriggerOrderingState, moveTriggerOrderingItem,
       semanticThreshold, setSemanticThreshold, cardsMeetingThreshold,
       logEntries, pushLog,

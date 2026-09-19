@@ -12,7 +12,7 @@ export const CARD_FRAME_RENDER_HEIGHT = 531;
 const WIDTH = CARD_FRAME_RENDER_WIDTH;
 const HEIGHT = CARD_FRAME_RENDER_HEIGHT;
 
-const FRAME_FIELDS = ['id', 'stable_id', 'name', 'oracle_id', 'oracleId', 'oracle_text', 'effect_text', 'ability_text', 'compiled_text', 'abilities', 'mana_cost', 'type_line', 'owner', 'controller'];
+const FRAME_FIELDS = ['id', 'stable_id', 'name', 'oracle_id', 'oracleId', 'oracle_text', 'effect_text', 'ability_text', 'compiled_text', 'abilities', 'mana_cost', 'type_line', 'power', 'toughness', 'power_toughness', 'loyalty', 'defense', 'owner', 'controller'];
 
 const MiniatureComposition = memo(function MiniatureComposition({snapshot, imageUrl}) {
   const card = useMemo(() => JSON.parse(snapshot), [snapshot]);

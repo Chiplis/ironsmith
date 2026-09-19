@@ -979,6 +979,8 @@
   .arena-resource-row { display: grid; grid-template-columns: minmax(0,1fr) var(--mobile-self-controls-width) minmax(0,1fr); height: var(--mobile-arena-resource-height); align-items: start; }
   .mobile-mtga-battlefield-band--opponent .arena-resource-row { grid-template-columns: minmax(0,1fr) var(--mobile-opponent-controls-width) minmax(0,1fr); }
   .arena-combat-row { display: flex; height: var(--mobile-battle-card-height); min-width: 0; align-items: center; }
+  .mobile-mtga-battlefield-band--opponent .arena-combat-row { align-items: flex-start; }
+  .mobile-mtga-battlefield-band--self .arena-combat-row { align-items: flex-end; }
   .mobile-mtga-battlefield-lane { margin: 0; width: 100%; }
   .arena-creature-lane { flex: 1 1 auto; min-width: 0; }
   .arena-special-lane { flex: 0 1 23%; min-width: 74px; }
@@ -1003,17 +1005,14 @@
   .battlefield-arena-card .arena-permanent { position: absolute; inset: 2px; overflow: hidden; border: 2px solid var(--arena-frame); border-radius: 4px; background: #0d1116; box-shadow: 0 1px 2px #000, inset 0 0 0 1px #101215; transform-origin: center; }
   .arena-permanent-art { position: absolute; inset: 2px; overflow: hidden; }
   .arena-permanent-art > img { width: 100%; height: 100%; object-fit: cover; }
-  .arena-permanent-name { position: absolute; top: 0; left: 1px; right: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: Georgia, serif; font-size: clamp(6px, calc(var(--arena-card-height) * .105), 10px); line-height: 1.1; color: #f3efe3; background: #141617db; text-align: center; padding: 1px 2px; }
   .arena-permanent-stat { position: absolute; right: 0; bottom: 0; min-width: 20px; padding: 0 3px; border: 1px solid #c2c7c7; border-radius: 4px 0 0 0; background: #d9dfdf; color: #12171c; font: 700 clamp(10px, calc(var(--arena-card-height) * .19), 16px)/1.05 Georgia, serif; text-align: center; }
   .arena-permanent-counter { position: absolute; right: 0; top: 13px; min-width: 13px; height: 13px; border-radius: 50%; background: #3261a0; border: 1px solid #abc5eb; color: white; font: 700 10px/12px Georgia, serif; text-align: center; }
   .arena-permanent[data-kind="land"] { border-width: 1px; border-radius: 2px; }
-  .arena-permanent[data-kind="land"] .arena-permanent-name { font-size: 6px; }
   .arena-permanent[data-kind="planeswalker"] { left: 17%; right: 17%; border-radius: 13px 13px 3px 3px; }
   .arena-permanent[data-kind="planeswalker"] .arena-permanent-stat,
   .arena-permanent[data-kind="battle"] .arena-permanent-stat { left: 50%; right: auto; transform: translateX(-50%); background: #1c232b; color: white; border-radius: 0; clip-path: polygon(15% 0, 85% 0, 100% 55%, 50% 100%, 0 55%); padding: 1px 6px 5px; }
   .arena-permanent[data-kind="battle"] { top: 15%; bottom: 15%; }
   .arena-permanent[data-token][data-kind="creature"] { border-radius: 45% 45% 4px 4px; }
-  .arena-permanent[data-token] .arena-permanent-name { display: none; }
   .arena-permanent[data-kind="saga"] { left: 20%; right: 20%; border-color: #b3a88c; }
   .arena-saga-chapters { position: absolute; left: 0; bottom: 1px; font: 8px/1.25 Georgia,serif; color: #eee1be; background: #211e19c9; }
   .arena-permanent[data-kind="enchantment"] { border-top-width: 4px; }

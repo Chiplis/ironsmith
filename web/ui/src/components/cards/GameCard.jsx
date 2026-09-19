@@ -899,6 +899,8 @@ export default function GameCard({
   const displayedArtUrl = variant === "hand" && repairedHandArt?.source === artUrl
     ? repairedHandArt.url || artUrl
     : artUrl;
+  const showHandLoadingFrame = variant === "hand" && (isHovered || isCastTargetHovered || isInspected)
+    && (!artUrl || repairedHandArt?.source !== artUrl);
   const useArenaBattlefield = variant === "battlefield" && battlefieldVisualMode === "mobile-arena";
   const useTokenBattlefield = variant === "battlefield" && (battlefieldVisualMode === "mobile-token" || useArenaBattlefield);
   const count = Number(card.count);
@@ -1638,7 +1640,7 @@ export default function GameCard({
       )}
       {variant !== "stack" && <span className="card-inspector-source-glow" aria-hidden="true" />}
       <div className="game-card-surface">
-        {((usePortraitBattlefield && (preparedFrame || compiledCustomCard)) || (variant === "hand" && compiledCustomCard)) && (
+        {((usePortraitBattlefield && (preparedFrame || compiledCustomCard)) || (variant === "hand" && compiledCustomCard) || showHandLoadingFrame) && (
           <MiniatureCardFrame card={card} imageUrl={artUrl} />
         )}
         {(showActionBorder || isLegalTarget) && !useTokenBattlefield && (

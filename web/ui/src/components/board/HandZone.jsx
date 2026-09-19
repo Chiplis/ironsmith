@@ -427,7 +427,7 @@ export default function HandZone({
   const dragHandlersRef = useRef(null);
   const dragScrollLockRef = useRef(null);
   const hoverSuppressedUntilRef = useRef(0);
-  const [handHoverSuppressed, setHandHoverSuppressed] = useState(false);
+  const [handDropHoverSuppressed, setHandHoverSuppressed] = useState(false);
   const hoverClearTimerRef = useRef(null);
   const hoverActivateTimerRef = useRef(null);
   const pointerHoverTargetRef = useRef(null);
@@ -450,6 +450,7 @@ export default function HandZone({
   const [hoveredHandObjectId, setHoveredHandObjectId] = useState(null);
   const [keyboardSelectedObjectId, setKeyboardSelectedObjectId] = useState(null);
   const [pinnedHandObjectId, setPinnedHandObjectId] = useState(null);
+  const [mobileHandDismissed, setMobileHandDismissed] = useState(false);
   const [keyboardNavigationActive, setKeyboardNavigationActive] = useState(false);
   const rawHandCards = useMemo(
     () => (player?.can_view_hand && player?.hand_cards) || [],
@@ -764,6 +765,7 @@ export default function HandZone({
   const renderedHandCardCount = handCards.length + extraCards.length;
   const hasExtra = extraCards.length > 0;
   const isMobileFan = layout === "mobile-fan" || layout === "mobile-fullscreen";
+  const handHoverSuppressed = handDropHoverSuppressed || (isMobileFan && mobileHandDismissed);
   const isVerticalRail = layout === "vertical-rail";
   const isRoulette = !isVerticalRail && !isMobileFan && renderedHandCardCount >= HAND_ROULETTE_THRESHOLD;
   const handDimensions = useMemo(() => {
@@ -891,13 +893,30 @@ export default function HandZone({
   }, [clearAnchoredCardPreview, clearHover, pinnedHandObjectId]);
 
   useEffect(() => {
-    if (pinnedHandObjectId == null) return undefined;
+    if (!isMobileFan && pinnedHandObjectId == null) return undefined;
 
     const dismissPinnedHandCard = (event) => {
       const target = event.target;
+      if (isMobileFan) {
+        const surface = handListRef.current?.closest(".mobile-mtga-hand-fan")
+          || handListRef.current?.closest(".hand-zone-surface");
+        if (surface?.contains(target)) {
+          setMobileHandDismissed(false);
+          return;
+        }
+        // Touch hover has no mouseleave. Clear every source of fan expansion,
+        // including pending hover work that could lift a card after dismissal.
+        setMobileHandDismissed(true);
+        window.clearTimeout(hoverActivateTimerRef.current);
+        window.clearTimeout(hoverClearTimerRef.current);
+        window.clearTimeout(keyboardExitTimerRef.current);
+        pointerHoverTargetRef.current = null;
+        setHoveredHandObjectId(null);
+        setMenuHoveredHandObjectId(null);
+      }
       // Another hand card owns its own click path and replaces the selection;
       // only clicks outside the hand-card surface dismiss the current one.
-      if (target instanceof Element && target.closest(".game-card.hand-card")) return;
+      if (!isMobileFan && target instanceof Element && target.closest(".game-card.hand-card")) return;
       setPinnedHandObjectId(null);
       setKeyboardSelectedObjectId(null);
       keyboardNavigationRef.current = false;
@@ -909,7 +928,7 @@ export default function HandZone({
 
     window.addEventListener("pointerdown", dismissPinnedHandCard, true);
     return () => window.removeEventListener("pointerdown", dismissPinnedHandCard, true);
-  }, [clearAnchoredCardPreview, clearHover, pinnedHandObjectId]);
+  }, [clearAnchoredCardPreview, clearHover, isMobileFan, pinnedHandObjectId]);
 
   const handleKeyboardCardActivate = useCallback((event, card, plays, glowKind) => {
     const plan = handKeyboardCastPlan({ actions: plays, card });
@@ -1271,6 +1290,10 @@ export default function HandZone({
       return;
     }
 
+    // This layout also serves the desktop hand. An outside click dismisses
+    // its fan, but returning with a mouse should resume hover without a click.
+    // Touch movement was excluded above so outside-tap dismissal stays intact.
+    setMobileHandDismissed(false);
     if (hoverClearTimerRef.current) {
       clearTimeout(hoverClearTimerRef.current);
       hoverClearTimerRef.current = null;
