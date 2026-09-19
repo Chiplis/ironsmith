@@ -91,6 +91,7 @@ import {
   writeStoredPlayerIndex,
 } from "./shared.js";
 import { approximateMessageBytes, recordDiagnosticEvent, recordPeerMessage, recordPeerState } from "../../lib/action-diagnostics.js";
+import { describeSubstitutions, withSupportedCards } from "../../lib/unsupported-card-substitution.js";
 
 function normalizeLobbyDeckOptions(value) {
   if (!Array.isArray(value)) return [];
@@ -106,7 +107,10 @@ function normalizeLobbyDeckOptions(value) {
 
 export function usePeerLobbyMessaging(base, servicesRef) {
   const { actionCryptoRequirementsRef, actionHistoryRef, applySyncedCommand, applyingSequencedActionsRef, auditEncryptionPublicKeyRef, auditKeyPairRef, auditPublicKeyRef, auditStateHashRef, awaitingStateResyncRef, clientConnectionsRef, clientMessageQueueRef, drainingPendingSequencedActionsRef, ensureDirectPeerConnectionsRef, gameRef, hostConnectionRef, hostMessageQueueRef, ignoredActionIntentKeysRef, initialPublicCheckpointHashRef, liveAuditTranscriptRef, localZiffleRevealInFlightRef, matchClockConfigRef, matchClockObservationExemptSequenceRef, matchStartPayloadRef, multiplayerRef, peerConnectionsRef, peerMessageQueueRef, peerOptionsRef, peerRef, peerServerLabelRef, pendingSequencedActionsRef, reconnectChallengesRef, relayedActionIdsRef, resyncingPeerIdsRef, setState, setStatus, stateRef } = base;
-  const alignMatchClockObservationFromHostSnapshot = useCallback((...args) => servicesRef.current.alignMatchClockObservationFromHostSnapshot(...args), [servicesRef]);
+  const reportCardSubstitutions = useCallback((substitutions) => {
+    setStatus(`Unsupported cards replaced with basic lands: ${describeSubstitutions(substitutions)}`);
+  }, [setStatus]);
+    const alignMatchClockObservationFromHostSnapshot = useCallback((...args) => servicesRef.current.alignMatchClockObservationFromHostSnapshot(...args), [servicesRef]);
   const answerActionQuorumVoteRequest = useCallback((...args) => servicesRef.current.answerActionQuorumVoteRequest(...args), [servicesRef]);
   const answerCryptoMaterialRequest = useCallback((...args) => servicesRef.current.answerCryptoMaterialRequest(...args), [servicesRef]);
   const answerDisconnectForfeitVoteRequest = useCallback((...args) => servicesRef.current.answerDisconnectForfeitVoteRequest(...args), [servicesRef]);
@@ -3702,10 +3706,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         )
       );
       const lifeTotal = Math.max(1, Number(startingLife) || 20);
-      const deckSubmission = parseDeckSubmission(
-        normalizedFormat,
-        deckText,
-        commanderText
+      const deckSubmission = await withSupportedCards(
+        parseDeckSubmission(normalizedFormat, deckText, commanderText),
+        { game: gameRef.current, onSubstitute: reportCardSubstitutions },
       );
       if (resume) {
         updateMultiplayer({ ...resume.session, submittingAction: false, mode: "hosting",
@@ -3960,10 +3963,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         return;
       }
 
-      const deckSubmission = parseDeckSubmission(
-        MATCH_FORMAT_NORMAL,
-        deckText,
-        commanderText
+      const deckSubmission = await withSupportedCards(
+        parseDeckSubmission(MATCH_FORMAT_NORMAL, deckText, commanderText),
+        { game: gameRef.current, onSubstitute: reportCardSubstitutions },
       );
       const peer = createPeer("", peerOptionsRef.current);
       peerRef.current = peer;

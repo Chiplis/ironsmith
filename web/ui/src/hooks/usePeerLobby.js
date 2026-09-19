@@ -1,4 +1,5 @@
 import { createValueStore } from "../lib/value-store.js";
+import { describeSubstitutions, withSupportedCards } from "../lib/unsupported-card-substitution.js";
 import {
   DISCONNECT_AUTO_FORFEIT_MS,
   DISCONNECT_FORFEIT_REASON,
@@ -278,11 +279,19 @@ export function usePeerLobby({
             ? String(updates.commanderText || "")
             : currentSession.localCommanderText;
 
-	    const deckSubmission = parseDeckSubmission(
-	        currentSession.format,
-	        nextDeckText,
-	        nextCommanderText
-	      );
+      // A card the engine cannot load used to block the match at start, after
+      // every player had committed. Swapping it for a basic land here keeps
+      // the deck the size it was submitted at and keeps the audit manifests,
+      // which are built from this list, describing what actually gets played.
+	    const deckSubmission = await withSupportedCards(
+	      parseDeckSubmission(currentSession.format, nextDeckText, nextCommanderText),
+	      {
+	        game: gameRef.current,
+	        onSubstitute: (substitutions) => setStatus(
+	          `Unsupported cards replaced with basic lands: ${describeSubstitutions(substitutions)}`
+	        ),
+	      },
+	    );
       rememberDefaultLobbyDeck(nextDeckText, nextCommanderText);
 	      if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(currentSession))) {
 	        const nextSession = updateMultiplayer((prev) => ({
@@ -446,6 +455,7 @@ export function usePeerLobby({
       ensureZiffleIdentity,
       ensureAuditIdentity,
       publicZiffleKey,
+      setStatus,
       signPlayerGenesis,
       updateMultiplayer,
     ]

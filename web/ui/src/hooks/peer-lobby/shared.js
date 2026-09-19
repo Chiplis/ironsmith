@@ -3,6 +3,7 @@ import { PUBLIC_FORMATS, isRelayId } from '../../lib/relay/formats.js';
 import { validateFormatDeck } from '../../lib/relay/format-legality.js';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { approximateMessageBytes, markActionStage, recordDiagnosticEvent, recordPeerMessage } from "../../lib/action-diagnostics.js";
+import { applyKnownSubstitutions } from "../../lib/unsupported-card-substitution.js";
 import Peer from "peerjs";
 import { NativeLanPeer } from "../../lib/lan/native-peer.js";
 import {
@@ -2104,8 +2105,10 @@ export function openDecklistPlayerFields({
 }
 
 export function parseDeckSubmission(format, deckText, commanderText = "") {
-  const deck = sanitizeCardList(parseDeckList(deckText));
-  const sideboard = sanitizeCardList(parseSideboardList(deckText));
+  // Cards already found unloadable keep their basic land here, so a deck
+  // re-derived from its original text on reconnect matches what was committed.
+  const deck = applyKnownSubstitutions(sanitizeCardList(parseDeckList(deckText)));
+  const sideboard = applyKnownSubstitutions(sanitizeCardList(parseSideboardList(deckText)));
   const commanders = sanitizeCardList(parseCommanderList(commanderText));
   setPreferredCardPrints([
     ...parseDeckPrintPreferences(deckText),
