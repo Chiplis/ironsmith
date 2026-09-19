@@ -703,6 +703,8 @@ impl Modification {
 pub struct TextBoxOverlay {
     pub compiled_card_text: Arc<str>,
     pub abilities: Vec<Ability>,
+    /// The printed line each entry of `abilities` reads as (see `Object::ability_labels`).
+    pub ability_labels: SharedVec<String>,
 }
 
 impl TextBoxOverlay {
@@ -713,7 +715,13 @@ impl TextBoxOverlay {
         Self {
             compiled_card_text: compiled_card_text.into(),
             abilities: abilities.into(),
+            ability_labels: Default::default(),
         }
+    }
+
+    pub fn with_ability_labels(mut self, ability_labels: impl Into<SharedVec<String>>) -> Self {
+        self.ability_labels = ability_labels.into();
+        self
     }
 }
 
@@ -1346,6 +1354,8 @@ pub struct CalculatedCharacteristics {
     pub name: SharedStr,
     pub mana_cost: Option<ManaCost>,
     pub compiled_card_text: Arc<str>,
+    /// The printed line each entry of `abilities` reads as (see `Object::ability_labels`).
+    pub ability_labels: SharedVec<String>,
     pub power: Option<i32>,
     pub toughness: Option<i32>,
     pub card_types: SharedVec<CardType>,
@@ -1517,6 +1527,7 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         name: object.name.clone(),
         mana_cost: object.mana_cost_owned(),
         compiled_card_text: object.compiled_card_text.clone(),
+        ability_labels: object.ability_labels.clone(),
         power: object.base_power.as_ref().map(|p| p.base_value()),
         toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
         card_types: object.card_types.clone(),
@@ -1583,6 +1594,7 @@ fn copy_characteristics_from_copiable_values(
     chars.name = values.name.clone().into();
     chars.mana_cost = values.mana_cost.clone();
     chars.compiled_card_text = values.compiled_card_text.clone().into();
+    chars.ability_labels = values.ability_labels.clone().into();
     chars.power = values.power;
     chars.toughness = values.toughness;
     chars.card_types = values.card_types.clone().into();
@@ -1597,7 +1609,10 @@ fn copy_characteristics_from_copiable_values(
     if let Some(preserved_abilities) = preserved_abilities {
         for (index, ability) in preserved_abilities.iter().enumerate() {
             if !chars.abilities.contains(ability) {
-                chars.abilities.push_with_origin(ability.clone(), preserved_abilities.origin(index).unwrap().clone());
+                chars.abilities.push_with_origin(
+                    ability.clone(),
+                    preserved_abilities.origin(index).unwrap().clone(),
+                );
             }
         }
     }
@@ -1880,8 +1895,7 @@ fn calculate_characteristics_layer_batch_with_effects(
     remaining.sort_unstable();
     order.extend(remaining);
 
-    let mut chars_by_id =
-        HashMap::with_capacity(order.len());
+    let mut chars_by_id = HashMap::with_capacity(order.len());
     let mut guards = Vec::with_capacity(order.len());
     for &id in &order {
         let Some(object) = objects.get(&id) else {
@@ -2085,7 +2099,8 @@ fn calculate_characteristics_layer_batch_with_effects(
                 };
                 let mut removed = abilities_removed.contains(id);
                 let had_world = chars.supertypes.contains(&Supertype::World);
-                apply_modification_to_chars(effect,
+                apply_modification_to_chars(
+                    effect,
                     chars,
                     objects,
                     &mut removed,
@@ -2261,7 +2276,8 @@ fn calculate_characteristics_layer_batch_with_effects(
                     continue;
                 };
                 let mut removed = abilities_removed.contains(id);
-                apply_modification_to_chars(effect,
+                apply_modification_to_chars(
+                    effect,
                     chars,
                     objects,
                     &mut removed,
@@ -2313,8 +2329,7 @@ fn calculate_characteristics_layer_batch_with_effects(
     }
 
     let requested: HashSet<_> = ids.iter().copied().collect();
-    let mut calculated =
-        HashMap::with_capacity(requested.len());
+    let mut calculated = HashMap::with_capacity(requested.len());
     for id in requested {
         if let Some(chars) = chars_by_id.get(&id) {
             calculated.insert(id, chars.clone());
@@ -2631,6 +2646,7 @@ fn apply_text_box_modification_to_chars(
         Modification::ChangeText { .. } => {}
         Modification::SetTextBox(overlay) => {
             chars.compiled_card_text = overlay.compiled_card_text.clone();
+            chars.ability_labels = overlay.ability_labels.clone();
             chars.abilities = overlay.abilities.clone().into();
             chars.abilities.rebind(effect);
             chars.static_abilities = extract_static_abilities(&overlay.abilities).into();
@@ -2838,7 +2854,8 @@ fn calculate_with_layers_direct_internal(
 
             mark_continuous_effect_group_started(effect, &mut started_groups);
             let had_world = chars.supertypes.contains(&Supertype::World);
-            apply_modification_to_chars(effect,
+            apply_modification_to_chars(
+                effect,
                 &mut chars,
                 objects,
                 &mut abilities_removed,
@@ -2995,7 +3012,8 @@ fn calculate_with_layers_direct_internal(
             }
 
             mark_continuous_effect_group_started(effect, &mut started_groups);
-            apply_modification_to_chars(effect,
+            apply_modification_to_chars(
+                effect,
                 &mut chars,
                 objects,
                 &mut abilities_removed,
@@ -3962,7 +3980,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.cast_this_turn
         || filter.first_spell_cast_each_turn
         || filter.spell_cast_ordinal_each_turn.is_some()
-            || filter.spell_cast_minimum_each_turn.is_some()
+        || filter.spell_cast_minimum_each_turn.is_some()
         || filter.mana_from_source_spent_to_cast.is_some()
         || filter.single_graveyard
         || filter.targets_player.is_some()
@@ -4335,6 +4353,7 @@ fn apply_modification_to_chars(
         }
         Modification::SetTextBox(overlay) => {
             chars.compiled_card_text = overlay.compiled_card_text.clone();
+            chars.ability_labels = overlay.ability_labels.clone();
             chars.abilities = overlay.abilities.clone().into();
             chars.abilities.rebind(effect);
             chars.static_abilities = extract_static_abilities(&overlay.abilities).into();
@@ -4509,10 +4528,20 @@ fn apply_modification_to_chars(
                     {
                         activated.timing = crate::ability::ActivationTiming::OncePerTurn;
                     }
-                    chars.abilities.push_with_origin(copied, AbilityOrigin::Borrowed {
-                        effect: effect.into(), source: candidate.id,
-                        origin: Box::new(candidate_chars.abilities.origin(ability_index).unwrap().clone()),
-                    });
+                    chars.abilities.push_with_origin(
+                        copied,
+                        AbilityOrigin::Borrowed {
+                            effect: effect.into(),
+                            source: candidate.id,
+                            origin: Box::new(
+                                candidate_chars
+                                    .abilities
+                                    .origin(ability_index)
+                                    .unwrap()
+                                    .clone(),
+                            ),
+                        },
+                    );
                 }
             }
         }

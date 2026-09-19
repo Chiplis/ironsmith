@@ -892,8 +892,10 @@ export default function HoverArtOverlay({
   // A custom card can have no printing to look up at all. Waiting on a
   // preparation that will never arrive leaves the stage hidden and inert, so
   // an art lookup that settled on nothing publishes its own bundle instead and
-  // the frame is drawn from the placeholder.
-  const artUnavailable = Boolean(sourceImageUrl || image.ready) && !imageUrl;
+  // the frame is drawn from the placeholder. An object whose name has not
+  // arrived yet has not looked anything up, and must keep waiting rather than
+  // flash the printing behind a frame that is still being prepared.
+  const artUnavailable = !imageUrl && Boolean(sourceImageUrl || artObjectName) && image.ready;
   const preparedFrame = enableFramePreparation && !artUnavailable ? generatedFrame : originalFrame;
   const defaultTypography = useCardTypography(isCardFrameMode ? "" : imageUrl);
   const typography = preparedFrame?.typography || defaultTypography;
@@ -2508,7 +2510,7 @@ export default function HoverArtOverlay({
                             type="button"
                             className="inspector-oracle-line-action interactive-card-frame__ability group w-full text-left"
                             data-available={canActivate ? "true" : "false"}
-                            disabled={!canActivate}
+                            aria-disabled={canActivate ? undefined : "true"}
                             onPointerDown={(event) => event.stopPropagation()}
                             onClick={(event) => {
                               event.preventDefault();
@@ -3047,7 +3049,7 @@ export default function HoverArtOverlay({
                                 type="button"
                                 className="inspector-oracle-line-action group w-full text-left"
                                 data-available={canActivate ? "true" : "false"}
-                                disabled={!canActivate}
+                                aria-disabled={canActivate ? undefined : "true"}
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={(event) => {
                                   event.preventDefault();

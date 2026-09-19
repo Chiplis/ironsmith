@@ -406,8 +406,8 @@ export default function LobbyOverlay({
         className="fantasy-sheet lobby-sheet flex max-h-[96vh] w-[min(96vw,1040px)] flex-col p-0"
       >
         <SheetHeader className="fantasy-sheet-header pr-12">
-          <div className="text-[11px] uppercase tracking-[0.24em] text-[#cdb27a]">{ui("Multiplayer")}</div>
-          <SheetTitle className="text-[24px] uppercase tracking-[0.16em] text-foreground">
+          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Multiplayer")}</div>
+          <SheetTitle>
             {lobbyActive ? ui("Multiplayer Lobby") : mode === "join" ? ui("Join Lobby") : ui("Create Lobby")}
           </SheetTitle>
           <SheetDescription className="max-w-[46ch] text-[13px] leading-5">{ui("Host or join a multiplayer table, submit decks, and manage invite links from one place.")}</SheetDescription>
@@ -677,7 +677,7 @@ export default function LobbyOverlay({
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
               <div className="grid gap-4">
                 <div className="lobby-sheet-panel fantasy-sheet-section grid gap-1 p-4">
-                  <span className="text-[11px] uppercase tracking-[0.22em] text-[#c3a774]">{ui("Lobby Code")}</span>
+                  <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Lobby Code")}</span>
                   <div className="lobby-sheet-code font-mono text-[24px] font-bold tracking-[0.04em] text-foreground">
                     {multiplayer.lobbyId || multiplayer.hostPeerId || ui("Connecting")}
                   </div>
@@ -704,9 +704,9 @@ export default function LobbyOverlay({
                                   : ui("Ready. Waiting for the remaining players.")
                                 : formatDeckRequirement(activeFormat)}
                   </p>
-                  <p className="text-[12px] uppercase tracking-[0.18em] text-[#c3a774]">{ui("Signaling:") + " "}{multiplayer.signalingServer || "0.peerjs.com:443"}
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8b806b]">{ui("Signaling:") + " "}{multiplayer.signalingServer || "0.peerjs.com:443"}
                   </p>
-                  <p className="text-[12px] uppercase tracking-[0.18em] text-[#c3a774]">{ui("Mode:") + " "}{ui(securityModeName(activeSecurityMode))}
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8b806b]">{ui("Mode:") + " "}{ui(securityModeName(activeSecurityMode))}
                   </p>
                   <p className="text-[13px] text-muted-foreground">
                     {ui(securityModeSummary(activeSecurityMode))}
@@ -716,7 +716,7 @@ export default function LobbyOverlay({
                 {!multiplayer.matchStarted ? (
                   <div className="lobby-sheet-panel fantasy-sheet-section grid gap-3 p-4">
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-[11px] uppercase tracking-[0.22em] text-[#c3a774]">{ui("Invite Link")}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Invite Link")}</span>
                       <button
                         type="button"
                         disabled={!inviteLink}
@@ -779,7 +779,7 @@ export default function LobbyOverlay({
                 {!multiplayer.matchStarted ? (
                   <div className="lobby-sheet-panel fantasy-sheet-section grid gap-3 p-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] uppercase tracking-[0.22em] text-[#c3a774]">{ui("Your Deck")}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Your Deck")}</span>
                       <span className="text-[13px] text-muted-foreground">{ui("Format:") + " "}{ui(formatName(activeFormat))}
                       </span>
                     </div>
@@ -871,7 +871,7 @@ export default function LobbyOverlay({
               <div className="grid gap-4">
                 <div className="lobby-sheet-panel fantasy-sheet-section grid gap-2 p-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] uppercase tracking-[0.22em] text-[#c3a774]">{ui("Players")}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Players")}</span>
                     <span className="text-[13px] text-muted-foreground">
                       {playerCount}/{multiplayer.desiredPlayers}{" " + ui("seats,") + " "}{readyPlayers}{" " + ui("ready")}</span>
                   </div>
@@ -879,7 +879,7 @@ export default function LobbyOverlay({
                     <div
                       key={player.peerId}
                       className={`lobby-sheet-player-row fantasy-sheet-stat flex items-center justify-between px-3 py-2 ${
-                        player.connected === false ? "border-[#7d302f] bg-[#2b1114]/55" : ""
+                        player.connected === false ? "bg-[#2b1114]" : ""
                       }`}
                     >
                       <span className="text-[14px] text-foreground">
@@ -887,7 +887,7 @@ export default function LobbyOverlay({
                       </span>
                       <span
                         className={`text-[12px] uppercase tracking-[0.18em] ${
-                          player.connected === false ? "text-[#ffb8c0]" : "text-muted-foreground"
+                          player.connected === false ? "text-[#f0a9a0]" : "text-muted-foreground"
                         }`}
                       >
                         {ui(formatPlayerStatus(player, multiplayer.localPeerId, activeFormat))}
@@ -897,7 +897,7 @@ export default function LobbyOverlay({
                 </div>
 
                 {multiplayer.matchStarted && offlinePlayers.length > 0 ? (
-                  <div className="lobby-sheet-status border border-[#7d302f] bg-[#2b1114]/70 px-3 py-2 text-[13px] leading-5 text-[#ffb8c0]">
+                  <div className="lobby-sheet-status bg-[#2b1114] px-3 py-2 text-[13px] leading-5 text-[#f0a9a0]">
                     {offlinePlayers.length === 1
                       ? ui("{0} is disconnected. Wait {1} for the timeout policy.", { 0: offlinePlayers[0].name, 1: formatCountdown(offlinePlayers[0].remainingMs) })
                       : ui("{0} are disconnected. Wait for reconnects or timeout policy timers.", { 0: offlinePlayerSummary(offlinePlayers) })}
@@ -935,7 +935,7 @@ export default function LobbyOverlay({
             <div
               className={`lobby-sheet-status mt-4 border px-3 py-2 text-[13px] ${
                 status.isError
-                  ? "is-error text-[#ffb8c0]"
+                  ? "is-error text-[#f0a9a0]"
                   : "text-muted-foreground"
               }`}
             >

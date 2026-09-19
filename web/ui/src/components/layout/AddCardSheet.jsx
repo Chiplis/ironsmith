@@ -208,8 +208,8 @@ export default function AddCardSheet({
         className={`fantasy-sheet add-card-sheet w-[min(92vw,460px)] p-0 ${triggerClassName}`}
       >
         <SheetHeader className="fantasy-sheet-header pr-12">
-          <div className="text-[11px] uppercase tracking-[0.24em] text-[#cdb27a]">{ui("Tools")}</div>
-          <SheetTitle className="text-[22px] uppercase tracking-[0.18em] text-foreground">{ui("Add Card")}</SheetTitle>
+          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Tools")}</div>
+          <SheetTitle>{ui("Add Card")}</SheetTitle>
           <SheetDescription className="max-w-[34ch] text-[13px] leading-5">{ui("Inject a card directly into a player zone for testing and board setup.")}</SheetDescription>
         </SheetHeader>
 

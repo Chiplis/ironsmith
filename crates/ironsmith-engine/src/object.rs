@@ -255,6 +255,7 @@ pub(crate) struct CardSharedHandles {
     card_types: SharedVec<CardType>,
     subtypes: SharedVec<Subtype>,
     compiled_card_text: Arc<str>,
+    ability_labels: SharedVec<String>,
     other_face_name: Option<SharedStr>,
     abilities: Arc<Vec<Ability>>,
     spell_effect: Option<SharedValue<crate::resolution::ResolutionProgram>>,
@@ -274,6 +275,7 @@ impl CardSharedHandles {
             card_types: def.card.card_types.clone().into(),
             subtypes: def.card.subtypes.clone().into(),
             compiled_card_text: Object::compiled_display_text(def),
+            ability_labels: Object::display_ability_labels(def),
             other_face_name: def.card.other_face_name.clone().map(Into::into),
             abilities: Arc::new(def.abilities.clone()),
             spell_effect: shared_optional_value(def.spell_effect.clone()),
@@ -397,6 +399,12 @@ pub struct FaceDownCastState {
     pub card_types: SharedVec<CardType>,
     pub subtypes: SharedVec<Subtype>,
     pub compiled_card_text: Arc<str>,
+    /// The printed line each entry of `abilities` reads as, when known.
+    ///
+    /// Aligned one-to-one with `abilities`; empty when no alignment is known,
+    /// in which case `compiled_card_text` is consulted line by line only if it
+    /// has exactly one line per ability.
+    pub ability_labels: SharedVec<String>,
     pub rules_text_color_identity: ColorSet,
     pub base_power: Option<PtValue>,
     pub base_toughness: Option<PtValue>,
@@ -452,6 +460,12 @@ pub struct Object {
     pub card_types: SharedVec<CardType>,
     pub subtypes: SharedVec<Subtype>,
     pub compiled_card_text: Arc<str>,
+    /// The printed line each entry of `abilities` reads as, when known.
+    ///
+    /// Aligned one-to-one with `abilities`; empty when no alignment is known,
+    /// in which case `compiled_card_text` is consulted line by line only if it
+    /// has exactly one line per ability.
+    pub ability_labels: SharedVec<String>,
     pub rules_text_color_identity: ColorSet,
     /// Optional reference to another face for flip/DFC style cards.
     ///
@@ -596,6 +610,24 @@ impl Object {
         Arc::from(crate::runtime_display::compiled_text_lines(def).join("\n"))
     }
 
+    fn display_ability_labels(def: &crate::cards::CardDefinition) -> SharedVec<String> {
+        crate::runtime_display::definition_ability_labels(def).into()
+    }
+
+    /// The printed line ability `index` reads as, when the object knows it.
+    ///
+    /// Labels carried from the definition win; without them the compiled text
+    /// is indexed only when it has exactly one line per ability, since any
+    /// other shape would attribute a neighbour's wording to the ability.
+    pub fn ability_label(&self, index: usize) -> Option<String> {
+        crate::runtime_display::aligned_ability_label(
+            &self.ability_labels,
+            &self.compiled_card_text,
+            self.abilities.len(),
+            index,
+        )
+    }
+
     fn extend_unique<T: PartialEq + Clone>(base: &mut Vec<T>, extra: &[T]) {
         for item in extra {
             if !base.contains(item) {
@@ -661,6 +693,7 @@ impl Object {
             card_types: card.card_types.clone().into(),
             subtypes: card.subtypes.clone().into(),
             compiled_card_text: Arc::from(""),
+            ability_labels: Default::default(),
             rules_text_color_identity: card.rules_text_color_identity,
             other_face: card.other_face,
             other_face_name: card.other_face_name.clone().map(Into::into),
@@ -742,6 +775,7 @@ impl Object {
             card_types: Vec::new().into(),
             subtypes: Vec::new().into(),
             compiled_card_text: Arc::from(""),
+            ability_labels: Default::default(),
             rules_text_color_identity: ColorSet::COLORLESS,
             other_face: None,
             other_face_name: None,
@@ -844,6 +878,7 @@ impl Object {
         self.card_types = handles.card_types.clone();
         self.subtypes = handles.subtypes.clone();
         self.compiled_card_text = handles.compiled_card_text.clone();
+        self.ability_labels = handles.ability_labels.clone();
         self.rules_text_color_identity = def.card.rules_text_color_identity;
         self.other_face = def.card.other_face;
         self.other_face_name = handles.other_face_name.clone();
@@ -956,7 +991,7 @@ impl Object {
                 is_token: matches!(self.kind, ObjectKind::Token),
             },
             canonical_text: self.compiled_card_text.to_string(),
-            ability_labels: Vec::new(),
+            ability_labels: self.ability_labels.to_vec(),
             abilities: self.abilities_vec(),
             spell_effect: self.spell_effect_owned(),
             aura_attach_filter: self.aura_attach_filter_owned(),
@@ -996,6 +1031,7 @@ impl Object {
             card_types: card_types.into(),
             subtypes: subtypes.into(),
             compiled_card_text: Arc::from(""),
+            ability_labels: Default::default(),
             rules_text_color_identity: ColorSet::COLORLESS,
             other_face: None,
             other_face_name: None,
@@ -1066,6 +1102,7 @@ impl Object {
             card_types,
             subtypes,
             compiled_card_text: source.compiled_card_text.clone(),
+            ability_labels: source.ability_labels.clone(),
             rules_text_color_identity: source.rules_text_color_identity,
             other_face: source.other_face,
             other_face_name: source.other_face_name.clone(),
@@ -1137,6 +1174,7 @@ impl Object {
             card_types: source.card_types.clone(),
             subtypes: source.subtypes.clone(),
             compiled_card_text: source.compiled_card_text.clone(),
+            ability_labels: source.ability_labels.clone(),
             rules_text_color_identity: source.rules_text_color_identity,
             other_face: source.other_face,
             other_face_name: source.other_face_name.clone(),
@@ -1205,6 +1243,7 @@ impl Object {
             card_types: copiable.card_types.clone().into(),
             subtypes: copiable.subtypes.clone().into(),
             compiled_card_text: Arc::from(copiable.compiled_card_text.as_str()),
+            ability_labels: copiable.ability_labels.clone().into(),
             rules_text_color_identity: ColorSet::COLORLESS,
             other_face: snapshot.other_face,
             other_face_name: snapshot.other_face_name.clone().map(Into::into),
@@ -1272,6 +1311,7 @@ impl Object {
             card_types: Vec::new().into(),
             subtypes: Vec::new().into(),
             compiled_card_text: Arc::from(""),
+            ability_labels: Default::default(),
             rules_text_color_identity: ColorSet::COLORLESS,
             other_face: None,
             other_face_name: None,
@@ -1340,6 +1380,7 @@ impl Object {
         self.card_types = values.card_types.clone().into();
         self.subtypes = values.subtypes.clone().into();
         self.compiled_card_text = values.compiled_card_text.clone().into();
+        self.ability_labels = values.ability_labels.clone().into();
         self.base_power = values.power.map(PtValue::Fixed);
         self.base_toughness = values.toughness.map(PtValue::Fixed);
         self.base_loyalty = values.loyalty;
@@ -1515,6 +1556,7 @@ impl Object {
             card_types: self.card_types.clone(),
             subtypes: self.subtypes.clone(),
             compiled_card_text: self.compiled_card_text.clone(),
+            ability_labels: self.ability_labels.clone(),
             rules_text_color_identity: self.rules_text_color_identity,
             base_power: self.base_power,
             base_toughness: self.base_toughness,
@@ -1533,6 +1575,7 @@ impl Object {
         self.card_types = vec![CardType::Creature].into();
         self.subtypes.clear();
         self.compiled_card_text = Arc::from("");
+        self.ability_labels = Default::default();
         self.base_power = Some(PtValue::Fixed(2));
         self.base_toughness = Some(PtValue::Fixed(2));
         self.base_loyalty = None;
@@ -1573,6 +1616,7 @@ impl Object {
         self.card_types = restore.card_types;
         self.subtypes = restore.subtypes;
         self.compiled_card_text = restore.compiled_card_text;
+        self.ability_labels = restore.ability_labels;
         self.rules_text_color_identity = restore.rules_text_color_identity;
         self.base_power = restore.base_power;
         self.base_toughness = restore.base_toughness;
@@ -1940,6 +1984,7 @@ impl Object {
             card_types: handles.card_types.clone(),
             subtypes: handles.subtypes.clone(),
             compiled_card_text: handles.compiled_card_text.clone(),
+            ability_labels: handles.ability_labels.clone(),
             rules_text_color_identity: def.card.rules_text_color_identity,
             other_face: def.card.other_face,
             other_face_name: handles.other_face_name.clone(),

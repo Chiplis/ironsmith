@@ -31,7 +31,7 @@ const numberClass =
 const labelClass =
   "grid gap-1 text-[11px] uppercase tracking-[0.2em] text-muted-foreground";
 const sectionClass = "grid gap-2 border-t border-[rgba(205,180,132,0.16)] pt-3";
-const sectionTitleClass = "text-[11px] uppercase tracking-[0.24em] text-[#cdb27a]";
+const sectionTitleClass = "text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]";
 const toggleClass = "toolbar-checkbox flex items-center gap-2 text-[12px] uppercase tracking-wide";
 
 const ZONE_LABELS = {
@@ -154,7 +154,7 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
       <SheetContent side="center" className="fantasy-sheet random-game-sheet w-[min(94vw,620px)] p-0">
         <SheetHeader className="fantasy-sheet-header pr-12">
           <div className={sectionTitleClass}>{ui("Tools")}</div>
-          <SheetTitle className="text-[22px] uppercase tracking-[0.18em] text-foreground">{ui("Random Game")}</SheetTitle>
+          <SheetTitle>{ui("Random Game")}</SheetTitle>
           <SheetDescription className="max-w-[46ch] text-[13px] leading-5">{ui("Fill every player's zones with random cards. Only legal placements are generated, so spells never start on the battlefield.")}</SheetDescription>
           <Button
             type="button"

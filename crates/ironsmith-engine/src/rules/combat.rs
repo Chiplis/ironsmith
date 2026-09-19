@@ -777,6 +777,7 @@ mod tests {
             card_types: vec![CardType::Creature].into(),
             subtypes: vec![].into(),
             compiled_card_text: String::new().into(),
+            ability_labels: Default::default(),
             rules_text_color_identity: ColorSet::COLORLESS,
             other_face: None,
             other_face_name: None,

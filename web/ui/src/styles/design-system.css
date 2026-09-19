@@ -702,14 +702,14 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--card-frame-accent) 25%, transparent);
 }
 
-.interactive-card-frame__ability.inspector-oracle-line-action:disabled::before {
+.interactive-card-frame__ability.inspector-oracle-line-action:is(:disabled, [aria-disabled="true"])::before {
   border-color: rgba(43, 42, 38, 0.18);
   border-left-color: rgba(43, 42, 38, 0.34);
   background: rgba(255, 255, 255, 0.08);
   box-shadow: none;
 }
 
-.interactive-card-frame__ability.inspector-oracle-line-action:disabled {
+.interactive-card-frame__ability.inspector-oracle-line-action:is(:disabled, [aria-disabled="true"]) {
   opacity: 0.68;
 }
 
@@ -893,7 +893,7 @@
   box-shadow: inset 0 0 18px rgba(212, 164, 74, 0.07);
 }
 
-.inspector-oracle-line-action:disabled {
+.inspector-oracle-line-action:is(:disabled, [aria-disabled="true"]) {
   border-left-color: rgba(196, 183, 157, 0.2);
   color: inherit;
   background: rgba(255, 255, 255, 0.018);
@@ -901,7 +901,7 @@
   opacity: 0.72;
 }
 
-.inspector-oracle-line-action:disabled:hover {
+.inspector-oracle-line-action:is(:disabled, [aria-disabled="true"]):hover {
   border-left-color: rgba(196, 183, 157, 0.2);
   background: rgba(255, 255, 255, 0.018);
   box-shadow: none;
@@ -919,7 +919,7 @@
   text-transform: uppercase;
 }
 
-.inspector-oracle-line-action:disabled .inspector-oracle-line-action__label {
+.inspector-oracle-line-action:is(:disabled, [aria-disabled="true"]) .inspector-oracle-line-action__label {
   border-color: rgba(196, 183, 157, 0.25);
   color: rgba(196, 183, 157, 0.58);
 }
@@ -939,7 +939,7 @@
   color: #000;
 }
 
-.interactive-card-frame .interactive-card-frame__ability:disabled .inspector-oracle-line-action__label {
+.interactive-card-frame .interactive-card-frame__ability:is(:disabled, [aria-disabled="true"]) .inspector-oracle-line-action__label {
   border-color: rgba(43, 42, 38, 0.24);
   color: #000;
 }
@@ -1269,6 +1269,25 @@ select:focus-visible,
 .topbar-phase-status-dot {
   flex: 0 0 auto;
   color: rgba(214, 189, 143, 0.62);
+}
+
+/* The clocks ride at the end of the turn status, beside the perspective
+   picker: the mulligan prompt opens over the left of the toolbar and used to
+   cover them there. Slimmer than the standalone pill so the status row keeps
+   its height. */
+.topbar-phase-status .topbar-phase-clock {
+  min-height: 20px;
+  max-width: 340px;
+  padding: 2px 7px;
+  gap: 6px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  pointer-events: auto;
+}
+
+.topbar-phase-status .topbar-phase-clock svg {
+  width: 11px;
+  height: 11px;
 }
 
 .topbar-phase-perspective {
@@ -3967,13 +3986,13 @@ button:disabled,
 }
 .inspector-ability-section:is(
   [data-stack-highlighted="true"],
-  :has(> .inspector-oracle-line-action[data-available="true"]:not(:disabled):is(:hover, :focus-visible))
+  :has(> .inspector-oracle-line-action[data-available="true"]:not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible))
 ) {
   --ability-highlight-opacity: 1;
 }
 .inspector-ability-section:is(
   [data-stack-highlighted="true"],
-  :has(> .inspector-oracle-line-action[data-available="true"]:not(:disabled):is(:hover, :focus-visible))
+  :has(> .inspector-oracle-line-action[data-available="true"]:not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible))
 ) > .inspector-oracle-line-action {
   /* Selection describes the stack even when the activation is unavailable. */
   opacity: 1;
@@ -3983,7 +4002,7 @@ button:disabled,
 }
 .inspector-ability-section:is(
   [data-stack-highlighted="true"],
-  :has(> .inspector-oracle-line-action[data-available="true"]:not(:disabled):is(:hover, :focus-visible))
+  :has(> .inspector-oracle-line-action[data-available="true"]:not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible))
 ) > .interactive-card-frame__ability.inspector-oracle-line-action::before {
   opacity: 0;
 }

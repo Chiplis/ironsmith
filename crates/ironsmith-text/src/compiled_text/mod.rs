@@ -196,16 +196,88 @@ pub fn ability_surface_text(ability: &Ability) -> String {
 
 /// Render labels for the executable abilities on a definition.
 ///
-/// Prefer the canonical card lines when they map one-to-one to abilities. That
-/// keeps labels on the same normalized surface as compiled oracle text and
-/// avoids exposing a lower-level single-effect fallback in inspector UIs.
+/// A label is the printed line an ability came from, so the list is always as
+/// long as `def.abilities` and a runtime surface can name ability `i` with
+/// `labels[i]`. When the canonical lines map one-to-one onto the abilities the
+/// labels are those lines. Otherwise several abilities share one line (a pump
+/// static and two keyword grants compiled out of "gets +1/+1 and has trample
+/// and haste"), a line owns no ability at all (Class reminder text), or a
+/// marker static prints nothing; the line each ability belongs to is then
+/// recovered by rendering the definition one ability at a time and watching
+/// which line the newcomer changes. Only when that fails does an ability fall
+/// back to its own single-ability rendering.
 pub fn ability_surface_texts(def: &CardDefinition) -> Vec<String> {
     let canonical = compiled_text_lines(def);
     if canonical.len() == def.abilities.len() {
         return canonical;
     }
 
-    def.abilities.iter().map(ability_surface_text).collect()
+    printed_line_labels(def, &canonical)
+        .unwrap_or_else(|| def.abilities.iter().map(ability_surface_text).collect())
+}
+
+/// The printed line behind each ability of a definition whose lines and
+/// abilities are not one-to-one; `None` when the rendering is not stable under
+/// truncation, so nothing could be attributed with confidence.
+fn printed_line_labels(def: &CardDefinition, canonical: &[String]) -> Option<Vec<String>> {
+    if def.abilities.is_empty() || canonical.is_empty() {
+        return None;
+    }
+    let render_prefix = |count: usize| {
+        let mut prefix = def.clone();
+        prefix.abilities.truncate(count);
+        prefix.ability_labels.clear();
+        compiled_text_lines(&prefix)
+    };
+    let mut previous = render_prefix(0);
+    let mut owners: Vec<Option<usize>> = Vec::with_capacity(def.abilities.len());
+    for count in 1..=def.abilities.len() {
+        let lines = render_prefix(count);
+        owners.push(changed_line_index(&previous, &lines));
+        previous = lines;
+    }
+    if previous != canonical {
+        return None;
+    }
+
+    // An ability that changed nothing visible (a marker static, an ability
+    // folded into a neighbour's wording) belongs with the next attributed
+    // line, or the previous one when it is last.
+    let mut resolved = vec![0usize; owners.len()];
+    let mut next_owner = None;
+    for index in (0..owners.len()).rev() {
+        if let Some(line) = owners[index] {
+            next_owner = Some(line);
+        }
+        resolved[index] = match next_owner {
+            Some(line) => line,
+            None => owners[..index]
+                .iter()
+                .rev()
+                .find_map(|owner| *owner)
+                .unwrap_or(0),
+        };
+    }
+    Some(
+        resolved
+            .into_iter()
+            .map(|line| canonical[line.min(canonical.len() - 1)].clone())
+            .collect(),
+    )
+}
+
+/// The first line that differs after one more ability is rendered: where a
+/// new line was inserted, or where an existing line absorbed the ability.
+fn changed_line_index(before: &[String], after: &[String]) -> Option<usize> {
+    if before == after || after.is_empty() {
+        return None;
+    }
+    let shared = before
+        .iter()
+        .zip(after)
+        .take_while(|(old, new)| old == new)
+        .count();
+    Some(shared.min(after.len() - 1))
 }
 
 fn substitute_spell_caster_source_reference(line: &str, def: &CardDefinition) -> String {
@@ -3166,6 +3238,62 @@ mod tests {
             crate::compiled_text::render_effects::describe_effect_clause_list(&effects).as_deref(),
             Some(expected)
         );
+    }
+
+    #[test]
+    fn ability_labels_name_the_printed_line_behind_each_ability() {
+        let text = "Equipped creature gets +1/+1 and has trample and haste.\nEquip {1}{R}";
+        let definition =
+            crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Cutter Probe")
+                .card_types(vec![CardType::Artifact])
+                .subtypes(vec![Subtype::Equipment])
+                .parse_text(text)
+                .expect("the equipment should compile");
+        let lines = compiled_text_lines(&definition);
+        let labels = ability_surface_texts(&definition);
+        assert!(
+            definition.abilities.len() > lines.len(),
+            "the probe must compile to more abilities than printed lines: {lines:?}"
+        );
+        assert_eq!(labels.len(), definition.abilities.len());
+        for label in &labels {
+            assert!(
+                lines.contains(label),
+                "{label:?} is not a printed line of {lines:?}"
+            );
+        }
+        assert_eq!(labels.last().map(String::as_str), Some("Equip {1}{R}"));
+        assert!(
+            labels[..labels.len() - 1]
+                .iter()
+                .all(|label| *label == lines[0]),
+            "every static shares the pump sentence: {labels:?}"
+        );
+    }
+
+    #[test]
+    fn ability_labels_skip_reminder_lines_no_ability_owns() {
+        let text = "When this Class enters, create a 1/1 blue and red Otter creature token with prowess.\n{3}{U}: Level 2\nWhen this Class becomes level 2, return target instant or sorcery card from your graveyard to your hand.";
+        let definition =
+            crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Class Probe")
+                .card_types(vec![CardType::Enchantment])
+                .subtypes(vec![Subtype::Class])
+                .parse_text(text)
+                .expect("the class should compile");
+        let lines = compiled_text_lines(&definition);
+        let labels = ability_surface_texts(&definition);
+        assert!(
+            lines
+                .first()
+                .is_some_and(|line| line.starts_with("(Gain the next level")),
+            "class reminder text leads the printed lines: {lines:?}"
+        );
+        assert_eq!(labels.len(), definition.abilities.len());
+        assert!(
+            !labels.iter().any(|label| label.starts_with('(')),
+            "no ability owns the reminder line: {labels:?}"
+        );
+        assert_eq!(labels, lines[1..].to_vec());
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

@@ -9,6 +9,11 @@ export const MANABREW_HAND_CARD_BASE = {
 export const MANABREW_HAND_FAN_PARAMS = {
   arcRadius: 900,
   maxArcDeg: 30,
+  // The hover zoom is derived from the frame renderer's layout size rather than
+  // fixed here; this is only the value CSS falls back to before the hand has
+  // published its own. The lift stays fixed: hand cards scale from their bottom
+  // edge, so a bigger zoom already grows upwards on its own, and lifting further
+  // would slide the enlarged card out from under the pointer that opened it.
   hoverScale: 1.78,
   hoverLift: 58,
   neighborPush: 92,
@@ -38,4 +43,15 @@ function subscribe(callback) {
 
 export default function useManabrewHandScale(fullscreen = false) {
   return useSyncExternalStore(subscribe, () => currentScale(fullscreen), () => 1);
+}
+
+// The resting fan is sized off the window's width alone, but the hover zoom is
+// also capped by its height, so that cap needs its own subscription to survive
+// a window that only got shorter.
+export function useViewportHeight() {
+  return useSyncExternalStore(
+    subscribe,
+    () => (typeof window === "undefined" ? 0 : window.innerHeight),
+    () => 0,
+  );
 }

@@ -31,7 +31,7 @@ export default function LogDrawer({ open, onOpenChange }) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="fantasy-sheet fantasy-sheet--log w-[min(92vw,400px)]">
         <SheetHeader className="fantasy-sheet-header pr-12">
-          <SheetTitle className="text-[22px] tracking-[0.08em] text-foreground">{ui("Game Log")}</SheetTitle>
+          <SheetTitle>{ui("Game Log")}</SheetTitle>
           <div className="fantasy-log-toolbar">
             <span className="fantasy-sheet-subtitle text-[13px]">
               {visibleEntries.length}{" " + ui("of") + " "}{logEntries.length}{" " + ui("recent entries")}</span>

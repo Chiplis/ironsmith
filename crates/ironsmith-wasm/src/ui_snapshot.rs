@@ -1538,12 +1538,48 @@ fn current_ability_surface_texts_for_battlefield(
         return current_lines;
     }
 
-    // Ability additions do not rewrite compiled_card_text. Preserve printed
-    // lines from the object or a borrowed source, then render any ability
-    // without a canonical origin through the lightweight runtime surface.
-    (0..current.abilities.len())
+    // Ability additions do not rewrite compiled_card_text. Each current
+    // ability reads as its printed line (its own, or a borrowed source's) or,
+    // without a canonical origin, as the lightweight runtime wording.
+    let texts: Vec<String> = (0..current.abilities.len())
         .map(|index| current_indexed_ability_surface_text(game, object, current, index))
-        .collect()
+        .collect();
+
+    // Walk the printed text in order. A line some current ability reads as is
+    // printed where it stands, once, however many abilities share it. A line
+    // no ability ever owned (Class reminder text) is kept in place; a line
+    // whose ability the object no longer has is dropped. Whatever is left,
+    // the granted abilities, follows in ability order.
+    let printed_owned = |line: &str| {
+        object
+            .ability_labels
+            .iter()
+            .any(|label| label.trim() == line)
+    };
+    let labels_known =
+        object.ability_labels.len() == object.abilities.len() && !object.ability_labels.is_empty();
+    let mut emitted = vec![false; texts.len()];
+    let mut lines = Vec::with_capacity(current_lines.len() + texts.len());
+    for line in &current_lines {
+        let mut owned = false;
+        for (index, text) in texts.iter().enumerate() {
+            if !emitted[index] && text == line {
+                emitted[index] = true;
+                owned = true;
+            }
+        }
+        if owned || !labels_known || !printed_owned(line) {
+            lines.push(line.clone());
+        }
+    }
+    lines.extend(
+        texts
+            .into_iter()
+            .zip(emitted)
+            .filter(|(_, emitted)| !emitted)
+            .map(|(text, _)| text),
+    );
+    ironsmith::runtime_display::dedupe_consecutive_lines(lines)
 }
 
 /// Presentation text for one ability of an object's current characteristics.
@@ -3084,7 +3120,11 @@ pub(super) fn build_object_details_snapshot(
         let current_abilities = game
             .current_abilities(id)
             .unwrap_or_else(|| obj.abilities_vec());
-        ironsmith::runtime_display::current_ability_surface_texts(&current_abilities, definition)
+        ironsmith::runtime_display::object_ability_surface_texts(
+            obj,
+            &current_abilities,
+            definition,
+        )
     };
     let oracle_text = if abilities.is_empty() {
         obj.compiled_card_text.to_string()
@@ -3302,6 +3342,105 @@ mod tests {
         assert_eq!(encoded["abilities"], serde_json::json!(["Lifelink"]));
     }
 
+    fn equipment_shaped_definition() -> ironsmith::cards::CardDefinition {
+        // Three statics compiled out of one printed sentence plus an activated
+        // ability on a line of its own: more abilities than printed lines.
+        let mut definition = CardDefinitionBuilder::new(CardId::from_raw(92_001), "Cutter Probe")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::static_ability(StaticAbility::trample()))
+            .with_ability(Ability::static_ability(StaticAbility::haste()))
+            .with_ability(Ability::static_ability(StaticAbility::flying()))
+            .with_ability(Ability::activated(
+                ironsmith::TotalCost::from_cost(Cost::remove_counters(
+                    CounterType::PlusOnePlusOne,
+                    1,
+                )),
+                vec![Effect::deal_damage(1, ChooseSpec::AnyTarget)],
+            ))
+            .build();
+        definition.canonical_text = "(Reminder text stands on its own.)\nEquipped creature gets +1/+1 and has trample and haste.\nEquip {1}{R}".to_string();
+        definition.ability_labels = vec![
+            "Equipped creature gets +1/+1 and has trample and haste.".to_string(),
+            "Equipped creature gets +1/+1 and has trample and haste.".to_string(),
+            "Equipped creature gets +1/+1 and has trample and haste.".to_string(),
+            "Equip {1}{R}".to_string(),
+        ];
+        definition
+    }
+
+    #[test]
+    fn battlefield_surface_keeps_printed_lines_when_abilities_outnumber_them() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let definition = equipment_shaped_definition();
+        let object_id = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                object_id,
+                alice,
+                EffectTarget::Specific(object_id),
+                Modification::AddAbility(StaticAbility::lifelink()),
+            ));
+
+        let object = game.object(object_id).expect("object should exist");
+        let current = game
+            .calculated_characteristics(object_id)
+            .expect("current characteristics should exist");
+        assert_ne!(
+            current.abilities.len(),
+            3,
+            "the granted ability changes the list"
+        );
+
+        // Each printed line once, the reminder line in place, the grant last:
+        // never a neighbour's wording and never the ability's structure.
+        assert_eq!(
+            current_ability_surface_texts_for_battlefield(&game, object, Some(&current)),
+            vec![
+                "(Reminder text stands on its own.)",
+                "Equipped creature gets +1/+1 and has trample and haste.",
+                "Equip {1}{R}",
+                "Lifelink",
+            ]
+        );
+        assert_eq!(
+            current_indexed_ability_surface_text(&game, object, &current, 3),
+            "Equip {1}{R}"
+        );
+        for index in 0..current.abilities.len() {
+            let text = current_indexed_ability_surface_text(&game, object, &current, index);
+            assert!(
+                !ironsmith::runtime_display::effect_sentences::looks_like_compiled_structure(&text),
+                "ability {index} reads as structure: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn object_details_share_one_line_between_abilities_off_the_battlefield() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let definition = equipment_shaped_definition();
+        let object_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
+        let details = build_object_details_snapshot(&game, object_id, Some(&definition))
+            .expect("details should build");
+        assert_eq!(
+            details.abilities,
+            vec![
+                "Equipped creature gets +1/+1 and has trample and haste.",
+                "Equip {1}{R}",
+            ]
+        );
+        assert!(
+            !ironsmith::runtime_display::effect_sentences::looks_like_compiled_structure(
+                &details.oracle_text
+            ),
+            "{}",
+            details.oracle_text
+        );
+    }
+
     #[test]
     fn battlefield_snapshot_includes_copied_activated_ability() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -3486,7 +3625,9 @@ mod tests {
             copied_ability.effects.flattened_default_effects(),
         );
         assert_eq!(
-            prompt_text.as_deref().map(|text| text.trim_end_matches('.')),
+            prompt_text
+                .as_deref()
+                .map(|text| text.trim_end_matches('.')),
             Some(refreshed_surface[copied_index].trim_end_matches('.')),
             "a prompt for the copied ability should quote the lending card's sentence"
         );
@@ -4857,7 +4998,10 @@ mod mana_payment_preview {
                 "{2}{U}",
                 vec![vec![ManaSymbol::Generic(2)], vec![ManaSymbol::Blue]],
             ),
-            ("{R}{G}", vec![vec![ManaSymbol::Red], vec![ManaSymbol::Green]]),
+            (
+                "{R}{G}",
+                vec![vec![ManaSymbol::Red], vec![ManaSymbol::Green]],
+            ),
             ("{B/G}", vec![vec![ManaSymbol::Black, ManaSymbol::Green]]),
         ]
     }

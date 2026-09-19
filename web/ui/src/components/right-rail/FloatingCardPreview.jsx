@@ -13,7 +13,6 @@ import HoverArtOverlay from "./HoverArtOverlay";
 import useDisplayedCardImage from "@/hooks/useDisplayedCardImage";
 import { cardArtCropUrl } from "@/lib/card-image-variants";
 import { prepareCardFrame } from "@/lib/card-frame-preparation";
-import { cardNeedsFrame } from '@/lib/card-frame-scope';
 import { resolveScryfallImageUrl } from "@/lib/scryfall";
 import { playerAccentVars } from "@/lib/player-colors";
 import { samePlayerId } from "@/lib/player-display";
@@ -415,7 +414,11 @@ export default function FloatingCardPreview({
   }, [requestedObjectId, state]);
   const preparationName = preparationCard?.name;
   const preparationType = preparationCard?.type_line;
-  const shouldPrepareFrame = cardNeedsFrame(state, requestedObjectId);
+  // Every card this surface shows is presented as a frame, whatever zone it
+  // came from: a stack source, a graveyard or exile card gets the same live
+  // rendering a battlefield card does, rather than a printing with a separate
+  // details panel over it.
+  const shouldPrepareFrame = Boolean(preparationCard);
   const isStackSource = id => id != null && id === lockedObjectId
     && getVisibleStackObjects(state).some(entry => String(entry.id) === id);
   const requestedImageUrl = useDisplayedCardImage(requestedObjectId, isStackSource(requestedObjectId));
@@ -614,7 +617,7 @@ export default function FloatingCardPreview({
             ? getVisibleStackObjects(state).find(entry => String(entry.id) === String(pinnedObjectId))
             : null}
           displayMode="card-frame"
-          enableFramePreparation={cardNeedsFrame(state, renderedObjectId)}
+          enableFramePreparation
           sourceImageUrl={renderedImageUrl}
           availableInspectorWidth={size.width}
           availableInspectorHeight={size.height}

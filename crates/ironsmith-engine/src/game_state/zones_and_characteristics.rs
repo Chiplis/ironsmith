@@ -3265,6 +3265,7 @@ impl GameState {
                     name: object.name.clone(),
                     mana_cost: object.mana_cost_owned(),
                     compiled_card_text: object.compiled_card_text.clone(),
+                    ability_labels: object.ability_labels.clone(),
                     power: object.power(),
                     toughness: object.toughness(),
                     card_types: object.card_types.clone(),

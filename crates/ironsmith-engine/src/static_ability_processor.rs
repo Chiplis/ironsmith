@@ -327,9 +327,13 @@ fn source_abilities(
                 game.commander_objects(),
                 game,
             )
-            .map(|chars| TextBoxOverlay::new(chars.compiled_card_text, chars.abilities))
+            .map(|chars| {
+                TextBoxOverlay::new(chars.compiled_card_text, chars.abilities)
+                    .with_ability_labels(chars.ability_labels)
+            })
             .unwrap_or_else(|| {
                 TextBoxOverlay::new(object.compiled_card_text.clone(), object.abilities_vec())
+                    .with_ability_labels(object.ability_labels.clone())
             })
         });
         overlay.abilities.clone()
@@ -699,7 +703,11 @@ mod tests {
             ];
             // The gate now lives in `append_late_static_effects`, which decides
             // which recipients are worth a characteristic calculation at all.
-            assert!(!registered.iter().any(registered_grant_may_emit_late_effects));
+            assert!(
+                !registered
+                    .iter()
+                    .any(registered_grant_may_emit_late_effects)
+            );
             let mut sources = vec![SourceStaticEffectEntry {
                 object_id: source,
                 abilities: Vec::new(),

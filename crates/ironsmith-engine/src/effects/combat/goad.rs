@@ -199,6 +199,7 @@ mod tests {
                 card_types: Vec::new(),
                 subtypes: Vec::new(),
                 compiled_card_text: String::new(),
+                ability_labels: Vec::new(),
                 other_face: None,
                 other_face_name: None,
                 linked_face_layout: crate::card::LinkedFaceLayout::None,

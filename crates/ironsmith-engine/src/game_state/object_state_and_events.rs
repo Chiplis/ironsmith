@@ -1733,18 +1733,38 @@ impl GameState {
     }
 
     /// Store a hidden choice on this exact object, without publishing it as a characteristic.
-    pub fn set_secret_chosen_subtype(&mut self, source: ObjectId, chooser: PlayerId, subtype: crate::types::Subtype) {
-        self.choice_store_mut().secret_chosen_subtypes.insert(source, (chooser, subtype));
+    pub fn set_secret_chosen_subtype(
+        &mut self,
+        source: ObjectId,
+        chooser: PlayerId,
+        subtype: crate::types::Subtype,
+    ) {
+        self.choice_store_mut()
+            .secret_chosen_subtypes
+            .insert(source, (chooser, subtype));
     }
 
-    pub(crate) fn secret_subtype_snapshot(&self, source: ObjectId) -> Option<(PlayerId, crate::types::Subtype)> {
-        self.choice_store.secret_chosen_subtypes.get(&source).copied()
+    pub(crate) fn secret_subtype_snapshot(
+        &self,
+        source: ObjectId,
+    ) -> Option<(PlayerId, crate::types::Subtype)> {
+        self.choice_store
+            .secret_chosen_subtypes
+            .get(&source)
+            .copied()
     }
 
     /// A hidden choice can be inspected only by the player who made it.
-    pub fn secret_chosen_subtype(&self, source: ObjectId, viewer: PlayerId) -> Option<crate::types::Subtype> {
-        self.choice_store.secret_chosen_subtypes.get(&source)
-            .filter(|(chooser, _)| *chooser == viewer).map(|(_, subtype)| *subtype)
+    pub fn secret_chosen_subtype(
+        &self,
+        source: ObjectId,
+        viewer: PlayerId,
+    ) -> Option<crate::types::Subtype> {
+        self.choice_store
+            .secret_chosen_subtypes
+            .get(&source)
+            .filter(|(chooser, _)| *chooser == viewer)
+            .map(|(_, subtype)| *subtype)
     }
 
     /// Get a chosen creature type for a permanent, if any.
@@ -2294,8 +2314,13 @@ impl GameState {
         let mut all_optional_costs = Vec::new();
         let mut all_temporary_grants = Vec::new();
         let mut merged_text = Vec::new();
+        let mut merged_labels = Vec::new();
+        let mut labels_aligned = true;
         for component in &state.components {
             all_abilities.extend(component.object.abilities.iter().cloned());
+            labels_aligned &=
+                component.object.ability_labels.len() == component.object.abilities.len();
+            merged_labels.extend(component.object.ability_labels.iter().cloned());
             all_alternative_casts.extend(component.object.alternative_casts.iter().cloned());
             all_optional_costs.extend(component.object.optional_costs.iter().cloned());
             all_temporary_grants.extend(
@@ -2323,6 +2348,11 @@ impl GameState {
         permanent.card_types = top.card_types;
         permanent.subtypes = top.subtypes;
         permanent.compiled_card_text = std::sync::Arc::from(merged_text.join("\n"));
+        permanent.ability_labels = if labels_aligned {
+            merged_labels.into()
+        } else {
+            Default::default()
+        };
         permanent.rules_text_color_identity = top.rules_text_color_identity;
         permanent.other_face = top.other_face;
         permanent.other_face_name = top.other_face_name;

@@ -1,0 +1,788 @@
+/* Flat modal chrome.
+ *
+ * The Load Decks workspace was rebuilt as a flat, near-black surface: no
+ * gradients, no parchment, no rune ornaments, square corners, and colour
+ * carried by fill rather than by borders. This file takes that same language
+ * and gives it to every modal in the app, so a sheet no longer switches
+ * visual vocabulary depending on which button opened it.
+ *
+ * It loads after design-system.css and deliberately leans on `!important`:
+ * the fantasy chrome it replaces is itself written that way, in board-theme.css
+ * and design-system.css, and those rules are still wanted everywhere that is
+ * not a modal.
+ */
+
+[data-slot="sheet-content"] {
+  --flat-bg: #08090a;
+  --flat-panel: #0e0f11;
+  --flat-inset: #131418;
+  --flat-well: #050607;
+  --flat-well-focus: #101114;
+  --flat-control: #17181b;
+  --flat-control-hover: #232429;
+  --flat-hover: #1d1e22;
+  --flat-gold: #2e2416;
+  --flat-gold-hover: #3d2f1c;
+  --flat-ink: #e7d9bc;
+  --flat-ink-bright: #f2d9a3;
+  --flat-ink-head: #d8bf7a;
+  --flat-ink-soft: #b8aa8e;
+  --flat-ink-mute: #8b806b;
+  --flat-ink-faint: #6f6759;
+  --flat-ink-off: #5b5449;
+  --flat-rule: rgba(216, 191, 122, 0.12);
+  --flat-danger-ink: #f0a9a0;
+  --flat-danger-fill: #2b1114;
+
+  /* Re-point the shared design tokens inside a modal. Anything already
+     written against them lands on the flat palette without being restated. */
+  --ui-surface-canvas: var(--flat-well);
+  --ui-surface-table: var(--flat-panel);
+  --ui-surface-raised: var(--flat-inset);
+  --ui-surface-control: var(--flat-control);
+  --ui-border-subtle: var(--flat-rule);
+  --ui-border-strong: rgba(216, 191, 122, 0.22);
+  --ui-text-primary: var(--flat-ink);
+  --ui-text-secondary: var(--flat-ink-soft);
+  --ui-text-muted: var(--flat-ink-mute);
+  --ui-action: var(--flat-ink-head);
+  --ui-action-hover: var(--flat-ink-bright);
+  --ui-radius-control: 2px;
+  --ui-radius-panel: 0px;
+  --ui-shadow-panel: 0 24px 64px rgba(0, 0, 0, 0.62);
+}
+
+/* --- shell ---------------------------------------------------------- */
+
+[data-slot="sheet-overlay"] {
+  background: rgba(3, 4, 5, 0.74);
+  backdrop-filter: blur(3px);
+}
+
+[data-slot="sheet-content"],
+[data-slot="sheet-content"].fantasy-sheet {
+  border: 0 !important;
+  border-radius: 0 !important;
+  color: var(--flat-ink) !important;
+  background: var(--flat-bg) !important;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.62) !important;
+}
+
+[data-slot="sheet-content"][data-side="center"] {
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+
+/* The parchment sheet painted runes and a knotwork band over its top corners.
+   A flat surface has no ornament. */
+[data-slot="sheet-content"].fantasy-sheet::before {
+  content: none !important;
+}
+
+/* --- header --------------------------------------------------------- */
+
+[data-slot="sheet-header"],
+.fantasy-sheet .fantasy-sheet-header {
+  padding: 16px 56px 14px 16px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--flat-rule) !important;
+  background: var(--flat-panel) !important;
+  box-shadow: none !important;
+}
+
+/* Titles follow the workspace: the UI sans, uppercase and tracked, not the
+   display serif the parchment sheets used. */
+[data-slot="sheet-content"] [data-slot="sheet-title"],
+[data-slot="sheet-content"] .fantasy-sheet-title {
+  font-family: var(--ironsmith-ui-font, "Rajdhani"), system-ui, sans-serif !important;
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  line-height: 1.2 !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+  color: var(--flat-ink-bright) !important;
+}
+
+[data-slot="sheet-content"] [data-slot="sheet-description"],
+.fantasy-sheet [data-slot="sheet-description"],
+[data-slot="sheet-content"] .fantasy-sheet-subtitle,
+.fantasy-sheet .text-muted-foreground {
+  color: var(--flat-ink-mute) !important;
+  font-size: 12px !important;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+/* The eyebrow over each title ("Tools", "Multiplayer", "Audit"...). */
+[data-slot="sheet-header"] > div:first-child:not([data-slot]),
+[data-slot="sheet-content"] .verify-match-eyebrow {
+  color: var(--flat-ink-head) !important;
+  font-size: 10px !important;
+  font-weight: 700;
+  letter-spacing: 0.16em !important;
+  text-transform: uppercase;
+}
+
+[data-slot="sheet-close-button"] {
+  top: 10px !important;
+  right: 10px !important;
+  border-radius: 2px !important;
+  color: var(--flat-ink-mute) !important;
+  background: transparent !important;
+}
+
+[data-slot="sheet-close-button"]:hover {
+  color: var(--flat-ink-bright) !important;
+  background: var(--flat-hover) !important;
+}
+
+/* --- panels and rows ------------------------------------------------ */
+
+[data-slot="sheet-content"] :is(
+  .fantasy-sheet-section,
+  .settings-sheet-section,
+  .lobby-sheet-panel,
+  .setup-editor,
+  .diagnostics-panel
+) {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: var(--flat-panel) !important;
+  box-shadow: none !important;
+}
+
+/* Settings keeps its list-of-rules shape; only the rule colour changes. */
+.settings-sheet .settings-sheet-section {
+  border-top: 1px solid var(--flat-rule) !important;
+  background: transparent !important;
+}
+
+.settings-sheet .settings-sheet-section:first-child {
+  border-top: 0 !important;
+}
+
+[data-slot="sheet-content"] :is(
+  .fantasy-sheet-stat,
+  .lobby-sheet-player-row,
+  .lobby-sheet-status,
+  .fantasy-log-entry,
+  .decklist-row
+) {
+  border: 0 !important;
+  border-radius: 0 !important;
+  color: var(--flat-ink) !important;
+  background: var(--flat-inset) !important;
+  box-shadow: none !important;
+}
+
+.settings-sheet .fantasy-sheet-stat {
+  border-bottom: 1px solid var(--flat-rule) !important;
+  background: transparent !important;
+}
+
+[data-slot="sheet-content"] .lobby-sheet-status.is-error {
+  color: var(--flat-danger-ink) !important;
+  background: var(--flat-danger-fill) !important;
+}
+
+[data-slot="sheet-content"] .lobby-sheet-code {
+  color: var(--flat-ink-bright) !important;
+  text-shadow: none !important;
+}
+
+[data-slot="sheet-content"] .decklist-section-heading {
+  border-bottom: 1px solid var(--flat-rule) !important;
+  color: var(--flat-ink-head) !important;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+[data-slot="sheet-content"] .decklist-section-heading h3 {
+  color: var(--flat-ink-head) !important;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+[data-slot="sheet-content"] .decklist-row > :first-child {
+  color: var(--flat-ink-head) !important;
+}
+
+[data-slot="sheet-content"] .decklist-empty {
+  color: var(--flat-ink-mute) !important;
+}
+
+/* The sticky footer used to fade the parchment out under it. */
+[data-slot="sheet-content"] .add-card-sheet-footer {
+  border-top: 1px solid var(--flat-rule);
+  background: var(--flat-bg) !important;
+}
+
+/* --- fields --------------------------------------------------------- */
+
+[data-slot="sheet-content"] :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+[data-slot="sheet-content"] .fantasy-field {
+  border: 0 !important;
+  border-radius: 2px !important;
+  color: var(--flat-ink) !important;
+  background-color: var(--flat-well) !important;
+  background-image: none;
+  box-shadow: none !important;
+  clip-path: none !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+
+[data-slot="sheet-content"] :is(input, textarea):not([type="checkbox"]):not([type="radio"]):not([type="color"]):focus,
+[data-slot="sheet-content"] .fantasy-field:focus {
+  border: 0 !important;
+  background-color: var(--flat-well-focus) !important;
+  box-shadow: none !important;
+}
+
+[data-slot="sheet-content"] :is(input, textarea)::placeholder {
+  color: var(--flat-ink-faint) !important;
+  opacity: 1;
+}
+
+[data-slot="sheet-content"] select option,
+[data-slot="sheet-content"] .fantasy-field option {
+  color: var(--flat-ink);
+  background: var(--flat-panel);
+}
+
+[data-slot="sheet-content"] label {
+  color: var(--flat-ink-mute) !important;
+  letter-spacing: 0.02em !important;
+}
+
+/* --- buttons -------------------------------------------------------- */
+
+[data-slot="sheet-content"] [data-slot="button"] {
+  border: 0 !important;
+  border-radius: 2px !important;
+  text-transform: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+[data-slot="sheet-content"] [data-slot="button"][data-variant="ghost"],
+[data-slot="sheet-content"] [data-slot="button"][data-variant="outline"],
+[data-slot="sheet-content"] [data-slot="button"][data-variant="secondary"],
+[data-slot="sheet-content"] .stone-pill,
+[data-slot="sheet-content"] .fantasy-sheet-badge,
+.fantasy-sheet .stone-pill,
+.fantasy-sheet [data-slot="button"][data-variant="secondary"],
+.fantasy-sheet [data-slot="badge"][data-variant="secondary"],
+.fantasy-sheet .fantasy-sheet-badge {
+  border: 0 !important;
+  border-radius: 2px !important;
+  color: var(--flat-ink-soft) !important;
+  background: var(--flat-control) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  clip-path: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+}
+
+[data-slot="sheet-content"] [data-slot="button"][data-variant="ghost"]:hover:not(:disabled),
+[data-slot="sheet-content"] [data-slot="button"][data-variant="outline"]:hover:not(:disabled),
+[data-slot="sheet-content"] [data-slot="button"][data-variant="secondary"]:hover:not(:disabled),
+[data-slot="sheet-content"] .stone-pill:hover:not(:disabled),
+[data-slot="sheet-content"] .fantasy-sheet-badge:hover,
+.fantasy-sheet .stone-pill:hover:not(:disabled),
+.fantasy-sheet [data-slot="button"][data-variant="secondary"]:hover:not(:disabled),
+.fantasy-sheet [data-slot="badge"][data-variant="secondary"]:hover,
+.fantasy-sheet .fantasy-sheet-badge:hover {
+  border: 0 !important;
+  color: var(--flat-ink) !important;
+  background: var(--flat-control-hover) !important;
+  background-image: none !important;
+}
+
+/* The old settings sheet left its pills unfilled so they read as list rows.
+   The flat language fills every control, so they take the same chip as the
+   rest of the modals; only the inline stat badges stay as plain text. */
+.settings-sheet .fantasy-sheet-badge {
+  background: transparent !important;
+}
+
+[data-slot="sheet-content"] .stone-pill.settings-reset-button,
+.fantasy-sheet .stone-pill.settings-reset-button {
+  border: 0 !important;
+  color: var(--flat-danger-ink) !important;
+  background: var(--flat-danger-fill) !important;
+}
+
+/* The one gold call to action per sheet. */
+[data-slot="sheet-content"] :is(
+  [data-slot="button"][data-variant="default"],
+  [data-slot="button"].ui-primary-action,
+  .ui-primary-action
+) {
+  border: 0 !important;
+  border-radius: 2px !important;
+  color: var(--flat-ink-bright) !important;
+  background: var(--flat-gold) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+[data-slot="sheet-content"] :is(
+  [data-slot="button"][data-variant="default"],
+  [data-slot="button"].ui-primary-action,
+  .ui-primary-action
+):hover:not(:disabled) {
+  color: var(--flat-ink-bright) !important;
+  background: var(--flat-gold-hover) !important;
+}
+
+[data-slot="sheet-content"] [data-slot="button"][data-variant="destructive"] {
+  color: var(--flat-danger-ink) !important;
+  background: var(--flat-danger-fill) !important;
+}
+
+[data-slot="sheet-content"] :is([data-slot="button"], .stone-pill):disabled,
+[data-slot="sheet-content"] :is([data-slot="button"], .stone-pill)[aria-disabled="true"] {
+  color: var(--flat-ink-off) !important;
+  background: #111214 !important;
+  opacity: 1 !important;
+}
+
+/* --- small controls ------------------------------------------------- */
+
+[data-slot="sheet-content"] [data-slot="badge"] {
+  border: 0 !important;
+  border-radius: 2px !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+[data-slot="sheet-content"] [role="tablist"] {
+  gap: 4px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+[data-slot="sheet-content"] [role="tab"] {
+  border: 0 !important;
+  border-radius: 2px !important;
+  color: var(--flat-ink-faint) !important;
+  background: var(--flat-control) !important;
+  box-shadow: none !important;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+[data-slot="sheet-content"] [role="tab"]:hover:not([data-state="active"]) {
+  color: var(--flat-ink) !important;
+  background: var(--flat-hover) !important;
+}
+
+[data-slot="sheet-content"] [role="tab"][data-state="active"],
+[data-slot="sheet-content"] [role="tab"][aria-selected="true"] {
+  color: var(--flat-ink-bright) !important;
+  background: var(--flat-gold) !important;
+}
+
+[data-slot="sheet-content"] :is([role="checkbox"], [role="radio"]) {
+  border: 1px solid var(--flat-ink-off) !important;
+  border-radius: 2px !important;
+  background: var(--flat-well) !important;
+  box-shadow: none !important;
+}
+
+[data-slot="sheet-content"] :is([role="checkbox"], [role="radio"])[data-state="checked"] {
+  border-color: var(--flat-ink-head) !important;
+  color: var(--flat-ink-bright) !important;
+  background: var(--flat-gold) !important;
+}
+
+[data-slot="sheet-content"] [data-slot="slider-track"] {
+  background: var(--flat-well) !important;
+}
+
+[data-slot="sheet-content"] [data-slot="slider-range"] {
+  background: var(--flat-ink-head) !important;
+}
+
+[data-slot="sheet-content"] [data-slot="slider-thumb"] {
+  border: 0 !important;
+  background: var(--flat-ink-bright) !important;
+  box-shadow: none !important;
+}
+
+[data-slot="sheet-content"] hr,
+[data-slot="sheet-content"] [data-slot="separator"] {
+  border-color: var(--flat-rule) !important;
+  background-color: var(--flat-rule) !important;
+}
+
+[data-slot="sheet-content"] {
+  scrollbar-color: #2a2b30 transparent;
+}
+
+/* --- log drawer ----------------------------------------------------- */
+
+[data-slot="sheet-content"] .fantasy-log-entry {
+  border-left: 2px solid var(--flat-gold-hover) !important;
+  border-bottom: 1px solid var(--flat-rule) !important;
+  background: transparent !important;
+}
+
+[data-slot="sheet-content"] .fantasy-log-entry--error {
+  border-left-color: #7d302f !important;
+  color: var(--flat-danger-ink) !important;
+}
+
+[data-slot="sheet-content"] .fantasy-log-time {
+  color: var(--flat-ink-faint) !important;
+}
+
+[data-slot="sheet-content"] .fantasy-log-filter[aria-pressed="true"] {
+  color: var(--flat-ink-bright) !important;
+  background: var(--flat-gold) !important;
+}
+
+[data-slot="sheet-content"] .fantasy-sheet-empty {
+  color: var(--flat-ink-mute) !important;
+}
+
+/* --- verify match --------------------------------------------------- */
+
+.verify-match-sheet.verify-match-sheet {
+  border: 0 !important;
+  color: var(--flat-ink);
+  background: var(--flat-bg) !important;
+}
+
+.verify-match-title {
+  color: var(--flat-ink-bright);
+  font-size: 18px;
+  letter-spacing: 0.06em;
+}
+
+.verify-match-result,
+.verify-match-fact,
+.verify-match-replay,
+.verify-match-replay-current {
+  border: 0 !important;
+  background: var(--flat-inset) !important;
+}
+
+.verify-match-result--valid {
+  background: #10200f !important;
+}
+
+.verify-match-result--error {
+  background: var(--flat-danger-fill) !important;
+}
+
+.verify-match-result-icon {
+  border: 0 !important;
+  color: var(--flat-ink-head);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.verify-match-result--valid .verify-match-result-icon {
+  color: #9bd18f;
+}
+
+.verify-match-result--error .verify-match-result-icon {
+  color: var(--flat-danger-ink);
+}
+
+.verify-match-result-title,
+.verify-match-replay-title,
+.verify-match-fact dd {
+  color: var(--flat-ink) !important;
+}
+
+.verify-match-source,
+.verify-match-fact dt,
+.verify-match-replay-eyebrow {
+  color: var(--flat-ink-mute) !important;
+}
+
+.verify-match-error,
+.verify-match-replay-error {
+  color: var(--flat-danger-ink) !important;
+}
+
+.verify-match-replay-current {
+  color: var(--flat-ink) !important;
+}
+
+/* --- diagnostics ---------------------------------------------------- */
+
+.diagnostics-sheet .diagnostics-section {
+  background: var(--flat-panel) !important;
+}
+
+.diagnostics-sheet .diagnostics-verdict {
+  border: 0 !important;
+  border-left: 3px solid var(--flat-ink-head) !important;
+  background: var(--flat-inset) !important;
+}
+
+.diagnostics-sheet .diagnostics-stat {
+  background: var(--flat-inset) !important;
+}
+
+.diagnostics-sheet .diagnostics-trace,
+.diagnostics-sheet .diagnostics-stage {
+  border: 0 !important;
+  background: var(--flat-inset) !important;
+}
+
+.diagnostics-sheet .diagnostics-trace[data-outcome="failed"] {
+  background: var(--flat-danger-fill) !important;
+}
+
+.diagnostics-sheet :is(.diagnostics-table td, .diagnostics-events li) {
+  border-top-color: var(--flat-rule) !important;
+}
+
+/* --- card forge ----------------------------------------------------- */
+
+.card-forge-sheet.card-forge-sheet {
+  border: 0 !important;
+  background: var(--flat-bg) !important;
+  box-shadow: none !important;
+}
+
+.card-forge-header,
+.card-forge-toolbar,
+.card-forge-footer {
+  border-color: var(--flat-rule) !important;
+  background: var(--flat-panel) !important;
+}
+
+.card-forge-eyebrow,
+.card-forge-panel-title {
+  color: var(--flat-ink-head) !important;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+}
+
+.card-forge-banner,
+.card-forge-footer-note,
+.card-forge-description,
+.card-forge-preview-layout,
+.card-forge-preview-colors,
+.card-forge-preview-cost,
+.card-forge-tab-subtitle {
+  color: var(--flat-ink-mute) !important;
+  letter-spacing: 0.06em;
+}
+
+.card-forge-panel,
+.card-forge-inline-editor {
+  border: 0 !important;
+  background: var(--flat-panel) !important;
+  box-shadow: none !important;
+}
+
+/* The forge painted a blurred aurora behind its live preview. */
+.card-forge-preview-aurora {
+  display: none !important;
+}
+
+.card-forge-inline-frame {
+  border: 0 !important;
+  background: var(--flat-inset) !important;
+  box-shadow: none !important;
+}
+
+.card-forge-inline-name {
+  border-bottom-color: var(--flat-rule) !important;
+  color: var(--flat-ink-bright) !important;
+  background: transparent !important;
+}
+
+.card-forge-inline-cost,
+.card-forge-inline-rules,
+.card-forge-codeblock,
+.card-forge-status {
+  border: 0 !important;
+  color: var(--flat-ink) !important;
+  background: var(--flat-well) !important;
+}
+
+.card-forge-inline-name:focus,
+.card-forge-inline-cost:focus,
+.card-forge-inline-rules:focus {
+  border-color: var(--flat-rule) !important;
+  background-color: var(--flat-well-focus) !important;
+  box-shadow: none !important;
+}
+
+.card-forge-inline-type {
+  border-block-color: var(--flat-rule) !important;
+  background: transparent !important;
+}
+
+.card-forge-stat-field {
+  border: 0 !important;
+  background: var(--flat-well) !important;
+}
+
+.card-forge-stat-field span {
+  color: var(--flat-ink-head) !important;
+}
+
+.card-forge-status--good {
+  color: #9bd18f !important;
+  background: #10200f !important;
+}
+
+.card-forge-status--error {
+  color: var(--flat-danger-ink) !important;
+  background: var(--flat-danger-fill) !important;
+}
+
+.card-forge-tabs-list {
+  border-bottom-color: var(--flat-rule) !important;
+}
+
+.card-forge-sheet .card-forge-tab-trigger {
+  color: var(--flat-ink-faint) !important;
+  background: transparent !important;
+}
+
+.card-forge-sheet .card-forge-tab-trigger:hover,
+.card-forge-sheet .card-forge-tab-trigger[data-state="active"] {
+  color: var(--flat-ink-bright) !important;
+  background: transparent !important;
+  border-bottom-color: var(--flat-ink-head) !important;
+}
+
+/* --- lobby ---------------------------------------------------------- */
+
+.lobby-sheet .lobby-sheet-panel {
+  padding: 12px;
+}
+
+/* The picker embedded in the lobby already owns the flat language and paints
+   its own panel fill, so it is left alone here. */
+
+/* --- landscape gate -------------------------------------------------- */
+
+/* Not a Radix sheet, but it is a modal dialog and the only thing on screen
+   when it shows, so it gets the same flat treatment written out longhand. */
+.mobile-landscape-gate {
+  background: rgba(3, 4, 5, 0.94) !important;
+}
+
+.mobile-landscape-gate-panel {
+  border: 0 !important;
+  background: #0e0f11 !important;
+  box-shadow: none !important;
+}
+
+.mobile-landscape-gate-kicker {
+  color: #d8bf7a !important;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+}
+
+.mobile-landscape-gate-title {
+  color: #f2d9a3 !important;
+  font-family: var(--ironsmith-ui-font, "Rajdhani"), system-ui, sans-serif !important;
+  font-size: 22px;
+  letter-spacing: 0.06em;
+}
+
+.mobile-landscape-gate-copy,
+.mobile-landscape-gate-note {
+  color: #8b806b !important;
+}
+
+.mobile-landscape-gate .stone-pill.mobile-landscape-gate-button {
+  border: 0 !important;
+  border-radius: 2px !important;
+  color: #f2d9a3 !important;
+  background: #2e2416 !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  clip-path: none !important;
+  text-shadow: none !important;
+}
+
+.mobile-landscape-gate .stone-pill.mobile-landscape-gate-button:hover:not(:disabled) {
+  background: #3d2f1c !important;
+}
+
+/* --- leftovers ------------------------------------------------------- */
+
+[data-slot="sheet-content"] .settings-accent-input {
+  border: 0 !important;
+  background: var(--flat-well) !important;
+}
+
+[data-slot="sheet-content"] .toolbar-checkbox {
+  color: var(--flat-ink-soft) !important;
+}
+
+[data-slot="sheet-content"] [data-slot="badge"][data-variant="secondary"] {
+  border: 0 !important;
+  color: var(--flat-ink-soft) !important;
+  background: var(--flat-control) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+/* Radix scroll areas inside sheets (the log, the forge code panes). */
+[data-slot="sheet-content"] [data-slot="scroll-area-thumb"] {
+  border-radius: 0 !important;
+  background: #2a2b30 !important;
+}
+
+/* Forge chips: the layout picker, colour swatches and type toggles. */
+.card-forge-chip,
+.card-forge-color,
+.card-forge-choice {
+  border: 0 !important;
+  border-radius: 2px !important;
+  color: var(--flat-ink-soft, #b8aa8e) !important;
+  background: #17181b !important;
+  letter-spacing: 0.08em;
+}
+
+.card-forge-chip:hover,
+.card-forge-color:hover,
+.card-forge-choice:hover {
+  transform: none !important;
+  color: #e7d9bc !important;
+  background: #232429 !important;
+}
+
+.card-forge-chip.is-active,
+.card-forge-color.is-active,
+.card-forge-choice.is-active {
+  color: #f2d9a3 !important;
+  background: #2e2416 !important;
+}
+
+.card-forge-submit {
+  border: 0 !important;
+  color: #f2d9a3 !important;
+  background: #2e2416 !important;
+  box-shadow: none !important;
+}
+
+.card-forge-submit:hover:not(:disabled) {
+  background: #3d2f1c !important;
+}
+
+.lobby-sheet button[aria-pressed="true"] {
+  border-color: transparent !important;
+  box-shadow: inset 0 -2px 0 #d8bf7a !important;
+}

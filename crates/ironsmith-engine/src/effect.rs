@@ -218,6 +218,7 @@ impl OutcomeObjectMemory {
                 card_types: self.card_types.clone(),
                 subtypes: self.subtypes.clone(),
                 compiled_card_text: String::new(),
+                ability_labels: Vec::new(),
                 other_face: None,
                 other_face_name: None,
                 linked_face_layout: crate::card::LinkedFaceLayout::None,

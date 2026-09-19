@@ -8,7 +8,12 @@ import useNewCards from "@/hooks/useNewCards";
 import useManabrewHandScale, {
   MANABREW_HAND_CARD_BASE,
   MANABREW_HAND_FAN_PARAMS,
+  useViewportHeight,
 } from "@/hooks/useManabrewHandScale";
+import {
+  CARD_FRAME_RENDER_HEIGHT,
+  CARD_FRAME_RENDER_WIDTH,
+} from "@/components/cards/MiniatureCardFrame";
 import GameCard from "@/components/cards/GameCard";
 import useHandReflow from "@/hooks/useHandReflow";
 import { samePlayerId } from "@/lib/player-display";
@@ -156,10 +161,31 @@ function buildPlayableMaps(state, player) {
   return { handPlayable, extraPlayable };
 }
 
-function computeManabrewHandDimensions(scale) {
+// A hovered hand card is meant to read exactly like one on the table, so it
+// grows until it occupies the frame renderer's own layout size instead of a
+// fixed multiple of the resting card. Below that size the renderer has to
+// shrink the finished frame, which is what made the hand's zoom look smaller
+// than the battlefield's. The viewport still gets the last word so the grown
+// card cannot run off a small screen.
+function computeManabrewHoverScale(cardW, cardH, viewportHeight) {
+  const target = Math.max(1, Math.min(
+    CARD_FRAME_RENDER_WIDTH / Math.max(1, cardW),
+    CARD_FRAME_RENDER_HEIGHT / Math.max(1, cardH),
+  ));
+  if (typeof window === "undefined" || !viewportHeight) return target;
+  const widthRoom = Math.max(1, window.innerWidth - 24) / Math.max(1, cardW);
+  const heightRoom = (viewportHeight * 0.78) / Math.max(1, cardH);
+  return Math.max(1, Math.min(target, widthRoom, heightRoom));
+}
+
+function computeManabrewHandDimensions(scale, viewportHeight) {
+  const cardW = Math.round(MANABREW_HAND_CARD_BASE.cardW * scale);
+  const cardH = Math.round(MANABREW_HAND_CARD_BASE.cardH * scale);
+  const hoverScale = computeManabrewHoverScale(cardW, cardH, viewportHeight);
   return {
-    cardW: Math.round(MANABREW_HAND_CARD_BASE.cardW * scale),
-    cardH: Math.round(MANABREW_HAND_CARD_BASE.cardH * scale),
+    cardW,
+    cardH,
+    hoverScale,
     hoverLift: Math.round(MANABREW_HAND_FAN_PARAMS.hoverLift * scale),
     neighborPush: Math.round(MANABREW_HAND_FAN_PARAMS.neighborPush * scale),
     maxSpread: Math.round(MANABREW_HAND_FAN_PARAMS.maxSpread * scale),
@@ -235,7 +261,7 @@ function buildHandCardRowStyle(index, total, { dims, activeIndex = null, activeI
         + (dims.cardH / 2 * Math.sin(angle))
       );
     };
-    const activeReach = horizontalReach(baseLayout[activeIndex], MANABREW_HAND_FAN_PARAMS.hoverScale);
+    const activeReach = horizontalReach(baseLayout[activeIndex], dims.hoverScale);
     const clearance = Math.max(2, dims.cardW * 0.015);
     let sidePush = 0;
     baseLayout.forEach((layout, neighborIndex) => {
@@ -257,7 +283,7 @@ function buildHandCardRowStyle(index, total, { dims, activeIndex = null, activeI
   // De-emphasize the rest of the fan just enough to expose their art and
   // hover targets next to the active reading card.
   const cardScale = isActive
-    ? MANABREW_HAND_FAN_PARAMS.hoverScale
+    ? dims.hoverScale
     : (activeIndex !== null && activeIndex >= 0 ? 0.94 : 1);
 
   return {
@@ -394,6 +420,7 @@ export default function HandZone({
   // state once the gesture ends.
   const dragSourceObjectId = dragState?.objectId != null ? String(dragState.objectId) : null;
   const handScale = useManabrewHandScale(layout === "mobile-fullscreen");
+  const viewportHeight = useViewportHeight();
   const dragThresholdRef = useRef(null);
   const activePointerIdRef = useRef(null);
   const dragHandlersRef = useRef(null);
@@ -739,8 +766,8 @@ export default function HandZone({
   const isVerticalRail = layout === "vertical-rail";
   const isRoulette = !isVerticalRail && !isMobileFan && renderedHandCardCount >= HAND_ROULETTE_THRESHOLD;
   const handDimensions = useMemo(
-    () => computeManabrewHandDimensions(handScale),
-    [handScale]
+    () => computeManabrewHandDimensions(handScale, viewportHeight),
+    [handScale, viewportHeight]
   );
   // Only one interaction source may drive the fan at a time. In particular,
   // do not combine a stale keyboard selection with a newly hovered card while
@@ -1811,6 +1838,9 @@ export default function HandZone({
           style={{
             width: surfaceWidth,
             maxWidth: isRoulette ? surfaceWidth : "100%",
+            // The mobile fan sets its own hover transform in CSS; hand it the
+            // frame-sized zoom the fanned layout computes.
+            "--hand-hover-scale": String(handDimensions.hoverScale),
           }}
         >
         <div className={`hand-zone-viewport min-h-0 h-full w-full min-w-0 overflow-visible ${isRoulette ? "hand-zone-viewport-roulette" : ""} ${isMobileFan ? "hand-zone-viewport-mobile-fan" : ""}`}>

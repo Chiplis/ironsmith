@@ -36,7 +36,7 @@ function DeckSection({ title, cards }) {
               key={entry.name}
               className="decklist-row"
             >
-              <span className="font-bold tabular-nums text-[#f0d28e]">{entry.count}</span>
+              <span className="font-bold tabular-nums text-[#d8bf7a]">{entry.count}</span>
               <span className="font-medium" title={entry.name}>
                 {entry.name}
               </span>

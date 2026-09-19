@@ -960,12 +960,9 @@ fn planned_pip_allocation_views(
                     None,
                     None,
                 ),
-                ironsmith::mana_payment::PlannedPipPayment::Delve(source) => (
-                    "delve".to_string(),
-                    Some(source.0.to_string()),
-                    None,
-                    None,
-                ),
+                ironsmith::mana_payment::PlannedPipPayment::Delve(source) => {
+                    ("delve".to_string(), Some(source.0.to_string()), None, None)
+                }
                 ironsmith::mana_payment::PlannedPipPayment::Assist { player, symbol } => (
                     "assist".to_string(),
                     Some(player.0.to_string()),
@@ -2155,12 +2152,15 @@ fn stack_entry_ability_text(
     entry: &ironsmith::game_state::StackEntry,
     obj: Option<&ironsmith::object::Object>,
 ) -> Option<String> {
-    entry
-        .ability_effects
-        .as_ref()
-        .map(|effects| ironsmith::runtime_display::compile_effect_list(effects))
-        .and_then(|text| normalize_stack_display_text(&text))
-        .or_else(|| fallback_stack_entry_ability_text(entry, obj))
+    fallback_stack_entry_ability_text(entry, obj).or_else(|| {
+        entry
+            .ability_effects
+            .as_ref()
+            .map(|effects| {
+                ironsmith::runtime_display::compile_effect_list(effects.flattened_default_effects())
+            })
+            .and_then(|text| normalize_stack_display_text(&text))
+    })
 }
 
 #[derive(Debug, Clone, Serialize)]

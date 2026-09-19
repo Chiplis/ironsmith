@@ -12,7 +12,7 @@ export default function GroupedManaAbility({ group, onActivate, name, className,
       const action = option.actions.find(action => !action.payment_pending && action.mana_payment_available !== false);
       const available = Boolean(action && onActivate);
       return <button key={index} type="button" className="inspector-mana-choice"
-        data-available={available ? 'true' : 'false'} disabled={!available}
+        data-available={available ? 'true' : 'false'} aria-disabled={available ? undefined : 'true'}
         aria-label={ui("{0}: {1}{2}{3}", { 0: name || 'Card', 1: group.prefix, 2: option.output, 3: group.suffix })}
         onPointerDown={event => event.stopPropagation()}
         onClick={event => {

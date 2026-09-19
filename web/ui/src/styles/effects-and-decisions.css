@@ -1837,7 +1837,7 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 .hand-reveal-shell .hand-zone-surface-mobile-fan .game-card.hand-card.hovered,
 .hand-reveal-shell .hand-zone-surface-mobile-fan .game-card.hand-card.inspected,
 .hand-reveal-shell .hand-zone-surface-mobile-fan .game-card.hand-card.keyboard-selected {
-  --card-scale: 1.78 !important;
+  --card-scale: var(--hand-hover-scale, 1.78) !important;
   --card-translate-y: -118px !important;
   --card-rotate: 0deg !important;
   transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease;

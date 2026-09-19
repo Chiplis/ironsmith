@@ -465,6 +465,7 @@ impl GameState {
             name: "".into(),
             mana_cost: None,
             compiled_card_text: std::sync::Arc::<str>::from(""),
+            ability_labels: Default::default(),
             power: None,
             toughness: None,
             card_types: Vec::new().into(),

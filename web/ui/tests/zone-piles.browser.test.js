@@ -172,7 +172,11 @@ test('zone card inspectors leave the clicked card and expanded strip uncovered',
           const stripBox = await page.locator('.zone-pile-menu').boundingBox();
           const previewBox = await preview.boundingBox();
           await preview.locator('.interactive-card-frame-stage[data-render-ready="true"]').waitFor();
-          assert.equal(await preview.locator('.interactive-card-frame-stage').getAttribute('data-frame-mode'), 'original', 'other zones use original printing previews without masking');
+          // Every zone inspects through the same live frame: a card in a pile
+          // is rendered like one on the battlefield, never as a printing with
+          // a separate details panel over it.
+          assert.notEqual(await preview.locator('.interactive-card-frame-stage').getAttribute('data-frame-mode'), 'original', 'pile previews render a live frame');
+          assert.equal(await preview.locator('.original-card-details').count(), 0, 'no details panel is stacked over the frame');
           assert.ok(previewBox.width > 50 && previewBox.height > 50, JSON.stringify({viewport, zone, id, previewBox, stripBox}));
           assert.ok(previewBox.y >= stripBox.y + stripBox.height || previewBox.y + previewBox.height <= stripBox.y,
             JSON.stringify({viewport,zone,id,previewBox,stripBox}));

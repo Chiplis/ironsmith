@@ -589,7 +589,7 @@ export default function CreateCardForgeSheet({
         >
           <SheetHeader className="fantasy-sheet-header card-forge-header pr-12">
             <div className="card-forge-eyebrow">{ui("Forge")}</div>
-            <SheetTitle className="text-[24px] uppercase tracking-[0.18em] text-foreground">{ui("Compile Card")}</SheetTitle>
+            <SheetTitle>{ui("Compile Card")}</SheetTitle>
             <SheetDescription className="card-forge-description max-w-[58ch] text-[13px] leading-5">{ui("Seeded from a random nonland card in the loaded deck. The sample is only a teaching aid, and every printed characteristic can be rewritten before the card enters this goldfishing session.")}</SheetDescription>
           </SheetHeader>
 

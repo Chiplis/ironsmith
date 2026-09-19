@@ -66,12 +66,12 @@ function PrintingImage({ imageUrl, name, imageOnly = false }) {
   />;
 }
 
-// This panel is the only live wording on a retained printing, so it opens by
-// default rather than hiding the card's rules behind a summary. A frame that
-// carries its own containers never adds it on top.
-function CardDetailsDisclosure({ name, rulesView, onActivate, highlighted, flavorText, stats, counters, detailsLabel }) {
+// The last resort behind every frame mode: a printing with no live rendering
+// of its own. It stays a summary while there is a printing to read, and only
+// opens by itself when there is no card image at all.
+function CardDetailsDisclosure({ name, rulesView, onActivate, highlighted, flavorText, stats, counters, detailsLabel, open }) {
   const ui = useUiText();
-  return <details className="original-card-details" open>
+  return <details className="original-card-details" open={open || undefined}>
     <summary>{ui(detailsLabel)}</summary>
     <div className="original-card-details__body">
       <strong>{name}</strong>
@@ -83,7 +83,7 @@ function CardDetailsDisclosure({ name, rulesView, onActivate, highlighted, flavo
         return <div key={index} className="inspector-ability-section" data-stack-highlighted={highlighted.has(index) ? 'true' : undefined}>
           {rulesView.manaGroups.has(index) ? <GroupedManaAbility group={rulesView.manaGroups.get(index)} name={name} onActivate={onActivate} />
             : actions.length || /[:：]/u.test(line) ? <button type="button" className="inspector-oracle-line-action"
-              data-available={available ? 'true' : 'false'} disabled={!available}
+              data-available={available ? 'true' : 'false'} aria-disabled={available ? undefined : 'true'}
               aria-label={ui("{0}: {1}", { 0: name || 'Card', 1: line })}
               onPointerDown={event => event.stopPropagation()}
               onClick={event => { event.stopPropagation(); if (available) onActivate(action); }}>
@@ -106,6 +106,7 @@ export default function OriginalCardFallback({ imageUrl, name, rulesView, onActi
     {showDetails && <CardDetailsDisclosure
       name={name} rulesView={rulesView} onActivate={onActivate} highlighted={highlighted}
       flavorText={flavorText} stats={stats} counters={counters} detailsLabel={detailsLabel}
+      open={!imageUrl}
     />}
   </article>;
 }

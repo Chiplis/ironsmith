@@ -182,6 +182,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             card_types: memory.card_types.clone(),
             subtypes: memory.subtypes.clone(),
             compiled_card_text: String::new(),
+            ability_labels: Vec::new(),
             other_face: None,
             other_face_name: None,
             linked_face_layout: LinkedFaceLayout::None,

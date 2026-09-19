@@ -226,6 +226,32 @@ export default function Topbar({
   const viewportTier = largeDesktopViewport ? "large" : smallDesktopViewport ? "small" : tabletCompactViewport ? "tablet" : nonDesktopViewport ? "phone" : "desktop";
 
 
+  const matchClockPill = showMatchClock ? (
+    <div
+      className="stone-pill topbar-phase-clock inline-flex min-h-8 max-w-[520px] items-center gap-2 overflow-hidden rounded-none border border-[#5f4a22] bg-[#231c0e]/90 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#ffd98a]"
+      title={ui("Match clocks")}
+      aria-label={ui("Per-player match clocks")}
+    >
+      <Clock3 className="size-3.5 shrink-0" />
+      <span className="flex min-w-0 items-center gap-2 overflow-hidden">
+        {matchClockEntries.map((entry) => (
+          <span
+            key={entry.index}
+            className={`whitespace-nowrap ${
+              entry.expired
+                ? "text-[#ffb8c0]"
+                : entry.active
+                  ? "text-[#fff1cd]"
+                  : "text-[#c9b98f]"
+            }`}
+          >
+            {playerDisplayName(players, entry.player) || ui("P{0}", { 0: entry.index + 1 })} {formatTimerRemaining(entry.remainingMs)}
+          </span>
+        ))}
+      </span>
+    </div>
+  ) : null;
+
   return (
     <header
       className={`table-toolbar table-toolbar--primary topbar-shell rounded-none px-3 py-2${middleDocked ? " topbar-shell--middle-docked" : ""}`}
@@ -268,31 +294,10 @@ export default function Topbar({
             </span>
           </button>
         ) : null}
-        {showMatchClock ? (
-          <div
-            className="stone-pill inline-flex min-h-8 max-w-[520px] items-center gap-2 overflow-hidden rounded-none border border-[#5f4a22] bg-[#231c0e]/90 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#ffd98a]"
-            title={ui("Match clocks")}
-            aria-label={ui("Per-player match clocks")}
-          >
-            <Clock3 className="size-3.5 shrink-0" />
-            <span className="flex min-w-0 items-center gap-2 overflow-hidden">
-              {matchClockEntries.map((entry) => (
-                <span
-                  key={entry.index}
-                  className={`whitespace-nowrap ${
-                    entry.expired
-                      ? "text-[#ffb8c0]"
-                      : entry.active
-                        ? "text-[#fff1cd]"
-                        : "text-[#c9b98f]"
-                  }`}
-                >
-                  {playerDisplayName(players, entry.player) || ui("P{0}", { 0: entry.index + 1 })} {formatTimerRemaining(entry.remainingMs)}
-                </span>
-              ))}
-            </span>
-          </div>
-        ) : null}
+        {/* The clocks ride with the turn status when there is one, where the
+            mulligan prompt cannot cover them; the compact layouts have no
+            status lane, so they keep them here. */}
+        {showCenterLane ? null : matchClockPill}
         {showCenterLane ? (
           <div className="topbar-phase-shell">
             <PhaseTrack compact={middleDocked} />
@@ -350,6 +355,7 @@ export default function Topbar({
                   </label>
                 </>
               ) : null}
+              {matchClockPill}
             </div>
           </div>
         ) : null}

@@ -93,7 +93,9 @@ async function inspectorRuleLines(page) {
       const button = rule.querySelector("button");
       return {
         text: rule.innerText.replace(/\s+/g, " ").trim(),
-        activatable: button ? !button.disabled : null,
+        // Unavailable abilities are marked, not form-disabled: a disabled
+        // control would swallow clicks on the keyword helpers inside it.
+        activatable: button ? button.getAttribute("aria-disabled") !== "true" : null,
       };
     }));
 }

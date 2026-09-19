@@ -107,10 +107,7 @@ pub fn looks_like_compiled_structure(text: &str) -> bool {
             }
             b'(' if index > 0 => {
                 let mut at = index;
-                while at > 0
-                    && bytes[at - 1]
-                        .is_ascii_alphanumeric()
-                {
+                while at > 0 && bytes[at - 1].is_ascii_alphanumeric() {
                     at -= 1;
                 }
                 let head = &bytes[at..index];
@@ -184,15 +181,18 @@ fn matched_sentences(
             if score == 0 || best.as_ref().is_some_and(|(seen, _)| *seen >= score) {
                 continue;
             }
-            best =
-                Some((score, extend_with_followups(opening, &sentences[index + 1..], &per_effect)));
+            best = Some((
+                score,
+                extend_with_followups(opening, &sentences[index + 1..], &per_effect),
+            ));
         }
     }
 
     // An effect built entirely out of structural wrappers offers no words to
     // score with. When the source prints exactly one offer, that offer is still
     // unambiguously this one.
-    best.map(|(_, text)| text).or(if offers == 1 { sole_offer } else { None })
+    best.map(|(_, text)| text)
+        .or(if offers == 1 { sole_offer } else { None })
 }
 
 /// Append the sentences that spell out the rest of the same instruction.
@@ -356,6 +356,36 @@ fn same_word(left: &str, right: &str) -> bool {
     shared >= MIN_STEM_LEN && left[..shared] == right[..shared]
 }
 
+/// A plain-words phrase for an effect list, for a surface with no printed
+/// sentence to quote: each effect contributes the words its executor type
+/// implies in the order they appear, so `CreateTokenEffect` reads "create
+/// token" and never as its fields.
+pub(crate) fn effect_phrase(effects: &[Effect]) -> String {
+    let mut phrases: Vec<String> = Vec::new();
+    for effect in effects {
+        let mut keywords = Vec::new();
+        let mut budget = MAX_EFFECT_NODES;
+        collect_keywords(std::slice::from_ref(effect), 0, &mut budget, &mut keywords);
+        let mut words: Vec<String> = Vec::new();
+        for word in keywords {
+            if word.len() > 1
+                && !STRUCTURAL_WORDS.contains(&word.as_str())
+                && !words.contains(&word)
+            {
+                words.push(word);
+            }
+        }
+        if words.is_empty() {
+            continue;
+        }
+        let phrase = words.join(" ");
+        if !phrases.contains(&phrase) {
+            phrases.push(phrase);
+        }
+    }
+    phrases.join(", ")
+}
+
 /// The vocabulary an effect tree implies, from its executor type names.
 fn effect_keywords(effects: &[Effect]) -> Vec<String> {
     let mut keywords = Vec::new();
@@ -391,7 +421,9 @@ fn collect_keywords(
 /// The executor's type name, read off the head of its derived `Debug` output.
 fn executor_type_name(effect: &Effect) -> String {
     let rendered = format!("{effect:?}");
-    let inner = rendered.strip_prefix("Effect(").unwrap_or(rendered.as_str());
+    let inner = rendered
+        .strip_prefix("Effect(")
+        .unwrap_or(rendered.as_str());
     inner
         .chars()
         .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')

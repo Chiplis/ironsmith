@@ -2908,6 +2908,7 @@ mod tests {
                 name: object.name.clone(),
                 mana_cost: object.mana_cost_owned(),
                 compiled_card_text: object.compiled_card_text.clone(),
+                ability_labels: object.ability_labels.clone(),
                 power: object.base_power.as_ref().map(|p| p.base_value()),
                 toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
                 card_types: object.card_types.clone(),
@@ -2964,6 +2965,7 @@ mod tests {
                 name: land.name.clone(),
                 mana_cost: land.mana_cost_owned(),
                 compiled_card_text: land.compiled_card_text.clone(),
+                ability_labels: land.ability_labels.clone(),
                 power: land.base_power.as_ref().map(|p| p.base_value()),
                 toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
                 card_types: land.card_types.clone(),
@@ -3081,6 +3083,7 @@ mod tests {
                 name: land.name.clone(),
                 mana_cost: land.mana_cost_owned(),
                 compiled_card_text: land.compiled_card_text.clone(),
+                ability_labels: land.ability_labels.clone(),
                 power: land.base_power.as_ref().map(|p| p.base_value()),
                 toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
                 card_types: land.card_types.clone(),
@@ -3422,6 +3425,7 @@ mod tests {
                 name: object.name.clone(),
                 mana_cost: object.mana_cost_owned(),
                 compiled_card_text: object.compiled_card_text.clone(),
+                ability_labels: object.ability_labels.clone(),
                 power: object.base_power.as_ref().map(|power| power.base_value()),
                 toughness: object
                     .base_toughness

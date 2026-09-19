@@ -763,10 +763,7 @@ impl WasmGame {
         Ok(())
     }
 
-    fn ensure_card_definitions_loaded<'a>(
-        &mut self,
-        names: impl IntoIterator<Item = &'a str>,
-    ) {
+    fn ensure_card_definitions_loaded<'a>(&mut self, names: impl IntoIterator<Item = &'a str>) {
         let names = names
             .into_iter()
             .map(str::trim)
@@ -879,7 +876,9 @@ impl WasmGame {
 
     fn compiled_ability_lines(definition: &CardDefinition) -> Vec<String> {
         if !definition.ability_labels.is_empty() {
-            return definition.ability_labels.clone();
+            return ironsmith::runtime_display::dedupe_consecutive_lines(
+                definition.ability_labels.clone(),
+            );
         }
 
         definition
@@ -1090,7 +1089,8 @@ impl WasmGame {
                 )));
             }
 
-            let mut builder = ironsmith_dynamic_compile::CompilerCardDefinitionBuilder::new(CardId::new(), name);
+            let mut builder =
+                ironsmith_dynamic_compile::CompilerCardDefinitionBuilder::new(CardId::new(), name);
             if let Some(colors) = Self::parse_custom_color_indicator(&face.color_indicator)? {
                 builder = builder.color_indicator(colors);
             }
@@ -1358,7 +1358,9 @@ impl WasmGame {
             })
             .collect::<Vec<_>>();
         if candidates.is_empty() {
-            return Err(JsValue::from_str("loaded deck has no cards available for sampling"));
+            return Err(JsValue::from_str(
+                "loaded deck has no cards available for sampling",
+            ));
         }
 
         self.game.shuffle_slice(&mut candidates);
@@ -1370,7 +1372,11 @@ impl WasmGame {
             let position = candidates
                 .iter()
                 .position(|candidate| candidate.is_creature && !candidate.is_land)
-                .or_else(|| candidates.iter().position(|candidate| candidate.is_creature));
+                .or_else(|| {
+                    candidates
+                        .iter()
+                        .position(|candidate| candidate.is_creature)
+                });
             let Some(position) = position else { break };
             selected.push((
                 candidates.swap_remove(position),
@@ -1394,7 +1400,9 @@ impl WasmGame {
             .count()
             < 6
         {
-            let Some(candidate) = candidates.pop() else { break };
+            let Some(candidate) = candidates.pop() else {
+                break;
+            };
             selected.push((candidate, ironsmith::zone::Zone::Battlefield));
         }
         for zone in [
@@ -1403,7 +1411,9 @@ impl WasmGame {
             ironsmith::zone::Zone::Exile,
         ] {
             for _ in 0..2 {
-                let Some(candidate) = candidates.pop() else { break };
+                let Some(candidate) = candidates.pop() else {
+                    break;
+                };
                 selected.push((candidate, zone));
             }
         }
@@ -1416,7 +1426,11 @@ impl WasmGame {
             exile: Vec::new(),
         };
         for (candidate, zone) in selected {
-            if self.game.move_object_by_effect(candidate.id, zone).is_none() {
+            if self
+                .game
+                .move_object_by_effect(candidate.id, zone)
+                .is_none()
+            {
                 continue;
             }
             match zone {

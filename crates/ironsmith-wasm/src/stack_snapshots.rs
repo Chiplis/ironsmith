@@ -129,22 +129,27 @@ fn stack_source_ability_text(
             })
         })
     }?;
-    let compiled = entry
-        .source_snapshot
-        .as_ref()
-        .map(|snapshot| snapshot.compiled_card_text.as_str())
-        .or_else(|| source.map(|object| object.compiled_card_text.as_ref()))?;
-    let lines: Vec<_> = compiled
-        .lines()
-        .filter_map(normalize_stack_display_text)
-        .collect();
-    // Only index card text when it maps one-to-one to executable abilities.
-    if lines.len() == abilities.len() {
-        return lines.get(index).cloned();
-    }
-    normalize_stack_display_text(&ironsmith::runtime_display::ability_surface_text(
-        &abilities[index],
-    ))
+    let (compiled, labels): (&str, &[String]) = match (entry.source_snapshot.as_ref(), source) {
+        (Some(snapshot), _) => (
+            snapshot.compiled_card_text.as_str(),
+            snapshot.ability_labels.as_slice(),
+        ),
+        (None, Some(object)) => (
+            object.compiled_card_text.as_ref(),
+            object.ability_labels.as_slice(),
+        ),
+        (None, None) => return None,
+    };
+    // The captured labels name the line each ability came from; the card
+    // text is indexed directly only when it has exactly one line per ability.
+    ironsmith::runtime_display::aligned_ability_label(labels, compiled, abilities.len(), index)
+        .as_deref()
+        .and_then(normalize_stack_display_text)
+        .or_else(|| {
+            normalize_stack_display_text(&ironsmith::runtime_display::ability_surface_text(
+                &abilities[index],
+            ))
+        })
 }
 
 pub(super) fn build_stack_object_snapshot(
@@ -195,7 +200,12 @@ pub(super) fn build_stack_object_snapshot(
         } else {
             "Activated"
         };
-        let ability_text = stack_entry_ability_text(entry, obj);
+        let source_ability_text = stack_source_ability_text(entry, source_obj.or(obj));
+        // The ability's own printed line describes it best; only an ability
+        // with no printed line falls back to a summary of its effects.
+        let ability_text = source_ability_text
+            .clone()
+            .or_else(|| stack_entry_ability_text(entry, obj));
         StackObjectSnapshot {
             id,
             inspect_object_id,
@@ -206,7 +216,7 @@ pub(super) fn build_stack_object_snapshot(
             mana_cost: None,
             effect_text: None,
             ability_kind: Some(ability_kind.to_string()),
-            source_ability_text: stack_source_ability_text(entry, source_obj.or(obj)),
+            source_ability_text,
             ability_text,
             targets,
         }

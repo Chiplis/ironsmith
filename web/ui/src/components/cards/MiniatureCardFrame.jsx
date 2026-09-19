@@ -4,8 +4,13 @@ import { GameContext } from '@/context/GameContext.shared';
 
 // Lay out the composition at inspector size. Only its finished presentation
 // scales with the battlefield slot, including pixel-sized icons and borders.
-const WIDTH = 380;
-const HEIGHT = 531;
+// The hand exports these so a hovered card can grow to the very same size the
+// table renders its frames at.
+export const CARD_FRAME_RENDER_WIDTH = 380;
+export const CARD_FRAME_RENDER_HEIGHT = 531;
+
+const WIDTH = CARD_FRAME_RENDER_WIDTH;
+const HEIGHT = CARD_FRAME_RENDER_HEIGHT;
 
 const FRAME_FIELDS = ['id', 'stable_id', 'name', 'oracle_id', 'oracleId', 'oracle_text', 'effect_text', 'ability_text', 'compiled_text', 'abilities', 'mana_cost', 'type_line', 'owner', 'controller'];
 

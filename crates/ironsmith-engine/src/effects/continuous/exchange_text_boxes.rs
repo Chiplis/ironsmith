@@ -35,10 +35,10 @@ fn current_text_box_overlay(
     )
     .ok_or(ExecutionError::InvalidTarget)?;
 
-    Ok(TextBoxOverlay::new(
-        chars.compiled_card_text,
-        chars.abilities,
-    ))
+    Ok(
+        TextBoxOverlay::new(chars.compiled_card_text, chars.abilities)
+            .with_ability_labels(chars.ability_labels),
+    )
 }
 
 impl EffectExecutor for ExchangeTextBoxesEffect {

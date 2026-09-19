@@ -38,10 +38,10 @@ function MenuSection({ eyebrow, title, description, children }) {
   return (
     <section className={sectionClass}>
       <div className="grid gap-1">
-        <span className="text-[10px] uppercase tracking-[0.24em] text-[#c3a774]">
+        <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">
           {ui(eyebrow)}
         </span>
-        <div className="text-[16px] font-bold uppercase tracking-[0.16em] text-foreground">
+        <div className="text-[13px] font-bold uppercase tracking-[0.16em] text-[#e7d9bc]">
           {ui(title)}
         </div>
         {description ? (
@@ -195,8 +195,8 @@ export default function TopbarMenuSheet({
         className="fantasy-sheet settings-sheet w-[min(94vw,420px)] overflow-y-auto p-0"
       >
         <SheetHeader className="fantasy-sheet-header pr-12">
-          <div className="text-[11px] uppercase tracking-[0.24em] text-[#cdb27a]">{t("app.menu")}</div>
-          <SheetTitle className="text-[22px] uppercase tracking-[0.18em] text-foreground">
+          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{t("app.menu")}</div>
+          <SheetTitle>
             {t("settings.table")}
           </SheetTitle>
           <SheetDescription className="max-w-[32ch] text-[13px] leading-5">
@@ -499,11 +499,11 @@ export default function TopbarMenuSheet({
                 </Badge>
               </div>
               {multiplayer.matchStarted && offlinePlayers.length > 0 ? (
-                <div className="fantasy-sheet-stat flex items-center justify-between gap-3 border-[#7d302f] bg-[#2b1114]/60 px-3 py-2">
-                  <span className="uppercase tracking-[0.16em] text-[#ffb8c0]">
+                <div className="fantasy-sheet-stat flex items-center justify-between gap-3 bg-[#2b1114] px-3 py-2">
+                  <span className="uppercase tracking-[0.16em] text-[#f0a9a0]">
                     {t("settings.disconnected")}
                   </span>
-                  <Badge variant="secondary" className="fantasy-sheet-badge max-w-[180px] truncate text-[12px] uppercase text-[#ffb8c0]">
+                  <Badge variant="secondary" className="fantasy-sheet-badge max-w-[180px] truncate text-[12px] uppercase text-[#f0a9a0]">
                     {offlinePlayers.map((player) => {
                       const display = playerDisplayName(
                         state?.players || [],

@@ -39,6 +39,8 @@ pub struct CopiableValues {
     pub name: String,
     pub mana_cost: Option<ManaCost>,
     pub compiled_card_text: String,
+    /// The printed line each entry of `abilities` reads as (see `Object::ability_labels`).
+    pub ability_labels: Vec<String>,
     pub power: Option<i32>,
     pub toughness: Option<i32>,
     pub card_types: Vec<CardType>,
@@ -57,6 +59,7 @@ impl CopiableValues {
             name: obj.name.to_owned_string(),
             mana_cost: obj.mana_cost_owned(),
             compiled_card_text: obj.compiled_card_text.to_string(),
+            ability_labels: obj.ability_labels.to_vec(),
             power: obj.base_power.as_ref().map(|power| power.base_value()),
             toughness: obj
                 .base_toughness
@@ -88,6 +91,7 @@ impl CopiableValues {
             name: chars.name.to_owned_string(),
             mana_cost: chars.mana_cost.clone(),
             compiled_card_text: chars.compiled_card_text.to_string(),
+            ability_labels: chars.ability_labels.to_vec(),
             power: chars.power,
             toughness: chars.toughness,
             card_types: chars.card_types.to_vec(),
@@ -146,6 +150,8 @@ pub struct ObjectSnapshot {
     pub subtypes: Vec<Subtype>,
     /// Oracle text / rules text.
     pub compiled_card_text: String,
+    /// The printed line each entry of `abilities` reads as (see `Object::ability_labels`).
+    pub ability_labels: Vec<String>,
     /// Optional reference to another face for flip/DFC style cards.
     pub other_face: Option<CardId>,
     /// Linked face name for on-demand compilation without a global registry preload.
@@ -258,6 +264,7 @@ impl ObjectSnapshot {
             card_types: obj.card_types.to_vec(),
             subtypes: obj.subtypes.to_vec(),
             compiled_card_text: obj.compiled_card_text.to_string(),
+            ability_labels: obj.ability_labels.to_vec(),
             other_face: obj.other_face,
             other_face_name: obj
                 .other_face_name
@@ -421,19 +428,27 @@ impl ObjectSnapshot {
         snapshot.apply_calculated_characteristics(obj, calculated);
         if !obj.attachments.is_empty() {
             let effects = game.all_continuous_effects();
-            snapshot.attachment_snapshots = obj.attachments.iter()
+            snapshot.attachment_snapshots = obj
+                .attachments
+                .iter()
                 .filter_map(|id| game.object(*id))
                 .map(|attachment| {
                     let mut child = Self::from_object(attachment, game);
-                    let calculated = game.calculated_characteristics_with_effects(attachment.id, &effects);
+                    let calculated =
+                        game.calculated_characteristics_with_effects(attachment.id, &effects);
                     child.apply_calculated_characteristics(attachment, calculated.as_ref());
                     child
-                }).collect();
+                })
+                .collect();
         }
         snapshot
     }
 
-    fn apply_calculated_characteristics(&mut self, obj: &Object, calculated: Option<&CalculatedCharacteristics>) {
+    fn apply_calculated_characteristics(
+        &mut self,
+        obj: &Object,
+        calculated: Option<&CalculatedCharacteristics>,
+    ) {
         let snapshot = self;
         if let Some(calculated) = calculated {
             if calculated.name.as_str() != obj.name.as_ref() {
@@ -442,6 +457,7 @@ impl ObjectSnapshot {
             snapshot.name = calculated.name.to_string();
             snapshot.mana_cost = calculated.mana_cost.clone();
             snapshot.compiled_card_text = calculated.compiled_card_text.to_string();
+            snapshot.ability_labels = calculated.ability_labels.to_vec();
             snapshot.power = calculated.power;
             snapshot.toughness = calculated.toughness;
             snapshot.card_types = calculated.card_types.to_vec();
@@ -450,7 +466,6 @@ impl ObjectSnapshot {
             snapshot.colors = calculated.colors;
             snapshot.abilities = Arc::new(calculated.abilities.to_vec());
         }
-
     }
 
     // === Type checks ===
@@ -643,6 +658,7 @@ impl ObjectSnapshot {
             card_types: vec![],
             subtypes: vec![],
             compiled_card_text: String::new(),
+            ability_labels: Vec::new(),
             other_face: None,
             other_face_name: None,
             linked_face_layout: LinkedFaceLayout::None,

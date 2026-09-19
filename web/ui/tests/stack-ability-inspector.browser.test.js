@@ -36,7 +36,8 @@ test('stack clicks select the precise source ability and share the enabled-hover
     if(await fallbackDetails.count())await fallbackDetails.locator('summary').click();
     const sections=preview.locator('.inspector-ability-section');
     const glow=section=>section.evaluate(node=>{const s=getComputedStyle(node,'::before');return {opacity:s.opacity,color:s.backgroundColor,shadow:s.boxShadow};});
-    await sections.nth(0).getByRole('button').hover();
+    // The ability line itself, not a rules helper inside it.
+    await sections.nth(0).locator('.inspector-oracle-line-action').hover();
     await page.waitForTimeout(150);
     const hoverGlow=await glow(sections.nth(0));
     assert.equal(hoverGlow.opacity,'1');
@@ -46,6 +47,37 @@ test('stack clicks select the precise source ability and share the enabled-hover
     assert.equal((await glow(sections.nth(0))).opacity,'0','disabled abilities do not light up on hover');
     assert.equal((await glow(sections.nth(1))).opacity,'1','selection survives loss of availability');
     await page.screenshot({path:'/tmp/stack-ability-inspector.png'});
+
+    // A stack object's frame still opens the rules helpers for game terms,
+    // including inside an ability that cannot be activated right now: an
+    // unavailable line is marked, never form-disabled, because a disabled
+    // control swallows every click inside it.
+    await page.locator('.stack-card[data-object-id="101"]').click();
+    await preview.waitFor();
+    await page.waitForFunction(() => document.querySelectorAll('[data-card-hover-preview][data-visible="true"] .mtg-keyword-helper').length >= 3);
+    const helpers = preview.locator('.mtg-keyword-helper');
+    assert.equal(await helpers.count(), 3, 'every rules line keeps its helpers');
+    for (let index = 0; index < 3; index += 1) {
+      const helper = helpers.nth(index);
+      const line = await helper.evaluate(node => ({
+        text: node.textContent,
+        unavailable: node.closest('button')?.getAttribute('aria-disabled') === 'true',
+        formDisabled: node.closest('button')?.disabled ?? false,
+      }));
+      assert.equal(line.formDisabled, false, `helper ${index} sits in a clickable line: ${JSON.stringify(line)}`);
+      // A real pointer click, because Playwright's actionability check refuses
+      // to click inside an aria-disabled ancestor even though the browser
+      // dispatches it -- which is the whole point of the marked-not-disabled
+      // ability line.
+      const box = await helper.boundingBox();
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      await page.waitForSelector('[data-ui-layer="tooltip"]', {timeout: 5000});
+      assert.equal(await page.locator('[data-ui-layer="tooltip"]').count(), 1, `helper ${index} opened its rules tooltip`);
+      // Reading a term neither activates the ability nor closes the card.
+      assert.equal(await preview.count(), 1);
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => document.querySelectorAll('[data-ui-layer="tooltip"]').length === 0);
+    }
     assert.deepEqual(errors,[]);
   } finally {await browser.close();await vite.close();}
 });

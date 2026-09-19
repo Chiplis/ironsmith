@@ -7,9 +7,11 @@ import {DragProvider} from '../src/context/DragContext';
 import FloatingCardPreview from '../src/components/right-rail/FloatingCardPreview';
 import StackCard from '../src/components/cards/StackCard';
 import '../src/index.css';
-const lines = ['{1}: Draw a card.', '{2}: Draw a card.', 'Whenever you gain life, draw a card.'];
+// Each line carries a game term so the keyword helpers inside the frame can be
+// clicked: an available ability, an unavailable one, and a plain rules line.
+const lines = ['{1}: Exile target card from a graveyard.', '{2}: Exile target card from a graveyard.', 'Whenever you gain life, target creature gains trample.'];
 const card = {id:10,stable_id:10,name:'Ability Inspector Fixture',type_line:'Artifact',oracle_text:lines.join('\n'),compiled_text:lines,zone:'Battlefield',controller:0,owner:0};
-const entries = lines.map((line,index)=>({id:101+index*2,inspect_object_id:10,source_stable_id:10,name:card.name,controller:0,ability_kind:index===2?'Triggered':'Activated',ability_text:'Draw a card.',source_ability_text:line,targets:[]}));
+const entries = lines.map((line,index)=>({id:101+index*2,inspect_object_id:10,source_stable_id:10,name:card.name,controller:0,ability_kind:index===2?'Triggered':'Activated',ability_text:'Exile target card from a graveyard.',source_ability_text:line,targets:[]}));
 entries.push({...entries[0],id:107,source_ability_text:null});
 const game = {objectDetails:async id=>{window.detailsId=String(id);return card;}};
 function Fixture() {
