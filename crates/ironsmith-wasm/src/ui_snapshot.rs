@@ -997,6 +997,7 @@ impl SnapshotJsEncodingCache {
         )?;
         self.set_serde(&object, "battlefield_size", &snapshot.battlefield_size)?;
         self.set_serde(&object, "exile_size", &snapshot.exile_size)?;
+        self.set_serde(&object, "combat", &snapshot.combat)?;
         self.set_value(
             &object,
             "players",
@@ -2253,6 +2254,9 @@ pub(super) struct GameSnapshot {
     pub(super) archenemy: Option<ArchenemySnapshot>,
     pub(super) conspiracy: Option<ConspiracySnapshot>,
     pub(super) grand_melee: Option<GrandMeleeSnapshot>,
+    /// Declared attackers and blockers for the combat in progress, visible to
+    /// every seat so the table can keep drawing combat arrows until combat ends.
+    pub(super) combat: Option<CombatSnapshot>,
     pub(super) battlefield_transitions: Vec<BattlefieldTransitionSnapshot>,
     pub(super) zone_transitions: Vec<ZoneTransitionSnapshot>,
     pub(super) effect_events: Vec<UiEffectEventSnapshot>,
@@ -2263,6 +2267,69 @@ pub(super) struct GameSnapshot {
     pub(super) game_over: Option<GameOverView>,
     pub(super) cancelable: bool,
     pub(super) undo_land_stable_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub(super) struct CombatSnapshot {
+    pub(super) attackers: Vec<CombatAttackerSnapshot>,
+    pub(super) blockers: Vec<CombatBlockerSnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub(super) struct CombatAttackerSnapshot {
+    pub(super) creature: u64,
+    pub(super) target: CombatAttackTargetSnapshot,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub(super) enum CombatAttackTargetSnapshot {
+    Player { player: u8 },
+    Planeswalker { object: u64 },
+    Battle { object: u64 },
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub(super) struct CombatBlockerSnapshot {
+    pub(super) blocker: u64,
+    pub(super) blocking: u64,
+}
+
+/// Public combat information: who attacks what and who blocks whom. Combat
+/// state stays populated from declare attackers through the end of combat
+/// step, and `end_combat` empties it, so an empty attacker list is treated as
+/// no combat.
+pub(super) fn combat_snapshot(game: &GameState) -> Option<CombatSnapshot> {
+    let combat = game.combat.as_ref()?;
+    if combat.attackers.is_empty() {
+        return None;
+    }
+    let attackers = combat
+        .attackers
+        .iter()
+        .map(|attacker| CombatAttackerSnapshot {
+            creature: attacker.creature.0,
+            target: match attacker.target {
+                AttackTarget::Player(player) => CombatAttackTargetSnapshot::Player { player: player.0 },
+                AttackTarget::Planeswalker(object) => {
+                    CombatAttackTargetSnapshot::Planeswalker { object: object.0 }
+                }
+                AttackTarget::Battle(object) => CombatAttackTargetSnapshot::Battle { object: object.0 },
+            },
+        })
+        .collect();
+    // Blockers are keyed by attacker in a HashMap; emit them in attacker
+    // declaration order so the snapshot is deterministic across seats.
+    let mut blockers = Vec::new();
+    for attacker in &combat.attackers {
+        for blocker in ironsmith::combat_state::get_blockers(combat, attacker.creature) {
+            blockers.push(CombatBlockerSnapshot {
+                blocker: blocker.0,
+                blocking: attacker.creature.0,
+            });
+        }
+    }
+    Some(CombatSnapshot { attackers, blockers })
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -3002,6 +3069,7 @@ impl GameSnapshot {
             exile_size: game.exile.len(),
             players,
             planechase,
+            combat: combat_snapshot(game),
             vanguard,
             archenemy,
             conspiracy,
@@ -3689,6 +3757,83 @@ mod tests {
         assert!(
             alice_snapshot.battlefield_total >= 2,
             "animated mines should appear on the battlefield snapshot"
+        );
+    }
+
+    #[test]
+    fn snapshot_exposes_declared_attackers_and_blockers_to_every_seat() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let bear = CardBuilder::new(CardId::from_raw(90_040), "Grizzly Bears")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let attacker = game.create_object_from_card(&bear, alice, Zone::Battlefield);
+        let unblocked = game.create_object_from_card(&bear, alice, Zone::Battlefield);
+        let blocker = game.create_object_from_card(&bear, bob, Zone::Battlefield);
+
+        let snapshot_for = |game: &GameState, perspective: PlayerId| {
+            GameSnapshot::from_game(
+                game, perspective, None, None, None, None, None, Vec::new(), None, false, None, 0,
+            )
+        };
+        assert!(
+            snapshot_for(&game, alice).combat.is_none(),
+            "no combat state means no combat in the snapshot"
+        );
+
+        let mut combat = ironsmith::combat_state::new_combat();
+        game.combat = Some(combat.clone());
+        assert!(
+            snapshot_for(&game, alice).combat.is_none(),
+            "combat before any attackers are declared stays out of the snapshot"
+        );
+
+        combat.attackers.push(ironsmith::combat_state::AttackerInfo {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        });
+        combat.attackers.push(ironsmith::combat_state::AttackerInfo {
+            creature: unblocked,
+            target: AttackTarget::Player(bob),
+        });
+        combat.blockers.insert(attacker, vec![blocker]);
+        game.combat = Some(combat);
+
+        let expected = CombatSnapshot {
+            attackers: vec![
+                CombatAttackerSnapshot {
+                    creature: attacker.0,
+                    target: CombatAttackTargetSnapshot::Player { player: bob.0 },
+                },
+                CombatAttackerSnapshot {
+                    creature: unblocked.0,
+                    target: CombatAttackTargetSnapshot::Player { player: bob.0 },
+                },
+            ],
+            blockers: vec![CombatBlockerSnapshot {
+                blocker: blocker.0,
+                blocking: attacker.0,
+            }],
+        };
+        // The attacking seat, the defending seat, and the snapshot JSON all
+        // carry the same public combat facts.
+        assert_eq!(snapshot_for(&game, alice).combat.as_ref(), Some(&expected));
+        let bob_snapshot = snapshot_for(&game, bob);
+        assert_eq!(bob_snapshot.combat.as_ref(), Some(&expected));
+        let json = serde_json::to_value(&bob_snapshot).expect("snapshot should serialize");
+        assert_eq!(
+            json["combat"]["attackers"][0]["target"],
+            serde_json::json!({ "kind": "player", "player": bob.0 })
+        );
+        assert_eq!(json["combat"]["blockers"][0]["blocking"], attacker.0);
+
+        ironsmith::combat_state::end_combat(game.combat.as_mut().unwrap());
+        assert!(
+            snapshot_for(&game, alice).combat.is_none(),
+            "end of combat clears the snapshot's combat"
         );
     }
 

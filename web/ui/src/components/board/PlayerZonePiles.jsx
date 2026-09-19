@@ -35,7 +35,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
   const { state } = useGame();
   const { t } = useI18n();
   const chosenObjectIds = useChosenObjectIds();
-  const { hoveredObjectId, hoverCard, clearHover, clearAnchoredCardPreview, showAnchoredCardPreview } = useHover();
+  const { hoveredObjectId, hoveredLinkedObjectIds, hoverCard, clearHover, clearAnchoredCardPreview, showAnchoredCardPreview } = useHover();
   const castIntent = useCastTargeting();
   const castZoneHovered = useCastZoneHovered(player.id ?? player.index, zone);
   const [open, setOpen] = useState(false);
@@ -105,8 +105,12 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
   // only way to see into them. So hovering such an option opens the pile, and
   // moving on closes it, at the same unhurried pace a pointer gets. Only a
   // pile opened this way closes again, so one the player is holding stays put.
-  const holdsHoveredCard = hoveredObjectId != null
-    && cards.some((card) => String(card?.id) === String(hoveredObjectId));
+  // A hovered stack object links the cards it is aimed at the same way, so a
+  // spell pointed at a card in this pile opens it and marks that card.
+  const isStackTargeted = (card) => card != null && hoveredLinkedObjectIds.has(String(card.id));
+  const holdsHoveredCard = (hoveredObjectId != null
+    && cards.some((card) => String(card?.id) === String(hoveredObjectId)))
+    || cards.some(isStackTargeted);
   const openedByHoverRef = useRef(false);
   useEffect(() => {
     if (holdsHoveredCard) {
@@ -119,6 +123,17 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     const timer = setTimeout(() => setOpen(false), 160);
     return () => clearTimeout(timer);
   }, [holdsHoveredCard]);
+  // The strip scrolls sideways; a target deep in a long graveyard would open
+  // out of view, so once the strip is up it is scrolled to the marked card.
+  const stackTargetKey = cards.filter(isStackTargeted).map((card) => card.id).join("|");
+  useEffect(() => {
+    if (!open || !stackTargetKey) return undefined;
+    const frame = requestAnimationFrame(() => {
+      menuRef.current?.querySelector('.zone-pile-card-list [data-stack-target="true"]')
+        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, stackTargetKey]);
   useEffect(() => {
     const openTargetZone = (event) => {
       if (event.detail?.zone === zone && String(event.detail?.playerId) === String(player.id ?? player.index)) setOpen(true);
@@ -145,13 +160,14 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     const legal = canChoose && isLegal(card);
     const disabled = (choosingTarget || choosingObject) && !legal;
     const chosen = choosingObject && isObjectChosen(chosenObjectIds, card.id);
+    const stackTargeted = isStackTargeted(card);
     // The check has to sit outside the row button to stay clickable, so the
     // row gets a wrapper of its own strip width.
-    return <span key={card.id} className="zone-pile-card-slot">
+    return <span key={card.id} className="zone-pile-card-slot" data-stack-target={stackTargeted ? "true" : undefined}>
       <button type="button" className={`zone-pile-card-row${chosen ? " is-chosen" : ""}`}
         aria-label={card.name || ui("Face-down card")}
         data-object-id={String(card.id).startsWith("look-top-") ? undefined : card.id} data-zone-card={zone}
-        data-target-legal={legal ? "true" : undefined} disabled={disabled}
+        data-target-legal={legal ? "true" : undefined} data-stack-target={stackTargeted ? "true" : undefined} disabled={disabled}
         onPointerEnter={(event) => {
           if (event.pointerType === "touch" || disabled || !isFaceUpZoneCard(card) || String(card.id).startsWith("look-top-")) return;
           hoverCard(card.id);

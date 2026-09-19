@@ -1,6 +1,6 @@
 import useUiText from "@/i18n/useUiText";
 import RollingPanel from "@/components/board/RollingPanel";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useGame } from "@/context/GameContext";
 import InspectorStackTimeline from "./InspectorStackTimeline";
@@ -9,19 +9,20 @@ import { getVisibleStackObjects } from "@/lib/stack-targets";
 import { isTriggerOrderingDecision } from "@/lib/trigger-ordering";
 import { samePlayerId } from "@/lib/player-display";
 
-const STACK_RAIL_WIDTH = "clamp(240px, 24vw, 360px)";
 const STACK_EDGE_MARGIN = 6;
 const STACK_MIN_HEIGHT = 44;
 const STACK_DEFAULT_MAX_HEIGHT = 320;
 const STACK_INLINE_MAX_HEIGHT = 236;
 const STACK_INLINE_LEFT_OFFSET = 58;
+// The header row plus the panel's own padding: what the list cannot use.
+const STACK_PANEL_CHROME_HEIGHT = 34;
 
+// The desktop board docks the stack beside the zone piles (inlineFlow); the
+// merged mobile/tablet header floats it over the board from a portal.
 export default function StackTimelineRail({
   selectedObjectId = null,
   onInspectObject = null,
-  floating = false,
   inlineFlow = false,
-  anchorRef = null,
   className = "",
 }) {
   const ui = useUiText();
@@ -30,9 +31,6 @@ export default function StackTimelineRail({
   const canAct = !!decision && samePlayerId(decision.player, state?.perspective);
   const stackObjects = getVisibleStackObjects(state);
   const stackPreview = state?.stack_preview || [];
-  const stackSignature = stackObjects
-    .map((entry) => String(entry.id))
-    .join("|");
   const rawStackEntryCount = Math.max(stackObjects.length, stackPreview.length);
   const orderingEntryCount = useMemo(
     () =>
@@ -41,8 +39,6 @@ export default function StackTimelineRail({
         : rawStackEntryCount,
     [decision, rawStackEntryCount],
   );
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const previousStackSignatureRef = useRef(stackSignature);
   const [availableHeight, setAvailableHeight] = useState(
     STACK_DEFAULT_MAX_HEIGHT,
   );
@@ -51,76 +47,8 @@ export default function StackTimelineRail({
   const [inlineRect, setInlineRect] = useState(null);
   const shouldShowRail = orderingEntryCount > 0;
 
-  useEffect(() => {
-    const changed = stackSignature !== previousStackSignatureRef.current;
-    let frame = 0;
-    if (isCollapsed && changed && orderingEntryCount > 0) {
-      frame = window.requestAnimationFrame(() => {
-        setIsCollapsed(false);
-      });
-    }
-    previousStackSignatureRef.current = stackSignature;
-    return () => {
-      if (frame) window.cancelAnimationFrame(frame);
-    };
-  }, [stackSignature, isCollapsed, orderingEntryCount]);
-
   useLayoutEffect(() => {
-    if (!floating) return undefined;
-
-    const root = anchorRef?.current ?? null;
-    if (!root) return undefined;
-
-    let rafId = null;
-    const computeBounds = () => {
-      const rootRect = root.getBoundingClientRect();
-      if (!rootRect || rootRect.height <= 0) return;
-
-      const opponents = root.querySelector("[data-opponents-zones]");
-      const myZone = root.querySelector("[data-my-zone]");
-
-      const opponentsTop = opponents
-        ? opponents.getBoundingClientRect().top - rootRect.top
-        : STACK_EDGE_MARGIN;
-      const myBottom = myZone
-        ? myZone.getBoundingClientRect().bottom - rootRect.top
-        : rootRect.height - STACK_EDGE_MARGIN;
-
-      const computedAvailableHeight = Math.max(
-        150,
-        Math.round(myBottom - opponentsTop - STACK_EDGE_MARGIN * 2),
-      );
-
-      setAvailableHeight(computedAvailableHeight);
-    };
-
-    const scheduleBounds = () => {
-      if (rafId != null) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(computeBounds);
-    };
-
-    scheduleBounds();
-
-    const resizeObserver =
-      typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(scheduleBounds)
-        : null;
-    resizeObserver?.observe(root);
-    const opponents = root.querySelector("[data-opponents-zones]");
-    const myZone = root.querySelector("[data-my-zone]");
-    if (opponents) resizeObserver?.observe(opponents);
-    if (myZone) resizeObserver?.observe(myZone);
-
-    window.addEventListener("resize", scheduleBounds);
-    return () => {
-      if (rafId != null) cancelAnimationFrame(rafId);
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", scheduleBounds);
-    };
-  }, [floating, anchorRef, rawStackEntryCount, state?.players?.length]);
-
-  useLayoutEffect(() => {
-    if (floating || inlineFlow) return undefined;
+    if (inlineFlow) return undefined;
 
     let rafId = null;
     const publishRect = () => {
@@ -177,7 +105,7 @@ export default function StackTimelineRail({
       window.removeEventListener("resize", scheduleRect);
       window.removeEventListener("scroll", scheduleRect, true);
     };
-  }, [floating, inlineFlow, shouldShowRail]);
+  }, [inlineFlow, shouldShowRail]);
 
   useLayoutEffect(() => {
     if (!inlineFlow || !shouldShowRail) return undefined;
@@ -220,61 +148,14 @@ export default function StackTimelineRail({
     };
   }, [inlineFlow, shouldShowRail]);
 
-  const collapsedPanelHeight = STACK_MIN_HEIGHT;
   const stackPanelMaxHeight = useMemo(
     () => Math.max(STACK_MIN_HEIGHT, Math.round(availableHeight)),
     [availableHeight],
   );
   const stackBodyMaxHeight = useMemo(
-    () => Math.max(96, stackPanelMaxHeight - 38),
+    () => Math.max(96, stackPanelMaxHeight - STACK_PANEL_CHROME_HEIGHT),
     [stackPanelMaxHeight],
   );
-
-  if (floating) {
-    return (
-      <aside
-        className={cn(
-          "pointer-events-none absolute right-2 z-[56] transition-[transform,opacity] duration-280 ease-out",
-          shouldShowRail
-            ? "translate-y-0 opacity-100"
-            : "translate-y-2 opacity-0",
-        )}
-        style={{
-          width: STACK_RAIL_WIDTH,
-          bottom: `${STACK_EDGE_MARGIN}px`,
-          maxHeight: `${stackPanelMaxHeight}px`,
-        }}
-        aria-hidden={!shouldShowRail}
-      >
-        <div
-          className={cn(
-            "pointer-events-none overflow-hidden transition-[max-height] duration-320 ease-out",
-            shouldShowRail ? "max-h-[90vh]" : "max-h-0",
-          )}
-          style={{
-            maxHeight: shouldShowRail
-              ? `${isCollapsed ? collapsedPanelHeight : stackPanelMaxHeight}px`
-              : "0px",
-          }}
-        >
-          <InspectorStackTimeline
-            embedded
-            title={ui("Stack")}
-            collapsible
-            collapsed={isCollapsed}
-            onToggleCollapsed={() => setIsCollapsed((prev) => !prev)}
-            decision={decision}
-            canAct={canAct}
-            stackObjects={stackObjects}
-            stackPreview={stackPreview}
-            selectedObjectId={selectedObjectId}
-            onInspectObject={onInspectObject}
-            maxBodyHeight={stackBodyMaxHeight}
-          />
-        </div>
-      </aside>
-    );
-  }
 
   if (inlineFlow) {
     return (
@@ -320,7 +201,7 @@ export default function StackTimelineRail({
         )
       )
     : STACK_DEFAULT_MAX_HEIGHT;
-  const inlineBodyMaxHeight = Math.max(96, inlinePanelMaxHeight - 38);
+  const inlineBodyMaxHeight = Math.max(96, inlinePanelMaxHeight - STACK_PANEL_CHROME_HEIGHT);
   const inlinePanelLeft = inlineRect
     ? Math.max(STACK_EDGE_MARGIN, inlineRect.left - STACK_INLINE_LEFT_OFFSET)
     : 0;

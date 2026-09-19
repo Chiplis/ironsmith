@@ -852,6 +852,12 @@ pub struct OrderContext {
     pub description: String,
     /// Items to order (as object IDs with display names).
     pub items: Vec<(ObjectId, String)>,
+    /// The game object each item stands for, parallel to `items`, when the
+    /// item id itself is synthetic. Trigger ordering hands out placeholder
+    /// ids for the pending abilities; this is how a client still knows which
+    /// permanent (or graveyard card) a trigger came from, so it can preview
+    /// it. Empty when every item id is already a real object.
+    pub item_sources: Vec<Option<ObjectId>>,
 }
 
 impl OrderContext {
@@ -867,7 +873,19 @@ impl OrderContext {
             source,
             description: description.into(),
             items,
+            item_sources: Vec::new(),
         }
+    }
+
+    /// Name the game object behind each item, parallel to `items`.
+    pub fn with_item_sources(mut self, item_sources: Vec<Option<ObjectId>>) -> Self {
+        self.item_sources = item_sources;
+        self
+    }
+
+    /// The game object behind the item at `index`, if one is known.
+    pub fn item_source(&self, index: usize) -> Option<ObjectId> {
+        self.item_sources.get(index).copied().flatten()
     }
 }
 

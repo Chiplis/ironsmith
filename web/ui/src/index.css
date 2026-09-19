@@ -6,5 +6,8 @@
 @import "./styles/game-effects.css";
 @import "./styles/design-system.css";
 @import "./styles/flat-modals.css";
+@import "./styles/flat-stack.css";
 
 @import "./styles/card-art-loader.css";
+
+@import "./styles/mobile-battle.css";

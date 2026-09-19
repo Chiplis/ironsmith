@@ -32,7 +32,8 @@ import {
   stackEntryTargetObjectIds,
   stackSelectionKeys,
 } from "@/lib/stack-targets";
-import { optionForClickedObject } from "@/lib/decision-object-meta";
+import { buildObjectControllerById, optionForClickedObject } from "@/lib/decision-object-meta";
+import { buildCombatStateArrows } from "@/lib/combat-arrows";
 import { samePlayerId } from "@/lib/player-display";
 import { sameActionRef } from "@/lib/sync-commands";
 import {
@@ -768,7 +769,12 @@ export default function Workspace({
     multiplayer,
     playerAccentOverrides,
   } = useGame();
-  const { updateStackArrows, clearStackArrows } = useCombatArrows();
+  const {
+    clearCombatStateArrows,
+    clearStackArrows,
+    updateCombatStateArrows,
+    updateStackArrows,
+  } = useCombatArrows();
   const { endDrag, markCastIntent, resumeDrag, setCastTargetPreview, startDrag } = useDragActions();
   const dragState = useDragSession();
   const {
@@ -1142,6 +1148,22 @@ export default function Workspace({
       setPinnedInspectorObjectId(null);
     });
   }, [clearTransientInspectorPreviews, combatDeclarationActive]);
+
+  // Every seat keeps seeing who attacks what and who blocks whom until the
+  // engine clears its combat state at end of combat.
+  const objectControllerById = useMemo(() => buildObjectControllerById(state), [state]);
+  const combatStateArrows = useMemo(
+    () => buildCombatStateArrows(state?.combat, objectControllerById),
+    [objectControllerById, state?.combat]
+  );
+  useEffect(() => {
+    if (combatStateArrows.length === 0) {
+      clearCombatStateArrows();
+      return;
+    }
+    updateCombatStateArrows(combatStateArrows);
+  }, [clearCombatStateArrows, combatStateArrows, updateCombatStateArrows]);
+  useEffect(() => clearCombatStateArrows, [clearCombatStateArrows]);
 
   useEffect(() => {
     if (combatDeclarationActive || stackTargetPresentation.arrows.length === 0) {

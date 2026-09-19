@@ -6,9 +6,21 @@
 //!
 //! A dependency exists if:
 //! - The effects are in the same layer (or sublayer for Layer 7)
-//! - Applying one effect would change whether the other applies, what it applies to,
-//!   or what it does
+//! - Applying one effect would change whether the other applies (its condition
+//!   or the existence of its source ability), what it applies to, or what it
+//!   does to the things it applies to
 //! - Neither effect is a characteristic-defining ability, or both are
+//!
+//! Dependencies are detected by simulating each candidate effect against a
+//! board-wide baseline of characteristics computed from the earlier layers
+//! (`sort_layer_effects_with_baseline_and_started_groups`). Where the
+//! simulator cannot evaluate a value or condition it falls back to a
+//! conservative structural answer ("could this modification change what that
+//! value or condition reads?") rather than silently assuming independence.
+//!
+//! When `needs_baseline_dependency_sort` proves that no dependency can exist in
+//! a group, `sort_layer_effects` applies the CR 613.2 order directly:
+//! characteristic-defining effects first, then timestamp order.
 //!
 //! Example: Humility ("All creatures lose all abilities and have base power and
 //! toughness 1/1") and an anthem from a creature. The anthem depends on Humility
@@ -20,7 +32,7 @@ use crate::ability::{Ability, AbilityKind, ActivatedAbilityRuntimeExt as _};
 use crate::continuous::{
     CalculatedCharacteristics, ContinuousEffect, ContinuousEffectGroupId, EffectSourceType,
     EffectTarget, Layer, Modification, PtSublayer, enforce_ability_gain_prohibitions,
-    replace_card_types_and_prune_subtypes, replace_subtypes_in_family,
+    replace_card_types_and_prune_subtypes, replace_subtypes_for_set,
 };
 use crate::effect::Value;
 use crate::filter::PlayerFilterExt;
@@ -63,41 +75,6 @@ fn ability_is_mana_for_object(
     activated.is_runtime_mana_ability(game, object.id, game.controller_of(object))
 }
 
-/// Check if effect A depends on effect B.
-///
-/// Per Rule 613.8, A depends on B if:
-/// 1. They apply in the same layer/sublayer
-/// 2. Applying B first would change whether A applies, what A applies to,
-///    or what A does to things it applies to
-/// 3. Neither is a CDA, or both are CDAs
-///
-/// Returns true if A depends on B.
-pub fn effect_depends_on(a: &ContinuousEffect, b: &ContinuousEffect) -> bool {
-    // Rule 613.8: Must be in the same layer
-    if a.modification.layer() != b.modification.layer() {
-        return false;
-    }
-
-    // For Layer 7, must also be in the same sublayer
-    if a.modification.layer() == Layer::PowerToughness {
-        let sub_a = a.modification.pt_sublayer();
-        let sub_b = b.modification.pt_sublayer();
-        if sub_a != sub_b {
-            return false;
-        }
-    }
-
-    // Check CDA status - if one is CDA and the other isn't, no dependency
-    let a_is_cda = matches!(a.source_type, EffectSourceType::CharacteristicDefining);
-    let b_is_cda = matches!(b.source_type, EffectSourceType::CharacteristicDefining);
-    if a_is_cda != b_is_cda {
-        return false;
-    }
-
-    // Now check if B would affect A
-    check_dependency_relationship(&a.modification, &b.modification, a.source, b.source)
-}
-
 fn effect_depends_on_with_baseline_and_started_groups(
     a: &ContinuousEffect,
     b: &ContinuousEffect,
@@ -107,9 +84,6 @@ fn effect_depends_on_with_baseline_and_started_groups(
     started_groups: &HashSet<ContinuousEffectGroupId>,
     representatives: Option<&[ObjectId]>,
 ) -> bool {
-    let structural_dependency =
-        check_dependency_relationship(&a.modification, &b.modification, a.source, b.source);
-
     // Static ability effects depend on any effect that would remove the
     // originating static ability from their source, unless this effect already
     // began applying in an earlier layer (CR 613.6).
@@ -124,14 +98,30 @@ fn effect_depends_on_with_baseline_and_started_groups(
         return true;
     }
 
-    // First, check if applying B would change what A applies to.
+    // An effect whose condition reads a characteristic that B changes may stop
+    // or start existing once B applies (CR 613.8, "the existence of the first
+    // effect"). Conditions are evaluated against the live game, not the
+    // simulated baseline, so this is a structural, conservative answer: it
+    // only fires when B actually applies to something in the baseline and the
+    // condition could read what B writes. A group that already started applying
+    // in an earlier layer keeps applying regardless (CR 613.6).
+    if !effect_group_has_started(a, started_groups)
+        && a.condition.as_ref().is_some_and(|condition| {
+            condition_could_be_affected_by(condition, &b.modification)
+        })
+        && effect_applies_to_any_object(b, baseline, objects, game)
+    {
+        return true;
+    }
+
+    // Check if applying B would change what A applies to.
     if modification_can_affect_effect_target(&b.modification, &a.applies_to)
         && effect_applicability_changed_counted(a, b, baseline, objects, game, representatives)
     {
         return true;
     }
 
-    // Then check if applying B would change what A does to any objects it applies to.
+    // Check if applying B would change what A does to any objects it applies to.
     if modification_can_affect_dependency_output(&a.modification, &b.modification) && {
         game.note_dependency_pair_probed();
         effect_output_changed(a, b, baseline, objects, game)
@@ -139,8 +129,27 @@ fn effect_depends_on_with_baseline_and_started_groups(
         return true;
     }
 
-    // Fall back to existing relationship checks for cases not covered by simulation.
-    structural_dependency
+    false
+}
+
+fn effect_applies_to_any_object(
+    effect: &ContinuousEffect,
+    baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
+    objects: &ObjectMap,
+    game: &GameState,
+) -> bool {
+    objects.iter().any(|(id, object)| {
+        baseline
+            .get(id)
+            .is_some_and(|chars| effect_applies_with_chars(effect, object, chars, game))
+    })
+}
+
+fn is_characteristic_defining_effect(effect: &ContinuousEffect) -> bool {
+    matches!(
+        effect.source_type,
+        EffectSourceType::CharacteristicDefining
+    )
 }
 
 fn effect_group_has_started(
@@ -150,207 +159,6 @@ fn effect_group_has_started(
     effect
         .group
         .is_some_and(|group| started_groups.contains(&group))
-}
-
-/// Check if applying modification B would affect how modification A works.
-fn check_dependency_relationship(
-    a: &Modification,
-    b: &Modification,
-    _a_source: ObjectId,
-    b_source: ObjectId,
-) -> bool {
-    match (a, b) {
-        // ========================================
-        // Layer 6 (Abilities) dependencies
-        // ========================================
-
-        // Ability grants and ability removals do not automatically depend on
-        // each other. CR 613.8's flying/loses flying example uses timestamp
-        // order unless one effect changes the other's applicability, source
-        // ability existence, or output.
-        (Modification::RemoveAllAbilities, Modification::AddAbility(_))
-        | (Modification::RemoveAllAbilities, Modification::AddAbilityGeneric(_))
-        | (Modification::RemoveAllAbilities, Modification::CopyActivatedAbilities { .. })
-        | (Modification::RemoveAllAbilities, Modification::CopyStaticAbilityVariants { .. })
-        | (Modification::RemoveAllAbilities, Modification::AddCombatDamageDrawAbility)
-        | (Modification::SetAbilities(_), Modification::AddAbility(_))
-        | (Modification::SetAbilities(_), Modification::AddAbilityGeneric(_))
-        | (Modification::SetAbilities(_), Modification::CopyActivatedAbilities { .. })
-        | (Modification::SetAbilities(_), Modification::CopyStaticAbilityVariants { .. })
-        | (Modification::SetAbilities(_), Modification::AddCombatDamageDrawAbility)
-        | (Modification::RemoveAllAbilitiesExceptMana, Modification::AddAbility(_))
-        | (Modification::RemoveAllAbilitiesExceptMana, Modification::AddAbilityGeneric(_))
-        | (
-            Modification::RemoveAllAbilitiesExceptMana,
-            Modification::CopyActivatedAbilities { .. },
-        )
-        | (
-            Modification::RemoveAllAbilitiesExceptMana,
-            Modification::CopyStaticAbilityVariants { .. },
-        )
-        | (Modification::RemoveAllAbilitiesExceptMana, Modification::AddCombatDamageDrawAbility)
-        | (Modification::AddAbility(_), Modification::RemoveAllAbilities)
-        | (Modification::AddAbilityGeneric(_), Modification::RemoveAllAbilities)
-        | (Modification::CopyActivatedAbilities { .. }, Modification::RemoveAllAbilities)
-        | (Modification::CopyStaticAbilityVariants { .. }, Modification::RemoveAllAbilities)
-        | (Modification::AddCombatDamageDrawAbility, Modification::RemoveAllAbilities)
-        | (Modification::AddAbility(_), Modification::SetAbilities(_))
-        | (Modification::AddAbilityGeneric(_), Modification::SetAbilities(_))
-        | (Modification::CopyActivatedAbilities { .. }, Modification::SetAbilities(_))
-        | (Modification::CopyStaticAbilityVariants { .. }, Modification::SetAbilities(_))
-        | (Modification::AddCombatDamageDrawAbility, Modification::SetAbilities(_))
-        | (Modification::AddAbility(_), Modification::RemoveAllAbilitiesExceptMana)
-        | (Modification::AddAbilityGeneric(_), Modification::RemoveAllAbilitiesExceptMana)
-        | (
-            Modification::CopyActivatedAbilities { .. },
-            Modification::RemoveAllAbilitiesExceptMana,
-        )
-        | (
-            Modification::CopyStaticAbilityVariants { .. },
-            Modification::RemoveAllAbilitiesExceptMana,
-        )
-        | (Modification::AddCombatDamageDrawAbility, Modification::RemoveAllAbilitiesExceptMana)
-        | (Modification::AddAbility(_), Modification::RemoveAbility(_))
-        | (Modification::AddCombatDamageDrawAbility, Modification::RemoveAbility(_)) => false,
-
-        // ========================================
-        // Layer 7 (P/T) dependencies
-        // ========================================
-
-        // If B sets P/T and A modifies P/T, A doesn't depend on B
-        // (setting happens first in sublayer ordering anyway)
-        (Modification::ModifyPowerToughness { .. }, Modification::SetPowerToughness { .. }) => {
-            false
-        }
-
-        // If B modifies P/T and A also modifies with fixed values,
-        // no dependency (fixed modifiers are commutative)
-        (Modification::ModifyPowerToughness { .. }, Modification::ModifyPowerToughness { .. }) => {
-            // ModifyPowerToughness uses fixed i32 values, so no dependency
-            false
-        }
-
-        // If A sets P/T using computed values and B modifies P/T,
-        // A may depend on B if A's values reference P/T
-        (
-            Modification::SetPowerToughness {
-                power: power_a,
-                toughness: toughness_a,
-                ..
-            },
-            Modification::ModifyPowerToughness { .. },
-        ) => {
-            // Check if A's values reference P/T that B could affect
-            let a_refs_pt = value_references_pt(power_a) || value_references_pt(toughness_a);
-            if !a_refs_pt {
-                return false;
-            }
-
-            // B modifies P/T - check if it affects objects A references
-            // ModifyPowerToughness affects whatever target it applies to
-            // For now, conservatively assume B could affect any creature
-            pt_value_depends_on_modification(power_a, b_source, true)
-                || pt_value_depends_on_modification(toughness_a, b_source, true)
-        }
-
-        // If both A and B set P/T using computed values, check if A's values
-        // depend on the object B is setting
-        (
-            Modification::SetPowerToughness {
-                power: power_a,
-                toughness: toughness_a,
-                ..
-            },
-            Modification::SetPowerToughness { .. },
-        ) => {
-            // Check if A's values reference P/T
-            let a_refs_pt = value_references_pt(power_a) || value_references_pt(toughness_a);
-            if !a_refs_pt {
-                return false;
-            }
-
-            // B sets P/T - check if it affects objects A references
-            // SetPowerToughness affects a specific target
-            pt_value_depends_on_modification(power_a, b_source, false)
-                || pt_value_depends_on_modification(toughness_a, b_source, false)
-        }
-
-        // ModifyPower/ModifyToughness single variants
-        (Modification::ModifyPower(_), Modification::ModifyPower(_))
-        | (Modification::ModifyToughness(_), Modification::ModifyToughness(_))
-        | (Modification::ModifyPower(_), Modification::ModifyToughness(_))
-        | (Modification::ModifyToughness(_), Modification::ModifyPower(_)) => {
-            // Fixed value modifiers, no dependency
-            false
-        }
-
-        // SetPower/SetToughness with computed values
-        (Modification::SetPower { value, .. }, Modification::ModifyPower(_))
-        | (Modification::SetPower { value, .. }, Modification::ModifyPowerToughness { .. }) => {
-            value_references_pt(value) && pt_value_depends_on_modification(value, b_source, true)
-        }
-
-        (Modification::SetToughness { value, .. }, Modification::ModifyToughness(_))
-        | (Modification::SetToughness { value, .. }, Modification::ModifyPowerToughness { .. }) => {
-            value_references_pt(value) && pt_value_depends_on_modification(value, b_source, true)
-        }
-
-        // Switch P/T interactions
-        // If A switches P/T and B modifies P/T, the order matters
-        (Modification::SwitchPowerToughness, Modification::ModifyPowerToughness { .. }) => true,
-        (Modification::ModifyPowerToughness { .. }, Modification::SwitchPowerToughness) => true,
-
-        // ========================================
-        // Layer 4 (Type) dependencies
-        // ========================================
-
-        // If B changes card types and A is a type-dependent ability grant,
-        // A may depend on B (e.g., effects that grant abilities to creatures
-        // would be affected by something that removes the creature type)
-        (Modification::AddAbility(_), Modification::SetCardTypes(_))
-        | (Modification::AddAbility(_), Modification::AddCardTypes(_))
-        | (Modification::AddAbility(_), Modification::RemoveCardTypes(_))
-        | (Modification::AddCombatDamageDrawAbility, Modification::SetCardTypes(_))
-        | (Modification::AddCombatDamageDrawAbility, Modification::AddCardTypes(_))
-        | (Modification::AddCombatDamageDrawAbility, Modification::RemoveCardTypes(_)) => {
-            // Conservative: assume dependency exists since we can't easily
-            // determine if A's filter references card types
-            // (Would need to inspect the filter, which requires more context)
-            true
-        }
-
-        // If B changes subtypes and A is a subtype-dependent ability grant,
-        // A may depend on B (e.g., "Elves get +1/+1" affected by type changes)
-        (Modification::AddAbility(_), Modification::SetSubtypes(_))
-        | (Modification::AddAbility(_), Modification::AddSubtypes(_))
-        | (Modification::AddAbility(_), Modification::RemoveSubtypes(_))
-        | (Modification::AddCombatDamageDrawAbility, Modification::SetSubtypes(_))
-        | (Modification::AddCombatDamageDrawAbility, Modification::AddSubtypes(_))
-        | (Modification::AddCombatDamageDrawAbility, Modification::RemoveSubtypes(_)) => {
-            // Conservative: assume dependency exists
-            true
-        }
-
-        // ========================================
-        // Layer 5 (Color) dependencies
-        // ========================================
-
-        // If A grants protection from a color and B changes colors,
-        // A depends on B (protection effectiveness changes based on colors)
-        (Modification::AddAbility(ability), Modification::SetColors(_))
-        | (Modification::AddAbility(ability), Modification::AddColors(_))
-        | (Modification::AddAbility(ability), Modification::RemoveColors(_))
-            if ability.has_protection()
-                && ability
-                    .protection_from()
-                    .is_some_and(|p| matches!(p, crate::ability::ProtectionFrom::Color(_))) =>
-        {
-            true
-        }
-
-        // Default: no dependency
-        _ => false,
-    }
 }
 
 fn effect_applicability_changed_counted(
@@ -615,12 +423,43 @@ fn effect_output_changed(
         return before != after;
     }
 
+    if let Modification::CopyTriggeredAbilities {
+        filter,
+        exclude_source_name,
+        exclude_source_id,
+    } = &a.modification
+    {
+        let before = collect_triggered_ability_signatures(
+            filter,
+            *exclude_source_name,
+            *exclude_source_id,
+            a,
+            baseline,
+            objects,
+            game,
+        );
+        let baseline_after = apply_effect_to_baseline(b, baseline, objects, game);
+        let after = collect_triggered_ability_signatures(
+            filter,
+            *exclude_source_name,
+            *exclude_source_id,
+            a,
+            &baseline_after,
+            objects,
+            game,
+        );
+        return before != after;
+    }
+
     let (a_power_value, a_toughness_value) = match &a.modification {
         Modification::SetPower { value, .. } => (Some(value), None),
         Modification::SetToughness { value, .. } => (None, Some(value)),
         Modification::SetPowerToughness {
             power, toughness, ..
-        } => (Some(power), Some(toughness)),
+        }
+        | Modification::ModifyPowerToughnessValue { power, toughness } => {
+            (Some(power), Some(toughness))
+        }
         _ => return false,
     };
 
@@ -633,9 +472,12 @@ fn effect_output_changed(
         return false;
     }
 
+    if !effect_applies_to_any_object(b, baseline, objects, game) {
+        return false;
+    }
     let baseline_after = apply_effect_to_baseline(b, baseline, objects, game);
 
-    if let Some(value) = a_power_value {
+    for value in [a_power_value, a_toughness_value].into_iter().flatten() {
         let before = evaluate_value(value, a.source, a.controller, baseline, objects, game);
         let after = evaluate_value(
             value,
@@ -645,26 +487,63 @@ fn effect_output_changed(
             objects,
             game,
         );
-        if before != after {
-            return true;
+        // A value the simulator cannot evaluate must not read as "unchanged":
+        // fall back to whether it could read anything B writes.
+        if matches!(before, ValueEval::Unknown) || matches!(after, ValueEval::Unknown) {
+            if value_could_be_affected_by(value, &b.modification) {
+                return true;
+            }
+            continue;
         }
-    }
-    if let Some(value) = a_toughness_value {
-        let before = evaluate_value(value, a.source, a.controller, baseline, objects, game);
-        let after = evaluate_value(
-            value,
-            a.source,
-            a.controller,
-            &baseline_after,
-            objects,
-            game,
-        );
         if before != after {
             return true;
         }
     }
 
     false
+}
+
+fn collect_triggered_ability_signatures(
+    filter: &ObjectFilter,
+    exclude_source_name: bool,
+    exclude_source_id: bool,
+    effect: &ContinuousEffect,
+    baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
+    objects: &ObjectMap,
+    game: &GameState,
+) -> HashSet<String> {
+    let mut signatures = HashSet::new();
+    let source_name = objects
+        .get(&effect.source)
+        .map(|o| o.name.as_str())
+        .unwrap_or("");
+    for (&id, chars) in baseline {
+        let Some(object) = objects.get(&id) else {
+            continue;
+        };
+        if exclude_source_id && id == effect.source {
+            continue;
+        }
+        if exclude_source_name && object.name == source_name {
+            continue;
+        }
+        if !crate::continuous::filter_matches_with_characteristics(
+            filter,
+            object,
+            chars,
+            game,
+            effect.controller,
+            effect.source,
+        ) {
+            continue;
+        }
+        for ability in &chars.abilities {
+            if matches!(ability.kind, AbilityKind::Triggered(_)) {
+                signatures.insert(format!("{:?}", ability.kind));
+            }
+        }
+    }
+    signatures
 }
 
 fn evaluate_value(
@@ -988,9 +867,11 @@ fn effect_applies_with_chars(
         EffectTarget::Filter(filter) => {
             object_matches_filter_with_chars(filter, object, chars, game, effect.controller)
         }
+        // Mirrors `effect_target_applies_to_direct`: attachment plus zone, with
+        // no creature requirement, so auras on lands and other permanents are
+        // visible to dependency detection.
         EffectTarget::AttachedTo(source_id) => {
             object.zone == crate::zone::Zone::Battlefield
-                && chars.card_types.contains(&crate::types::CardType::Creature)
                 && objects_attached_to(source_id, object, game)
         }
     }
@@ -1391,11 +1272,10 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
             chars.subtypes.retain(|t| !types.contains(t));
         }
         Modification::SetSubtypes(types) => {
-            replace_subtypes_in_family(
-                &mut chars.subtypes,
-                types,
-                crate::types::SubtypeFamily::Land,
-            );
+            // CR 205.1a: setting subtypes replaces the subtypes of the same
+            // family (land types replace land types, creature types replace
+            // creature types) and leaves the other families alone.
+            replace_subtypes_for_set(&mut chars.subtypes, types);
 
             // Setting a land's subtype to basic land types also replaces its
             // abilities with the corresponding intrinsic mana abilities. We
@@ -1754,134 +1634,16 @@ fn value_references_pt(value: &Value) -> bool {
     }
 }
 
-/// Check if effect B could affect the P/T values computed by effect A.
+/// Order a group of effects that `needs_baseline_dependency_sort` has proven
+/// free of dependencies.
 ///
-/// This handles the case where A sets P/T based on computed values that
-/// B could modify. For example:
-/// - A: "This creature's power is equal to the number of creatures you control"
-///   - Doesn't depend on B modifying P/T
-/// - A: "This creature's power is equal to another creature's power"
-///   - Depends on B if B modifies that creature's P/T
-fn pt_value_depends_on_modification(
-    a_value: &Value,
-    _b_source: ObjectId,
-    b_affects_all: bool,
-) -> bool {
-    match a_value {
-        // If A's value depends on source's P/T and B modifies source's P/T
-        Value::SourcePower | Value::SourceToughness => {
-            // A depends on its own source's P/T - if B modifies all creatures
-            // or targets the same source, there's a potential dependency
-            b_affects_all
-        }
-
-        // If A references a specific object's P/T
-        Value::PowerOf(target) | Value::ToughnessOf(target) => {
-            // Check if B could affect the referenced object
-            // For ChooseSpec::Source, it means the source of effect A
-            // For now, conservatively assume dependency if B affects all
-            // or if we can't determine the specific object
-            use crate::target::ChooseSpec;
-            match target.as_ref() {
-                ChooseSpec::Source => b_affects_all,
-                ChooseSpec::Object(_filter) => {
-                    // If B affects all, or if B's source matches the filter,
-                    // there could be a dependency
-                    b_affects_all
-                }
-                _ => b_affects_all,
-            }
-        }
-
-        // EffectValue references a prior effect's result - could be anything
-        Value::EffectValue(_) => {
-            // Conservative: assume it could depend on P/T
-            // In practice, this is rare in continuous effects
-            b_affects_all
-        }
-
-        // These don't reference P/T, so no dependency
-        _ => false,
-    }
-}
-
-/// Sort effects considering dependencies.
-///
-/// Per Rule 613.8d, if dependencies would create a cycle, the effects are
-/// applied in timestamp order as a fallback.
-///
-/// Returns effects sorted so that if A depends on B, B comes before A.
+/// CR 613.2: within a layer, effects from characteristic-defining abilities
+/// apply first, then all other effects in timestamp order. Ties on timestamp
+/// keep the caller's order, which is deterministic.
 pub fn sort_with_dependencies<'a>(effects: &[&'a ContinuousEffect]) -> Vec<&'a ContinuousEffect> {
-    if effects.len() <= 1 {
-        return effects.to_vec();
-    }
-
-    // Build dependency graph: dependencies[i] contains effects that i depends on
-    // If A depends on B, B must come before A in the result
-    let mut depends_on: Vec<Vec<usize>> = vec![Vec::new(); effects.len()];
-
-    let mut has_any_dependency = false;
-    for i in 0..effects.len() {
-        for j in 0..effects.len() {
-            if i != j && effect_depends_on(effects[i], effects[j]) {
-                // i depends on j, so j must come before i
-                depends_on[i].push(j);
-                has_any_dependency = true;
-            }
-        }
-    }
-
-    // If no dependencies, just sort by timestamp
-    if !has_any_dependency {
-        let mut sorted = effects.to_vec();
-        sorted.sort_by_key(|e| e.timestamp);
-        return sorted;
-    }
-
-    // Detect cycles
-    if has_cycle(&depends_on) {
-        // Fall back to timestamp ordering
-        let mut sorted = effects.to_vec();
-        sorted.sort_by_key(|e| e.timestamp);
-        return sorted;
-    }
-
-    // Topological sort - effects with no dependencies come first
-    // in_degree[i] = number of effects that i depends on (must come before i)
-    let mut in_degree: Vec<usize> = vec![0; effects.len()];
-    // in_degree is calculated from depends_on - no iteration needed
-    for (i, deps) in depends_on.iter().enumerate() {
-        in_degree[i] = deps.len();
-    }
-
-    // Build reverse map: depended_by[j] = effects that depend on j
-    let mut depended_by: Vec<Vec<usize>> = vec![Vec::new(); effects.len()];
-    for (i, deps) in depends_on.iter().enumerate() {
-        for &j in deps {
-            depended_by[j].push(i);
-        }
-    }
-
-    let mut result = Vec::with_capacity(effects.len());
-    let mut ready: Vec<usize> = (0..effects.len()).filter(|&i| in_degree[i] == 0).collect();
-
-    // Sort ready queue so oldest timestamp is popped first.
-    ready.sort_by_key(|&i| std::cmp::Reverse(effects[i].timestamp));
-
-    while let Some(idx) = ready.pop() {
-        result.push(effects[idx]);
-        // Effects that depend on idx can now have their in_degree reduced
-        for &dependent in &depended_by[idx] {
-            in_degree[dependent] -= 1;
-            if in_degree[dependent] == 0 {
-                ready.push(dependent);
-            }
-        }
-        // Re-sort so oldest timestamp is popped first.
-        ready.sort_by_key(|&i| std::cmp::Reverse(effects[i].timestamp));
-    }
-
-    result
+    let mut sorted = effects.to_vec();
+    sorted.sort_by_key(|effect| (!is_characteristic_defining_effect(effect), effect.timestamp));
+    sorted
 }
 
 /// Return true when full baseline simulation is required to sort this effect set safely.
@@ -2120,14 +1882,6 @@ fn attachment_scoped_effects_have_disjoint_scopes(
 }
 
 fn non_pt_group_has_no_dynamic_dependencies(effects: &[&ContinuousEffect]) -> bool {
-    if effects.iter().any(|effect| {
-        effect.condition.as_ref().is_some_and(|condition| {
-            !condition_is_invariant_in_layer(condition, effect.modification.layer())
-        })
-    }) {
-        return false;
-    }
-
     for i in 0..effects.len() {
         for j in 0..effects.len() {
             if i == j {
@@ -2136,11 +1890,15 @@ fn non_pt_group_has_no_dynamic_dependencies(effects: &[&ContinuousEffect]) -> bo
 
             let a = effects[i];
             let b = effects[j];
-            if check_dependency_relationship(&a.modification, &b.modification, a.source, b.source) {
-                return false;
-            }
             if a.originating_static_ability.is_some()
                 && modification_can_remove_static_ability_presence(&b.modification)
+            {
+                return false;
+            }
+            if a
+                .condition
+                .as_ref()
+                .is_some_and(|condition| condition_could_be_affected_by(condition, &b.modification))
             {
                 return false;
             }
@@ -2156,29 +1914,435 @@ fn non_pt_group_has_no_dynamic_dependencies(effects: &[&ContinuousEffect]) -> bo
     true
 }
 
-/// A condition need not force baseline simulation when this layer cannot
-/// change anything it reads. Keep this whitelist small: unknown predicates
-/// (including player selectors that inspect objects) retain full simulation.
+/// Could applying `modification` change the outcome of `condition`?
 ///
-/// Card types are established in layer 4, before ability effects in layer 6.
-/// This only proves ordering independence *within* layer 6; the condition is
-/// still evaluated normally against calculated types, and all existing
-/// source-ability, target, and output dependency checks still run.
-fn condition_is_invariant_in_layer(condition: &crate::ConditionExpr, layer: Layer) -> bool {
-    use crate::ConditionExpr;
-    use crate::target::PlayerFilter;
+/// Conditions are evaluated against the live game rather than the simulated
+/// baseline, so dependency detection answers structurally: a condition that
+/// inspects objects through a filter depends on modifications that can change
+/// what that filter reads; a condition that reads power or toughness depends on
+/// layer 7 modifications; conditions about players, turn history, mana, votes,
+/// counters, status and zones cannot be changed by any layered effect. Variants
+/// the classifier does not recognise are treated as able to read any
+/// characteristic, so unknown shapes stay conservative instead of silently
+/// independent.
+pub(crate) fn condition_could_be_affected_by(
+    condition: &crate::ConditionExpr,
+    modification: &Modification,
+) -> bool {
+    use crate::ConditionExpr as C;
+
+    let filters_affected = |filters: &[&ObjectFilter]| {
+        filters
+            .iter()
+            .any(|filter| modification_can_affect_filter(modification, filter))
+    };
+    let pt_affected = modification.layer() == Layer::PowerToughness;
+    let types_affected = modification_can_change_type_characteristics(modification);
+    let any_characteristic_affected = pt_affected
+        || modification_can_change_abilities_or_matching_characteristics(modification);
 
     match condition {
-        ConditionExpr::PlayerHasCardTypesInGraveyardOrMore { player, .. } => {
-            layer == Layer::Ability
-                && matches!(player, PlayerFilter::You | PlayerFilter::Specific(_))
+        C::Not(inner) => condition_could_be_affected_by(inner, modification),
+        C::And(left, right) | C::Or(left, right) => {
+            condition_could_be_affected_by(left, modification)
+                || condition_could_be_affected_by(right, modification)
         }
-        ConditionExpr::Not(inner) => condition_is_invariant_in_layer(inner, layer),
-        ConditionExpr::And(left, right) | ConditionExpr::Or(left, right) => {
-            condition_is_invariant_in_layer(left, layer)
-                && condition_is_invariant_in_layer(right, layer)
+
+        // Object-inspecting conditions expressed through a filter.
+        C::YouControl(filter)
+        | C::OpponentControls(filter)
+        | C::YouHaveCardInHandMatching(filter)
+        | C::ObjectEnteredBattlefieldThisTurn(filter)
+        | C::ObjectEnteredBattlefieldLastTurn(filter)
+        | C::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter)
+        | C::SourceMatches(filter)
+        | C::AttachedToSourceMatches(filter)
+        | C::TargetMatches(filter)
+        | C::TaggedObjectMatches(_, filter)
+        | C::TaggedObjectMatchedLastKnown(_, filter)
+        | C::SourceSoulbondPartnerMatches(filter) => filters_affected(&[filter]),
+        C::PlayerControls { filter, .. }
+        | C::PlayerHasAtLeast { filter, .. }
+        | C::PlayerControlsExactly { filter, .. }
+        | C::PlayerControlsMost { filter, .. }
+        | C::PlayerControlsMoreThanEachOtherPlayer { filter, .. }
+        | C::PlayerControlsMoreThanYou { filter, .. }
+        | C::AnOpponentControlsMoreThanPlayer { filter, .. }
+        | C::AnOpponentHasFewerThanPlayer { filter, .. }
+        | C::PlayerRemovedDraftCardMatching { filter, .. }
+        | C::SourceCrewedByExactly { filter, .. }
+        | C::PlayerTaggedObjectMatches { filter, .. }
+        | C::SourceInGraveyardWithCardsAbove { filter, .. } => filters_affected(&[filter]),
+        C::PlayerHasAtLeastWithDifferentPowers { filter, .. } => {
+            pt_affected || filters_affected(&[filter])
         }
-        _ => false,
+        C::CreatureDealtDamageBySourceDiedThisTurn { victim, .. } => {
+            filters_affected(&[victim])
+        }
+        C::AttachmentCount { attachment, .. } => filters_affected(&[attachment]),
+        C::CountComparison { count, .. } | C::CountParity { count, .. } => {
+            anthem_count_could_be_affected_by(count, modification)
+        }
+        C::ValueComparison { left, right, .. } => {
+            value_could_be_affected_by(left, modification)
+                || value_could_be_affected_by(right, modification)
+        }
+        C::ValueIsPrime(value) => value_could_be_affected_by(value, modification),
+
+        // Conditions that read types, colors or land types without a filter.
+        C::PlayerControlsBasicLandTypesAmongLandsOrMore { .. }
+        | C::EnchantedPermanentIsCreature
+        | C::EnchantedPermanentIsLand
+        | C::EnchantedPermanentIsEquipment
+        | C::EnchantedPermanentIsVehicle
+        | C::CardInYourGraveyard { .. }
+        | C::PlayerHasCardTypesInGraveyardOrMore { .. }
+        | C::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { .. } => types_affected,
+        C::TargetObjectsHaveDifferentColorSets => {
+            matches!(modification.layer(), Layer::Color | Layer::Copy)
+        }
+        C::YouHaveFullParty => types_affected,
+        C::YouControlMoreCreaturesThanTargetSpellController => types_affected,
+
+        // Conditions that read power or toughness.
+        C::SourcePowerAtLeast(_)
+        | C::TargetHasGreatestPowerAmongCreatures
+        | C::ControlCreaturesTotalPowerAtLeast(_) => pt_affected || types_affected,
+        C::TargetManaValueLteColorsSpentToCastThisSpell => {
+            matches!(modification.layer(), Layer::Copy)
+        }
+
+        // Player, turn, history, mana, vote, counter, status and zone facts:
+        // no layered effect changes these.
+        C::PlayerLifeAtMostHalfStartingLifeTotal { .. }
+        | C::PlayerLifeLessThanHalfStartingLifeTotal { .. }
+        | C::PlayerHasLessLifeThanYou { .. }
+        | C::PlayerHasMoreLifeThanYou { .. }
+        | C::PlayerHasNoOpponentWithMoreLifeThan { .. }
+        | C::PlayerHasMoreLifeThanEachOtherPlayer { .. }
+        | C::PlayerIsMonarch { .. }
+        | C::PlayerHasInitiative { .. }
+        | C::PlayerHasCitysBlessing { .. }
+        | C::PlayerHasEnduringStory { .. }
+        | C::SourceIsRingBearer { .. }
+        | C::PlayerRingTemptedThisGameOrMore { .. }
+        | C::PlayerCommittedCrimeThisTurn { .. }
+        | C::PlayerRolledResultThisTurn { .. }
+        | C::PlayerCompletedDungeon { .. }
+        | C::LifeTotalOrLess(_)
+        | C::LifeTotalOrGreater(_)
+        | C::CardsInHandOrMore(_)
+        | C::PlayerCardsInHandOrMore { .. }
+        | C::PlayerCardsInHandOrFewer { .. }
+        | C::PlayerCardsInHandAtTurnStartOrMore { .. }
+        | C::PlayerCardsInHandAtTurnStartOrFewer { .. }
+        | C::PlayerHasMoreCardsInHandThanYou { .. }
+        | C::PlayerHasMoreCardsInHandThanEachOtherPlayer { .. }
+        | C::PlayerHasPoisonCountersOrMore { .. }
+        | C::PlayerHasCountersOrMore { .. }
+        | C::YourTurn
+        | C::CurrentTurnIsExtra
+        | C::YourFirstTurnsOfTheGameOrFewer(_)
+        | C::CreatureDiedThisTurn
+        | C::CreatureDiedThisTurnOrMore(_)
+        | C::CreatureCardPutIntoYourGraveyardThisTurn
+        | C::CastSpellThisTurn
+        | C::PlayerCastSpellsThisTurnOrMore { .. }
+        | C::AttackedThisTurn
+        | C::AttackedWithNOrMoreCreaturesThisTurn(_)
+        | C::OpponentLostLifeThisTurn
+        | C::AnyPlayerLostLifeThisTurnOrMore { .. }
+        | C::OpponentWasDealtDamageThisTurn
+        | C::OpponentWasDealtDamageThisTurnOrMore(_)
+        | C::PermanentLeftBattlefieldThisTurn
+        | C::NonlandPermanentLeftBattlefieldThisTurn
+        | C::SpellWasWarpedThisTurn
+        | C::PermanentLeftBattlefieldUnderYourControlThisTurn { .. }
+        | C::SourceWasCast
+        | C::ThisSpellWasCastAtSorceryTiming
+        | C::ThisSpellEscaped
+        | C::ThisSpellWasCastFromZone(_)
+        | C::ThisSpellWasCastFromNonHand
+        | C::PlayerTappedLandForManaThisTurn { .. }
+        | C::PlayerGainedLifeThisTurnOrMore { .. }
+        | C::PlayerHadLandEnterBattlefieldThisTurn { .. }
+        | C::PlayerDescendedThisTurn { .. }
+        | C::NoSpellsWereCastLastTurn
+        | C::SpellsWereCastLastTurnOrMore(_)
+        | C::TargetIsTapped
+        | C::TargetIsAttacking
+        | C::TargetIsBlocked
+        | C::TargetWasKicked
+        | C::ThisSpellWasKicked
+        | C::ThisSpellPaidLabel(_)
+        | C::TargetSpellCastOrderThisTurn(_)
+        | C::TargetSpellControllerIsPoisoned
+        | C::TargetSpellManaSpentToCastAtLeast { .. }
+        | C::TriggeringSpellManaSpentToCastAtLeast { .. }
+        | C::ColoredManaSpentToCastThisSpellAtLeast(_)
+        | C::TriggeringSpellColoredManaSpentToCastAtLeast(_)
+        | C::ItIsNight
+        | C::FirstCombatPhaseOfTurn
+        | C::SourceControllersMainPhase
+        | C::SourceControllersCombatPhase
+        | C::SourceControllersEndStep
+        | C::SourceIsTapped
+        | C::SourceIsSaddled
+        | C::SourceDevouredCreaturesOrMore(_)
+        | C::SourceIsMonstrous
+        | C::SourceIsRenowned
+        | C::SourceIsFaceDown
+        | C::SourceHasNoCounter(_)
+        | C::SourceHasCounterAtLeast { .. }
+        | C::SourceHasCountersAtLeast(_)
+        | C::SourceDealtCombatDamageToPlayerThisTurn
+        | C::ManaSpentToCastThisSpellAtLeast { .. }
+        | C::SnowManaOfAnySpellColorSpentToCastThisSpell
+        | C::TriggeringSpellSnowManaOfAnySpellColorSpentToCast
+        | C::SameColorManaSpentToCastThisSpellAtLeast(_)
+        | C::ColorsOfManaSpentToCastThisSpellOrMore(_)
+        | C::YouControlCommander
+        | C::TaggedObjectIsTopOfLibrary { .. }
+        | C::StableObjectIsTopOfLibrary { .. }
+        | C::TaggedObjectWasCast(_)
+        | C::TaggedObjectIsSoulbondPaired(_)
+        | C::EnchantedPermanentAttackedThisTurn
+        | C::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep
+        | C::SourceBlockedOrBecameBlockedSinceLastUpkeep
+        | C::TargetIsSoulbondPaired
+        | C::PlayerTaggedObjectEnteredBattlefieldThisTurn { .. }
+        | C::PlayerOwnsCardNamedInZones { .. }
+        | C::ThisAbilityResolvedThisTurnExactly(_)
+        | C::FirstTimeThisTurn
+        | C::SourceFirstCrewedThisTurn
+        | C::MaxTimesEachTurn(_)
+        | C::DoThisMaxTimesEachTurn(_)
+        | C::TriggeringObjectWasEnchanted
+        | C::TriggeringObjectBecameTappedFirstTimeThisTurn
+        | C::TriggeringObjectHadCountersPutFirstTimeThisTurn
+        | C::TriggeringObjectHadToAttackThisCombat
+        | C::TriggeringObjectHadCounters { .. }
+        | C::SourceIsInZone(_)
+        | C::ActivationTiming(_)
+        | C::MaxActivationsPerTurn(_)
+        | C::MaxActivationsPerObject(_)
+        | C::SourceIsEquipped
+        | C::SourceIsEnchanted
+        | C::EquippedCreatureTapped
+        | C::EquippedCreatureUntapped
+        | C::EquippedCreatureAttacking
+        | C::SourceChosenOption(_)
+        | C::SecretChoicesMatch
+        | C::VoteOptionGetsMoreVotes(_)
+        | C::VoteOptionGetsMoreVotesOrTied(_)
+        | C::OwnsCardExiledWithCounter(_)
+        | C::SourceAttackedThisTurn
+        | C::SourceAttackedBattleThisTurn
+        | C::SourceSuspected
+        | C::SourceCameUnderYourControlThisTurn
+        | C::SourceAttackedOrBlockedThisTurn
+        | C::SourceIsUntapped
+        | C::SourceIsAttacking
+        | C::SourceIsBlocking
+        | C::SourceIsSoulbondPaired
+        | C::TurnHistory(_)
+        | C::PlayerGraveyardHasCardsAtLeast { .. }
+        | C::XValueAtLeast(_) => false,
+
+        // Opaque conditions may read anything.
+        C::Custom(_) => any_characteristic_affected,
+
+        #[allow(unreachable_patterns)]
+        _ => any_characteristic_affected,
+    }
+}
+
+fn anthem_count_could_be_affected_by(
+    count: &ironsmith_core::AnthemCountExpression,
+    modification: &Modification,
+) -> bool {
+    use ironsmith_core::AnthemCountExpression as A;
+    match count {
+        A::MatchingFilter(filter)
+        | A::GreatestManaValueAmong(filter)
+        | A::AttachedToSource(filter)
+        | A::AttachedToAffected(filter) => modification_can_affect_filter(modification, filter),
+        A::ColorsOfAffected => matches!(modification.layer(), Layer::Color | Layer::Copy),
+        A::GraveyardsWithAtLeastCards { .. }
+        | A::AffectedAttackedThisTurn
+        | A::CountersOnSource(_)
+        | A::CountersOnSourceWithSurface { .. }
+        | A::CountersOnSourceWithPronoun { .. }
+        | A::StickersOnSource { .. } => false,
+        #[allow(unreachable_patterns)]
+        _ => {
+            modification.layer() == Layer::PowerToughness
+                || modification_can_change_abilities_or_matching_characteristics(modification)
+        }
+    }
+}
+
+/// Could applying `modification` change what `value` evaluates to?
+///
+/// Fixed numbers and player-side quantities never change under layered
+/// effects. Counts and aggregates over a filter change when the filter could
+/// be affected, or when they aggregate power or toughness and the modification
+/// is in layer 7. Anything else is treated conservatively.
+fn value_could_be_affected_by(value: &Value, modification: &Modification) -> bool {
+    let pt_affected = modification.layer() == Layer::PowerToughness;
+    match value {
+        Value::SurfaceHinted { value, .. } => value_could_be_affected_by(value, modification),
+        Value::Fixed(_)
+        | Value::X
+        | Value::XTimes(_)
+        | Value::VoteCount(_)
+        | Value::PlayerVoteCount(_)
+        | Value::LifeTotal(_)
+        | Value::LifeTotalAsTurnBegan(_)
+        | Value::LifeTotalDifference(_)
+        | Value::LastNotedLifeTotal
+        | Value::Speed(_)
+        | Value::StartingLifeTotal(_)
+        | Value::HalfLifeTotalRoundedUp(_)
+        | Value::HalfLifeTotalRoundedDown(_)
+        | Value::HalfStartingLifeTotalRoundedUp(_)
+        | Value::HalfStartingLifeTotalRoundedDown(_)
+        | Value::CardsInHand(_)
+        | Value::CardsInLibrary(_)
+        | Value::LifeGainedThisTurn(_)
+        | Value::LifeLostThisTurn(_)
+        | Value::CardsDiscardedThisTurn(_)
+        | Value::AttractionsVisitedThisTurn(_)
+        | Value::DamageDealtToPlayersThisTurn(_)
+        | Value::NoncombatDamageDealtToPlayersThisTurn(_)
+        | Value::NoncombatDamageDealtBySourcesControlledThisTurn { .. }
+        | Value::MaxCardsDrawnThisTurn(_)
+        | Value::MaxDiceRolledThisTurn(_)
+        | Value::LandsEnteredBattlefieldThisTurn(_)
+        | Value::MaxCardsInHand(_)
+        | Value::CardsInGraveyard(_)
+        | Value::SpellsCastThisTurn(_)
+        | Value::SpellsCastBeforeThisTurn(_)
+        | Value::CommanderCastCount(_)
+        | Value::ThisAbilityResolvedThisTurnCount
+        | Value::SourceRegeneratedThisTurnCount
+        | Value::SourceMutationCount
+        | Value::CreaturesDiedThisTurn
+        | Value::CreaturesDiedThisTurnControlledBy(_)
+        | Value::PlayersBeingAttacked
+        | Value::CountPlayers(_)
+        | Value::CountPlayersWithCardsInHandAtLeast(_, _)
+        | Value::ManaSpentToCastThisSpell
+        | Value::ManaSymbolSpentToCastThisSpell { .. }
+        | Value::ManaFromSourceSpentToCastThisSpell { .. }
+        | Value::ManaSpentToCastTriggeringObject
+        | Value::UnspentMana(_)
+        | Value::ColorsOfManaSpentToCastThisSpell
+        | Value::WasKicked
+        | Value::WasBoughtBack
+        | Value::WasEntwined
+        | Value::TimesPaidLabel(_)
+        | Value::KickCount
+        | Value::PlayerCounters(_, _)
+        | Value::CountersOnSource(_)
+        | Value::CountersOn(_, _)
+        | Value::WasPaid(_)
+        | Value::WasPaidLabel(_)
+        | Value::TimesPaid(_)
+        | Value::MagicGamesLostToOpponentsSinceLastWin
+        | Value::DraftNotedHighestNumber { .. }
+        | Value::TaggedCount
+        | Value::TurnHistoryCount(_)
+        | Value::EventValue(_)
+        | Value::EventValueOffset(_, _) => false,
+        Value::Add(left, right) | Value::Min(left, right) => {
+            value_could_be_affected_by(left, modification)
+                || value_could_be_affected_by(right, modification)
+        }
+        Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => value_could_be_affected_by(value, modification),
+        Value::SourcePower | Value::SourceToughness => pt_affected,
+        Value::Count(filter)
+        | Value::CountScaled(filter, _)
+        | Value::GreatestCount(filter)
+        | Value::GreatestSharedCreatureTypeCount(filter)
+        | Value::GreatestSharedNameCount(filter)
+        | Value::DistinctNames(filter)
+        | Value::DistinctCounterTypesAmong(filter) => {
+            modification_can_affect_filter(modification, filter)
+                || modification_can_change_type_characteristics(modification)
+                    && matches!(
+                        value,
+                        Value::GreatestSharedCreatureTypeCount(_)
+                    )
+                || matches!(modification, Modification::SetName(_) | Modification::InsertNameWords { .. })
+                    && matches!(
+                        value,
+                        Value::GreatestSharedNameCount(_) | Value::DistinctNames(_)
+                    )
+        }
+        Value::TotalPower(filter)
+        | Value::TotalToughness(filter)
+        | Value::GreatestPower(filter)
+        | Value::GreatestToughness(filter)
+        | Value::LeastPower(filter)
+        | Value::LeastToughness(filter)
+        | Value::DistinctPowers(filter) => {
+            pt_affected || modification_can_affect_filter(modification, filter)
+        }
+        Value::TotalManaValue(filter)
+        | Value::GreatestManaValue(filter)
+        | Value::LeastManaValue(filter)
+        | Value::DistinctManaValues(filter) => {
+            matches!(modification.layer(), Layer::Copy)
+                || modification_can_affect_filter(modification, filter)
+        }
+        Value::BasicLandTypesAmong(filter)
+        | Value::CreatureTypesAmong(filter)
+        | Value::CardTypesAmong(filter) => {
+            modification_can_change_type_characteristics(modification)
+                || modification_can_affect_filter(modification, filter)
+        }
+        Value::StaticAbilitiesAmong { .. } => {
+            modification_can_change_abilities_or_matching_characteristics(modification)
+        }
+        Value::ColorsAmong(filter) | Value::ColorPairsAmong(filter) => {
+            matches!(modification.layer(), Layer::Color | Layer::Copy)
+                || modification_can_affect_filter(modification, filter)
+        }
+        Value::PowerOf(_) | Value::ToughnessOf(_) => pt_affected,
+        Value::ManaValueOf(_) | Value::ManaSymbolsInManaCostOf { .. } => {
+            matches!(modification.layer(), Layer::Copy)
+        }
+        Value::ColorsOf(_) => matches!(modification.layer(), Layer::Color | Layer::Copy),
+        Value::Devotion { .. } | Value::DevotionToChosenColor(_) => {
+            matches!(modification.layer(), Layer::Copy)
+                || modification_can_change_type_characteristics(modification)
+        }
+        Value::PartySize(_) => modification_can_change_type_characteristics(modification),
+        Value::NameStickerCharacterCountOnSource { .. } => {
+            matches!(modification, Modification::SetName(_) | Modification::InsertNameWords { .. })
+        }
+        Value::SpellsCastThisTurnMatching { .. }
+        | Value::TotalManaValueOfSpellsCastThisTurnMatching { .. }
+        | Value::DamageDealtThisTurnByTaggedSpellCast(_)
+        | Value::CardTypesInGraveyard(_)
+        | Value::CommanderColorIdentityColors(_)
+        | Value::PlayersWhoControlMoreThanYou { .. }
+        | Value::PlayersWhoControlAtLeastMoreThanYou { .. } => {
+            modification_can_change_abilities_or_matching_characteristics(modification)
+        }
+        Value::EffectValue(_)
+        | Value::EffectValueOffset(_, _)
+        | Value::EffectMetric { .. }
+        | Value::EffectMetricOffset { .. }
+        | Value::PendingEffectMetric { .. }
+        | Value::PendingEffectMetricOffset { .. }
+        | Value::PriorEffectMetric { .. }
+        | Value::PendingPriorEffectMetric(_) => {
+            pt_affected || modification_can_change_abilities_or_matching_characteristics(modification)
+        }
     }
 }
 
@@ -2197,12 +2361,25 @@ fn modification_can_remove_static_ability_presence(modification: &Modification) 
 }
 
 fn modification_can_affect_dependency_output(a: &Modification, b: &Modification) -> bool {
-    matches!(
-        a,
+    match a {
         Modification::CopyActivatedAbilities { .. }
-            | Modification::CopyStaticAbilityVariants { .. }
-            | Modification::CopyTriggeredAbilities { .. }
-    ) && modification_can_change_abilities_or_matching_characteristics(b)
+        | Modification::CopyStaticAbilityVariants { .. }
+        | Modification::CopyTriggeredAbilities { .. } => {
+            modification_can_change_abilities_or_matching_characteristics(b)
+        }
+        // A computed power or toughness may read characteristics the other
+        // effect writes; only same-layer (layer 7) effects can reach here.
+        Modification::SetPower { value, .. } | Modification::SetToughness { value, .. } => {
+            value_could_be_affected_by(value, b)
+        }
+        Modification::SetPowerToughness {
+            power, toughness, ..
+        }
+        | Modification::ModifyPowerToughnessValue { power, toughness } => {
+            value_could_be_affected_by(power, b) || value_could_be_affected_by(toughness, b)
+        }
+        _ => false,
+    }
 }
 
 fn modification_can_change_abilities_or_matching_characteristics(
@@ -2248,10 +2425,13 @@ fn modification_can_affect_effect_target(
     target: &EffectTarget,
 ) -> bool {
     match target {
-        EffectTarget::Specific(_) | EffectTarget::Source | EffectTarget::AllPermanents => false,
-        EffectTarget::AllCreatures | EffectTarget::AttachedTo(_) => {
-            modification_can_change_type_characteristics(modification)
-        }
+        // Attachment is a status, not a characteristic: no layered effect
+        // changes what an aura or equipment is attached to.
+        EffectTarget::Specific(_)
+        | EffectTarget::Source
+        | EffectTarget::AllPermanents
+        | EffectTarget::AttachedTo(_) => false,
+        EffectTarget::AllCreatures => modification_can_change_type_characteristics(modification),
         EffectTarget::Filter(filter) => modification_can_affect_filter(modification, filter),
     }
 }
@@ -2269,6 +2449,10 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
             .targets_only_object
             .as_deref()
             .is_some_and(|inner| modification_can_affect_filter(modification, inner))
+        || filter
+            .attached_to_object
+            .as_deref()
+            .is_some_and(|inner| modification_can_affect_filter(modification, inner))
         || match modification {
             Modification::CopyOf { .. } => filter.uses_non_pt_battlefield_characteristics(),
             Modification::ChangeController(_) => filter.controller.is_some(),
@@ -2281,17 +2465,35 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
                     || filter.name_originally_printed_in_set.is_some()
                     || filter.distinct_names
             }
-            Modification::AddCardTypes(_)
-            | Modification::RemoveCardTypes(_)
-            | Modification::SetCardTypes(_)
-            | Modification::AddSubtypes(_)
-            | Modification::AddAllSubtypesOfFamily(_)
-            | Modification::RemoveSubtypes(_)
-            | Modification::RemoveAllSubtypesOfFamily(_)
-            | Modification::SetSubtypes(_)
-            | Modification::AddSupertypes(_)
-            | Modification::RemoveSupertypes(_)
-            | Modification::RemoveAllCreatureTypes => filter_uses_type_characteristics(filter),
+            Modification::AddCardTypes(types) | Modification::RemoveCardTypes(types) => {
+                filter_mentions_card_types(filter, types)
+            }
+            // Replacing card types also prunes subtypes that no longer have a
+            // parent type, so every type-reading filter may change.
+            Modification::SetCardTypes(_) => filter_uses_type_characteristics(filter),
+            Modification::AddSubtypes(subtypes) | Modification::RemoveSubtypes(subtypes) => {
+                filter_mentions_subtypes(filter, subtypes)
+            }
+            Modification::AddAllSubtypesOfFamily(family)
+            | Modification::RemoveAllSubtypesOfFamily(family) => {
+                filter_mentions_subtype_family(filter, *family)
+            }
+            Modification::RemoveAllCreatureTypes => {
+                filter_mentions_subtype_family(filter, crate::types::SubtypeFamily::Creature)
+            }
+            // Setting subtypes replaces the same family (CR 205.1a); basic
+            // land types also replace a land's rules text (CR 305.7), so
+            // ability-reading filters change too.
+            Modification::SetSubtypes(subtypes) => {
+                crate::continuous::subtype_families_of(subtypes)
+                    .into_iter()
+                    .any(|family| filter_mentions_subtype_family(filter, family))
+                    || (subtypes.iter().any(|subtype| subtype.is_basic_land_type())
+                        && filter_uses_ability_characteristics(filter))
+            }
+            Modification::AddSupertypes(supertypes) | Modification::RemoveSupertypes(supertypes) => {
+                filter_mentions_supertypes(filter, supertypes)
+            }
             Modification::AddColors(_)
             | Modification::RemoveColors(_)
             | Modification::SetColors(_)
@@ -2311,6 +2513,54 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
             }
             _ => false,
         }
+}
+
+fn filter_mentions_card_types(filter: &ObjectFilter, types: &[crate::types::CardType]) -> bool {
+    filter.type_or_subtype_union
+        || filter.one_per_card_type
+        || types.iter().any(|card_type| {
+            filter.card_types.contains(card_type)
+                || filter.all_card_types.contains(card_type)
+                || filter.excluded_card_types.contains(card_type)
+                || ((filter.historic || filter.nonhistoric)
+                    && *card_type == crate::types::CardType::Artifact)
+        })
+}
+
+fn filter_mentions_subtypes(filter: &ObjectFilter, subtypes: &[crate::types::Subtype]) -> bool {
+    filter.type_or_subtype_union
+        || subtypes.iter().any(|subtype| {
+            filter.subtypes.contains(subtype)
+                || filter.excluded_subtypes.contains(subtype)
+                || ((filter.historic || filter.nonhistoric)
+                    && *subtype == crate::types::Subtype::Saga)
+        })
+}
+
+fn filter_mentions_subtype_family(
+    filter: &ObjectFilter,
+    family: crate::types::SubtypeFamily,
+) -> bool {
+    filter.type_or_subtype_union
+        || filter
+            .subtypes
+            .iter()
+            .chain(filter.excluded_subtypes.iter())
+            .any(|subtype| subtype.belongs_to_family(family))
+        || ((filter.historic || filter.nonhistoric)
+            && family == crate::types::SubtypeFamily::Enchantment)
+}
+
+fn filter_mentions_supertypes(
+    filter: &ObjectFilter,
+    supertypes: &[crate::types::Supertype],
+) -> bool {
+    supertypes.iter().any(|supertype| {
+        filter.supertypes.contains(supertype)
+            || filter.excluded_supertypes.contains(supertype)
+            || ((filter.historic || filter.nonhistoric)
+                && *supertype == crate::types::Supertype::Legendary)
+    })
 }
 
 fn filter_uses_type_characteristics(filter: &ObjectFilter) -> bool {
@@ -2509,6 +2759,35 @@ fn filter_has_no_pt_constraints_for_fast_path(filter: &ObjectFilter) -> bool {
         && filter.any_of.is_empty()
 }
 
+/// Groups that already started applying in a layer below `layer`, judged
+/// board-wide against `baseline` (CR 613.6). The dependency sort must see one
+/// answer per group for the whole layer, not the per-object answer the layer
+/// driver keeps for application: otherwise two objects could compute the same
+/// layer in different orders.
+pub fn started_groups_for_sort<'a>(
+    effects: impl IntoIterator<Item = &'a ContinuousEffect>,
+    layer: Layer,
+    baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
+    objects: &ObjectMap,
+    game: &GameState,
+) -> HashSet<ContinuousEffectGroupId> {
+    let mut started = HashSet::new();
+    for effect in effects {
+        let Some(group) = effect.group else {
+            continue;
+        };
+        if effect.modification.layer() >= layer || started.contains(&group) {
+            continue;
+        }
+        if crate::continuous::continuous_effect_duration_and_condition_are_active(effect, game)
+            && effect_applies_to_any_object(effect, baseline, objects, game)
+        {
+            started.insert(group);
+        }
+    }
+    started
+}
+
 pub fn sort_layer_effects_with_baseline<'a>(
     effects: &[&'a ContinuousEffect],
     baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
@@ -2549,16 +2828,36 @@ pub fn sort_layer_effects_with_baseline_and_started_groups<'a>(
         let mut sublayers: Vec<_> = by_sublayer.keys().cloned().collect();
         sublayers.sort();
 
+        // Each sublayer is sorted against the characteristics as they stand
+        // after the earlier sublayers (CR 613.4): a 7b or 7c probe that reads
+        // power or toughness must see the 7a and 7b results, not the values
+        // from before layer 7.
+        let mut current_baseline = baseline.clone();
+        let mut current_started_groups = started_groups.clone();
         let mut result = Vec::with_capacity(effects.len());
-        for sublayer in sublayers {
-            let sublayer_effects = &by_sublayer[&sublayer];
+        for (position, sublayer) in sublayers.iter().enumerate() {
+            let sublayer_effects = &by_sublayer[sublayer];
             let sorted = sort_with_dependencies_with_baseline_and_started_groups(
                 sublayer_effects,
-                baseline,
+                &current_baseline,
                 objects,
                 game,
-                started_groups,
+                &current_started_groups,
             );
+            if position + 1 < sublayers.len() {
+                for effect in &sorted {
+                    if let Some(group) = effect.group
+                        && crate::continuous::continuous_effect_duration_and_condition_are_active(
+                            effect, game,
+                        )
+                        && effect_applies_to_any_object(effect, &current_baseline, objects, game)
+                    {
+                        current_started_groups.insert(group);
+                    }
+                    current_baseline =
+                        apply_effect_to_baseline(effect, &current_baseline, objects, game);
+                }
+            }
             result.extend(sorted);
         }
 
@@ -2614,29 +2913,46 @@ fn sort_with_dependencies_with_baseline_and_started_groups<'a>(
             })
             .collect();
 
-        let mut ready: Vec<usize> = eligible
+        // depends_on[i] lists the positions (within `eligible`) that
+        // eligible[i] must wait for.
+        let depends_on: Vec<Vec<usize>> = eligible
             .iter()
-            .copied()
-            .filter(|&index| {
-                !eligible.iter().copied().any(|dependency_index| {
-                    dependency_index != index
-                        && effect_depends_on_with_baseline_and_started_groups(
-                            effects[index],
-                            effects[dependency_index],
-                            &current_baseline,
-                            objects,
-                            game,
-                            &current_started_groups,
-                            Some(&representatives),
-                        )
-                })
+            .map(|&index| {
+                eligible
+                    .iter()
+                    .enumerate()
+                    .filter(|&(_, &dependency_index)| {
+                        dependency_index != index
+                            && effect_depends_on_with_baseline_and_started_groups(
+                                effects[index],
+                                effects[dependency_index],
+                                &current_baseline,
+                                objects,
+                                game,
+                                &current_started_groups,
+                                Some(&representatives),
+                            )
+                    })
+                    .map(|(position, _)| position)
+                    .collect()
             })
             .collect();
 
-        // If the remaining effects form a dependency loop, dependencies in
-        // that loop are ignored and the oldest eligible effect is next.
+        let mut ready: Vec<usize> = (0..eligible.len())
+            .filter(|&position| depends_on[position].is_empty())
+            .map(|position| eligible[position])
+            .collect();
+
+        // CR 613.8a: effects that form a dependency loop ignore the
+        // dependencies inside the loop and apply in timestamp order. Only the
+        // loop members become candidates; an effect that merely depends on a
+        // loop member keeps waiting for it. A loop that itself waits on another
+        // loop is not a candidate either.
         if ready.is_empty() {
-            ready = eligible;
+            ready = dependency_loop_candidates(&depends_on)
+                .into_iter()
+                .map(|position| eligible[position])
+                .collect();
         }
         let next = ready
             .into_iter()
@@ -2644,13 +2960,9 @@ fn sort_with_dependencies_with_baseline_and_started_groups<'a>(
             .expect("at least one remaining effect must be eligible");
         let effect = effects[next];
 
-        let starts_group = effect.group.is_some_and(|_| {
-            objects.iter().any(|(id, object)| {
-                current_baseline
-                    .get(id)
-                    .is_some_and(|chars| effect_applies_with_chars(effect, object, chars, game))
-            })
-        });
+        let starts_group = effect.group.is_some()
+            && crate::continuous::continuous_effect_duration_and_condition_are_active(effect, game)
+            && effect_applies_to_any_object(effect, &current_baseline, objects, game);
         current_baseline = apply_effect_to_baseline(effect, &current_baseline, objects, game);
         if starts_group && let Some(group) = effect.group {
             current_started_groups.insert(group);
@@ -2662,42 +2974,89 @@ fn sort_with_dependencies_with_baseline_and_started_groups<'a>(
     result
 }
 
-/// Check if the dependency graph has a cycle.
-fn has_cycle(dependencies: &[Vec<usize>]) -> bool {
-    let n = dependencies.len();
-    let mut visited = vec![false; n];
-    let mut in_stack = vec![false; n];
+/// Positions in a dependency graph that belong to a strongly connected
+/// component with no dependency on any other component. When nothing is
+/// ready, these are exactly the members of the dependency loops that CR
+/// 613.8a resolves by timestamp order.
+fn dependency_loop_candidates(depends_on: &[Vec<usize>]) -> Vec<usize> {
+    let component_of = strongly_connected_components(depends_on);
+    let component_count = component_of.iter().copied().max().map_or(0, |max| max + 1);
+    let mut waits_on_other_component = vec![false; component_count];
+    for (node, dependencies) in depends_on.iter().enumerate() {
+        for &dependency in dependencies {
+            if component_of[dependency] != component_of[node] {
+                waits_on_other_component[component_of[node]] = true;
+            }
+        }
+    }
+    (0..depends_on.len())
+        .filter(|&node| !waits_on_other_component[component_of[node]])
+        .collect()
+}
 
-    fn dfs(
-        node: usize,
-        dependencies: &[Vec<usize>],
-        visited: &mut [bool],
-        in_stack: &mut [bool],
-    ) -> bool {
-        visited[node] = true;
-        in_stack[node] = true;
+/// Tarjan's algorithm over `depends_on`; returns each node's component id.
+fn strongly_connected_components(depends_on: &[Vec<usize>]) -> Vec<usize> {
+    struct State<'a> {
+        depends_on: &'a [Vec<usize>],
+        index: Vec<Option<usize>>,
+        lowlink: Vec<usize>,
+        on_stack: Vec<bool>,
+        stack: Vec<usize>,
+        component_of: Vec<usize>,
+        next_index: usize,
+        next_component: usize,
+    }
 
-        for &dep in &dependencies[node] {
-            if !visited[dep] {
-                if dfs(dep, dependencies, visited, in_stack) {
-                    return true;
+    fn visit(state: &mut State<'_>, node: usize) {
+        state.index[node] = Some(state.next_index);
+        state.lowlink[node] = state.next_index;
+        state.next_index += 1;
+        state.stack.push(node);
+        state.on_stack[node] = true;
+
+        for position in 0..state.depends_on[node].len() {
+            let next = state.depends_on[node][position];
+            match state.index[next] {
+                None => {
+                    visit(state, next);
+                    state.lowlink[node] = state.lowlink[node].min(state.lowlink[next]);
                 }
-            } else if in_stack[dep] {
-                return true; // Cycle found
+                Some(next_index) if state.on_stack[next] => {
+                    state.lowlink[node] = state.lowlink[node].min(next_index);
+                }
+                Some(_) => {}
             }
         }
 
-        in_stack[node] = false;
-        false
-    }
-
-    for i in 0..n {
-        if !visited[i] && dfs(i, dependencies, &mut visited, &mut in_stack) {
-            return true;
+        if state.index[node] == Some(state.lowlink[node]) {
+            while let Some(member) = state.stack.pop() {
+                state.on_stack[member] = false;
+                state.component_of[member] = state.next_component;
+                if member == node {
+                    break;
+                }
+            }
+            state.next_component += 1;
         }
     }
 
-    false
+    let n = depends_on.len();
+    let mut state = State {
+        depends_on,
+        index: vec![None; n],
+        lowlink: vec![0; n],
+        on_stack: vec![false; n],
+        stack: Vec::with_capacity(n),
+        component_of: vec![0; n],
+        next_index: 0,
+        next_component: 0,
+    };
+    for node in 0..n {
+        if state.index[node].is_none() {
+            visit(&mut state, node);
+        }
+    }
+    state.component_of
 }
 
 /// Sort effects within a single layer, considering both sublayers and dependencies.
@@ -2765,33 +3124,6 @@ mod tests {
             source_type: EffectSourceType::StaticAbility,
             originating_static_ability: None,
         }
-    }
-
-    #[test]
-    fn test_no_dependency_different_layers() {
-        let a = create_test_effect(
-            1,
-            100,
-            Modification::ModifyPowerToughness {
-                power: 1,
-                toughness: 1,
-            },
-        );
-        let b = create_test_effect(2, 50, Modification::AddAbility(StaticAbility::flying()));
-
-        // Different layers - no dependency
-        assert!(!effect_depends_on(&a, &b));
-        assert!(!effect_depends_on(&b, &a));
-    }
-
-    #[test]
-    fn test_remove_all_abilities_and_add_ability_use_timestamp_order() {
-        let anthem = create_test_effect(1, 100, Modification::AddAbility(StaticAbility::flying()));
-        let humility = create_test_effect(2, 50, Modification::RemoveAllAbilities);
-
-        // Ability gains and losses do not depend on each other by themselves.
-        assert!(!effect_depends_on(&humility, &anthem));
-        assert!(!effect_depends_on(&anthem, &humility));
     }
 
     #[test]
@@ -3167,23 +3499,6 @@ mod tests {
     }
 
     #[test]
-    fn test_cycle_detection() {
-        // Create a simple graph with a cycle
-        let dependencies = vec![
-            vec![1],
-            vec![2],
-            vec![0], // Creates cycle: 0 -> 1 -> 2 -> 0
-        ];
-
-        assert!(has_cycle(&dependencies));
-
-        // Graph without cycle
-        let no_cycle = vec![vec![1], vec![2], Vec::new()];
-
-        assert!(!has_cycle(&no_cycle));
-    }
-
-    #[test]
     fn test_value_references_pt() {
         use crate::effect::Value;
         use crate::target::ChooseSpec;
@@ -3209,159 +3524,6 @@ mod tests {
             crate::target::PlayerFilter::You
         )));
         assert!(!value_references_pt(&Value::WasKicked));
-    }
-
-    #[test]
-    fn test_fixed_pt_modifiers_no_dependency() {
-        // Two fixed P/T modifiers should not depend on each other
-        let e1 = create_test_effect(
-            1,
-            100,
-            Modification::ModifyPowerToughness {
-                power: 1,
-                toughness: 1,
-            },
-        );
-        let e2 = create_test_effect(
-            2,
-            50,
-            Modification::ModifyPowerToughness {
-                power: 2,
-                toughness: 2,
-            },
-        );
-
-        // Neither should depend on the other
-        assert!(!effect_depends_on(&e1, &e2));
-        assert!(!effect_depends_on(&e2, &e1));
-    }
-
-    #[test]
-    fn test_set_pt_with_fixed_value_no_dependency() {
-        use crate::effect::Value;
-
-        // SetPowerToughness with fixed values doesn't depend on modifiers
-        let setter = create_test_effect(
-            1,
-            100,
-            Modification::SetPowerToughness {
-                power: Value::Fixed(3),
-                toughness: Value::Fixed(3),
-                sublayer: PtSublayer::Setting,
-            },
-        );
-        let modifier = create_test_effect(
-            2,
-            50,
-            Modification::ModifyPowerToughness {
-                power: 2,
-                toughness: 2,
-            },
-        );
-
-        // Setter with fixed values doesn't depend on modifier
-        assert!(!effect_depends_on(&setter, &modifier));
-    }
-
-    #[test]
-    fn test_set_pt_with_source_power_depends_on_other_setter() {
-        use crate::effect::Value;
-
-        // Two SetPowerToughness effects in the same sublayer where one uses SourcePower
-        // should have a dependency if one's output affects the other's input.
-        //
-        // Example: Effect A sets P/T to creature count (no dependency)
-        //          Effect B sets P/T equal to source's power (depends on anything affecting source P/T)
-        //
-        // However, within the same sublayer, if B references SourcePower and A modifies the source,
-        // there's a dependency.
-        let setter_a = create_test_effect(
-            1,
-            100,
-            Modification::SetPowerToughness {
-                power: Value::Fixed(5),
-                toughness: Value::Fixed(5),
-                sublayer: PtSublayer::Setting,
-            },
-        );
-        let setter_b = create_test_effect(
-            2,
-            50,
-            Modification::SetPowerToughness {
-                power: Value::SourcePower, // References its own source's power
-                toughness: Value::Fixed(3),
-                sublayer: PtSublayer::Setting,
-            },
-        );
-
-        // B uses SourcePower - if A set P/T on B's source, B would depend on A
-        // The check_dependency_relationship sees that B's power uses SourcePower
-        // and A could theoretically affect that (b_affects_all = false since A is SetPowerToughness)
-        // Since b_affects_all is false and there's no direct source match, no dependency
-        assert!(!effect_depends_on(&setter_b, &setter_a));
-
-        // But if A is an anthem (affects all creatures), B would depend on A
-        // This would be handled differently (through EffectTarget::AllCreatures filter)
-    }
-
-    #[test]
-    fn test_set_pt_same_sublayer_with_computed_value() {
-        use crate::effect::Value;
-        use crate::target::{ChooseSpec, ObjectFilter};
-
-        // SetPowerToughness with Value::PowerOf depends on another setter that targets that object
-        let setter_b = create_test_effect(
-            2,
-            50,
-            Modification::SetPowerToughness {
-                power: Value::PowerOf(Box::new(ChooseSpec::Object(ObjectFilter::creature()))),
-                toughness: Value::Fixed(3),
-                sublayer: PtSublayer::Setting,
-            },
-        );
-        let setter_a = create_test_effect(
-            1,
-            100,
-            Modification::SetPowerToughness {
-                power: Value::Fixed(5),
-                toughness: Value::Fixed(5),
-                sublayer: PtSublayer::Setting,
-            },
-        );
-
-        // B references PowerOf(creature) - conservative approach assumes dependency
-        // when we can't prove independence
-        // Currently with b_affects_all=false, we return false (no dependency)
-        // This is an area where more precise tracking could improve results
-        assert!(!effect_depends_on(&setter_b, &setter_a));
-    }
-
-    #[test]
-    fn test_set_pt_with_count_no_dependency() {
-        use crate::effect::Value;
-        use crate::target::ObjectFilter;
-
-        // SetPowerToughness with Value::Count (creature count) doesn't depend on P/T modifiers
-        let setter = create_test_effect(
-            1,
-            100,
-            Modification::SetPowerToughness {
-                power: Value::Count(ObjectFilter::creature()),
-                toughness: Value::Count(ObjectFilter::creature()),
-                sublayer: PtSublayer::Setting,
-            },
-        );
-        let modifier = create_test_effect(
-            2,
-            50,
-            Modification::ModifyPowerToughness {
-                power: 2,
-                toughness: 2,
-            },
-        );
-
-        // Setter with creature count doesn't depend on P/T modifier
-        assert!(!effect_depends_on(&setter, &modifier));
     }
 
     #[test]
@@ -3609,7 +3771,18 @@ mod tests {
             &[&flying, &must_attack],
             &game
         ));
+        // A creature-count condition cannot be changed by ability grants, so
+        // the group still proves trivial. A condition that reads abilities can.
         flying.condition = Some(crate::ConditionExpr::YouControl(ObjectFilter::creature()));
+        assert!(!needs_baseline_dependency_sort(
+            &[&flying, &must_attack],
+            &game
+        ));
+        let mut flyers = ObjectFilter::creature();
+        flyers
+            .static_abilities
+            .push(crate::static_abilities::StaticAbilityId::Flying);
+        flying.condition = Some(crate::ConditionExpr::YouControl(flyers));
         assert!(needs_baseline_dependency_sort(
             &[&flying, &must_attack],
             &game
@@ -3630,5 +3803,551 @@ mod tests {
         let grant = must_attack.with_originating_static_ability(StaticAbility::flying());
         let removal = create_test_effect(5, 50, Modification::RemoveAllAbilities);
         assert!(needs_baseline_dependency_sort(&[&grant, &removal], &game));
+    }
+
+    fn chars_for(object: &crate::object::Object) -> CalculatedCharacteristics {
+        CalculatedCharacteristics {
+            name: object.name.clone(),
+            mana_cost: object.mana_cost_owned(),
+            compiled_card_text: object.compiled_card_text.clone(),
+            ability_labels: object.ability_labels.clone(),
+            power: object.base_power.as_ref().map(|power| power.base_value()),
+            toughness: object
+                .base_toughness
+                .as_ref()
+                .map(|toughness| toughness.base_value()),
+            card_types: object.card_types.clone(),
+            subtypes: object.subtypes.clone(),
+            supertypes: object.supertypes.clone(),
+            world_supertype_since: None,
+            colors: object.colors(),
+            loyalty: object.base_loyalty,
+            abilities: object.abilities.clone().into(),
+            static_abilities: Vec::new().into(),
+            ability_gain_prohibitions: Vec::new(),
+            aura_attach_filter: object.aura_attach_filter_owned(),
+            controller: object.owner,
+        }
+    }
+
+    fn battlefield_object(
+        id: u32,
+        name: &str,
+        card_types: Vec<CardType>,
+        pt: Option<(i32, i32)>,
+    ) -> crate::object::Object {
+        use crate::card::CardBuilder;
+        use crate::ids::CardId;
+        let mut builder = CardBuilder::new(CardId::from_raw(id), name).card_types(card_types);
+        if let Some((power, toughness)) = pt {
+            builder = builder.power_toughness(crate::card::PowerToughness::fixed(power, toughness));
+        }
+        crate::object::Object::from_card(
+            ObjectId::from_raw(u64::from(id)),
+            &builder.build(),
+            PlayerId::from_index(0),
+            crate::zone::Zone::Battlefield,
+        )
+    }
+
+    fn board(
+        objects: Vec<crate::object::Object>,
+    ) -> (
+        crate::game_state::ObjectMap,
+        HashMap<ObjectId, CalculatedCharacteristics>,
+    ) {
+        let baseline = objects
+            .iter()
+            .map(|object| (object.id, chars_for(object)))
+            .collect();
+        let map = objects
+            .into_iter()
+            .map(|object| (object.id, Arc::new(object)))
+            .collect();
+        (map, baseline)
+    }
+
+    #[test]
+    fn started_groups_for_sort_is_board_wide() {
+        let (objects, baseline) = board(vec![
+            battlefield_object(1, "Relic", vec![CardType::Artifact], None),
+            battlefield_object(2, "Bear", vec![CardType::Creature], Some((2, 2))),
+        ]);
+        let game = GameState::new(vec!["Alice".to_string()], 20);
+
+        let applied_group = ContinuousEffectGroupId::runtime(1);
+        let mut applied =
+            create_test_effect(1, 1, Modification::AddCardTypes(vec![CardType::Creature]));
+        applied.applies_to = EffectTarget::Filter(ObjectFilter::artifact());
+        applied.group = Some(applied_group);
+
+        let idle_group = ContinuousEffectGroupId::runtime(2);
+        let mut idle = create_test_effect(2, 2, Modification::AddCardTypes(vec![CardType::Land]));
+        idle.applies_to = EffectTarget::Filter(ObjectFilter::enchantment());
+        idle.group = Some(idle_group);
+
+        let same_layer_group = ContinuousEffectGroupId::runtime(3);
+        let mut same_layer =
+            create_test_effect(3, 3, Modification::AddAbility(StaticAbility::flying()));
+        same_layer.group = Some(same_layer_group);
+
+        let started = started_groups_for_sort(
+            [&applied, &idle, &same_layer],
+            Layer::Ability,
+            &baseline,
+            &objects,
+            &game,
+        );
+        assert!(started.contains(&applied_group));
+        assert!(!started.contains(&idle_group));
+        assert!(!started.contains(&same_layer_group));
+    }
+
+    #[test]
+    fn loop_candidates_are_only_the_members_of_source_loops() {
+        // 0 <-> 1 form a loop; 2 depends on 0; 3 <-> 4 form a loop that waits on 2.
+        let depends_on = vec![vec![1], vec![0], vec![0], vec![4, 2], vec![3]];
+        assert_eq!(dependency_loop_candidates(&depends_on), vec![0, 1]);
+    }
+
+    #[test]
+    fn loop_fallback_keeps_dependents_waiting_for_the_loop() {
+        let (objects, baseline) = board(vec![
+            battlefield_object(1, "Relic", vec![CardType::Artifact], None),
+            battlefield_object(2, "Bear", vec![CardType::Creature], Some((2, 2))),
+        ]);
+        let game = GameState::new(vec!["Alice".to_string()], 20);
+
+        // A and B depend on each other; C depends only on A but is oldest.
+        let mut artifacts_are_creatures =
+            create_test_effect(1, 3, Modification::AddCardTypes(vec![CardType::Creature]));
+        artifacts_are_creatures.applies_to = EffectTarget::Filter(ObjectFilter::artifact());
+        let mut creatures_are_artifacts =
+            create_test_effect(2, 2, Modification::AddCardTypes(vec![CardType::Artifact]));
+        creatures_are_artifacts.applies_to = EffectTarget::Filter(ObjectFilter::creature());
+        let mut creatures_are_lands =
+            create_test_effect(3, 1, Modification::AddCardTypes(vec![CardType::Land]));
+        creatures_are_lands.applies_to = EffectTarget::Filter(ObjectFilter::creature());
+
+        let sorted = sort_layer_effects_with_baseline(
+            &[
+                &creatures_are_lands,
+                &artifacts_are_creatures,
+                &creatures_are_artifacts,
+            ],
+            &baseline,
+            &objects,
+            &game,
+        );
+        let ids: Vec<u64> = sorted.iter().map(|effect| effect.id.0).collect();
+        // CR 613.8a: the loop resolves by timestamp (B then A); C, which
+        // depends on A, applies after it despite the oldest timestamp.
+        assert_eq!(ids, vec![2, 1, 3]);
+    }
+
+    #[test]
+    fn fast_path_applies_characteristic_defining_effects_first() {
+        let mut cda = create_test_effect(
+            1,
+            100,
+            Modification::AddAllSubtypesOfFamily(crate::types::SubtypeFamily::Creature),
+        );
+        cda.source_type = EffectSourceType::CharacteristicDefining;
+        let older = create_test_effect(2, 50, Modification::SetSubtypes(vec![Subtype::Goblin]));
+        let sorted = sort_with_dependencies(&[&older, &cda]);
+        let ids: Vec<u64> = sorted.iter().map(|effect| effect.id.0).collect();
+        assert_eq!(ids, vec![1, 2]);
+    }
+
+    #[test]
+    fn condition_classifier_tracks_what_a_condition_reads() {
+        use crate::ConditionExpr as C;
+        let controls_artifact = C::YouControl(ObjectFilter::artifact());
+        assert!(condition_could_be_affected_by(
+            &controls_artifact,
+            &Modification::AddCardTypes(vec![CardType::Artifact])
+        ));
+        assert!(!condition_could_be_affected_by(
+            &controls_artifact,
+            &Modification::AddCardTypes(vec![CardType::Creature])
+        ));
+        assert!(!condition_could_be_affected_by(
+            &controls_artifact,
+            &Modification::AddAbility(StaticAbility::flying())
+        ));
+        assert!(!condition_could_be_affected_by(
+            &C::YourTurn,
+            &Modification::AddCardTypes(vec![CardType::Artifact])
+        ));
+        let power = C::SourcePowerAtLeast(3);
+        assert!(condition_could_be_affected_by(
+            &power,
+            &Modification::ModifyPowerToughness {
+                power: 1,
+                toughness: 1
+            }
+        ));
+        assert!(!condition_could_be_affected_by(
+            &power,
+            &Modification::AddColors(crate::color::ColorSet::from(crate::color::Color::Red))
+        ));
+        assert!(condition_could_be_affected_by(
+            &C::Not(Box::new(C::And(
+                Box::new(C::YourTurn),
+                Box::new(controls_artifact)
+            ))),
+            &Modification::RemoveCardTypes(vec![CardType::Artifact])
+        ));
+    }
+
+    #[test]
+    fn conditioned_effect_depends_on_effect_its_condition_reads() {
+        let (objects, baseline) = board(vec![battlefield_object(
+            1,
+            "Relic",
+            vec![CardType::Artifact],
+            None,
+        )]);
+        let game = GameState::new(vec!["Alice".to_string()], 20);
+
+        let conditioned = create_test_effect(
+            1,
+            1,
+            Modification::AddCardTypes(vec![CardType::Enchantment]),
+        )
+        .with_condition(crate::ConditionExpr::YouControl(ObjectFilter::creature()));
+        let mut animate =
+            create_test_effect(2, 2, Modification::AddCardTypes(vec![CardType::Creature]));
+        animate.applies_to = EffectTarget::Filter(ObjectFilter::artifact());
+
+        assert!(effect_depends_on_with_baseline_and_started_groups(
+            &conditioned,
+            &animate,
+            &baseline,
+            &objects,
+            &game,
+            &HashSet::new(),
+            None,
+        ));
+
+        let unrelated = create_test_effect(
+            1,
+            1,
+            Modification::AddCardTypes(vec![CardType::Enchantment]),
+        )
+        .with_condition(crate::ConditionExpr::YourTurn);
+        assert!(!effect_depends_on_with_baseline_and_started_groups(
+            &unrelated,
+            &animate,
+            &baseline,
+            &objects,
+            &game,
+            &HashSet::new(),
+            None,
+        ));
+
+        // An effect that applies to nothing cannot flip anyone's condition.
+        let mut animate_lands =
+            create_test_effect(3, 3, Modification::AddCardTypes(vec![CardType::Creature]));
+        animate_lands.applies_to = EffectTarget::Filter(ObjectFilter::land());
+        assert!(!effect_depends_on_with_baseline_and_started_groups(
+            &conditioned,
+            &animate_lands,
+            &baseline,
+            &objects,
+            &game,
+            &HashSet::new(),
+            None,
+        ));
+    }
+
+    #[test]
+    fn attached_to_probe_does_not_require_a_creature() {
+        use crate::card::CardBuilder;
+        use crate::ids::CardId;
+        use crate::zone::Zone;
+
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let land = game.create_object_from_card(
+            &CardBuilder::new(CardId::from_raw(1), "Field")
+                .card_types(vec![CardType::Land])
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+        let aura = game.create_object_from_card(
+            &CardBuilder::new(CardId::from_raw(2), "Spreading Seas")
+                .card_types(vec![CardType::Enchantment])
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+        game.object_mut(aura).unwrap().attached_to =
+            Some(crate::object::AttachmentTarget::Object(land));
+
+        let mut effect =
+            create_test_effect(1, 1, Modification::SetSubtypes(vec![Subtype::Island]));
+        effect.source = aura;
+        effect.applies_to = EffectTarget::AttachedTo(aura);
+
+        let land_object = game.object(land).unwrap();
+        let chars = chars_for(land_object);
+        assert!(effect_applies_with_chars(&effect, land_object, &chars, &game));
+        assert!(!modification_can_affect_effect_target(
+            &Modification::AddCardTypes(vec![CardType::Creature]),
+            &effect.applies_to
+        ));
+    }
+
+    #[test]
+    fn later_sublayers_sort_against_earlier_sublayer_results() {
+        use crate::target::ChooseSpec;
+        let (objects, baseline) = board(vec![
+            battlefield_object(1, "Goyf", vec![CardType::Creature], Some((2, 2))),
+            battlefield_object(2, "Mimic", vec![CardType::Creature], Some((1, 1))),
+        ]);
+        let game = GameState::new(vec!["Alice".to_string()], 20);
+        let goyf = ObjectId::from_raw(1);
+        let mimic = ObjectId::from_raw(2);
+
+        // 7a: Goyf's CDA makes it 5/5.
+        let mut cda = create_test_effect(
+            1,
+            1,
+            Modification::SetPowerToughness {
+                power: Value::Fixed(5),
+                toughness: Value::Fixed(5),
+                sublayer: PtSublayer::CharacteristicDefining,
+            },
+        );
+        cda.source = goyf;
+        cda.applies_to = EffectTarget::Specific(goyf);
+        cda.source_type = EffectSourceType::CharacteristicDefining;
+
+        // 7b, newer: Goyf's base P/T becomes 5/5 (no change after 7a).
+        let mut set_goyf = create_test_effect(
+            2,
+            20,
+            Modification::SetPowerToughness {
+                power: Value::Fixed(5),
+                toughness: Value::Fixed(5),
+                sublayer: PtSublayer::Setting,
+            },
+        );
+        set_goyf.source = goyf;
+        set_goyf.applies_to = EffectTarget::Specific(goyf);
+
+        // 7b, older: Mimic's power becomes Goyf's power.
+        let mut mirror = create_test_effect(
+            3,
+            10,
+            Modification::SetPowerToughness {
+                power: Value::PowerOf(Box::new(ChooseSpec::Source)),
+                toughness: Value::Fixed(1),
+                sublayer: PtSublayer::Setting,
+            },
+        );
+        mirror.source = goyf;
+        mirror.applies_to = EffectTarget::Specific(mimic);
+
+        let sorted = sort_layer_effects_with_baseline(
+            &[&set_goyf, &mirror, &cda],
+            &baseline,
+            &objects,
+            &game,
+        );
+        let ids: Vec<u64> = sorted.iter().map(|effect| effect.id.0).collect();
+        // Against the post-7a baseline the 7b setter changes nothing Mimic
+        // reads, so 7b is plain timestamp order. A stale pre-layer-7 baseline
+        // would have made Mimic wait for the setter.
+        assert_eq!(ids, vec![1, 3, 2]);
+    }
+
+    #[test]
+    fn computed_pt_setter_depends_on_setter_it_reads() {
+        use crate::target::ChooseSpec;
+        let (objects, baseline) = board(vec![
+            battlefield_object(1, "Goyf", vec![CardType::Creature], Some((2, 2))),
+            battlefield_object(2, "Mimic", vec![CardType::Creature], Some((1, 1))),
+        ]);
+        let game = GameState::new(vec!["Alice".to_string()], 20);
+        let goyf = ObjectId::from_raw(1);
+        let mimic = ObjectId::from_raw(2);
+
+        let mut set_goyf = create_test_effect(
+            1,
+            20,
+            Modification::SetPowerToughness {
+                power: Value::Fixed(5),
+                toughness: Value::Fixed(5),
+                sublayer: PtSublayer::Setting,
+            },
+        );
+        set_goyf.applies_to = EffectTarget::Specific(goyf);
+        let mut mirror = create_test_effect(
+            2,
+            10,
+            Modification::SetPowerToughness {
+                power: Value::PowerOf(Box::new(ChooseSpec::Source)),
+                toughness: Value::Fixed(1),
+                sublayer: PtSublayer::Setting,
+            },
+        );
+        mirror.source = goyf;
+        mirror.applies_to = EffectTarget::Specific(mimic);
+
+        assert!(effect_depends_on_with_baseline_and_started_groups(
+            &mirror,
+            &set_goyf,
+            &baseline,
+            &objects,
+            &game,
+            &HashSet::new(),
+            None,
+        ));
+        assert!(!effect_depends_on_with_baseline_and_started_groups(
+            &set_goyf,
+            &mirror,
+            &baseline,
+            &objects,
+            &game,
+            &HashSet::new(),
+            None,
+        ));
+        let sorted =
+            sort_layer_effects_with_baseline(&[&mirror, &set_goyf], &baseline, &objects, &game);
+        let ids: Vec<u64> = sorted.iter().map(|effect| effect.id.0).collect();
+        assert_eq!(ids, vec![1, 2]);
+    }
+
+    #[test]
+    fn value_based_modifier_depends_on_modifier_it_reads() {
+        use crate::target::ChooseSpec;
+        let (objects, baseline) = board(vec![
+            battlefield_object(1, "Leader", vec![CardType::Creature], Some((2, 2))),
+            battlefield_object(2, "Follower", vec![CardType::Creature], Some((1, 1))),
+        ]);
+        let game = GameState::new(vec!["Alice".to_string()], 20);
+        let leader = ObjectId::from_raw(1);
+        let follower = ObjectId::from_raw(2);
+
+        let mut pump_leader = create_test_effect(
+            1,
+            20,
+            Modification::ModifyPowerToughness {
+                power: 2,
+                toughness: 2,
+            },
+        );
+        pump_leader.applies_to = EffectTarget::Specific(leader);
+        let mut follow = create_test_effect(
+            2,
+            10,
+            Modification::ModifyPowerToughnessValue {
+                power: Value::PowerOf(Box::new(ChooseSpec::Source)),
+                toughness: Value::Fixed(0),
+            },
+        );
+        follow.source = leader;
+        follow.applies_to = EffectTarget::Specific(follower);
+
+        assert!(effect_depends_on_with_baseline_and_started_groups(
+            &follow,
+            &pump_leader,
+            &baseline,
+            &objects,
+            &game,
+            &HashSet::new(),
+            None,
+        ));
+    }
+
+    #[test]
+    fn unevaluable_pt_value_falls_back_to_what_it_could_read() {
+        let (objects, baseline) = board(vec![
+            battlefield_object(1, "Big", vec![CardType::Creature], Some((4, 4))),
+            battlefield_object(2, "Scaler", vec![CardType::Creature], Some((1, 1))),
+        ]);
+        let game = GameState::new(vec!["Alice".to_string()], 20);
+
+        let mut greatest = create_test_effect(
+            1,
+            10,
+            Modification::SetPowerToughness {
+                power: Value::GreatestPower(ObjectFilter::creature()),
+                toughness: Value::Fixed(1),
+                sublayer: PtSublayer::Setting,
+            },
+        );
+        greatest.applies_to = EffectTarget::Specific(ObjectId::from_raw(2));
+        let mut set_big = create_test_effect(
+            2,
+            20,
+            Modification::SetPowerToughness {
+                power: Value::Fixed(7),
+                toughness: Value::Fixed(7),
+                sublayer: PtSublayer::Setting,
+            },
+        );
+        set_big.applies_to = EffectTarget::Specific(ObjectId::from_raw(1));
+
+        // GreatestPower is not evaluated by the simulator; the structural
+        // fallback still sees that a layer 7 setter could change it.
+        assert!(effect_depends_on_with_baseline_and_started_groups(
+            &greatest,
+            &set_big,
+            &baseline,
+            &objects,
+            &game,
+            &HashSet::new(),
+            None,
+        ));
+    }
+
+    #[test]
+    fn copy_triggered_abilities_depends_on_triggered_ability_grant() {
+        let (objects, baseline) = board(vec![
+            battlefield_object(1, "Donor", vec![CardType::Creature], Some((2, 2))),
+            battlefield_object(2, "Mirror", vec![CardType::Creature], Some((1, 1))),
+        ]);
+        let game = GameState::new(vec!["Alice".to_string()], 20);
+
+        let mut copy = create_test_effect(
+            1,
+            10,
+            Modification::CopyTriggeredAbilities {
+                filter: ObjectFilter::creature(),
+                exclude_source_name: false,
+                exclude_source_id: true,
+            },
+        );
+        copy.source = ObjectId::from_raw(2);
+        copy.applies_to = EffectTarget::Specific(ObjectId::from_raw(2));
+        let mut grant = create_test_effect(
+            2,
+            20,
+            Modification::AddAbilityGeneric(Ability::triggered(
+                crate::triggers::Trigger::this_deals_combat_damage_to_player(
+                    crate::target::PlayerFilter::Any,
+                ),
+                vec![Effect::draw(1)],
+            )),
+        );
+        grant.applies_to = EffectTarget::Specific(ObjectId::from_raw(1));
+
+        assert!(effect_depends_on_with_baseline_and_started_groups(
+            &copy,
+            &grant,
+            &baseline,
+            &objects,
+            &game,
+            &HashSet::new(),
+            None,
+        ));
+        let sorted =
+            sort_layer_effects_with_baseline(&[&copy, &grant], &baseline, &objects, &game);
+        let ids: Vec<u64> = sorted.iter().map(|effect| effect.id.0).collect();
+        assert_eq!(ids, vec![2, 1]);
     }
 }

@@ -62,6 +62,17 @@ export function stackEntryTargetObjectIds(entry) {
   return Number.isFinite(objectId) ? [objectId] : [];
 }
 
+/**
+ * The objects a stack entry is aimed at: what lights up (and what pile opens)
+ * while the entry is hovered. Players are not objects and are left out.
+ */
+export function stackEntryAimedObjectIds(entry) {
+  return (entry?.targets || [])
+    .filter((target) => target?.kind === "object" && target.object != null)
+    .map((target) => Number(target.object))
+    .filter((objectId) => Number.isFinite(objectId));
+}
+
 export function stackEntryIsLegalTarget(decision, entry) {
   if (decision?.kind !== "targets") return false;
   const ids = stackEntryTargetObjectIds(entry);

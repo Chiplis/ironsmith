@@ -247,6 +247,22 @@
 .zone-pile-card-row > img, .zone-pile-card-row > .zone-pile-placeholder { width: 100%; height: 100%; object-fit: cover; }
 .zone-pile-card-row:hover, .zone-pile-card-row:focus-visible { border-color: var(--ui-border-strong); }
 .zone-pile-card-row[data-target-legal="true"] { border-color: #fff; box-shadow: 0 0 4px rgba(255, 255, 255, 0.7); }
+/* A card the hovered stack object is aimed at: the white glow a linked
+   battlefield permanent wears, and a little larger than its neighbours. The
+   slot grows in flow (not by transform) so the strip makes room instead of
+   clipping it. */
+.zone-pile-menu .zone-pile-card-slot[data-stack-target="true"] {
+  flex-basis: calc(var(--zone-strip-card-width, 72px) * 1.18);
+  width: calc(var(--zone-strip-card-width, 72px) * 1.18);
+  transition: width 220ms ease, flex-basis 220ms ease;
+}
+.zone-pile-card-row[data-stack-target="true"] {
+  border-color: #fff;
+  box-shadow:
+    0 0 6px 2px rgba(255, 255, 255, 0.72),
+    0 0 14px 5px rgba(255, 255, 255, 0.32),
+    inset 0 0 6px 2px rgba(255, 255, 255, 0.36);
+}
 .zone-pile-card-row:disabled { opacity: 0.45; cursor: default; }
 @media (max-width: 900px) {
   .zone-pile-label { font-size: 8px; }
@@ -255,6 +271,7 @@
   .zone-pile { transition: none; }
   /* The slot's transitions are inline, so only an important rule stops them. */
   .zone-pile-slot { transition: none !important; }
+  .zone-pile-menu .zone-pile-card-slot[data-stack-target="true"] { transition: none; }
   .zone-pile-menu[data-slot="popover-content"] { animation: none; }
   .look-eye-effect, .look-eye-glow, .look-eye-lid, .look-eye-iris, .look-eye-pupil { animation: none; }
 }

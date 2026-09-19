@@ -5290,7 +5290,13 @@ mod tests {
         let effect_source = sources[0];
         // Keep this fixture on the dependency-sort path. An unconditional
         // add/remove pair is timestamp-only and is intentionally optimized to
-        // skip baseline dependency analysis altogether.
+        // skip baseline dependency analysis altogether, and so is a condition
+        // that no layer 6 effect can change; a condition that reads flying
+        // keeps the group on the baseline sort.
+        let mut flyers = crate::target::ObjectFilter::creature();
+        flyers
+            .static_abilities
+            .push(crate::static_abilities::StaticAbilityId::Flying);
         game.effect_store.continuous_effects.add_effect(
             ContinuousEffect::new(
                 effect_source,
@@ -5298,7 +5304,7 @@ mod tests {
                 crate::continuous::EffectTarget::AllPermanents,
                 crate::continuous::Modification::AddAbility(StaticAbility::flying()),
             )
-            .with_condition(crate::ConditionExpr::YourTurn),
+            .with_condition(crate::ConditionExpr::YouControl(flyers)),
         );
         game.effect_store
             .continuous_effects

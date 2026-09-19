@@ -1618,6 +1618,7 @@ export const ui = {
   "Zone: {0}": "Zona: {0}",
   "Stack entries: {0}": "Objetos en la pila: {0}",
   "Entries: {0}": "Entradas: {0}",
+  "Pending": "Pendiente",
   "waiting…": "esperando…",
   "This symbol can be paid with either two generic mana or one {0}.": "Este símbolo se puede pagar con dos manás genéricos o un {0}.",
   "This hybrid symbol can be paid with either {0} or {1}.": "Este símbolo híbrido se puede pagar con {0} o {1}.",

@@ -2893,6 +2893,13 @@ impl DecisionView {
                     .map(|(index, (object_id, name))| {
                         let is_real_object = game.object(*object_id).is_some();
                         let visible = decision_object_visible(*object_id);
+                        // A synthetic item (a pending trigger) points at the
+                        // object it came from, so the client can preview it.
+                        let related_object_ids = order
+                            .item_source(index)
+                            .filter(|source| game.object(*source).is_some())
+                            .filter(|source| decision_object_visible(*source))
+                            .map(|source| vec![source.0]);
                         OptionView {
                             index,
                             description: if visible || !is_real_object {
@@ -2911,7 +2918,7 @@ impl DecisionView {
                                         .map(|controller| controller.0)
                                 })
                                 .flatten(),
-                            related_object_ids: None,
+                            related_object_ids,
                         }
                     })
                     .collect(),

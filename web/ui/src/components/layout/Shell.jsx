@@ -740,7 +740,7 @@ export default function Shell() {
     >
       {topLevelNotices}
       {!deckLoadingMode && !puzzleSetupMode && multiplayer?.rematch?.phase !== "sideboarding" && <MobileLandscapeGate />}
-      {(!dockToolbarsInTable || deckLoadingMode || puzzleSetupMode) ? (
+      {(!landscapeMobileViewport && (!dockToolbarsInTable || deckLoadingMode || puzzleSetupMode)) ? (
         <div className="table-persistent-diagnostics-fallback"><DiagnosticsSheet /></div>
       ) : null}
       {!dockToolbarsInTable ? topbarElement : null}

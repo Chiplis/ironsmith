@@ -34,7 +34,7 @@
 use crate::FxMap;
 use crate::ability::AbilityKind;
 use crate::continuous::{
-    ContinuousEffect, ContinuousEffectGroupId, EffectSourceType, EffectTarget, Layer,
+    ContinuousEffect, ContinuousEffectGroupId, EffectSourceType, EffectTarget, Layer, Modification,
     TextBoxOverlay,
 };
 use crate::game_state::GameState;
@@ -360,23 +360,61 @@ fn generate_direct_static_effects(
             continue;
         }
         let mut ability_effects = static_ability.generate_effects(object_id, controller, game);
-        if let Some(ts) = game
+        let object_timestamp = game
             .effect_store
             .continuous_effects
-            .get_object_timestamp(object_id)
-        {
-            for effect in &mut ability_effects {
+            .get_object_timestamp(object_id);
+        for effect in &mut ability_effects {
+            if let Some(ts) = object_timestamp {
                 effect.timestamp = ts;
-                effect.originating_static_ability = Some(static_ability.clone());
             }
-        } else {
-            for effect in &mut ability_effects {
-                effect.originating_static_ability = Some(static_ability.clone());
+            effect.originating_static_ability = Some(static_ability.clone());
+            if effect_is_characteristic_defining(effect, object_id) {
+                effect.source_type = EffectSourceType::CharacteristicDefining;
             }
         }
         effects.extend(ability_effects);
     }
     effects
+}
+
+/// CR 604.3a: a static ability printed on an object (or given to it by a copy
+/// or text-changing effect) is characteristic-defining when it defines the
+/// object's own colors, subtypes, power or toughness, affects no other object,
+/// and is not conditional. Power/toughness abilities already tag themselves;
+/// this catches color and subtype shapes such as changeling, devoid and
+/// "~ is all colors" so they apply first in their layer (CR 613.2) and never
+/// depend on non-CDA effects (CR 613.8c). Abilities another effect grants are
+/// handled separately and are never CDAs.
+fn effect_is_characteristic_defining(effect: &ContinuousEffect, source: ObjectId) -> bool {
+    if effect.condition.is_some() {
+        return false;
+    }
+    let applies_to_self = match &effect.applies_to {
+        EffectTarget::Source => true,
+        EffectTarget::Specific(id) => *id == source,
+        // "~ is colorless" compiles to a filter that names only the source.
+        EffectTarget::Filter(filter) => {
+            filter.source && {
+                let mut source_only = crate::target::ObjectFilter::source();
+                source_only.source_surface = filter.source_surface.clone();
+                *filter == source_only
+            }
+        }
+        _ => false,
+    };
+    if !applies_to_self {
+        return false;
+    }
+    matches!(
+        effect.modification,
+        Modification::SetColors(_)
+            | Modification::AddColors(_)
+            | Modification::MakeColorless
+            | Modification::AddSubtypes(_)
+            | Modification::SetSubtypes(_)
+            | Modification::AddAllSubtypesOfFamily(_)
+    )
 }
 
 /// Generate all continuous effects from static abilities in zones where they function.

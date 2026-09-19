@@ -5,7 +5,7 @@ import { useCastObjectHovered, useCastTargeting } from "@/context/DragContext";
 import { useHoverActions } from "@/context/HoverContext";
 import { resolveStackInspectObjectId } from "@/lib/inspector-selection";
 import { samePlayerId } from "@/lib/player-display";
-import { stackEntryIsLegalTarget, stackEntryTargetObjectIds } from "@/lib/stack-targets";
+import { stackEntryAimedObjectIds, stackEntryIsLegalTarget, stackEntryTargetObjectIds } from "@/lib/stack-targets";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import PlayerStackAlert from "@/components/board/PlayerStackAlert";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
@@ -13,10 +13,27 @@ import { cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
 import { getPlayerAccent, playerAccentVars } from "@/lib/player-colors";
 import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
 import { cn } from "@/lib/utils";
-import AnimatedCircuitFrame from "@/components/cards/AnimatedCircuitFrame";
 import { ArrowDown, ArrowUp } from "lucide-react";
 
-const STACK_CARD_CIRCUIT_PATH = "M9.5 2.5H90.5 M9.5 93.5H90.5";
+// The short word under a tile's name: what kind of thing is waiting.
+function stackEntryKindLabel(entry) {
+  const abilityKind = String(entry?.ability_kind || "").trim();
+  const normalized = abilityKind.toLowerCase();
+  if (!abilityKind) return "Spell";
+  if (normalized === "triggered") return "Trigger";
+  if (normalized === "activated") return "Activation";
+  return `${abilityKind} ability`;
+}
+
+// One line of what the entry does. A pending trigger carries its own text
+// (the ordering option's detail); a live ability shows its printed line; a
+// spell shows nothing here, its full text belongs to the card preview.
+function stackEntryDetailText(entry) {
+  const subtitle = String(entry?.__subtitle || "").trim();
+  if (subtitle) return subtitle;
+  if (!entry?.ability_kind) return "";
+  return String(entry?.source_ability_text || entry?.ability_text || "").trim();
+}
 
 export default function StackCard({
   entry,
@@ -29,12 +46,15 @@ export default function StackCard({
   reorderControls = null,
   entryMotion = "default",
   variant = "default",
+  positionLabel = null,
+  density = "default",
 }) {
   const ui = useUiText();
   const { state } = useGame();
   const {
     hoverCard,
     clearHover,
+    setHoverLinkedObjects,
     clearAnchoredCardPreview,
     showAnchoredCardPreview,
     scheduleAnchoredCardPreviewClear,
@@ -66,9 +86,9 @@ export default function StackCard({
   const artUrl = useScryfallImageUrl(name, "art_crop");
   const scryfallUrl = useScryfallImageUrl(name);
   const isCastEntry = !entry.ability_kind;
-  const kindLabel = isCastEntry
-    ? "Spell"
-    : `${entry.ability_kind || "Ability"} ability`;
+  const isPendingTrigger = Boolean(entry?.__trigger_ordering);
+  const kindLabel = stackEntryKindLabel(entry);
+  const detailText = stackEntryDetailText(entry);
   const pt = entry.power_toughness
     || (entry.power != null && entry.toughness != null
       ? `${entry.power}/${entry.toughness}`
@@ -80,7 +100,6 @@ export default function StackCard({
       "--glow-rgb": stackAccent.rgb,
     }
     : undefined;
-  const subtitle = String(entry?.__subtitle || "").trim();
   const hasReorderControls = !!reorderControls;
   // A stack tile's click belongs to whatever is live -- a target pick, a
   // resolve, an inspector request. Hover is the one read path nothing else
@@ -93,11 +112,18 @@ export default function StackCard({
   // precisely so a spell or ability on the stack can still be previewed.
   const inspectObjectId = resolveStackInspectObjectId(state, entry);
   // The stack entry itself: what the frame keys its ability highlight off.
-  // Falls back to the card when an entry has no id of its own.
-  const previewObjectId = entry?.id ?? inspectObjectId;
+  // Falls back to the card when an entry has no id of its own. A pending
+  // trigger's id is a placeholder that no state carries, so its preview is
+  // the source object the engine named for it.
+  const previewObjectId = isPendingTrigger ? inspectObjectId : (entry?.id ?? inspectObjectId);
+  const canPreview = !isLeaving && inspectObjectId != null;
   const handleHoverEnter = useCallback((event) => {
-    if (isLeaving || inspectObjectId == null) return;
+    if (!canPreview) return;
     hoverCard(inspectObjectId);
+    // What the entry is aimed at lights up the way a linked permanent does,
+    // and a pile holding one of its targets opens to show it. clearHover on
+    // leave drops the links again.
+    setHoverLinkedObjects(stackEntryAimedObjectIds(entry));
     // Anchor to the stack, not to this tile: the frame then holds one position
     // for every entry, and sits flush against the stack so the pointer can
     // reach it. Falling back to the tile keeps standalone usages working.
@@ -106,7 +132,7 @@ export default function StackCard({
     // matches to highlight the one ability that is on the stack, and it is
     // what a click would have set -- so a click has nothing left to change.
     showAnchoredCardPreview(previewObjectId, anchor, { placement: "stack" });
-  }, [hoverCard, inspectObjectId, isLeaving, previewObjectId, showAnchoredCardPreview]);
+  }, [canPreview, entry, hoverCard, inspectObjectId, previewObjectId, setHoverLinkedObjects, showAnchoredCardPreview]);
   const handleHoverLeave = useCallback(() => {
     clearHover();
     // Not a dismissal: the pointer may be on its way into the frame, which
@@ -182,31 +208,36 @@ export default function StackCard({
     motionRef.current = null;
   }, []);
 
+  const sharedProps = {
+    ref: rootRef,
+    "data-object-id": entry.id,
+    "data-target-object-ids": targetObjectIdKey,
+    "data-card-image-url": artUrl || "",
+    "data-card-name": name,
+    "data-pending-trigger": isPendingTrigger ? "true" : undefined,
+    onClick: handleClick,
+    onPointerDown: handlePointerDown,
+    onMouseEnter: handleHoverEnter,
+    onMouseLeave: handleHoverLeave,
+    style: stackAccentStyle,
+  };
+  const stateClasses = cn(
+    onClick ? "cursor-pointer" : "cursor-default",
+    isActive && "stack-card-active",
+    isPendingTrigger && "stack-card-pending",
+    targetingMode && "card-targeting-mode",
+    isLegalTarget && "target-legal",
+    isCastTargetHovered && "hovered",
+    isLeaving && "pointer-events-none",
+  );
+
   // Compact tiles (mobile stack rail): full-bleed art with the name over a
-  // bottom scrim — the default layout's 16px title can't fit a ~56px tile.
+  // bottom scrim -- the default layout's title can't fit a ~56px tile.
   if (variant === "compact") {
     return (
       <div
-        ref={rootRef}
-        className={cn(
-          "game-card stack-card stack-card--compact overflow-hidden",
-          onClick ? "cursor-pointer" : "cursor-default",
-          isActive && "stack-card-active",
-          targetingMode && "card-targeting-mode",
-          isLegalTarget && "target-legal",
-          isCastTargetHovered && "hovered",
-          isLeaving && "pointer-events-none",
-          className
-        )}
-        data-object-id={entry.id}
-        data-target-object-ids={targetObjectIdKey}
-        data-card-image-url={artUrl || ''}
-        data-card-name={name}
-        onClick={handleClick}
-        onPointerDown={handlePointerDown}
-        onMouseEnter={handleHoverEnter}
-        onMouseLeave={handleHoverLeave}
-        style={stackAccentStyle}
+        {...sharedProps}
+        className={cn("game-card stack-card stack-card--compact overflow-hidden", stateClasses, className)}
       >
         {artUrl && (
           <img
@@ -218,6 +249,7 @@ export default function StackCard({
           />
         )}
         <div className="stack-card-compact-scrim" aria-hidden="true" />
+        <span className="stack-card-accent" aria-hidden="true" />
         <PlayerStackAlert
           visible={showStackAlert}
           className="absolute right-1 top-1 z-[3]"
@@ -229,52 +261,78 @@ export default function StackCard({
 
   return (
     <div
-      ref={rootRef}
+      {...sharedProps}
       className={cn(
-        "game-card stack-card stack-card-circuit w-full min-w-0 min-h-[96px] overflow-hidden",
-        onClick ? "cursor-pointer" : "cursor-default",
-        isActive && "stack-card-active",
+        "game-card stack-card stack-card--flat w-full min-w-0 overflow-hidden",
         hasReorderControls && "stack-card-reorderable",
-        targetingMode && "card-targeting-mode",
-        isLegalTarget && "target-legal",
-        isCastTargetHovered && "hovered",
-        isLeaving && "pointer-events-none",
+        stateClasses,
         className
       )}
-      data-object-id={entry.id}
-      data-target-object-ids={targetObjectIdKey}
-      data-card-image-url={artUrl || ''}
-      data-card-name={name}
-      onClick={handleClick}
-      onPointerDown={handlePointerDown}
-      onMouseEnter={handleHoverEnter}
-      onMouseLeave={handleHoverLeave}
-      style={stackAccentStyle}
+      data-density={density}
     >
-      {!isLeaving && (
-        <AnimatedCircuitFrame
-          seed={`${entry.id}:${entry.controller}:${name}`}
-          path={STACK_CARD_CIRCUIT_PATH}
-          viewBox="0 0 100 96"
-          overlayClassName="stack-circuit-overlay"
-        />
-      )}
+      <span className="stack-card-accent" aria-hidden="true" />
 
-      {scryfallUrl && !hasReorderControls && (
-        <a
-          className="absolute top-1 right-1 bg-[#0a1118] text-[#9ec3ea] no-underline uppercase text-[12px] tracking-wide px-1 py-px rounded-none leading-tight z-2 opacity-0 hover:opacity-100 transition-opacity"
-          href={scryfallUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-        >{ui("img")}</a>
-      )}
+      <div className="stack-card-body">
+        <div className="stack-card-art">
+          {artUrl && (
+            <img
+              src={artUrl}
+              alt=""
+              loading="lazy"
+              referrerPolicy="no-referrer"
+            />
+          )}
+          {scryfallUrl && !hasReorderControls && (
+            <a
+              className="stack-card-img-link"
+              href={scryfallUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+            >{ui("img")}</a>
+          )}
+        </div>
+        <div className="stack-card-text">
+          <div className="stack-card-head">
+            {positionLabel && (
+              <span
+                className={cn(
+                  "stack-card-position",
+                  positionLabel === "Resolving" && "stack-card-position--resolving",
+                  positionLabel === "Top" && "stack-card-position--top"
+                )}
+              >
+                {ui(positionLabel)}
+              </span>
+            )}
+            <span className="stack-card-title">{name}</span>
+            <span className="stack-card-head-spacer" aria-hidden="true" />
+            {isCastEntry && entry.mana_cost && (
+              <span className="stack-card-cost">
+                <ManaCostIcons cost={entry.mana_cost} />
+              </span>
+            )}
+            {pt && <span className="stack-card-pt">{pt}</span>}
+            <PlayerStackAlert visible={showStackAlert} className="stack-card-alert" />
+          </div>
+          <div className="stack-card-sub">
+            <span className="stack-card-kind">
+              {ui(isPendingTrigger ? "Pending" : kindLabel)}
+            </span>
+            {detailText && (
+              <span className="stack-card-effect">
+                <SymbolText text={detailText} style={{ whiteSpace: "inherit" }} />
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
 
       {hasReorderControls && (
-        <>
+        <div className="stack-card-reorder" role="group">
           <button
             type="button"
-            className="stack-card-reorder-button stack-card-reorder-button-left"
+            className="stack-card-reorder-button stack-card-reorder-button-up"
             disabled={!reorderControls.canMoveLeft}
             onClick={(event) => {
               event.stopPropagation();
@@ -287,7 +345,7 @@ export default function StackCard({
           </button>
           <button
             type="button"
-            className="stack-card-reorder-button stack-card-reorder-button-right"
+            className="stack-card-reorder-button stack-card-reorder-button-down"
             disabled={!reorderControls.canMoveRight}
             onClick={(event) => {
               event.stopPropagation();
@@ -298,59 +356,8 @@ export default function StackCard({
           >
             <ArrowDown className="size-3.5" />
           </button>
-        </>
+        </div>
       )}
-
-      <div className={cn(
-        "stack-card-body relative z-2 flex min-h-[96px] flex-col py-2",
-        hasReorderControls ? "px-12" : "px-2.5"
-      )}>
-        <PlayerStackAlert
-          visible={showStackAlert}
-          className={cn(
-            "absolute top-1/2 z-[3] -translate-y-1/2",
-            hasReorderControls ? "right-12" : "right-2.5"
-          )}
-        />
-        <div className="flex items-start gap-2">
-          <div className="relative h-7 w-7 shrink-0 overflow-hidden rounded-none bg-[#0b121b]">
-            {artUrl && (
-              <img
-                className="h-full w-full object-cover opacity-100 saturate-[1.06] brightness-[1.08]"
-                src={artUrl}
-                alt=""
-                loading="lazy"
-                referrerPolicy="no-referrer"
-              />
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="stack-card-title break-words leading-[1.08] text-[#edf5ff]">
-              {name}
-            </div>
-            <div className="mt-1 flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-[#8ec4ff]">
-              <span>{ui(kindLabel)}</span>
-            </div>
-            {subtitle && (
-              <div className="stack-card-effect mt-1 text-[11px] font-semibold uppercase leading-[1.2] tracking-[0.08em] text-[#91cdfc]">
-                <SymbolText text={subtitle} style={{ whiteSpace: "inherit" }} />
-              </div>
-            )}
-          </div>
-          {isCastEntry && entry.mana_cost && (
-            <span className="shrink-0 pt-0.5">
-              <ManaCostIcons cost={entry.mana_cost} />
-            </span>
-          )}
-        </div>
-        <div className="mt-auto flex items-center gap-2 pt-2">
-          {pt && (
-            <span className="shrink-0 rounded-none border border-[#f5d08b]/35 bg-[rgba(245,208,139,0.08)] px-1.5 py-0.5 text-[12px] font-bold leading-none tracking-wide text-[#f5d08b]">
-              {pt}
-            </span>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

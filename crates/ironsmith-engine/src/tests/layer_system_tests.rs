@@ -4912,3 +4912,126 @@ fn test_fixed_attack_tax_scales_per_attacker_and_can_be_paid() {
         "fixed attack tax should consume all four generic mana (2 tax x 2 attackers)"
     );
 }
+
+#[test]
+fn characteristic_defining_color_applies_before_older_color_effects() {
+    // CR 613.2: within a layer, characteristic-defining abilities apply first.
+    // Devoid (colorless) on a creature that entered after a Painter's
+    // Servant-style "all permanents are red" effect must still end up red:
+    // devoid applies first, then the older additive effect.
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let painter_source = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(7100), "Painter Stand-in")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.effect_store
+        .continuous_effects
+        .add_effect(ContinuousEffect::new(
+            painter_source,
+            alice,
+            EffectTarget::AllPermanents,
+            Modification::AddColors(crate::color::ColorSet::from(crate::color::Color::Red)),
+        ));
+
+    let drone = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(7101), "Devoid Drone")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.object_mut(drone)
+        .unwrap()
+        .abilities_mut()
+        .push(Ability::static_ability(StaticAbility::make_colorless(
+            crate::target::ObjectFilter::source(),
+        )));
+    assert!(
+        game.effect_store
+            .continuous_effects
+            .get_entry_timestamp(drone)
+            .expect("drone should have an entry timestamp")
+            > game
+                .effect_store
+                .continuous_effects
+                .get_entry_timestamp(painter_source)
+                .expect("painter stand-in should have an entry timestamp"),
+        "test setup should give the devoid creature the later timestamp"
+    );
+
+    let colors = game
+        .calculated_characteristics(drone)
+        .expect("drone should have characteristics")
+        .colors;
+    assert!(
+        colors.contains(crate::color::Color::Red),
+        "devoid must apply before the older color-adding effect, got {colors:?}"
+    );
+}
+
+#[test]
+fn setting_subtypes_replaces_only_the_matching_family() {
+    // CR 205.1a: "becomes a Goblin" replaces creature types and nothing else;
+    // "is a Mountain" replaces land types and nothing else.
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let elf = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(7200), "Elf Warrior")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Elf, Subtype::Warrior])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let arbor = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(7201), "Dryad Arbor")
+            .card_types(vec![CardType::Land, CardType::Creature])
+            .subtypes(vec![Subtype::Forest, Subtype::Dryad])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    game.effect_store
+        .continuous_effects
+        .add_effect(ContinuousEffect::new(
+            elf,
+            alice,
+            EffectTarget::Filter(crate::target::ObjectFilter::creature()),
+            Modification::SetSubtypes(vec![Subtype::Goblin]),
+        ));
+
+    assert_eq!(game.calculated_subtypes(elf), vec![Subtype::Goblin]);
+    let arbor_subtypes = game.calculated_subtypes(arbor);
+    assert!(arbor_subtypes.contains(&Subtype::Goblin));
+    assert!(
+        arbor_subtypes.contains(&Subtype::Forest),
+        "a creature-type setting must keep land types, got {arbor_subtypes:?}"
+    );
+    assert!(!arbor_subtypes.contains(&Subtype::Dryad));
+
+    game.effect_store
+        .continuous_effects
+        .add_effect(ContinuousEffect::new(
+            arbor,
+            alice,
+            EffectTarget::Filter(crate::target::ObjectFilter::land()),
+            Modification::SetSubtypes(vec![Subtype::Mountain]),
+        ));
+    let arbor_subtypes = game.calculated_subtypes(arbor);
+    assert!(arbor_subtypes.contains(&Subtype::Mountain));
+    assert!(!arbor_subtypes.contains(&Subtype::Forest));
+    assert!(
+        arbor_subtypes.contains(&Subtype::Goblin),
+        "a land-type setting must keep creature types, got {arbor_subtypes:?}"
+    );
+}

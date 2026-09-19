@@ -64,6 +64,14 @@ export function splitTriggerOrderingOptionText(text) {
   };
 }
 
+export function triggerOrderingSourceObjectId(option) {
+  const related = Array.isArray(option?.related_object_ids) ? option.related_object_ids : [];
+  const candidate = related.find((id) => id != null) ?? option?.object_id ?? null;
+  if (candidate == null) return null;
+  const numeric = Number(candidate);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 export function buildTriggerOrderingEntries(decision, order) {
   if (!isTriggerOrderingDecision(decision)) return [];
 
@@ -77,10 +85,14 @@ export function buildTriggerOrderingEntries(decision, order) {
       if (!option) return null;
 
       const { title, detail } = splitTriggerOrderingOptionText(option.description);
+      // The option id is a placeholder; the engine names the permanent (or
+      // graveyard card) the trigger came from as a related object, which is
+      // what a hover or click on the pending tile previews.
+      const sourceObjectId = triggerOrderingSourceObjectId(option);
 
       return {
         id: `trigger-order-${optionIndex}`,
-        inspect_object_id: null,
+        inspect_object_id: sourceObjectId,
         stable_id: null,
         source_stable_id: null,
         controller: Number(decision.player),

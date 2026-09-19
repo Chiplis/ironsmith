@@ -2471,6 +2471,25 @@ pub(super) fn roaming_throne_blood_artist_culling_flow_reaches_two_trigger_order
                 .is_some_and(|description| description.starts_with("Blood Artist\n"))),
         "synthetic trigger-order options should expose their public labels: {decision:?}"
     );
+    // The sacrificed Blood Artist now sits in the graveyard under a new object
+    // id; each pending trigger still points at it so the UI can preview it.
+    for option in decision["options"].as_array().expect("options") {
+        let related = option["related_object_ids"]
+            .as_array()
+            .expect("trigger-order options should name their source object");
+        assert_eq!(related.len(), 1, "one source per trigger: {option:?}");
+        let source_id = ObjectId::from_raw(related[0].as_u64().expect("object id"));
+        let source = wasm
+            .game
+            .object(source_id)
+            .expect("trigger source should still exist in the game");
+        assert_eq!(source.name, "Blood Artist");
+        assert_eq!(
+            source.zone,
+            Zone::Graveyard,
+            "dies trigger source should be found again in the graveyard"
+        );
+    }
 }
 
 #[test]

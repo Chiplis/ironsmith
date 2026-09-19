@@ -152,12 +152,19 @@ pub(super) fn calculate_with_layers(
                 let baseline = baseline
                     .as_ref()
                     .expect("baseline should exist when dependency sorting needs it");
+                let started_groups_for_sort = crate::dependency::started_groups_for_sort(
+                    effects.iter().copied(),
+                    layer,
+                    baseline,
+                    ctx.objects,
+                    ctx.game,
+                );
                 sort_layer_effects_with_baseline_and_started_groups(
                     layer_effects,
                     baseline,
                     ctx.objects,
                     ctx.game,
-                    &started_groups,
+                    &started_groups_for_sort,
                 )
             } else {
                 sort_layer_effects(layer_effects)
@@ -299,12 +306,12 @@ pub(super) fn calculate_with_layers(
                     chars.subtypes.retain(|t| !t.belongs_to_family(*family));
                 }
                 Modification::SetSubtypes(types) => {
-                    // Blood Moon: Only replace LAND subtypes, keep non-land subtypes
-                    // Per MTG rules, type-changing effects that set land types only affect
-                    // land subtypes (Plains, Island, Swamp, Mountain, Forest, Urza's, etc.)
-                    // Non-land subtypes (Saga, Aura, creature types) are preserved.
+                    // CR 205.1a: the new subtypes replace the existing subtypes
+                    // of the same family only. Blood Moon replaces land types
+                    // and keeps a Saga a Saga; "creatures are Goblins" replaces
+                    // creature types and keeps an Aura an Aura.
 
-                    replace_subtypes_in_family(&mut chars.subtypes, types, SubtypeFamily::Land);
+                    replace_subtypes_for_set(&mut chars.subtypes, types);
                 }
                 Modification::SetAuraAttachmentFilter(filter) => {
                     chars.aura_attach_filter = Some(filter.clone());
@@ -745,12 +752,19 @@ pub(super) fn apply_layer_7_effects(
                 Layer::PowerToughness,
                 None,
             );
+            let started_groups_for_sort = crate::dependency::started_groups_for_sort(
+                effects.iter().copied(),
+                Layer::PowerToughness,
+                &baseline,
+                ctx.objects,
+                ctx.game,
+            );
             sort_layer_effects_with_baseline_and_started_groups(
                 &pt_effects,
                 &baseline,
                 ctx.objects,
                 ctx.game,
-                started_groups,
+                &started_groups_for_sort,
             )
         } else {
             sort_layer_effects(&pt_effects)

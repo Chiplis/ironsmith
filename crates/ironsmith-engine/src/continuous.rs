@@ -1017,6 +1017,14 @@ impl ContinuousEffectManager {
                 }
             }
 
+            // CR 613.2: characteristic-defining effects apply before other
+            // effects in their layer.
+            let a_is_cda = matches!(a.source_type, EffectSourceType::CharacteristicDefining);
+            let b_is_cda = matches!(b.source_type, EffectSourceType::CharacteristicDefining);
+            if a_is_cda != b_is_cda {
+                return b_is_cda.cmp(&a_is_cda);
+            }
+
             // Within same layer/sublayer, sort by timestamp
             a.timestamp.cmp(&b.timestamp)
         });
@@ -1418,6 +1426,37 @@ pub(crate) fn remove_card_types_and_prune_subtypes(
 ) {
     card_types.retain(|card_type| !removed.contains(card_type));
     subtypes.retain(|subtype| card_types_support_subtype(card_types, *subtype));
+}
+
+/// Every subtype family represented in `subtypes`.
+pub(crate) fn subtype_families_of(subtypes: &[Subtype]) -> Vec<SubtypeFamily> {
+    const FAMILIES: [SubtypeFamily; 7] = [
+        SubtypeFamily::Land,
+        SubtypeFamily::Creature,
+        SubtypeFamily::Artifact,
+        SubtypeFamily::Enchantment,
+        SubtypeFamily::Spell,
+        SubtypeFamily::Planeswalker,
+        SubtypeFamily::Battle,
+    ];
+    FAMILIES
+        .into_iter()
+        .filter(|family| subtypes.iter().any(|subtype| subtype.belongs_to_family(*family)))
+        .collect()
+}
+
+/// Apply a "becomes [subtypes]" effect (CR 205.1a): the new subtypes replace
+/// the existing subtypes of the same families and leave every other family
+/// untouched. Blood Moon replaces land types but keeps a Saga a Saga;
+/// Conspiracy replaces creature types but keeps an Equipment an Equipment.
+pub(crate) fn replace_subtypes_for_set(subtypes: &mut SharedVec<Subtype>, replacement: &[Subtype]) {
+    let families = subtype_families_of(replacement);
+    subtypes.retain(|subtype| !families.iter().any(|family| subtype.belongs_to_family(*family)));
+    for subtype in replacement {
+        if !subtypes.contains(subtype) {
+            subtypes.push(*subtype);
+        }
+    }
 }
 
 pub(crate) fn replace_subtypes_in_family(
@@ -2556,12 +2595,19 @@ pub fn text_box_characteristics_with_effects(
         };
 
         let sorted_effects = if let Some(baseline) = baseline.as_ref() {
+            let started_groups_for_sort = crate::dependency::started_groups_for_sort(
+                effects.iter(),
+                layer,
+                baseline,
+                objects,
+                game,
+            );
             crate::dependency::sort_layer_effects_with_baseline_and_started_groups(
                 layer_effects,
                 baseline,
                 objects,
                 game,
-                &started_groups,
+                &started_groups_for_sort,
             )
         } else {
             crate::dependency::sort_layer_effects(layer_effects)
@@ -2791,12 +2837,19 @@ fn calculate_with_layers_direct_internal(
                     let baseline = baseline
                         .as_ref()
                         .expect("baseline should exist when dependency sorting needs it");
+                    let started_groups_for_sort = crate::dependency::started_groups_for_sort(
+                        effects.iter(),
+                        layer,
+                        baseline,
+                        objects,
+                        game,
+                    );
                     sort_layer_effects_with_baseline_and_started_groups(
                         layer_effects,
                         baseline,
                         objects,
                         game,
-                        &started_groups,
+                        &started_groups_for_sort,
                     )
                 } else {
                     sort_layer_effects(layer_effects)
@@ -2962,12 +3015,19 @@ fn calculate_with_layers_direct_internal(
                         Layer::PowerToughness,
                         None,
                     );
+                    let started_groups_for_sort = crate::dependency::started_groups_for_sort(
+                        effects.iter(),
+                        Layer::PowerToughness,
+                        &baseline,
+                        objects,
+                        game,
+                    );
                     sort_layer_effects_with_baseline_and_started_groups(
                         pt_effects,
                         &baseline,
                         objects,
                         game,
-                        &started_groups,
+                        &started_groups_for_sort,
                     )
                 } else {
                     sort_layer_effects(pt_effects)
@@ -4397,7 +4457,7 @@ fn apply_modification_to_chars(
             chars.subtypes.retain(|st| !subtypes.contains(st));
         }
         Modification::SetSubtypes(subtypes) => {
-            replace_subtypes_in_family(&mut chars.subtypes, subtypes, SubtypeFamily::Land);
+            replace_subtypes_for_set(&mut chars.subtypes, subtypes);
         }
         Modification::SetAuraAttachmentFilter(filter) => {
             chars.aura_attach_filter = Some(filter.clone());

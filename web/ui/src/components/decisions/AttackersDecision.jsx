@@ -2,6 +2,7 @@ import useUiText from "@/i18n/useUiText";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
+import { ATTACKER_COLOR } from "@/lib/combat-arrows";
 import { getCardRect, centerOf } from "@/hooks/useCardPositions";
 import { buildObjectControllerById } from "@/lib/decision-object-meta";
 import { useDecisionButtonAccent } from "@/lib/decision-button-style";
@@ -13,7 +14,6 @@ import useDeferredPeerWait from "@/hooks/useDeferredPeerWait";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
-const ATTACKER_COLOR = "#ff6b5f";
 
 function attackerSubmitLabel(count) {
   if (count === 0) return "Declare no attackers";

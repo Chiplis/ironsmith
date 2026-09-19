@@ -11,6 +11,7 @@ import useMobileBattleLayout from "@/hooks/useMobileBattleLayout";
 import {
   MOBILE_OPPONENT_HUD_HEIGHT_PX,
   MOBILE_SELF_HUD_HEIGHT_PX,
+  MOBILE_PHASE_STRIP_HEIGHT_PX,
   MOBILE_HAND_PEEK_HEIGHT_PX,
   MOBILE_STACK_RAIL_WIDTH_PX,
 } from "@/lib/mobile-battle-layout";
@@ -34,7 +35,7 @@ import MobileViewToggle from "@/components/board/mobile/MobileViewToggle";
 import MobileStackRail from "@/components/board/mobile/MobileStackRail";
 
 const DEFAULT_TOPBAR_HEIGHT = MOBILE_OPPONENT_HUD_HEIGHT_PX;
-const DEFAULT_CONTROL_BAND_HEIGHT = 24;
+const DEFAULT_CONTROL_BAND_HEIGHT = MOBILE_PHASE_STRIP_HEIGHT_PX;
 const DEFAULT_SELF_HUD_HEIGHT = MOBILE_SELF_HUD_HEIGHT_PX;
 const DEFAULT_HAND_PEEK_HEIGHT = MOBILE_HAND_PEEK_HEIGHT_PX;
 const MOBILE_CARD_TAP_MAX_DISTANCE_SQ = 16 * 16;
@@ -216,6 +217,7 @@ export default function MobileBattleScene({
   );
 
   // --- Layout solver hookup -------------------------------------------------
+  const sceneRef = useRef(null);
   const opponentHudRef = useRef(null);
   const controlBandRef = useRef(null);
   const selfHudRef = useRef(null);
@@ -228,18 +230,11 @@ export default function MobileBattleScene({
   const layout = useMobileBattleLayout({
     topBandHeight: topbarHeight,
     controlBandHeight,
-    collapsedHandRailHeight: 0,
-    opponentManaPoolHeight: 0,
-    selfManaPoolHeight: 0,
     selfHudHeight: selfHudHeight,
     handPeekHeight: DEFAULT_HAND_PEEK_HEIGHT,
     stackVisible,
     stackRailWidth: MOBILE_STACK_RAIL_WIDTH_PX,
-    opponentFrontCount: opponentRows.frontCount,
-    opponentBackCount: opponentRows.backCount,
-    selfFrontCount: selfRows.frontCount,
-    selfBackCount: selfRows.backCount,
-  });
+  }, sceneRef);
 
   useEffect(() => {
     const observers = [
@@ -670,9 +665,11 @@ export default function MobileBattleScene({
 
   return (
     <main
+      ref={sceneRef}
       className="mobile-battle-scene mobile-mtga-scene table-gradient table-shell relative h-full min-h-0 overflow-hidden"
       data-drop-zone
       data-mobile-battle-scene
+      data-stack-visible={stackVisible ? "true" : "false"}
       data-inspector-open={inspectInteractionLockActive ? "true" : "false"}
       style={{
         "--mobile-battle-card-width": `${layout.cardWidth}px`,
@@ -690,8 +687,6 @@ export default function MobileBattleScene({
         "--mobile-mtga-stack-rail-width": `${layout.stackRailWidth}px`,
       }}
     >
-      <div className="mobile-battle-scene-vignette" aria-hidden="true" />
-      <div className="mobile-battle-scene-runeband" aria-hidden="true" />
 
       <MobileBattleProvider
         viewMode={mobileViewMode}
@@ -766,7 +761,7 @@ export default function MobileBattleScene({
             legalTargetObjectIds={legalSelectableObjectIds}
           />
 
-          <div ref={selfHudRef} className="mobile-mtga-scene-row">
+          <div ref={selfHudRef} className="mobile-mtga-scene-row mobile-mtga-scene-row--self">
             <MobileSelfHud
               me={me}
               onTap={dispatchPlayerChoice}

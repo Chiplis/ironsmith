@@ -2,6 +2,7 @@ import useUiText from "@/i18n/useUiText";
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
+import { BLOCKER_COLOR } from "@/lib/combat-arrows";
 import { getCardRect, centerOf } from "@/hooks/useCardPositions";
 import { buildObjectControllerById } from "@/lib/decision-object-meta";
 import { useDecisionButtonAccent } from "@/lib/decision-button-style";
@@ -12,7 +13,6 @@ import useDeferredPeerWait from "@/hooks/useDeferredPeerWait";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
-const BLOCKER_COLOR = "#ff8b63";
 
 function blockerSubmitLabel(count) {
   if (count === 0) return "Declare no blockers";

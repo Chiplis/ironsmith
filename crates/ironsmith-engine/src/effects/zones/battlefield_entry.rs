@@ -540,6 +540,31 @@ pub(crate) fn move_to_battlefield_batch_with_options(
         outcomes[index] = finish_battlefield_entry(&mut working, ctx, old_zone, options, result);
     }
 
+    // CR 613.7j: objects that receive timestamps simultaneously get them in an
+    // order the active player chooses. Only entrants whose static abilities
+    // generate continuous effects can make that order observable, so the
+    // choice is offered for those; everything else keeps commit order.
+    let relevant_entrants: Vec<ObjectId> = outcomes
+        .iter()
+        .filter_map(|outcome| match outcome {
+            BattlefieldEntryOutcome::Moved(id) => Some(*id),
+            BattlefieldEntryOutcome::Prevented => None,
+        })
+        .filter(|id| entrant_generates_continuous_effects(&working, *id))
+        .collect();
+    if relevant_entrants.len() >= 2 {
+        let Some(ordered) = choose_simultaneous_timestamp_order(
+            &working,
+            ctx.decision_maker,
+            &relevant_entrants,
+        ) else {
+            return vec![BattlefieldEntryOutcome::Prevented; requests.len()];
+        };
+        for id in ordered {
+            working.effect_store.continuous_effects.record_entry(id);
+        }
+    }
+
     for (index, (object_id, _)) in requests.iter().enumerate() {
         if outcomes[index] != BattlefieldEntryOutcome::Prevented {
             continue;
@@ -558,6 +583,79 @@ pub(crate) fn move_to_battlefield_batch_with_options(
     working.refresh_continuous_state();
     *game = working;
     outcomes
+}
+
+/// True when a permanent's own static abilities generate continuous effects,
+/// so its timestamp relative to other simultaneous entrants can matter.
+fn entrant_generates_continuous_effects(game: &GameState, id: ObjectId) -> bool {
+    let Some(object) = game.object(id) else {
+        return false;
+    };
+    let controller = game.controller_of(object);
+    object.abilities.iter().any(|ability| {
+        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            return false;
+        };
+        ability.functions_in(&object.zone)
+            && !static_ability
+                .generate_effects(id, controller, game)
+                .is_empty()
+    })
+}
+
+/// Ask the active player for the timestamp order of simultaneous entrants
+/// (CR 613.7j). The leftmost item receives the oldest timestamp. Returns
+/// `None` while the decision is still pending.
+fn choose_simultaneous_timestamp_order(
+    game: &GameState,
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
+    entrants: &[ObjectId],
+) -> Option<Vec<ObjectId>> {
+    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let items: Vec<(ObjectId, String)> = entrants
+        .iter()
+        .map(|id| {
+            let name = game
+                .object(*id)
+                .map(|object| object.name.to_string())
+                .unwrap_or_else(|| "Permanent".to_string());
+            let ordinal = seen.entry(name.clone()).or_insert(0);
+            *ordinal += 1;
+            let label = if *ordinal > 1 {
+                format!("{name} ({ordinal})")
+            } else {
+                name
+            };
+            (*id, label)
+        })
+        .collect();
+    let context = crate::decisions::context::enrich_display_hints(
+        game,
+        crate::decisions::context::DecisionContext::Order(
+            crate::decisions::context::OrderContext::new(
+                game.turn.active_player,
+                None,
+                "Choose the timestamp order for permanents entering at the same time. \
+                 The leftmost item is treated as having entered first.",
+                items,
+            ),
+        ),
+    )
+    .into_order();
+    let response = decision_maker.decide_order(game, &context);
+    if decision_maker.awaiting_choice() {
+        return None;
+    }
+
+    let mut remaining: Vec<ObjectId> = entrants.to_vec();
+    let mut ordered = Vec::with_capacity(remaining.len());
+    for id in response {
+        if let Some(position) = remaining.iter().position(|candidate| *candidate == id) {
+            ordered.push(remaining.remove(position));
+        }
+    }
+    ordered.extend(remaining);
+    Some(ordered)
 }
 
 /// Move an object to the battlefield with ETB replacement processing and policy hooks.
@@ -1149,5 +1247,112 @@ mod tests {
             game.object(card_id).map(|object| object.zone),
             Some(Zone::Graveyard)
         );
+    }
+
+    struct ReverseOrderDm {
+        prompts: Vec<String>,
+    }
+
+    impl DecisionMaker for ReverseOrderDm {
+        fn decide_order(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::OrderContext,
+        ) -> Vec<ObjectId> {
+            self.prompts.push(ctx.description.clone());
+            ctx.items.iter().rev().map(|(id, _)| *id).collect()
+        }
+    }
+
+    fn create_hand_creature_with_static_effect(
+        game: &mut GameState,
+        name: &str,
+        owner: PlayerId,
+    ) -> ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), name)
+            .card_types(vec![CardType::Creature])
+            .build();
+        let mut object = Object::from_card(id, &card, owner, Zone::Hand);
+        object
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::make_colorless(
+                ObjectFilter::source(),
+            )));
+        game.add_object(object);
+        id
+    }
+
+    fn entry_timestamp(game: &GameState, id: ObjectId) -> u64 {
+        game.effect_store
+            .continuous_effects
+            .get_entry_timestamp(id)
+            .expect("battlefield permanent should have an entry timestamp")
+    }
+
+    #[test]
+    fn simultaneous_entrants_receive_timestamps_in_the_active_players_order() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let first = create_hand_creature_with_static_effect(&mut game, "First Drone", alice);
+        let second = create_hand_creature_with_static_effect(&mut game, "Second Drone", alice);
+        let mut dm = ReverseOrderDm {
+            prompts: Vec::new(),
+        };
+        let mut ctx = ExecutionContext::new(ObjectId::from_raw(9_041), alice, &mut dm);
+
+        let outcomes = move_to_battlefield_batch_with_options(
+            &mut game,
+            &mut ctx,
+            vec![
+                (first, BattlefieldEntryOptions::preserve(false)),
+                (second, BattlefieldEntryOptions::preserve(false)),
+            ],
+        );
+        let ids: Vec<ObjectId> = outcomes
+            .iter()
+            .map(|outcome| match outcome {
+                BattlefieldEntryOutcome::Moved(id) => *id,
+                BattlefieldEntryOutcome::Prevented => panic!("both permanents should enter"),
+            })
+            .collect();
+
+        assert_eq!(dm.prompts.len(), 1, "the active player is asked once per batch");
+        // The player put the second entrant first, so it holds the older timestamp.
+        assert!(
+            entry_timestamp(&game, ids[1]) < entry_timestamp(&game, ids[0]),
+            "CR 613.7j: the chosen order decides the relative timestamps"
+        );
+    }
+
+    #[test]
+    fn simultaneous_entry_without_two_relevant_entrants_asks_nothing() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let relevant = create_hand_creature_with_static_effect(&mut game, "Lone Drone", alice);
+        let plain_id = game.new_object_id();
+        let plain_card = CardBuilder::new(CardId::from_raw(plain_id.0 as u32), "Plain Bear")
+            .card_types(vec![CardType::Creature])
+            .build();
+        game.add_object(Object::from_card(plain_id, &plain_card, alice, Zone::Hand));
+        let mut dm = ReverseOrderDm {
+            prompts: Vec::new(),
+        };
+        let mut ctx = ExecutionContext::new(ObjectId::from_raw(9_042), alice, &mut dm);
+
+        let outcomes = move_to_battlefield_batch_with_options(
+            &mut game,
+            &mut ctx,
+            vec![
+                (relevant, BattlefieldEntryOptions::preserve(false)),
+                (plain_id, BattlefieldEntryOptions::preserve(false)),
+            ],
+        );
+        assert!(
+            outcomes
+                .iter()
+                .all(|outcome| matches!(outcome, BattlefieldEntryOutcome::Moved(_)))
+        );
+        assert!(dm.prompts.is_empty());
     }
 }

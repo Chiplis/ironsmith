@@ -756,10 +756,23 @@ fn order_triggers_for_controller(
             )
         })
         .collect();
+    // The item ids are placeholders; the source is what a player wants to see
+    // when they point at a pending trigger. A dies trigger's source has
+    // already moved to the graveyard under a new object id, so the stable id
+    // is what finds it again there.
+    let item_sources: Vec<Option<ObjectId>> = triggers
+        .iter()
+        .map(|trigger| {
+            game.object(trigger.source)
+                .map(|_| trigger.source)
+                .or_else(|| game.find_object_by_stable_id(trigger.source_stable_id))
+        })
+        .collect();
     let ctx = crate::decisions::context::enrich_display_hints(
         game,
         crate::decisions::context::DecisionContext::Order(
-            crate::decisions::context::OrderContext::new(decision_player, None, description, items),
+            crate::decisions::context::OrderContext::new(decision_player, None, description, items)
+                .with_item_sources(item_sources),
         ),
     )
     .into_order();

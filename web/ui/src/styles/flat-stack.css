@@ -1,0 +1,626 @@
+/* Flat stack chrome.
+ *
+ * The stack rail wears the same near-black, flat language as the modals in
+ * flat-modals.css: no gradients, no circuit ornament, square-ish corners, and
+ * colour carried by fill rather than by borders. The one line of colour a tile
+ * keeps is its controller's accent, as a bar down its left edge.
+ *
+ * Loads last on purpose. The generic .game-card rules (aura variables, hover
+ * lift, ornament pseudo-elements) are written for battlefield and hand cards
+ * and are still wanted there; a stack tile opts out of them here.
+ */
+
+.stack-panel {
+  --stack-bg: #0b0c0e;
+  --stack-tile: #131418;
+  --stack-tile-hover: #1a1b20;
+  --stack-tile-active: #1f2026;
+  --stack-well: #050607;
+  --stack-control: #17181b;
+  --stack-control-hover: #232429;
+  --stack-gold: #2e2416;
+  --stack-gold-hover: #3d2f1c;
+  --stack-ink: #e7d9bc;
+  --stack-ink-bright: #f2d9a3;
+  --stack-ink-head: #d8bf7a;
+  --stack-ink-soft: #b8aa8e;
+  --stack-ink-mute: #8b806b;
+  --stack-ink-off: #5b5449;
+  --stack-rule: rgba(216, 191, 122, 0.12);
+  --stack-radius: 2px;
+  /* Resolved here, outside any .game-card: inside one, --ironsmith-ui-font is
+     re-pointed at the card rules serif, which is right for a printing and
+     wrong for a list tile. */
+  --stack-font: var(--ironsmith-ui-font, "Rajdhani"), system-ui, sans-serif;
+  position: relative;
+  color: var(--stack-ink);
+  background: var(--stack-bg);
+  border: 0;
+  border-radius: var(--stack-radius);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.42);
+  font-family: var(--stack-font);
+}
+
+/* --- header ----------------------------------------------------------- */
+
+.stack-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--stack-rule);
+}
+
+.stack-panel-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--stack-ink-head);
+}
+
+.stack-panel-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: var(--stack-radius);
+  background: var(--stack-control);
+  color: var(--stack-ink);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.stack-panel-state {
+  margin-left: auto;
+  padding: 2px 6px;
+  white-space: nowrap;
+  border-radius: var(--stack-radius);
+  background: var(--stack-gold);
+  color: var(--stack-ink-bright);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+/* --- list -------------------------------------------------------------- */
+
+.stack-panel .stack-timeline-scroll {
+  display: grid;
+  /* One column that can shrink: a tile's no-wrap chips must never widen the
+     list past its rail. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  align-content: start;
+  min-height: 0;
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.stack-timeline-entry {
+  position: relative;
+  min-width: 0;
+}
+
+/* --- tile -------------------------------------------------------------- */
+
+/* Every descendant of a .game-card is forced into the card rules serif; a
+   stack tile is interface, not a printing, so it reads in the UI sans like the
+   rest of the flat chrome. */
+.game-card.stack-card--flat,
+.game-card.stack-card--flat :not(svg):not(svg *),
+.game-card.stack-card--compact,
+.game-card.stack-card--compact :not(svg):not(svg *) {
+  font-family: var(--stack-font, "Rajdhani", "Avenir Next", "Segoe UI", system-ui, sans-serif) !important;
+}
+
+.game-card.stack-card--flat {
+  position: relative;
+  display: block;
+  min-height: 0;
+  padding: 0;
+  border: 0 !important;
+  border-radius: var(--stack-radius, 2px);
+  background: color-mix(in srgb, var(--player-accent, #d8bf7a) 5%, var(--stack-tile, #131418)) !important;
+  box-shadow: none !important;
+  color: var(--stack-ink, #e7d9bc);
+  font-weight: 500;
+  text-shadow: none;
+  isolation: isolate;
+  transition: background-color 140ms ease, transform 160ms ease, opacity 160ms ease;
+}
+
+.game-card.stack-card--flat::before,
+.game-card.stack-card--flat::after,
+.game-card.stack-card--flat .game-card-surface::before,
+.game-card.stack-card--compact::before,
+.game-card.stack-card--compact::after {
+  display: none !important;
+}
+
+.game-card.stack-card--flat:hover {
+  transform: none;
+  z-index: auto;
+  background: color-mix(in srgb, var(--player-accent, #d8bf7a) 8%, var(--stack-tile-hover, #1a1b20)) !important;
+}
+
+.game-card.stack-card--flat.stack-card-active {
+  background: color-mix(in srgb, var(--player-accent, #d8bf7a) 11%, var(--stack-tile-active, #1f2026)) !important;
+}
+
+.game-card.stack-card--flat.stack-card-active .stack-card-title {
+  color: var(--stack-ink-bright, #f2d9a3);
+}
+
+/* The controller's colour, as a bar rather than a border. */
+.stack-card-accent {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  z-index: 2;
+  width: 3px;
+  background: var(--player-accent, var(--stack-ink-head, #d8bf7a));
+  opacity: 0.8;
+  transition: opacity 140ms ease, width 140ms ease;
+  pointer-events: none;
+}
+
+.game-card.stack-card--flat:hover .stack-card-accent,
+.game-card.stack-card--flat.stack-card-active .stack-card-accent {
+  opacity: 1;
+}
+
+.game-card.stack-card--flat.stack-card-active .stack-card-accent {
+  width: 4px;
+}
+
+.stack-card-body {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 5px 8px 5px 11px;
+}
+
+.stack-card-reorderable .stack-card-body {
+  padding-right: 34px;
+}
+
+.stack-card-art {
+  position: relative;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  overflow: hidden;
+  border-radius: var(--stack-radius, 2px);
+  background: var(--stack-well, #050607);
+}
+
+.stack-card-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(1.04);
+}
+
+.stack-card-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stack-card-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 16px;
+}
+
+.stack-card-head-spacer {
+  flex: 1 1 auto;
+}
+
+.stack-card-position {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 1px 4px;
+  border-radius: var(--stack-radius, 2px);
+  background: var(--stack-control, #17181b);
+  color: var(--stack-ink-head, #d8bf7a);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.3;
+  text-transform: uppercase;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.stack-card-position--top {
+  color: var(--stack-ink-bright, #f2d9a3);
+}
+
+.stack-card-position--resolving {
+  background: var(--stack-gold, #2e2416);
+  color: var(--stack-ink-bright, #f2d9a3);
+}
+
+.stack-card-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  color: var(--stack-ink, #e7d9bc);
+  text-shadow: none;
+}
+
+.stack-card-cost {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  transform: scale(0.84);
+  transform-origin: right center;
+}
+
+.stack-card-alert {
+  flex: 0 0 auto;
+  margin-left: 1px;
+}
+
+.stack-card-pt {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border-radius: var(--stack-radius, 2px);
+  background: var(--stack-control, #17181b);
+  color: var(--stack-ink, #e7d9bc);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* One line under the name: what kind of thing this is, then what it does. */
+.stack-card-sub {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-size: 10.5px;
+  line-height: 1.3;
+}
+
+.stack-card-kind {
+  flex: 0 0 auto;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--stack-ink-mute, #8b806b);
+  white-space: nowrap;
+}
+
+.stack-card-effect {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--stack-ink-soft, #b8aa8e);
+}
+
+.stack-card-effect * {
+  white-space: nowrap !important;
+}
+
+/* The full-image link lives over the art thumbnail, shown on hover, so it
+   never competes with the tile's text for width. */
+.stack-card-img-link {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 6, 7, 0.74);
+  color: var(--stack-ink, #e7d9bc);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.3;
+  text-transform: uppercase;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease, background-color 120ms ease;
+}
+
+.game-card.stack-card--flat:hover .stack-card-img-link,
+.stack-card-img-link:focus-visible {
+  opacity: 1;
+}
+
+.stack-card-img-link:hover {
+  background: rgba(5, 6, 7, 0.86);
+  color: var(--stack-ink-bright, #f2d9a3);
+}
+
+/* --- pending triggers (ordering) -------------------------------------- */
+
+.game-card.stack-card--flat.stack-card-pending {
+  background: var(--stack-gold, #2e2416) !important;
+  color: var(--stack-ink-bright, #f2d9a3);
+}
+
+.game-card.stack-card--flat.stack-card-pending:hover {
+  background: var(--stack-gold-hover, #3d2f1c) !important;
+}
+
+.game-card.stack-card--flat.stack-card-pending .stack-card-title {
+  color: var(--stack-ink-bright, #f2d9a3);
+}
+
+.game-card.stack-card--flat.stack-card-pending .stack-card-effect {
+  color: var(--stack-ink, #e7d9bc);
+}
+
+.game-card.stack-card--flat.stack-card-pending .stack-card-kind {
+  color: var(--stack-ink-head, #d8bf7a);
+}
+
+.game-card.stack-card--flat.stack-card-pending .stack-card-position {
+  background: rgba(8, 6, 3, 0.38);
+}
+
+.stack-card-reorder {
+  position: absolute;
+  inset-block: 0;
+  right: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 30px;
+  padding: 3px 3px 3px 0;
+}
+
+.stack-card-reorder-button {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--stack-radius, 2px);
+  background: var(--stack-control, #17181b);
+  color: var(--stack-ink, #e7d9bc);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.game-card.stack-card--flat.stack-card-pending .stack-card-reorder-button {
+  background: rgba(8, 6, 3, 0.38);
+}
+
+.stack-card-reorder-button:hover:enabled {
+  background: var(--stack-control-hover, #232429);
+  color: var(--stack-ink-bright, #f2d9a3);
+}
+
+.game-card.stack-card--flat.stack-card-pending .stack-card-reorder-button:hover:enabled {
+  background: rgba(8, 6, 3, 0.56);
+}
+
+.stack-card-reorder-button:disabled {
+  color: var(--stack-ink-off, #5b5449);
+  cursor: default;
+}
+
+.stack-card-reorder-button:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring, 0 0 0 2px #0b0c0e, 0 0 0 4px #67c7ff);
+}
+
+/* --- targeting -------------------------------------------------------- */
+
+/* A stack tile lit as a legal target keeps its place in the list: the
+   battlefield lift would shove it into its neighbour. */
+.game-card.stack-card.card-targeting-mode.target-legal,
+.game-card.stack-card.card-targeting-mode.target-legal:is(:hover, .hovered) {
+  translate: 0 0;
+}
+
+/* --- previews (names before the objects exist) ------------------------- */
+
+.stack-preview-tile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--stack-radius, 2px);
+  background: var(--stack-tile, #131418);
+  color: var(--stack-ink, #e7d9bc);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.stack-preview-tile-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- compact density (the board-docked rail and the portal rail) ------- */
+
+.stack-panel[data-density="compact"] .stack-panel-header {
+  min-height: 24px;
+  padding: 3px 8px;
+}
+
+.stack-panel[data-density="compact"] .stack-panel-title {
+  font-size: 9px;
+}
+
+.stack-panel[data-density="compact"] .stack-panel-count {
+  height: 14px;
+  min-width: 16px;
+  font-size: 9px;
+}
+
+.stack-panel[data-density="compact"] .stack-timeline-scroll {
+  gap: 3px;
+  padding: 4px;
+}
+
+.game-card.stack-card--flat[data-density="compact"] .stack-card-body {
+  gap: 6px;
+  min-height: 40px;
+  padding: 4px 6px 4px 9px;
+}
+
+.game-card.stack-card--flat[data-density="compact"].stack-card-reorderable .stack-card-body {
+  padding-right: 28px;
+}
+
+.game-card.stack-card--flat[data-density="compact"] .stack-card-art {
+  width: 28px;
+  height: 28px;
+}
+
+.game-card.stack-card--flat[data-density="compact"] .stack-card-head {
+  gap: 4px;
+  min-height: 14px;
+}
+
+.game-card.stack-card--flat[data-density="compact"] .stack-card-position {
+  padding: 0 3px;
+  font-size: 8px;
+}
+
+.game-card.stack-card--flat[data-density="compact"] .stack-card-title {
+  font-size: 11.5px;
+}
+
+.game-card.stack-card--flat[data-density="compact"] .stack-card-cost {
+  transform: scale(0.72);
+}
+
+.game-card.stack-card--flat[data-density="compact"] .stack-card-alert {
+  transform: scale(0.78);
+  transform-origin: center;
+}
+
+.game-card.stack-card--flat[data-density="compact"] .stack-card-pt {
+  padding: 0 4px;
+  font-size: 9.5px;
+}
+
+.game-card.stack-card--flat[data-density="compact"] .stack-card-sub {
+  gap: 5px;
+  font-size: 9.5px;
+}
+
+.game-card.stack-card--flat[data-density="compact"] .stack-card-kind {
+  font-size: 8px;
+}
+
+.game-card.stack-card--flat[data-density="compact"] .stack-card-reorder {
+  width: 24px;
+  padding: 2px 2px 2px 0;
+}
+
+.game-card.stack-card--flat[data-density="compact"] .stack-card-img-link {
+  font-size: 8px;
+}
+
+/* --- compact art tiles (mobile stack rail) ------------------------------ */
+
+.game-card.stack-card--compact {
+  position: relative;
+  border: 0 !important;
+  border-radius: 2px;
+  background: #131418 !important;
+  box-shadow: none !important;
+  isolation: isolate;
+}
+
+.game-card.stack-card--compact:hover {
+  transform: none;
+  z-index: auto;
+}
+
+.game-card.stack-card--compact .stack-card-accent {
+  opacity: 1;
+}
+
+.game-card.stack-card--compact.stack-card-active {
+  box-shadow: inset 0 -2px 0 var(--player-accent, #d8bf7a) !important;
+}
+
+.stack-card-compact-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(1.04) brightness(0.9);
+}
+
+.stack-card-compact-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(8, 9, 10, 0.02) 30%, rgba(8, 9, 10, 0.94) 82%);
+}
+
+.stack-card-compact-name {
+  position: absolute;
+  left: 6px;
+  right: 3px;
+  bottom: 3px;
+  z-index: 2;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  color: #e7d9bc;
+  text-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-card.stack-card--flat,
+  .stack-card-accent,
+  .stack-card-reorder-button,
+  .stack-card-img-link {
+    transition: none;
+  }
+}
