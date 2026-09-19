@@ -42,11 +42,23 @@ impl EffectExecutor for ExecuteWithSourceEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        // The source can leave the battlefield before this effect runs: a
+        // sacrifice and its own reflexive trigger are the printed case. The
+        // ability still resolves from the source's last known information
+        // (CR 608.2h), which the stack entry already carries, so rebinding is
+        // simply a no-op there rather than a failure.
+        let rebind_to_own_source_lki = matches!(self.source.base(), ChooseSpec::Source)
+            && ctx.source_snapshot.is_some()
+            && game.object(ctx.source).is_none();
         let source_id = match resolve_single_object_for_effect(game, ctx, &self.source) {
             Ok(source_id) => source_id,
+            Err(_) if rebind_to_own_source_lki => return execute_effect(game, &self.effect, ctx),
             Err(_) => return Ok(EffectOutcome::target_invalid()),
         };
         let Some(source_obj) = game.object(source_id) else {
+            if rebind_to_own_source_lki {
+                return execute_effect(game, &self.effect, ctx);
+            }
             return Ok(EffectOutcome::target_invalid());
         };
         let source_snapshot = match self.source.base() {

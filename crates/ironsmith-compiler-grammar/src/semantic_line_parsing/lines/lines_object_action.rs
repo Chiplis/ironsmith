@@ -137,9 +137,14 @@ pub(super) fn rewrite_copy_count_to_times_paid_label_rewrite(
         }) = effect
             && let crate::cards::builders::TargetAst::Source(_) = target
             && let crate::effect::Value::Count(filter) = count
-            && filter.tagged_constraints.iter().any(|constraint| {
+            && (filter.tagged_constraints.iter().any(|constraint| {
                 constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             })
+                // "for each creature sacrificed this way" names the same
+                // payment through its prior action rather than through the
+                // shared tag.
+                || filter.prior_effect_action_surface()
+                    == Some(ironsmith_core::PriorEffectAction::Sacrificed))
         {
             *count = crate::effect::Value::TimesPaidLabel(label.into());
         }

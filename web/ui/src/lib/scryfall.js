@@ -14,6 +14,7 @@ const PREFERRED_BASIC_LAND_SET = "fdn";
 
 const CUSTOM_CARD_ART_URLS_STORAGE_KEY = "ironsmith-custom-card-art-urls";
 const CARD_PRINT_PREFERENCES_STORAGE_KEY = "ironsmith-card-print-preferences";
+const COMPILED_CARD_NAMES_STORAGE_KEY = "ironsmith-compiled-card-names";
 const HIDDEN_CARD_NAMES = new Set(["hidden card"]);
 const HIDDEN_CARD_BACK_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 680" role="img" aria-label="Hidden card">
@@ -166,6 +167,29 @@ function clearCachedCardImageUrls(cardName) {
       resolvedCardImageUrlCache.delete(key);
     }
   }
+}
+
+// A card compiled in the forge may take an existing card's name, and then its
+// printing is only a template: the scan's printed text is not this card's text.
+// Surfaces that would otherwise show the printing as-is consult this to draw
+// the live frame instead.
+export function setCompiledCardNames(names) {
+  const map = readJsonStorageMap(COMPILED_CARD_NAMES_STORAGE_KEY);
+  for (const name of names || []) {
+    const key = customArtKey(name);
+    if (key) map[key] = "compiled";
+  }
+  writeJsonStorageMap(COMPILED_CARD_NAMES_STORAGE_KEY, map);
+  compiledCardNames = null;
+}
+
+// Every card on the table asks this on every render, so the parse is kept.
+let compiledCardNames = null;
+export function isCompiledCardName(cardName) {
+  const key = customArtKey(cardName);
+  if (!key) return false;
+  if (!compiledCardNames) compiledCardNames = new Set(Object.keys(readJsonStorageMap(COMPILED_CARD_NAMES_STORAGE_KEY)));
+  return compiledCardNames.has(key);
 }
 
 export function customCardArtUrl(cardName) {

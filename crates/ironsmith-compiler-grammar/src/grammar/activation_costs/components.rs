@@ -154,7 +154,11 @@ fn parse_activation_cost_segment_tokens(
         ActivationCostSegmentKind::PutCounter => {
             parse_move_source_to_library_bottom_cost_tokens(tokens)
                 .or_else(|| parse_move_to_library_top_cost_tokens(tokens))
-                .or_else(|| Some(parse_put_counter_segment_tokens(tokens)))
+                .or_else(|| {
+                    Some(parse_put_counter_segment_tokens(tokens, &|words| {
+                        is_source_reference_words(words) || named_source(words).is_some()
+                    }))
+                })
         }
         ActivationCostSegmentKind::RemoveCounter => {
             Some(parse_remove_counter_segment_tokens(tokens))

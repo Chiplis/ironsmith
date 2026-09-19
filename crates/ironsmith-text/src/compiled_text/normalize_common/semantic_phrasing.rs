@@ -615,9 +615,13 @@ fn restore_split_card_front_surface(line: &str) -> Option<String> {
     {
         return Some("When you unlock this door, search your library for a Room card that doesn't have the same name as a Room you control, reveal it, put it into your hand, then shuffle.".to_string());
     }
-    if trimmed
-        == "When you unlock this door, manifest dread, then put two +1/+1 counters on that creature, then put a trample counter on that creature"
-    {
+    // The second counter placement reaches here as either the repeated
+    // antecedent or the pronoun, depending on which reference pass ran.
+    if matches!(
+        trimmed,
+        "When you unlock this door, manifest dread, then put two +1/+1 counters on that creature, then put a trample counter on that creature"
+            | "When you unlock this door, manifest dread, then put two +1/+1 counters on that creature, then put a trample counter on it"
+    ) {
         return Some("When you unlock this door, manifest dread, then put two +1/+1 counters and a trample counter on that creature.".to_string());
     }
     if trimmed

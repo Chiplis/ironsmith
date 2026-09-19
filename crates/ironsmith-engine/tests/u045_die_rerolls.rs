@@ -1,5 +1,7 @@
 use ironsmith::decision::DecisionMaker;
+use ironsmith::decisions::context::ManaPaymentContext;
 use ironsmith::decisions::{BooleanContext, SelectOptionsContext};
+use ironsmith::mana_payment::ManaPaymentResponse;
 use ironsmith::effects::execute_effect;
 use ironsmith::events::other::DieRolledEvent;
 use ironsmith::{
@@ -20,6 +22,23 @@ impl DecisionMaker for AcceptFirst {
     fn decide_options(&mut self, _game: &GameState, ctx: &SelectOptionsContext) -> Vec<usize> {
         assert_eq!(ctx.player, self.expected_player);
         vec![0]
+    }
+
+    // A modifier that costs mana opens a payment, and confirming one is its
+    // own decision rather than the first option of a list: the default
+    // routes it through `decide_options`, where index 0 is Cancel, so a
+    // maker that always takes the first option would decline every payment
+    // it just agreed to make.
+    fn decide_mana_payment(
+        &mut self,
+        _game: &GameState,
+        ctx: &ManaPaymentContext,
+    ) -> ManaPaymentResponse {
+        assert_eq!(ctx.player, self.expected_player);
+        ManaPaymentResponse::Confirm {
+            plan_id: ctx.plan.id,
+            request_hash: ctx.plan.request_hash,
+        }
     }
 }
 

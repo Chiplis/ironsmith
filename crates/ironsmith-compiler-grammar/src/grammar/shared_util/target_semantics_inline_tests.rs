@@ -349,10 +349,24 @@ fn bare_anaphoric_and_attachment_targets_reach_typed_semantics() {
 
 #[test]
 fn sacrificed_object_target_is_a_typed_tagged_reference() {
-    let TargetAst::Tagged(tag, Some(_span)) = parse("the sacrificed creature") else {
-        panic!("expected tagged sacrificed-object reference");
+    // The reference keeps its last-known snapshot through normalization, so
+    // it resolves to a filtered object carrying the `it` tag plus the
+    // sacrificed action and noun, not to a bare tag.
+    let parsed = parse("the sacrificed creature");
+    let TargetAst::Object(filter, None, Some(_span)) = parsed else {
+        panic!("expected tagged sacrificed-object reference, got {parsed:#?}");
     };
-    assert_eq!(tag.as_str(), crate::tag::CompilerReferenceTag::It.as_str());
+    assert!(filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+    }));
+    assert_eq!(
+        filter.additional_cost_object_surface(),
+        Some(ironsmith_core::AdditionalCostObjectSurface::new(
+            ironsmith_core::AdditionalCostObjectAction::Sacrificed,
+            ironsmith_core::SacrificedObjectKind::Creature,
+        ))
+    );
 }
 
 #[test]

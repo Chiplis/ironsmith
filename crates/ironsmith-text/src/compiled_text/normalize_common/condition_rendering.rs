@@ -621,13 +621,10 @@ fn describe_turn_history_value_comparison(
                 .unwrap_or_else(|| "counter".to_string());
             if let Some(player) = source_controller {
                 let actor = describe_history_player_subject(player);
-                if is_present {
-                    return Some(format!(
-                        "{actor} put {} on {} this turn",
-                        with_indefinite_article(&counter),
-                        with_indefinite_article(&subject)
-                    ));
-                }
+                // A counter-placement history reads "you've put one or more
+                // +1/+1 counters on ... this turn" even at a threshold of
+                // one, so the bare-presence phrasing the other histories use
+                // would not be the authored surface here.
                 let action = if player == &PlayerFilter::You {
                     "you've put".to_string()
                 } else {

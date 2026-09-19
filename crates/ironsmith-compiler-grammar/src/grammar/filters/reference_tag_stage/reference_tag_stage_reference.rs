@@ -2411,6 +2411,11 @@ pub(in super::super) fn parse_object_filter_inner(
     }
 
     let has_object_identity = !filter.card_types.is_empty()
+        // `other card` names an object by exclusion. Like the `nonattacking`
+        // and `nonblocking` restrictions below, it narrows the phrase to
+        // something the bare noun does not cover, so it is identity even
+        // before a caller rewrites it into a tagged exclusion.
+        || filter.other
         || !filter.all_card_types.is_empty()
         || !filter.supertypes.is_empty()
         || !filter.excluded_supertypes.is_empty()

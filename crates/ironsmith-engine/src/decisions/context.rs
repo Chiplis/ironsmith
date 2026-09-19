@@ -2142,12 +2142,29 @@ mod tests {
             crate::zone::Zone::Battlefield,
         );
 
-        // A definition compiled without canonical text carries the structural
-        // rendering in `compiled_card_text` itself.
-        assert!(looks_like_compiled_structure(
-            &game.object(source).unwrap().compiled_card_text
-        ));
-        assert_eq!(decision_source_text(&game, source), None);
+        // A handwritten keyword ability renders as its printed text, which is
+        // quotable. What must never reach a player is a compiled structure,
+        // so that is what this checks — on both the cached text box and the
+        // runtime fallback behind it.
+        let quoted = decision_source_text(&game, source);
+        assert!(
+            quoted
+                .as_deref()
+                .is_none_or(|text| !looks_like_compiled_structure(text)),
+            "{quoted:?}"
+        );
+
+        const STRUCTURAL: &str =
+            "GrantAbility { filter: ObjectFilter { zone: Some(Battlefield) } }";
+        game.object_mut(source).unwrap().compiled_card_text = STRUCTURAL.into();
+        let quoted = decision_source_text(&game, source);
+        assert_ne!(quoted.as_deref(), Some(STRUCTURAL));
+        assert!(
+            quoted
+                .as_deref()
+                .is_none_or(|text| !looks_like_compiled_structure(text)),
+            "{quoted:?}"
+        );
     }
 
     #[test]

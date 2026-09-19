@@ -4188,7 +4188,12 @@ impl ObjectFilter {
                     }
                 }
                 TaggedOpbjectRelation::IsNotTaggedObject => {
-                    parts.push("other".to_string());
+                    // `other` already spells this exclusion adjectivally. The
+                    // tagged form carries the executable identity, so naming
+                    // both would read "another other creature".
+                    if !self.other {
+                        parts.push("other".to_string());
+                    }
                 }
                 TaggedOpbjectRelation::SameNameAsTagged => {
                     if constraint.tag.as_str() == crate::SOURCE_EXILED_TAG {

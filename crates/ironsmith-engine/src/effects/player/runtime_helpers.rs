@@ -107,6 +107,21 @@ fn cast_filter_matches(
     filter.matches(view, &filter_ctx, game)
 }
 
+/// As [`cast_filter_matches`], against a caller-supplied filter context.
+///
+/// A permission granted mid-resolution can name its cards by a tag bound
+/// earlier in the same resolution ("a spell from among them"). Those bindings
+/// live on the execution context, not on the game, so a context built from the
+/// game alone can never match them.
+fn cast_filter_matches_in_context(
+    game: &GameState,
+    filter_ctx: &crate::target::FilterContext,
+    view: &crate::object::Object,
+    filter: &crate::target::ObjectFilter,
+) -> bool {
+    filter.matches(view, filter_ctx, game)
+}
+
 pub(super) fn effect_driven_cast_options_for_card(
     game: &GameState,
     caster: PlayerId,
@@ -126,6 +141,28 @@ pub(super) fn effect_driven_cast_options_for_card(
     )
 }
 
+pub(super) fn effect_driven_cast_options_for_card_in_context(
+    game: &GameState,
+    caster: PlayerId,
+    source: ObjectId,
+    object_id: ObjectId,
+    from_zone: Zone,
+    filter: &crate::target::ObjectFilter,
+    payment: EffectDrivenCastPayment,
+    filter_ctx: &crate::target::FilterContext,
+) -> Vec<EffectDrivenCastOption> {
+    effect_driven_cast_options_inner(
+        game,
+        caster,
+        source,
+        object_id,
+        from_zone,
+        filter,
+        payment,
+        Some(filter_ctx),
+    )
+}
+
 pub(super) fn effect_driven_cast_options_for_card_with_payment(
     game: &GameState,
     caster: PlayerId,
@@ -135,6 +172,26 @@ pub(super) fn effect_driven_cast_options_for_card_with_payment(
     filter: &crate::target::ObjectFilter,
     payment: EffectDrivenCastPayment,
 ) -> Vec<EffectDrivenCastOption> {
+    effect_driven_cast_options_inner(
+        game, caster, source, object_id, from_zone, filter, payment, None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn effect_driven_cast_options_inner(
+    game: &GameState,
+    caster: PlayerId,
+    source: ObjectId,
+    object_id: ObjectId,
+    from_zone: Zone,
+    filter: &crate::target::ObjectFilter,
+    payment: EffectDrivenCastPayment,
+    filter_ctx: Option<&crate::target::FilterContext>,
+) -> Vec<EffectDrivenCastOption> {
+    let matches_filter = |object: &crate::object::Object| match filter_ctx {
+        Some(filter_ctx) => cast_filter_matches_in_context(game, filter_ctx, object, filter),
+        None => cast_filter_matches(game, caster, source, object, filter),
+    };
     let Some(object) = game.object(object_id) else {
         return Vec::new();
     };
@@ -144,7 +201,7 @@ pub(super) fn effect_driven_cast_options_for_card_with_payment(
 
     let mut options = Vec::new();
     if let EffectDrivenCastPayment::AlternativeCost(kind) = payment {
-        if !cast_filter_matches(game, caster, source, object, filter) {
+        if !matches_filter(object) {
             return Vec::new();
         }
         for (idx, method) in object.alternative_casts.iter().enumerate() {
@@ -160,7 +217,7 @@ pub(super) fn effect_driven_cast_options_for_card_with_payment(
         return options;
     }
 
-    if cast_filter_matches(game, caster, source, object, filter) {
+    if matches_filter(object) {
         let casting_method = if from_zone == Zone::Hand && object.owner == caster {
             CastingMethod::Normal
         } else {

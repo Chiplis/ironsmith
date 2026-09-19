@@ -124,6 +124,19 @@ fn write_cards_with_worker_stack_pressure_json(path: &Path) {
     .expect("write cards.json with worker-stack-pressure card");
 }
 
+/// The comparison score as the tool prints it.
+///
+/// `compile_oracle_text` prints the score at full precision so cohort
+/// verification can see threshold boundaries, so a test asserts on the
+/// number rather than on a fixed-width rendering of it.
+fn similarity_score(stdout: &str) -> f32 {
+    stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("Similarity: "))
+        .and_then(|value| value.parse::<f32>().ok())
+        .unwrap_or_else(|| panic!("compile output should include a numeric similarity score: {stdout}"))
+}
+
 fn query_count(db_path: &Path, sql: &str) -> i64 {
     let conn = Connection::open(db_path).expect("open sqlite db");
     conn.query_row(sql, [], |row| row.get(0))
@@ -1416,7 +1429,7 @@ fn compile_oracle_text_strictly_compiles_zagoth_mamba_from_workspace_cards() {
     let stdout =
         String::from_utf8(output.stdout).expect("compile_oracle_text stdout should be utf8");
     assert!(stdout.contains("Name: Zagoth Mamba"), "{stdout}");
-    assert!(stdout.contains("Similarity: 1.0000"), "{stdout}");
+    assert_eq!(similarity_score(&stdout), 1.0, "{stdout}");
     assert!(
         stdout.contains("target creature an opponent controls gets -2/-2 until end of turn"),
         "expected mutate-triggered debuff clause in compiled comparison output, got {stdout}"
@@ -1666,7 +1679,7 @@ fn compile_oracle_text_strictly_compiles_unesh_criosphinx_sovereign_from_workspa
         stdout.contains("Name: Unesh, Criosphinx Sovereign"),
         "{stdout}"
     );
-    assert!(stdout.contains("Similarity: 1.0000"), "{stdout}");
+    assert_eq!(similarity_score(&stdout), 1.0, "{stdout}");
     assert!(
         stdout.contains("An opponent separates those cards into two piles.")
             && stdout.contains("Put one pile into your hand and the other into your graveyard."),
@@ -1791,8 +1804,9 @@ fn compile_oracle_text_strictly_compiles_sages_of_the_anima_draw_replacement() {
     let stdout =
         String::from_utf8(output.stdout).expect("compile_oracle_text stdout should be utf8");
     assert!(stdout.contains("Name: Sages of the Anima"), "{stdout}");
-    assert!(
-        stdout.contains("Similarity: 1.0000"),
+    assert_eq!(
+        similarity_score(&stdout),
+        1.0,
         "expected exact compiled-text comparison for Sages of the Anima, got {stdout}"
     );
     assert!(

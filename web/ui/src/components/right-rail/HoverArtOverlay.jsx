@@ -18,6 +18,7 @@ import { fullCardImageUrl } from '@/lib/card-frame-colors';
 import "@/styles/card-frame-colors.css";
 import { useScryfallImage } from "@/hooks/useScryfallImageUrl";
 import useScryfallFlavorText from "@/hooks/useScryfallFlavorText";
+import { isCompiledCardName } from "@/lib/scryfall";
 import useInspectorPaymentActions from "@/hooks/useInspectorPaymentActions";
 import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
 import { getPlayerAccent } from "@/lib/player-colors";
@@ -888,7 +889,12 @@ export default function HoverArtOverlay({
   const imageUrl = sourceImageUrl ? cardArtCropUrl(sourceImageUrl) : image.url;
   const generatedFrame = usePreparedCardFrame(imageUrl, typeLine, isCardFrameMode && image.ready && enableFramePreparation);
   const originalFrame = useMemo(() => ({imageUrl, originalImageUrl: fullCardImageUrl(imageUrl) || imageUrl}), [imageUrl]);
-  const preparedFrame = enableFramePreparation ? generatedFrame : originalFrame;
+  // A custom card can have no printing to look up at all. Waiting on a
+  // preparation that will never arrive leaves the stage hidden and inert, so
+  // an art lookup that settled on nothing publishes its own bundle instead and
+  // the frame is drawn from the placeholder.
+  const artUnavailable = Boolean(sourceImageUrl || image.ready) && !imageUrl;
+  const preparedFrame = enableFramePreparation && !artUnavailable ? generatedFrame : originalFrame;
   const defaultTypography = useCardTypography(isCardFrameMode ? "" : imageUrl);
   const typography = preparedFrame?.typography || defaultTypography;
   const inspectorMeasureFont = typography.rules;
@@ -921,8 +927,12 @@ export default function HoverArtOverlay({
   const localizedFlavorText = useScryfallFlavorText(locale === "en" ? "" : sourceImageUrl || imageUrl, locale);
   // Mask preparation retains the source-language flavor. Only the visible
   // layer switches language; never mix English flavor into Spanish rules.
+  // A card compiled in the forge may carry an existing card's name. That
+  // printing is only a template for its frame: none of its printed wording --
+  // rules, flavor -- belongs to this card.
+  const compiledCustomCard = isCompiledCardName(objectName);
   const flavorText = locale !== "en" ? localizedFlavorText
-    : isCardFrameMode ? preparedFrame?.flavorText || "" : defaultFlavorText;
+    : isCardFrameMode ? (compiledCustomCard ? "" : preparedFrame?.flavorText || "") : defaultFlavorText;
   const topStackObject = visibleStackObjects[0] || null;
   const detailCompiledText = Array.isArray(details?.compiled_text) ? details.compiled_text : null;
   const detailAbilities = Array.isArray(details?.abilities) ? details.abilities : null;
@@ -1004,8 +1014,9 @@ export default function HoverArtOverlay({
     if (oracleRulesLines.length > 0) {
       return oracleRulesLines;
     }
-    return isMiniatureFrame ? String(preparedFrame?.printing?.oracle_text || '').split('\n').filter(Boolean) : compiledRulesLines;
-  }, [compiledRulesLines, oracleRulesLines, shouldPreferStackAbilityRules, isMiniatureFrame, preparedFrame?.printing?.oracle_text]);
+    return isMiniatureFrame && !compiledCustomCard
+      ? String(preparedFrame?.printing?.oracle_text || '').split('\n').filter(Boolean) : compiledRulesLines;
+  }, [compiledCustomCard, compiledRulesLines, oracleRulesLines, shouldPreferStackAbilityRules, isMiniatureFrame, preparedFrame?.printing?.oracle_text]);
   const baseDisplayRulesText = baseDisplayRulesLines.join("\n");
   const baseDisplayObjectName = debugInspector ? null : objectName;
   const baseDisplayTypeLine = debugInspector ? null : typeLineDisplay;
@@ -2349,6 +2360,10 @@ export default function HoverArtOverlay({
     const placedFrame = !hasSourceMask
       && cardFrameColors?.["--source-frame-status"] === "unmasked"
       && Boolean(cardFrameColors?.["--printed-layout"]);
+    // No printing to lay anything over: draw our own frame around whatever art
+    // there is (or none), so a custom card is still a complete, live card.
+    const placeholderFrame = !hasSourceMask && !placedFrame
+      && (artUnavailable || cardFrameColors?.["--source-frame-status"] === "placeholder");
     const columnMana = cardFrameColors?.["--printed-mana-placement"] === "column"
       ? JSON.parse(cardFrameColors["--printed-mana-symbols"] || "null") : null;
     const manaTokens = String(displayManaCost || "").match(/\{[^}]+\}/g) || [];
@@ -2366,7 +2381,7 @@ export default function HoverArtOverlay({
         data-box-sizing={cardFrameColors?.["--printed-box-sizing"] || undefined}
         data-frame-geometry={cardFrameColors && Object.keys(cardFrameColors).some(key => key.startsWith("--printed-gap-")) ? "true" : undefined}
         data-card-colors={hasSourceMask ? "sampled" : undefined}
-        data-frame-mode={preparedFrame?.registration ? "registered" : hasSourceMask ? "masked" : placedFrame ? "placed" : "original"}
+        data-frame-mode={preparedFrame?.registration ? "registered" : hasSourceMask ? "masked" : placedFrame ? "placed" : placeholderFrame ? "placeholder" : "original"}
         data-frame-presentation={isMiniatureFrame ? "miniature" : "inspector"}
         data-frame-fallback-reason={cardFrameColors?.["--source-frame-fallback-reason"] || undefined}
         data-inspected-object-id={detailsObjectIdKey || undefined}
@@ -2388,7 +2403,7 @@ export default function HoverArtOverlay({
           interactive={!isMiniatureFrame}
           typeLine={displayTypeLine} stats={displayStatsText} flavorText={flavorText}
           onActivate={onInteractiveAction} highlighted={highlightedRuleLineIndices}
-        /> : !hasSourceMask && !placedFrame ? <OriginalCardFallback
+        /> : !hasSourceMask && !placedFrame && !placeholderFrame ? <OriginalCardFallback
           showDetails={!isMiniatureFrame}
           imageUrl={preparedFrame?.originalImageUrl || sourceImageUrl || imageUrl}
           name={displayObjectName} rulesView={rulesView} onActivate={onInteractiveAction}

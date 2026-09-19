@@ -1935,7 +1935,14 @@ mod typed_trigger_subject_migration_tests {
             .unwrap()
             .expect("chosen creature trigger subject");
 
-        assert_eq!(filter.card_types, vec![crate::types::CardType::Creature]);
+        // A chosen-object reference identifies the object that was chosen
+        // (CR 700.7), so the noun is kept for rendering while no current
+        // card-type predicate is imposed.
+        assert!(filter.card_types.is_empty(), "{filter:#?}");
+        assert_eq!(
+            filter.explicit_card_type_noun(),
+            Some(crate::types::CardType::Creature)
+        );
         assert_eq!(filter.tagged_constraints.len(), 1, "{filter:#?}");
         assert_eq!(
             filter.tagged_constraints[0],

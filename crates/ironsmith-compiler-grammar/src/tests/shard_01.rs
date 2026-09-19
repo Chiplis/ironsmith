@@ -1697,35 +1697,42 @@ pub(super) fn rewrite_zone_handlers_parse_mixed_target_and_all_exile_list() {
             )
         })
         .collect::<Vec<_>>();
-    let [source_exile, battlefield_exile, graveyard_exile] = exile_effects.as_slice() else {
-        panic!("expected source plus two exile-all effects, got {coordination:#?}");
-    };
-    assert!(matches!(
-        source_exile,
-        crate::cards::builders::EffectAst::SubjectVerb(
-            crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
-                    ZoneMoveActionAst::Exile { .. }
-                ),
-                ..
+    // The authored list selects its whole union before any member moves, so
+    // a leading source permanent joins the following all-sets as one exile
+    // whose arms are the authored items.
+    fn exile_all_filter(
+        effect: &crate::cards::builders::EffectAst,
+    ) -> Option<&crate::target::ObjectFilter> {
+        match effect {
+            crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action:
+                        crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                            ZoneMoveActionAst::ExileAll { filter, .. },
+                        ),
+                    ..
+                },
+            ) => Some(filter),
+            _ => None,
+        }
+    }
+    let union_arms: Vec<&crate::target::ObjectFilter> = exile_effects
+        .iter()
+        .filter_map(|effect| exile_all_filter(effect))
+        .flat_map(|filter| {
+            if filter.any_of.is_empty() {
+                vec![filter]
+            } else {
+                filter.any_of.iter().collect()
             }
-        )
-    ));
-    let battlefield_filter = match battlefield_exile {
-        crate::cards::builders::EffectAst::SubjectVerb(
-            crate::cards::builders::SubjectVerbEffectAst {
-                action:
-                    crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
-                        ZoneMoveActionAst::ExileAll {
-                            filter,
-                            face_down: false,
-                        },
-                    ),
-                ..
-            },
-        ) => filter,
-        other => panic!("expected battlefield exile-all effect, got {other:#?}"),
+        })
+        .collect();
+    let [source_arm, battlefield_filter, graveyard_filter] = union_arms.as_slice() else {
+        panic!("expected source plus two exile-all sets, got {coordination:#?}");
     };
+    assert!(source_arm.source, "{source_arm:#?}");
+    let battlefield_filter = *battlefield_filter;
+    let graveyard_filter = *graveyard_filter;
     assert!(battlefield_filter.card_types.contains(&CardType::Creature));
     assert!(
         battlefield_filter
@@ -1734,21 +1741,6 @@ pub(super) fn rewrite_zone_handlers_parse_mixed_target_and_all_exile_list() {
     );
     assert!(mana_value_lte_void_counters(battlefield_filter));
 
-    let graveyard_filter = match graveyard_exile {
-        crate::cards::builders::EffectAst::SubjectVerb(
-            crate::cards::builders::SubjectVerbEffectAst {
-                action:
-                    crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
-                        ZoneMoveActionAst::ExileAll {
-                            filter,
-                            face_down: false,
-                        },
-                    ),
-                ..
-            },
-        ) => filter,
-        other => panic!("expected graveyard exile-all effect, got {other:#?}"),
-    };
     assert_eq!(graveyard_filter.zone, Some(Zone::Graveyard));
     assert!(graveyard_filter.card_types.contains(&CardType::Creature));
     assert!(

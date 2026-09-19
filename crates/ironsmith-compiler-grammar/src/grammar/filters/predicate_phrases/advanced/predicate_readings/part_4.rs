@@ -903,6 +903,7 @@ pub(super) const READINGS: &[Reading] = &[
             }))
                 // Readings ranked above this one that read the input read it.
                 && !input.read_by("each-global-greatest-power-predicate")
+                && !input.read_by("a-global-greatest-power-control-predicate")
                 && !input.read_by("phase-step-gate-predicate")
                 && !input.read_by("player-controls-more-than-each-other-player-predicate")
                 && !input.read_by("player-controls-no-predicate")

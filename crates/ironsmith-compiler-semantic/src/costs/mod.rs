@@ -148,6 +148,16 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
     {
         return true;
     }
+    // "…you may sacrifice one or more creatures. When you do, …" — the
+    // reflexive trigger is the payment's own bookkeeping: it fires from
+    // having paid, so it belongs to the cost even though its consequences
+    // are not themselves payments.
+    if effect
+        .downcast_ref::<effects::ReflexiveTriggerEffect>()
+        .is_some()
+    {
+        return true;
+    }
 
     false
 }

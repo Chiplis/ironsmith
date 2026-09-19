@@ -1288,12 +1288,34 @@ fn describe_contextualized_iterated_player_may_action(
     filter: &PlayerFilter,
     effects: &[Effect],
 ) -> Option<String> {
+    /// Spell the count a `where X is <count> minus ...` basis opens with.
+    ///
+    /// An authored basis writes the count as a word. It reaches here as a
+    /// digit because the value is `Fixed`, and both the reordered and the
+    /// already-ordered surface need the same treatment.
+    fn spell_where_x_basis_count(basis: &str) -> String {
+        basis
+            .split_once(" minus ")
+            .and_then(|(left, right)| {
+                left.parse::<i32>()
+                    .ok()
+                    .and_then(number_word)
+                    .map(|left| format!("{left} minus {right}"))
+            })
+            .unwrap_or_else(|| basis.to_string())
+    }
+
     fn join_dynamic_search_move_before_where_x(search: String) -> String {
         let Some((search_head, where_and_move)) = search.split_once(", where X is ") else {
             return search;
         };
         let Some((where_basis, move_clause)) = where_and_move.split_once(". Put ") else {
-            return search;
+            // The destination already precedes the basis, so there is nothing
+            // to reorder and only the count needs its authored word form.
+            return format!(
+                "{search_head}, where X is {}",
+                spell_where_x_basis_count(where_and_move)
+            );
         };
         let move_clause = move_clause
             .strip_prefix("those cards ")
@@ -1304,15 +1326,7 @@ fn describe_contextualized_iterated_player_may_action(
                     .map(|rest| format!("it {rest}"))
             })
             .unwrap_or_else(|| move_clause.to_string());
-        let where_basis = where_basis
-            .split_once(" minus ")
-            .and_then(|(left, right)| {
-                left.parse::<i32>()
-                    .ok()
-                    .and_then(number_word)
-                    .map(|left| format!("{left} minus {right}"))
-            })
-            .unwrap_or_else(|| where_basis.to_string());
+        let where_basis = spell_where_x_basis_count(where_basis);
         format!("{search_head} and put {move_clause}, where X is {where_basis}")
     }
 

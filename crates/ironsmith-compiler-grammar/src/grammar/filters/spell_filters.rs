@@ -80,6 +80,7 @@ fn classify_object_filter_grammar_domain(tokens: &[OwnedLexToken]) -> ObjectFilt
                 | "revealed"
                 | "exiled"
                 | "discarded"
+                | "sacrificed"
                 | "cast"
                 | "turn"
                 | "turns"
@@ -104,6 +105,36 @@ fn classify_object_filter_grammar_domain(tokens: &[OwnedLexToken]) -> ObjectFilt
                 | "kicked"
                 | "freerunning"
                 | "convoke"
+                // A literal name is a reference, not a characteristic: the
+                // noun-only grammar has no slot for one and would drop the
+                // name while still recognizing the noun.
+                | "named"
+                | "name"
+                | "names"
+                // Combat relations. A negated combat relation is still a
+                // relation; the characteristic grammar knows neither form.
+                | "nonattacking"
+                | "nonblocking"
+                // Ownership, in the inflections the corpus actually uses
+                // beside the `owner`/`owners` already listed.
+                | "own"
+                | "owns"
+                | "owned"
+                | "they"
+                // `that` is listed; its contraction is the same operand.
+                | "thats"
+                | "that's"
+                // A characteristic predicate is relational whichever number
+                // the sentence puts it in.
+                | "powers"
+                | "toughnesses"
+                // A targeting marker survives into the slice whenever a
+                // caller strips only a trailing decoration, as the extremum
+                // reader does. It is a reference marker, never a
+                // characteristic.
+                | "target"
+                | "targets"
+                | "targeted"
         )
     }) || crate::util::is_source_reference_words(&words);
     let has_protector_relation = words

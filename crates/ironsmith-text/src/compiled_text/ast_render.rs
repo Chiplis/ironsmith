@@ -26489,32 +26489,55 @@ fn describe_target_power_fanout_then_graveyard_refill_program(
     let [damage_effect] = damage_segment.default_effects.as_slice() else {
         return None;
     };
-    let execute = structural_unwrap_render_wrappers(damage_effect)
-        .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
+    // "to each other creature" is an iteration over that set, with the
+    // source-linked damage inside it; the older flat shape named the set on
+    // the damage target itself. Read either.
+    let unwrapped = structural_unwrap_render_wrappers(damage_effect);
+    let (iterated_filter, execute) =
+        if let Some(for_each) = unwrapped.downcast_ref::<crate::effects::ForEachObject>() {
+            let [inner] = for_each.effects.as_slice() else {
+                return None;
+            };
+            (
+                Some(&for_each.filter),
+                structural_unwrap_render_wrappers(inner)
+                    .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?,
+            )
+        } else {
+            (
+                None,
+                unwrapped.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?,
+            )
+        };
     let damage = execute
         .effect
         .downcast_ref::<crate::effects::DealDamageEffect>()?;
-    let exact_other_creature_fanout = match damage.target.unhinted() {
-        ChooseSpec::Object(filter)
-            if filter.other
-                && filter.set_quantifier_surface()
-                    == Some(ironsmith_core::SetQuantifierSurface::Each)
-                && matches!(filter.tagged_constraints.as_slice(), [constraint]
-                    if constraint.tag == tagged_target.tag
-                        && constraint.relation
-                            == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject) =>
-        {
-            let mut normalized = filter.clone();
+    let fanout_filter = match (iterated_filter, damage.target.unhinted()) {
+        (Some(filter), ChooseSpec::Iterated) => filter,
+        (None, ChooseSpec::Object(filter)) => filter,
+        _ => return None,
+    };
+    let exact_other_creature_fanout = fanout_filter.other
+        && fanout_filter.set_quantifier_surface()
+            == Some(ironsmith_core::SetQuantifierSurface::Each)
+        && matches!(fanout_filter.tagged_constraints.as_slice(), [constraint]
+            if constraint.tag == tagged_target.tag
+                && constraint.relation
+                    == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject)
+        && {
+            let mut normalized = fanout_filter.clone();
             normalized.other = false;
             describe_damage_target(&ChooseSpec::Object(normalized)) == "each other creature"
-        }
-        _ => false,
-    };
+        };
+    // Inside the wrapper the amount may name the chosen creature directly or
+    // through the source the wrapper just rebound to it.
+    let amount_is_chosen_power = matches!(damage.amount.unhinted(), Value::PowerOf(spec)
+        if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag == &tagged_target.tag)
+            || matches!(spec.base(), ChooseSpec::Source));
     if damage.source_is_combat
         || damage.unpreventable
         || !matches!(&execute.source, ChooseSpec::Tagged(tag) if tag == &tagged_target.tag)
-        || !matches!(damage.amount.unhinted(), Value::PowerOf(spec)
-            if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag == &tagged_target.tag))
+        || !amount_is_chosen_power
         || !exact_other_creature_fanout
     {
         return None;
@@ -26589,7 +26612,16 @@ mod target_power_fanout_graveyard_refill_tests {
         let [damage_effect] = damage_segment.default_effects.as_slice() else {
             panic!("expected a single source-linked damage effect");
         };
-        let execute = structural_unwrap_render_wrappers(damage_effect)
+        // "each other creature" is an iteration, so the source-linked damage
+        // sits inside it. What matters here is unchanged: the damage runs
+        // with the chosen creature as its source.
+        let damage_carrier = structural_unwrap_render_wrappers(damage_effect);
+        let damage_carrier = damage_carrier
+            .downcast_ref::<crate::effects::ForEachObject>()
+            .and_then(|for_each| for_each.effects.first())
+            .map(structural_unwrap_render_wrappers)
+            .unwrap_or(damage_carrier);
+        let execute = damage_carrier
             .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
             .expect("damage should execute with the chosen creature as source");
         let damage = execute
@@ -26597,8 +26629,12 @@ mod target_power_fanout_graveyard_refill_tests {
             .downcast_ref::<crate::effects::DealDamageEffect>()
             .expect("source-linked effect should deal damage");
         assert!(matches!(&execute.source, ChooseSpec::Tagged(tag) if tag == &tagged_target.tag));
+        // "its power" is the chosen creature's power, named either directly
+        // or through the source the enclosing wrapper just rebound to that
+        // same tag, which the assertion above has already established.
         assert!(matches!(damage.amount.unhinted(), Value::PowerOf(spec)
-            if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag == &tagged_target.tag)));
+            if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag == &tagged_target.tag)
+                || matches!(spec.base(), ChooseSpec::Source)));
         assert_eq!(
             describe_effect(damage_effect),
             "that creature deals damage equal to its power to each other creature"
@@ -27155,7 +27191,9 @@ fn describe_inline_spell_attack_or_block_damage_choice(
     };
     let modal = structural_unwrap_render_wrappers(effect)
         .downcast_ref::<crate::effects::ChooseModeEffect>()?;
-    if modal.chooser != Some(PlayerFilter::You)
+    // An implicit chooser is the spell's controller, the same player an
+    // explicit `You` names.
+    if !matches!(modal.chooser, None | Some(PlayerFilter::You))
         || modal.min != Value::Fixed(1)
         || modal.max != Value::Fixed(1)
         || modal.choose_count != Value::Fixed(1)
@@ -27293,7 +27331,12 @@ mod inline_spell_attack_or_block_damage_choice_tests {
             .downcast_ref::<crate::effects::ChooseModeEffect>()
             .expect("expected typed resolving choice")
             .clone();
-        printed_modal.chooser = None;
+        // A printed modal is the one whose modes carry their authored bullet
+        // text. The chooser does not tell the two apart: an inline `or`
+        // sentence leaves it implicit just as a printed modal does.
+        for (index, mode) in printed_modal.modes.iter_mut().enumerate() {
+            mode.source_text = format!("Lava Storm deals 2 damage to each bullet {index}");
+        }
         let printed_program =
             crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(printed_modal)]);
         assert_eq!(
@@ -27514,6 +27557,10 @@ fn rewrite_unquoted_spell_resolution_damage_source(def: &CardDefinition, rendere
         .replace("\nDeal ", &format!("\n{source_name} deals "))
         .replace(" — Deal ", &format!(" — {source_name} deals "))
         .replace(" — It deals ", &format!(" — {source_name} deals "))
+        // A resolving spell never refers to itself as "it" in a later
+        // sentence; Oracle repeats the name ("Galvanic Blast deals 2 damage
+        // to any target. ... Galvanic Blast deals 4 damage ... instead").
+        .replace(". It deals ", &format!(". {source_name} deals "))
         .replace(", deal ", &format!(", {source_name} deals "));
     let rendered = rewrite_standalone_spell_self_exile(&rendered, source_name);
     rewrite_inline_spell_self_exile(&rendered, source_name)
@@ -30949,7 +30996,19 @@ fn describe_triggering_card_type_exile_then_cast_permission(ability: &Ability) -
         false,
         ironsmith_core::value_model::ManaSpendMode::Normal,
     );
-    if permission != &expected_permission {
+    // The authored `that card` reference is presentation metadata for the
+    // sentence this renderer spells out itself. Any richer surface names a
+    // different sentence and must not be collapsed into this one.
+    let plain_that_card_surface = permission.surface.as_ref().is_none_or(|surface| {
+        surface.object == Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard)
+            && !surface.leading_duration
+            && surface.mana_reference.is_none()
+            && surface.control_source.is_none()
+            && surface.until_source_exiles_another.is_none()
+    });
+    let mut permission = permission.clone();
+    permission.surface = None;
+    if !plain_that_card_surface || permission != expected_permission {
         return None;
     }
 
@@ -36402,13 +36461,24 @@ fn describe_structural_attached_subtype_base_pt_keyword_loss_bundle(
     else {
         return None;
     };
-    let ironsmith_core::StaticAbilityPayload::SetBasePowerToughnessValue {
-        filter: pt_filter,
-        power,
-        toughness,
-    } = &pt.payload
-    else {
-        return None;
+    // A literal base power/toughness compiles to the fixed payload; the
+    // dynamic one carries the same numbers as `Value::Fixed`. Both spell the
+    // same authored sentence, so read either.
+    let (pt_filter, power, toughness) = match &pt.payload {
+        ironsmith_core::StaticAbilityPayload::SetBasePowerToughness {
+            filter,
+            power,
+            toughness,
+        } => (filter, *power, *toughness),
+        ironsmith_core::StaticAbilityPayload::SetBasePowerToughnessValue {
+            filter,
+            power,
+            toughness,
+        } => match (power.unhinted(), toughness.unhinted()) {
+            (Value::Fixed(power), Value::Fixed(toughness)) => (filter, *power, *toughness),
+            _ => return None,
+        },
+        _ => return None,
     };
     let ironsmith_core::StaticAbilityPayload::AttachedAbilityGrant(grant) = &grant.payload else {
         return None;
@@ -36418,10 +36488,6 @@ fn describe_structural_attached_subtype_base_pt_keyword_loss_bundle(
         return None;
     };
     let [subtype] = subtypes.as_slice() else {
-        return None;
-    };
-    let (Value::Fixed(power), Value::Fixed(toughness)) = (power.unhinted(), toughness.unhinted())
-    else {
         return None;
     };
     if card_types.as_slice() != [CardType::Creature]
@@ -36705,7 +36771,16 @@ mod attached_turtle_transform_bundle_tests {
         let AbilityKind::Static(pt) = &members[2].kind else {
             panic!("base-P/T member should remain a typed static ability");
         };
+        // A literal 0/1 compiles to the fixed payload; the dynamic one
+        // spells the same numbers. The bundle reader accepts either.
         assert!(matches!(
+            pt.compiled_model().map(|model| &model.payload),
+            Some(ironsmith_core::StaticAbilityPayload::SetBasePowerToughness {
+                power: 0,
+                toughness: 1,
+                ..
+            })
+        ) || matches!(
             pt.compiled_model().map(|model| &model.payload),
             Some(ironsmith_core::StaticAbilityPayload::SetBasePowerToughnessValue {
                 power,

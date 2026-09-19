@@ -5561,6 +5561,11 @@ impl GameState {
         // effects resolve. Skipped entirely when nothing in the game can goad.
         let static_abilities = if !self
             .any_goad_ability_exists(crate::static_abilities::StaticAbilityId::GoadedBySourceController)
+            // An attached permanent grants the goad rather than carrying it,
+            // so the granter counts as a goad source for this gate.
+            && !self.any_goad_ability_exists(
+                crate::static_abilities::StaticAbilityId::AttachedGoadedBySourceController,
+            )
         {
             Default::default()
         } else {

@@ -1823,8 +1823,10 @@ fn value_is_tagged_it_mana_value(value: &Value) -> bool {
     matches!(
         value,
         Value::ManaValueOf(spec)
+            // The authored noun ("that spell") rides along as a surface hint,
+            // so read the spec underneath it.
             if matches!(
-                spec.as_ref(),
+                spec.base(),
                 crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             )
     )

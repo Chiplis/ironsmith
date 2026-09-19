@@ -212,7 +212,18 @@ pub fn parse_sacrifice(
                     player,
                     tag: crate::tag::TagRef::of(tag.clone()),
                 }),
-                EffectAst::subject_verb_sacrifice_all(PlayerAst::That, ObjectFilter::tagged(tag)),
+                // The sacrifice is made by whoever just chose the objects.
+                // `That` re-reads the last bound player, and an implicit
+                // actor never binds one, so it would otherwise inherit a
+                // player bound by the surrounding trigger.
+                EffectAst::subject_verb_sacrifice_all(
+                    if matches!(player, PlayerAst::Implicit) {
+                        PlayerAst::Implicit
+                    } else {
+                        PlayerAst::That
+                    },
+                    ObjectFilter::tagged(tag),
+                ),
             ]
         };
         if let Some(followup_tokens) = followup_tokens {

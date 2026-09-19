@@ -11,7 +11,7 @@ import { animate, cancelMotion, createTimeline, uiSpring } from "@/lib/motion/an
 import { debounceClick, debouncePointerDown } from "@/lib/interactionDebounce";
 import { cn } from "@/lib/utils";
 import { getPlayerAccent } from "@/lib/player-colors";
-import { fetchScryfallCardMeta } from "@/lib/scryfall";
+import { fetchScryfallCardMeta, isCompiledCardName } from "@/lib/scryfall";
 import { useScryfallImage } from "@/hooks/useScryfallImageUrl";
 import { useTranslatedCardName } from "@/i18n/useTranslatedCardName";
 import usePreparedCardFrame from "@/hooks/usePreparedCardFrame";
@@ -886,6 +886,12 @@ export default function GameCard({
   // Share the hover inspector's preparation from the moment a visible card
   // has an image, including while it is still in hand.
   const preparedFrame = usePreparedCardFrame(cardArtCropUrl(artUrl), card.type_line, Boolean(artUrl) && cardNeedsFrame(state, card.id));
+  // A card compiled in the forge may carry an existing card's name, and both
+  // the hand and the portrait battlefield show that printing's scan whole.
+  // Its printed text is the template's, not this card's, so the live frame is
+  // drawn over it instead -- with no art to borrow, the frame draws itself,
+  // which is also why a compiled card does not wait for a prepared frame.
+  const compiledCustomCard = isCompiledCardName(name);
   const imageLoading = variant === "hand" ? "eager" : "lazy";
   const imageFetchPriority = variant === "hand" ? "high" : "auto";
   const [repairedHandArt, setRepairedHandArt] = useState(null);
@@ -1629,7 +1635,7 @@ export default function GameCard({
       )}
       {variant !== "stack" && <span className="card-inspector-source-glow" aria-hidden="true" />}
       <div className="game-card-surface">
-        {usePortraitBattlefield && preparedFrame && (
+        {((usePortraitBattlefield && (preparedFrame || compiledCustomCard)) || (variant === "hand" && compiledCustomCard)) && (
           <MiniatureCardFrame card={card} imageUrl={artUrl} />
         )}
         {(showActionBorder || isLegalTarget) && !useTokenBattlefield && (

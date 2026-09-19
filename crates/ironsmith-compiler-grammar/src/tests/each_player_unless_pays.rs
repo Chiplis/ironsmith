@@ -32,10 +32,16 @@ fn trailing_they_pay_keeps_the_each_player_ast_and_payer_reference() {
         ),
         "expected the two authored alternative payments, got {cost:#?}"
     );
+    // "For each player" reads as the unfiltered loop or as the filtered one
+    // over every player; either keeps the iteration the payment attaches to.
     assert!(
         matches!(
             effects.as_slice(),
             [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. })]
+                | [EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                    filter: crate::target::PlayerFilter::Any,
+                    ..
+                })]
         ),
         "expected the consequence to retain its each-player loop, got {effects:#?}"
     );

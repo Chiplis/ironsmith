@@ -336,11 +336,15 @@ fn parse_filter_disjunction(tokens: &[OwnedLexToken], words: &[&str]) -> Option<
     });
     let mut branches = Vec::new();
     for mut segment in segments {
+        // Complete the shared noun only for an arm that does not already
+        // name one. An arm like "a card with doctor's companion" ends on its
+        // ability predicate, and appending a second card noun there pushes
+        // the predicate out of the tail position its grammar requires.
         if shared_card_suffix
             && !segment
-                .last()
-                .and_then(OwnedLexToken::as_word)
-                .is_some_and(is_card_word)
+                .iter()
+                .filter_map(OwnedLexToken::as_word)
+                .any(is_card_word)
         {
             segment.push(OwnedLexToken::word(
                 "card".to_string(),

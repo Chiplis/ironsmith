@@ -242,6 +242,7 @@ fn normalize_named_source_sentence_tokens_cased(
     let aliases = aliases_for_builder(card);
     let all_words = alias_word_lists(&aliases);
 
+
     // A leading full name: "<Name> gets +1/+1" → "<subject> gets +1/+1".
     if let Some(full) = full_name_alias(card, &aliases)
         && let Some(remainder) = strip_alias_prefix(tokens, full)

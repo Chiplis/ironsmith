@@ -4,7 +4,7 @@ import { RefreshCw, Sparkles, SquareSplitHorizontal, Layers3 } from "lucide-reac
 
 import { useGame } from "@/context/GameContext";
 import { cn } from "@/lib/utils";
-import { customCardArtUrl, setCustomCardArtUrls } from "@/lib/scryfall";
+import { customCardArtUrl, setCompiledCardNames, setCustomCardArtUrls } from "@/lib/scryfall";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -533,6 +533,9 @@ export default function CreateCardForgeSheet({
           name: face.name,
           artUrl: face.artUrl,
         })));
+        // The compiled card owns its text from here on, whatever printing its
+        // name resolves to.
+        setCompiledCardNames(draft.faces.map((face) => face.name));
         setOpen(false);
         await refresh(`Compiled ${primaryName}`);
       } catch (error) {

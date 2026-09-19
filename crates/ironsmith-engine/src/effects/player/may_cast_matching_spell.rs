@@ -10,6 +10,7 @@ pub use ironsmith_core::MayCastMatchingSpellWithoutPayingManaCostEffect;
 
 use super::runtime_helpers::{
     EffectDrivenCastOption, EffectDrivenCastPayment, cast_effect_driven_spell_with_payment,
+    effect_driven_cast_options_for_card_in_context,
     effect_driven_cast_options_for_card_with_payment, with_spell_cast_event,
 };
 
@@ -60,8 +61,12 @@ impl EffectExecutor for MayCastMatchingSpellWithoutPayingManaCostEffect {
         let object_ids = object_ids_in_zone(game, zone_owner_id, self.zone);
         let mut options = Vec::<EffectDrivenCastOption>::new();
         let payment = runtime_payment(&self.payment);
+        // The permitted cards can be named by a tag bound earlier in this
+        // resolution ("a spell from among them"), so the filter has to be read
+        // against this resolution's bindings rather than the game alone.
+        let filter_ctx = ctx.filter_context(game).with_caster(Some(player_id));
         for object_id in object_ids {
-            options.extend(effect_driven_cast_options_for_card_with_payment(
+            options.extend(effect_driven_cast_options_for_card_in_context(
                 game,
                 player_id,
                 ctx.source,
@@ -69,6 +74,7 @@ impl EffectExecutor for MayCastMatchingSpellWithoutPayingManaCostEffect {
                 self.zone,
                 &self.filter,
                 payment,
+                &filter_ctx,
             ));
         }
         if options.is_empty() {

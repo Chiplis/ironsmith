@@ -120,3 +120,80 @@ test('an unmasked printing still carries placed containers and open card details
     assert.deepEqual(errors, []);
   } finally { await browser.close(); await vite.close(); }
 });
+
+// A compiled custom card has no printing to look up at all: the frame must
+// still appear, immediately and fully interactive, from the placeholder.
+test('a card with no art renders a live placeholder frame instead of an invisible stage', {timeout: 60000}, async () => {
+  const root = dirname(dirname(fileURLToPath(import.meta.url)));
+  const vite = await createServer({root, server: {host: '127.0.0.1', port: 0}, logLevel: 'silent'});
+  await vite.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({viewport: {width: 900, height: 800}});
+    const errors = []; page.on('pageerror', error => errors.push(error.message));
+    await page.addInitScript(() => {
+      window.__comparisonCards = [{
+        id: 1, name: 'Zzz Compiled Probe', type_line: 'Creature — Elf Druid',
+        oracle_text: 'Spells have split second.', mana_cost: '{G}', power: 1, toughness: 1,
+      }];
+    });
+    await page.route('https://cards.scryfall.io/**', route => route.abort());
+    await page.route('https://api.scryfall.com/**', route => route.fulfill({status: 404, json: {}}));
+    await page.route('https://svgs.scryfall.io/**', route => route.abort());
+    await page.route('**/cards/*.json', route => route.fulfill({status: 404, json: {}}));
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-frame-comparison.html`);
+    const stage = page.locator('.interactive-card-frame-stage');
+    await page.waitForFunction(() => document.querySelector('.interactive-card-frame-stage[data-render-ready="true"]'), null, {timeout: 30000});
+
+    assert.equal(await stage.getAttribute('data-frame-mode'), 'placeholder');
+    assert.equal(await stage.locator('.original-card-fallback').count(), 0);
+    assert.equal(await stage.locator('.interactive-card-frame').count(), 1);
+    assert.equal(await stage.locator('.interactive-card-frame__art-fallback').count(), 1);
+    assert.deepEqual(await stage.locator('.interactive-card-frame__rule-line').allTextContents(), ['Spells have split second.']);
+    assert.equal(await stage.locator('.interactive-card-frame__title').textContent(), 'Zzz Compiled Probe');
+    // The stage is only interactive once it is ready; a hidden one stays inert.
+    assert.equal(await stage.evaluate(node => node.inert), false);
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); await vite.close(); }
+});
+
+// Art the sampler can never read (a custom URL on another host) is still a
+// printing when it is card-shaped: the containers go over it at conventional
+// proportions rather than dropping the frame.
+test('an unsamplable card-shaped image still carries placed containers', {timeout: 60000}, async () => {
+  const root = dirname(dirname(fileURLToPath(import.meta.url)));
+  const vite = await createServer({root, server: {host: '127.0.0.1', port: 0}, logLevel: 'silent'});
+  await vite.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({viewport: {width: 900, height: 800}});
+    const errors = []; page.on('pageerror', error => errors.push(error.message));
+    const artUrl = 'https://foreign.invalid/custom-card.png';
+    await page.addInitScript(url => {
+      window.__comparisonCards = [{
+        id: 1, name: 'Zzz Foreign Scan', type_line: 'Creature — Elf Druid', sourceImageUrl: url,
+        oracle_text: 'Spells have split second.', mana_cost: '{G}', power: 1, toughness: 1,
+      }];
+    }, artUrl);
+    // No Access-Control-Allow-Origin: the pixels are unreadable, exactly like a
+    // player's own art host.
+    await page.route('https://foreign.invalid/**', route => route.fulfill({contentType: 'image/png', body: flatPng(488, 680, [96, 104, 112])}));
+    await page.route('https://cards.scryfall.io/**', route => route.abort());
+    await page.route('https://api.scryfall.com/**', route => route.fulfill({status: 404, json: {}}));
+    await page.route('https://svgs.scryfall.io/**', route => route.abort());
+    await page.route('**/cards/*.json', route => route.fulfill({status: 404, json: {}}));
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-frame-comparison.html`);
+    const stage = page.locator('.interactive-card-frame-stage');
+    await page.waitForFunction(() => document.querySelector('.interactive-card-frame-stage[data-render-ready="true"]'), null, {timeout: 30000});
+
+    assert.equal(await stage.getAttribute('data-frame-mode'), 'placed');
+    assert.equal(await stage.getAttribute('data-frame-fallback-reason'), 'unsampled-art');
+    assert.equal(await stage.evaluate(node => node.style.getPropertyValue('--source-frame-image')), `url("${artUrl}")`);
+    const boxes = await stage.evaluate(node => JSON.parse(node.style.getPropertyValue('--printed-layout')));
+    assert.deepEqual(Object.keys(boxes).sort(), ['art', 'rules', 'title', 'type']);
+    assert.equal(await stage.locator('.original-card-details[open]').count(), 1);
+    assert.deepEqual(await stage.locator('.interactive-card-frame__rule-line').allTextContents(), ['Spells have split second.']);
+    assert.equal(await stage.evaluate(node => getComputedStyle(node.querySelector('.interactive-card-frame__title-row')).backgroundColor), 'rgb(8, 9, 11)');
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); await vite.close(); }
+});

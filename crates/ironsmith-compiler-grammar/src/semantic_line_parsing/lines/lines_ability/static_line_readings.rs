@@ -395,7 +395,12 @@ fn read_double_counters_replacement_line(
 fn read_standard_menace_reminder(input: &StaticLine<'_>) -> Result<Option<LineAst>, CardTextError> {
     let line = input.line;
     let lexed = input.tokens;
-    if has_standard_menace_reminder(&line.info.source_tokens)
+    // Preprocessing strips reminder text, so `source_tokens` is bare
+    // `Menace` by the time a reading sees it. The authored parenthetical only
+    // survives on the raw line, which is where the flanking twin below reads
+    // it from too.
+    let raw_tokens = crate::lexer::lex_line(&line.info.raw_line, line.info.line_index)?;
+    if has_standard_menace_reminder(&raw_tokens)
         && matches!(
             parse_ability_line_lexed(lexed).as_deref(),
             Some([KeywordAction::Menace])

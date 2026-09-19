@@ -3654,7 +3654,12 @@ fn parse_predicate_source_counters_use_shared_capture_parser() -> Result<(), Car
                     Some(CounterType::PlusOnePlusOne),
                 ),
                 operator: ValueComparisonOperator::GreaterThanOrEqual,
-                right: Value::Fixed(1),
+                // "a +1/+1 counter" and "one or more +1/+1 counters" compare
+                // the same way; the hint is what keeps the two surfaces apart
+                // for the renderer.
+                right: Value::Fixed(1).with_surface_hint(
+                    ironsmith_core::ValueSurfaceHint::IndefiniteCounterPresence,
+                ),
             },
         ),
         (

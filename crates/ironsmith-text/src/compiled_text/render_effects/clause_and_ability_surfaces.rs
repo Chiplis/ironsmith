@@ -4926,16 +4926,21 @@ pub(super) fn describe_shared_target_end_of_turn_modifications(
 
     let strip_duration = |text: String| {
         let text = text.trim().trim_end_matches('.');
-        if let Some((body, where_clause)) = split_coordinated_duration(text, &Until::EndOfTurn) {
-            let where_clause = if where_clause == ", where X is X" {
-                ""
+        let stripped =
+            if let Some((body, where_clause)) = split_coordinated_duration(text, &Until::EndOfTurn) {
+                let where_clause = if where_clause == ", where X is X" {
+                    ""
+                } else {
+                    where_clause.as_str()
+                };
+                format!("{body}{where_clause}")
             } else {
-                where_clause.as_str()
+                text.to_string()
             };
-            format!("{body}{where_clause}")
-        } else {
-            text.to_string()
-        }
+        // Some clauses spell their duration inside the phrase rather than as
+        // a trailing "until end of turn". The sequence already opens with the
+        // shared duration, so that inline copy would repeat it.
+        stripped.replace("can attack this turn as though", "can attack as though")
     };
     let mut clauses = Vec::with_capacity(sequence.effects.len());
     let mut first_clause = strip_duration(describe_effect(&sequence.effects[0]));
@@ -10289,11 +10294,25 @@ pub(crate) fn restore_modeled_value_surface(
                         .map(|rest| format!("{gerund}{rest}"))
                 })
                 .unwrap_or(additional);
-                if !additional.is_empty() && !additional.contains("Effect") {
-                    rendered = rendered.replace(
-                        "by paying its mana cost plus Effect",
-                        &format!("by {additional} in addition to paying its other costs"),
-                    );
+                let is_placeholder_cost = |text: &str| {
+                    text.contains("Effect") || text.contains("Perform the stated effect")
+                };
+                // The structural stand-in for a cost without its own wording
+                // is not a stable string, so anchor on the `plus` join and
+                // rewrite whatever follows it to the end of the sentence.
+                const MANA_COST_JOIN: &str = "by paying its mana cost plus ";
+                if !additional.is_empty()
+                    && !is_placeholder_cost(&additional)
+                    && let Some(index) = rendered.find(MANA_COST_JOIN)
+                {
+                    let tail = rendered[index + MANA_COST_JOIN.len()..].trim_end_matches('.');
+                    if !tail.contains(". ") {
+                        let terminal = if rendered.ends_with('.') { "." } else { "" };
+                        rendered = format!(
+                            "{}by {additional} in addition to paying its other costs{terminal}",
+                            &rendered[..index]
+                        );
+                    }
                 }
             }
         }

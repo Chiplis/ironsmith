@@ -245,7 +245,32 @@ impl EffectExecutor for ExileEffect {
                 let mut exiled_count = 0;
                 let mut affected_ids = Vec::new();
                 let mut affected_memory = Vec::new();
-                for target in ctx.targets.clone() {
+                // Inside a per-player iteration the announced targets belong
+                // to different players, so this iteration may only exile the
+                // ones its own filter accepts — and never more than the
+                // authored maximum.
+                let selected = {
+                    let mut selected = if let ChooseSpec::Object(filter) = self.spec.base() {
+                        let filter_ctx = ctx.filter_context(game);
+                        ctx.targets
+                            .iter()
+                            .filter(|target| match target {
+                                ResolvedTarget::Object(object_id) => game
+                                    .object(*object_id)
+                                    .is_some_and(|object| filter.matches(object, &filter_ctx, game)),
+                                ResolvedTarget::Player(_) => false,
+                            })
+                            .cloned()
+                            .collect::<Vec<_>>()
+                    } else {
+                        ctx.targets.clone()
+                    };
+                    if let Some(max) = count.max {
+                        selected.truncate(max);
+                    }
+                    selected
+                };
+                for target in selected {
                     if let ResolvedTarget::Object(object_id) = target {
                         let pre_memory = OutcomeObjectMemory::from_object_id(game, object_id);
                         match exile_object(game, ctx, object_id, self.face_down)? {

@@ -263,6 +263,9 @@ fn shared_target_player_graveyard_x_draw_and_loss_declares_one_target() {
     let [EffectAst::Coordination(independent_coordination)] = independent.as_slice() else {
         panic!("expected canonical target coordination: {independent:#?}");
     };
+    // Each authored `target player` is announced in its own right, either as
+    // an explicit target declaration or as a targeted subject. Both forms
+    // keep the two slots distinct, which is what this checks.
     let explicit_target_subjects = independent_coordination
         .effects()
         .filter(|effect| {
@@ -271,6 +274,12 @@ fn shared_target_player_graveyard_x_draw_and_loss_declares_one_target() {
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     subject: crate::cards::builders::SubjectVerbSubjectAst {
                         player: PlayerAst::Target,
+                        ..
+                    },
+                    ..
+                }) | EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: crate::cards::builders::SubjectVerbActionAst::TargetOnly {
+                        target: crate::cards::builders::TargetAst::Player(..),
                         ..
                     },
                     ..
@@ -4167,18 +4176,33 @@ fn qualified_player_search_binds_both_library_owner_and_chooser() {
         panic!("expected one typed search action, got {effects:#?}");
     };
     super::bind_implicit_player_context(effect, PlayerAst::That);
-    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action:
-            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
-                chooser, player, ..
-            }),
-        ..
-    }) = effect
-    else {
-        panic!("expected typed search action, got {effect:#?}");
-    };
 
-    assert_eq!((*chooser, *player), (PlayerAst::That, PlayerAst::That));
+    // The authored qualifier ("each player who controls fewer lands than…")
+    // is a real gate, so the search sits inside the iteration and condition
+    // that express it. What matters here is the binding it carries.
+    fn search_bindings(effect: &EffectAst) -> Option<(PlayerAst, PlayerAst)> {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
+                    chooser, player, ..
+                }),
+            ..
+        }) = effect
+        {
+            return Some((*chooser, *player));
+        }
+        let mut found = None;
+        crate::model::visit::for_each_nested_effects(effect, true, |nested: &[EffectAst]| {
+            if found.is_none() {
+                found = nested.iter().find_map(search_bindings);
+            }
+        });
+        found
+    }
+
+    let bindings =
+        search_bindings(effect).unwrap_or_else(|| panic!("expected typed search action, got {effect:#?}"));
+    assert_eq!(bindings, (PlayerAst::That, PlayerAst::That));
 }
 
 #[test]

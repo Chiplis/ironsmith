@@ -1159,8 +1159,15 @@ pub fn parse_object_attached_to_object_condition(
         parse_quantity_comparison_prefix(subject_tokens, true, true, "attachment condition"),
     )?;
     let attachment_tokens = subject_tokens.get(quantity_tokens..)?;
+    // "another Aura is attached to ..." scopes the attachment away from the
+    // source. The complete-filter grammar takes that as an argument rather
+    // than reading it back off the slice, so the leading word is classified
+    // here, the way every other caller of the entrypoint does it.
+    let attachment_is_other = crate::lexer::parser_token_word_refs(attachment_tokens)
+        .first()
+        .is_some_and(|word| matches!(*word, "other" | "another"));
     let mut attachment_filter = crate::grammar::primitives::probe_shape(
-        parse_object_filter_with_grammar_entrypoint(attachment_tokens, false),
+        parse_object_filter_with_grammar_entrypoint(attachment_tokens, attachment_is_other),
     )?;
     let mut attached_to_filter = crate::grammar::primitives::probe_shape(
         parse_object_filter_with_grammar_entrypoint(attached_to_tokens, false),

@@ -32,7 +32,12 @@ fn chosen_type_consult_program(excluded_tag: TagKey) -> Vec<Effect> {
         )
         .with_target_plural_surface(),
     );
-    let remainder = ObjectFilter::tagged(all_tag).not_tagged(excluded_tag);
+    // A revealed remainder is still in the library, which is what makes the
+    // complement well defined; the compiler records that zone, so the fixture
+    // has to as well.
+    let remainder = ObjectFilter::tagged(all_tag)
+        .not_tagged(excluded_tag)
+        .in_zone(Zone::Library);
     let shuffle_remainder = Effect::new(crate::effects::ShuffleObjectsIntoLibraryEffect::new(
         ChooseSpec::Object(remainder),
         PlayerFilter::You,

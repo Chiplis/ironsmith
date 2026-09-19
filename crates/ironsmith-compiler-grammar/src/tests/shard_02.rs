@@ -3376,8 +3376,10 @@ pub(super) fn curse_of_misfortunes_search_excludes_names_of_attached_curses() {
     assert!(debug.contains("DifferentNameFromTagged"), "{debug}");
     assert!(debug.contains("attached_to_player: Some"), "{debug}");
     assert!(debug.contains("\"enchanted\""), "{debug}");
+    // The authored text never says "target", so the attachment names the
+    // enchanted player directly rather than announcing a new target.
     assert!(
-        compact.contains("target:Target(Player(TaggedPlayer(TagKey(\"enchanted\""),
+        compact.contains("target:Player(TaggedPlayer(TagKey(\"enchanted\""),
         "the attachment's `that player` must resolve to the enchanted player: {debug}"
     );
 }

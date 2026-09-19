@@ -57,6 +57,7 @@ pub fn parse_optional_activation_counter_type_tokens(
 
 pub fn parse_put_counter_segment_tokens(
     tokens: &[OwnedLexToken],
+    is_source: &impl Fn(&[&str]) -> bool,
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     if primitives::parse_all(
         tokens,
@@ -74,7 +75,13 @@ pub fn parse_put_counter_segment_tokens(
     let counter_type = filters::parse_counter_type_from_tokens(counter_tokens)
         .ok_or_else(|| unsupported(counter_tokens, "counter-type"))?;
     let target = &tokens[shape.target_first..];
-    if primitives::parse_all(target, parse_put_counter_source_lexed, "put-counter-source").is_ok() {
+    // A card that spells its own name as the recipient ("Put a -0/-1 counter
+    // on Wall of Roots") names the source, not some other object to choose.
+    let names_source = is_source(&crate::lexer::parser_token_word_refs(target));
+    if names_source
+        || primitives::parse_all(target, parse_put_counter_source_lexed, "put-counter-source")
+            .is_ok()
+    {
         Ok(ActivationCostSegmentCst::PutCounters {
             counter_type,
             count,
@@ -351,7 +358,7 @@ mod tests {
     fn put_and_remove_counter_costs_return_typed_segments() {
         let put = lex_line("put a +1/+1 counter on this creature", 0).unwrap();
         assert_eq!(
-            parse_put_counter_segment_tokens(&put).unwrap(),
+            parse_put_counter_segment_tokens(&put, &|_| false).unwrap(),
             ActivationCostSegmentCst::PutCounters {
                 counter_type: CounterType::PlusOnePlusOne,
                 count: 1,
@@ -382,7 +389,7 @@ mod tests {
 
         let chosen_put = lex_line("put a -1/-1 counter on a creature you control", 0).unwrap();
         assert!(matches!(
-            parse_put_counter_segment_tokens(&chosen_put).unwrap(),
+            parse_put_counter_segment_tokens(&chosen_put, &|_| false).unwrap(),
             ActivationCostSegmentCst::PutCountersChosen {
                 counter_type: CounterType::MinusOneMinusOne,
                 count: 1,

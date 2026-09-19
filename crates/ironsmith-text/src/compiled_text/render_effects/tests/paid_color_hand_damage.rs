@@ -30,6 +30,21 @@ impl crate::decision::DecisionMaker for ChooseRed {
                 .index,
         ]
     }
+
+    // The optional `{2}{R}` opens a mana payment, whose confirmation the
+    // default routes through `decide_options`. This maker answers colors
+    // there, so the payment gets its own answer rather than a color lookup
+    // against Confirm/Cancel.
+    fn decide_mana_payment(
+        &mut self,
+        _: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::ManaPaymentContext,
+    ) -> crate::mana_payment::ManaPaymentResponse {
+        crate::mana_payment::ManaPaymentResponse::Confirm {
+            plan_id: ctx.plan.id,
+            request_hash: ctx.plan.request_hash,
+        }
+    }
 }
 
 #[test]

@@ -719,7 +719,7 @@ fn shared_spell_cast_or_copy_subject_is_preserved_on_both_trigger_arms() {
     };
     let (
         crate::model::ast::TriggerSpec::SpellCast {
-            filter: Some(filter),
+            filter,
             caster,
             min_spells_this_turn,
             ..
@@ -735,7 +735,7 @@ fn shared_spell_cast_or_copy_subject_is_preserved_on_both_trigger_arms() {
     assert_eq!(copier, enchanted);
     assert_eq!(min_spells_this_turn, Some(2));
     assert!(
-        !filter.other,
+        filter.is_none_or(|filter| !filter.other),
         "the ordinal exclusion belongs to the cast-count qualifier, not the spell object filter"
     );
 }
@@ -747,7 +747,7 @@ fn spell_other_than_your_first_uses_a_minimum_cast_count_without_other_object_fi
         .expect("minimum spell-count trigger should parse");
 
     let crate::model::ast::TriggerSpec::SpellCast {
-        filter: Some(filter),
+        filter,
         caster,
         min_spells_this_turn,
         exact_spells_this_turn,
@@ -759,7 +759,10 @@ fn spell_other_than_your_first_uses_a_minimum_cast_count_without_other_object_fi
     assert_eq!(caster, PlayerFilter::You);
     assert_eq!(min_spells_this_turn, Some(2));
     assert_eq!(exact_spells_this_turn, None);
-    assert!(!filter.other);
+    // The ordinal exclusion belongs to the cast-count qualifier, never to
+    // the triggering stack object, so an otherwise unqualified spell carries
+    // no `other` — with or without an object filter of its own.
+    assert!(filter.is_none_or(|filter| !filter.other));
 }
 
 #[test]
@@ -2050,8 +2053,13 @@ fn chosen_object_leaves_keeps_the_persistent_choice_tag() {
         panic!("expected a filtered leaves-battlefield trigger, got {parsed:#?}");
     };
 
-    assert!(
-        filter.card_types.contains(&CardType::Creature),
+    // A chosen-object reference identifies the object that was chosen
+    // (CR 700.7), so the noun is kept for rendering while no current
+    // card-type predicate is imposed.
+    assert!(filter.card_types.is_empty(), "{filter:#?}");
+    assert_eq!(
+        filter.explicit_card_type_noun(),
+        Some(CardType::Creature),
         "{filter:#?}"
     );
     assert!(

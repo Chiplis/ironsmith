@@ -416,6 +416,44 @@ impl EffectExecutor for MoveToZoneEffect {
                 }
             }
         }
+        // CR 400.7: an object that has left the zone its trigger recorded is
+        // a new object. A tagged reference to the triggering object follows
+        // the physical card by stable identity, so it must stop at the zone
+        // the trigger named — "When this creature dies, put it on the bottom
+        // of its owner's library" does nothing once it has left the graveyard.
+        if let ChooseSpec::Tagged(tag) = self.target.base()
+            && let Some(event) = ctx
+                .triggering_event
+                .as_ref()
+                .and_then(|event| event.downcast::<crate::events::ZoneChangeEvent>())
+            && let Some(tagged) = ctx.get_tagged_all(tag).cloned()
+        {
+            object_ids.retain(|id| {
+                let Some(object) = game.object(*id) else {
+                    return true;
+                };
+                let names_triggering_object = tagged
+                    .iter()
+                    .any(|snapshot| snapshot.stable_id == object.stable_id)
+                    && event
+                        .snapshots
+                        .iter()
+                        .any(|snapshot| snapshot.stable_id == object.stable_id);
+                if !names_triggering_object {
+                    return true;
+                }
+                // The object the event recorded, still where it recorded it.
+                // A card that left and returned is a new object again, even
+                // though it is back in the same zone.
+                let recorded = if event.result_objects.is_empty() {
+                    event.objects.contains(id)
+                } else {
+                    event.result_objects.contains(id)
+                };
+                recorded && object.zone == event.to
+            });
+        }
+
         if object_ids.is_empty() {
             // Tagged references are internal results of earlier instructions,
             // not declared targets. If an earlier search/reveal found no

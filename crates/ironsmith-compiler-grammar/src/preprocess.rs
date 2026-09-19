@@ -1013,15 +1013,18 @@ fn rewrite_any_type_cast_rider_line(text: &str) -> String {
 /// "you recruit" (The Queen of Dale): the keyword action spelled out as its
 /// reminder text so the ordinary draw/discard/create grammar executes it.
 /// Rewrite gendered personal pronouns that Oracle text uses for named legendary
-/// characters ("he gets +1/+1", "loyalty counters on him") onto the neutral
-/// object pronoun the grammar understands. Possessives ("his", "her") are left
-/// alone: "her" is ambiguous and both carry authored source surfaces elsewhere.
+/// characters ("he gets +1/+1") onto the neutral object pronoun the grammar
+/// understands. Possessives ("his", "her") are left alone: "her" is ambiguous
+/// and both carry authored source surfaces elsewhere. The object pronoun
+/// "him" is left alone for the same reason as "her" — the operand grammar
+/// reads `it | him | her` directly, and rewriting only the masculine form
+/// erased the authored surface that the feminine one keeps.
 fn rewrite_personal_pronouns_line(text: &str) -> String {
     let words: Vec<&str> = text.split(' ').collect();
     if !words.iter().any(|word| {
         matches!(
             word.trim_end_matches(|ch: char| matches!(ch, ',' | '.' | ';' | ':')),
-            "he" | "she" | "him" | "he's" | "she's" | "himself" | "herself"
+            "he" | "she" | "he's" | "she's" | "himself" | "herself"
         )
     }) {
         return text.to_string();
@@ -1034,7 +1037,7 @@ fn rewrite_personal_pronouns_line(text: &str) -> String {
                 .len();
         let (core, trailing) = word.split_at(word.len() - trailing_len);
         let replacement = match core {
-            "he" | "she" | "him" => Some("it"),
+            "he" | "she" => Some("it"),
             "he's" | "she's" => Some("it's"),
             "himself" | "herself" => Some("itself"),
             _ => None,

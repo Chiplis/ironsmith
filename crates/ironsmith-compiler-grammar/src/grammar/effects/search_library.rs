@@ -759,6 +759,24 @@ pub fn strip_search_library_suffix_lexed(
     None
 }
 
+/// Strip a trailing `instead of <number>` from a search filter.
+///
+/// A count replacement restates the count it replaces: "search your library
+/// for up to three basic Forest cards instead of two." The trailing phrase
+/// names the count being replaced, not a characteristic of the cards being
+/// searched for, so the filter grammar must never see it.
+pub fn strip_search_library_instead_of_count_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let trimmed = trim_commas(tokens);
+    let positions = parser_token_word_positions(&trimmed);
+    let [.., (instead_index, "instead"), (_, "of"), (_, count)] = positions.as_slice() else {
+        return trimmed;
+    };
+    if crate::util::parse_number_word_u32(count).is_none() {
+        return trimmed;
+    }
+    trim_commas(&trimmed[..*instead_index])
+}
+
 pub fn strip_search_library_leading_count_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let tokens = trim_commas(tokens);
     if let Some((_, rest)) = primitives::parse_prefix(&tokens, primitives::kw("exactly"))
@@ -1580,6 +1598,7 @@ pub fn parse_search_library_object_filter_lexed(
     filter_tokens: &[OwnedLexToken],
     clause_display: &str,
 ) -> Result<ObjectFilter, CardTextError> {
+    let filter_tokens = &strip_search_library_instead_of_count_tokens(filter_tokens);
     let (filter_tokens, color_count) = if let Some((stripped, color_count)) =
         strip_search_library_color_count_phrase_lexed(filter_tokens)
     {

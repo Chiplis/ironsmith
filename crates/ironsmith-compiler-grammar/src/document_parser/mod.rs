@@ -1537,9 +1537,19 @@ fn source_alias_occurrence_is_rules_term_lexed(
         }
     }
 
-    (matched_word == Some("control")
-        && matches!(previous_word, Some("gain" | "gains" | "lose" | "loses"))
-        && next_word == Some("of"))
+    // "creature type", "card type", "land type" and the like name a
+    // characteristic class. A card whose name happens to be one of those
+    // words does not turn the rules term into a self-reference.
+    let is_characteristic_class_noun = matches!(matched_word, Some("type" | "types"))
+        && matches!(
+            previous_word,
+            Some("creature" | "card" | "land" | "artifact" | "enchantment" | "planeswalker")
+        );
+
+    is_characteristic_class_noun
+        || (matched_word == Some("control")
+            && matches!(previous_word, Some("gain" | "gains" | "lose" | "loses"))
+            && next_word == Some("of"))
         || (matched_word == Some("combat") && next_word == Some("damage"))
 }
 
@@ -2044,7 +2054,14 @@ fn normalize_activation_cost_tokens_for_builder(
     if parse_activation_cost_tokens_rewrite(&cost_tokens).is_ok() {
         return Ok(cost_tokens);
     }
-    Ok(normalize_named_source_sentence_tokens(card, &cost_tokens).unwrap_or(cost_tokens))
+    // The authored cost did not parse, so its surface is not one the cost
+    // grammar owns. The sentence rewrite keeps a name that follows a verb
+    // like `on`, which is right while the surface still reads; once it does
+    // not, this builder knows the alias is the source card itself and the
+    // non-preserving rewrite is the one that applies.
+    Ok(normalize_named_source_sentence_tokens(card, &cost_tokens)
+        .or_else(|| normalize_named_source_tokens_for_builder(card, &cost_tokens))
+        .unwrap_or(cost_tokens))
 }
 
 fn normalize_activation_effect_tokens_for_builder(

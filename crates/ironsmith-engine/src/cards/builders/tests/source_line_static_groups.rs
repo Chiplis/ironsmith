@@ -167,11 +167,17 @@ fn brave_the_sands_retains_two_independent_typed_grants() {
     else {
         panic!("first ability should be a filtered object-ability grant");
     };
-    let ironsmith_core::StaticAbilityPayload::GrantAbility(blocking_grant) =
+    let ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(blocking_grant) =
         &blocking_model.payload
     else {
         panic!("second ability should be a filtered static-ability grant");
     };
+    // One payload now carries both grant surfaces; `derived_ability_display`
+    // is what still tells the static-ability grant from the object-ability
+    // one, so the distinction this test draws is asserted rather than
+    // implied by the variant.
+    assert!(!vigilance_grant.derived_ability_display);
+    assert!(blocking_grant.derived_ability_display);
 
     assert_eq!(vigilance_grant.filter, blocking_grant.filter);
     assert_eq!(

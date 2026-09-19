@@ -120,16 +120,6 @@ fn shadow_mana_source_condition_qualifies_the_affected_spell_filter() {
             };
             let model = static_ability.compiled_model()?;
             match &model.payload {
-                ironsmith_core::StaticAbilityPayload::GrantAbility(grant)
-                    if grant.condition.is_none()
-                        && matches!(
-                            &grant.ability.kind,
-                            ironsmith_core::AbilityKind::Static(granted)
-                                if granted.id == Some(StaticAbilityId::SplitSecond)
-                        ) =>
-                {
-                    Some(&grant.filter)
-                }
                 ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant)
                     if grant.condition.is_none()
                         && matches!(

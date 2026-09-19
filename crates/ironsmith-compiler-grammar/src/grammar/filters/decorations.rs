@@ -115,6 +115,7 @@ pub enum FilterTailDecoration {
     WithKeyword(FilterKeywordConstraint),
     WithoutKeyword(FilterKeywordConstraint),
     WithEitherKeyword(FilterKeywordConstraint, FilterKeywordConstraint),
+    WithBothKeywords(FilterKeywordConstraint, FilterKeywordConstraint),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -284,6 +285,10 @@ pub fn apply_filter_tail_decoration(filter: &mut ObjectFilter, decoration: Filte
             apply_filter_keyword_constraint(&mut right, right_constraint, false);
             filter.any_of = vec![left, right];
         }
+        FilterTailDecoration::WithBothKeywords(first_constraint, second_constraint) => {
+            apply_filter_keyword_constraint(filter, first_constraint, false);
+            apply_filter_keyword_constraint(filter, second_constraint, false);
+        }
     }
 }
 
@@ -347,6 +352,20 @@ fn parse_with_keyword_decoration(input: &mut WordInput<'_>) -> WResult<FilterTai
         && let Ok(second) = parse_keyword_constraint.parse_next(input)
     {
         return Ok(FilterTailDecoration::WithEitherKeyword(first, second));
+    }
+    *input = after_first;
+
+    // "with flying and vigilance" constrains one object twice. This is the
+    // conjunctive twin of the `or` reading above, and like it the `and` must
+    // link two keyword constraints; anything else leaves the tail to the
+    // single-keyword reading.
+    if primitives::word_slice_exact("and")
+        .void()
+        .parse_next(input)
+        .is_ok()
+        && let Ok(second) = parse_keyword_constraint.parse_next(input)
+    {
+        return Ok(FilterTailDecoration::WithBothKeywords(first, second));
     }
     *input = after_first;
     Ok(FilterTailDecoration::WithKeyword(first))

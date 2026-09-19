@@ -28,7 +28,13 @@ test('hover reuses the displayed object image and follows per-object changes', {
     await page.waitForFunction(() => document.querySelector('.card-frame-art-preview')?.getAttribute('src') === document.querySelector('[alt="Field card 1"]').getAttribute('src'));
     await page.getByAltText('Field card 2').hover();
     await page.waitForFunction(() => document.querySelector('[data-card-hover-preview][data-visible="true"]')?.dataset.previewObjectId === '2');
-    assert.equal(await page.locator('[data-card-hover-preview][data-visible="true"] .original-card-fallback > img').getAttribute('src'), await page.getByAltText('Field card 2').getAttribute('src'));
+    // A per-object image the sampler cannot read is still the card's face: it
+    // is shown whole, either as the retained printing or, when the frame lays
+    // its own containers over it, as the frame's source image.
+    const fieldTwoSource = await page.getByAltText('Field card 2').getAttribute('src');
+    const previewSource = await page.locator('[data-card-hover-preview][data-visible="true"] .interactive-card-frame-stage').evaluate(node =>
+      node.querySelector('.original-card-fallback > img')?.getAttribute('src') || node.style.getPropertyValue('--source-frame-image'));
+    assert.ok([fieldTwoSource, `url("${fieldTwoSource}")`].includes(previewSource), previewSource);
     assert.equal(requests.some(url => url.includes('/cards/named') || url.includes('/cards/same-name-different-field-images')), false, 'displayed assets must not trigger a name-based image lookup');
     assert.equal(requests.filter(url => url.includes('cards.scryfall.io')).every(url => url.includes('/back/a/b/aaaaaaaa-bbbb-cccc-dddd-000000000077.jpg?printing=selected')), true);
     assert.deepEqual(errors, []);

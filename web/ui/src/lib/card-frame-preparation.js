@@ -1,5 +1,5 @@
 import { resolveScryfallEnglishPrinting, resolveScryfallFlavorText, resolveScryfallPrintingMetadata, resolveScryfallSetSymbol } from './scryfall';
-import { fullCardImageUrl, preloadCardFrameSource } from './card-frame-colors';
+import { fullCardImageUrl, placedFrameStyle, preloadCardFrameSource } from './card-frame-colors';
 import { sampleCardFrameColors } from './card-frame-processing';
 import { cardTypography } from './card-typography';
 import {registrationForImage, registrationForPrinting, registrationGeometryIsUsable} from './card-region-layout';
@@ -21,6 +21,34 @@ async function decodeImage(url) {
   image.referrerPolicy = 'no-referrer';
   image.src = url;
   await image.decode();
+  return image;
+}
+
+// A card scan is portrait and close to 63x88 mm. Anything else (an art crop,
+// a square avatar, a banner) is artwork for the frame's art box, not a
+// printing the containers could be laid over.
+function cardShapedImage(image) {
+  const width = image?.naturalWidth || 0, height = image?.naturalHeight || 0;
+  if (!width || !height) return null;
+  const ratio = width / height;
+  return ratio > .62 && ratio < .82 ? {width, height} : null;
+}
+
+// Masking needs pixel access, which only the Scryfall scans grant. Every other
+// image still gets a frame: a card-shaped one carries the live containers at
+// conventional proportions, and anything else (including no image at all) gets
+// the placeholder frame the renderer draws itself, with no assets to wait for.
+// A Scryfall image is left alone either way: unsampled or not, it is the
+// card's own printing and its printed face is the truth about it.
+async function unsampledFrameStyle(imageUrl, printing, reason) {
+  if (/^https:\/\/cards\.scryfall\.io\//.test(imageUrl)) return null;
+  const image = await decodeImage(imageUrl).catch(() => null);
+  const scan = cardShapedImage(image);
+  if (!scan) return {'--source-frame-status': 'placeholder', '--source-frame-fallback-reason': reason};
+  return {
+    ...placedFrameStyle({'--printed-scan-width': scan.width, '--printed-scan-height': scan.height}, scan, printing, reason),
+    '--source-frame-image': `url("${imageUrl}")`,
+  };
 }
 
 async function prepareTypography(printing) {
@@ -86,6 +114,11 @@ export function prepareCardFrame(imageUrl, typeLine = '') {
       typography: preparedTypography, printing, setSymbolUrl: await setSymbolRequest,
     });
     if (invalidRegistration && style) style['--registration-fallback-reason'] = 'registration-geometry';
+    // A sampling failure on a real scan is transient and left uncached below,
+    // but an image we can never sample is answered once and for all here.
+    if (!registration && !style && !scanUrl) {
+      style = await unsampledFrameStyle(imageUrl, printing, imageUrl ? 'unsampled-art' : 'no-art') || style;
+    }
     // Retry offscreen, publishing only a complete mask. The stage's preview
     // continues to use imageUrl, and a failed English attempt leaves the
     // original localized fallback intact (including its typography/flavor).

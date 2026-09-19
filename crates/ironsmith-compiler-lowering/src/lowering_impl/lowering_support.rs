@@ -1811,6 +1811,14 @@ fn bind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
             }
         }
 
+        // A coordinated pair can also reach here already flattened into
+        // sibling sentences ("Exile A and B. Then return them ..."), so the
+        // sibling slice is itself a group.
+        {
+            let mut members = effects.iter_mut().collect::<Vec<_>>();
+            tag_group(&mut members, next_aggregate);
+        }
+
         for effect in effects {
             match effect {
                 EffectAst::Coordinated {

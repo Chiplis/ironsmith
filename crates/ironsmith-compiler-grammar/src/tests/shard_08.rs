@@ -21,8 +21,8 @@ pub(super) fn inline_creature_type_choice_pumps_choose_before_modifying()
             .parse_text(text)?;
         let program = definition.spell_effect.as_ref().expect("spell program");
         let debug = format!("{program:#?}");
-        assert!(debug.contains("ChooseCreatureType"), "{debug}");
-        assert!(debug.contains("chosen_creature_type: true"), "{debug}");
+        assert!(debug.contains("ChooseCreatureType"), "{text}: {debug}");
+        assert!(debug.contains("chosen_creature_type: true"), "{text}: {debug}");
     }
     Ok(())
 }
