@@ -1707,7 +1707,6 @@ export const ui = {
   "{0}/{1} available this session": "{0}/{1} disponibles en esta sesión",
   "All decks": "Todos los mazos",
   "Browse decks": "Explorar mazos",
-  "Collections": "Colecciones",
   "Colors": "Colores",
   "Configuration name…": "Nombre de la configuración…",
   "Configure": "Configurar",

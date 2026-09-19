@@ -2878,6 +2878,14 @@ button:disabled,
    draws a border and an inset shadow on every control and ghost button, all of
    it !important, so this screen switches that off and its buttons carry their
    own fill instead. */
+/* `.setup-screen` pads to 28px at this width and paints a warm gradient over
+   the page. The workspace wants neither: the padding is a row of decks, and
+   the gradient is the opposite of the flat black this screen is going for. */
+.deck-loading-screen.deck-loading-screen {
+  padding: 12px !important;
+  background: #08090a !important;
+}
+
 .deck-loading-screen :is(input, select, textarea) {
   border: 0 !important;
   box-shadow: none !important;

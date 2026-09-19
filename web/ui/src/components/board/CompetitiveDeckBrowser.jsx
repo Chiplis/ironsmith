@@ -165,14 +165,15 @@ const FeaturedDeck = memo(function FeaturedDeck({ entry, isBusy, isCopying, isCo
   );
 });
 
-const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, isCopying, isCopied, targetName, onSelect, onCopy }) {
+const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, targetName, onSelect }) {
   const ui = useUiText();
   const manaProfile = completeManaProfile(entry);
   const predominantLands = (manaProfile?.predominantLands || []).slice(0, 2);
+  const source = [entry.event || ui("Unknown event"), String(entry.format || "").toUpperCase()].filter(Boolean).join(" · ");
+  // The row shows where and when; placement, counts and lands stay one hover
+  // away rather than crowding the line.
   const details = [
-    entry.event || ui("Unknown event"),
-    String(entry.format || "").toUpperCase(),
-    entry.date || ui("no date"),
+    source,
     ...(entry.placement ? [ui("place #{0}", { 0: entry.placement })] : []),
     entry.sideboardCount
       ? ui("{0} cards + {1} SB", { 0: entry.mainboardCount || "?", 1: entry.sideboardCount })
@@ -182,23 +183,21 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, 
   ].filter(Boolean).join(" · ");
 
   return (
-    <article className="flex min-w-0 items-center gap-2 rounded-sm p-1.5 transition-colors hover:bg-[#131418]" data-deck-row={entry.id}>
+    <article className="flex min-w-0 items-center gap-2.5 rounded-sm p-1.5 transition-colors hover:bg-[#131418]" data-deck-row={entry.id} title={details}>
       <DeckArt entry={entry} className="h-[40px] w-[56px] rounded-sm" />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[12px] font-bold text-[#e7d9bc]">{entry.name || entry.archetype || ui("Unnamed deck")}</div>
-        <div className="flex min-w-0 items-center gap-1.5">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="min-w-0 flex-1 truncate text-[12px] font-bold text-[#e7d9bc]">{entry.name || entry.archetype || ui("Unnamed deck")}</span>
+          <span className="shrink-0 text-[10px] text-[#6f6759]">{entry.date || ui("no date")}</span>
+        </div>
+        <div className="flex min-w-0 items-center gap-2">
           <ManaPips colors={entryColors(entry)} size={11} />
-          <span className="truncate text-[10px] text-[#8b806b]" title={details}>{details}</span>
+          <span className="min-w-0 truncate text-[10px] text-[#8b806b]">{source}</span>
         </div>
       </div>
-      <div className="flex shrink-0 gap-1">
-        <Button type="button" variant="ghost" size="sm" className="h-7 w-[72px] max-w-[72px] truncate px-1 text-[10px] font-bold uppercase tracking-wide flat-button-gold" disabled={isBusy || isCopying} onClick={() => onSelect(entry, actionKey)} title={targetName ? ui("Use in {0}", { 0: targetName }) : ui("Use deck")}>
-          {isBusy ? <ActionSpinner /> : ui("Use")}
-        </Button>
-        <Button type="button" variant="ghost" size="sm" className="h-7 w-[94px] max-w-[94px] truncate px-1 text-[10px] font-semibold flat-button" disabled={isBusy || isCopying} onClick={() => onCopy(entry, actionKey)} title={ui("Copy the list in MTGO format")}>
-          {isCopying ? <ActionSpinner /> : isCopied ? ui("Copied") : ui("Copy MTGO")}
-        </Button>
-      </div>
+      <Button type="button" variant="ghost" size="sm" className="h-7 w-[64px] max-w-[64px] shrink-0 truncate px-1 text-[10px] font-bold uppercase tracking-wide flat-button-gold" disabled={isBusy} onClick={() => onSelect(entry, actionKey)} title={targetName ? ui("Use in {0}", { 0: targetName }) : ui("Use deck")}>
+        {isBusy ? <ActionSpinner /> : ui("Use")}
+      </Button>
     </article>
   );
 });
@@ -206,15 +205,18 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, 
 const SavedDeckRow = memo(function SavedDeckRow({ preset, isBusy, onSelect, targetName }) {
   const ui = useUiText();
   return (
-    <article className="flex min-w-0 items-center gap-2 rounded-sm p-1.5 transition-colors hover:bg-[#131418]" data-saved-deck={preset.key}>
+    <article className="flex min-w-0 items-center gap-2.5 rounded-sm p-1.5 transition-colors hover:bg-[#131418]" data-saved-deck={preset.key}>
       <div className="flex h-[40px] w-[56px] shrink-0 items-center justify-center rounded-sm bg-[#131418] text-[10px] font-bold uppercase tracking-wide text-[#6f6759]" aria-hidden="true">
         {ui("Session")}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[12px] font-bold text-[#e7d9bc]">{preset.name}</div>
-        <div className="truncate text-[10px] text-[#8b806b]">{ui("{0} cards", { 0: preset.cardCount })} · {preset.playerName}</div>
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="min-w-0 flex-1 truncate text-[12px] font-bold text-[#e7d9bc]">{preset.name}</span>
+          <span className="shrink-0 text-[10px] text-[#6f6759]">{ui("{0} cards", { 0: preset.cardCount })}</span>
+        </div>
+        <div className="truncate text-[10px] text-[#8b806b]">{preset.playerName}</div>
       </div>
-      <Button type="button" variant="ghost" size="sm" className="h-7 w-[72px] max-w-[72px] shrink-0 truncate px-1 text-[10px] font-bold uppercase tracking-wide flat-button-gold" disabled={isBusy} onClick={() => onSelect(preset)} title={targetName ? ui("Use in {0}", { 0: targetName }) : ui("Use deck")}>
+      <Button type="button" variant="ghost" size="sm" className="h-7 w-[64px] max-w-[64px] shrink-0 truncate px-1 text-[10px] font-bold uppercase tracking-wide flat-button-gold" disabled={isBusy} onClick={() => onSelect(preset)} title={targetName ? ui("Use in {0}", { 0: targetName }) : ui("Use deck")}>
         {ui("Use")}
       </Button>
     </article>
@@ -234,8 +236,7 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
   const [activeMana, setActiveMana] = useState([]);
   const [manaMatchMode, setManaMatchMode] = useState("include");
   const [sortMode, setSortMode] = useState("recent");
-  const [activeTab, setActiveTab] = useState("catalog");
-  const [collection, setCollection] = useState("all");
+  const [view, setView] = useState("all");
   const busyRef = useRef("");
   const copyingRef = useRef("");
   const listRef = useRef(null);
@@ -304,11 +305,11 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
   );
 
   const collectionResults = useMemo(() => {
-    if (collection === FEATURED_COLLECTION) return manaFilteredResults.filter(isMajorCollectionEntry);
-    if (collection === "last-20-events") return manaFilteredResults.filter((entry) => isRecentEntry(entry, recentIds));
-    if (collection === "mono-color") return manaFilteredResults.filter((entry) => entry?.collections?.includes("mono-color"));
+    if (view === FEATURED_COLLECTION) return manaFilteredResults.filter(isMajorCollectionEntry);
+    if (view === "last-20-events") return manaFilteredResults.filter((entry) => isRecentEntry(entry, recentIds));
+    if (view === "mono-color") return manaFilteredResults.filter((entry) => entry?.collections?.includes("mono-color"));
     return manaFilteredResults;
-  }, [collection, manaFilteredResults, recentIds]);
+  }, [manaFilteredResults, recentIds, view]);
 
   const listedResults = useMemo(
     () => sortDeckEntries(collectionResults, sortMode, usageCounts),
@@ -325,11 +326,12 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
     [searchResults],
   );
 
-  const collections = useMemo(() => [
+  const views = useMemo(() => [
     { id: "all", label: ui("All decks") },
     { id: FEATURED_COLLECTION, label: ui("Last major events") },
     { id: "last-20-events", label: ui("Last 20 events") },
     { id: "mono-color", label: ui("Mono-color") },
+    { id: "saved", label: ui("My decks") },
   ], [ui]);
 
   const clearFilters = useCallback(() => {
@@ -398,7 +400,7 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
     }
   }, [catalogFormat, ui]);
 
-  const showingSaved = activeTab === "saved";
+  const showingSaved = view === "saved";
   const visibleCount = showingSaved ? savedPresets.length : listedResults.length;
 
   return (
@@ -463,39 +465,25 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
       ) : null}
 
       <div className="flex flex-wrap items-center gap-1">
-        {[{ id: "catalog", label: ui("All decks") }, { id: "saved", label: ui("My decks") }].map((tab) => (
+        {views.map((tab) => (
           <button
             key={tab.id}
             type="button"
-            className={`rounded-sm px-2 py-1 text-[11px] font-bold uppercase tracking-[0.14em] transition-colors ${activeTab === tab.id ? "bg-[#2e2416] text-[#f2d9a3]" : "text-[#6f6759] hover:bg-[#17181b] hover:text-[#e7d9bc]"}`}
-            aria-pressed={activeTab === tab.id}
+            className={`rounded-sm px-2 py-1 text-[11px] font-bold uppercase tracking-[0.14em] transition-colors ${view === tab.id ? "bg-[#2e2416] text-[#f2d9a3]" : "text-[#6f6759] hover:bg-[#17181b] hover:text-[#e7d9bc]"}`}
+            aria-pressed={view === tab.id}
             data-catalog-tab={tab.id}
-            onClick={() => { setActiveTab(tab.id); resetScroll(); }}
+            onClick={() => { setView(tab.id); resetScroll(); }}
           >{tab.label}</button>
         ))}
         <span className="ml-auto text-[10px] uppercase tracking-wide text-[#6f6759]">{ui("{0} decks", { 0: visibleCount })}</span>
       </div>
-      {!showingSaved ? (
-        <div className="flex flex-wrap gap-1" aria-label={ui("Collections")}>
-          {collections.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${collection === option.id ? "bg-[#3d2f1c] text-[#f2d9a3]" : "bg-[#131418] text-[#6f6759] hover:bg-[#1d1e22] hover:text-[#e7d9bc]"}`}
-              aria-pressed={collection === option.id}
-              data-collection={option.id}
-              onClick={() => { setCollection(option.id); resetScroll(); }}
-            >{option.label}</button>
-          ))}
-        </div>
-      ) : null}
 
       {loading && !showingSaved ? <p className="text-[12px] text-[#b8aa8e]">{ui("Loading index…")}</p> : null}
       {error && !showingSaved ? <p className="text-[12px] text-red-300">{error}</p> : null}
       {!loading && !error && !visibleCount ? (
         <p className="text-[12px] text-[#b8aa8e]">{showingSaved ? ui("You have no saved decks in this session.") : ui("No results for this search.")}</p>
       ) : null}
-      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1" data-deck-catalog-list="">
+      <div ref={listRef} className="grid min-h-0 flex-1 auto-rows-min gap-x-3 overflow-y-auto overflow-x-hidden pr-1 xl:grid-cols-2" data-deck-catalog-list="">
         {showingSaved
           ? savedPresets.map((preset) => (
             <SavedDeckRow key={preset.key} preset={preset} isBusy={Boolean(busyId)} targetName={targetName} onSelect={handleSelectSaved} />
@@ -506,11 +494,8 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
               entry={entry}
               actionKey={entry.id}
               isBusy={busyId === entry.id}
-              isCopying={copyingId === entry.id}
-              isCopied={copiedId === entry.id}
               targetName={targetName}
               onSelect={handleSelect}
-              onCopy={handleCopy}
             />
           ))}
       </div>

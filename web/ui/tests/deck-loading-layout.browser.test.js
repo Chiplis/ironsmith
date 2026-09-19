@@ -69,13 +69,13 @@ test('the featured strip is the last-major-events collection and assigns to the 
     // The collection chips narrow the list below to that same collection.
     const list = page.locator('[data-deck-catalog-list]');
     assert.equal(await list.locator('[data-deck-row]').count(), 12);
-    await page.locator('[data-collection="last-major-events"]').click();
+    await page.locator('[data-catalog-tab="last-major-events"]').click();
     await page.waitForFunction(() => document.querySelectorAll('[data-deck-row]').length === 4);
     assert.deepEqual(
-      await list.locator('[data-deck-row]').evaluateAll((rows) => rows.map((row) => row.querySelector('div > div').textContent)),
+      await list.locator('[data-deck-row]').evaluateAll((rows) => rows.map((row) => row.querySelector('div > div > span').textContent)),
       ['Boros Energy 4', 'Boros Energy 3', 'Boros Energy 2', 'Boros Energy 1'],
     );
-    assert.equal(await page.locator('[data-collection="last-major-events"]').getAttribute('aria-pressed'), 'true');
+    assert.equal(await page.locator('[data-catalog-tab="last-major-events"]').getAttribute('aria-pressed'), 'true');
 
     // The player tabs pick who a catalog deck is assigned to.
     await page.getByRole('button', {name: 'x4'}).click();
@@ -120,7 +120,7 @@ test('the list shows at least five decks and the panel keeps copy and clear at t
       page.locator('[data-player-tabs]').evaluate((node) => node.closest('div.flex-1').getBoundingClientRect().width),
     ]);
     const share = catalogWidth / (catalogWidth + panelWidth);
-    assert.ok(share > 0.45 && share < 0.55, `catalog and player panel should split evenly (${Math.round(catalogWidth)} vs ${Math.round(panelWidth)})`);
+    assert.ok(share > 0.65 && share < 0.75, `catalog should take about seventy percent (${Math.round(catalogWidth)} vs ${Math.round(panelWidth)})`);
 
     // A flat, borderless surface: nothing in the workspace draws a stroke.
     const strokes = await page.locator('[data-deck-workspace] *').evaluateAll((nodes) => nodes.filter((node) => {
@@ -138,6 +138,21 @@ test('the list shows at least five decks and the panel keeps copy and clear at t
         }).length;
     });
     assert.ok(fullyVisibleRows >= 5, `expected at least 5 visible decks, saw ${fullyVisibleRows}`);
+
+    // The screen owns its height: leftover space under the footer is a row of
+    // decks the list could have had.
+    const belowFooter = await page.evaluate(() => {
+      const footer = document.querySelector('[data-deck-workspace]').nextElementSibling.getBoundingClientRect();
+      return Math.round(window.innerHeight - footer.bottom);
+    });
+    assert.ok(belowFooter <= 16, `the workspace should reach the bottom (${belowFooter}px left over)`);
+
+    // Two columns of decks, each row carrying one Use and no Copy MTGO.
+    const columns = await page.locator('[data-deck-row]').evaluateAll(
+      (rows) => new Set(rows.map((row) => Math.round(row.getBoundingClientRect().left))).size,
+    );
+    assert.equal(columns, 2);
+    assert.equal(await page.locator('[data-deck-row] button').count(), await page.locator('[data-deck-row]').count());
 
     // No assignment tabs; the deck list is always the panel's body, with copy
     // and clear above it.
@@ -157,7 +172,7 @@ test('the list shows at least five decks and the panel keeps copy and clear at t
 
     await page.locator('[data-catalog-tab="saved"]').click();
     await assert.doesNotReject(page.getByText('You have no saved decks in this session.').waitFor());
-    await page.locator('[data-catalog-tab="catalog"]').click();
+    await page.locator('[data-catalog-tab="all"]').click();
     await page.locator('[data-featured-decks]').waitFor();
     assert.deepEqual(errors, []);
   } finally {

@@ -1532,7 +1532,6 @@ export const ui = {
   "{0}/{1} available this session": "{0}/{1} available this session",
   "All decks": "All decks",
   "Browse decks": "Browse decks",
-  "Collections": "Collections",
   "Colors": "Colors",
   "Configuration name…": "Configuration name…",
   "Configure": "Configure",

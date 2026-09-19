@@ -355,11 +355,11 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
       </div>
 
       <section
-        className="mb-3 flex min-h-0 flex-1 flex-col gap-3 lg:flex-row"
+        className="mb-2 flex min-h-0 flex-1 flex-col gap-3 lg:flex-row"
         aria-label={ui("Deck catalog and player decks")}
         data-deck-workspace=""
       >
-        <div className="flex min-h-[360px] min-w-0 flex-col bg-[#0e0f11] p-2.5 lg:min-h-0 lg:w-1/2 lg:shrink-0">
+        <div className="flex min-h-[360px] min-w-0 flex-col bg-[#0e0f11] p-2.5 lg:min-h-0 lg:w-[70%] lg:shrink-0">
           <CompetitiveDeckBrowser
             onSelect={handleCatalogSelect}
             targetName={targetPlayerName}
@@ -499,7 +499,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
         </div>
       </section>
 
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 pb-4 pr-40 pt-3 lg:pb-0">
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 pb-4 pr-40 pt-2 lg:pb-0">
         {savedPresets.length ? (
           <div className="mr-auto flex min-w-0 items-center gap-2">
             <select
