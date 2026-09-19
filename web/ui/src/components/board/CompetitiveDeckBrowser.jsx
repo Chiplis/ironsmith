@@ -6,7 +6,7 @@ import { loadCatalogDeckDetail, loadCatalogIndex, loadLocalCardArt, searchCatalo
 import { parseDeckList } from "@/lib/decklists";
 import { ManaSymbol } from "@/lib/mana-symbols";
 
-const fieldClass = "w-full border border-[rgba(154,126,82,0.46)] bg-[#0b0d0e] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none";
+const fieldClass = "w-full bg-[#050607] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none transition-colors focus:bg-[#101114] focus-visible:ring-1 focus-visible:ring-[#d8bf7a]/35";
 const selectClass = `${fieldClass} pr-12`;
 const selectStyle = {
   appearance: "none",
@@ -117,7 +117,7 @@ function useCardArt(cardName) {
 const DeckArt = memo(function DeckArt({ entry, className }) {
   const artUrl = useCardArt(deckArtName(entry));
   return (
-    <div className={`shrink-0 overflow-hidden bg-[#17130e] ${className}`} aria-hidden="true" data-deck-art={artUrl ? "loaded" : "placeholder"}>
+    <div className={`shrink-0 overflow-hidden bg-[#131418] ${className}`} aria-hidden="true" data-deck-art={artUrl ? "loaded" : "placeholder"}>
       {artUrl
         ? <img className="h-full w-full object-cover" src={artUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} />
         : (
@@ -146,17 +146,17 @@ const FeaturedDeck = memo(function FeaturedDeck({ entry, isBusy, isCopying, isCo
   const ui = useUiText();
   const actionKey = `featured-${entry.id}`;
   return (
-    <article className="flex min-w-0 flex-col overflow-hidden rounded-sm border border-[rgba(154,126,82,0.42)] bg-[rgba(12,13,14,0.85)]" data-featured-deck={entry.id}>
+    <article className="flex min-w-0 flex-col overflow-hidden rounded-sm bg-[#131418]" data-featured-deck={entry.id}>
       <DeckArt entry={entry} className="h-[72px] w-full" />
       <div className="grid gap-1 p-1.5">
         <div className="truncate text-[13px] font-bold text-[#e7d9bc]" title={entry.name || entry.archetype}>{entry.name || entry.archetype || ui("Unnamed deck")}</div>
         <div className="truncate text-[10px] text-[#8b806b]">{entry.event || ui("Unknown event")}</div>
         <ManaPips colors={entryColors(entry)} />
         <div className="mt-1 flex gap-1">
-          <Button type="button" variant="ghost" size="sm" className="h-7 flex-1 border border-[#9a7e52]/55 px-1 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a]" disabled={isBusy || isCopying} onClick={() => onSelect(entry, actionKey)} title={targetName ? ui("Use in {0}", { 0: targetName }) : ui("Use deck")}>
+          <Button type="button" variant="ghost" size="sm" className="h-7 flex-1 px-1 text-[10px] font-bold uppercase tracking-wide flat-button-gold" disabled={isBusy || isCopying} onClick={() => onSelect(entry, actionKey)} title={targetName ? ui("Use in {0}", { 0: targetName }) : ui("Use deck")}>
             {isBusy ? <ActionSpinner /> : ui("Use")}
           </Button>
-          <Button type="button" variant="ghost" size="sm" className="h-7 flex-1 border border-white/15 px-1 text-[10px] font-semibold text-[#b8aa8e]" disabled={isBusy || isCopying} onClick={() => onCopy(entry, actionKey)} title={ui("Copy the list in MTGO format")}>
+          <Button type="button" variant="ghost" size="sm" className="h-7 flex-1 px-1 text-[10px] font-semibold flat-button" disabled={isBusy || isCopying} onClick={() => onCopy(entry, actionKey)} title={ui("Copy the list in MTGO format")}>
             {isCopying ? <ActionSpinner /> : isCopied ? ui("Copied") : ui("Copy MTGO")}
           </Button>
         </div>
@@ -182,7 +182,7 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, 
   ].filter(Boolean).join(" · ");
 
   return (
-    <article className="flex min-w-0 items-center gap-2 rounded-sm border border-transparent p-1.5 transition-colors hover:border-[#9a7e52]/35 hover:bg-white/[0.03]" data-deck-row={entry.id}>
+    <article className="flex min-w-0 items-center gap-2 rounded-sm p-1.5 transition-colors hover:bg-[#131418]" data-deck-row={entry.id}>
       <DeckArt entry={entry} className="h-[40px] w-[56px] rounded-sm" />
       <div className="min-w-0 flex-1">
         <div className="truncate text-[12px] font-bold text-[#e7d9bc]">{entry.name || entry.archetype || ui("Unnamed deck")}</div>
@@ -192,10 +192,10 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, 
         </div>
       </div>
       <div className="flex shrink-0 gap-1">
-        <Button type="button" variant="ghost" size="sm" className="h-7 w-[72px] max-w-[72px] truncate border border-[#9a7e52]/55 px-1 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a]" disabled={isBusy || isCopying} onClick={() => onSelect(entry, actionKey)} title={targetName ? ui("Use in {0}", { 0: targetName }) : ui("Use deck")}>
+        <Button type="button" variant="ghost" size="sm" className="h-7 w-[72px] max-w-[72px] truncate px-1 text-[10px] font-bold uppercase tracking-wide flat-button-gold" disabled={isBusy || isCopying} onClick={() => onSelect(entry, actionKey)} title={targetName ? ui("Use in {0}", { 0: targetName }) : ui("Use deck")}>
           {isBusy ? <ActionSpinner /> : ui("Use")}
         </Button>
-        <Button type="button" variant="ghost" size="sm" className="h-7 w-[94px] max-w-[94px] truncate border border-white/15 px-1 text-[10px] font-semibold text-[#b8aa8e]" disabled={isBusy || isCopying} onClick={() => onCopy(entry, actionKey)} title={ui("Copy the list in MTGO format")}>
+        <Button type="button" variant="ghost" size="sm" className="h-7 w-[94px] max-w-[94px] truncate px-1 text-[10px] font-semibold flat-button" disabled={isBusy || isCopying} onClick={() => onCopy(entry, actionKey)} title={ui("Copy the list in MTGO format")}>
           {isCopying ? <ActionSpinner /> : isCopied ? ui("Copied") : ui("Copy MTGO")}
         </Button>
       </div>
@@ -206,15 +206,15 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, 
 const SavedDeckRow = memo(function SavedDeckRow({ preset, isBusy, onSelect, targetName }) {
   const ui = useUiText();
   return (
-    <article className="flex min-w-0 items-center gap-2 rounded-sm border border-transparent p-1.5 transition-colors hover:border-[#9a7e52]/35 hover:bg-white/[0.03]" data-saved-deck={preset.key}>
-      <div className="flex h-[40px] w-[56px] shrink-0 items-center justify-center rounded-sm bg-[#17130e] text-[10px] font-bold uppercase tracking-wide text-[#8b806b]" aria-hidden="true">
+    <article className="flex min-w-0 items-center gap-2 rounded-sm p-1.5 transition-colors hover:bg-[#131418]" data-saved-deck={preset.key}>
+      <div className="flex h-[40px] w-[56px] shrink-0 items-center justify-center rounded-sm bg-[#131418] text-[10px] font-bold uppercase tracking-wide text-[#6f6759]" aria-hidden="true">
         {ui("Session")}
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[12px] font-bold text-[#e7d9bc]">{preset.name}</div>
         <div className="truncate text-[10px] text-[#8b806b]">{ui("{0} cards", { 0: preset.cardCount })} · {preset.playerName}</div>
       </div>
-      <Button type="button" variant="ghost" size="sm" className="h-7 w-[72px] max-w-[72px] shrink-0 truncate border border-[#9a7e52]/55 px-1 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a]" disabled={isBusy} onClick={() => onSelect(preset)} title={targetName ? ui("Use in {0}", { 0: targetName }) : ui("Use deck")}>
+      <Button type="button" variant="ghost" size="sm" className="h-7 w-[72px] max-w-[72px] shrink-0 truncate px-1 text-[10px] font-bold uppercase tracking-wide flat-button-gold" disabled={isBusy} onClick={() => onSelect(preset)} title={targetName ? ui("Use in {0}", { 0: targetName }) : ui("Use deck")}>
         {ui("Use")}
       </Button>
     </article>
@@ -421,9 +421,9 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
           <div className="flex flex-wrap items-center gap-1" aria-label={ui("Catalog filters")}>
             {availableMana.map((color) => {
               const isActive = activeMana.includes(color);
-              return <Button key={color} type="button" variant="ghost" size="sm" className={`h-8 w-8 max-w-8 rounded-full px-1 ${isActive ? "bg-[#342817] ring-1 ring-[#d8bf7a]/55" : "text-[#b8aa8e] hover:bg-white/5"}`} aria-label={ui("Filter by {0} mana", { 0: color })} aria-pressed={isActive} onClick={() => toggleMana(color)}><ManaSymbol sym={color} size={17} /></Button>;
+              return <Button key={color} type="button" variant="ghost" size="sm" className={`h-8 w-8 max-w-8 rounded-full px-1 transition-colors ${isActive ? "bg-[#3d2f1c]" : "hover:bg-[#17181b]"}`} aria-label={ui("Filter by {0} mana", { 0: color })} aria-pressed={isActive} onClick={() => toggleMana(color)}><ManaSymbol sym={color} size={17} /></Button>;
             })}
-            {activeMana.length ? <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[10px] font-semibold text-[#8b806b] hover:text-[#e7d9bc]" onClick={clearFilters}>{ui("Clear")}</Button> : null}
+            {activeMana.length ? <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[10px] font-semibold text-[#6f6759] transition-colors hover:text-[#e7d9bc]" onClick={clearFilters}>{ui("Clear")}</Button> : null}
           </div>
         </div> : null}
         <label className="grid shrink-0 gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b806b]">{ui("Sort")}
@@ -434,9 +434,9 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
           </select>
         </label>
       </div>
-      {activeMana.length ? <div className="flex items-center gap-0.5 self-start rounded-full border border-white/10 p-0.5" aria-label={ui("Mana match mode")}>
-        <Button type="button" variant="ghost" size="sm" className={`h-6 rounded-full px-2 text-[9px] font-bold uppercase tracking-wide ${manaMatchMode === "include" ? "bg-[#342817] text-[#f2d9a3] ring-1 ring-[#d8bf7a]/55" : "text-[#8b806b] hover:text-[#e7d9bc]"}`} aria-pressed={manaMatchMode === "include"} title={ui("Includes these colors, even if the deck uses others")} onClick={() => { setManaMatchMode("include"); resetScroll(); }}>{ui("Includes")}</Button>
-        <Button type="button" variant="ghost" size="sm" className={`h-6 rounded-full px-2 text-[9px] font-bold uppercase tracking-wide ${manaMatchMode === "exact" ? "bg-[#342817] text-[#f2d9a3] ring-1 ring-[#d8bf7a]/55" : "text-[#8b806b] hover:text-[#e7d9bc]"}`} aria-pressed={manaMatchMode === "exact"} title={ui("Only these colors; C mana may be auxiliary")} onClick={() => { setManaMatchMode("exact"); resetScroll(); }}>{ui("Only these")}</Button>
+      {activeMana.length ? <div className="flex items-center gap-0.5 self-start rounded-full bg-[#0e0f11] p-0.5" aria-label={ui("Mana match mode")}>
+        <Button type="button" variant="ghost" size="sm" className={`h-6 rounded-full px-2 text-[9px] font-bold uppercase tracking-wide ${manaMatchMode === "include" ? "bg-[#3d2f1c] text-[#f2d9a3]" : "text-[#6f6759] hover:text-[#e7d9bc]"}`} aria-pressed={manaMatchMode === "include"} title={ui("Includes these colors, even if the deck uses others")} onClick={() => { setManaMatchMode("include"); resetScroll(); }}>{ui("Includes")}</Button>
+        <Button type="button" variant="ghost" size="sm" className={`h-6 rounded-full px-2 text-[9px] font-bold uppercase tracking-wide ${manaMatchMode === "exact" ? "bg-[#3d2f1c] text-[#f2d9a3]" : "text-[#6f6759] hover:text-[#e7d9bc]"}`} aria-pressed={manaMatchMode === "exact"} title={ui("Only these colors; C mana may be auxiliary")} onClick={() => { setManaMatchMode("exact"); resetScroll(); }}>{ui("Only these")}</Button>
       </div> : null}
 
       {!showingSaved && featuredResults.length ? (
@@ -462,18 +462,18 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
         </section>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-3 border-b border-white/10">
+      <div className="flex flex-wrap items-center gap-1">
         {[{ id: "catalog", label: ui("All decks") }, { id: "saved", label: ui("My decks") }].map((tab) => (
           <button
             key={tab.id}
             type="button"
-            className={`-mb-px border-b-2 px-0.5 pb-1.5 text-[11px] font-bold uppercase tracking-[0.14em] transition-colors ${activeTab === tab.id ? "border-[#d8bf7a] text-[#f2d9a3]" : "border-transparent text-[#8b806b] hover:text-[#e7d9bc]"}`}
+            className={`rounded-sm px-2 py-1 text-[11px] font-bold uppercase tracking-[0.14em] transition-colors ${activeTab === tab.id ? "bg-[#2e2416] text-[#f2d9a3]" : "text-[#6f6759] hover:bg-[#17181b] hover:text-[#e7d9bc]"}`}
             aria-pressed={activeTab === tab.id}
             data-catalog-tab={tab.id}
             onClick={() => { setActiveTab(tab.id); resetScroll(); }}
           >{tab.label}</button>
         ))}
-        <span className="ml-auto pb-1.5 text-[10px] uppercase tracking-wide text-[#8b806b]">{ui("{0} decks", { 0: visibleCount })}</span>
+        <span className="ml-auto text-[10px] uppercase tracking-wide text-[#6f6759]">{ui("{0} decks", { 0: visibleCount })}</span>
       </div>
       {!showingSaved ? (
         <div className="flex flex-wrap gap-1" aria-label={ui("Collections")}>
@@ -481,7 +481,7 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
             <button
               key={option.id}
               type="button"
-              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${collection === option.id ? "border-[#d8bf7a]/80 bg-[#d8bf7a]/15 text-[#f2d9a3]" : "border-white/10 text-[#8b806b] hover:border-[#d8bf7a]/45 hover:text-[#e7d9bc]"}`}
+              className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${collection === option.id ? "bg-[#3d2f1c] text-[#f2d9a3]" : "bg-[#131418] text-[#6f6759] hover:bg-[#1d1e22] hover:text-[#e7d9bc]"}`}
               aria-pressed={collection === option.id}
               data-collection={option.id}
               onClick={() => { setCollection(option.id); resetScroll(); }}

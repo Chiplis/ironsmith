@@ -14,7 +14,7 @@ import {
 import CompetitiveDeckBrowser from "./CompetitiveDeckBrowser";
 
 const fieldClass =
-  "w-full border border-[rgba(154,126,82,0.46)] bg-[#0b0d0e] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75";
+  "w-full bg-[#050607] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none transition-colors placeholder:text-[#6f6759] focus:bg-[#101114] focus-visible:ring-1 focus-visible:ring-[#d8bf7a]/35";
 const selectClass = `${fieldClass} pr-12`;
 const selectStyle = {
   appearance: "none",
@@ -325,16 +325,16 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
 
   return (
     <main
-      className="setup-screen deck-loading-screen table-gradient relative flex h-full min-h-0 flex-col overflow-y-auto border border-[rgba(154,126,82,0.46)] bg-[linear-gradient(180deg,rgba(55,49,39,0.98),rgba(20,18,15,0.98))] p-3 pb-24 lg:overflow-hidden lg:pb-3"
+      className="setup-screen deck-loading-screen relative flex h-full min-h-0 flex-col overflow-y-auto bg-[#08090a] p-3 pb-24 lg:overflow-hidden lg:pb-3"
     >
       {actionNotice ? (
         <div className="pointer-events-none sticky top-0 z-30 flex justify-end" role="status" aria-live="polite">
-          <div className="border border-[#d8bf7a]/55 bg-[#211a10]/95 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-[#f2d9a3] shadow-lg">
+          <div className="bg-[#2e2416] px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-[#f2d9a3] shadow-lg">
             {actionNotice}
           </div>
         </div>
       ) : null}
-      <div className="mb-3 flex shrink-0 flex-wrap items-start justify-between gap-3 border-b border-[rgba(154,126,82,0.34)] pb-3">
+      <div className="mb-3 flex shrink-0 flex-wrap items-start justify-between gap-3 pb-3">
         <div className="min-w-0">
           <h1 className="text-[18px] font-bold uppercase tracking-wide text-[#f2d9a3]">{ui("Load Decks")}</h1>
           <div className="mt-1 text-[12px] font-semibold text-[#b8aa8e]">{ui("Select decks from the catalog or paste lists to assign them to players.")}</div>
@@ -346,7 +346,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
             <li key={step} className="flex items-center gap-2">
               {index ? <span className="text-[#5b5245]" aria-hidden="true">›</span> : null}
               <span
-                className={index === 0 ? "border-b-2 border-[#d8bf7a] pb-0.5 text-[#f2d9a3]" : "text-[#6f6759]"}
+                className={index === 0 ? "rounded-sm bg-[#2e2416] px-1.5 py-0.5 text-[#f2d9a3]" : "text-[#5b5449]"}
                 aria-current={index === 0 ? "step" : undefined}
               >{index + 1}. {step}</span>
             </li>
@@ -359,7 +359,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
         aria-label={ui("Deck catalog and player decks")}
         data-deck-workspace=""
       >
-        <div className="flex min-h-[360px] min-w-0 flex-col border border-[rgba(154,126,82,0.42)] bg-[rgba(8,9,9,0.55)] p-2.5 lg:min-h-0 lg:w-[70%] lg:shrink-0">
+        <div className="flex min-h-[360px] min-w-0 flex-col bg-[#0e0f11] p-2.5 lg:min-h-0 lg:w-1/2 lg:shrink-0">
           <CompetitiveDeckBrowser
             onSelect={handleCatalogSelect}
             targetName={targetPlayerName}
@@ -367,7 +367,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
           />
         </div>
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 border border-[rgba(154,126,82,0.42)] bg-[rgba(8,9,9,0.55)] p-2.5">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 bg-[#0e0f11] p-2.5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Players / deck assignment")}</h2>
@@ -380,9 +380,9 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
                   <button
                     key={player.id}
                     type="button"
-                    className={`flex items-center gap-1.5 border px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wide transition-colors ${isTarget
-                      ? "border-[#d8bf7a]/80 bg-[#d8bf7a]/10 text-[#f2d9a3]"
-                      : "border-white/10 text-[#8b806b] hover:border-[#d8bf7a]/45 hover:text-[#e7d9bc]"}`}
+                    className={`flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wide transition-colors ${isTarget
+                      ? "bg-[#2e2416] text-[#f2d9a3]"
+                      : "bg-[#131418] text-[#6f6759] hover:bg-[#1d1e22] hover:text-[#e7d9bc]"}`}
                     aria-pressed={isTarget}
                     data-player-tab={index}
                     onClick={() => setCatalogTargetIndex(index)}
@@ -401,7 +401,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
               <button
                 key={count}
                 type="button"
-                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${visiblePlayerCount === count ? "border-[#d8bf7a]/80 bg-[#d8bf7a]/15 text-[#f2d9a3]" : "border-white/10 text-[#b8aa8e] hover:border-[#d8bf7a]/45 hover:text-[#f2d9a3]"}`}
+                className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${visiblePlayerCount === count ? "bg-[#3d2f1c] text-[#f2d9a3]" : "bg-[#131418] text-[#6f6759] hover:bg-[#1d1e22] hover:text-[#e7d9bc]"}`}
                 aria-pressed={visiblePlayerCount === count}
                 onClick={() => handleEditorPlayerCountChange(count)}
               >
@@ -411,16 +411,16 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
           </div>
 
           {targetPlayer ? (
-            <div className="flex min-h-0 flex-1 flex-col gap-3 border border-[rgba(154,126,82,0.42)] bg-[linear-gradient(180deg,rgba(17,17,15,0.94),rgba(8,9,9,0.96))] p-3" data-player-panel={targetIndex}>
+            <div className="flex min-h-0 flex-1 flex-col gap-3 bg-[#131418] p-3" data-player-panel={targetIndex}>
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2.5">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#9a7e52]/55 bg-[#17130e] text-[16px] font-bold text-[#d8bf7a]" aria-hidden="true">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#211a10] text-[16px] font-bold text-[#d8bf7a]" aria-hidden="true">
                     {targetPlayer.name.slice(0, 1).toLocaleUpperCase("en-US")}
                   </span>
                   <div className="min-w-0">
                     <div className="flex min-w-0 items-baseline gap-2">
                       <span className="min-w-0 truncate text-[15px] font-bold uppercase tracking-wide text-[#f2d9a3]">{targetPlayer.name}</span>
-                      <span className="shrink-0 rounded-full border border-[#d8bf7a]/60 px-1.5 text-[9px] font-bold uppercase tracking-wide text-[#d8bf7a]">{ui("Target")}</span>
+                      <span className="shrink-0 rounded-full bg-[#3d2f1c] px-1.5 text-[9px] font-bold uppercase tracking-wide text-[#f2d9a3]">{ui("Target")}</span>
                     </div>
                     <div className="truncate text-[11px] text-[#b8aa8e]">{deckLabels[targetIndex] || ui("No deck assigned")}</div>
                     <div className="text-[11px] font-semibold text-[#8b806b]">
@@ -435,7 +435,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-7 border border-white/15 px-2 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
+                    className="h-7 rounded-sm px-2 text-[10px] font-bold uppercase tracking-wide flat-button"
                     disabled={cardCounts[targetIndex] === 0 || Boolean(actionBusy)}
                     onClick={() => runAction(`copy-${targetIndex}`, () => handleCopyMtgo(targetIndex))}
                     title={ui("Copy {0}'s MTGO list", { 0: targetPlayer.name })}
@@ -448,7 +448,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-7 border border-white/15 px-2 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
+                    className="h-7 rounded-sm px-2 text-[10px] font-bold uppercase tracking-wide flat-button"
                     disabled={cardCounts[targetIndex] === 0 || Boolean(actionBusy)}
                     onClick={() => handleClearPlayer(targetIndex)}
                     title={ui("Clear {0}'s deck", { 0: targetPlayer.name })}
@@ -463,7 +463,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
               <textarea
                 aria-label={ui("{0} decklist", { 0: targetPlayer.name })}
                 spellCheck={false}
-                className="min-h-[160px] w-full flex-1 resize-none border border-[rgba(154,126,82,0.48)] bg-[#080b0d] p-2.5 font-mono text-[13px] leading-snug text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75"
+                className="min-h-[160px] w-full flex-1 resize-none bg-[#050607] p-2.5 font-mono text-[13px] leading-snug text-[#e7d9bc] outline-none transition-colors placeholder:text-[#6f6759] focus:bg-[#0a0b0d] focus-visible:ring-1 focus-visible:ring-[#d8bf7a]/35"
                 placeholder={stripDeckHeader(ui("Paste {0}'s list...\n\nDeck\n4 Lightning Bolt\n2 Counterspell\n20 Island\n\nSideboard\n2 Pyroblast\n1 Tormod's Crypt", { 0: targetPlayer.name }))}
                 value={texts[targetIndex] || ""}
                 onChange={(event) => handleTextChange(targetIndex, event.target.value)}
@@ -473,7 +473,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
 
           {/* The column is narrow now, so this panel stacks instead of trying
               to sit three across. */}
-          <div className="grid shrink-0 gap-2 border border-[rgba(154,126,82,0.32)] bg-[rgba(12,13,14,0.7)] p-3">
+          <div className="grid shrink-0 gap-2 bg-[#131418] p-3">
             <div className="min-w-0">
               <h3 className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Save configuration")}</h3>
               <p className="text-[11px] text-[#8b806b]">{ui("Save every player's deck as one configuration.")}</p>
@@ -490,7 +490,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
               type="button"
               variant="ghost"
               size="sm"
-              className="h-9 shrink-0 max-w-[120px] truncate border border-[#9a7e52]/55 px-3 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
+              className="h-9 shrink-0 max-w-[120px] truncate rounded-sm px-3 text-[10px] font-bold uppercase tracking-wide flat-button-gold"
               disabled={!presetName.trim() || totalCards === 0 || Boolean(actionBusy)}
               onClick={() => runAction("saved-save", handleSavePreset)}
             >{actionBusy === "saved-save" ? <ActionSpinner /> : ui("Save")}</Button>
@@ -499,7 +499,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
         </div>
       </section>
 
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[rgba(154,126,82,0.34)] pb-4 pr-40 pt-3 lg:pb-0">
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 pb-4 pr-40 pt-3 lg:pb-0">
         {savedPresets.length ? (
           <div className="mr-auto flex min-w-0 items-center gap-2">
             <select
@@ -518,7 +518,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
               type="button"
               variant="ghost"
               size="sm"
-              className="h-8 max-w-[96px] truncate border border-[#9a7e52]/55 px-3 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
+              className="h-8 max-w-[96px] truncate rounded-sm px-3 text-[10px] font-bold uppercase tracking-wide flat-button-gold"
               disabled={!selectedPreset || Boolean(actionBusy)}
               onClick={() => runAction("saved-use", handleApplySavedPreset)}
             >{actionBusy === "saved-use" ? <ActionSpinner /> : ui("Use")}</Button>
@@ -526,20 +526,20 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
               type="button"
               variant="ghost"
               size="sm"
-              className="h-8 max-w-[96px] truncate border border-white/15 px-3 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
+              className="h-8 max-w-[96px] truncate rounded-sm px-3 text-[10px] font-bold uppercase tracking-wide flat-button"
               disabled={!selectedPreset || Boolean(actionBusy)}
               onClick={() => runAction("saved-delete", handleDeleteSavedPreset)}
             >{actionBusy === "saved-delete" ? <ActionSpinner /> : ui("Delete")}</Button>
           </div>
         ) : null}
         {showLobbyConfirm ? (
-          <div className="flex flex-wrap items-center justify-end gap-2 border border-[#d8bf7a]/45 bg-[#211a10] px-2 py-1.5">
+          <div className="flex flex-wrap items-center justify-end gap-2 rounded-sm bg-[#211a10] px-2 py-1.5">
             <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-[#f2d9a3]">{ui("Create a {0}-player lobby?", { 0: lobbyPlayerCount })}</span>
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              className="h-8 border border-[#f2d9a3]/55 px-3 text-[10px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
+              className="h-8 rounded-sm px-3 text-[10px] font-bold uppercase tracking-wide flat-button-primary"
               disabled={Boolean(actionBusy)}
               onClick={handleConfirmLobby}
             >{ui("Confirm")}</Button>
@@ -547,7 +547,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
               type="button"
               variant="ghost"
               size="sm"
-              className="h-8 border border-white/15 px-2 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317]"
+              className="h-8 rounded-sm px-2 text-[10px] font-bold uppercase tracking-wide flat-button"
               disabled={Boolean(actionBusy)}
               onClick={() => setShowLobbyConfirm(false)}
             >{ui("Cancel")}</Button>
@@ -559,7 +559,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
               type="button"
               variant="ghost"
               size="sm"
-              className="h-9 border border-[#f2d9a3]/45 bg-[#211a10] px-3 text-[11px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
+              className="h-9 rounded-sm px-3 text-[11px] font-bold uppercase tracking-wide flat-button-primary"
               disabled={Boolean(actionBusy)}
               onClick={() => setShowLobbyConfirm(true)}
             >{ui("Lobby and share")}</Button>
@@ -567,7 +567,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
               type="button"
               variant="ghost"
               size="sm"
-              className="h-9 border border-[#9a7e52]/55 px-3 text-[11px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317]"
+              className="h-9 rounded-sm px-3 text-[11px] font-bold uppercase tracking-wide flat-button-gold"
               disabled={Boolean(actionBusy)}
               onClick={() => runAction("test", handleTestInGame)}
             >{actionBusy === "test" ? <ActionSpinner /> : ui("Test in game")}</Button>
@@ -575,7 +575,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
               type="button"
               variant="ghost"
               size="sm"
-              className="h-9 border border-white/15 px-2 text-[11px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317]"
+              className="h-9 rounded-sm px-2 text-[11px] font-bold uppercase tracking-wide flat-button"
               disabled={Boolean(actionBusy)}
               onClick={() => setShowContinueChoices(false)}
             >{ui("Back")}</Button>
@@ -585,7 +585,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
             type="button"
             variant="ghost"
             size="sm"
-            className="h-10 border border-[#f2d9a3]/45 bg-[#211a10] px-5 text-[12px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
+            className="h-10 rounded-sm px-5 text-[12px] font-bold uppercase tracking-wide flat-button-primary"
             disabled={Boolean(actionBusy)}
             onClick={() => setShowContinueChoices(true)}
           >{ui("Build lobby")}</Button>
@@ -594,7 +594,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
           type="button"
           variant="ghost"
           size="sm"
-          className="h-10 border border-[#9a7e52]/45 px-4 text-[12px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317]"
+          className="h-10 rounded-sm px-4 text-[12px] font-bold uppercase tracking-wide flat-button-gold"
           disabled={Boolean(actionBusy)}
           onClick={onCancel}
         >{ui("Cancel")}</Button>

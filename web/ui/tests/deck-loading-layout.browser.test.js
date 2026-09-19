@@ -119,7 +119,15 @@ test('the list shows at least five decks and the panel keeps copy and clear at t
       page.locator('[data-deck-catalog]').evaluate((node) => node.getBoundingClientRect().width),
       page.locator('[data-player-tabs]').evaluate((node) => node.closest('div.flex-1').getBoundingClientRect().width),
     ]);
-    assert.ok(catalogWidth / (catalogWidth + panelWidth) > 0.6, `catalog should take the larger share (${Math.round(catalogWidth)} vs ${Math.round(panelWidth)})`);
+    const share = catalogWidth / (catalogWidth + panelWidth);
+    assert.ok(share > 0.45 && share < 0.55, `catalog and player panel should split evenly (${Math.round(catalogWidth)} vs ${Math.round(panelWidth)})`);
+
+    // A flat, borderless surface: nothing in the workspace draws a stroke.
+    const strokes = await page.locator('[data-deck-workspace] *').evaluateAll((nodes) => nodes.filter((node) => {
+      const style = getComputedStyle(node);
+      return ['Top', 'Right', 'Bottom', 'Left'].some((side) => parseFloat(style[`border${side}Width`]) > 0);
+    }).length);
+    assert.equal(strokes, 0);
 
     const fullyVisibleRows = await page.locator('[data-deck-catalog-list]').evaluate((list) => {
       const bounds = list.getBoundingClientRect();

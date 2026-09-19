@@ -2874,6 +2874,59 @@ button:disabled,
   outline-offset: 3px;
 }
 
+/* The deck workspace is a flat, black surface. The shared setup-screen chrome
+   draws a border and an inset shadow on every control and ghost button, all of
+   it !important, so this screen switches that off and its buttons carry their
+   own fill instead. */
+.deck-loading-screen :is(input, select, textarea) {
+  border: 0 !important;
+  box-shadow: none !important;
+  background-color: #050607 !important;
+}
+
+.deck-loading-screen :is(input, textarea):focus {
+  background-color: #101114 !important;
+}
+
+.deck-loading-screen [data-slot="button"],
+.deck-loading-screen [data-slot="button"]:hover:not(:disabled) {
+  border: 0 !important;
+}
+
+.deck-loading-screen .flat-button {
+  background-color: #17181b !important;
+  color: #b8aa8e !important;
+}
+
+.deck-loading-screen .flat-button:hover:not(:disabled) {
+  background-color: #232429 !important;
+  color: #e7d9bc !important;
+}
+
+.deck-loading-screen .flat-button-gold {
+  background-color: #211a10 !important;
+  color: #d8bf7a !important;
+}
+
+.deck-loading-screen .flat-button-gold:hover:not(:disabled) {
+  background-color: #2e2416 !important;
+  color: #f2d9a3 !important;
+}
+
+.deck-loading-screen .flat-button-primary {
+  background-color: #2e2416 !important;
+  color: #f2d9a3 !important;
+}
+
+.deck-loading-screen .flat-button-primary:hover:not(:disabled) {
+  background-color: #3d2f1c !important;
+}
+
+.deck-loading-screen :is(.flat-button, .flat-button-gold, .flat-button-primary):disabled {
+  background-color: #111214 !important;
+  color: #5b5449 !important;
+}
+
 @media (max-width: 767px), (max-height: 500px) {
   [data-slot="sheet-header"] {
     padding: 14px 52px 14px 16px;
