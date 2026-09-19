@@ -24,6 +24,9 @@ const selectStyle = {
   backgroundSize: "0.9rem",
 };
 
+// A decklist line, not interface copy: it stays in MTGO's own wording.
+const MTGO_EXAMPLE_LINE = "4 Counterspell";
+
 function ActionSpinner() {
   return <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 animate-spin" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" /><path d="M17 10a7 7 0 0 0-7-7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>;
 }
@@ -127,13 +130,13 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
     setEditorPlayerCount(nextCount);
     const nextEmptyIndex = nextTexts.findIndex((text) => !String(text || "").trim());
     setCatalogTargetIndex(nextEmptyIndex >= 0 ? Math.min(nextEmptyIndex, Math.max(0, nextCount - 1)) : 0);
-    showActionNotice(`Mazo cargado en ${players[nextEmptyIndex >= 0 ? nextEmptyIndex : 0]?.name || "el editor"}`);
+    showActionNotice(ui("Deck loaded into {0}", { 0: players[nextEmptyIndex >= 0 ? nextEmptyIndex : 0]?.name || ui("the editor") }));
   };
 
   const saveCurrentPreset = useCallback((requestedName) => {
     const normalizedPresetName = String(requestedName || "").trim();
     if (!normalizedPresetName) {
-      setStatus("Elegí un nombre para guardar este mazo.");
+      setStatus(ui("Choose a name to save this deck."));
       return false;
     }
 
@@ -154,14 +157,14 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
       setSelectedPresetName(saveResult.entry.name);
       setStatus(
         saveResult.replaced
-          ? `Updated saved deck "${saveResult.entry.name}"`
-          : `Saved deck "${saveResult.entry.name}"`
+          ? ui('Updated saved deck "{0}"', { 0: saveResult.entry.name })
+          : ui('Saved deck "{0}"', { 0: saveResult.entry.name })
       );
-      showActionNotice(saveResult.replaced ? "Mazo guardado actualizado" : "Mazo guardado correctamente");
+      showActionNotice(saveResult.replaced ? ui("Saved deck updated") : ui("Deck saved"));
       return true;
     }
     if (saveResult.reason === "limit") {
-      setStatus(`Session limit reached (${SAVED_DECK_PRESETS_LIMIT} decks). Delete one saved deck to add another.`);
+      setStatus(ui("Session limit reached ({0} decks). Delete one saved deck to add another.", { 0: SAVED_DECK_PRESETS_LIMIT }));
     }
     return false;
   }, [players, setStatus, showActionNotice, texts, ui]);
@@ -183,8 +186,8 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
     });
     setCopiedPlayerIndex((current) => current === playerIndex ? null : current);
     setCatalogTargetIndex(playerIndex);
-    showActionNotice(`Mazo de ${players[playerIndex]?.name || "jugador"} eliminado del editor`);
-  }, [players, showActionNotice]);
+    showActionNotice(ui("Removed {0}'s deck from the editor", { 0: players[playerIndex]?.name || ui("player") }));
+  }, [players, showActionNotice, ui]);
 
   const handleEditorPlayerCountChange = useCallback((count) => {
     setEditorPlayerCount(count);
@@ -194,7 +197,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
   const handleCopyMtgo = useCallback(async (playerIndex = catalogTargetIndex) => {
     const text = String(texts[playerIndex] || "").trim();
     if (!text) {
-      setStatus("No hay un deck para copiar.");
+      setStatus(ui("There is no deck to copy."));
       return;
     }
 
@@ -213,11 +216,11 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
       }
       setCopiedPlayerIndex(playerIndex);
       window.setTimeout(() => setCopiedPlayerIndex((current) => current === playerIndex ? null : current), 900);
-      showActionNotice("MTGO copiado");
+      showActionNotice(ui("MTGO list copied"));
     } catch {
-      setStatus("No se pudo copiar el deck.");
+      setStatus(ui("Could not copy the deck."));
     }
-  }, [catalogTargetIndex, setStatus, showActionNotice, texts]);
+  }, [catalogTargetIndex, setStatus, showActionNotice, texts, ui]);
 
   const runAction = useCallback((key, action) => {
     if (actionBusy) return;
@@ -226,16 +229,16 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
     try {
       result = action();
     } catch (error) {
-      setStatus(error?.message || "No se pudo completar la acción.");
+      setStatus(error?.message || ui("Could not complete the action."));
       setActionBusy("");
       return;
     }
     Promise.resolve(result)
-      .catch((error) => setStatus(error?.message || "No se pudo completar la acción."))
+      .catch((error) => setStatus(error?.message || ui("Could not complete the action.")))
       .finally(() => {
         window.setTimeout(() => setActionBusy((current) => current === key ? "" : current), 180);
       });
-  }, [actionBusy, setStatus]);
+  }, [actionBusy, setStatus, ui]);
 
   const handleCatalogSelect = useCallback(({ deckText, deckName, name, archetype }) => {
     const target = visiblePlayers.length ? Math.min(catalogTargetIndex, visiblePlayers.length - 1) : 0;
@@ -261,23 +264,23 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
     }
     setEditorPlayerCount(nextCount);
     setCatalogTargetIndex(nextIndex >= 0 ? nextIndex : (target + 1) % Math.max(1, nextCount));
-    showActionNotice(`Mazo cargado en ${players[target]?.name || "el editor"}`);
-  }, [catalogTargetIndex, handleTextChange, players, showActionNotice, texts, visiblePlayerCount, visiblePlayers.length]);
+    showActionNotice(ui("Deck loaded into {0}", { 0: players[target]?.name || ui("the editor") }));
+  }, [catalogTargetIndex, handleTextChange, players, showActionNotice, texts, ui, visiblePlayerCount, visiblePlayers.length]);
 
   const handleDeleteSavedPreset = useCallback(() => {
     if (!selectedPreset) return;
     if (!window.confirm(ui('Delete saved deck "{0}"?', { 0: selectedPreset.name }))) return;
     setSavedPresets(removeSavedDeckPreset(selectedPreset.name));
     setSelectedPresetName("");
-    setStatus(`Deleted saved deck "${selectedPreset.name}"`);
-    showActionNotice("Mazo guardado eliminado");
+    setStatus(ui('Deleted saved deck "{0}"', { 0: selectedPreset.name }));
+    showActionNotice(ui("Saved deck deleted"));
   }, [selectedPreset, setStatus, showActionNotice, ui]);
 
   const handleTestInGame = useCallback(() => {
     const decks = texts.map(parseDeckList);
     const sideboards = texts.map(parseSideboardList);
     if (!decks.some((deck) => deck.length > 0)) {
-      setStatus("Pegá al menos un mazo para probarlo en la partida.");
+      setStatus(ui("Paste at least one deck to test it in a game."));
       return false;
     }
     // The x1/x2/x4 selector is the source of truth for the match size. Empty
@@ -301,18 +304,18 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
       allowPartialDecks: true,
       seedTestPosition: true,
     });
-  }, [onTestDecks, setStatus, texts, visiblePlayerCount]);
+  }, [onTestDecks, setStatus, texts, ui, visiblePlayerCount]);
 
   const lobbyPlayerCount = Math.max(2, Math.min(4, visiblePlayerCount));
   const lobbyDeckOptions = useMemo(
     () => texts
       .map((text, index) => ({
         id: `editor-${index}`,
-        label: `${deckLabels[index] || `Deck ${index + 1}`} (${players[index]?.name || `Jugador ${index + 1}`})`,
+        label: `${deckLabels[index] || ui("Deck {0}", { 0: index + 1 })} (${players[index]?.name || ui("Player {0}", { 0: index + 1 })})`,
         deckText: String(text || ""),
       }))
       .filter((option) => option.deckText.trim()),
-    [deckLabels, players, texts],
+    [deckLabels, players, texts, ui],
   );
   const handleConfirmLobby = useCallback(() => {
     setShowLobbyConfirm(false);
@@ -334,10 +337,10 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
         <h1 className="text-[18px] font-bold uppercase tracking-wide text-[#f2d9a3]">{ui("Load Decks")}</h1>
         <div className="mt-1 text-[12px] font-semibold text-[#b8aa8e]">{ui("Paste main deck lists with optional Sideboard sections.")}</div>
       </div>
-      <section className="mb-3 shrink-0 border-b border-[rgba(154,126,82,0.34)] pb-3" aria-label="Mazos guardados">
+      <section className="mb-3 shrink-0 border-b border-[rgba(154,126,82,0.34)] pb-3" aria-label={ui("Saved decks")}>
         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">Mazos guardados</h2>
-          <span className="text-[10px] uppercase tracking-wide text-[#8b806b]">{savedPresets.length}/{SAVED_DECK_PRESETS_LIMIT} disponibles en esta sesión</span>
+          <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Saved decks")}</h2>
+          <span className="text-[10px] uppercase tracking-wide text-[#8b806b]">{ui("{0}/{1} available this session", { 0: savedPresets.length, 1: SAVED_DECK_PRESETS_LIMIT })}</span>
         </div>
         <div className="grid gap-2 md:grid-cols-[minmax(200px,1fr)_auto_auto]">
           <select
@@ -374,7 +377,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
       </section>
       <section
         className="mb-3 flex min-h-0 flex-1 flex-col gap-3 border border-[rgba(154,126,82,0.42)] bg-[rgba(8,9,9,0.55)] p-2 lg:flex-row"
-        aria-label="Catálogo de decks y mazos de los jugadores"
+        aria-label={ui("Deck catalog and player decks")}
         data-deck-workspace=""
       >
         <div className="flex min-h-[360px] min-w-0 flex-col border-b border-[rgba(154,126,82,0.28)] pb-3 lg:min-h-0 lg:w-[clamp(320px,34%,440px)] lg:shrink-0 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-3">
@@ -383,10 +386,13 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-1 pb-2">
             <div className="min-w-0">
-              <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">Mazos de los jugadores</h2>
-              <p className="text-[11px] text-[#8b806b]">Elegí un jugador y usá un deck del catálogo, o pegá líneas como <span className="font-mono">4 Counterspell</span> con una sección <span className="font-mono">Sideboard</span>.</p>
+              <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Player decks")}</h2>
+              <p className="text-[11px] text-[#8b806b]">
+                {ui("Pick a player, then use a catalog deck or paste a list like")}{" "}
+                <span className="font-mono">{MTGO_EXAMPLE_LINE}</span>
+              </p>
             </div>
-            <div className="flex flex-wrap gap-1.5" aria-label="Cantidad de jugadores a editar">
+            <div className="flex flex-wrap gap-1.5" aria-label={ui("Number of players to edit")}>
               {playerCountModes.map((count) => (
                 <button
                   key={count}
@@ -425,9 +431,9 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
                     <div className="min-w-0">
                       <div className="flex min-w-0 items-baseline gap-1.5">
                         <span className="min-w-0 truncate text-[14px] font-bold uppercase tracking-wide text-[#f2d9a3]">{player.name}</span>
-                        {isTarget ? <span className="shrink-0 rounded-full border border-[#d8bf7a]/60 px-1.5 text-[9px] font-bold uppercase tracking-wide text-[#d8bf7a]">Destino</span> : null}
+                        {isTarget ? <span className="shrink-0 rounded-full border border-[#d8bf7a]/60 px-1.5 text-[9px] font-bold uppercase tracking-wide text-[#d8bf7a]">{ui("Target")}</span> : null}
                       </div>
-                      <div className="truncate text-[10px] text-[#b8aa8e]">{deckLabels[i] || "Sin deck asignado"}</div>
+                      <div className="truncate text-[10px] text-[#b8aa8e]">{deckLabels[i] || ui("No deck assigned")}</div>
                     </div>
                     <div className="shrink-0 text-right text-[11px] font-semibold text-[#b8aa8e]">
                       <span>{cardCounts[i]}{" " + ui("main")}</span>
@@ -451,11 +457,11 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
                       className="h-7 max-w-[120px] truncate border border-white/15 px-2 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
                       disabled={cardCounts[i] === 0 || Boolean(actionBusy)}
                       onClick={() => runAction(`copy-${i}`, () => handleCopyMtgo(i))}
-                      title={`Copiar MTGO de ${player.name}`}
-                      aria-label={`Copiar MTGO de ${player.name}`}
+                      title={ui("Copy {0}'s MTGO list", { 0: player.name })}
+                      aria-label={ui("Copy {0}'s MTGO list", { 0: player.name })}
                     >
                       <svg viewBox="0 0 20 20" className="mr-1 h-3.5 w-3.5" aria-hidden="true"><rect x="6.5" y="6.5" width="9" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M13 6.5V4.8A1.3 1.3 0 0 0 11.7 3.5H5A1.5 1.5 0 0 0 3.5 5v8A1.3 1.3 0 0 0 4.8 14.3h1.7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.4" /></svg>
-                      {actionBusy === `copy-${i}` ? <ActionSpinner /> : copiedPlayerIndex === i ? "Copiado" : "Copiar"}
+                      {actionBusy === `copy-${i}` ? <ActionSpinner /> : copiedPlayerIndex === i ? ui("Copied") : ui("Copy")}
                     </Button>
                     <Button
                       type="button"
@@ -464,8 +470,8 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
                       className="h-7 w-7 max-w-7 rounded-full border border-white/15 p-0 text-[#b8aa8e] hover:border-[#d8bf7a]/55 hover:text-[#f2d9a3] disabled:text-[#665d50]"
                       disabled={cardCounts[i] === 0 || Boolean(actionBusy)}
                       onClick={() => handleClearPlayer(i)}
-                      title={`Vaciar mazo de ${player.name}`}
-                      aria-label={`Vaciar mazo de ${player.name}`}
+                      title={ui("Clear {0}'s deck", { 0: player.name })}
+                      aria-label={ui("Clear {0}'s deck", { 0: player.name })}
                     ><svg viewBox="0 0 20 20" className="h-3.5 w-3.5" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg></Button>
                   </div>
                 </div>
@@ -473,13 +479,13 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
             })}
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2 border-t border-white/10 px-1 pt-2">
-            <span className="mr-auto text-[10px] uppercase tracking-wide text-[#8b806b]">Guardá los mazos de todos los jugadores como una configuración.</span>
+            <span className="mr-auto text-[10px] uppercase tracking-wide text-[#8b806b]">{ui("Save every player's deck as one configuration.")}</span>
             <input
               className={`${fieldClass} max-w-[240px] py-1.5 text-[11px]`}
-              placeholder="Nombre tu mazo"
+              placeholder={ui("Name your deck")}
               value={presetName}
               onChange={(event) => setPresetName(event.target.value)}
-              aria-label="Nombre tu mazo"
+              aria-label={ui("Name your deck")}
             />
             <Button
               type="button"
@@ -488,7 +494,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
               className="h-8 max-w-[96px] truncate border border-[#9a7e52]/55 px-3 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
               disabled={!presetName.trim() || totalCards === 0 || Boolean(actionBusy)}
               onClick={() => runAction("saved-save", handleSavePreset)}
-            >{actionBusy === "saved-save" ? <ActionSpinner /> : "Guardar"}</Button>
+            >{actionBusy === "saved-save" ? <ActionSpinner /> : ui("Save")}</Button>
           </div>
         </div>
       </section>

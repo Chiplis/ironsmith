@@ -795,7 +795,7 @@ export default function LobbyOverlay({
                     ) : null}
                     {deckOptions.length > 1 ? (
                       <label className={labelClass}>
-                        {ui("Deck disponible")}
+                        {ui("Available deck")}
                         <select
                           className={inputClass}
                           value={selectedDeckOptionId}
@@ -807,8 +807,11 @@ export default function LobbyOverlay({
                           }}
                         >
                           <option value="">{ui("Custom / edit below")}</option>
+                          {/* A prepared deck's label is a deck name and a
+                              player name, so it never goes through the
+                              translation catalog. */}
                           {deckOptions.map((option) => (
-                            <option key={option.id} value={option.id}>{ui(option.label)}</option>
+                            <option key={option.id} value={option.id}>{option.label}</option>
                           ))}
                         </select>
                       </label>

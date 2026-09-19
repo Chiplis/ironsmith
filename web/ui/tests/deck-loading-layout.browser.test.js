@@ -74,7 +74,7 @@ test('the load-decks workspace holds the catalog and every player deck in one co
     // The selected player is the catalog's target, and "Usar" fills that slot.
     await slots.nth(2).click();
     assert.equal(await slots.nth(2).getAttribute('data-catalog-target'), 'true');
-    await list.getByRole('button', {name: 'Usar'}).first().click();
+    await list.getByRole('button', {name: 'Use'}).first().click();
     const charlieDeck = page.getByLabel('Charlie decklist');
     await charlieDeck.waitFor();
     await page.waitForFunction(() => document.querySelectorAll('textarea')[2]?.value.includes('60 Mountain'));
@@ -103,6 +103,34 @@ test('the load-decks workspace holds the catalog and every player deck in one co
     ]);
     assert.ok(slotWidth > gridWidth * 0.9, `a single player should fill the grid (${slotWidth} of ${gridWidth})`);
 
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test('the workspace reads its copy from the translation catalog', async () => {
+  const server = await createServer({server: {host: '127.0.0.1', port: 0}, logLevel: 'silent'});
+  await server.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({viewport: {width: 1440, height: 900}});
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.addInitScript(() => window.localStorage.setItem('ironsmith.locale', 'es'));
+    await page.route('**/catalog/modern/index.json', (route) => route.fulfill({json: index}));
+    await page.route('**/catalog/modern/search-index.json', (route) => route.fulfill({status: 404, body: ''}));
+    await page.route('**/cards/*.json', (route) => route.fulfill({status: 404, body: ''}));
+    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/deck-loading-layout.html`, {waitUntil: 'domcontentloaded'});
+
+    const workspace = page.locator('[data-deck-workspace]');
+    await workspace.waitFor();
+    await assert.doesNotReject(workspace.getByText('Mazos de los jugadores').waitFor());
+    await assert.doesNotReject(workspace.getByText('Sin mazo asignado').first().waitFor());
+    await assert.doesNotReject(page.getByLabel('Buscar en el catálogo').waitFor());
+    await assert.doesNotReject(page.locator('[data-deck-group="Monocolor"]').waitFor());
+    assert.equal(await page.locator('[data-deck-catalog-list] button', {hasText: 'Usar'}).first().textContent(), 'Usar');
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();
