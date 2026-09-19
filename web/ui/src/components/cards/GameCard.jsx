@@ -1,5 +1,6 @@
 import { cardArtColors } from "@/lib/card-art-colors";
 import LoadingCardArt from "./LoadingCardArt";
+import MobileArenaCardFace from "./MobileArenaCardFace";
 import useUiText from "@/i18n/useUiText";
 import { translateUiText as ui } from "@/i18n/catalog";
 import { useCastTargeting, useCastObjectHovered } from "@/context/DragContext";
@@ -898,7 +899,8 @@ export default function GameCard({
   const displayedArtUrl = variant === "hand" && repairedHandArt?.source === artUrl
     ? repairedHandArt.url || artUrl
     : artUrl;
-  const useTokenBattlefield = variant === "battlefield" && battlefieldVisualMode === "mobile-token";
+  const useArenaBattlefield = variant === "battlefield" && battlefieldVisualMode === "mobile-arena";
+  const useTokenBattlefield = variant === "battlefield" && (battlefieldVisualMode === "mobile-token" || useArenaBattlefield);
   const count = Number(card.count);
   const groupSize = Number.isFinite(count) && count > 1 ? count : 1;
   const battlefieldStackDepth = variant === "battlefield"
@@ -1463,6 +1465,7 @@ export default function GameCard({
         variant === "battlefield" && "field-card",
         usePortraitBattlefield && "battlefield-portrait-card",
         useTokenBattlefield && "battlefield-token-card",
+        useArenaBattlefield && "battlefield-arena-card",
         variant === "hand" && "hand-card",
         compact && "w-[96px] min-w-[96px] min-h-[134px] p-1 text-[14px]",
         !compact && variant === "hand" && "flex-1 basis-0 min-w-0 max-w-[124px] min-h-[100px]",
@@ -1686,11 +1689,14 @@ export default function GameCard({
             </div>
           </div>
         )}
-        {useTokenBattlefield ? (
+        {useArenaBattlefield ? (
+          <MobileArenaCardFace card={resolvedBattlefieldCard} name={displayName} artUrl={artUrl}
+            pending={!artResolved} primary={numericPrimaryBattlefieldInfo} secondary={numericSecondaryBattlefieldInfo} />
+        ) : useTokenBattlefield ? (
           <div className="battlefield-token-shell">
             <svg
               className="battlefield-token-svg"
-              viewBox="0 0 120 120"
+              viewBox="14 0 94 116"
               role="img"
               aria-label={displayName}
               preserveAspectRatio="xMidYMid meet"

@@ -5,7 +5,7 @@ import { useGame } from "@/context/GameContext";
 import { useI18n } from "@/i18n/I18nContext";
 import { useCastTargeting, useCastZoneHovered } from "@/context/DragContext";
 import { useHover } from "@/context/HoverContext";
-import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
+import ZoneArt from "./ZonePileArt";
 import { LOOK_DONE_EVENT, LOOK_FADE_MS, lookViewKey, temporaryLookView, persistentLookCards, mergeLookCards } from "@/lib/look-pile";
 import { samePlayerId } from "@/lib/player-display";
 import { isFaceUpZoneCard, PILE_ZONES, zonePileCards } from "@/lib/zone-piles";
@@ -15,20 +15,6 @@ import SelectionCheckBadge from "@/components/cards/SelectionCheckBadge";
 
 // How long a zone takes to grow when it starts holding something to pick.
 const ZONE_TARGET_GROW_MS = 220;
-
-function ZoneArt({ card }) {
-  const imageRef = useRef(null);
-  const name = isFaceUpZoneCard(card) ? card.name : null;
-  const url = useScryfallImageUrl(name, "normal");
-  useLayoutEffect(() => {
-    const source = imageRef.current?.parentElement;
-    if (!source) return undefined;
-    source.dataset.cardImageUrl = url;
-    return () => { delete source.dataset.cardImageUrl; };
-  }, [url]);
-  return url ? <img ref={imageRef} src={url} alt="" draggable={false} loading="lazy" referrerPolicy="no-referrer" />
-    : <span className="zone-pile-placeholder" aria-hidden="true">{card ? "◇" : "—"}</span>;
-}
 
 function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverride, fading = false, onOpenChange }) {
   const ui = useUiText();
@@ -108,6 +94,15 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
   // A hovered stack object links the cards it is aimed at the same way, so a
   // spell pointed at a card in this pile opens it and marks that card.
   const isStackTargeted = (card) => card != null && hoveredLinkedObjectIds.has(String(card.id));
+  // The card a hover elsewhere stands for -- a dies trigger on the stack whose
+  // source is already in here -- is marked the way an aimed-at card is. A card
+  // the pointer is on itself is not: growing it would move it out from under
+  // the pointer that opened it.
+  const [rowHoveredId, setRowHoveredId] = useState(null);
+  const isHoverSource = (card) => card != null
+    && hoveredObjectId != null
+    && String(card.id) === String(hoveredObjectId)
+    && String(rowHoveredId) !== String(card.id);
   const holdsHoveredCard = (hoveredObjectId != null
     && cards.some((card) => String(card?.id) === String(hoveredObjectId)))
     || cards.some(isStackTargeted);
@@ -125,11 +120,11 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
   }, [holdsHoveredCard]);
   // The strip scrolls sideways; a target deep in a long graveyard would open
   // out of view, so once the strip is up it is scrolled to the marked card.
-  const stackTargetKey = cards.filter(isStackTargeted).map((card) => card.id).join("|");
+  const stackTargetKey = cards.filter((card) => isStackTargeted(card) || isHoverSource(card)).map((card) => card.id).join("|");
   useEffect(() => {
     if (!open || !stackTargetKey) return undefined;
     const frame = requestAnimationFrame(() => {
-      menuRef.current?.querySelector('.zone-pile-card-list [data-stack-target="true"]')
+      menuRef.current?.querySelector('.zone-pile-card-list [data-stack-target="true"], .zone-pile-card-list [data-hover-source="true"]')
         ?.scrollIntoView({ block: "nearest", inline: "nearest" });
     });
     return () => cancelAnimationFrame(frame);
@@ -161,18 +156,22 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     const disabled = (choosingTarget || choosingObject) && !legal;
     const chosen = choosingObject && isObjectChosen(chosenObjectIds, card.id);
     const stackTargeted = isStackTargeted(card);
+    const hoverSource = isHoverSource(card);
     // The check has to sit outside the row button to stay clickable, so the
     // row gets a wrapper of its own strip width.
-    return <span key={card.id} className="zone-pile-card-slot" data-stack-target={stackTargeted ? "true" : undefined}>
+    return <span key={card.id} className="zone-pile-card-slot" data-stack-target={stackTargeted ? "true" : undefined} data-hover-source={hoverSource ? "true" : undefined}>
       <button type="button" className={`zone-pile-card-row${chosen ? " is-chosen" : ""}`}
         aria-label={card.name || ui("Face-down card")}
         data-object-id={String(card.id).startsWith("look-top-") ? undefined : card.id} data-zone-card={zone}
-        data-target-legal={legal ? "true" : undefined} data-stack-target={stackTargeted ? "true" : undefined} disabled={disabled}
+        data-target-legal={legal ? "true" : undefined} data-stack-target={stackTargeted ? "true" : undefined}
+        data-hover-source={hoverSource ? "true" : undefined} disabled={disabled}
         onPointerEnter={(event) => {
+          setRowHoveredId(card.id);
           if (event.pointerType === "touch" || disabled || !isFaceUpZoneCard(card) || String(card.id).startsWith("look-top-")) return;
           hoverCard(card.id);
         }}
         onPointerLeave={(event) => {
+          setRowHoveredId((current) => (String(current) === String(card.id) ? null : current));
           if (event.pointerType !== "touch") clearHover();
         }}
         onFocus={() => {

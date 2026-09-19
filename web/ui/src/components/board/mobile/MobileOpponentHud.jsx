@@ -4,7 +4,6 @@ import { useCallback } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 import { getPlayerAccent } from "@/lib/player-colors";
-import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import useMobileLongPress from "@/hooks/useMobileLongPress";
 import { cn } from "@/lib/utils";
 import { playerDisplayName } from "@/lib/player-display";
@@ -35,14 +34,12 @@ export default function MobileOpponentHud({
   onTap,
   onLongPress,
   targetable = false,
-  manaPool = null,
   trailing = null,
   className,
 }) {
   const ui = useUiText();
   const { state, playerAccentOverrides } = useGame();
   const castPlayerHovered = useCastPlayerHovered(opponent?.index ?? opponent?.id);
-  const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const accent = getPlayerAccent(state?.players || [], opponent?.id, state?.perspective, playerAccentOverrides);
   const isActiveTurn = opponent?.id === state?.active_player;
 
@@ -51,11 +48,10 @@ export default function MobileOpponentHud({
   }, [onLongPress, opponent]);
   const longPress = useMobileLongPress({ onLongPress: handleLongPress });
 
-  const handleTap = useCallback((event) => {
+  const handleTap = useCallback(() => {
     if (longPress.consumeTrigger()) return;
-    if (!shouldHandleClick(event)) return;
     onTap?.(opponent);
-  }, [longPress, onTap, opponent, shouldHandleClick]);
+  }, [longPress, onTap, opponent]);
 
   if (!opponent) {
     return (
@@ -94,10 +90,7 @@ export default function MobileOpponentHud({
         data-player-target={opponent.index ?? opponent.id}
         data-player-target-name={opponent.id ?? opponent.index}
         style={accent ? { "--player-accent": accent.hex } : undefined}
-        onPointerDown={(event) => {
-          longPress.onPointerDown(event);
-          registerPointerDown(event);
-        }}
+        onPointerDown={onLongPress ? longPress.onPointerDown : undefined}
         onPointerMove={longPress.onPointerMove}
         onPointerUp={longPress.onPointerUp}
         onPointerCancel={longPress.onPointerCancel}
@@ -111,15 +104,7 @@ export default function MobileOpponentHud({
             {opponent.life}
           </span>
         </span>
-        <span className="mobile-mtga-hud-zones-meta" aria-hidden="true">{ui("H") + " "}{opponent.hand_size ?? 0}{" " + ui("· G") + " "}{opponent.graveyard_size ?? 0}{" " + ui("· D") + " "}{opponent.library_size ?? 0}
-        </span>
       </button>
-
-      {manaPool ? (
-        <div className="mobile-mtga-hud-mana">
-          {manaPool}
-        </div>
-      ) : null}
 
       {cycleEnabled ? (
         <button

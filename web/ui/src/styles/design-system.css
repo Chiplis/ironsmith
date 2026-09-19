@@ -256,7 +256,16 @@
   width: calc(var(--zone-strip-card-width, 72px) * 1.18);
   transition: width 220ms ease, flex-basis 220ms ease;
 }
-.zone-pile-card-row[data-stack-target="true"] {
+/* The card a hovered stack entry came from (a dies trigger's source, already
+   in the graveyard): the same glow, and a third larger, so the eye lands on
+   it as the pile opens. */
+.zone-pile-menu .zone-pile-card-slot[data-hover-source="true"] {
+  flex-basis: calc(var(--zone-strip-card-width, 72px) * 1.3);
+  width: calc(var(--zone-strip-card-width, 72px) * 1.3);
+  transition: width 220ms ease, flex-basis 220ms ease;
+}
+.zone-pile-card-row[data-stack-target="true"],
+.zone-pile-card-row[data-hover-source="true"] {
   border-color: #fff;
   box-shadow:
     0 0 6px 2px rgba(255, 255, 255, 0.72),
@@ -271,7 +280,8 @@
   .zone-pile { transition: none; }
   /* The slot's transitions are inline, so only an important rule stops them. */
   .zone-pile-slot { transition: none !important; }
-  .zone-pile-menu .zone-pile-card-slot[data-stack-target="true"] { transition: none; }
+  .zone-pile-menu .zone-pile-card-slot[data-stack-target="true"],
+  .zone-pile-menu .zone-pile-card-slot[data-hover-source="true"] { transition: none; }
   .zone-pile-menu[data-slot="popover-content"] { animation: none; }
   .look-eye-effect, .look-eye-glow, .look-eye-lid, .look-eye-iris, .look-eye-pupil { animation: none; }
 }

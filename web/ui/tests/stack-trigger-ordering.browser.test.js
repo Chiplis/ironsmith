@@ -33,6 +33,20 @@ test("pending trigger tiles preview and inspect their source object", async () =
       return page.evaluate(() => document.querySelector('[data-card-hover-preview][data-visible="true"]').dataset.previewObjectId);
     };
     assert.equal(await previewFor(pending.nth(0)), "40", "a Blood Artist trigger previews Blood Artist");
+    // Blood Artist has died: the graveyard opens on its own and the card it
+    // holds for the trigger glows and grows by a third, animated.
+    const sourceRow = page.locator('.zone-pile-menu .zone-pile-card-row[data-object-id="40"]');
+    await sourceRow.waitFor({ timeout: 5000 });
+    assert.equal(await sourceRow.getAttribute("data-hover-source"), "true");
+    assert.equal(await page.locator('.zone-pile-menu .zone-pile-card-row[data-object-id="42"]').getAttribute("data-hover-source"), null, "its neighbour is left alone");
+    assert.match(await sourceRow.evaluate((el) => getComputedStyle(el).boxShadow), /rgba\(255, 255, 255/, "white glow");
+    const sourceSlot = page.locator('.zone-pile-menu .zone-pile-card-slot[data-hover-source="true"]');
+    assert.match(await sourceSlot.evaluate((el) => getComputedStyle(el).transitionProperty), /width/);
+    await page.waitForFunction(() => {
+      const grown = document.querySelector('.zone-pile-menu .zone-pile-card-slot[data-hover-source="true"]');
+      const plain = document.querySelector('.zone-pile-menu .zone-pile-card-slot:not([data-hover-source="true"])');
+      return grown && plain && Math.abs((grown.getBoundingClientRect().width / plain.getBoundingClientRect().width) - 1.3) < 0.03;
+    }, null, { timeout: 5000 });
     await page.mouse.move(900, 700);
     await page.waitForFunction(() => !document.querySelector('[data-card-hover-preview][data-visible="true"]'));
     assert.equal(await previewFor(pending.nth(2)), "41", "the Cutthroat trigger previews Zulaport Cutthroat");

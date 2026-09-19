@@ -57,8 +57,6 @@ export default function TableCore({
   setMobileOpponentIndex,
   mobileViewMode = "battlefield",
   setMobileViewMode,
-  mobilePhaseStops,
-  setMobilePhaseStops,
   middleUtilityControls = null,
   middleTopbar = null,
   middleAddCardBar = null,
@@ -389,9 +387,9 @@ export default function TableCore({
           setMobileOpponentIndex={setMobileOpponentIndex}
           mobileViewMode={mobileViewMode}
           setMobileViewMode={setMobileViewMode}
-          mobilePhaseStops={mobilePhaseStops}
-          setMobilePhaseStops={setMobilePhaseStops}
+          onOpenDecklist={handleOpenDecklist}
         />
+        <OpenDecklistModal decklist={openDecklist} onClose={() => setOpenDecklist(null)} />
         {planarZoneElement}
       </div>
     );

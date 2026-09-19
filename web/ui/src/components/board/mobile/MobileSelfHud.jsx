@@ -2,9 +2,9 @@ import useUiText from "@/i18n/useUiText";
 import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
 import { useCastPlayerHovered } from "@/context/DragContext";
 import { useCallback } from "react";
+import { Library } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 import { getPlayerAccent } from "@/lib/player-colors";
-import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import useMobileLongPress from "@/hooks/useMobileLongPress";
 import { cn } from "@/lib/utils";
 import MobileZoneTray from "./MobileZoneTray";
@@ -31,13 +31,11 @@ export default function MobileSelfHud({
   onLongPress,
   onOpenZone,
   targetable = false,
-  manaPool = null,
   className,
 }) {
   const ui = useUiText();
   const { state, playerAccentOverrides } = useGame();
   const castPlayerHovered = useCastPlayerHovered(me?.index ?? me?.id);
-  const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const accent = getPlayerAccent(state?.players || [], me?.id, state?.perspective, playerAccentOverrides);
   const isActiveTurn = me?.id === state?.active_player;
 
@@ -46,11 +44,10 @@ export default function MobileSelfHud({
   }, [onLongPress, me]);
   const longPress = useMobileLongPress({ onLongPress: handleLongPress });
 
-  const handleTap = useCallback((event) => {
+  const handleTap = useCallback(() => {
     if (longPress.consumeTrigger()) return;
-    if (!shouldHandleClick(event)) return;
     onTap?.(me);
-  }, [longPress, me, onTap, shouldHandleClick]);
+  }, [longPress, me, onTap]);
 
   if (!me) {
     return <footer className={cn("mobile-mtga-self-hud", className)} aria-hidden="true" />;
@@ -71,10 +68,7 @@ export default function MobileSelfHud({
         data-player-target={me.index ?? me.id}
         data-player-target-name={me.id ?? me.index}
         style={accent ? { "--player-accent": accent.hex } : undefined}
-        onPointerDown={(event) => {
-          longPress.onPointerDown(event);
-          registerPointerDown(event);
-        }}
+        onPointerDown={onLongPress ? longPress.onPointerDown : undefined}
         onPointerMove={longPress.onPointerMove}
         onPointerUp={longPress.onPointerUp}
         onPointerCancel={longPress.onPointerCancel}
@@ -87,18 +81,15 @@ export default function MobileSelfHud({
           <span className="mobile-mtga-hud-life" aria-label={ui("Life {0}", { 0: me.life })}>
             {me.life ?? 0}
           </span>
+          <span className="mobile-self-library-count" aria-label={ui("Library ({0})", { 0: me.library_size ?? 0 })}>
+            <Library className="size-3" aria-hidden="true" />{me.library_size ?? 0}
+          </span>
         </span>
       </button>
 
       <PriorityHoldControl />
 
-      {manaPool ? (
-        <div className="mobile-mtga-hud-mana">
-          {manaPool}
-        </div>
-      ) : null}
-
-      <MobileZoneTray player={me} onOpenZone={onOpenZone} />
+      <MobileZoneTray player={me} onOpenZone={onOpenZone} zones={["command", "ante"]} />
     </footer>
   );
 }

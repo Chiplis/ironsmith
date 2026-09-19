@@ -33,10 +33,10 @@ const labelClass =
 const sectionClass =
   "fantasy-sheet-section settings-sheet-section grid gap-3 py-5";
 
-function MenuSection({ eyebrow, title, description, children }) {
+function MenuSection({ eyebrow, title, description, children, className = "" }) {
   const ui = useUiText();
   return (
-    <section className={sectionClass}>
+    <section className={`${sectionClass} ${className}`}>
       <div className="grid gap-1">
         <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">
           {ui(eyebrow)}
@@ -207,6 +207,7 @@ export default function TopbarMenuSheet({
         <div className="settings-sheet-body grid px-4 pb-4">
           {showQuickActions ? (
             <MenuSection
+              className="settings-quick-actions"
               eyebrow={t("settings.quick.eyebrow")}
               title={t("settings.quick.title")}
               description={t("settings.quick.description")}

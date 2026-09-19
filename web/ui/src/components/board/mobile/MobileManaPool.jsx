@@ -32,19 +32,18 @@ export default function MobileManaPool({ pool, interactive = false, side = "self
 
   const chips = MANA_SYMBOLS.map(({ key, symbol, label }) => {
     const amount = Math.max(0, Math.floor(Number(pool?.[key]) || 0));
+    if (amount < 1) return null;
     const actions = activationsByColor.get(key) || [];
     const canActivate = interactive && actions.length > 0;
-    const empty = amount <= 0 && !canActivate;
     return (
       <button
         key={key}
         type="button"
         className={cn(
           "mobile-mtga-mana-pool-chip",
-          empty && "mobile-mtga-mana-pool-chip--empty",
           canActivate && "mobile-mtga-mana-pool-chip--activatable",
         )}
-        disabled={!canActivate || amount > 0 ? !canActivate : false}
+        disabled={!canActivate}
         aria-label={ui("{0} {1} mana{2}", { 0: amount, 1: ui(label), 2: canActivate ? ui(", tap to add mana") : "" })}
         onClick={() => {
           if (!canActivate) return;
@@ -59,7 +58,9 @@ export default function MobileManaPool({ pool, interactive = false, side = "self
         <span className="mobile-mtga-mana-pool-chip-amount">{amount}</span>
       </button>
     );
-  });
+  }).filter(Boolean);
+
+  if (!chips.length) return null;
 
   return (
     <div

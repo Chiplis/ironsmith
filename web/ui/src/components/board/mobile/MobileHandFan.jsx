@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import HandZone from "@/components/board/HandZone";
 import { cn } from "@/lib/utils";
 
@@ -11,6 +11,15 @@ export default function MobileHandFan({
   onInspect,
   className,
 }) {
+  const fanRef = useRef(null);
+  const [availableWidth, setAvailableWidth] = useState(0);
+  useLayoutEffect(() => {
+    const update = () => setAvailableWidth(fanRef.current?.clientWidth || 0);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(fanRef.current);
+    return () => observer.disconnect();
+  }, []);
   const [fanned, setFanned] = useState(false);
   const pendingTapRef = useRef(null);
   const suppressNextClickRef = useRef(false);
@@ -80,6 +89,7 @@ export default function MobileHandFan({
 
   return (
     <div
+      ref={fanRef}
       className={cn(
         "mobile-mtga-hand-fan",
         fanned && "mobile-mtga-hand-fan--fanned",
@@ -100,6 +110,7 @@ export default function MobileHandFan({
           onInspect={onInspect}
           isExpanded
           layout="mobile-fan"
+          availableWidth={availableWidth}
         />
       </div>
     </div>

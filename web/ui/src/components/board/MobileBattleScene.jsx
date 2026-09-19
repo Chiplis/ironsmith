@@ -3,30 +3,28 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
-import { MobileBattleProvider } from "@/context/MobileBattleContext";
 import DecisionPopupLayer from "@/components/overlays/DecisionPopupLayer";
 import ActionPopover from "@/components/overlays/ActionPopover";
 import HoverArtOverlay from "@/components/right-rail/HoverArtOverlay";
+import useModalFocus from "@/hooks/useModalFocus";
+import MobileZoneBrowser from "@/components/board/mobile/MobileZoneBrowser";
 import useMobileBattleLayout from "@/hooks/useMobileBattleLayout";
 import {
   MOBILE_OPPONENT_HUD_HEIGHT_PX,
-  MOBILE_SELF_HUD_HEIGHT_PX,
-  MOBILE_PHASE_STRIP_HEIGHT_PX,
+  MOBILE_CONTROL_BAND_HEIGHT_PX,
   MOBILE_HAND_PEEK_HEIGHT_PX,
   MOBILE_STACK_RAIL_WIDTH_PX,
 } from "@/lib/mobile-battle-layout";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
 import { sameActionRef } from "@/lib/sync-commands";
-import { partitionBattlefieldCards } from "@/lib/battlefield-layout";
-import { normalizePhaseStep } from "@/lib/constants";
+import { partitionArenaBattlefield } from "@/lib/mobile-arena";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import { samePlayerId } from "@/lib/player-display";
 import { requestObjectSelection } from "@/lib/object-selection";
 
 import MobileOpponentHud from "@/components/board/mobile/MobileOpponentHud";
 import MobileSelfHud from "@/components/board/mobile/MobileSelfHud";
-import MobileManaPool from "@/components/board/mobile/MobileManaPool";
-import MobilePhaseStrip from "@/components/board/mobile/MobilePhaseStrip";
+import PhaseTrack from "@/components/board/PhaseTrack";
 import MobileTurnActionStack from "@/components/board/mobile/MobileTurnActionStack";
 import MobileBattlefieldBand from "@/components/board/mobile/MobileBattlefieldBand";
 import MobileHandFan from "@/components/board/mobile/MobileHandFan";
@@ -35,8 +33,7 @@ import MobileViewToggle from "@/components/board/mobile/MobileViewToggle";
 import MobileStackRail from "@/components/board/mobile/MobileStackRail";
 
 const DEFAULT_TOPBAR_HEIGHT = MOBILE_OPPONENT_HUD_HEIGHT_PX;
-const DEFAULT_CONTROL_BAND_HEIGHT = MOBILE_PHASE_STRIP_HEIGHT_PX;
-const DEFAULT_SELF_HUD_HEIGHT = MOBILE_SELF_HUD_HEIGHT_PX;
+const DEFAULT_CONTROL_BAND_HEIGHT = MOBILE_CONTROL_BAND_HEIGHT_PX;
 const DEFAULT_HAND_PEEK_HEIGHT = MOBILE_HAND_PEEK_HEIGHT_PX;
 const MOBILE_CARD_TAP_MAX_DISTANCE_SQ = 16 * 16;
 const MOBILE_OPPONENT_CARD_HIT_SLOP_X = 14;
@@ -92,13 +89,13 @@ function buildActivatableMap(decision, perspective) {
   return map;
 }
 
-function measureElementHeight(target, fallback, setHeight) {
+function measureElementHeight(target, fallback, setHeight, dimension = "height") {
   if (!target) {
     setHeight((current) => current || fallback);
     return null;
   }
   const update = () => {
-    const next = Math.max(fallback, Math.ceil(target.getBoundingClientRect().height || 0));
+    const next = Math.ceil(target.getBoundingClientRect()[dimension] || fallback);
     setHeight((current) => (Math.abs(current - next) < 1 ? current : next));
   };
   update();
@@ -114,18 +111,17 @@ export default function MobileBattleScene({
   focusedStackObjectId = null,
   onInspect,
   onFocusStackObject = null,
+  onOpenDecklist,
   legalTargetPlayerIds = new Set(),
   legalTargetObjectIds = new Set(),
   mobileOpponentIndex = 0,
   setMobileOpponentIndex,
   mobileViewMode = "battlefield",
   setMobileViewMode,
-  mobilePhaseStops,
-  setMobilePhaseStops,
 }) {
   const ui = useUiText();
   void legalTargetObjectIds; // legality already derived from decision; keep prop for parity
-  const { state, dispatch, cancelDecision, setExternalAutoPassGate } = useGame();
+  const { state, dispatch, cancelDecision } = useGame();
   const { combatModeRef } = useCombatArrows();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
 
@@ -143,11 +139,11 @@ export default function MobileBattleScene({
   const visibleStackObjects = useMemo(() => getVisibleStackObjects(state), [state]);
   const stackVisible = visibleStackObjects.length > 0;
   const opponentRows = useMemo(
-    () => partitionBattlefieldCards(activeOpponent?.battlefield || []),
+    () => partitionArenaBattlefield(activeOpponent?.battlefield || []),
     [activeOpponent?.battlefield]
   );
   const selfRows = useMemo(
-    () => partitionBattlefieldCards(me?.battlefield || []),
+    () => partitionArenaBattlefield(me?.battlefield || []),
     [me?.battlefield]
   );
   const opponentCardById = useMemo(() => {
@@ -157,9 +153,6 @@ export default function MobileBattleScene({
     }
     return idx;
   }, [activeOpponent?.battlefield]);
-
-  const opponentManaPool = activeOpponent?.mana_pool || null;
-  const selfManaPool = me?.mana_pool || null;
 
   const activatableMap = useMemo(
     () => buildActivatableMap(state?.decision, state?.perspective),
@@ -205,6 +198,11 @@ export default function MobileBattleScene({
     (state?.decision?.kind === "targets" || state?.decision?.kind === "select_objects")
     && samePlayerId(state?.decision?.player, state?.perspective)
   );
+  // A spell played from the full hand must reveal the board for its targets.
+  // Run on decision transitions so the player can still reopen the hand to read it.
+  useEffect(() => {
+    if (canPickBattlefieldObjects) setMobileViewMode?.("battlefield");
+  }, [canPickBattlefieldObjects, decisionIdentity, setMobileViewMode]);
   const inspectorOpen = selectedObjectId != null;
 
   const opponentTargetable = activeOpponent != null && (
@@ -221,16 +219,18 @@ export default function MobileBattleScene({
   const opponentHudRef = useRef(null);
   const controlBandRef = useRef(null);
   const selfHudRef = useRef(null);
+  const actionControlsRef = useRef(null);
+  const [opponentWidth, setOpponentWidth] = useState(170);
+  const [selfWidth, setSelfWidth] = useState(150);
+  const [actionWidth, setActionWidth] = useState(220);
   const [actionStackElement, setActionStackElement] = useState(null);
 
   const [topbarHeight, setTopbarHeight] = useState(DEFAULT_TOPBAR_HEIGHT);
   const [controlBandHeight, setControlBandHeight] = useState(DEFAULT_CONTROL_BAND_HEIGHT);
-  const [selfHudHeight, setSelfHudHeight] = useState(DEFAULT_SELF_HUD_HEIGHT);
 
   const layout = useMobileBattleLayout({
     topBandHeight: topbarHeight,
     controlBandHeight,
-    selfHudHeight: selfHudHeight,
     handPeekHeight: DEFAULT_HAND_PEEK_HEIGHT,
     stackVisible,
     stackRailWidth: MOBILE_STACK_RAIL_WIDTH_PX,
@@ -240,27 +240,18 @@ export default function MobileBattleScene({
     const observers = [
       measureElementHeight(opponentHudRef.current, DEFAULT_TOPBAR_HEIGHT, setTopbarHeight),
       measureElementHeight(controlBandRef.current, DEFAULT_CONTROL_BAND_HEIGHT, setControlBandHeight),
-      measureElementHeight(selfHudRef.current, DEFAULT_SELF_HUD_HEIGHT, setSelfHudHeight),
+      measureElementHeight(opponentHudRef.current, 170, setOpponentWidth, "width"),
+      measureElementHeight(selfHudRef.current, 150, setSelfWidth, "width"),
+      measureElementHeight(actionControlsRef.current, 220, setActionWidth, "width"),
     ].filter(Boolean);
     return () => {
       for (const observer of observers) observer.disconnect();
     };
   }, [stackVisible, mobileViewMode]);
 
-  // --- Auto-pass gate driven by phase stops --------------------------------
-  useEffect(() => {
-    if (typeof setExternalAutoPassGate !== "function") return undefined;
-    setExternalAutoPassGate((st) => {
-      const key = normalizePhaseStep(st?.phase, st?.step);
-      if (mobilePhaseStops?.has?.(key)) return `stopped at ${key}`;
-      return null;
-    });
-    return () => setExternalAutoPassGate(null);
-  }, [mobilePhaseStops, setExternalAutoPassGate]);
-
   // --- Inspector overlay machinery (salvaged) ------------------------------
   const inspectSuppressUntilRef = useRef(0);
-  const inspectOverlayRef = useRef(null);
+  const inspectOverlayRef = useModalFocus(() => closeInspector(), inspectorOpen);
   const inspectLockReleaseTimerRef = useRef(null);
   const [inspectInteractionLockActive, setInspectInteractionLockActive] = useState(false);
 
@@ -315,7 +306,7 @@ export default function MobileBattleScene({
     return () => {
       for (const t of types) document.removeEventListener(t, blockBackground, opts);
     };
-  }, [inspectInteractionLockActive]);
+  }, [inspectInteractionLockActive, inspectOverlayRef]);
 
   const closeInspector = useCallback(() => {
     inspectSuppressUntilRef.current = performance.now() + 320;
@@ -334,7 +325,7 @@ export default function MobileBattleScene({
     return true;
   }, [onInspect, selectedObjectId]);
 
-  // --- Per-card action popover (long-press a battlefield card) -------------
+  // --- Tap for abilities; long-press for the full card inspector -----------
   const [actionPopoverState, setActionPopoverState] = useState(null);
 
   useEffect(() => {
@@ -657,11 +648,22 @@ export default function MobileBattleScene({
   }, [setMobileViewMode]);
 
   // --- Zone open ----------------------------------------------------------
-  const handleOpenZone = useCallback((zoneKey) => {
-    window.dispatchEvent(new CustomEvent("ironsmith:mobile-open-zone", {
-      detail: { zone: zoneKey, player: me?.id },
-    }));
-  }, [me?.id]);
+  const [openZone, setOpenZone] = useState(null);
+  const handleOpenZone = useCallback((zoneKey, player = me) => {
+    if (zoneKey === "library") {
+      setOpenZone(null);
+      onOpenDecklist?.(player);
+    } else setOpenZone({ zone: zoneKey, playerId: player?.id });
+  }, [me, onOpenDecklist]);
+  useEffect(() => {
+    const openTargetZone = (event) => {
+      const { zone, playerId } = event.detail || {};
+      if (["graveyard", "exile", "command", "ante"].includes(zone)) setOpenZone({ zone, playerId });
+    };
+    window.addEventListener("ironsmith:open-target-zone", openTargetZone);
+    return () => window.removeEventListener("ironsmith:open-target-zone", openTargetZone);
+  }, []);
+  const zonePlayer = openZone && state?.players?.find((player) => samePlayerId(player.id, openZone.playerId));
 
   return (
     <main
@@ -670,8 +672,10 @@ export default function MobileBattleScene({
       data-drop-zone
       data-mobile-battle-scene
       data-stack-visible={stackVisible ? "true" : "false"}
+      data-layout-overflow={layout.fitsViewport ? "false" : "true"}
       data-inspector-open={inspectInteractionLockActive ? "true" : "false"}
       style={{
+        "--mobile-arena-resource-height": `${layout.landHeight}px`,
         "--mobile-battle-card-width": `${layout.cardWidth}px`,
         "--mobile-battle-card-height": `${layout.cardHeight}px`,
         "--mobile-battle-top-status-height": `${layout.topStatusHeight}px`,
@@ -682,20 +686,18 @@ export default function MobileBattleScene({
         "--mobile-battle-scene-padding": `${layout.sidePadding}px`,
         "--mobile-battle-section-gap": `${layout.sectionGap}px`,
         "--mobile-battle-row-gap": `${layout.rowGap}px`,
-        "--mobile-mtga-self-hud-height": `${layout.selfHudHeight}px`,
         "--mobile-mtga-hand-peek-height": `${layout.handPeekHeight}px`,
         "--mobile-mtga-stack-rail-width": `${layout.stackRailWidth}px`,
+        "--mobile-opponent-controls-width": `${opponentWidth}px`,
+        "--mobile-self-controls-width": `${selfWidth}px`,
+        "--mobile-action-controls-width": `${actionWidth}px`,
+        "--mobile-zone-pile-width": `${layout.zonePileWidth}px`,
+        "--mobile-inspector-height": `${Math.min(300, layout.viewportHeight - 44)}px`,
       }}
     >
 
-      <MobileBattleProvider
-        viewMode={mobileViewMode}
-        setViewMode={setMobileViewMode}
-        phaseStops={mobilePhaseStops}
-        setPhaseStops={setMobilePhaseStops}
-      >
         <div className="mobile-mtga-scene-layout">
-          <div ref={opponentHudRef} className="mobile-mtga-scene-row">
+          <div ref={opponentHudRef} className="mobile-mtga-scene-row mobile-opponent-controls">
             <MobileOpponentHud
               opponent={activeOpponent}
               cycleEnabled={cycleEnabled}
@@ -703,24 +705,20 @@ export default function MobileBattleScene({
               nextOpponent={nextOpponent}
               onCyclePrev={() => cycleOpponent(-1)}
               onCycleNext={() => cycleOpponent(1)}
-              onTap={dispatchPlayerChoice}
+              onTap={canPickTargets ? dispatchPlayerChoice : (player) => handleOpenZone("graveyard", player)}
               targetable={opponentTargetable && canPickTargets}
-              manaPool={activeOpponent ? (
-                <MobileManaPool
-                  pool={opponentManaPool}
-                  side="opponent"
-                  interactive={false}
-                  className="mobile-mtga-mana-pool--hud"
-                />
-              ) : null}
             />
           </div>
 
           <MobileBattlefieldBand
             side="opponent"
+            manaIndented={cycleEnabled}
+            player={activeOpponent}
+            onOpenZone={handleOpenZone}
             rows={opponentRows}
             cardWidth={layout.cardWidth}
             cardHeight={layout.cardHeight}
+            landHeight={layout.landHeight}
             selectedObjectId={selectedObjectId}
             onInspect={requestInspectObject}
             onCardClick={handleCardInspect}
@@ -741,16 +739,28 @@ export default function MobileBattleScene({
             className="mobile-mtga-control-row"
             data-mobile-hand-drop-target="battlefield"
           >
-            <MobilePhaseStrip />
-            <MobileTurnActionStack ref={setActionStackElement} />
+            <div ref={selfHudRef} className="mobile-self-controls">
+            <MobileSelfHud
+              me={me}
+              onTap={canPickTargets ? dispatchPlayerChoice : () => handleOpenZone("library")}
+              onOpenZone={handleOpenZone}
+              targetable={selfTargetable && canPickTargets}
+            />
+            </div>
+            <div ref={actionControlsRef} className="mobile-action-controls">
+              <PhaseTrack compact />
+              <MobileTurnActionStack ref={setActionStackElement} />
+            </div>
           </section>
 
           <MobileBattlefieldBand
             side="self"
+            player={me}
+            onOpenZone={handleOpenZone}
             rows={selfRows}
             cardWidth={layout.cardWidth}
             cardHeight={layout.cardHeight}
-            selfBackVisibleHeight={layout.selfBackVisibleHeight}
+            landHeight={layout.landHeight}
             selectedObjectId={selectedObjectId}
             onInspect={requestInspectObject}
             onCardClick={handleCardInspect}
@@ -760,23 +770,6 @@ export default function MobileBattleScene({
             activatableMap={activatableMap}
             legalTargetObjectIds={legalSelectableObjectIds}
           />
-
-          <div ref={selfHudRef} className="mobile-mtga-scene-row mobile-mtga-scene-row--self">
-            <MobileSelfHud
-              me={me}
-              onTap={dispatchPlayerChoice}
-              onOpenZone={handleOpenZone}
-              targetable={selfTargetable && canPickTargets}
-              manaPool={me ? (
-                <MobileManaPool
-                  pool={selfManaPool}
-                  side="self"
-                  interactive
-                  className="mobile-mtga-mana-pool--hud"
-                />
-              ) : null}
-            />
-          </div>
 
           <div className="mobile-mtga-scene-row mobile-mtga-scene-row--hand">
             <MobileHandFan
@@ -826,6 +819,9 @@ export default function MobileBattleScene({
             collapseEquivalentActions={actionPopoverState.collapseEquivalentActions !== false}
             title={ui(actionPopoverState.cardName)}
             variant="game"
+            previewCards={false}
+            fitViewport
+            ariaLabel={ui("Abilities: {0}", { 0: actionPopoverState.cardName })}
             onAction={handlePopoverAction}
             onClose={() => {
               const closingObjectId = actionPopoverState.objectId;
@@ -845,12 +841,24 @@ export default function MobileBattleScene({
           />
         ) : null}
 
+        {openZone && zonePlayer ? (
+          <MobileZoneBrowser player={zonePlayer} zone={openZone.zone}
+            onZoneChange={handleOpenZone}
+            legalIds={legalSelectableObjectIds} choosing={canPickBattlefieldObjects}
+            onClose={() => setOpenZone(null)}
+            onCardClick={(event, card) => {
+              handleCardInspect(event, card);
+              if (canPickBattlefieldObjects) setOpenZone(null);
+            }} />
+        ) : null}
+
         {inspectorOpen ? (
           <div
             ref={inspectOverlayRef}
             className="mobile-battle-inspect-overlay"
             data-card-inspector="true"
             role="dialog"
+            tabIndex={-1}
             aria-modal="true"
             aria-label={ui("Card inspector")}
             onPointerDown={(e) => e.stopPropagation()}
@@ -872,8 +880,8 @@ export default function MobileBattleScene({
                 <HoverArtOverlay
                   objectId={selectedObjectId}
                   displayMode="inspector"
-                  availableInspectorWidth={360}
-                  availableInspectorHeight={228}
+                  availableInspectorWidth={Math.min(820, layout.viewportWidth) - 56}
+                  availableInspectorHeight={Math.min(300, layout.viewportHeight - 44)}
                   minInspectorTextScale={0.54}
                   minInspectorTitleScale={0.46}
                   onInspectorAccentChange={null}
@@ -890,7 +898,6 @@ export default function MobileBattleScene({
             </div>
           </div>
         ) : null}
-      </MobileBattleProvider>
     </main>
   );
 }

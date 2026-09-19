@@ -260,12 +260,16 @@
   color: var(--stack-ink-bright, #f2d9a3);
 }
 
+/* A name gets a second line before it gets an ellipsis: most fit on one, and
+   a long one is worth the extra 13px more than "Zul...". */
 .stack-card-title {
+  display: -webkit-box;
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
   font-size: 13px;
   font-weight: 700;
   line-height: 1.15;

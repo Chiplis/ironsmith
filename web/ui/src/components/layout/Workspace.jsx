@@ -730,8 +730,6 @@ export default function Workspace({
   setMobileOpponentIndex,
   mobileViewMode = "battlefield",
   setMobileViewMode,
-  mobilePhaseStops,
-  setMobilePhaseStops,
   middleUtilityControls = null,
   middleTopbar = null,
   middleAddCardBar = null,
@@ -2027,8 +2025,6 @@ export default function Workspace({
             setMobileOpponentIndex={setMobileOpponentIndex}
             mobileViewMode={mobileViewMode}
             setMobileViewMode={setMobileViewMode}
-            mobilePhaseStops={mobilePhaseStops}
-            setMobilePhaseStops={setMobilePhaseStops}
             middleUtilityControls={middleUtilityControls}
             middleTopbar={middleTopbar}
             middleAddCardBar={middleAddCardBar}

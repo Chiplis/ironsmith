@@ -979,6 +979,7 @@ export default function BattlefieldRow({
       cardHeight,
       overlapPx,
       centerOffset: Math.floor(Number(layoutOverride.centerOffset) || 0),
+      gap: Math.max(0, Number(layoutOverride.gap ?? BATTLEFIELD_GRID_GAP_PX)),
     };
   }, [layoutOverride]);
   const isMobileBattleSingleRowLayout = paperLayoutMode === "single-row" && normalizedLayoutOverride != null;
@@ -1161,7 +1162,8 @@ export default function BattlefieldRow({
     const styles = window.getComputedStyle(row);
     const cardWidth = Number.parseFloat(styles.getPropertyValue("--bf-card-width")) || 72;
     const cardHeight = Number.parseFloat(styles.getPropertyValue("--bf-card-height")) || 101;
-    const gap = Number.parseFloat(styles.getPropertyValue("--bf-gap")) || BATTLEFIELD_GRID_GAP_PX;
+    const parsedGap = Number.parseFloat(styles.getPropertyValue("--bf-gap"));
+    const gap = Number.isFinite(parsedGap) ? parsedGap : BATTLEFIELD_GRID_GAP_PX;
     const overlap = Number.parseFloat(styles.getPropertyValue("--bf-card-overlap")) || 0;
     const slot = battlefieldGridSlotAtPoint({
       x,
@@ -1338,6 +1340,7 @@ export default function BattlefieldRow({
       normalizedLayoutOverride.cardHeight,
       normalizedLayoutOverride.overlapPx,
       normalizedLayoutOverride.centerOffset,
+      normalizedLayoutOverride.gap,
     ].join(":")
     : "";
   const syncOverflowMode = useCallback((layout) => {
@@ -1437,7 +1440,7 @@ export default function BattlefieldRow({
       syncOverflowMode({
         rows: normalizedLayoutOverride.rows,
         cardHeight: normalizedLayoutOverride.cardHeight,
-        gap: BATTLEFIELD_GRID_GAP_PX,
+        gap: normalizedLayoutOverride.gap,
         viewportHeight: row.clientHeight,
       });
       if (isPaperBattlefieldLayout && !placementPreviewCard) {
@@ -2202,7 +2205,7 @@ export default function BattlefieldRow({
     handInspectionLockedRef.current = false;
     // A direct field click is also a navigation starting point. Preserve the
     // focus so the next arrow key continues from this exact permanent.
-    keyboardNavigationRef.current = true;
+    keyboardNavigationRef.current = !mobileObjectGesturesEnabled;
     clearTimeout(keyboardExitTimerRef.current);
     event.currentTarget?.focus?.({ preventScroll: true });
     const manaActions = (paymentActionMap.get(Number(card?.id)) || []);
@@ -2470,8 +2473,8 @@ export default function BattlefieldRow({
       onClick={handleRowClickFallback}
       style={{
         "--bf-top-safe-inset": `${Math.max(0, Number(topSafeInset) || 0)}px`,
-        "--bf-gap": `${BATTLEFIELD_GRID_GAP_PX}px`,
-        gap: `${BATTLEFIELD_GRID_GAP_PX}px`,
+        "--bf-gap": `${normalizedLayoutOverride?.gap ?? BATTLEFIELD_GRID_GAP_PX}px`,
+        gap: `${normalizedLayoutOverride?.gap ?? BATTLEFIELD_GRID_GAP_PX}px`,
         gridTemplateColumns: `repeat(var(--bf-cols, 1), minmax(0, calc(var(--bf-card-width, 72px) - var(--bf-card-overlap, 0px))))`,
         gridTemplateRows: isPaperBattlefieldLayout
           ? `repeat(var(--bf-rows, 1), var(--bf-card-height, 101px))`
@@ -2632,7 +2635,7 @@ export default function BattlefieldRow({
             isNew={isNew}
             isBumped={isBumped}
             bumpDirection={bumpDir}
-            battlefieldVisualMode={useMobileBattlefieldToken ? "mobile-token" : "portrait"}
+            battlefieldVisualMode={isMobileBattleSingleRowLayout ? "mobile-arena" : useMobileBattlefieldToken ? "mobile-token" : "portrait"}
             suppressTooltip={suppressTooltip}
             onClick={isLayoutHold ? undefined : ((event) => handleCardSelectionClick(event, card))}
             onKeyboardActivate={isLayoutHold ? undefined : ((event) => handleCardKeyboardActivate(event, card))}
@@ -2643,12 +2646,16 @@ export default function BattlefieldRow({
             onPointerCancel={isLayoutHold ? undefined : handleCardPointerPressEnd}
             onPointerLeave={isLayoutHold ? undefined : handleCardPointerPressEnd}
             onMouseEnter={isLayoutHold ? undefined : ((event) => {
+              if (mobileObjectGesturesEnabled) return;
               if (keyboardNavigationRef.current || handInspectionLockedRef.current) return;
               if (!showManaPopover(event, card)) { closeManaPopover(); hoverCard(card.id); event.currentTarget.focus({ preventScroll: true }); }
             })}
             onMouseLeave={isLayoutHold ? undefined : (() => { clearHover(); leaveManaPopover(); })}
             onFocus={isLayoutHold ? undefined : (() => {
               closeManaPopover();
+              // Touch browsers focus the card before delivering its click.
+              // Mobile focus must not open an inspector over the ability menu.
+              if (mobileObjectGesturesEnabled) return;
               if (handInspectionLockedRef.current && !keyboardNavigationRef.current) return;
               hoverCard(card.id);
               // Mouse focus is only hover. Keyboard focus is the user's
@@ -2703,7 +2710,7 @@ export default function BattlefieldRow({
           compact={compact}
           className="battlefield-freeze-card"
           sourceImageUrl={position.sourceImageUrl}
-          battlefieldVisualMode={useMobileBattlefieldToken ? "mobile-token" : useDesktopPortraitBattlefield ? "portrait" : "classic"}
+          battlefieldVisualMode={isMobileBattleSingleRowLayout ? "mobile-arena" : useMobileBattlefieldToken ? "mobile-token" : useDesktopPortraitBattlefield ? "portrait" : "classic"}
           suppressTooltip
           style={{
             position: "absolute",
@@ -2726,7 +2733,7 @@ export default function BattlefieldRow({
         <BattlefieldGhostCard
           key={ghost.key}
           ghost={ghost}
-          battlefieldVisualMode={useMobileBattlefieldToken ? "mobile-token" : useDesktopPortraitBattlefield ? "portrait" : "classic"}
+          battlefieldVisualMode={isMobileBattleSingleRowLayout ? "mobile-arena" : useMobileBattlefieldToken ? "mobile-token" : useDesktopPortraitBattlefield ? "portrait" : "classic"}
           compact={compact}
           onDone={handleGhostDone}
         />

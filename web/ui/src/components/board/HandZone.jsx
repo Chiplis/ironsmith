@@ -407,6 +407,7 @@ export default function HandZone({
   selectedObjectId,
   isExpanded = false,
   layout = "fan",
+  availableWidth = null,
 }) {
   const ui = useUiText();
   const { state, multiplayer } = useGame();
@@ -765,10 +766,18 @@ export default function HandZone({
   const isMobileFan = layout === "mobile-fan" || layout === "mobile-fullscreen";
   const isVerticalRail = layout === "vertical-rail";
   const isRoulette = !isVerticalRail && !isMobileFan && renderedHandCardCount >= HAND_ROULETTE_THRESHOLD;
-  const handDimensions = useMemo(
-    () => computeManabrewHandDimensions(handScale, viewportHeight),
-    [handScale, viewportHeight]
-  );
+  const handDimensions = useMemo(() => {
+    const dimensions = computeManabrewHandDimensions(handScale, viewportHeight);
+    // The fullscreen hand is already sized for reading. Desktop's upward lift
+    // would move its title above the safe header on short landscape phones.
+    if (layout === "mobile-fullscreen") {
+      return { ...dimensions, hoverLift: 0, hoverScale: 1.05 };
+    }
+    if (layout === "mobile-fan" && availableWidth > 0) {
+      return { ...dimensions, minSpread: 0, spreadWidth: Math.max(dimensions.cardW, availableWidth - 48) };
+    }
+    return dimensions;
+  }, [handScale, viewportHeight, layout, availableWidth]);
   // Only one interaction source may drive the fan at a time. In particular,
   // do not combine a stale keyboard selection with a newly hovered card while
   // the pointer is taking control back from the arrow-key mode.

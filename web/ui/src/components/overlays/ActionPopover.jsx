@@ -1,6 +1,6 @@
 import useUiText from "@/i18n/useUiText";
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useHoverActions } from "@/context/HoverContext";
 import { SymbolText } from "@/lib/mana-symbols";
 import { buildPriorityActionGroups } from "@/lib/priority-action-groups";
@@ -34,6 +34,7 @@ export default function ActionPopover({
   variant = "light",
   collapseEquivalentActions = true,
   previewCards = true,
+  fitViewport = false,
   disabled = false,
   anchorElement = null,
   focusOnOpen = false,
@@ -48,6 +49,16 @@ export default function ActionPopover({
   const { hoverCard, clearHover } = useHoverActions();
   const [phase, setPhase] = useState("entering");
   const [hoveredIdx, setHoveredIdx] = useState(-1);
+  const [measuredHeight, setMeasuredHeight] = useState(null);
+
+  useLayoutEffect(() => {
+    if (!fitViewport || !ref.current) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setMeasuredHeight(entry.target.offsetHeight);
+    });
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [fitViewport]);
 
   useEffect(() => {
     openedAtRef.current = Date.now();
@@ -149,7 +160,10 @@ export default function ActionPopover({
     ),
     [actions, collapseEquivalentActions]
   );
-  const popoverHeight = (actionGroups.length * rowHeight) + headerHeight + 16;
+  const estimatedHeight = (actionGroups.length * rowHeight) + headerHeight + 16;
+  const popoverHeight = fitViewport
+    ? Math.min(measuredHeight ?? estimatedHeight, window.innerHeight - 16)
+    : estimatedHeight;
   const anchorCenterX = anchorRect.left + anchorRect.width / 2;
   const maxLeft = window.innerWidth - 16;
   const left = Math.max(8, Math.min(anchorCenterX - popoverWidth / 2, maxLeft - popoverWidth));
@@ -157,9 +171,12 @@ export default function ActionPopover({
   const spaceAbove = anchorRect.top - 8;
   const spaceBelow = viewportHeight - anchorRect.bottom - 8;
   const placeAbove = spaceAbove >= popoverHeight || spaceAbove > spaceBelow;
-  const top = placeAbove
+  const preferredTop = placeAbove
     ? Math.max(8, anchorRect.top - popoverHeight - 14)
     : Math.min(viewportHeight - popoverHeight - 8, anchorRect.bottom + 14);
+  const top = fitViewport
+    ? Math.max(8, Math.min(preferredTop, viewportHeight - popoverHeight - 8))
+    : preferredTop;
   const tailLeft = Math.max(16, Math.min(anchorCenterX - left, popoverWidth - 16));
 
   const originX = tailLeft;
@@ -201,6 +218,9 @@ export default function ActionPopover({
         className="min-w-[200px] rounded-none overflow-hidden"
         style={{
           width: `${popoverWidth}px`,
+          maxHeight: fitViewport ? "calc(100dvh - 16px)" : undefined,
+          overflowY: fitViewport ? "auto" : undefined,
+          overscrollBehavior: fitViewport ? "contain" : undefined,
           background: palette.panel,
           border: variant === "game" ? "1px solid var(--ui-border-strong, rgba(218, 188, 126, 0.42))" : "none",
         }}
@@ -239,6 +259,7 @@ export default function ActionPopover({
               className="px-3 py-2 cursor-pointer select-none transition-colors duration-150"
               style={{
                 fontSize: variant === "game" ? "12px" : "14px",
+                minHeight: fitViewport ? "44px" : undefined,
                 fontWeight: variant === "game" ? 600 : 700,
                 opacity: disabled ? 0.5 : 1,
                 lineHeight: 1.4,

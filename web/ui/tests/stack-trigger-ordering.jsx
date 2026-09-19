@@ -6,6 +6,7 @@ import { DragProvider } from "../src/context/DragContext";
 import { I18nProvider } from "../src/i18n/I18nContext";
 import FloatingCardPreview from "../src/components/right-rail/FloatingCardPreview";
 import StackTimelineRail from "../src/components/right-rail/StackTimelineRail";
+import PlayerZonePiles from "../src/components/board/PlayerZonePiles";
 import { buildTriggerOrderingKey, normalizeTriggerOrderingOrder } from "../src/lib/trigger-ordering";
 import "../src/index.css";
 
@@ -17,7 +18,7 @@ const bloodArtist = {
   id: 40, stable_id: 40, name: "Blood Artist", type_line: "Creature — Vampire", power: "0", toughness: "1",
   oracle_text: "Whenever Blood Artist or another creature dies, target player loses 1 life and you gain 1 life.",
   compiled_text: ["Whenever Blood Artist or another creature dies, target player loses 1 life and you gain 1 life."],
-  zone: "Battlefield", controller: 0, owner: 0,
+  zone: "Graveyard", controller: 0, owner: 0,
 };
 const cutthroat = {
   id: 41, stable_id: 41, name: "Zulaport Cutthroat", type_line: "Creature — Human Rogue Ally", power: "1", toughness: "1",
@@ -56,7 +57,7 @@ function Fixture() {
   const state = useMemo(() => ({
     perspective: 0,
     players: [
-      { id: 0, name: "Alice", battlefield: [bloodArtist, cutthroat], hand_cards: [], graveyard_cards: [], exile_cards: [] },
+      { id: 0, name: "Alice", battlefield: [cutthroat], hand_cards: [], graveyard_size: 2, graveyard_cards: [bloodArtist, { id: 42, stable_id: 42, name: "Swamp", zone: "Graveyard", controller: 0, owner: 0 }], exile_cards: [] },
       { id: 1, name: "Bob", battlefield: [], hand_cards: [], graveyard_cards: [], exile_cards: [] },
     ],
     stack_objects: stack,
@@ -79,7 +80,8 @@ function Fixture() {
   return (
     <GameContext.Provider value={value}><HoverProvider><DragProvider>
       <div data-my-zone style={{ position: "relative", margin: 20 }}>
-        <div className="my-zone-board-shell" style={{ position: "relative", height: 560, width: 720 }}>
+        <div className="my-zone-board-shell has-zone-piles" style={{ position: "relative", height: 560, width: 720 }}>
+          <PlayerZonePiles player={state.players[0]} legalTargetObjectIds={new Set()} onCardClick={() => {}} />
           <div className="my-zone-stack-rail">
             <StackTimelineRail
               inlineFlow

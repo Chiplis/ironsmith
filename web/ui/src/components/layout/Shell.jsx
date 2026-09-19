@@ -82,7 +82,6 @@ export default function Shell() {
   const [initializationError, setInitializationError] = useState(null);
   const [mobileOpponentIndex, setMobileOpponentIndex] = useState(0);
   const [mobileViewMode, setMobileViewMode] = useState("battlefield");
-  const [mobilePhaseStops, setMobilePhaseStops] = useState(() => new Set());
   const [notices, setNotices] = useState([]);
   const { landscapeMobileViewport, nonDesktopViewport, tabletCompactViewport, smallDesktopViewport } = useViewportLayout();
   const nextNoticeIdRef = useRef(1);
@@ -764,8 +763,6 @@ export default function Shell() {
         setMobileOpponentIndex={setMobileOpponentIndex}
         mobileViewMode={mobileViewMode}
         setMobileViewMode={setMobileViewMode}
-        mobilePhaseStops={mobilePhaseStops}
-        setMobilePhaseStops={setMobilePhaseStops}
         middleUtilityControls={dockToolbarsInTable ? utilityControlsElement : null}
         middleTopbar={dockToolbarsInTable ? topbarElement : null}
         middleAddCardBar={null}

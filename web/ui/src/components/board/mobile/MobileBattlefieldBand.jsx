@@ -1,4 +1,6 @@
 import MobileBattlefieldLane from "@/components/board/MobileBattlefieldLane";
+import MobileZonePiles from "./MobileZonePiles";
+import MobileManaPool from "./MobileManaPool";
 import { cn } from "@/lib/utils";
 
 // Wraps two `MobileBattlefieldLane` rows for one player. Side="opponent" applies the
@@ -7,10 +9,13 @@ import { cn } from "@/lib/utils";
 // dragged from MobileHandFan can land on the battlefield to dispatch a priority play.
 export default function MobileBattlefieldBand({
   side,
+  player,
+  onOpenZone,
+  manaIndented = false,
   rows,
   cardWidth,
   cardHeight,
-  selfBackVisibleHeight,
+  landHeight,
   selectedObjectId,
   onInspect,
   onCardClick,
@@ -41,36 +46,23 @@ export default function MobileBattlefieldBand({
       }
     : { "data-mobile-hand-drop-target": "battlefield" };
 
-  // Opponent: back row above front row. Self: front row above back row (back row clipped).
-  const lanes = isOpponent
-    ? [
-        {
-          key: "back",
-          cards: rows.backCards,
-          clippedHeight: null,
-          laneClass: "mobile-mtga-battlefield-lane--opponent-back",
-        },
-        {
-          key: "front",
-          cards: rows.frontCards,
-          clippedHeight: null,
-          laneClass: "mobile-mtga-battlefield-lane--opponent-front",
-        },
-      ]
-    : [
-        {
-          key: "front",
-          cards: rows.frontCards,
-          clippedHeight: null,
-          laneClass: "mobile-mtga-battlefield-lane--self-front",
-        },
-        {
-          key: "back",
-          cards: rows.backCards,
-          clippedHeight: selfBackVisibleHeight,
-          laneClass: "mobile-mtga-battlefield-lane--self-back",
-        },
-      ];
+  const laneProps = {
+    battlefieldSide, selectedObjectId, onInspect, onCardClick, onCardPointerDown,
+    onMobileCardActionMenu, onMobileCardLongPress, activatableMap, legalTargetObjectIds,
+  };
+  const resourceRow = <div className="arena-resource-row" key="resources">
+    <MobileBattlefieldLane {...laneProps} cards={rows.backCards} cardHeight={landHeight}
+      cardWidth={Math.floor(landHeight * 1.35)} className="arena-land-lane" />
+    <div className="arena-avatar-space" aria-hidden="true" />
+    <MobileBattlefieldLane {...laneProps} cards={rows.supportCards || []} cardHeight={landHeight}
+      cardWidth={Math.floor(landHeight * 1.24)} className="arena-support-lane" />
+  </div>;
+  const combatRow = <div className="arena-combat-row" key="combat">
+    <MobileBattlefieldLane {...laneProps} cards={rows.frontCards} cardHeight={cardHeight}
+      cardWidth={cardWidth} className="arena-creature-lane" />
+    {rows.specialCards?.length > 0 && <MobileBattlefieldLane {...laneProps} cards={rows.specialCards}
+      cardHeight={cardHeight} cardWidth={cardWidth} className="arena-special-lane" />}
+  </div>;
 
   return (
     <section
@@ -81,27 +73,14 @@ export default function MobileBattlefieldBand({
           : "mobile-mtga-battlefield-band--self",
         className,
       )}
-      {...wrapperProps}
+      data-mana-indented={manaIndented || undefined}
+      data-has-mana={Object.values(player?.mana_pool || {}).some((amount) => Number(amount) >= 1) || undefined}
     >
-      {lanes.map(({ key, cards, clippedHeight, laneClass }) => (
-        <MobileBattlefieldLane
-          key={key}
-          cards={cards}
-          cardHeight={cardHeight}
-          cardWidth={cardWidth}
-          clippedHeight={clippedHeight}
-          battlefieldSide={battlefieldSide}
-          selectedObjectId={selectedObjectId}
-          onInspect={onInspect}
-          onCardClick={onCardClick}
-          onCardPointerDown={onCardPointerDown}
-          onMobileCardActionMenu={onMobileCardActionMenu}
-          onMobileCardLongPress={onMobileCardLongPress}
-          activatableMap={activatableMap}
-          legalTargetObjectIds={legalTargetObjectIds}
-          className={laneClass}
-        />
-      ))}
+      <MobileManaPool pool={player?.mana_pool} side={side} interactive={!isOpponent} className="mobile-mana-column" />
+      <div className="mobile-battlefield-lanes" {...wrapperProps}>
+        {isOpponent ? [resourceRow, combatRow] : [combatRow, resourceRow]}
+      </div>
+      <MobileZonePiles player={player} onOpenZone={onOpenZone} legalTargetObjectIds={legalTargetObjectIds} />
     </section>
   );
 }

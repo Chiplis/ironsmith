@@ -21,8 +21,8 @@ function zoneCount(player, zone) {
     case "library":
       return Number(player?.library_size ?? 0);
     case "command":
-      return Array.isArray(player?.command_zone)
-        ? player.command_zone.length
+      return Array.isArray(player?.command_cards)
+        ? player.command_cards.length
         : Number(player?.command_size ?? 0);
     case "ante":
       return Array.isArray(player?.ante_cards)
@@ -33,11 +33,12 @@ function zoneCount(player, zone) {
   }
 }
 
-export default function MobileZoneTray({ player, onOpenZone, className }) {
+export default function MobileZoneTray({ player, onOpenZone, className, zones }) {
   const ui = useUiText();
   if (!player) return null;
   const items = ZONES.map((zone) => {
     const { key, label, short } = zone;
+    if (zones && !zones.includes(key)) return null;
     const ZoneIcon = zone.Icon;
     const count = zoneCount(player, key);
     if ((key === "command" || key === "ante") && count <= 0) return null;
@@ -56,6 +57,8 @@ export default function MobileZoneTray({ player, onOpenZone, className }) {
       </button>
     );
   }).filter(Boolean);
+
+  if (!items.length) return null;
 
   return (
     <div
