@@ -267,6 +267,24 @@ test('a band that merged two tightly leaded lines is split at the blank row betw
   assert.deepEqual(splitMergedLineBands([{top: 440, bottom: 453}], counts), [{top: 440, bottom: 453}]);
 });
 
+test('a band that merged two lines through a one-pixel join row is split there too', async () => {
+  const {splitMergedLineBands} = await import('../src/lib/card-frame-colors.js');
+  // Cori-Steel Cutter (PTDM 103s), rows 432-468 of its text box. The join row
+  // at 451 holds one pixel of a descender, so there is no blank row for the
+  // splitter to find; both lines read as one 37-row band, which the line
+  // filters reject, and the box was measured from its third line instead.
+  const counts = new Array(500).fill(0);
+  const put = (from, values) => values.forEach((count, i) => { counts[from + i] = count; });
+  put(432, [10, 27, 26, 22, 22, 130, 164, 140, 133, 100, 93, 102, 151, 193, 70, 10, 13, 22, 4]);
+  put(451, [1, 10, 8, 6, 10, 76, 95, 61, 61, 56, 53, 56, 76, 104, 29, 2, 3, 5, 1]);
+  put(479, [35, 29, 19, 19, 92, 196, 164, 136, 153, 113, 111, 123, 176, 142, 6, 8, 14, 10]);
+
+  assert.deepEqual(
+    splitMergedLineBands([{top: 432, bottom: 468}, {top: 479, bottom: 496}], counts),
+    [{top: 432, bottom: 450}, {top: 452, bottom: 468}, {top: 479, bottom: 496}],
+  );
+});
+
 test('a failed mask still places every container, measured where it could be', async () => {
   const {placedFrameStyle, defaultFrameBoxes} = await import('../src/lib/card-frame-colors.js');
   const scan = {width: 488, height: 680};

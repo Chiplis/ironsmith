@@ -94,13 +94,20 @@ export function dropTargetCandidateFromElement(element) {
   const card = element.closest(".game-card[data-object-id]")
     || element.closest("[data-zone-card][data-object-id]");
   if (card) {
-    const objectIds = [
-      finiteNumber(card.getAttribute("data-object-id")),
-      ...commaSeparatedNumbers(card.getAttribute("data-member-object-ids")),
-    ].filter((value) => value != null);
+    // A tile that stands for something other than its own id -- a stack entry
+    // is drawn under a presentation id -- says which engine objects a targeting
+    // decision may name for it. An empty list means it names nothing.
+    const targetIds = card.getAttribute("data-target-object-ids");
+    const objectIds = targetIds != null
+      ? commaSeparatedNumbers(targetIds)
+      : [
+        finiteNumber(card.getAttribute("data-object-id")),
+        ...commaSeparatedNumbers(card.getAttribute("data-member-object-ids")),
+      ].filter((value) => value != null);
     if (objectIds.length > 0) {
       return { kind: "object", objectIds: Array.from(new Set(objectIds)) };
     }
+    if (targetIds != null) return null;
   }
 
   const pile = element.closest("[data-zone-pile][data-zone-owner]");

@@ -1,8 +1,12 @@
 import useUiText from "@/i18n/useUiText";
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useGame } from "@/context/GameContext";
+import { useCastObjectHovered, useCastTargeting } from "@/context/DragContext";
 import { useHoverActions } from "@/context/HoverContext";
 import { resolveStackInspectObjectId } from "@/lib/inspector-selection";
+import { samePlayerId } from "@/lib/player-display";
+import { stackEntryIsLegalTarget, stackEntryTargetObjectIds } from "@/lib/stack-targets";
+import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import PlayerStackAlert from "@/components/board/PlayerStackAlert";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
@@ -31,9 +35,33 @@ export default function StackCard({
   const {
     hoverCard,
     clearHover,
+    clearAnchoredCardPreview,
     showAnchoredCardPreview,
     scheduleAnchoredCardPreviewClear,
   } = useHoverActions();
+  // A spell being aimed from the hand -- Counterspell dragged out of it -- can
+  // land on this tile the way it lands on a creature: the tile lights up as a
+  // legal target while the gesture is live and the release names it. The
+  // decision may be the engine's own (one way to cast the card puts it on the
+  // stack at once) or the preview a provisional gesture carries.
+  const castIntent = useCastTargeting();
+  const liveTargetDecision = state?.decision?.kind === "targets" ? state.decision : null;
+  const targetDecision = liveTargetDecision || castIntent?.targetDecision || null;
+  const targetingMode = Boolean(castIntent) || Boolean(liveTargetDecision);
+  const targetObjectIdKey = stackEntryTargetObjectIds(entry).join(",");
+  const targetObjectIds = useMemo(
+    () => (targetObjectIdKey ? targetObjectIdKey.split(",").map(Number) : []),
+    [targetObjectIdKey],
+  );
+  const isLegalTarget = targetingMode && stackEntryIsLegalTarget(targetDecision, entry);
+  const castObjectHovered = useCastObjectHovered(targetObjectIds);
+  const isCastTargetHovered = isLegalTarget && castObjectHovered;
+  // A tile that owns its click (the desktop rails) also owns the pick. The
+  // mobile rail wraps the tile in its own tap handling and passes no onClick.
+  const canPickTarget = isLegalTarget
+    && typeof onClick === "function"
+    && samePlayerId(targetDecision?.player, state?.perspective);
+  const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const name = entry.name || `Object#${entry.id}`;
   const artUrl = useScryfallImageUrl(name, "art_crop");
   const scryfallUrl = useScryfallImageUrl(name);
@@ -88,12 +116,30 @@ export default function StackCard({
   // The click does not touch the preview. Hovering already shows this entry,
   // so there is nothing for a click to reveal -- and clearing it here made the
   // frame blink out and reappear from the pinned path instead.
-  const handleClick = useCallback(() => {
+  const handleClick = useCallback((event) => {
+    // The pointerdown already made the pick; the click the browser follows it
+    // with must not toggle that pick back off.
+    if (canPickTarget && !shouldHandleClick(event)) return;
     onClick?.(entry.inspect_object_id ?? entry.id, {
       source: "stack",
       stackEntry: entry,
     });
-  }, [entry, onClick]);
+  }, [canPickTarget, entry, onClick, shouldHandleClick]);
+  // Picked on pointerdown like a battlefield card, so the choice lands the
+  // moment the button goes down. A provisional gesture (several ways to cast
+  // the held card) has opened no decision yet: its release names the target,
+  // and registering the press only keeps the trailing click from inspecting.
+  const handlePointerDown = useCallback((event) => {
+    if (!canPickTarget || !registerPointerDown(event)) return;
+    if (!liveTargetDecision) return;
+    event.preventDefault();
+    event.stopPropagation();
+    clearHover();
+    clearAnchoredCardPreview();
+    window.dispatchEvent(new CustomEvent("ironsmith:target-choice", {
+      detail: { target: { kind: "object", object: targetObjectIds[0] } },
+    }));
+  }, [canPickTarget, clearAnchoredCardPreview, clearHover, liveTargetDecision, registerPointerDown, targetObjectIds]);
   const rootRef = useRef(null);
   const motionRef = useRef(null);
 
@@ -146,13 +192,18 @@ export default function StackCard({
           "game-card stack-card stack-card--compact overflow-hidden",
           onClick ? "cursor-pointer" : "cursor-default",
           isActive && "stack-card-active",
+          targetingMode && "card-targeting-mode",
+          isLegalTarget && "target-legal",
+          isCastTargetHovered && "hovered",
           isLeaving && "pointer-events-none",
           className
         )}
         data-object-id={entry.id}
+        data-target-object-ids={targetObjectIdKey}
         data-card-image-url={artUrl || ''}
         data-card-name={name}
         onClick={handleClick}
+        onPointerDown={handlePointerDown}
         onMouseEnter={handleHoverEnter}
         onMouseLeave={handleHoverLeave}
         style={stackAccentStyle}
@@ -184,13 +235,18 @@ export default function StackCard({
         onClick ? "cursor-pointer" : "cursor-default",
         isActive && "stack-card-active",
         hasReorderControls && "stack-card-reorderable",
+        targetingMode && "card-targeting-mode",
+        isLegalTarget && "target-legal",
+        isCastTargetHovered && "hovered",
         isLeaving && "pointer-events-none",
         className
       )}
       data-object-id={entry.id}
+      data-target-object-ids={targetObjectIdKey}
       data-card-image-url={artUrl || ''}
       data-card-name={name}
       onClick={handleClick}
+      onPointerDown={handlePointerDown}
       onMouseEnter={handleHoverEnter}
       onMouseLeave={handleHoverLeave}
       style={stackAccentStyle}

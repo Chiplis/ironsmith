@@ -29,6 +29,7 @@ import {
   normalizeZoneViews,
   stackInspectObjectId,
   hoveredObjectZoneViews,
+  stackEntryTargetObjectIds,
   stackSelectionKeys,
 } from "@/lib/stack-targets";
 import { optionForClickedObject } from "@/lib/decision-object-meta";
@@ -1246,14 +1247,19 @@ export default function Workspace({
         setSelectedObjectId(null);
         setPinnedInspectorObjectId(null);
         setFocusedStackObjectId(null);
+        // A stack tile is targeted by the spell it stands for, never by the
+        // permanent an ability on the stack came from.
+        const targetObjectId = options?.source === "stack"
+          ? (stackEntryTargetObjectIds(options?.stackEntry)[0] ?? null)
+          : objectId;
         if (
           samePlayerId(decision.player, state?.perspective)
-          && objectId != null
-          && legalTargetObjectIds.has(Number(objectId))
+          && targetObjectId != null
+          && legalTargetObjectIds.has(Number(targetObjectId))
         ) {
           window.dispatchEvent(
             new CustomEvent("ironsmith:target-choice", {
-              detail: { target: { kind: "object", object: Number(objectId) } },
+              detail: { target: { kind: "object", object: Number(targetObjectId) } },
             })
           );
         }

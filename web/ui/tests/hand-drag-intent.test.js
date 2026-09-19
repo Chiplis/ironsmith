@@ -252,3 +252,26 @@ test("zone drops open the pile while expanded rows resolve to their specific car
   assert.equal(legalTargetForDropCandidate({kind:"targets",requirements:[{legal_targets:[{kind:"object",object:42}]}]},candidate),null);
   assert.deepEqual(dropTargetCandidateFromElements([rowHit,pileHit]),{kind:"object",objectIds:[42]});
 });
+
+test("a stack tile is a drop target for the spell it stands for, not its presentation id", () => {
+  const stackTile = (attributes) => ({
+    getAttribute: (name) => (name in attributes ? attributes[name] : null),
+    closest(selector) { return selector === ".game-card[data-object-id]" ? this : null; },
+  });
+  // A spell on the stack: drawn as 272, targeted as 136.
+  assert.deepEqual(
+    dropTargetCandidateFromElements([stackTile({ "data-object-id": "272", "data-target-object-ids": "136" })]),
+    { kind: "object", objectIds: [136] },
+  );
+  // An ability on the stack names no target object at all, even though a
+  // battlefield object may share its presentation id.
+  assert.equal(
+    dropTargetCandidateFromElements([stackTile({ "data-object-id": "45", "data-target-object-ids": "" })]),
+    null,
+  );
+  // Tiles without the attribute keep resolving through their own ids.
+  assert.deepEqual(
+    dropTargetCandidateFromElements([stackTile({ "data-object-id": "45" })]),
+    { kind: "object", objectIds: [45] },
+  );
+});

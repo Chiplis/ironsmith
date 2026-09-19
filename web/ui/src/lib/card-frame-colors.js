@@ -123,6 +123,13 @@ export function printedTextBounds(region,options) { return analyzeSection(region
 // at all inside a band is the join between two of them. That is a stricter test
 // than the one that bridged them — the bridge also spans rows holding one or
 // two stray pixels — so it splits welded lines without ever cutting one apart.
+//
+// A join is not always blank, though: Cori-Steel Cutter's prerelease scan runs
+// one pixel of a descender into the row between its first two lines, and the
+// welded 37-row band was rejected by the line filters, so the whole text box
+// was measured from its third line. A band taller than any single line can be
+// is certainly welded, and its thinnest interior row is the join.
+const MAX_LINE_ROWS = 32;
 export function splitMergedLineBands(bands, counts) {
   const out = [];
   for (const band of bands) {
@@ -134,6 +141,11 @@ export function splitMergedLineBands(bands, counts) {
       // floor the line filters apply downstream.
       for (let row = current.top + 7; row <= current.bottom - 7; row++) {
         if (!counts[row]) { split = row; break; }
+      }
+      if (split < 0 && current.bottom - current.top > MAX_LINE_ROWS) {
+        for (let row = current.top + 7; row <= current.bottom - 7; row++) {
+          if (split < 0 || counts[row] < counts[split]) split = row;
+        }
       }
       if (split < 0) break;
       let blank = split;

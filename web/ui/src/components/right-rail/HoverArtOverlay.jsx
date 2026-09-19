@@ -15,6 +15,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useGame } from "@/context/GameContext";
 import usePreparedCardFrame from "@/hooks/usePreparedCardFrame";
 import { fullCardImageUrl } from '@/lib/card-frame-colors';
+import { cardFrameTone } from '@/lib/card-frame-tone';
 import "@/styles/card-frame-colors.css";
 import { useScryfallImage } from "@/hooks/useScryfallImageUrl";
 import useScryfallFlavorText from "@/hooks/useScryfallFlavorText";
@@ -72,24 +73,6 @@ const HIDDEN_TYPE_LINE_BADGES = new Set(["All creature types"]);
 
 function clampNumber(value, min, max) {
   return Math.min(Math.max(value, min), max);
-}
-
-function inspectorCardFrameTone(manaCost, typeLine) {
-  const symbols = new Set(
-    Array.from(String(manaCost || "").matchAll(/\{([WUBRG])(?:\/[^}]*)?\}/gi))
-      .map((match) => String(match[1] || "").toUpperCase())
-  );
-  if (symbols.size > 1) return "gold";
-  if (symbols.has("W")) return "white";
-  if (symbols.has("U")) return "blue";
-  if (symbols.has("B")) return "black";
-  if (symbols.has("R")) return "red";
-  if (symbols.has("G")) return "green";
-
-  const normalizedType = String(typeLine || "").toLowerCase();
-  if (normalizedType.includes("land")) return "land";
-  if (normalizedType.includes("artifact")) return "artifact";
-  return "colorless";
 }
 
 function normalizeInspectorMeasureText(text = "") {
@@ -1093,7 +1076,10 @@ export default function HoverArtOverlay({
   const displayCountersLine = debugInspector ? null : countersLine;
   const displayManaCost = debugInspector ? null : manaCost;
   const displayStatsText = debugInspector || transitionTitle || isMiniatureFrame ? null : statsText;
-  const printedStatsAtRules = Boolean(displayStatsText && /^[^/]+\/[^/]+$/.test(displayStatsText) && cardFrameColors?.["--printed-pt-position"] === "rules");
+  // Only a masked printing keeps its P/T plaque where the scan has it; the
+  // synthetic frame always draws its own plaque on the art.
+  const printedStatsAtRules = Boolean(displayStatsText && /^[^/]+\/[^/]+$/.test(displayStatsText)
+    && cardFrameColors?.["--source-frame-status"] === "masked" && cardFrameColors?.["--printed-pt-position"] === "rules");
   const displayTypeZoneLine = useMemo(
     () => [displayZoneLine, displayTypeLine].filter(Boolean).join(" - ") || null,
     [displayTypeLine, displayZoneLine]
@@ -2353,21 +2339,26 @@ export default function HoverArtOverlay({
   );
 
   if (isCardFrameMode) {
-    const frameTone = inspectorCardFrameTone(displayManaCost, displayTypeLine);
     const hasSourceMask = cardFrameColors?.["--source-frame-status"] === "masked"
       && Boolean(cardFrameColors?.["--source-frame-image"]);
-    // Masking failed, but the regions were still measured (or defaulted): lay
-    // the live containers over the untouched printing. They hold the same live
-    // text a masked frame does, so no separate details panel is added over it.
-    const placedFrame = !hasSourceMask
-      && cardFrameColors?.["--source-frame-status"] === "unmasked"
-      && Boolean(cardFrameColors?.["--printed-layout"]);
-    // No printing to lay anything over: draw our own frame around whatever art
-    // there is (or none), so a custom card is still a complete, live card.
-    const placeholderFrame = !hasSourceMask && !placedFrame
-      && (artUnavailable || cardFrameColors?.["--source-frame-status"] === "placeholder");
-    const columnMana = cardFrameColors?.["--printed-mana-placement"] === "column"
-      ? JSON.parse(cardFrameColors["--printed-mana-symbols"] || "null") : null;
+    // No usable mask, or no printing at all: the scan is not shown. Our own
+    // frame, in the card's colors, carries the art crop and the live text, so
+    // a token or an odd layout never gets containers laid over a printing they
+    // do not fit. The frame is the card's details; nothing is stacked over it.
+    const customFrame = !hasSourceMask && !preparedFrame?.registration
+      && (artUnavailable || ["unmasked", "placeholder"].includes(cardFrameColors?.["--source-frame-status"]));
+    const customArt = customFrame && showImageBackdrop;
+    // A card-shaped image the sampler cannot read is a whole printing: the art
+    // box shows its conventional art region rather than the entire card.
+    const artSource = customArt && cardFrameColors?.["--source-frame-fallback-reason"] === "unsampled-art" ? "printing" : undefined;
+    const frameTone = cardFrameTone({
+      cards: [details, cardSnapshot, previewCard, hoveredStackObject],
+      printing: preparedFrame?.printing, manaCost: displayManaCost, typeLine: displayTypeLine,
+    });
+    // Measured scan geometry only means anything while that scan is shown.
+    const frameGeometry = hasSourceMask ? cardFrameColors : null;
+    const columnMana = frameGeometry?.["--printed-mana-placement"] === "column"
+      ? JSON.parse(frameGeometry["--printed-mana-symbols"] || "null") : null;
     const manaTokens = String(displayManaCost || "").match(/\{[^}]+\}/g) || [];
     return (
       <CardFrameStage
@@ -2377,25 +2368,27 @@ export default function HoverArtOverlay({
         preparation={!isMiniatureFrame && game && detailsObjectIdKey && !details && !sharedDetails?.ready && settledDetailsKey !== detailsObjectIdKey ? null : preparedFrame}
         onReadyChange={onCardFrameReadyChange}
         className="interactive-card-frame-stage absolute inset-0 z-30 pointer-events-auto"
-        data-card-frame-tone={frameTone}
+        data-card-frame-tone={frameTone.tone}
+        data-card-frame-colors={frameTone.colors.join("") || undefined}
         data-printing-ready={typography.printingReady || undefined}
-        data-source-frame={hasSourceMask || placedFrame ? "true" : undefined}
-        data-box-sizing={cardFrameColors?.["--printed-box-sizing"] || undefined}
-        data-frame-geometry={cardFrameColors && Object.keys(cardFrameColors).some(key => key.startsWith("--printed-gap-")) ? "true" : undefined}
+        data-source-frame={hasSourceMask ? "true" : undefined}
+        data-box-sizing={frameGeometry?.["--printed-box-sizing"] || undefined}
+        data-frame-geometry={frameGeometry && Object.keys(frameGeometry).some(key => key.startsWith("--printed-gap-")) ? "true" : undefined}
         data-card-colors={hasSourceMask ? "sampled" : undefined}
-        data-frame-mode={preparedFrame?.registration ? "registered" : hasSourceMask ? "masked" : placedFrame ? "placed" : placeholderFrame ? "placeholder" : "original"}
+        data-frame-mode={preparedFrame?.registration ? "registered" : hasSourceMask ? "masked" : customArt ? "custom" : customFrame ? "placeholder" : "original"}
         data-frame-presentation={isMiniatureFrame ? "miniature" : "inspector"}
         data-frame-fallback-reason={cardFrameColors?.["--source-frame-fallback-reason"] || undefined}
+        data-art-source={artSource}
         data-inspected-object-id={detailsObjectIdKey || undefined}
-        data-inner-frame-border={cardFrameColors?.["--inner-frame-bevel-profile"] ? cardFrameColors["--inner-frame-border-kind"] : undefined}
-        data-whole-title={cardFrameColors?.["--whole-title-image"] ? "true" : undefined}
-        data-whole-type={cardFrameColors?.["--whole-type-image"] ? "true" : undefined}
-        data-whole-rules={cardFrameColors?.["--whole-rules-image"] ? "true" : undefined}
-        data-rules-bottom={cardFrameColors?.["--rules-bottom-middle"] ? "sampled" : undefined}
-        data-type-panel={cardFrameColors?.["--type-panel-kind"] || undefined}
-        data-title-panel={cardFrameColors?.["--title-panel-kind"] || undefined}
-        data-art-enclosure={cardFrameColors?.["--art-frame-enclosure"] || undefined}
-        style={{ ...cardFrameColors, ...typography.style }}
+        data-inner-frame-border={frameGeometry?.["--inner-frame-bevel-profile"] ? frameGeometry["--inner-frame-border-kind"] : undefined}
+        data-whole-title={frameGeometry?.["--whole-title-image"] ? "true" : undefined}
+        data-whole-type={frameGeometry?.["--whole-type-image"] ? "true" : undefined}
+        data-whole-rules={frameGeometry?.["--whole-rules-image"] ? "true" : undefined}
+        data-rules-bottom={frameGeometry?.["--rules-bottom-middle"] ? "sampled" : undefined}
+        data-type-panel={frameGeometry?.["--type-panel-kind"] || undefined}
+        data-title-panel={frameGeometry?.["--title-panel-kind"] || undefined}
+        data-art-enclosure={frameGeometry?.["--art-frame-enclosure"] || undefined}
+        style={{ ...frameGeometry, ...frameTone.style, ...typography.style }}
         data-card-era={typography.era}
         data-zone-transition-token={transientPreview?.token || undefined}
       >
@@ -2405,7 +2398,7 @@ export default function HoverArtOverlay({
           interactive={!isMiniatureFrame}
           typeLine={displayTypeLine} stats={displayStatsText} flavorText={flavorText}
           onActivate={onInteractiveAction} highlighted={highlightedRuleLineIndices}
-        /> : !hasSourceMask && !placedFrame && !placeholderFrame ? <OriginalCardFallback
+        /> : !hasSourceMask && !customFrame ? <OriginalCardFallback
           showDetails={!isMiniatureFrame}
           imageUrl={preparedFrame?.originalImageUrl || sourceImageUrl || imageUrl}
           name={displayObjectName} rulesView={rulesView} onActivate={onInteractiveAction}
@@ -2449,6 +2442,7 @@ export default function HoverArtOverlay({
                   loading="eager"
                   decoding="async"
                   referrerPolicy="no-referrer"
+                  data-art-source={artSource}
                   onError={() => setFailedImageUrl(imageUrl)}
                 />
               ) : (

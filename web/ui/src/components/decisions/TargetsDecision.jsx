@@ -721,8 +721,12 @@ export default function TargetsDecision({
         clearTimeout(gestureSubmitTimerRef.current);
         gestureSubmitTimerRef.current = null;
       }
-      handleSelectTarget(target, currentReqIdx, { toggleExisting: true });
-      if (event?.detail?.submitIfComplete === true) {
+      // A gesture release names its target outright. The target may already
+      // be selected -- a lone legal spell is placed the moment the decision
+      // opens -- and releasing on it confirms that pick rather than undoing it.
+      const confirmsRelease = event?.detail?.submitIfComplete === true;
+      handleSelectTarget(target, currentReqIdx, { toggleExisting: !confirmsRelease });
+      if (confirmsRelease) {
         setAutoSubmitTarget(target);
       }
     };

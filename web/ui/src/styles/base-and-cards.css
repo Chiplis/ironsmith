@@ -1920,6 +1920,13 @@
     inset 0 0 16px rgba(var(--player-accent-rgb, 91, 191, 255), 0.12);
 }
 
+/* A stack tile lit as a legal target keeps its place in the list: the
+   battlefield lift would shove it into its neighbour. */
+.game-card.stack-card.card-targeting-mode.target-legal,
+.game-card.stack-card.card-targeting-mode.target-legal:is(:hover, .hovered) {
+  translate: 0 0;
+}
+
 .stack-card-art::after {
   content: "";
   position: absolute;

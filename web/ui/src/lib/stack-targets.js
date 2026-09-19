@@ -47,6 +47,32 @@ export function stackInspectObjectId(entry) {
   return entry?.inspect_object_id ?? entry?.id ?? null;
 }
 
+/**
+ * The engine ids a targeting decision can name for a stack entry.
+ *
+ * A stack tile is drawn under its own presentation id, which is not the id a
+ * spell like Counterspell targets: a spell on the stack is targeted by the
+ * object it inspects to, and an ability on the stack is not a targetable
+ * object at all (its inspect id is the permanent that produced it, and a
+ * Bolt aimed at that permanent must not light the ability up).
+ */
+export function stackEntryTargetObjectIds(entry) {
+  if (!entry || entry.ability_kind) return [];
+  const objectId = Number(entry.inspect_object_id);
+  return Number.isFinite(objectId) ? [objectId] : [];
+}
+
+export function stackEntryIsLegalTarget(decision, entry) {
+  if (decision?.kind !== "targets") return false;
+  const ids = stackEntryTargetObjectIds(entry);
+  if (ids.length === 0) return false;
+  return (decision.requirements || []).some((requirement) =>
+    (requirement?.legal_targets || []).some((target) =>
+      target?.kind === "object" && ids.includes(Number(target.object))
+    )
+  );
+}
+
 export function stackSelectionKeys(entry) {
   const keys = [entry?.id, entry?.inspect_object_id]
     .filter((value) => value != null)
@@ -96,6 +122,13 @@ export function buildRenderableObjectIndex(state) {
     const stackObjectId = Number(stackEntry?.id);
     if (!Number.isFinite(stackObjectId)) continue;
     indexObject(index, stackObjectId, stackObjectId, "stack", null);
+    // A spell that targets another spell names the engine object, not the
+    // tile it is drawn as; the arrow still has to land on that tile.
+    for (const targetObjectId of stackEntryTargetObjectIds(stackEntry)) {
+      if (!index.has(String(targetObjectId))) {
+        indexObject(index, targetObjectId, stackObjectId, "stack", null);
+      }
+    }
   }
 
   return index;

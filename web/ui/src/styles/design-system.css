@@ -303,75 +303,9 @@
   --card-frame-accent: #788087;
 }
 
-.interactive-card-frame-stage[data-card-frame-tone="white"] {
-  --card-frame-edge: #b5ad91;
-  --card-frame-edge-light: #eee7c9;
-  --card-frame-bar: #d8d0ae;
-  --card-frame-bar-light: #f3edd7;
-  --card-frame-paper: #ece7d4;
-  --card-frame-paper-deep: #d4ccb0;
-  --card-frame-accent: #a99a67;
-}
-
-.interactive-card-frame-stage[data-card-frame-tone="blue"] {
-  --card-frame-edge: #467995;
-  --card-frame-edge-light: #acd8e8;
-  --card-frame-bar: #72a5bd;
-  --card-frame-bar-light: #c4e4ee;
-  --card-frame-paper: #d6e4e7;
-  --card-frame-paper-deep: #a9c7d0;
-  --card-frame-accent: #397995;
-}
-
-.interactive-card-frame-stage[data-card-frame-tone="black"] {
-  --card-frame-edge: #4b4648;
-  --card-frame-edge-light: #9d9297;
-  --card-frame-bar: #716b6d;
-  --card-frame-bar-light: #aaa1a4;
-  --card-frame-paper: #cec8c7;
-  --card-frame-paper-deep: #aba1a3;
-  --card-frame-accent: #57474f;
-}
-
-.interactive-card-frame-stage[data-card-frame-tone="red"] {
-  --card-frame-edge: #8b473b;
-  --card-frame-edge-light: #e2a08a;
-  --card-frame-bar: #ae6654;
-  --card-frame-bar-light: #e5b19d;
-  --card-frame-paper: #e6d1c7;
-  --card-frame-paper-deep: #caa395;
-  --card-frame-accent: #9b493b;
-}
-
-.interactive-card-frame-stage[data-card-frame-tone="green"] {
-  --card-frame-edge: #3f7054;
-  --card-frame-edge-light: #9bc5a7;
-  --card-frame-bar: #659275;
-  --card-frame-bar-light: #c1dcc7;
-  --card-frame-paper: #d4e0d3;
-  --card-frame-paper-deep: #aac2ae;
-  --card-frame-accent: #39724d;
-}
-
-.interactive-card-frame-stage[data-card-frame-tone="gold"] {
-  --card-frame-edge: #987c41;
-  --card-frame-edge-light: #e5d18d;
-  --card-frame-bar: #b89b55;
-  --card-frame-bar-light: #eadca7;
-  --card-frame-paper: #e0dac2;
-  --card-frame-paper-deep: #c4b98c;
-  --card-frame-accent: #997b35;
-}
-
-.interactive-card-frame-stage[data-card-frame-tone="land"] {
-  --card-frame-edge: #725f48;
-  --card-frame-edge-light: #c6ad85;
-  --card-frame-bar: #958064;
-  --card-frame-bar-light: #d3c2a3;
-  --card-frame-paper: #ddd3bd;
-  --card-frame-paper-deep: #bca98b;
-  --card-frame-accent: #776043;
-}
+/* The frame palette (--card-frame-edge, -bar, -paper, -accent) is set inline
+   by card-frame-tone.js from the card's colors; the values above are only the
+   fallback for a stage that has not resolved a card yet. */
 
 .interactive-card-frame {
   position: relative;
@@ -420,7 +354,7 @@
   background:
     radial-gradient(120% 70% at 48% -10%, rgba(255, 255, 255, 0.32), transparent 55%),
     repeating-linear-gradient(118deg, rgba(255,255,255,0.025) 0 2px, rgba(0,0,0,0.025) 2px 5px),
-    var(--card-frame-edge);
+    var(--card-frame-edge-fill, var(--card-frame-edge));
   box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.48);
 }
 
