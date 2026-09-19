@@ -17,6 +17,7 @@ const entries = COLLECTIONS.flatMap(([collection, name], group) => Array.from({l
   collections: [collection],
   cards: [name],
   cardNames: ['Mountain'],
+  ...(index === 0 ? {artCard: 'Atraxa'} : {}),
   manaProfile: {
     colors: ['W', 'U', 'B', 'R'],
     landCount: 24,
@@ -40,6 +41,7 @@ async function openWorkspace(server, browser, {locale} = {}) {
     mainboard: [{name: 'Mountain', count: 60}], sideboard: [], commander: [],
   }}));
   await page.route('**/cards/*.json', (route) => route.fulfill({status: 404, body: ''}));
+  await page.route('**/cards/atraxa.json', (route) => route.fulfill({json: {scryfall: {image_uris: {art_crop: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2210%22 height=%2210%22%3E%3C/svg%3E'}}}}));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/deck-loading-layout.html`, {waitUntil: 'domcontentloaded'});
   await page.locator('[data-deck-workspace]').waitFor();
   return {page, errors};
@@ -139,6 +141,11 @@ test('the list shows at least five decks and the panel keeps copy and clear at t
     ]);
     assert.ok(copyTop < textareaTop, 'copy should sit above the deck list');
     await assert.doesNotReject(panel.getByRole('button', {name: /Clear Alice/}).waitFor());
+
+    // A deck names the card its art comes from; one without art still gets a
+    // tile rather than an empty hole.
+    await page.waitForFunction(() => document.querySelectorAll('[data-deck-art="loaded"]').length > 0);
+    assert.ok(await page.locator('[data-deck-art="placeholder"]').count() > 0);
 
     await page.locator('[data-catalog-tab="saved"]').click();
     await assert.doesNotReject(page.getByText('You have no saved decks in this session.').waitFor());

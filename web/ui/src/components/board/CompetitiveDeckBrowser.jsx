@@ -92,6 +92,12 @@ function matchesManaFilters(entry, activeMana, manaMatchMode) {
   return activeMana.every((color) => colors.includes(color));
 }
 
+// The synchronizer records the deck's most expensive nonland as `artCard`;
+// a catalog written before that falls back to whatever name sorted first.
+function deckArtName(entry) {
+  return entry?.artCard || entry?.cardNames?.[0] || "";
+}
+
 function useCardArt(cardName) {
   const [artUrl, setArtUrl] = useState("");
   useEffect(() => {
@@ -105,6 +111,24 @@ function useCardArt(cardName) {
   }, [cardName]);
   return artUrl;
 }
+
+// Not every card in the local corpus has art, so the tile is a card back
+// rather than an empty hole.
+const DeckArt = memo(function DeckArt({ entry, className }) {
+  const artUrl = useCardArt(deckArtName(entry));
+  return (
+    <div className={`shrink-0 overflow-hidden bg-[#17130e] ${className}`} aria-hidden="true" data-deck-art={artUrl ? "loaded" : "placeholder"}>
+      {artUrl
+        ? <img className="h-full w-full object-cover" src={artUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} />
+        : (
+          <svg viewBox="0 0 24 24" className="h-full w-full text-[#3a3226]" fill="none" stroke="currentColor" strokeWidth="1.2">
+            <rect x="7" y="4.5" width="10" height="15" rx="1.5" />
+            <path d="M9.5 8.5h5M9.5 12h5M9.5 15.5h3" strokeLinecap="round" />
+          </svg>
+        )}
+    </div>
+  );
+});
 
 const ManaPips = memo(function ManaPips({ colors, size = 13 }) {
   const ui = useUiText();
@@ -120,13 +144,10 @@ const ManaPips = memo(function ManaPips({ colors, size = 13 }) {
 // that placed at the most recent majors, with their art rather than a row.
 const FeaturedDeck = memo(function FeaturedDeck({ entry, isBusy, isCopying, isCopied, targetName, onSelect, onCopy }) {
   const ui = useUiText();
-  const artUrl = useCardArt(entry.cardNames?.[0]);
   const actionKey = `featured-${entry.id}`;
   return (
     <article className="flex min-w-0 flex-col overflow-hidden rounded-sm border border-[rgba(154,126,82,0.42)] bg-[rgba(12,13,14,0.85)]" data-featured-deck={entry.id}>
-      <div className="h-[56px] w-full shrink-0 overflow-hidden bg-[#17130e]" aria-hidden="true">
-        {artUrl ? <img className="h-full w-full object-cover" src={artUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
-      </div>
+      <DeckArt entry={entry} className="h-[72px] w-full" />
       <div className="grid gap-1 p-1.5">
         <div className="truncate text-[13px] font-bold text-[#e7d9bc]" title={entry.name || entry.archetype}>{entry.name || entry.archetype || ui("Unnamed deck")}</div>
         <div className="truncate text-[10px] text-[#8b806b]">{entry.event || ui("Unknown event")}</div>
@@ -146,7 +167,6 @@ const FeaturedDeck = memo(function FeaturedDeck({ entry, isBusy, isCopying, isCo
 
 const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, isCopying, isCopied, targetName, onSelect, onCopy }) {
   const ui = useUiText();
-  const artUrl = useCardArt(entry.cardNames?.[0]);
   const manaProfile = completeManaProfile(entry);
   const predominantLands = (manaProfile?.predominantLands || []).slice(0, 2);
   const details = [
@@ -163,9 +183,7 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, 
 
   return (
     <article className="flex min-w-0 items-center gap-2 rounded-sm border border-transparent p-1.5 transition-colors hover:border-[#9a7e52]/35 hover:bg-white/[0.03]" data-deck-row={entry.id}>
-      <div className="h-[40px] w-[56px] shrink-0 overflow-hidden rounded-sm bg-[#17130e]" aria-hidden="true">
-        {artUrl ? <img className="h-full w-full object-cover" src={artUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
-      </div>
+      <DeckArt entry={entry} className="h-[40px] w-[56px] rounded-sm" />
       <div className="min-w-0 flex-1">
         <div className="truncate text-[12px] font-bold text-[#e7d9bc]">{entry.name || entry.archetype || ui("Unnamed deck")}</div>
         <div className="flex min-w-0 items-center gap-1.5">

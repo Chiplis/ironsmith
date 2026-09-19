@@ -56,7 +56,7 @@ async function enrich() {
   const entries = (index.decks || []).map((entry) => {
     const deck = byId.get(entry.id);
     if (!deck) return entry;
-    return { ...entry, colors: deck.colors, manaProfile: deck.manaProfile };
+    return { ...entry, colors: deck.colors, manaProfile: deck.manaProfile, ...(deck.artCard ? { artCard: deck.artCard } : {}) };
   });
   const generatedAt = new Date().toISOString();
   await mkdir(join(outputDir, "state"), { recursive: true });

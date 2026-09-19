@@ -66,6 +66,7 @@ function catalogEntry(deck) {
     mechanics: deck.mechanics,
     collections: deck.collections,
     ...(deck.manaProfile ? { manaProfile: deck.manaProfile } : {}),
+    ...(deck.artCard ? { artCard: deck.artCard } : {}),
     cardNames: deck.cardNames,
     event: deck.event,
     date: deck.date,

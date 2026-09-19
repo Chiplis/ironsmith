@@ -34,8 +34,9 @@ write somewhere other than `catalog/`, and `--format pioneer|standard` for the
 other supported formats. `--page 0` takes the newest decks (Last 20 Events, Last
 Major Events, and a mono-colour sample); `--page N` backfills history. The
 source waits 750 ms between requests, so a three-format refresh takes a few
-minutes. `tools/deck-catalog/enrich.mjs` recomputes colours and mana profiles
-from decks already downloaded, and accepts `--offline`.
+minutes. `tools/deck-catalog/enrich.mjs` recomputes colours, mana profiles and each
+deck's art card from decks already downloaded, and accepts `--offline` to
+work from the cached card metadata without touching the network.
 
 `tools/deck-catalog/sync-all.sh` runs that bounded refresh for Modern, Pioneer
 and Standard, or for the formats named as arguments

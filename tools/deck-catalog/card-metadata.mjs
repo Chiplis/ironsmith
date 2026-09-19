@@ -152,6 +152,42 @@ function manaPips(manaCost) {
     .filter((symbol) => COLOR_SET.has(symbol));
 }
 
+// A deck's art should come from a card that identifies it, and the most
+// expensive nonland is the closest thing the catalog knows to a signature
+// card. `cardNames` is sorted alphabetically, so its first entry is arbitrary.
+export function manaValue(manaCost) {
+  // Split and modal cards print both halves; the front face is the deck's.
+  const front = String(manaCost || "").split("//")[0];
+  let total = 0;
+  for (const match of front.matchAll(/\{([^}]+)\}/g)) {
+    const symbol = match[1].toUpperCase();
+    if (/^[XYZ]$/.test(symbol)) continue;
+    // A hybrid symbol costs its greater half, and Phyrexian costs its colour.
+    const numbers = symbol.split("/").map(Number).filter(Number.isFinite);
+    total += numbers.length ? Math.max(...numbers) : 1;
+  }
+  return total;
+}
+
+export function deckArtCard(deck, metadata = {}) {
+  let best = null;
+  for (const card of Array.isArray(deck?.mainboard) ? deck.mainboard : []) {
+    const name = text(card?.name);
+    const count = Number(card?.count) || 0;
+    if (!name || count < 1) continue;
+    const cardData = metadata[cardMetadataKey(name)];
+    if (!cardData || cardData.status !== "ok" || /\bland\b/i.test(cardData.typeLine)) continue;
+    const value = manaValue(cardData.manaCost);
+    if (!best
+      || value > best.value
+      || (value === best.value && count > best.count)
+      || (value === best.value && count === best.count && name.localeCompare(best.name, "en") < 0)) {
+      best = { name, value, count };
+    }
+  }
+  return best?.name || "";
+}
+
 export function buildManaProfile(deck, metadata = {}) {
   const mainboard = Array.isArray(deck?.mainboard) ? deck.mainboard : [];
   const colors = new Set();
@@ -228,9 +264,11 @@ export function buildManaProfile(deck, metadata = {}) {
 
 export function enrichDeckWithManaProfile(deck, metadata) {
   const profile = buildManaProfile(deck, metadata);
+  const artCard = deckArtCard(deck, metadata);
   return {
     ...deck,
     colors: profile.colors,
     manaProfile: profile,
+    ...(artCard ? { artCard } : {}),
   };
 }
