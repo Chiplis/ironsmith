@@ -467,9 +467,10 @@
 
 /* Masking failed. The printing is shown exactly as scanned, and every live
    container is drawn opaquely over the region the analysis found for it (or
-   over conventional proportions when it found none), in the game's own UI
-   face. Printed and live lettering therefore never mix, whatever the mask
-   could not remove. */
+   over conventional proportions when it found none). The opaque panel is the
+   whole intervention: the card keeps its own faces and measured sizes, so the
+   only difference from a masked frame is that the printing shows around the
+   containers instead of under them. */
 .interactive-card-frame-stage[data-frame-mode="placed"] {
   --card-frame-source-unit: min(calc(100cqw / var(--printed-scan-width)), calc(100cqh / var(--printed-scan-height)));
   --card-frame-width-unit: calc(var(--card-frame-source-unit) * var(--printed-scan-width) / 100);
@@ -492,16 +493,10 @@
   --card-frame-ink: var(--placed-panel-ink);
   color: var(--placed-panel-ink) !important;
 }
+/* Only the ink changes with the panel: the printing's faces and measured
+   sizes are what the containers are sized for. */
 .interactive-card-frame-stage[data-frame-mode="placed"] :is(.interactive-card-frame__title, .interactive-card-frame__type, .interactive-card-frame__rule-line, .interactive-card-frame__rules-empty, .interactive-card-frame__stats-text, .interactive-card-frame__count),
 .interactive-card-frame-stage[data-frame-mode="placed"] :is(.interactive-card-frame__title, .interactive-card-frame__type, .interactive-card-frame__rule-line, .interactive-card-frame__stats-text) :not(svg):not(svg *) {
-  font-family: var(--ironsmith-ui-font-root, ui-sans-serif, system-ui, sans-serif) !important;
   color: var(--placed-panel-ink) !important;
   text-shadow: none !important;
-}
-/* The disclosure holds the same live text in a layout that never depends on a
-   detected region, so it stays above the placed containers — and opaque, or
-   the container text below shows through its own copy of the same lines. */
-.interactive-card-frame-stage[data-frame-mode="placed"] .original-card-details {
-  z-index: 4;
-  background: #141713;
 }

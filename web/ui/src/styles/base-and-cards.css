@@ -127,10 +127,6 @@
 
   /* UI typography */
   --ironsmith-ui-font: "Rajdhani", "Avenir Next", "Segoe UI", system-ui, sans-serif;
-  /* Card frames redefine --ironsmith-ui-font to the printing's own face. This
-     mirror keeps the player's chosen UI font (set on the document element)
-     reachable inside them, for text the game supplies rather than the card. */
-  --ironsmith-ui-font-root: var(--ironsmith-ui-font);
   --font-heading: "Alegreya Sans SC", Georgia, serif;
   --font-body-fantasy: var(--ironsmith-ui-font);
 }

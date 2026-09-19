@@ -53,8 +53,8 @@ const printing = {
 
 // Masking never runs for a Saga, and a flat scan yields no regions either, so
 // this exercises both fallbacks at once: placed containers over conventional
-// proportions, with the live text also expanded in the details disclosure.
-test('an unmasked printing still carries placed containers and open card details', {timeout: 60000}, async () => {
+// proportions, carrying the live text in the printing's own faces.
+test('an unmasked printing still carries placed containers in the card\'s own type', {timeout: 60000}, async () => {
   const root = dirname(dirname(fileURLToPath(import.meta.url)));
   const vite = await createServer({root, server: {host: '127.0.0.1', port: 0}, logLevel: 'silent'});
   await vite.listen();
@@ -79,7 +79,9 @@ test('an unmasked printing still carries placed containers and open card details
     assert.equal(await stage.getAttribute('data-frame-mode'), 'placed');
     assert.equal(await stage.getAttribute('data-frame-fallback-reason'), 'layout-saga');
     assert.equal(await stage.locator('.original-card-fallback').count(), 0);
-    assert.equal(await stage.locator('.original-card-details[open]').count(), 1);
+    // The containers hold the live text, so no second copy of it is stacked
+    // over the frame.
+    assert.equal(await stage.locator('.original-card-details').count(), 0);
 
     const placed = await stage.evaluate(node => {
       const frame = node.querySelector('.interactive-card-frame').getBoundingClientRect();
@@ -115,7 +117,9 @@ test('an unmasked printing still carries placed containers and open card details
       assert.ok(Math.abs(placed[section].y - expected.y / 680) < .02, `${section} sits on its box: ${JSON.stringify(placed[section])}`);
       assert.ok(Math.abs(placed[section].width - expected.width / 488) < .02, `${section} spans its box`);
     }
-    for (const font of [placed.titleFont, placed.rulesFont]) assert.match(font, /Rajdhani/);
+    // Only the panel behind the text is ours; the faces stay the printing's.
+    assert.match(placed.titleFont, /Beleren|Matrix|Goudy/);
+    assert.match(placed.rulesFont, /MPlantin/);
     assert.deepEqual(placed.rulesText, ['Draw a card.', 'You gain 2 life.']);
     assert.deepEqual(errors, []);
   } finally { await browser.close(); await vite.close(); }
@@ -191,7 +195,7 @@ test('an unsamplable card-shaped image still carries placed containers', {timeou
     assert.equal(await stage.evaluate(node => node.style.getPropertyValue('--source-frame-image')), `url("${artUrl}")`);
     const boxes = await stage.evaluate(node => JSON.parse(node.style.getPropertyValue('--printed-layout')));
     assert.deepEqual(Object.keys(boxes).sort(), ['art', 'rules', 'title', 'type']);
-    assert.equal(await stage.locator('.original-card-details[open]').count(), 1);
+    assert.equal(await stage.locator('.original-card-details').count(), 0);
     assert.deepEqual(await stage.locator('.interactive-card-frame__rule-line').allTextContents(), ['Spells have split second.']);
     assert.equal(await stage.evaluate(node => getComputedStyle(node.querySelector('.interactive-card-frame__title-row')).backgroundColor), 'rgb(8, 9, 11)');
     assert.deepEqual(errors, []);

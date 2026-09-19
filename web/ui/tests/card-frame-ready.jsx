@@ -125,10 +125,10 @@ export default function Fixture() {
           if (stage.dataset.frameMode === 'masked') {
             check(parseFloat(stage.querySelector('[data-fit-text]').style.getPropertyValue('--card-fitted-rules-font-size')) > 0, 'Text not fitted at reveal');
           } else if (stage.dataset.frameMode === 'placed') {
-            // The mask failed, so the containers are laid over the printing and
-            // the live text is also expanded in the details disclosure.
+            // The mask failed, so the containers are laid over the printing --
+            // and they are the card's details, with no panel stacked on top.
             check(stage.querySelector('.interactive-card-frame'), 'Missing placed containers');
-            check(stage.querySelector('.original-card-details[open]'), 'Card details not expanded');
+            check(!stage.querySelector('.original-card-details'), 'Details panel duplicated over the frame');
           } else {
             check(stage.querySelector('.original-card-fallback'), 'Missing original-image fallback');
             check(!stage.querySelector('.interactive-card-frame'), 'Synthetic frame was rendered');

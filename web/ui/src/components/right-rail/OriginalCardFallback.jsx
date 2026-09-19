@@ -66,9 +66,10 @@ function PrintingImage({ imageUrl, name, imageOnly = false }) {
   />;
 }
 
-// Masking failed, so the live wording is only guaranteed here: open the
-// disclosure by default rather than hiding the card's rules behind a summary.
-export function CardDetailsDisclosure({ name, rulesView, onActivate, highlighted, flavorText, stats, counters, detailsLabel }) {
+// This panel is the only live wording on a retained printing, so it opens by
+// default rather than hiding the card's rules behind a summary. A frame that
+// carries its own containers never adds it on top.
+function CardDetailsDisclosure({ name, rulesView, onActivate, highlighted, flavorText, stats, counters, detailsLabel }) {
   const ui = useUiText();
   return <details className="original-card-details" open>
     <summary>{ui(detailsLabel)}</summary>
