@@ -267,6 +267,7 @@ export function createEmptyState() {
     localCommanderText: "",
     localDeckCount: 0,
     localCommanderCount: 0,
+    deckOptions: [],
     players: [],
     connectionWarnings: [],
     rematch: null,

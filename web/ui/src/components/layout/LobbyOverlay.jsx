@@ -4,6 +4,7 @@ import { PUBLIC_FORMATS, isRelayId, relayBaseUrl } from '@/lib/relay/formats';
 import { validateFormatDeck, formatCatalogDate } from '@/lib/relay/format-legality';
 import { useMemo, useState } from "react";
 import LocalLobbySearch from "./LocalLobbySearch";
+import CompetitiveDeckPicker from "./CompetitiveDeckPicker";
 import { useGame } from "@/context/GameContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import {
   MATCH_FORMAT_NORMAL,
   MATCH_FORMAT_PLANECHASE,
   PARTNER_DECK_SIZE,
+  listSavedDeckPresets,
   normalizeMatchFormat,
   parseCommanderList,
   parseDeckList,
@@ -146,8 +148,10 @@ export default function LobbyOverlay({
   initialCreateFormat = MATCH_FORMAT_NORMAL,
   initialCreateName = "",
   initialCreateDeckText = "",
+  initialCreateDeckOptions = [],
   initialCreateCommanderText = "",
   initialCreateSecurityMode = MULTIPLAYER_SECURITY_TRUSTED,
+  initialDesiredPlayers = 2,
   initialJoinCode = "",
   initialJoinName = "",
   initialJoinDeckText = "",
@@ -189,7 +193,7 @@ export default function LobbyOverlay({
   );
   const [joinName, setJoinName] = useState(String(initialJoinName || defaultName));
   const [joinCode, setJoinCode] = useState(String(initialJoinCode || ""));
-  const [desiredPlayers, setDesiredPlayers] = useState(2);
+  const [desiredPlayers, setDesiredPlayers] = useState(() => Math.max(2, Math.min(4, Number(initialDesiredPlayers) || 2)));
   const [createSecurityMode, setCreateSecurityMode] = useState(
     normalizeMultiplayerSecurityMode(
       initialCreateSecurityMode,
@@ -261,6 +265,34 @@ export default function LobbyOverlay({
     (player) => player.peerId === multiplayer.localPeerId
   );
   const localReady = Boolean(localPlayer?.ready);
+  const savedDeckOptions = useMemo(
+    () => listSavedDeckPresets().flatMap((preset) => (Array.isArray(preset?.texts) ? preset.texts : [])
+      .map((deckText, index) => ({
+        id: `saved:${preset.name}:${index}`,
+        label: `${preset.name}${preset.texts.length > 1 ? ` #${index + 1}` : ""} (${preset.playerNames?.[index] || `Jugador ${index + 1}`})`,
+        deckText: String(deckText || ""),
+      }))
+      .filter((option) => option.deckText.trim())),
+    [],
+  );
+  const deckOptions = useMemo(() => {
+    const prepared = Array.isArray(multiplayer.deckOptions) && multiplayer.deckOptions.length > 0
+      ? multiplayer.deckOptions
+      : initialCreateDeckOptions;
+    const seen = new Set();
+    return [...prepared, ...savedDeckOptions]
+      .filter((option) => {
+        const key = String(option?.deckText || "");
+        if (!key.trim() || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 12);
+  }, [initialCreateDeckOptions, multiplayer.deckOptions, savedDeckOptions]);
+  const selectedDeckOptionId = useMemo(() => {
+    const current = String(multiplayer.localDeckText || "");
+    return deckOptions.find((option) => String(option?.deckText || "") === current)?.id || "";
+  }, [deckOptions, multiplayer.localDeckText]);
   const startPending = !multiplayer.matchStarted && multiplayer.mode === "starting";
   const activeCommanderTarget = commanderDeckTarget(multiplayer.localCommanderCount);
   const createCommanderTarget = commanderDeckTarget(createCommanderCount);
@@ -329,6 +361,7 @@ export default function LobbyOverlay({
           : createSecurityMode,
       deckText: createDeckText,
       commanderText: createCommanderText,
+      deckOptions: initialCreateDeckOptions,
     });
   };
 
@@ -355,9 +388,18 @@ export default function LobbyOverlay({
     }
   };
 
+  const handleClose = () => {
+    // Closing an unfinished lobby must release the multiplayer lock. Once a
+    // match has started, closing only hides the sheet so the match can continue.
+    if (lobbyActive && !multiplayer.matchStarted) {
+      leaveLobby("Lobby closed");
+    }
+    onClose();
+  };
+
   return (
     <Sheet open onOpenChange={(open) => {
-      if (!open) onClose();
+      if (!open) handleClose();
     }}>
       <SheetContent
         side="center"
@@ -505,6 +547,15 @@ export default function LobbyOverlay({
                         })}
                       </div>
                     </fieldset>
+                    {createFormat === MATCH_FORMAT_NORMAL ? (
+                      <CompetitiveDeckPicker
+                        format="modern"
+                        onApply={({ deckText, commanderText }) => {
+                          setCreateDeckText(deckText);
+                          setCreateCommanderText(commanderText);
+                        }}
+                      />
+                    ) : null}
                     <label className={labelClass}>{ui("Main Deck")}<textarea
                         className={textareaClass}
                         value={createDeckText}
@@ -582,6 +633,13 @@ export default function LobbyOverlay({
                     </div>
                     {relayBaseUrl() && <PublicLobbySearch onSelect={setJoinCode} />}
                     {import.meta.env.VITE_LAN_LOBBY === "true" && <LocalLobbySearch onSelect={setJoinCode} />}
+                    <CompetitiveDeckPicker
+                      format="modern"
+                      onApply={({ deckText, commanderText }) => {
+                        setJoinDeckText(deckText);
+                        setJoinCommanderText(commanderText);
+                      }}
+                    />
                     <label className={labelClass}>{ui("Main Deck")}<textarea
                         className={textareaClass}
                         value={joinDeckText}
@@ -725,6 +783,39 @@ export default function LobbyOverlay({
                       <span className="text-[13px] text-muted-foreground">{ui("Format:") + " "}{ui(formatName(activeFormat))}
                       </span>
                     </div>
+                    {/* A player who already joined can still swap to a catalog
+                        deck, to one the host prepared, or to their own list. */}
+                    {activeFormat === MATCH_FORMAT_NORMAL && !startPending ? (
+                      <CompetitiveDeckPicker
+                        format="modern"
+                        onApply={({ deckText, commanderText }) => {
+                          updateLobbyDeck({ deckText, commanderText: commanderText || "" });
+                        }}
+                      />
+                    ) : null}
+                    {deckOptions.length > 1 ? (
+                      <label className={labelClass}>
+                        {ui("Available deck")}
+                        <select
+                          className={inputClass}
+                          value={selectedDeckOptionId}
+                          disabled={startPending}
+                          onChange={(event) => {
+                            const option = deckOptions.find((entry) => entry.id === event.target.value);
+                            if (!option) return;
+                            updateLobbyDeck({ deckText: option.deckText, commanderText: "" });
+                          }}
+                        >
+                          <option value="">{ui("Custom / edit below")}</option>
+                          {/* A prepared deck's label is a deck name and a
+                              player name, so it never goes through the
+                              translation catalog. */}
+                          {deckOptions.map((option) => (
+                            <option key={option.id} value={option.id}>{option.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
                     <textarea
                       className={textareaClass}
                       disabled={startPending}

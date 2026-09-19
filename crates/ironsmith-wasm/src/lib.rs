@@ -4216,6 +4216,16 @@ struct DeckLoadResult {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct TestPositionSeedResult {
+    player_index: u8,
+    battlefield: Vec<String>,
+    hand: Vec<String>,
+    graveyard: Vec<String>,
+    exile: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct CardLoadDiagnostics {
     query: String,
     canonical_name: Option<String>,

@@ -55,6 +55,7 @@ const WORKER_METHODS = [
   "reset",
   "resetEmpty",
   "sampleLoadedDeckSeed",
+  "seedLoadedDeckTestPosition",
   "setLife",
   "setAutoCleanupDiscard",
   "setSemanticThreshold",

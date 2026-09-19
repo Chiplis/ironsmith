@@ -1,0 +1,10 @@
+{
+  "name": "ironsmith-deck-catalog",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "catalog:sync": "node sync.mjs",
+    "catalog:enrich": "node enrich.mjs"
+  }
+}

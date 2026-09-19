@@ -7,7 +7,10 @@ import {
   parseDeckList,
   parseSideboardList,
   readDefaultLobbyDeck,
+  listSavedDeckPresets,
+  saveSavedDeckPreset,
   saveDefaultLobbyDeck,
+  SAVED_DECK_PRESETS_LIMIT,
 } from "../src/lib/decklists.js";
 
 test("Planechase lobby submissions require a normal deck and ten unique planar cards", () => {
@@ -37,6 +40,31 @@ function withMockLocalStorage(fn) {
   const store = new Map();
   globalThis.window = {
     localStorage: {
+      getItem(key) {
+        return store.has(key) ? store.get(key) : null;
+      },
+      setItem(key, value) {
+        store.set(key, String(value));
+      },
+    },
+  };
+
+  try {
+    return fn();
+  } finally {
+    if (previousWindow === undefined) {
+      delete globalThis.window;
+    } else {
+      globalThis.window = previousWindow;
+    }
+  }
+}
+
+function withMockSessionStorage(fn) {
+  const previousWindow = globalThis.window;
+  const store = new Map();
+  globalThis.window = {
+    sessionStorage: {
       getItem(key) {
         return store.has(key) ? store.get(key) : null;
       },
@@ -108,5 +136,19 @@ test("empty lobby deck submissions do not clear the saved default", () => {
     saveDefaultLobbyDeck({ deckText: "", commanderText: "" });
 
     assert.equal(readDefaultLobbyDeck().deckText, "4 Lightning Bolt");
+  });
+});
+
+test("saved deck presets stay in the browser session and stop at five", () => {
+  withMockSessionStorage(() => {
+    for (let index = 0; index < SAVED_DECK_PRESETS_LIMIT; index += 1) {
+      assert.equal(saveSavedDeckPreset(`Deck ${index}`, [`${index} Island`], index === 0 ? ["Alice", "Bob"] : []).saved, true);
+    }
+
+    const rejected = saveSavedDeckPreset("Deck extra", ["1 Island"]);
+    assert.equal(rejected.saved, false);
+    assert.equal(rejected.reason, "limit");
+    assert.equal(listSavedDeckPresets().length, SAVED_DECK_PRESETS_LIMIT);
+    assert.deepEqual(listSavedDeckPresets().find((entry) => entry.name === "Deck 0")?.playerNames, ["Alice", "Bob"]);
   });
 });

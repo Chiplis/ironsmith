@@ -45,7 +45,8 @@ export default function TableCore({
   zoneActivityByPlayer = {},
   deckLoadingMode,
   puzzleSetupMode = false,
-  onLoadDecks,
+  onOpenLobby,
+  onTestDecks,
   onCancelDeckLoading,
   onLoadPuzzle,
   onCancelPuzzleSetup,
@@ -185,7 +186,7 @@ export default function TableCore({
   }
 
   if (deckLoadingMode) {
-    return <DeckLoadingView onLoad={onLoadDecks} onCancel={onCancelDeckLoading} />;
+    return <DeckLoadingView onOpenLobby={onOpenLobby} onTestDecks={onTestDecks} onCancel={onCancelDeckLoading} />;
   }
 
   if (puzzleSetupMode) {

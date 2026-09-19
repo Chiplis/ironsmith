@@ -1316,6 +1316,121 @@ impl WasmGame {
         })
     }
 
+    fn build_loaded_deck_test_position(
+        &mut self,
+        player_index: u8,
+    ) -> Result<TestPositionSeedResult, JsValue> {
+        let player_id = ironsmith::ids::PlayerId::from_index(player_index);
+        if self.game.player(player_id).is_none() {
+            return Err(JsValue::from_str("invalid player index"));
+        }
+        let Some(deck) = self.loaded_decks.get(player_index as usize) else {
+            return Err(JsValue::from_str("no loaded deck found for that player"));
+        };
+        if deck.is_empty() {
+            return Err(JsValue::from_str("loaded deck is empty"));
+        }
+
+        #[derive(Clone)]
+        struct Candidate {
+            id: ironsmith::ids::ObjectId,
+            name: String,
+            is_land: bool,
+            is_creature: bool,
+        }
+
+        let library_ids = self
+            .game
+            .player(player_id)
+            .map(|player| player.library.to_vec())
+            .unwrap_or_default();
+        let mut candidates = library_ids
+            .into_iter()
+            .filter_map(|id| {
+                let object = self.game.object(id)?;
+                let definition = self.find_card_definition(&object.name)?;
+                Some(Candidate {
+                    id,
+                    name: object.name.to_string(),
+                    is_land: definition.card.is_land(),
+                    is_creature: definition.card.is_creature(),
+                })
+            })
+            .collect::<Vec<_>>();
+        if candidates.is_empty() {
+            return Err(JsValue::from_str("loaded deck has no cards available for sampling"));
+        }
+
+        self.game.shuffle_slice(&mut candidates);
+        let mut selected: Vec<(Candidate, ironsmith::zone::Zone)> = Vec::new();
+
+        // Prefer ordinary creatures first so a creature-land does not consume
+        // the only land slot in the opening test board.
+        for _ in 0..2 {
+            let position = candidates
+                .iter()
+                .position(|candidate| candidate.is_creature && !candidate.is_land)
+                .or_else(|| candidates.iter().position(|candidate| candidate.is_creature));
+            let Some(position) = position else { break };
+            selected.push((
+                candidates.swap_remove(position),
+                ironsmith::zone::Zone::Battlefield,
+            ));
+        }
+        // Put four real lands on the battlefield so the test match can start
+        // casting spells immediately without fabricating cards.
+        for _ in 0..4 {
+            let Some(position) = candidates.iter().position(|candidate| candidate.is_land) else {
+                break;
+            };
+            selected.push((
+                candidates.swap_remove(position),
+                ironsmith::zone::Zone::Battlefield,
+            ));
+        }
+        while selected
+            .iter()
+            .filter(|(_, zone)| *zone == ironsmith::zone::Zone::Battlefield)
+            .count()
+            < 6
+        {
+            let Some(candidate) = candidates.pop() else { break };
+            selected.push((candidate, ironsmith::zone::Zone::Battlefield));
+        }
+        for zone in [
+            ironsmith::zone::Zone::Hand,
+            ironsmith::zone::Zone::Graveyard,
+            ironsmith::zone::Zone::Exile,
+        ] {
+            for _ in 0..2 {
+                let Some(candidate) = candidates.pop() else { break };
+                selected.push((candidate, zone));
+            }
+        }
+
+        let mut result = TestPositionSeedResult {
+            player_index,
+            battlefield: Vec::new(),
+            hand: Vec::new(),
+            graveyard: Vec::new(),
+            exile: Vec::new(),
+        };
+        for (candidate, zone) in selected {
+            if self.game.move_object_by_effect(candidate.id, zone).is_none() {
+                continue;
+            }
+            match zone {
+                ironsmith::zone::Zone::Battlefield => result.battlefield.push(candidate.name),
+                ironsmith::zone::Zone::Hand => result.hand.push(candidate.name),
+                ironsmith::zone::Zone::Graveyard => result.graveyard.push(candidate.name),
+                ironsmith::zone::Zone::Exile => result.exile.push(candidate.name),
+                _ => {}
+            }
+        }
+        self.recompute_ui_decision()?;
+        Ok(result)
+    }
+
     fn add_definition_to_zone_with_triggers(
         &mut self,
         definition: &CardDefinition,

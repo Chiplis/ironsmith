@@ -92,6 +92,18 @@ import {
 } from "./shared.js";
 import { approximateMessageBytes, recordDiagnosticEvent, recordPeerMessage, recordPeerState } from "../../lib/action-diagnostics.js";
 
+function normalizeLobbyDeckOptions(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, 8)
+    .map((option, index) => ({
+      id: String(option?.id || `deck-${index}`),
+      label: String(option?.label || `Deck ${index + 1}`).trim().slice(0, 80),
+      deckText: String(option?.deckText || "").slice(0, 100000),
+    }))
+    .filter((option) => option.deckText.trim());
+}
+
 export function usePeerLobbyMessaging(base, servicesRef) {
   const { actionCryptoRequirementsRef, actionHistoryRef, applySyncedCommand, applyingSequencedActionsRef, auditEncryptionPublicKeyRef, auditKeyPairRef, auditPublicKeyRef, auditStateHashRef, awaitingStateResyncRef, clientConnectionsRef, clientMessageQueueRef, drainingPendingSequencedActionsRef, ensureDirectPeerConnectionsRef, gameRef, hostConnectionRef, hostMessageQueueRef, ignoredActionIntentKeysRef, initialPublicCheckpointHashRef, liveAuditTranscriptRef, localZiffleRevealInFlightRef, matchClockConfigRef, matchClockObservationExemptSequenceRef, matchStartPayloadRef, multiplayerRef, peerConnectionsRef, peerMessageQueueRef, peerOptionsRef, peerRef, peerServerLabelRef, pendingSequencedActionsRef, reconnectChallengesRef, relayedActionIdsRef, resyncingPeerIdsRef, setState, setStatus, stateRef } = base;
   const alignMatchClockObservationFromHostSnapshot = useCallback((...args) => servicesRef.current.alignMatchClockObservationFromHostSnapshot(...args), [servicesRef]);
@@ -842,6 +854,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       format: session.format,
       securityMode: sessionSecurityMode(session),
       players: toLobbyPlayers(session.players),
+      deckOptions: normalizeLobbyDeckOptions(session.deckOptions),
       matchStarted: session.matchStarted,
     });
   }, [broadcastToClients, updateMultiplayer]);
@@ -1952,6 +1965,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
               securityMode: nextSecurityMode,
               localDeckCount: localDeckSubmission.deckCount,
               localCommanderCount: localDeckSubmission.commanderCount,
+              deckOptions: normalizeLobbyDeckOptions(message.deckOptions),
               players: message.players || [],
               localPlayerIndex: localEntry ? localEntry.index : prev.localPlayerIndex,
               matchStarted: Boolean(message.matchStarted),
@@ -3653,6 +3667,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       transport = "peerjs",
       advertise = true,
       resume = null,
+      deckOptions = [],
     }) => {
       if (transport === 'websocket') {
         if (!relayBaseUrl()) { setStatus('WebSocket lobby service is not configured', true); return; }
@@ -3760,6 +3775,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         signalingServer: peerServerLabelRef.current,
         localDeckText: String(deckText || ""),
         localCommanderText: String(commanderText || ""),
+        deckOptions: normalizeLobbyDeckOptions(deckOptions),
         localDeckCount: deckSubmission.deckCount,
         localCommanderCount: deckSubmission.commanderCount,
       });

@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ironsmith.local/schemas/competitive-deck.json",
+  "title": "Competitive deck",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "format", "source", "mainboard", "sideboard", "commander", "tags", "hash"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "format": { "type": "string", "minLength": 1 },
+    "name": { "type": "string" },
+    "archetype": { "type": "string" },
+    "colors": { "type": "array", "items": { "type": "string", "pattern": "^[WUBRGC]$" }, "uniqueItems": true },
+    "mechanics": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "collections": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9-]+$" }, "uniqueItems": true },
+    "manaProfile": { "$ref": "#/$defs/manaProfile" },
+    "cardNames": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "event": { "type": "string" },
+    "date": { "type": "string" },
+    "placement": { "type": ["integer", "null"], "minimum": 1 },
+    "source": { "type": "string", "minLength": 1 },
+    "sourceUrl": { "type": "string" },
+    "mainboard": { "$ref": "#/$defs/cardList" },
+    "sideboard": { "$ref": "#/$defs/cardList" },
+    "commander": { "$ref": "#/$defs/cardList" },
+    "tags": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "hash": { "type": "string", "pattern": "^[a-f0-9]{16}$" }
+  },
+  "$defs": {
+    "card": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "count"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "count": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "cardList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/card" }
+    },
+    "manaCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "W": { "type": "integer", "minimum": 0 },
+        "U": { "type": "integer", "minimum": 0 },
+        "B": { "type": "integer", "minimum": 0 },
+        "R": { "type": "integer", "minimum": 0 },
+        "G": { "type": "integer", "minimum": 0 },
+        "C": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "manaProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["colors", "pipCounts", "sourceCounts", "landCount", "predominantColors", "predominantLands", "metadataCoverage"],
+      "properties": {
+        "colors": { "type": "array", "items": { "type": "string", "pattern": "^[WUBRGC]$" }, "uniqueItems": true },
+        "pipCounts": { "$ref": "#/$defs/manaCounts" },
+        "sourceCounts": { "$ref": "#/$defs/manaCounts" },
+        "landCount": { "type": "integer", "minimum": 0 },
+        "predominantColors": { "type": "array", "items": { "type": "string", "pattern": "^[WUBRGC]$" }, "uniqueItems": true },
+        "predominantLands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "count"],
+            "properties": { "name": { "type": "string", "minLength": 1 }, "count": { "type": "integer", "minimum": 1 } }
+          }
+        },
+        "metadataCoverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "resolvedCardCount", "totalCardCount", "unresolvedCardNames", "complete"],
+          "properties": {
+            "source": { "type": "string" },
+            "resolvedCardCount": { "type": "integer", "minimum": 0 },
+            "totalCardCount": { "type": "integer", "minimum": 0 },
+            "unresolvedCardNames": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+            "complete": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  }
+}

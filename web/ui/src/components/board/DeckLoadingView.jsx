@@ -1,21 +1,39 @@
 import useUiText from "@/i18n/useUiText";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
 import {
   findSavedDeckPreset,
   listSavedDeckPresets,
   parseDeckList,
-  parseDeckPrintPreferences,
   parseSideboardList,
+  removeSavedDeckPreset,
   saveSavedDeckPreset,
+  SAVED_DECK_PRESETS_LIMIT,
 } from "@/lib/decklists";
-import { setPreferredCardPrints } from "@/lib/scryfall";
+import CompetitiveDeckBrowser from "./CompetitiveDeckBrowser";
 
 const fieldClass =
   "w-full border border-[rgba(154,126,82,0.46)] bg-[#0b0d0e] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75";
-const labelClass = "grid gap-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]";
+const selectClass = `${fieldClass} pr-12`;
+const selectStyle = {
+  appearance: "none",
+  backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23b8aa8e' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.8'%3E%3Cpath d='m5 7 5 5 5-5'/%3E%3C/svg%3E\")",
+  backgroundPosition: "right 1.35rem center",
+  backgroundRepeat: "no-repeat",
+  backgroundSize: "0.9rem",
+};
+
+// A decklist line, not interface copy: it stays in MTGO's own wording.
+const MTGO_EXAMPLE_LINE = "4 Counterspell";
+
+function ActionSpinner() {
+  return <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 animate-spin" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" /><path d="M17 10a7 7 0 0 0-7-7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>;
+}
+
+function stripDeckHeader(text) {
+  return String(text || "").replace(/^\s*Deck\s*\r?\n/i, "");
+}
 
 function samePresetTexts(left, right) {
   const leftTexts = Array.isArray(left) ? left : [];
@@ -25,32 +43,47 @@ function samePresetTexts(left, right) {
 }
 
 function fitTextsToPlayers(players, texts) {
-  return players.map((_, index) => String(texts?.[index] || ""));
+  return players.map((_, index) => stripDeckHeader(texts?.[index]));
 }
 
-export default function DeckLoadingView({ onLoad, onCancel }) {
+function editorCountForTexts(players, texts) {
+  const highestFilledIndex = texts.reduce(
+    (highest, text, index) => String(text || "").trim() ? index : highest,
+    -1,
+  );
+  if (highestFilledIndex < 1) return Math.min(1, players.length);
+  if (highestFilledIndex < 2) return Math.min(2, players.length);
+  return Math.min(4, players.length);
+}
+
+export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) {
   const ui = useUiText();
   const {
     state,
     setStatus,
-    semanticThreshold,
-    setSemanticThreshold,
-    cardsMeetingThreshold,
   } = useGame();
-  const players = state?.players || [];
+  const players = useMemo(() => state?.players || [], [state?.players]);
   const [texts, setTexts] = useState(() => players.map(() => ""));
+  const [deckLabels, setDeckLabels] = useState(() => players.map(() => ""));
   const [savedPresets, setSavedPresets] = useState(() => listSavedDeckPresets());
   const [selectedPresetName, setSelectedPresetName] = useState("");
   const [presetName, setPresetName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [actionBusy, setActionBusy] = useState("");
+  const [showContinueChoices, setShowContinueChoices] = useState(false);
+  const [showLobbyConfirm, setShowLobbyConfirm] = useState(false);
+  const [actionNotice, setActionNotice] = useState("");
+  const actionNoticeTimerRef = useRef(null);
+  const [copiedPlayerIndex, setCopiedPlayerIndex] = useState(null);
+  const [catalogTargetIndex, setCatalogTargetIndex] = useState(0);
+  const [editorPlayerCount, setEditorPlayerCount] = useState(1);
 
-  const handleTextChange = (index, value) => {
+  const handleTextChange = useCallback((index, value) => {
     setTexts((prev) => {
       const next = [...prev];
       next[index] = value;
       return next;
     });
-  };
+  }, []);
 
   const cardCounts = useMemo(
     () => texts.map((t) => parseDeckList(t).length),
@@ -61,7 +94,24 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
     [texts]
   );
   const totalCards = cardCounts.reduce((a, b) => a + b, 0);
-  const totalSideboardCards = sideboardCounts.reduce((a, b) => a + b, 0);
+  const visiblePlayerCount = Math.min(editorPlayerCount, players.length || 1);
+  const visiblePlayers = useMemo(() => players.slice(0, visiblePlayerCount), [players, visiblePlayerCount]);
+  const playerCountModes = [1, 2, 4].filter((count) => count <= players.length);
+  const targetIndex = Math.min(catalogTargetIndex, Math.max(0, visiblePlayerCount - 1));
+  const targetPlayerName = visiblePlayers[targetIndex]?.name || "";
+
+  const showActionNotice = useCallback((message) => {
+    setActionNotice(String(message || ""));
+    if (actionNoticeTimerRef.current) window.clearTimeout(actionNoticeTimerRef.current);
+    actionNoticeTimerRef.current = window.setTimeout(() => {
+      setActionNotice("");
+      actionNoticeTimerRef.current = null;
+    }, 1800);
+  }, []);
+
+  useEffect(() => () => {
+    if (actionNoticeTimerRef.current) window.clearTimeout(actionNoticeTimerRef.current);
+  }, []);
 
   const selectedPreset = useMemo(
     () =>
@@ -73,157 +123,448 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
 
   const handleApplySavedPreset = () => {
     if (!selectedPreset) return;
-    setTexts(fitTextsToPlayers(players, selectedPreset.texts));
-    setPresetName(selectedPreset.name);
+    const nextTexts = fitTextsToPlayers(players, selectedPreset.texts);
+    const nextCount = editorCountForTexts(players, nextTexts);
+    setTexts(nextTexts);
+    setDeckLabels(nextTexts.map((text) => String(text || "").trim() ? selectedPreset.name : ""));
+    setEditorPlayerCount(nextCount);
+    const nextEmptyIndex = nextTexts.findIndex((text) => !String(text || "").trim());
+    setCatalogTargetIndex(nextEmptyIndex >= 0 ? Math.min(nextEmptyIndex, Math.max(0, nextCount - 1)) : 0);
+    showActionNotice(ui("Deck loaded into {0}", { 0: players[nextEmptyIndex >= 0 ? nextEmptyIndex : 0]?.name || ui("the editor") }));
   };
 
-  const handleLoad = async () => {
-    if (submitting) return;
+  const saveCurrentPreset = useCallback((requestedName) => {
+    const normalizedPresetName = String(requestedName || "").trim();
+    if (!normalizedPresetName) {
+      setStatus(ui("Choose a name to save this deck."));
+      return false;
+    }
+
+    const existingPreset = findSavedDeckPreset(normalizedPresetName);
+    const nextTexts = fitTextsToPlayers(players, texts);
+    const shouldConfirmOverride =
+      existingPreset && !samePresetTexts(existingPreset.texts, nextTexts);
+    if (
+      shouldConfirmOverride
+      && !window.confirm(ui('A saved deck named "{0}" already exists. Override it?', { 0: existingPreset.name }))
+    ) {
+      return false;
+    }
+
+    const saveResult = saveSavedDeckPreset(normalizedPresetName, nextTexts, players.map((player) => player.name));
+    if (saveResult.saved) {
+      setSavedPresets(saveResult.entries);
+      setSelectedPresetName(saveResult.entry.name);
+      setStatus(
+        saveResult.replaced
+          ? ui('Updated saved deck "{0}"', { 0: saveResult.entry.name })
+          : ui('Saved deck "{0}"', { 0: saveResult.entry.name })
+      );
+      showActionNotice(saveResult.replaced ? ui("Saved deck updated") : ui("Deck saved"));
+      return true;
+    }
+    if (saveResult.reason === "limit") {
+      setStatus(ui("Session limit reached ({0} decks). Delete one saved deck to add another.", { 0: SAVED_DECK_PRESETS_LIMIT }));
+    }
+    return false;
+  }, [players, setStatus, showActionNotice, texts, ui]);
+
+  const handleSavePreset = useCallback(() => {
+    if (saveCurrentPreset(presetName)) setPresetName("");
+  }, [presetName, saveCurrentPreset]);
+
+  const handleClearPlayer = useCallback((playerIndex) => {
+    setTexts((current) => {
+      const next = [...current];
+      next[playerIndex] = "";
+      return next;
+    });
+    setDeckLabels((current) => {
+      const next = [...current];
+      next[playerIndex] = "";
+      return next;
+    });
+    setCopiedPlayerIndex((current) => current === playerIndex ? null : current);
+    setCatalogTargetIndex(playerIndex);
+    showActionNotice(ui("Removed {0}'s deck from the editor", { 0: players[playerIndex]?.name || ui("player") }));
+  }, [players, showActionNotice, ui]);
+
+  const handleEditorPlayerCountChange = useCallback((count) => {
+    setEditorPlayerCount(count);
+    setCatalogTargetIndex((current) => Math.min(current, Math.max(0, count - 1)));
+  }, []);
+
+  const handleCopyMtgo = useCallback(async (playerIndex = catalogTargetIndex) => {
+    const text = String(texts[playerIndex] || "").trim();
+    if (!text) {
+      setStatus(ui("There is no deck to copy."));
+      return;
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        textarea.remove();
+      }
+      setCopiedPlayerIndex(playerIndex);
+      window.setTimeout(() => setCopiedPlayerIndex((current) => current === playerIndex ? null : current), 900);
+      showActionNotice(ui("MTGO list copied"));
+    } catch {
+      setStatus(ui("Could not copy the deck."));
+    }
+  }, [catalogTargetIndex, setStatus, showActionNotice, texts, ui]);
+
+  const runAction = useCallback((key, action) => {
+    if (actionBusy) return;
+    setActionBusy(key);
+    let result;
+    try {
+      result = action();
+    } catch (error) {
+      setStatus(error?.message || ui("Could not complete the action."));
+      setActionBusy("");
+      return;
+    }
+    Promise.resolve(result)
+      .catch((error) => setStatus(error?.message || ui("Could not complete the action.")))
+      .finally(() => {
+        window.setTimeout(() => setActionBusy((current) => current === key ? "" : current), 180);
+      });
+  }, [actionBusy, setStatus, ui]);
+
+  const handleCatalogSelect = useCallback(({ deckText, deckName, name, archetype }) => {
+    const target = visiblePlayers.length ? Math.min(catalogTargetIndex, visiblePlayers.length - 1) : 0;
+    const importedText = stripDeckHeader(deckText);
+    const importedName = String(deckName || name || archetype || "").trim();
+    const nextTexts = [...texts];
+    nextTexts[target] = importedText;
+    handleTextChange(target, importedText);
+    if (importedName) {
+      setDeckLabels((current) => {
+        const next = [...current];
+        next[target] = importedName;
+        return next;
+      });
+    }
+
+    const findEmptyPlayer = (count) => players.slice(0, count).findIndex((_, index) => !String(nextTexts[index] || "").trim());
+    let nextCount = visiblePlayerCount;
+    let nextIndex = findEmptyPlayer(nextCount);
+    if (nextIndex < 0 && nextCount < players.length) {
+      nextCount = [1, 2, 4].find((count) => count > nextCount && count <= players.length) || players.length;
+      nextIndex = findEmptyPlayer(nextCount);
+    }
+    setEditorPlayerCount(nextCount);
+    setCatalogTargetIndex(nextIndex >= 0 ? nextIndex : (target + 1) % Math.max(1, nextCount));
+    showActionNotice(ui("Deck loaded into {0}", { 0: players[target]?.name || ui("the editor") }));
+  }, [catalogTargetIndex, handleTextChange, players, showActionNotice, texts, ui, visiblePlayerCount, visiblePlayers.length]);
+
+  const handleDeleteSavedPreset = useCallback(() => {
+    if (!selectedPreset) return;
+    if (!window.confirm(ui('Delete saved deck "{0}"?', { 0: selectedPreset.name }))) return;
+    setSavedPresets(removeSavedDeckPreset(selectedPreset.name));
+    setSelectedPresetName("");
+    setStatus(ui('Deleted saved deck "{0}"', { 0: selectedPreset.name }));
+    showActionNotice(ui("Saved deck deleted"));
+  }, [selectedPreset, setStatus, showActionNotice, ui]);
+
+  const handleTestInGame = useCallback(() => {
     const decks = texts.map(parseDeckList);
     const sideboards = texts.map(parseSideboardList);
-    const normalizedPresetName = presetName.trim();
-    setPreferredCardPrints(texts.flatMap(parseDeckPrintPreferences));
-
-    if (normalizedPresetName) {
-      const existingPreset = findSavedDeckPreset(normalizedPresetName);
-      const nextTexts = fitTextsToPlayers(players, texts);
-      const shouldConfirmOverride =
-        existingPreset && !samePresetTexts(existingPreset.texts, nextTexts);
-      if (
-        shouldConfirmOverride
-        && !window.confirm(ui('A saved deck named "{0}" already exists. Override it?', { 0: existingPreset.name }))
-      ) {
-        await onLoad({ decks, sideboards });
-        return;
-      }
-
-      const saveResult = saveSavedDeckPreset(normalizedPresetName, nextTexts);
-      if (saveResult.saved) {
-        setSavedPresets(saveResult.entries);
-        setSelectedPresetName(saveResult.entry.name);
-        setPresetName(saveResult.entry.name);
-        setStatus(
-          saveResult.replaced
-            ? `Updated saved deck "${saveResult.entry.name}"`
-            : `Saved deck "${saveResult.entry.name}"`
-        );
-      }
+    if (!decks.some((deck) => deck.length > 0)) {
+      setStatus(ui("Paste at least one deck to test it in a game."));
+      return false;
     }
+    // The x1/x2/x4 selector is the source of truth for the match size. Empty
+    // slots are intentional: the engine can preserve the bot/demo deck for
+    // those players, while slicing by filled decks silently dropped them.
+    const playerCount = Math.max(2, Math.min(4, visiblePlayerCount));
+    const perspectivePlayerIndex = Math.max(0, decks.findIndex((deck) => deck.length > 0));
+    const playerDecks = decks.slice(0, playerCount);
+    const playerSideboards = sideboards.slice(0, playerCount);
+    const seedPlayerIndices = playerDecks.reduce(
+      (indices, deck, index) => (deck.length > 0 ? [...indices, index] : indices),
+      [],
+    );
+    return onTestDecks?.({
+      decks: playerDecks,
+      sideboards: playerSideboards,
+      playerCount,
+      perspectivePlayerIndex,
+      seedPlayerIndices,
+      preserveMissingDecks: true,
+      allowPartialDecks: true,
+      seedTestPosition: true,
+    });
+  }, [onTestDecks, setStatus, texts, ui, visiblePlayerCount]);
 
-    setSubmitting(true);
-    try {
-      await onLoad({ decks, sideboards });
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const lobbyPlayerCount = Math.max(2, Math.min(4, visiblePlayerCount));
+  const lobbyDeckOptions = useMemo(
+    () => texts
+      .map((text, index) => ({
+        id: `editor-${index}`,
+        label: `${deckLabels[index] || ui("Deck {0}", { 0: index + 1 })} (${players[index]?.name || ui("Player {0}", { 0: index + 1 })})`,
+        deckText: String(text || ""),
+      }))
+      .filter((option) => option.deckText.trim()),
+    [deckLabels, players, texts, ui],
+  );
+  const handleConfirmLobby = useCallback(() => {
+    setShowLobbyConfirm(false);
+    onOpenLobby?.(texts, lobbyPlayerCount, lobbyDeckOptions);
+  }, [lobbyDeckOptions, lobbyPlayerCount, onOpenLobby, texts]);
 
   return (
     <main
-      className="setup-screen deck-loading-screen table-gradient flex h-full min-h-0 flex-col overflow-hidden border border-[rgba(154,126,82,0.46)] bg-[linear-gradient(180deg,rgba(55,49,39,0.98),rgba(20,18,15,0.98))] p-3"
+      className="setup-screen deck-loading-screen table-gradient relative flex h-full min-h-0 flex-col overflow-y-auto border border-[rgba(154,126,82,0.46)] bg-[linear-gradient(180deg,rgba(55,49,39,0.98),rgba(20,18,15,0.98))] p-3 pb-24 lg:overflow-hidden lg:pb-3"
     >
-      <div className="mb-3 grid shrink-0 gap-3 border-b border-[rgba(154,126,82,0.34)] pb-3 xl:grid-cols-[minmax(180px,260px)_minmax(0,1fr)]">
-        <div className="min-w-[220px]">
-          <h1 className="text-[18px] font-bold uppercase tracking-wide text-[#f2d9a3]">{ui("Load Decks")}</h1>
-          <div className="mt-1 text-[12px] font-semibold text-[#b8aa8e]">{ui("Paste main deck lists with optional Sideboard sections.")}</div>
+      {actionNotice ? (
+        <div className="pointer-events-none sticky top-0 z-30 flex justify-end" role="status" aria-live="polite">
+          <div className="border border-[#d8bf7a]/55 bg-[#211a10]/95 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-[#f2d9a3] shadow-lg">
+            {actionNotice}
+          </div>
         </div>
-        <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(220px,300px)]">
-          <label className={labelClass}>{ui("Saved Deck")}<div className="flex gap-2">
-              <select
-                className={fieldClass}
-                value={selectedPresetName}
-                onChange={(event) => setSelectedPresetName(event.target.value)}
-              >
-                <option value="">{ui("Select a saved deck")}</option>
-                {savedPresets.map((preset) => (
-                  <option key={preset.name} value={preset.name}>
-                    {preset.name}
-                  </option>
-                ))}
-              </select>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-9 shrink-0 border border-[#9a7e52]/55 px-3 text-[12px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
-                disabled={!selectedPreset}
-                onClick={handleApplySavedPreset}
-              >{ui("Use")}</Button>
+      ) : null}
+      <div className="mb-3 shrink-0 border-b border-[rgba(154,126,82,0.34)] pb-3">
+        <h1 className="text-[18px] font-bold uppercase tracking-wide text-[#f2d9a3]">{ui("Load Decks")}</h1>
+        <div className="mt-1 text-[12px] font-semibold text-[#b8aa8e]">{ui("Paste main deck lists with optional Sideboard sections.")}</div>
+      </div>
+      <section className="mb-3 shrink-0 border-b border-[rgba(154,126,82,0.34)] pb-3" aria-label={ui("Saved decks")}>
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Saved decks")}</h2>
+          <span className="text-[10px] uppercase tracking-wide text-[#8b806b]">{ui("{0}/{1} available this session", { 0: savedPresets.length, 1: SAVED_DECK_PRESETS_LIMIT })}</span>
+        </div>
+        <div className="grid gap-2 md:grid-cols-[minmax(200px,1fr)_auto_auto]">
+          <select
+            className={selectClass}
+            style={selectStyle}
+            value={selectedPresetName}
+            onChange={(event) => setSelectedPresetName(event.target.value)}
+            aria-label={ui("Saved Deck")}
+          >
+            <option value="">{ui("Select a saved deck")}</option>
+            {savedPresets.map((preset) => (
+              <option key={preset.name} value={preset.name}>{preset.name}</option>
+            ))}
+          </select>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-9 max-w-[96px] truncate border border-[#9a7e52]/55 px-3 text-[11px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
+            disabled={!selectedPreset || Boolean(actionBusy)}
+            onClick={() => runAction("saved-use", handleApplySavedPreset)}
+          >{actionBusy === "saved-use" ? <ActionSpinner /> : ui("Use")}</Button>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-9 max-w-[96px] truncate border border-white/15 px-3 text-[11px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
+              disabled={!selectedPreset || Boolean(actionBusy)}
+              onClick={() => runAction("saved-delete", handleDeleteSavedPreset)}
+            >{actionBusy === "saved-delete" ? <ActionSpinner /> : ui("Delete")}</Button>
+          </div>
+        </div>
+      </section>
+      <section
+        className="mb-3 flex min-h-0 flex-1 flex-col gap-3 border border-[rgba(154,126,82,0.42)] bg-[rgba(8,9,9,0.55)] p-2 lg:flex-row"
+        aria-label={ui("Deck catalog and player decks")}
+        data-deck-workspace=""
+      >
+        <div className="flex min-h-[360px] min-w-0 flex-col border-b border-[rgba(154,126,82,0.28)] pb-3 lg:min-h-0 lg:w-[clamp(320px,34%,440px)] lg:shrink-0 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-3">
+          <CompetitiveDeckBrowser onSelect={handleCatalogSelect} targetName={targetPlayerName} />
+        </div>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-1 pb-2">
+            <div className="min-w-0">
+              <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Player decks")}</h2>
+              <p className="text-[11px] text-[#8b806b]">
+                {ui("Pick a player, then use a catalog deck or paste a list like")}{" "}
+                <span className="font-mono">{MTGO_EXAMPLE_LINE}</span>
+              </p>
             </div>
-          </label>
-          <label className={labelClass}>{ui("Save As")}<input
-              className={fieldClass}
-              placeholder={ui("Friday gauntlet")}
+            <div className="flex flex-wrap gap-1.5" aria-label={ui("Number of players to edit")}>
+              {playerCountModes.map((count) => (
+                <button
+                  key={count}
+                  type="button"
+                  className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${visiblePlayerCount === count ? "border-[#d8bf7a]/80 bg-[#d8bf7a]/15 text-[#f2d9a3]" : "border-white/10 text-[#b8aa8e] hover:border-[#d8bf7a]/45 hover:text-[#f2d9a3]"}`}
+                  aria-pressed={visiblePlayerCount === count}
+                  onClick={() => handleEditorPlayerCountChange(count)}
+                >
+                  x{count}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div
+            className="grid min-h-0 flex-1 auto-rows-fr gap-2 overflow-y-auto pr-1 sm:grid-cols-2"
+            data-player-grid={visiblePlayerCount}
+          >
+            {visiblePlayers.map((player, i) => {
+              const isTarget = i === targetIndex;
+              // One player fills the container; an odd last player spans the
+              // pair so the grid still reads as a square.
+              const spansRow = visiblePlayerCount === 1
+                || (i === visiblePlayerCount - 1 && visiblePlayerCount % 2 === 1);
+              return (
+                <div
+                  key={player.id}
+                  data-player-slot={i}
+                  data-catalog-target={isTarget ? "true" : "false"}
+                  onFocusCapture={() => setCatalogTargetIndex(i)}
+                  onMouseDown={() => setCatalogTargetIndex(i)}
+                  className={`setup-editor flex min-h-[200px] min-w-0 flex-col gap-2 border p-2.5 transition-colors ${spansRow ? "sm:col-span-2" : ""} ${isTarget
+                    ? "border-[#d8bf7a]/70 bg-[linear-gradient(180deg,rgba(33,26,16,0.94),rgba(8,9,9,0.96))]"
+                    : "border-[rgba(154,126,82,0.42)] bg-[linear-gradient(180deg,rgba(17,17,15,0.94),rgba(8,9,9,0.96))]"}`}
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-baseline gap-1.5">
+                        <span className="min-w-0 truncate text-[14px] font-bold uppercase tracking-wide text-[#f2d9a3]">{player.name}</span>
+                        {isTarget ? <span className="shrink-0 rounded-full border border-[#d8bf7a]/60 px-1.5 text-[9px] font-bold uppercase tracking-wide text-[#d8bf7a]">{ui("Target")}</span> : null}
+                      </div>
+                      <div className="truncate text-[10px] text-[#b8aa8e]">{deckLabels[i] || ui("No deck assigned")}</div>
+                    </div>
+                    <div className="shrink-0 text-right text-[11px] font-semibold text-[#b8aa8e]">
+                      <span>{cardCounts[i]}{" " + ui("main")}</span>
+                      <span className="mx-1 text-[#776b58]">/</span>
+                      <span>{sideboardCounts[i]}{" " + ui("sideboard")}</span>
+                    </div>
+                  </div>
+                  <textarea
+                    aria-label={ui("{0} decklist", { 0: player.name })}
+                    spellCheck={false}
+                    className="min-h-[96px] w-full flex-1 resize-none border border-[rgba(154,126,82,0.48)] bg-[#080b0d] p-2 font-mono text-[12px] leading-snug text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75"
+                    placeholder={stripDeckHeader(ui("Paste {0}'s list...\n\nDeck\n4 Lightning Bolt\n2 Counterspell\n20 Island\n\nSideboard\n2 Pyroblast\n1 Tormod's Crypt", { 0: player.name }))}
+                    value={texts[i] || ""}
+                    onChange={(e) => handleTextChange(i, e.target.value)}
+                  />
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 max-w-[120px] truncate border border-white/15 px-2 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
+                      disabled={cardCounts[i] === 0 || Boolean(actionBusy)}
+                      onClick={() => runAction(`copy-${i}`, () => handleCopyMtgo(i))}
+                      title={ui("Copy {0}'s MTGO list", { 0: player.name })}
+                      aria-label={ui("Copy {0}'s MTGO list", { 0: player.name })}
+                    >
+                      <svg viewBox="0 0 20 20" className="mr-1 h-3.5 w-3.5" aria-hidden="true"><rect x="6.5" y="6.5" width="9" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M13 6.5V4.8A1.3 1.3 0 0 0 11.7 3.5H5A1.5 1.5 0 0 0 3.5 5v8A1.3 1.3 0 0 0 4.8 14.3h1.7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.4" /></svg>
+                      {actionBusy === `copy-${i}` ? <ActionSpinner /> : copiedPlayerIndex === i ? ui("Copied") : ui("Copy")}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 max-w-7 rounded-full border border-white/15 p-0 text-[#b8aa8e] hover:border-[#d8bf7a]/55 hover:text-[#f2d9a3] disabled:text-[#665d50]"
+                      disabled={cardCounts[i] === 0 || Boolean(actionBusy)}
+                      onClick={() => handleClearPlayer(i)}
+                      title={ui("Clear {0}'s deck", { 0: player.name })}
+                      aria-label={ui("Clear {0}'s deck", { 0: player.name })}
+                    ><svg viewBox="0 0 20 20" className="h-3.5 w-3.5" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg></Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-white/10 px-1 pt-2">
+            <span className="mr-auto text-[10px] uppercase tracking-wide text-[#8b806b]">{ui("Save every player's deck as one configuration.")}</span>
+            <input
+              className={`${fieldClass} max-w-[240px] py-1.5 text-[11px]`}
+              placeholder={ui("Name your deck")}
               value={presetName}
               onChange={(event) => setPresetName(event.target.value)}
+              aria-label={ui("Name your deck")}
             />
-          </label>
-        </div>
-      </div>
-      <div
-        className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto pr-1 xl:grid-cols-2"
-      >
-        {players.map((player, i) => (
-          <div
-            key={player.id}
-            className="setup-editor grid min-h-[260px] gap-2 border border-[rgba(154,126,82,0.42)] bg-[linear-gradient(180deg,rgba(17,17,15,0.94),rgba(8,9,9,0.96))] p-3"
-            style={{ gridTemplateRows: "auto minmax(180px,1fr)" }}
-          >
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="min-w-0 truncate text-[15px] font-bold uppercase tracking-wide text-[#f2d9a3]">
-                {player.name}
-              </span>
-              <div className="shrink-0 text-right text-[12px] font-semibold text-[#b8aa8e]">
-                <span>{cardCounts[i]}{" " + ui("main")}</span>
-                <span className="mx-1.5 text-[#776b58]">/</span>
-                <span>{sideboardCounts[i]}{" " + ui("sideboard")}</span>
-              </div>
-            </div>
-            <textarea
-              aria-label={ui("{0} decklist", { 0: player.name })}
-              spellCheck={false}
-              className="h-full min-h-0 w-full resize-none border border-[rgba(154,126,82,0.48)] bg-[#080b0d] p-2 font-mono text-[13px] leading-snug text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75"
-              placeholder={ui("Paste {0}'s list...\n\nDeck\n4 Lightning Bolt\n2 Counterspell\n20 Island\n\nSideboard\n2 Pyroblast\n1 Tormod's Crypt", { 0: player.name })}
-              value={texts[i] || ""}
-              onChange={(e) => handleTextChange(i, e.target.value)}
-            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 max-w-[96px] truncate border border-[#9a7e52]/55 px-3 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
+              disabled={!presetName.trim() || totalCards === 0 || Boolean(actionBusy)}
+              onClick={() => runAction("saved-save", handleSavePreset)}
+            >{actionBusy === "saved-save" ? <ActionSpinner /> : ui("Save")}</Button>
           </div>
-        ))}
-      </div>
-      <div className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[rgba(154,126,82,0.34)] pt-3">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          <span className="whitespace-nowrap text-[12px] font-semibold uppercase tracking-wide text-[#d8bf7a]">{ui("Min similarity")}</span>
-          <Slider
-            aria-label={ui("Card fidelity threshold")}
-            className="w-28"
-            min={0}
-            max={100}
-            step={1}
-            value={[Math.round(semanticThreshold)]}
-            onValueChange={([value]) => setSemanticThreshold(value)}
-          />
-          <span className="whitespace-nowrap text-[12px] text-[#b8aa8e]">
-            {semanticThreshold > 0 ? `${Math.round(semanticThreshold)}%` : ui("Off")} ({cardsMeetingThreshold})
-          </span>
         </div>
-        <div className="flex items-center justify-center gap-2">
+      </section>
+      <div className="flex shrink-0 justify-end border-t border-[rgba(154,126,82,0.34)] pb-4 pt-3 pr-48 lg:pb-0">
+        {showLobbyConfirm ? (
+          <div className="mr-2 flex flex-wrap items-center justify-end gap-2 border border-[#d8bf7a]/45 bg-[#211a10] px-2 py-1.5">
+            <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-[#f2d9a3]">{ui("Create a {0}-player lobby?", { 0: lobbyPlayerCount })}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 border border-[#f2d9a3]/55 px-3 text-[10px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
+              disabled={Boolean(actionBusy)}
+              onClick={handleConfirmLobby}
+            >{ui("Confirm")}</Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 border border-white/15 px-2 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317]"
+              disabled={Boolean(actionBusy)}
+              onClick={() => setShowLobbyConfirm(false)}
+            >{ui("Cancel")}</Button>
+          </div>
+        ) : showContinueChoices ? (
+          <div className="mr-2 flex flex-wrap items-center justify-end gap-2">
+            <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-[#b8aa8e]">{ui("Continue with these decks")}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-9 border border-[#f2d9a3]/45 bg-[#211a10] px-3 text-[11px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
+              disabled={Boolean(actionBusy)}
+              onClick={() => setShowLobbyConfirm(true)}
+            >{ui("Lobby and share")}</Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-9 border border-[#9a7e52]/55 px-3 text-[11px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317]"
+              disabled={Boolean(actionBusy)}
+              onClick={() => runAction("test", handleTestInGame)}
+            >{actionBusy === "test" ? <ActionSpinner /> : ui("Test in game")}</Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-9 border border-white/15 px-2 text-[11px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317]"
+              disabled={Boolean(actionBusy)}
+              onClick={() => setShowContinueChoices(false)}
+            >{ui("Back")}</Button>
+          </div>
+        ) : (
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="ui-primary-action h-9 border border-[#f2d9a3]/45 bg-[#211a10] px-4 text-[12px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
-            disabled={totalCards === 0 || submitting}
-            onClick={handleLoad}
-          >{submitting ? ui("Loading…") : ui("Load")}{!submitting && totalCards > 0 ? ui(" ({0} main{1})", { 0: totalCards, 1: totalSideboardCards > 0 ? `, ${totalSideboardCards} sideboard` : "" }) : ""}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-9 border border-[#9a7e52]/45 px-3 text-[12px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317]"
-            onClick={onCancel}
-          >{ui("Cancel")}</Button>
-        </div>
+            className="mr-2 h-9 border border-[#f2d9a3]/45 bg-[#211a10] px-3 text-[12px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
+            disabled={Boolean(actionBusy)}
+            onClick={() => setShowContinueChoices(true)}
+          >{ui("Build lobby")}</Button>
+        )}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-9 border border-[#9a7e52]/45 px-3 text-[12px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317]"
+          disabled={Boolean(actionBusy)}
+          onClick={onCancel}
+        >{ui("Cancel")}</Button>
       </div>
     </main>
   );

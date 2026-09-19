@@ -17,11 +17,17 @@ scripts/__pycache__*
 !/crates/ironsmith-compiled-artifact/fixtures/v3.json
 !/web/ui/package.json
 !/web/ui/tests/card-frame-regression-cases.json
+!/tools/deck-catalog/package.json
+!/tools/deck-catalog/schema.json
 !/npm/ironsmith-wasm/package.template.json
 *.csv
 web/ui/node_modules
 web/ui/.pnpm
 web/ui/dist
+# Generated deck catalog: produced by tools/deck-catalog/sync.mjs and copied
+# into the UI by web/ui/scripts/sync-deck-catalog-assets.mjs. Never committed.
+/catalog
+web/ui/public/catalog
 web/ui/.vite
 web/wasm_demo/dist
 web/wasm_demo/.vite

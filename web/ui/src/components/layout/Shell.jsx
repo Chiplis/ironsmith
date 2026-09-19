@@ -360,7 +360,65 @@ export default function Shell() {
         return;
       }
       try {
-        const result = await game.loadDecks(payload);
+        setStatus("Preparando partida de prueba con bots...");
+        const requestedPlayerCount = Number(payload?.playerCount);
+        const playerCount = payload?.preserveMissingDecks && Number.isFinite(requestedPlayerCount)
+          ? Math.max(2, Math.min(4, Math.floor(requestedPlayerCount)))
+          : null;
+        const names = parseNames(playerNames);
+        const testNames = playerCount
+          ? Array.from({ length: playerCount }, (_, index) => (
+            names[index] || (index === 0 ? "Player 1" : `Bot ${index + 1}`)
+          ))
+          : names;
+        if (playerCount && testNames.join(",") !== names.join(",")) {
+          await game.reset(testNames, startingLife);
+          setPlayerNames(testNames.join(","));
+        }
+        const loadPayload = playerCount
+          ? {
+              ...payload,
+              decks: Array.isArray(payload?.decks) ? payload.decks.slice(0, playerCount) : [],
+              sideboards: Array.isArray(payload?.sideboards) ? payload.sideboards.slice(0, playerCount) : [],
+            }
+          : payload;
+        const result = await game.loadDecks(loadPayload);
+        if (playerCount && Number.isFinite(Number(payload?.perspectivePlayerIndex))) {
+          await game.setPerspective(
+            Math.max(0, Math.min(playerCount - 1, Number(payload.perspectivePlayerIndex)))
+          );
+        }
+        let testPositions = [];
+        const testPositionWarnings = [];
+        if (
+          payload?.seedTestPosition
+          && typeof game.seedLoadedDeckTestPosition === "function"
+        ) {
+          const requestedSeedIndices = Array.isArray(payload?.seedPlayerIndices)
+            ? payload.seedPlayerIndices
+              .map((index) => Number(index))
+              .filter((index) => Number.isInteger(index) && index >= 0 && index < playerCount)
+            : Array.from({ length: playerCount }, (_, index) => index);
+          const seedIndices = [...new Set(requestedSeedIndices)];
+          for (const playerIndex of seedIndices) {
+            try {
+              testPositions[playerIndex] = await game.seedLoadedDeckTestPosition(playerIndex);
+            } catch (error) {
+              // A deck made entirely of unresolved/land cards should not
+              // cancel the test match. Keep the loaded library and report the
+              // missing test-position seed as a warning instead.
+              testPositionWarnings.push(`player ${playerIndex + 1}: ${String(error)}`);
+            }
+          }
+        }
+        const testPosition = Number.isFinite(Number(payload?.perspectivePlayerIndex))
+          ? testPositions[Math.max(0, Math.min(playerCount - 1, Number(payload.perspectivePlayerIndex)))] || null
+          : null;
+        const seededPlayerCount = testPositions.filter(Boolean).length;
+        const seededBattlefieldCount = testPositions.reduce(
+          (total, position) => total + (position?.battlefield?.length || 0),
+          0,
+        );
         setDeckLoadingMode(false);
         const loaded = result?.loaded ?? 0;
         const failed = Array.isArray(result?.failed) ? result.failed : [];
@@ -373,7 +431,9 @@ export default function Shell() {
         pushNotice({
           tone: "success",
           title: "Deck load complete",
-          body: `Loaded ${loaded} card${loaded === 1 ? "" : "s"}.`,
+          body: testPosition
+            ? `Loaded ${loaded} card${loaded === 1 ? "" : "s"}. Test position ready for ${seededPlayerCount} player${seededPlayerCount === 1 ? "" : "s"} with ${seededBattlefieldCount} battlefield cards.${testPositionWarnings.length ? ` ${testPositionWarnings.length} position warning${testPositionWarnings.length === 1 ? "" : "s"}.` : ""}`
+            : `Loaded ${loaded} card${loaded === 1 ? "" : "s"}.${testPositionWarnings.length ? ` ${testPositionWarnings.length} position warning${testPositionWarnings.length === 1 ? "" : "s"}.` : ""}`,
         });
         if (failed.length > 0) {
           const copyActions = [
@@ -406,8 +466,8 @@ export default function Shell() {
             .filter(Boolean)
             .join(". ");
           pushNotice({
-            tone: "error",
-            title: "Deck load issues",
+            tone: payload?.allowPartialDecks ? "warning" : "error",
+            title: payload?.allowPartialDecks ? "Deck test warnings" : "Deck load issues",
             body: `${failed.length} card${failed.length === 1 ? "" : "s"} failed. ${issueSummary ? `${issueSummary}. ` : ""}Use the copy actions below.`,
             actions: copyActions,
           });
@@ -426,16 +486,50 @@ export default function Shell() {
             .filter(Boolean)
             .join(", ");
           await refresh(
-            `Loaded ${loaded} cards. ${failed.length} failed${issueSummary ? ` (${issueSummary})` : ""}: ${failedStr}`
+            `Partida de prueba lista: ${loaded} cartas en bibliotecas y manos${testPosition ? ", con posición inicial" : ""}. ${failed.length} fallaron${issueSummary ? ` (${issueSummary})` : ""}: ${failedStr}`
           );
         } else {
-          await refresh(`Loaded ${loaded} cards`);
+          const positionSummary = testPosition
+            ? ` ${seededBattlefieldCount} en battlefield, ${testPositions.reduce((total, position) => total + (position?.graveyard?.length || 0), 0)} en cementerio y ${testPositions.reduce((total, position) => total + (position?.exile?.length || 0), 0)} en exilio.`
+            : "";
+          await refresh(`Partida de prueba lista: ${loaded} cartas en bibliotecas y manos${testPosition ? ", con posición inicial" : ""}.${positionSummary}`);
         }
       } catch (err) {
+        setDeckLoadingMode(false);
         setStatus(`Load decks failed: ${err}`, true);
       }
     });
-  }, [game, multiplayer.mode, pushNotice, refresh, runWasmInteraction, setStatus]);
+  }, [game, multiplayer.mode, playerNames, pushNotice, refresh, runWasmInteraction, setStatus, startingLife]);
+
+  const handleOpenLobbyFromDecks = useCallback((deckTexts, requestedPlayerCount, requestedDeckOptions) => {
+    const texts = Array.isArray(deckTexts) ? deckTexts : [];
+    const filledTexts = texts.filter((text) => String(text || "").trim());
+    const requestedCount = Number(requestedPlayerCount);
+    const desiredPlayers = Number.isFinite(requestedCount)
+      ? Math.max(2, Math.min(4, Math.floor(requestedCount)))
+      : Math.max(2, Math.min(4, filledTexts.length || 2));
+    const firstDeckText = String(
+      texts.find((text) => String(text || "").trim()) || ""
+    );
+    const deckOptions = (Array.isArray(requestedDeckOptions) ? requestedDeckOptions : [])
+      .filter((option) => String(option?.deckText || "").trim())
+      .slice(0, 8)
+      .map((option, index) => ({
+        id: String(option?.id || `editor-${index}`),
+        label: String(option?.label || `Deck ${index + 1}`),
+        deckText: String(option.deckText),
+      }));
+
+    setLobbyOverlayInitial({
+      ...buildLobbyOverlayInitialState(null, "create"),
+      desiredPlayers,
+      createDeckText: firstDeckText,
+      createDeckOptions: deckOptions,
+    });
+    setDeckLoadingMode(false);
+    setPuzzleSetupMode(false);
+    setLobbyOpen(true);
+  }, []);
 
   const handleChangePerspective = useCallback(
     async (playerIndex) => {
@@ -657,6 +751,8 @@ export default function Shell() {
         deckLoadingMode={deckLoadingMode}
         puzzleSetupMode={puzzleSetupMode}
         onLoadDecks={handleLoadCustomDecks}
+        onOpenLobby={handleOpenLobbyFromDecks}
+        onTestDecks={handleLoadCustomDecks}
         onCancelDeckLoading={() => setDeckLoadingMode(false)}
         onLoadPuzzle={(payload, successMessage) => runWasmInteraction(
           () => loadPuzzle(payload, successMessage)
@@ -686,8 +782,10 @@ export default function Shell() {
           initialCreateFormat={lobbyOverlayInitial.createFormat}
           initialCreateName={lobbyOverlayInitial.createName}
           initialCreateDeckText={lobbyOverlayInitial.createDeckText}
+          initialCreateDeckOptions={lobbyOverlayInitial.createDeckOptions}
           initialCreateCommanderText={lobbyOverlayInitial.createCommanderText}
           initialCreateSecurityMode={lobbyOverlayInitial.createSecurityMode}
+          initialDesiredPlayers={lobbyOverlayInitial.desiredPlayers}
           initialJoinCode={lobbyOverlayInitial.joinCode}
           initialJoinName={lobbyOverlayInitial.joinName}
           initialJoinDeckText={lobbyOverlayInitial.joinDeckText}
@@ -882,11 +980,13 @@ function buildLobbyOverlayInitialState(query, mode = null) {
     createFormat: inferCreateFormatFromLobbyQuery(query),
     createName: String(query?.name || "").trim(),
     createDeckText: String(query?.deckText || ""),
+    createDeckOptions: [],
     createCommanderText: String(query?.commanderText || ""),
     createSecurityMode: normalizeMultiplayerSecurityMode(
       query?.securityMode,
       MULTIPLAYER_SECURITY_TRUSTED
     ),
+    desiredPlayers: Math.max(2, Math.min(4, Number(query?.desiredPlayers) || 2)),
     joinCode: String(query?.lobbyId || "").trim(),
     joinName: String(query?.name || "").trim(),
     joinDeckText: String(query?.deckText || ""),
