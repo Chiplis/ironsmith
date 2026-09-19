@@ -57,10 +57,10 @@ test('the featured strip is the last-major-events collection and assigns to the 
       ['Boros Energy 4', 'Boros Energy 3', 'Boros Energy 2'],
     );
 
-    // "See all" narrows the list below to that same collection.
+    // The collection chips narrow the list below to that same collection.
     const list = page.locator('[data-deck-catalog-list]');
     assert.equal(await list.locator('[data-deck-row]').count(), 12);
-    await page.getByRole('button', {name: /See all/}).click();
+    await page.locator('[data-collection="last-major-events"]').click();
     await page.waitForFunction(() => document.querySelectorAll('[data-deck-row]').length === 4);
     assert.deepEqual(
       await list.locator('[data-deck-row]').evaluateAll((rows) => rows.map((row) => row.querySelector('div > div').textContent)),
@@ -96,19 +96,45 @@ test('the featured strip is the last-major-events collection and assigns to the 
   }
 });
 
-test('the assignment tabs and the saved-deck tab render for the selected player', async () => {
+test('the list shows at least five decks and the panel keeps copy and clear at the top', async () => {
   const server = await createServer({server: {host: '127.0.0.1', port: 0}, logLevel: 'silent'});
   await server.listen();
   const browser = await chromium.launch();
   try {
     const {page, errors} = await openWorkspace(server, browser);
-    for (const tab of ['mtgo', 'catalog', 'list']) {
-      await page.locator(`[data-assign-tab="${tab}"]`).click();
-      assert.equal(await page.locator(`[data-assign-tab="${tab}"]`).getAttribute('aria-selected'), 'true');
-    }
+    await page.locator('[data-deck-row]').first().waitFor();
+
+    // The catalog column owns most of the width now that one player deck shows
+    // at a time, and the freed vertical space has to reach five decks.
+    const [catalogWidth, panelWidth] = await Promise.all([
+      page.locator('[data-deck-catalog]').evaluate((node) => node.getBoundingClientRect().width),
+      page.locator('[data-player-tabs]').evaluate((node) => node.closest('div.flex-1').getBoundingClientRect().width),
+    ]);
+    assert.ok(catalogWidth / (catalogWidth + panelWidth) > 0.6, `catalog should take the larger share (${Math.round(catalogWidth)} vs ${Math.round(panelWidth)})`);
+
+    const fullyVisibleRows = await page.locator('[data-deck-catalog-list]').evaluate((list) => {
+      const bounds = list.getBoundingClientRect();
+      return [...list.querySelectorAll('[data-deck-row]')]
+        .filter((row) => {
+          const box = row.getBoundingClientRect();
+          return box.top >= bounds.top - 1 && box.bottom <= bounds.bottom + 1;
+        }).length;
+    });
+    assert.ok(fullyVisibleRows >= 5, `expected at least 5 visible decks, saw ${fullyVisibleRows}`);
+
+    // No assignment tabs; the deck list is always the panel's body, with copy
+    // and clear above it.
+    assert.equal(await page.locator('[data-assign-tab]').count(), 0);
+    const panel = page.locator('[data-player-panel="0"]');
+    const [copyTop, textareaTop] = await Promise.all([
+      panel.getByRole('button', {name: /Copy Alice/}).evaluate((node) => node.getBoundingClientRect().top),
+      panel.getByLabel('Alice decklist').evaluate((node) => node.getBoundingClientRect().top),
+    ]);
+    assert.ok(copyTop < textareaTop, 'copy should sit above the deck list');
+    await assert.doesNotReject(panel.getByRole('button', {name: /Clear Alice/}).waitFor());
+
     await page.locator('[data-catalog-tab="saved"]').click();
     await assert.doesNotReject(page.getByText('You have no saved decks in this session.').waitFor());
-    assert.equal(await page.locator('[data-featured-decks]').count(), 0);
     await page.locator('[data-catalog-tab="catalog"]').click();
     await page.locator('[data-featured-decks]').waitFor();
     assert.deepEqual(errors, []);

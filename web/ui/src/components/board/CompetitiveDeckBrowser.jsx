@@ -124,10 +124,10 @@ const FeaturedDeck = memo(function FeaturedDeck({ entry, isBusy, isCopying, isCo
   const actionKey = `featured-${entry.id}`;
   return (
     <article className="flex min-w-0 flex-col overflow-hidden rounded-sm border border-[rgba(154,126,82,0.42)] bg-[rgba(12,13,14,0.85)]" data-featured-deck={entry.id}>
-      <div className="h-[92px] w-full shrink-0 overflow-hidden bg-[#17130e]" aria-hidden="true">
+      <div className="h-[56px] w-full shrink-0 overflow-hidden bg-[#17130e]" aria-hidden="true">
         {artUrl ? <img className="h-full w-full object-cover" src={artUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
       </div>
-      <div className="grid gap-1 p-2">
+      <div className="grid gap-1 p-1.5">
         <div className="truncate text-[13px] font-bold text-[#e7d9bc]" title={entry.name || entry.archetype}>{entry.name || entry.archetype || ui("Unnamed deck")}</div>
         <div className="truncate text-[10px] text-[#8b806b]">{entry.event || ui("Unknown event")}</div>
         <ManaPips colors={entryColors(entry)} />
@@ -161,8 +161,8 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, 
   ].join(" · ");
 
   return (
-    <article className="flex min-w-0 items-center gap-2 rounded-sm border border-transparent p-2 transition-colors hover:border-[#9a7e52]/35 hover:bg-white/[0.03]" data-deck-row={entry.id} title={details}>
-      <div className="h-[46px] w-[64px] shrink-0 overflow-hidden rounded-sm bg-[#17130e]" aria-hidden="true">
+    <article className="flex min-w-0 items-center gap-2 rounded-sm border border-transparent p-1.5 transition-colors hover:border-[#9a7e52]/35 hover:bg-white/[0.03]" data-deck-row={entry.id} title={details}>
+      <div className="h-[40px] w-[56px] shrink-0 overflow-hidden rounded-sm bg-[#17130e]" aria-hidden="true">
         {artUrl ? <img className="h-full w-full object-cover" src={artUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
       </div>
       <div className="min-w-0 flex-1">
@@ -185,8 +185,8 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, 
 const SavedDeckRow = memo(function SavedDeckRow({ preset, isBusy, onSelect, targetName }) {
   const ui = useUiText();
   return (
-    <article className="flex min-w-0 items-center gap-2 rounded-sm border border-transparent p-2 transition-colors hover:border-[#9a7e52]/35 hover:bg-white/[0.03]" data-saved-deck={preset.key}>
-      <div className="flex h-[46px] w-[64px] shrink-0 items-center justify-center rounded-sm bg-[#17130e] text-[10px] font-bold uppercase tracking-wide text-[#8b806b]" aria-hidden="true">
+    <article className="flex min-w-0 items-center gap-2 rounded-sm border border-transparent p-1.5 transition-colors hover:border-[#9a7e52]/35 hover:bg-white/[0.03]" data-saved-deck={preset.key}>
+      <div className="flex h-[40px] w-[56px] shrink-0 items-center justify-center rounded-sm bg-[#17130e] text-[10px] font-bold uppercase tracking-wide text-[#8b806b]" aria-hidden="true">
         {ui("Session")}
       </div>
       <div className="min-w-0 flex-1">
@@ -200,7 +200,7 @@ const SavedDeckRow = memo(function SavedDeckRow({ preset, isBusy, onSelect, targ
   );
 });
 
-export default function CompetitiveDeckBrowser({ onSelect, targetName = "", savedDecks = [], searchRef = null }) {
+export default function CompetitiveDeckBrowser({ onSelect, targetName = "", savedDecks = [] }) {
   const ui = useUiText();
   const [catalog, setCatalog] = useState(null);
   const [catalogFormat, setCatalogFormat] = useState("modern");
@@ -381,20 +381,22 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
   const visibleCount = showingSaved ? savedPresets.length : listedResults.length;
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col gap-2 bg-transparent" aria-label={ui("Browse decks")} data-deck-catalog="">
-      <h2 className="text-[13px] font-bold uppercase tracking-[0.16em] text-[#f2d9a3]">{ui("Browse decks")}</h2>
-      <label className="relative block">
-        <span className="sr-only">{ui("Search the catalog")}</span>
-        <svg viewBox="0 0 20 20" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b806b]" aria-hidden="true"><circle cx="9" cy="9" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="m13.5 13.5 3 3" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.6" /></svg>
-        <input ref={searchRef} className={`${fieldClass} pl-8`} value={query} onChange={(event) => { setQuery(event.target.value); resetScroll(); }} placeholder={ui("Search by name, archetype, card, event…")} aria-label={ui("Search the catalog")} />
-      </label>
-      <div className="flex flex-wrap items-end gap-3">
+    <section className="flex min-h-0 flex-1 flex-col gap-1.5 bg-transparent" aria-label={ui("Browse decks")} data-deck-catalog="">
+      <div className="flex items-center gap-3">
+        <h2 className="shrink-0 text-[13px] font-bold uppercase tracking-[0.16em] text-[#f2d9a3]">{ui("Browse decks")}</h2>
+        <label className="relative min-w-0 flex-1">
+          <span className="sr-only">{ui("Search the catalog")}</span>
+          <svg viewBox="0 0 20 20" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b806b]" aria-hidden="true"><circle cx="9" cy="9" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="m13.5 13.5 3 3" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.6" /></svg>
+          <input className={`${fieldClass} pl-8`} value={query} onChange={(event) => { setQuery(event.target.value); resetScroll(); }} placeholder={ui("Search by name, archetype, card, event…")} aria-label={ui("Search the catalog")} />
+        </label>
+      </div>
+      <div className="flex items-end gap-3">
         <label className="grid gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b806b]">{ui("Format")}
           <select className={selectClass.replace("w-full", "w-auto min-w-[136px]")} style={selectStyle} value={catalogFormat} onChange={(event) => { setCatalogFormat(event.target.value); resetScroll(); }}>
             {catalogFormats.map((formatOption) => <option key={formatOption.id} value={formatOption.id}>{formatOption.label}</option>)}
           </select>
         </label>
-        {availableMana.length ? <div className="grid gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b806b]">{ui("Colors")}
+        {availableMana.length ? <div className="grid min-w-0 flex-1 gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b806b]">{ui("Colors")}
           <div className="flex flex-wrap items-center gap-1" aria-label={ui("Catalog filters")}>
             {availableMana.map((color) => {
               const isActive = activeMana.includes(color);
@@ -402,8 +404,8 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
             })}
             {activeMana.length ? <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[10px] font-semibold text-[#8b806b] hover:text-[#e7d9bc]" onClick={clearFilters}>{ui("Clear")}</Button> : null}
           </div>
-        </div> : null}
-        <label className="ml-auto grid gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b806b]">{ui("Sort")}
+        </div> : <div className="flex-1" />}
+        <label className="grid shrink-0 gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b806b]">{ui("Sort")}
           <select className={selectClass.replace("w-full", "w-auto min-w-[140px]")} style={selectStyle} value={sortMode} onChange={(event) => { setSortMode(event.target.value); resetScroll(); }}>
             <option value="recent">{ui("Most recent")}</option>
             <option value="placement">{ui("Best placement")}</option>
@@ -417,19 +419,10 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
       </div> : null}
 
       {!showingSaved && featuredResults.length ? (
-        <section className="grid gap-1.5" aria-label={ui("Featured decks")} data-featured-decks="">
-          <div className="flex items-baseline justify-between gap-2">
-            <div className="min-w-0">
-              <h3 className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Featured decks")}</h3>
-              <p className="truncate text-[10px] text-[#8b806b]">{ui("Decks from the last major events")}</p>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-6 shrink-0 px-1 text-[10px] font-semibold text-[#d8bf7a] hover:text-[#f2d9a3]"
-              onClick={() => { setCollection(FEATURED_COLLECTION); setActiveTab("catalog"); resetScroll(); }}
-            >{ui("See all")} →</Button>
+        <section className="grid gap-1" aria-label={ui("Featured decks")} data-featured-decks="">
+          <div className="flex items-baseline gap-2">
+            <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Featured decks")}</h3>
+            <p className="truncate text-[10px] text-[#8b806b]">{ui("Decks from the last major events")}</p>
           </div>
           <div className="grid grid-cols-3 gap-2">
             {featuredResults.map((entry) => (
