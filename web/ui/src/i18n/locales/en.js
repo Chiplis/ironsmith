@@ -1449,7 +1449,6 @@ export const ui = {
   "This symbol can be paid with either one {0} or 2 life.": "This symbol can be paid with either one {0} or 2 life.",
 
   // Competitive deck catalog, deck workspace and lobby deck picker.
-  "Archetype, card or event": "Archetype, card or event",
   "Available deck": "Available deck",
   "Best placement": "Best placement",
   "Catalog filters": "Catalog filters",
@@ -1491,7 +1490,6 @@ export const ui = {
   "Most recent": "Most recent",
   "MTGO list copied": "MTGO list copied",
   "Name your deck": "Name your deck",
-  "No archetype": "No archetype",
   "no date": "no date",
   "No deck assigned": "No deck assigned",
   "No decks for this search.": "No decks for this search.",
@@ -1522,7 +1520,6 @@ export const ui = {
   "the editor": "the editor",
   "There is no deck to copy.": "There is no deck to copy.",
   "Unknown event": "Unknown event",
-  "Unknown source": "Unknown source",
   "Unnamed deck": "Unnamed deck",
   "Use deck": "Use deck",
   "Use in {0}": "Use in {0}",

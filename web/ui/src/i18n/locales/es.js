@@ -1624,7 +1624,6 @@ export const ui = {
   "This symbol can be paid with either one {0} or 2 life.": "Este símbolo se puede pagar con un {0} o 2 vidas.",
 
   // Competitive deck catalog, deck workspace and lobby deck picker.
-  "Archetype, card or event": "Arquetipo, carta o evento",
   "Available deck": "Mazo disponible",
   "Best placement": "Mejor puesto",
   "Catalog filters": "Filtros del catálogo",
@@ -1666,7 +1665,6 @@ export const ui = {
   "Most recent": "Más recientes",
   "MTGO list copied": "Lista MTGO copiada",
   "Name your deck": "Nombra tu mazo",
-  "No archetype": "Sin arquetipo",
   "no date": "sin fecha",
   "No deck assigned": "Sin mazo asignado",
   "No decks for this search.": "No hay mazos para esta búsqueda.",
@@ -1697,7 +1695,6 @@ export const ui = {
   "the editor": "el editor",
   "There is no deck to copy.": "No hay un mazo para copiar.",
   "Unknown event": "Evento desconocido",
-  "Unknown source": "Fuente desconocida",
   "Unnamed deck": "Mazo sin nombre",
   "Use deck": "Usar mazo",
   "Use in {0}": "Usar en {0}",

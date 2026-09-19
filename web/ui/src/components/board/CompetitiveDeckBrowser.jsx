@@ -2,8 +2,10 @@ import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useSta
 import useUiText from "@/i18n/useUiText";
 import { Button } from "@/components/ui/button";
 import { deckCatalogEntryToMtgoText, importDeckCatalogEntry } from "@/lib/deck-catalog-import";
-import { loadCatalogDeckDetail, loadCatalogIndex, loadLocalCardArt, searchCatalogEntries } from "@/lib/catalog-client";
+import { loadCatalogDeckDetail, loadCatalogIndex, searchCatalogEntries } from "@/lib/catalog-client";
 import { parseDeckList } from "@/lib/decklists";
+import { DeckArt, ManaPips } from "@/components/deck/DeckCatalogParts";
+import { completeManaProfile, entryColors } from "@/lib/deck-catalog-view";
 import { ManaSymbol } from "@/lib/mana-symbols";
 
 const fieldClass = "w-full bg-[#050607] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none transition-colors focus:bg-[#101114] focus-visible:ring-1 focus-visible:ring-[#d8bf7a]/35";
@@ -46,15 +48,6 @@ function buildRecentIds(entries) {
   return new Set(datedEntries.filter(({ timestamp }) => timestamp >= recentCutoff).map(({ id }) => id));
 }
 
-function completeManaProfile(entry) {
-  const profile = entry?.manaProfile;
-  return profile?.metadataCoverage?.complete === true ? profile : null;
-}
-
-function entryColors(entry) {
-  return (completeManaProfile(entry)?.colors || []).filter((color) => /^[WUBRGC]$/.test(color));
-}
-
 function isRecentEntry(entry, recentIds) {
   return entry?.collections?.includes("last-20-events") || recentIds.has(entry?.id);
 }
@@ -91,54 +84,6 @@ function matchesManaFilters(entry, activeMana, manaMatchMode) {
   }
   return activeMana.every((color) => colors.includes(color));
 }
-
-// The synchronizer records the deck's most expensive nonland as `artCard`;
-// a catalog written before that falls back to whatever name sorted first.
-function deckArtName(entry) {
-  return entry?.artCard || entry?.cardNames?.[0] || "";
-}
-
-function useCardArt(cardName) {
-  const [artUrl, setArtUrl] = useState("");
-  useEffect(() => {
-    let active = true;
-    loadLocalCardArt(cardName).then((url) => {
-      if (active) setArtUrl(url);
-    });
-    return () => {
-      active = false;
-    };
-  }, [cardName]);
-  return artUrl;
-}
-
-// Not every card in the local corpus has art, so the tile is a card back
-// rather than an empty hole.
-const DeckArt = memo(function DeckArt({ entry, className }) {
-  const artUrl = useCardArt(deckArtName(entry));
-  return (
-    <div className={`shrink-0 overflow-hidden bg-[#131418] ${className}`} aria-hidden="true" data-deck-art={artUrl ? "loaded" : "placeholder"}>
-      {artUrl
-        ? <img className="h-full w-full object-cover" src={artUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} />
-        : (
-          <svg viewBox="0 0 24 24" className="h-full w-full text-[#3a3226]" fill="none" stroke="currentColor" strokeWidth="1.2">
-            <rect x="7" y="4.5" width="10" height="15" rx="1.5" />
-            <path d="M9.5 8.5h5M9.5 12h5M9.5 15.5h3" strokeLinecap="round" />
-          </svg>
-        )}
-    </div>
-  );
-});
-
-const ManaPips = memo(function ManaPips({ colors, size = 13 }) {
-  const ui = useUiText();
-  if (!colors.length) return null;
-  return (
-    <span className="inline-flex shrink-0 items-center gap-0.5" aria-label={ui("Colors: {0}", { 0: colors.join(", ") })}>
-      {colors.map((color) => <ManaSymbol key={color} sym={color} size={size} />)}
-    </span>
-  );
-});
 
 // The featured strip is the catalog's `last-major-events` collection: the decks
 // that placed at the most recent majors, with their art rather than a row.
