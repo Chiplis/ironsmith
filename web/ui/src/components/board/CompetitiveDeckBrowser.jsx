@@ -149,8 +149,9 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, 
   const artUrl = useCardArt(entry.cardNames?.[0]);
   const manaProfile = completeManaProfile(entry);
   const predominantLands = (manaProfile?.predominantLands || []).slice(0, 2);
-  const source = [entry.event || ui("Unknown event"), String(entry.format || "").toUpperCase()].filter(Boolean).join(" · ");
   const details = [
+    entry.event || ui("Unknown event"),
+    String(entry.format || "").toUpperCase(),
     entry.date || ui("no date"),
     ...(entry.placement ? [ui("place #{0}", { 0: entry.placement })] : []),
     entry.sideboardCount
@@ -158,17 +159,19 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, 
       : ui("{0} cards", { 0: entry.mainboardCount || "?" }),
     ...(manaProfile ? [ui("{0} lands", { 0: manaProfile.landCount })] : []),
     ...(predominantLands.length ? [predominantLands.map(({ name, count }) => `${name} ${count}`).join(", ")] : []),
-  ].join(" · ");
+  ].filter(Boolean).join(" · ");
 
   return (
-    <article className="flex min-w-0 items-center gap-2 rounded-sm border border-transparent p-1.5 transition-colors hover:border-[#9a7e52]/35 hover:bg-white/[0.03]" data-deck-row={entry.id} title={details}>
+    <article className="flex min-w-0 items-center gap-2 rounded-sm border border-transparent p-1.5 transition-colors hover:border-[#9a7e52]/35 hover:bg-white/[0.03]" data-deck-row={entry.id}>
       <div className="h-[40px] w-[56px] shrink-0 overflow-hidden rounded-sm bg-[#17130e]" aria-hidden="true">
         {artUrl ? <img className="h-full w-full object-cover" src={artUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[12px] font-bold text-[#e7d9bc]">{entry.name || entry.archetype || ui("Unnamed deck")}</div>
-        <div className="truncate text-[10px] text-[#8b806b]">{source}</div>
-        <ManaPips colors={entryColors(entry)} size={12} />
+        <div className="flex min-w-0 items-center gap-1.5">
+          <ManaPips colors={entryColors(entry)} size={11} />
+          <span className="truncate text-[10px] text-[#8b806b]" title={details}>{details}</span>
+        </div>
       </div>
       <div className="flex shrink-0 gap-1">
         <Button type="button" variant="ghost" size="sm" className="h-7 w-[72px] max-w-[72px] truncate border border-[#9a7e52]/55 px-1 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a]" disabled={isBusy || isCopying} onClick={() => onSelect(entry, actionKey)} title={targetName ? ui("Use in {0}", { 0: targetName }) : ui("Use deck")}>
@@ -396,7 +399,7 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
             {catalogFormats.map((formatOption) => <option key={formatOption.id} value={formatOption.id}>{formatOption.label}</option>)}
           </select>
         </label>
-        {availableMana.length ? <div className="grid min-w-0 flex-1 gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b806b]">{ui("Colors")}
+        {availableMana.length ? <div className="grid min-w-0 gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b806b]">{ui("Colors")}
           <div className="flex flex-wrap items-center gap-1" aria-label={ui("Catalog filters")}>
             {availableMana.map((color) => {
               const isActive = activeMana.includes(color);
@@ -404,7 +407,7 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
             })}
             {activeMana.length ? <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[10px] font-semibold text-[#8b806b] hover:text-[#e7d9bc]" onClick={clearFilters}>{ui("Clear")}</Button> : null}
           </div>
-        </div> : <div className="flex-1" />}
+        </div> : null}
         <label className="grid shrink-0 gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b806b]">{ui("Sort")}
           <select className={selectClass.replace("w-full", "w-auto min-w-[140px]")} style={selectStyle} value={sortMode} onChange={(event) => { setSortMode(event.target.value); resetScroll(); }}>
             <option value="recent">{ui("Most recent")}</option>

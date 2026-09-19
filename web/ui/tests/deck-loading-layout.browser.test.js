@@ -17,6 +17,13 @@ const entries = COLLECTIONS.flatMap(([collection, name], group) => Array.from({l
   collections: [collection],
   cards: [name],
   cardNames: ['Mountain'],
+  manaProfile: {
+    colors: ['W', 'U', 'B', 'R'],
+    landCount: 24,
+    predominantColors: ['R'],
+    predominantLands: [{name: 'Mountain', count: 8}],
+    metadataCoverage: {complete: true},
+  },
   detail: `details/deck-${group}-${index}.json`,
 })));
 const index = {schemaVersion: 1, format: 'modern', generatedAt: '2026-09-18T00:00:00Z', decks: entries};

@@ -499,7 +499,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
         </div>
       </section>
 
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[rgba(154,126,82,0.34)] pb-4 pt-3 lg:pb-0">
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[rgba(154,126,82,0.34)] pb-4 pr-40 pt-3 lg:pb-0">
         {savedPresets.length ? (
           <div className="mr-auto flex min-w-0 items-center gap-2">
             <select
