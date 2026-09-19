@@ -1,25 +1,27 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  competitiveDeckToLobbyText,
-  DEFAULT_COMPETITIVE_DECK_CATALOG_PATH,
-  loadCompetitiveDeckCatalog,
-  searchCompetitiveDecks,
-} from "@/lib/competitive-deck-catalog";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { loadCatalogDeckDetail, loadCatalogIndex, searchCatalogEntries } from "@/lib/catalog-client";
+import { importDeckCatalogEntry } from "@/lib/deck-catalog-import";
 import { listSavedDeckPresets, parseDeckList } from "@/lib/decklists";
 
 const fieldClass = "fantasy-field w-full px-3 py-2 text-[13px] text-foreground outline-none";
+const catalogFormats = ["modern", "pioneer", "standard", "legacy", "pauper"];
 
 export default function CompetitiveDeckPicker({ onApply, format = "modern" }) {
+  const [catalogFormat, setCatalogFormat] = useState(format);
   const [catalog, setCatalog] = useState(null);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState("");
   const [savedPresets] = useState(() => listSavedDeckPresets());
   const [selectedSavedDeckKey, setSelectedSavedDeckKey] = useState("");
 
   useEffect(() => {
     let active = true;
-    loadCompetitiveDeckCatalog()
+    setCatalog(null);
+    setLoading(true);
+    setError("");
+    loadCatalogIndex({ format: catalogFormat })
       .then((nextCatalog) => {
         if (active) setCatalog(nextCatalog);
       })
@@ -33,11 +35,13 @@ export default function CompetitiveDeckPicker({ onApply, format = "modern" }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [catalogFormat]);
 
+  // An empty query still lists decks: the search ranks the whole index and the
+  // newest entries come first, so the panel is useful before anyone types.
   const decks = useMemo(
-    () => searchCompetitiveDecks(catalog, { query, format, limit: 12 }),
-    [catalog, format, query],
+    () => searchCatalogEntries(catalog?.decks, query, { limit: 12, searchIndex: catalog?.searchIndex }),
+    [catalog, query],
   );
 
   const savedDeckOptions = useMemo(
@@ -51,9 +55,20 @@ export default function CompetitiveDeckPicker({ onApply, format = "modern" }) {
     [savedPresets],
   );
 
-  function applyDeck(deck) {
-    onApply?.({ ...competitiveDeckToLobbyText(deck), deck });
-  }
+  const applyDeck = useCallback(async (entry) => {
+    if (busyId) return;
+    setBusyId(entry.id);
+    setError("");
+    try {
+      const detail = await loadCatalogDeckDetail(entry, { format: catalogFormat });
+      const imported = importDeckCatalogEntry(detail);
+      onApply?.({ deckText: imported.deckText, commanderText: imported.commanderText, deck: imported });
+    } catch (applyError) {
+      setError(applyError.message || "No se pudo importar este deck");
+    } finally {
+      setBusyId("");
+    }
+  }, [busyId, catalogFormat, onApply]);
 
   function applySavedDeck(option) {
     if (!option) return;
@@ -72,7 +87,14 @@ export default function CompetitiveDeckPicker({ onApply, format = "modern" }) {
             Catálogo local actualizado por el sincronizador
           </p>
         </div>
-        <span className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{format}</span>
+        <select
+          className="fantasy-field px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-foreground outline-none"
+          value={catalogFormat}
+          onChange={(event) => setCatalogFormat(event.target.value)}
+          aria-label="Formato del catálogo"
+        >
+          {catalogFormats.map((formatOption) => <option key={formatOption} value={formatOption}>{formatOption}</option>)}
+        </select>
       </div>
       {savedDeckOptions.length ? (
         <label className="grid gap-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -96,40 +118,37 @@ export default function CompetitiveDeckPicker({ onApply, format = "modern" }) {
         aria-label="Buscar decks"
       />
       {loading ? <p className="text-[12px] text-muted-foreground">Cargando catálogo…</p> : null}
-      {error ? (
-        <p className="text-[12px] text-red-300">
-          {error}. Fuente: {DEFAULT_COMPETITIVE_DECK_CATALOG_PATH}
-        </p>
-      ) : null}
+      {error ? <p className="text-[12px] text-red-300">{error}</p> : null}
       {!loading && !error && decks.length === 0 ? (
         <p className="text-[12px] text-muted-foreground">No hay decks para esta búsqueda.</p>
       ) : null}
-      <div className="grid gap-2">
+      <div className="grid max-h-[320px] gap-2 overflow-y-auto pr-1" data-lobby-catalog-list="">
         {decks.map((deck) => (
-          <article key={deck.id} className="grid gap-2 border border-white/10 bg-black/10 p-3">
+          <article key={deck.id} className="grid gap-1.5 border border-white/10 bg-black/10 p-2.5">
             <div className="flex items-start justify-between gap-2">
-              <div>
-                <h4 className="text-[13px] font-semibold text-foreground">{deck.name}</h4>
-                <p className="text-[12px] text-muted-foreground">
+              <div className="min-w-0">
+                <h4 className="truncate text-[13px] font-semibold text-foreground">{deck.name || deck.archetype}</h4>
+                <p className="truncate text-[12px] text-muted-foreground">
                   {deck.archetype || "Sin arquetipo"} · {deck.event || deck.source || "Fuente desconocida"}
                 </p>
               </div>
               <button
                 type="button"
-                className="stone-pill px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.1em]"
+                className="stone-pill shrink-0 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.1em] disabled:opacity-60"
+                disabled={Boolean(busyId)}
                 onClick={() => applyDeck(deck)}
               >
-                Usar
+                {busyId === deck.id ? "…" : "Usar"}
               </button>
             </div>
             <p className="text-[11px] leading-5 text-muted-foreground">
-              {deck.mainboard.reduce((total, card) => total + card.count, 0)} cartas · {deck.source || "sin fuente"}
+              {deck.mainboardCount || "?"} cartas{deck.sideboardCount ? ` · ${deck.sideboardCount} SB` : ""} · {deck.date || "sin fecha"}
               {deck.placement ? ` · puesto #${deck.placement}` : ""}
             </p>
             <div className="flex flex-wrap gap-1">
-              {deck.mainboard.slice(0, 6).map((card) => (
-                <span key={`${deck.id}-${card.name}`} className="rounded border border-white/10 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                  {card.count} {card.name}
+              {(deck.cardNames || []).slice(0, 5).map((cardName) => (
+                <span key={`${deck.id}-${cardName}`} className="rounded border border-white/10 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  {cardName}
                 </span>
               ))}
             </div>

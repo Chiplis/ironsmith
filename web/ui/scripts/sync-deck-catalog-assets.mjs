@@ -6,6 +6,10 @@ const uiRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(uiRoot, "..", "..");
 const source = path.join(repoRoot, "catalog");
 const destination = path.join(uiRoot, "public", "catalog");
+// Synchronizer bookkeeping, including a card-metadata cache that grows with
+// every deck ever imported. The browser never reads it, so it stays out of the
+// deployed assets.
+const stateDirectory = path.join(source, "state");
 
 async function isDirectory(target) {
   try {
@@ -25,6 +29,9 @@ if (!await isDirectory(source)) {
 } else {
   await mkdir(path.dirname(destination), { recursive: true });
   await rm(destination, { recursive: true, force: true });
-  await cp(source, destination, { recursive: true });
+  await cp(source, destination, {
+    recursive: true,
+    filter: (entry) => entry !== stateDirectory && !entry.startsWith(`${stateDirectory}${path.sep}`),
+  });
   console.log(`Deck catalog assets copied to ${path.relative(repoRoot, destination)}`);
 }

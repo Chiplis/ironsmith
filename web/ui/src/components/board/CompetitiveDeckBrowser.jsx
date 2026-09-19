@@ -13,8 +13,6 @@ const selectStyle = {
   backgroundRepeat: "no-repeat",
   backgroundSize: "0.9rem",
 };
-const CAROUSEL_SIZE = 3;
-const CAROUSEL_STEP = 2;
 const manaOptions = ["W", "U", "B", "R", "G", "C"];
 const catalogFormats = [
   { id: "modern", label: "Modern" },
@@ -86,7 +84,7 @@ function matchesManaFilters(entry, activeMana, manaMatchMode) {
   return activeMana.every((color) => colors.includes(color));
 }
 
-const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, isCopying, isCopied, onSelect, onCopy }) {
+const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, isCopying, isCopied, targetName, onSelect, onCopy }) {
   const [artUrl, setArtUrl] = useState("");
   const manaProfile = completeManaProfile(entry);
   const colors = (manaProfile?.colors || []).filter((color) => /^[WUBRGC]$/.test(color));
@@ -104,103 +102,67 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, 
   }, [entry]);
 
   return (
-    <article className="flex min-w-0 gap-3 rounded-sm bg-transparent p-3">
-      <div className="h-[104px] w-[74px] shrink-0 overflow-hidden rounded-sm bg-[#17130e]" aria-hidden="true">
+    <article className="flex min-w-0 items-center gap-2 rounded-sm border border-transparent bg-transparent p-2 transition-colors hover:border-[#9a7e52]/35 hover:bg-white/[0.03]">
+      <div className="h-[72px] w-[52px] shrink-0 overflow-hidden rounded-sm bg-[#17130e]" aria-hidden="true">
         {artUrl ? <img className="h-full w-full object-cover" src={artUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
       </div>
-      <div className="min-w-0">
-        <div className="truncate text-[13px] font-bold text-[#e7d9bc]">{entry.name || entry.archetype || "Deck sin nombre"}</div>
-        <div className="truncate text-[11px] text-[#b8aa8e]">{entry.event || "Evento desconocido"} · {entry.date || "sin fecha"}{entry.placement ? ` · #${entry.placement}` : ""} · {entry.mainboardCount || "?"} cartas{entry.sideboardCount ? ` + ${entry.sideboardCount} SB` : ""}</div>
-        <div className="flex min-w-0 items-center gap-1.5 truncate text-[10px] text-[#8b806b]">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[12px] font-bold text-[#e7d9bc]">{entry.name || entry.archetype || "Deck sin nombre"}</div>
+        <div className="truncate text-[10px] text-[#b8aa8e]">{entry.event || "Evento desconocido"} · {entry.date || "sin fecha"}{entry.placement ? ` · #${entry.placement}` : ""} · {entry.mainboardCount || "?"} cartas{entry.sideboardCount ? ` + ${entry.sideboardCount} SB` : ""}</div>
+        <div className="flex min-w-0 items-center gap-1 truncate text-[10px] text-[#8b806b]">
           {colors.length ? <span className="inline-flex shrink-0 items-center gap-0.5" aria-label={`Colores: ${colors.join(", ")}`} title={`Mana predominante: ${predominantColors.join(", ") || "sin predominio"}`}>
-            {colors.map((color) => <ManaSymbol key={color} sym={color} size={13} />)}
+            {colors.map((color) => <ManaSymbol key={color} sym={color} size={12} />)}
           </span> : null}
           <span className="shrink-0 uppercase">{entry.format || "modern"}</span>
           {manaProfile ? <span className="shrink-0">· {manaProfile.landCount} tierras</span> : null}
           {predominantLands.length ? <span className="truncate" title={`Tierras predominantes: ${predominantLands.map(({ name, count }) => `${name} (${count})`).join(", ")}`}>· {predominantLands.map(({ name, count }) => `${name} ${count}`).join(", ")}</span> : null}
           {(entry.mechanics || []).length ? <span className="truncate">· {(entry.mechanics || []).join(" · ")}</span> : null}
-          {(entry.cardNames || []).slice(0, 3).length ? <span className="truncate">· {(entry.cardNames || []).slice(0, 3).join(", ")}</span> : null}
         </div>
       </div>
-      <div className="ml-auto flex shrink-0 flex-col justify-center gap-1">
-        <Button type="button" variant="ghost" size="sm" className="h-8 w-[112px] max-w-[112px] truncate border border-[#9a7e52]/55 px-2 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a]" disabled={isBusy || isCopying} onClick={() => onSelect(entry, actionKey)} title="Usar deck">
+      <div className="flex shrink-0 flex-col gap-1">
+        <Button type="button" variant="ghost" size="sm" className="h-7 w-[86px] max-w-[86px] truncate border border-[#9a7e52]/55 px-1 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a]" disabled={isBusy || isCopying} onClick={() => onSelect(entry, actionKey)} title={targetName ? `Usar en ${targetName}` : "Usar deck"}>
           {isBusy ? <ActionSpinner /> : "Usar"}
         </Button>
-        <Button type="button" variant="ghost" size="sm" className="h-7 w-[112px] max-w-[112px] truncate border border-white/15 px-2 text-[10px] font-semibold text-[#b8aa8e]" disabled={isBusy || isCopying} onClick={() => onCopy(entry, actionKey)}>
-          {isCopying ? <ActionSpinner /> : isCopied ? "Copiado" : "Copiar MTGO"}
+        <Button type="button" variant="ghost" size="sm" className="h-7 w-[86px] max-w-[86px] truncate border border-white/15 px-1 text-[10px] font-semibold text-[#b8aa8e]" disabled={isBusy || isCopying} onClick={() => onCopy(entry, actionKey)} title="Copiar la lista en formato MTGO">
+          {isCopying ? <ActionSpinner /> : isCopied ? "Copiado" : "MTGO"}
         </Button>
       </div>
     </article>
   );
 });
 
-const DeckCarousel = memo(function DeckCarousel({ title, entries, resetKey, busyId, copyingId, copiedId, onSelect, onCopy }) {
-  const [offset, setOffset] = useState(0);
-  const [animating, setAnimating] = useState(false);
-  const animatingRef = useRef(false);
-  const centerOffset = entries.length * 2;
-  const trackEntries = useMemo(() => {
-    if (!entries.length) return [];
-    const trackLength = Math.max(CAROUSEL_SIZE, entries.length * 5 + CAROUSEL_SIZE);
-    return Array.from({ length: trackLength }, (_, index) => ({
-      entry: entries[index % entries.length],
-      key: `${entries[index % entries.length].id}-${index}`,
-      actionKey: `${title}-${entries[index % entries.length].id}-${index}`,
-    }));
-  }, [entries, title]);
-
-  useEffect(() => {
-    animatingRef.current = false;
-    const timer = window.setTimeout(() => {
-      setAnimating(false);
-      setOffset(centerOffset);
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [centerOffset, resetKey]);
-
-  useEffect(() => {
-    if (!animating || !entries.length) return undefined;
-    const timer = window.setTimeout(() => {
-      const count = entries.length;
-      setOffset((current) => {
-        const relative = ((current - (count * 2)) % count + count) % count;
-        return (count * 2) + relative;
-      });
-      animatingRef.current = false;
-      setAnimating(false);
-    }, 380);
-    return () => window.clearTimeout(timer);
-  }, [animating, entries.length]);
-
-  const move = useCallback((direction) => {
-    if (entries.length <= CAROUSEL_SIZE || animatingRef.current) return;
-    animatingRef.current = true;
-    setAnimating(true);
-    setOffset((current) => current + direction * CAROUSEL_STEP);
-  }, [entries.length]);
-
+// The catalog scrolls vertically next to the player editors, so every
+// collection is a titled run of rows in one scroll container rather than its
+// own horizontal carousel.
+const DeckGroup = memo(function DeckGroup({ title, entries, busyId, copyingId, copiedId, targetName, onSelect, onCopy }) {
   if (!entries.length) return null;
   return (
-    <section className="grid gap-1 border-t border-white/10 pt-2" aria-label={title}>
-      <h3 className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{title}</h3>
-      <div className="relative">
-        {entries.length > CAROUSEL_SIZE ? <Button type="button" variant="ghost" size="sm" className="absolute left-0 top-1/2 z-10 h-8 w-8 -translate-y-1/2 rounded-full bg-[#11110f] p-0 text-[#d8bf7a] shadow-lg hover:bg-[#28231b]" aria-label={`${title}: decks anteriores`} title="Decks anteriores" onClick={() => move(-1)}>
-          <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
-        </Button> : null}
-        <div className="mx-9 overflow-hidden" style={{ containerType: "inline-size" }}>
-          <div className="flex gap-2" style={{ transform: `translateX(calc(-${offset} * (33.333cqw + 0.1667rem)))`, transition: animating ? "transform 380ms cubic-bezier(0.22, 0.61, 0.36, 1)" : "none" }}>
-            {trackEntries.map(({ entry, key, actionKey }) => <div key={key} className="min-w-0" style={{ flex: "0 0 calc(33.333cqw - 0.333rem)" }}><CatalogDeckRow entry={entry} actionKey={actionKey} isBusy={busyId === actionKey} isCopying={copyingId === actionKey} isCopied={copiedId === actionKey} onSelect={onSelect} onCopy={onCopy} /></div>)}
-          </div>
-        </div>
-        {entries.length > CAROUSEL_SIZE ? <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-1/2 z-10 h-8 w-8 -translate-y-1/2 rounded-full bg-[#11110f] p-0 text-[#d8bf7a] shadow-lg hover:bg-[#28231b]" aria-label={`${title}: decks siguientes`} title="Decks siguientes" onClick={() => move(1)}>
-          <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true"><path d="m7.5 4.5 5.5 5.5-5.5 5.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
-        </Button> : null}
-      </div>
+    <section className="grid gap-px" aria-label={title} data-deck-group={title}>
+      <h3 className="sticky top-0 z-10 flex items-baseline gap-1.5 bg-[#0d0f10] px-1 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">
+        {title}
+        <span className="text-[9px] font-semibold text-[#8b806b]">{entries.length}</span>
+      </h3>
+      {entries.map((entry) => {
+        const actionKey = `${title}-${entry.id}`;
+        return (
+          <CatalogDeckRow
+            key={actionKey}
+            entry={entry}
+            actionKey={actionKey}
+            isBusy={busyId === actionKey}
+            isCopying={copyingId === actionKey}
+            isCopied={copiedId === actionKey}
+            targetName={targetName}
+            onSelect={onSelect}
+            onCopy={onCopy}
+          />
+        );
+      })}
     </section>
   );
 });
 
-export default function CompetitiveDeckBrowser({ onSelect }) {
+export default function CompetitiveDeckBrowser({ onSelect, targetName = "" }) {
   const [catalog, setCatalog] = useState(null);
   const [catalogFormat, setCatalogFormat] = useState("modern");
   const [query, setQuery] = useState("");
@@ -212,12 +174,15 @@ export default function CompetitiveDeckBrowser({ onSelect }) {
   const [activeMana, setActiveMana] = useState([]);
   const [manaMatchMode, setManaMatchMode] = useState("include");
   const [sortMode, setSortMode] = useState("recent");
-  const [carouselResetKey, setCarouselResetKey] = useState(0);
   const busyRef = useRef("");
   const copyingRef = useRef("");
+  const listRef = useRef(null);
   const deferredQuery = useDeferredValue(query);
-  const resetCarousel = useCallback(() => {
-    setCarouselResetKey((current) => current + 1);
+  // Narrowing the results while scrolled halfway down a long list leaves the
+  // reader looking at whatever happens to be under the viewport, so every
+  // filter change returns to the top of the list.
+  const resetScroll = useCallback(() => {
+    listRef.current?.scrollTo?.({ top: 0 });
   }, []);
 
   useEffect(() => {
@@ -289,8 +254,8 @@ export default function CompetitiveDeckBrowser({ onSelect }) {
   const clearFilters = useCallback(() => {
     setActiveMana([]);
     setManaMatchMode("include");
-    resetCarousel();
-  }, [resetCarousel]);
+    resetScroll();
+  }, [resetScroll]);
 
   const toggleMana = useCallback((color) => {
     setActiveMana((current) => {
@@ -299,8 +264,8 @@ export default function CompetitiveDeckBrowser({ onSelect }) {
       if (!next.length) setManaMatchMode("include");
       return next;
     });
-    resetCarousel();
-  }, [resetCarousel]);
+    resetScroll();
+  }, [resetScroll]);
 
   const handleSelect = useCallback(async (entry, actionKey) => {
     if (busyRef.current) return;
@@ -349,31 +314,31 @@ export default function CompetitiveDeckBrowser({ onSelect }) {
   }, [catalogFormat]);
 
   return (
-    <section className="grid gap-2 border-b border-[rgba(154,126,82,0.32)] bg-transparent pb-3" aria-label="Decks">
+    <section className="flex min-h-0 flex-1 flex-col gap-2 bg-transparent" aria-label="Decks" data-deck-catalog="">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h2 className="text-[13px] font-bold uppercase tracking-[0.16em] text-[#f2d9a3]">Decks</h2>
-          <p className="text-[11px] text-[#b8aa8e]">Buscá por arquetipo, carta, evento o color. El detalle se carga sólo al elegir.</p>
+          <p className="text-[11px] text-[#b8aa8e]">{targetName ? `Buscá y usá un deck en ${targetName}.` : "Buscá por arquetipo, carta, evento o color."}</p>
         </div>
         <label className="grid gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">Formato
-          <select className={selectClass.replace("w-full", "w-auto min-w-[136px]")} style={selectStyle} value={catalogFormat} onChange={(event) => { setCatalogFormat(event.target.value); resetCarousel(); }}>
+          <select className={selectClass.replace("w-full", "w-auto min-w-[136px]")} style={selectStyle} value={catalogFormat} onChange={(event) => { setCatalogFormat(event.target.value); resetScroll(); }}>
             {catalogFormats.map((formatOption) => <option key={formatOption.id} value={formatOption.id}>{formatOption.label}</option>)}
           </select>
         </label>
       </div>
-      <input className={fieldClass} value={query} onChange={(event) => { setQuery(event.target.value); resetCarousel(); }} placeholder="Broodscale Bloodchief, Dimir Control, Counterspell..." aria-label="Buscar en catálogo" />
+      <input className={fieldClass} value={query} onChange={(event) => { setQuery(event.target.value); resetScroll(); }} placeholder="Broodscale Bloodchief, Dimir Control, Counterspell..." aria-label="Buscar en catálogo" />
       <div className="flex flex-wrap items-center gap-1.5" aria-label="Filtros del catálogo">
         {availableMana.map((color) => {
           const isActive = activeMana.includes(color);
           return <Button key={color} type="button" variant="ghost" size="sm" className={`h-7 w-8 max-w-8 rounded-full px-1 text-[10px] font-bold ${isActive ? "bg-[#342817] ring-1 ring-[#d8bf7a]/55" : "text-[#b8aa8e] hover:bg-white/5"}`} aria-label={`Filtrar por mana ${color}`} aria-pressed={isActive} onClick={() => toggleMana(color)}><ManaSymbol sym={color} size={15} /></Button>;
         })}
         {activeMana.length ? <div className="flex items-center gap-0.5 rounded-full border border-white/10 p-0.5" aria-label="Modo de coincidencia de mana">
-          <Button type="button" variant="ghost" size="sm" className={`h-6 rounded-full px-2 text-[9px] font-bold uppercase tracking-wide ${manaMatchMode === "include" ? "bg-[#342817] text-[#f2d9a3] ring-1 ring-[#d8bf7a]/55 shadow-[0_0_9px_rgba(216,191,122,0.28)]" : "text-[#8b806b] hover:text-[#e7d9bc]"}`} aria-pressed={manaMatchMode === "include"} title="Incluye estos colores, aunque el deck use otros" onClick={() => { setManaMatchMode("include"); resetCarousel(); }}>Incluye</Button>
-          <Button type="button" variant="ghost" size="sm" className={`h-6 rounded-full px-2 text-[9px] font-bold uppercase tracking-wide ${manaMatchMode === "exact" ? "bg-[#342817] text-[#f2d9a3] ring-1 ring-[#d8bf7a]/55 shadow-[0_0_9px_rgba(216,191,122,0.28)]" : "text-[#8b806b] hover:text-[#e7d9bc]"}`} aria-pressed={manaMatchMode === "exact"} title="Sólo estos colores; el maná C puede ser auxiliar" onClick={() => { setManaMatchMode("exact"); resetCarousel(); }}>Sólo estos</Button>
+          <Button type="button" variant="ghost" size="sm" className={`h-6 rounded-full px-2 text-[9px] font-bold uppercase tracking-wide ${manaMatchMode === "include" ? "bg-[#342817] text-[#f2d9a3] ring-1 ring-[#d8bf7a]/55 shadow-[0_0_9px_rgba(216,191,122,0.28)]" : "text-[#8b806b] hover:text-[#e7d9bc]"}`} aria-pressed={manaMatchMode === "include"} title="Incluye estos colores, aunque el deck use otros" onClick={() => { setManaMatchMode("include"); resetScroll(); }}>Incluye</Button>
+          <Button type="button" variant="ghost" size="sm" className={`h-6 rounded-full px-2 text-[9px] font-bold uppercase tracking-wide ${manaMatchMode === "exact" ? "bg-[#342817] text-[#f2d9a3] ring-1 ring-[#d8bf7a]/55 shadow-[0_0_9px_rgba(216,191,122,0.28)]" : "text-[#8b806b] hover:text-[#e7d9bc]"}`} aria-pressed={manaMatchMode === "exact"} title="Sólo estos colores; el maná C puede ser auxiliar" onClick={() => { setManaMatchMode("exact"); resetScroll(); }}>Sólo estos</Button>
         </div> : null}
         {activeMana.length ? <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[10px] font-semibold text-[#8b806b] hover:text-[#e7d9bc]" onClick={clearFilters}>Limpiar</Button> : null}
         <label className="ml-auto flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e]">Ordenar
-          <select className="bg-transparent px-1 py-1 pr-8 text-[10px] text-[#e7d9bc]" style={{ ...selectStyle, backgroundPosition: "right 0.75rem center", backgroundSize: "0.75rem" }} value={sortMode} onChange={(event) => { setSortMode(event.target.value); resetCarousel(); }}>
+          <select className="bg-transparent px-1 py-1 pr-8 text-[10px] text-[#e7d9bc]" style={{ ...selectStyle, backgroundPosition: "right 0.75rem center", backgroundSize: "0.75rem" }} value={sortMode} onChange={(event) => { setSortMode(event.target.value); resetScroll(); }}>
             <option value="recent">Más recientes</option>
             <option value="placement">Mejor puesto</option>
             <option value="usage">Más usados</option>
@@ -383,13 +348,15 @@ export default function CompetitiveDeckBrowser({ onSelect }) {
       {loading ? <p className="text-[12px] text-[#b8aa8e]">Cargando índice…</p> : null}
       {error ? <p className="text-[12px] text-red-300">{error}</p> : null}
       {!loading && !error && !manaFilteredResults.length ? <p className="text-[12px] text-[#b8aa8e]">No hay resultados para esta búsqueda.</p> : null}
-      {deferredQuery.trim() ? (
-        <DeckCarousel title="Resultados" entries={queryResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
-      ) : <>
-        <DeckCarousel title="Mono-color" entries={monoResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
-        <DeckCarousel title="Last major events" entries={majorResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
-        <DeckCarousel title="Last 20 events" entries={recentResults} resetKey={carouselResetKey} busyId={busyId} copyingId={copyingId} copiedId={copiedId} onSelect={handleSelect} onCopy={handleCopy} />
-      </>}
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1" data-deck-catalog-list="">
+        {deferredQuery.trim() ? (
+          <DeckGroup title="Resultados" entries={queryResults} busyId={busyId} copyingId={copyingId} copiedId={copiedId} targetName={targetName} onSelect={handleSelect} onCopy={handleCopy} />
+        ) : <>
+          <DeckGroup title="Mono-color" entries={monoResults} busyId={busyId} copyingId={copyingId} copiedId={copiedId} targetName={targetName} onSelect={handleSelect} onCopy={handleCopy} />
+          <DeckGroup title="Last major events" entries={majorResults} busyId={busyId} copyingId={copyingId} copiedId={copiedId} targetName={targetName} onSelect={handleSelect} onCopy={handleCopy} />
+          <DeckGroup title="Last 20 events" entries={recentResults} busyId={busyId} copyingId={copyingId} copiedId={copiedId} targetName={targetName} onSelect={handleSelect} onCopy={handleCopy} />
+        </>}
+      </div>
     </section>
   );
 }

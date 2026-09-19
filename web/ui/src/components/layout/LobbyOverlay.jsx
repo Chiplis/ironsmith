@@ -715,7 +715,7 @@ export default function LobbyOverlay({
 
                 {!multiplayer.matchStarted ? (
                   <div className="lobby-sheet-panel fantasy-sheet-section grid gap-3 p-4">
-                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center justify-between gap-3">
                       <span className="text-[11px] uppercase tracking-[0.22em] text-[#c3a774]">{ui("Invite Link")}</span>
                       <button
                         type="button"
@@ -782,7 +782,17 @@ export default function LobbyOverlay({
                       <span className="text-[11px] uppercase tracking-[0.22em] text-[#c3a774]">{ui("Your Deck")}</span>
                       <span className="text-[13px] text-muted-foreground">{ui("Format:") + " "}{ui(formatName(activeFormat))}
                       </span>
-                  </div>
+                    </div>
+                    {/* A player who already joined can still swap to a catalog
+                        deck, to one the host prepared, or to their own list. */}
+                    {activeFormat === MATCH_FORMAT_NORMAL && !startPending ? (
+                      <CompetitiveDeckPicker
+                        format="modern"
+                        onApply={({ deckText, commanderText }) => {
+                          updateLobbyDeck({ deckText, commanderText: commanderText || "" });
+                        }}
+                      />
+                    ) : null}
                     {deckOptions.length > 1 ? (
                       <label className={labelClass}>
                         {ui("Deck disponible")}

@@ -37,14 +37,29 @@ source waits 750 ms between requests, so a three-format refresh takes a few
 minutes. `tools/deck-catalog/enrich.mjs` recomputes colours and mana profiles
 from decks already downloaded, and accepts `--offline`.
 
-`tools/deck-catalog/sync-all.sh` runs that bounded refresh for every supported
-format, or for the formats named as arguments. Run it before building whenever
-you want newer decks:
+`tools/deck-catalog/sync-all.sh` runs that bounded refresh for Modern, Pioneer
+and Standard, or for the formats named as arguments
+(`./tools/deck-catalog/sync-all.sh legacy pauper`). Run it whenever you want
+newer decks.
+
+### Deploying the catalog
+
+`pnpm build` copies `catalog/` into `web/ui/public/catalog/` and Vite emits it
+as `dist/catalog/`, so whatever publishes `dist/` publishes the decks with it.
+The synchronizer's own bookkeeping under `catalog/state/` is not copied: the
+browser never reads it and its card-metadata cache only grows. A full refresh
+and deploy is therefore:
 
 ```sh
-./tools/deck-catalog/sync-all.sh
-cd web/ui && pnpm build
+./tools/deck-catalog/sync-all.sh \
+  && ./rebuild-wasm.sh --release \
+  && (cd web/ui && pnpm build) \
+  && rsync -a --delete web/ui/dist/ /path/to/site/ironsmith/
 ```
+
+Drop the first line to redeploy the catalog already on disk. A deployment
+serving the app from a subdirectory needs no extra configuration; the catalog
+is fetched relative to the page like every other asset.
 
 ## Run it locally
 

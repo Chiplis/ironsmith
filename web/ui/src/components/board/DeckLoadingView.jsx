@@ -94,6 +94,8 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
   const visiblePlayerCount = Math.min(editorPlayerCount, players.length || 1);
   const visiblePlayers = useMemo(() => players.slice(0, visiblePlayerCount), [players, visiblePlayerCount]);
   const playerCountModes = [1, 2, 4].filter((count) => count <= players.length);
+  const targetIndex = Math.min(catalogTargetIndex, Math.max(0, visiblePlayerCount - 1));
+  const targetPlayerName = visiblePlayers[targetIndex]?.name || "";
 
   const showActionNotice = useCallback((message) => {
     setActionNotice(String(message || ""));
@@ -319,7 +321,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
 
   return (
     <main
-      className="setup-screen deck-loading-screen table-gradient relative flex h-full min-h-0 flex-col overflow-y-auto border border-[rgba(154,126,82,0.46)] bg-[linear-gradient(180deg,rgba(55,49,39,0.98),rgba(20,18,15,0.98))] p-3 pb-24"
+      className="setup-screen deck-loading-screen table-gradient relative flex h-full min-h-0 flex-col overflow-y-auto border border-[rgba(154,126,82,0.46)] bg-[linear-gradient(180deg,rgba(55,49,39,0.98),rgba(20,18,15,0.98))] p-3 pb-24 lg:overflow-hidden lg:pb-3"
     >
       {actionNotice ? (
         <div className="pointer-events-none sticky top-0 z-30 flex justify-end" role="status" aria-live="polite">
@@ -370,17 +372,21 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
           </div>
         </div>
       </section>
-      <div className="mb-3 shrink-0">
-        <CompetitiveDeckBrowser
-          onSelect={handleCatalogSelect}
-        />
-      </div>
-      <section className="grid min-h-[420px] min-w-0 shrink-0 gap-2 border border-[rgba(154,126,82,0.42)] bg-[rgba(8,9,9,0.55)] p-2" aria-label="Editor manual de decklists">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-1 pb-2">
-          <div>
-            <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">Editor manual MTGO</h2>
-            <p className="text-[11px] text-[#8b806b]">Pegá líneas como <span className="font-mono">4 Counterspell</span> y una sección opcional <span className="font-mono">Sideboard</span>.</p>
-            <div className="mt-1.5 flex flex-wrap gap-1.5" aria-label="Cantidad de jugadores a editar">
+      <section
+        className="mb-3 flex min-h-0 flex-1 flex-col gap-3 border border-[rgba(154,126,82,0.42)] bg-[rgba(8,9,9,0.55)] p-2 lg:flex-row"
+        aria-label="Catálogo de decks y mazos de los jugadores"
+        data-deck-workspace=""
+      >
+        <div className="flex min-h-[360px] min-w-0 flex-col border-b border-[rgba(154,126,82,0.28)] pb-3 lg:min-h-0 lg:w-[clamp(320px,34%,440px)] lg:shrink-0 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-3">
+          <CompetitiveDeckBrowser onSelect={handleCatalogSelect} targetName={targetPlayerName} />
+        </div>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-1 pb-2">
+            <div className="min-w-0">
+              <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">Mazos de los jugadores</h2>
+              <p className="text-[11px] text-[#8b806b]">Elegí un jugador y usá un deck del catálogo, o pegá líneas como <span className="font-mono">4 Counterspell</span> con una sección <span className="font-mono">Sideboard</span>.</p>
+            </div>
+            <div className="flex flex-wrap gap-1.5" aria-label="Cantidad de jugadores a editar">
               {playerCountModes.map((count) => (
                 <button
                   key={count}
@@ -394,81 +400,99 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
               ))}
             </div>
           </div>
-          <span className="text-[10px] uppercase tracking-wide text-[#8b806b]">También podés editar después de usar un deck</span>
-        </div>
-        <div className="grid grid-cols-1 gap-3 pr-1 xl:grid-cols-2">
-          {visiblePlayers.map((player, i) => (
-            <div
-              key={player.id}
-              className="setup-editor grid min-h-[290px] gap-2 border border-[rgba(154,126,82,0.42)] bg-[linear-gradient(180deg,rgba(17,17,15,0.94),rgba(8,9,9,0.96))] p-3"
-              style={{ gridTemplateRows: "auto minmax(240px,1fr)" }}
-            >
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="min-w-0 truncate text-[15px] font-bold uppercase tracking-wide text-[#f2d9a3]">
-                  {player.name}
-                </span>
-                <div className="shrink-0 text-right text-[12px] font-semibold text-[#b8aa8e]">
-                  <span>{cardCounts[i]}{" " + ui("main")}</span>
-                  <span className="mx-1.5 text-[#776b58]">/</span>
-                  <span>{sideboardCounts[i]}{" " + ui("sideboard")}</span>
-                </div>
-              </div>
-              <textarea
-                aria-label={ui("{0} decklist", { 0: player.name })}
-                spellCheck={false}
-                className="min-h-[240px] w-full resize-y border border-[rgba(154,126,82,0.48)] bg-[#080b0d] p-2 font-mono text-[13px] leading-snug text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75"
-                placeholder={stripDeckHeader(ui("Paste {0}'s list...\n\nDeck\n4 Lightning Bolt\n2 Counterspell\n20 Island\n\nSideboard\n2 Pyroblast\n1 Tormod's Crypt", { 0: player.name }))}
-                value={texts[i] || ""}
-                onChange={(e) => handleTextChange(i, e.target.value)}
-              />
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 max-w-[132px] truncate border border-white/15 px-2 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
-                  disabled={cardCounts[i] === 0 || Boolean(actionBusy)}
-                  onClick={() => runAction(`copy-${i}`, () => handleCopyMtgo(i))}
-                  title={`Copiar MTGO de ${player.name}`}
-                  aria-label={`Copiar MTGO de ${player.name}`}
+          <div
+            className="grid min-h-0 flex-1 auto-rows-fr gap-2 overflow-y-auto pr-1 sm:grid-cols-2"
+            data-player-grid={visiblePlayerCount}
+          >
+            {visiblePlayers.map((player, i) => {
+              const isTarget = i === targetIndex;
+              // One player fills the container; an odd last player spans the
+              // pair so the grid still reads as a square.
+              const spansRow = visiblePlayerCount === 1
+                || (i === visiblePlayerCount - 1 && visiblePlayerCount % 2 === 1);
+              return (
+                <div
+                  key={player.id}
+                  data-player-slot={i}
+                  data-catalog-target={isTarget ? "true" : "false"}
+                  onFocusCapture={() => setCatalogTargetIndex(i)}
+                  onMouseDown={() => setCatalogTargetIndex(i)}
+                  className={`setup-editor flex min-h-[200px] min-w-0 flex-col gap-2 border p-2.5 transition-colors ${spansRow ? "sm:col-span-2" : ""} ${isTarget
+                    ? "border-[#d8bf7a]/70 bg-[linear-gradient(180deg,rgba(33,26,16,0.94),rgba(8,9,9,0.96))]"
+                    : "border-[rgba(154,126,82,0.42)] bg-[linear-gradient(180deg,rgba(17,17,15,0.94),rgba(8,9,9,0.96))]"}`}
                 >
-                  <svg viewBox="0 0 20 20" className="mr-1 h-3.5 w-3.5" aria-hidden="true"><rect x="6.5" y="6.5" width="9" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M13 6.5V4.8A1.3 1.3 0 0 0 11.7 3.5H5A1.5 1.5 0 0 0 3.5 5v8A1.3 1.3 0 0 0 4.8 14.3h1.7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.4" /></svg>
-                  {actionBusy === `copy-${i}` ? <ActionSpinner /> : copiedPlayerIndex === i ? "Copiado" : "Copiar"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 max-w-8 rounded-full border border-white/15 p-0 text-[#b8aa8e] hover:border-[#d8bf7a]/55 hover:text-[#f2d9a3] disabled:text-[#665d50]"
-                  disabled={cardCounts[i] === 0 || Boolean(actionBusy)}
-                  onClick={() => handleClearPlayer(i)}
-                  title={`Vaciar mazo de ${player.name}`}
-                  aria-label={`Vaciar mazo de ${player.name}`}
-                ><svg viewBox="0 0 20 20" className="h-3.5 w-3.5" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg></Button>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-white/10 px-1 pt-2">
-          <span className="mr-auto text-[10px] uppercase tracking-wide text-[#8b806b]">Guardá los mazos de todos los jugadores como una configuración.</span>
-          <input
-            className={`${fieldClass} max-w-[240px] py-1.5 text-[11px]`}
-            placeholder="Nombre tu mazo"
-            value={presetName}
-            onChange={(event) => setPresetName(event.target.value)}
-            aria-label="Nombre tu mazo"
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 max-w-[96px] truncate border border-[#9a7e52]/55 px-3 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
-            disabled={!presetName.trim() || totalCards === 0 || Boolean(actionBusy)}
-            onClick={() => runAction("saved-save", handleSavePreset)}
-          >{actionBusy === "saved-save" ? <ActionSpinner /> : "Guardar"}</Button>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-baseline gap-1.5">
+                        <span className="min-w-0 truncate text-[14px] font-bold uppercase tracking-wide text-[#f2d9a3]">{player.name}</span>
+                        {isTarget ? <span className="shrink-0 rounded-full border border-[#d8bf7a]/60 px-1.5 text-[9px] font-bold uppercase tracking-wide text-[#d8bf7a]">Destino</span> : null}
+                      </div>
+                      <div className="truncate text-[10px] text-[#b8aa8e]">{deckLabels[i] || "Sin deck asignado"}</div>
+                    </div>
+                    <div className="shrink-0 text-right text-[11px] font-semibold text-[#b8aa8e]">
+                      <span>{cardCounts[i]}{" " + ui("main")}</span>
+                      <span className="mx-1 text-[#776b58]">/</span>
+                      <span>{sideboardCounts[i]}{" " + ui("sideboard")}</span>
+                    </div>
+                  </div>
+                  <textarea
+                    aria-label={ui("{0} decklist", { 0: player.name })}
+                    spellCheck={false}
+                    className="min-h-[96px] w-full flex-1 resize-none border border-[rgba(154,126,82,0.48)] bg-[#080b0d] p-2 font-mono text-[12px] leading-snug text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75"
+                    placeholder={stripDeckHeader(ui("Paste {0}'s list...\n\nDeck\n4 Lightning Bolt\n2 Counterspell\n20 Island\n\nSideboard\n2 Pyroblast\n1 Tormod's Crypt", { 0: player.name }))}
+                    value={texts[i] || ""}
+                    onChange={(e) => handleTextChange(i, e.target.value)}
+                  />
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 max-w-[120px] truncate border border-white/15 px-2 text-[10px] font-bold uppercase tracking-wide text-[#b8aa8e] hover:bg-[#2c2317] disabled:text-[#665d50]"
+                      disabled={cardCounts[i] === 0 || Boolean(actionBusy)}
+                      onClick={() => runAction(`copy-${i}`, () => handleCopyMtgo(i))}
+                      title={`Copiar MTGO de ${player.name}`}
+                      aria-label={`Copiar MTGO de ${player.name}`}
+                    >
+                      <svg viewBox="0 0 20 20" className="mr-1 h-3.5 w-3.5" aria-hidden="true"><rect x="6.5" y="6.5" width="9" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M13 6.5V4.8A1.3 1.3 0 0 0 11.7 3.5H5A1.5 1.5 0 0 0 3.5 5v8A1.3 1.3 0 0 0 4.8 14.3h1.7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.4" /></svg>
+                      {actionBusy === `copy-${i}` ? <ActionSpinner /> : copiedPlayerIndex === i ? "Copiado" : "Copiar"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 max-w-7 rounded-full border border-white/15 p-0 text-[#b8aa8e] hover:border-[#d8bf7a]/55 hover:text-[#f2d9a3] disabled:text-[#665d50]"
+                      disabled={cardCounts[i] === 0 || Boolean(actionBusy)}
+                      onClick={() => handleClearPlayer(i)}
+                      title={`Vaciar mazo de ${player.name}`}
+                      aria-label={`Vaciar mazo de ${player.name}`}
+                    ><svg viewBox="0 0 20 20" className="h-3.5 w-3.5" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg></Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-white/10 px-1 pt-2">
+            <span className="mr-auto text-[10px] uppercase tracking-wide text-[#8b806b]">Guardá los mazos de todos los jugadores como una configuración.</span>
+            <input
+              className={`${fieldClass} max-w-[240px] py-1.5 text-[11px]`}
+              placeholder="Nombre tu mazo"
+              value={presetName}
+              onChange={(event) => setPresetName(event.target.value)}
+              aria-label="Nombre tu mazo"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 max-w-[96px] truncate border border-[#9a7e52]/55 px-3 text-[10px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
+              disabled={!presetName.trim() || totalCards === 0 || Boolean(actionBusy)}
+              onClick={() => runAction("saved-save", handleSavePreset)}
+            >{actionBusy === "saved-save" ? <ActionSpinner /> : "Guardar"}</Button>
+          </div>
         </div>
       </section>
-      <div className="mt-3 flex shrink-0 justify-end border-t border-[rgba(154,126,82,0.34)] pb-4 pt-3 pr-48">
+      <div className="flex shrink-0 justify-end border-t border-[rgba(154,126,82,0.34)] pb-4 pt-3 pr-48 lg:pb-0">
         {showLobbyConfirm ? (
           <div className="mr-2 flex flex-wrap items-center justify-end gap-2 border border-[#d8bf7a]/45 bg-[#211a10] px-2 py-1.5">
             <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-[#f2d9a3]">{ui("Create a {0}-player lobby?", { 0: lobbyPlayerCount })}</span>

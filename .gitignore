@@ -17,7 +17,6 @@ scripts/__pycache__*
 !/crates/ironsmith-compiled-artifact/fixtures/v3.json
 !/web/ui/package.json
 !/web/ui/tests/card-frame-regression-cases.json
-!/web/ui/public/decks/*.json
 !/tools/deck-catalog/package.json
 !/tools/deck-catalog/schema.json
 !/npm/ironsmith-wasm/package.template.json
