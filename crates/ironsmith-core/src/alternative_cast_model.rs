@@ -2,6 +2,16 @@ use crate::tag::TagKeyWalk;
 
 use crate::{CostComponent, ManaCost, PowerToughness, TotalCost, Zone};
 
+/// An intrinsic alternative cost which a separate ability may authorize
+/// from another zone without authorizing the card's other casting costs.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum AlternativeCastKeyword {
+    Bestow,
+    Blitz,
+    Warp,
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum TrapCondition {
@@ -42,6 +52,8 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
     },
     Warp {
         cost: ManaCost,
+        #[cfg_attr(feature = "serde", serde(default = "TotalCost::free"))]
+        additional_cost: TotalCost<C>,
     },
     Plot {
         cost: ManaCost,
@@ -167,6 +179,15 @@ where
         }
     }
 
+    pub fn keyword(&self) -> Option<AlternativeCastKeyword> {
+        match self {
+            Self::Bestow { .. } => Some(AlternativeCastKeyword::Bestow),
+            Self::Blitz { .. } => Some(AlternativeCastKeyword::Blitz),
+            Self::Warp { .. } => Some(AlternativeCastKeyword::Warp),
+            _ => None,
+        }
+    }
+
     pub fn exiles_after_resolution(&self) -> bool {
         match self {
             Self::FromZone {
@@ -184,7 +205,7 @@ where
         match self {
             Self::Dash { cost } => Some(cost),
             Self::Blitz { total_cost } => total_cost.mana_cost(),
-            Self::Warp { cost } => Some(cost),
+            Self::Warp { cost, .. } => Some(cost),
             Self::Plot { cost } => Some(cost),
             Self::Suspend { cost, .. } => Some(cost),
             Self::Disturb { cost } => Some(cost),
@@ -221,6 +242,7 @@ where
             Self::Harmonize { total_cost } => non_mana_components(total_cost),
             Self::Retrace { total_cost } => non_mana_components(total_cost),
             Self::JumpStart { additional_cost }
+            | Self::Warp { additional_cost, .. }
             | Self::Escape {
                 additional_cost, ..
             } => non_mana_components(additional_cost),
@@ -252,6 +274,7 @@ where
     pub fn additional_cost(&self) -> Option<&TotalCost<C>> {
         match self {
             Self::JumpStart { additional_cost }
+            | Self::Warp { additional_cost, .. }
             | Self::Escape {
                 additional_cost, ..
             } => Some(additional_cost),
@@ -539,7 +562,10 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
             Self::Blitz { total_cost } => AlternativeCastingMethod::Blitz {
                 total_cost: map_total_cost(total_cost)?,
             },
-            Self::Warp { cost } => AlternativeCastingMethod::Warp { cost },
+            Self::Warp { cost, additional_cost } => AlternativeCastingMethod::Warp {
+                cost,
+                additional_cost: map_total_cost(additional_cost)?,
+            },
             Self::Plot { cost } => AlternativeCastingMethod::Plot { cost },
             Self::Suspend { cost, time } => AlternativeCastingMethod::Suspend { cost, time },
             Self::Disturb { cost } => AlternativeCastingMethod::Disturb { cost },

@@ -32,6 +32,9 @@ impl EffectId {
     /// Special ID used by ForEachControllerOfTaggedEffect to store the count
     /// of tagged objects for the current controller during iteration.
     pub const TAGGED_COUNT: Self = Self(u32::MAX);
+
+    /// The zone change performed by a replacement, for reflexive follow-ups.
+    pub const REPLACED_EVENT: Self = Self(u32::MAX - 1);
 }
 
 impl From<u32> for EffectId {
@@ -85,6 +88,8 @@ pub enum ChoiceAggregateMetric {
     Power,
     Toughness,
     ManaValue,
+    /// Number of distinct card types represented by the entire selection.
+    DistinctCardTypes,
 }
 
 /// Upper bound on an aggregate characteristic of a group of chosen objects.
@@ -3815,14 +3820,27 @@ impl ExploreEffect {
     }
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
-pub struct ManifestDreadEffect;
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct ManifestDreadEffect {
+    pub player: PlayerFilter,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for ManifestDreadEffect {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Payload { player: PlayerFilter }
+        let payload = Option::<Payload>::deserialize(deserializer)?;
+        Ok(payload.map_or_else(Self::new, |payload| Self::for_player(payload.player)))
+    }
+}
+
+impl Default for ManifestDreadEffect { fn default() -> Self { Self::new() } }
 
 impl ManifestDreadEffect {
-    pub fn new() -> Self {
-        Self
-    }
+    pub fn new() -> Self { Self { player: PlayerFilter::You } }
+    pub fn for_player(player: PlayerFilter) -> Self { Self { player } }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

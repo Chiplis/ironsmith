@@ -727,6 +727,7 @@ pub(crate) fn render_consult_reveal_put_hand_then_bottom(effects: &[&Effect]) ->
     };
     let selection = describe_library_consult_selection_with_cards(&consult.filter);
     let stop_text = match &consult.stop_rule {
+        crate::effects::ConsultTopOfLibraryStopRule::TotalManaValue(_) => return None,
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => {
             with_indefinite_article(&selection)
         }
@@ -752,6 +753,7 @@ pub(crate) fn render_consult_reveal_put_hand_then_bottom(effects: &[&Effect]) ->
             | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1))
     );
     let matched_reference = match &consult.stop_rule {
+        crate::effects::ConsultTopOfLibraryStopRule::TotalManaValue(_) => return None,
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
         | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
             "that card".to_string()
@@ -903,6 +905,7 @@ pub(crate) fn render_consult_reveal_put_hand_rest_exile(effects: &[&Effect]) -> 
     };
     let selection = describe_library_consult_selection_with_cards(&consult.filter);
     let stop_text = match &consult.stop_rule {
+        crate::effects::ConsultTopOfLibraryStopRule::TotalManaValue(_) => return None,
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection.clone(),
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
             selection.clone()
@@ -992,6 +995,7 @@ pub(crate) fn render_consult_reveal_put_battlefield_rest_graveyard(
     };
     let selection = describe_library_consult_selection_with_cards(&consult.filter);
     let stop_text = match &consult.stop_rule {
+        crate::effects::ConsultTopOfLibraryStopRule::TotalManaValue(_) => return None,
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => {
             with_indefinite_article(&selection)
         }
@@ -1132,6 +1136,7 @@ pub(crate) fn render_consult_reveal_put_hand_rest_graveyard(effects: &[&Effect])
     };
     let selection = describe_search_selection_with_cards(&consult.filter.description());
     let stop_text = match &consult.stop_rule {
+        crate::effects::ConsultTopOfLibraryStopRule::TotalManaValue(_) => return None,
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection,
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => selection,
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => {
@@ -1186,6 +1191,7 @@ pub(crate) fn render_consult_reveal_put_all_revealed_into_graveyard(
     };
     let selection = describe_search_selection_with_cards(&consult.filter.description());
     let stop_text = match &consult.stop_rule {
+        crate::effects::ConsultTopOfLibraryStopRule::TotalManaValue(_) => return None,
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection,
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => selection,
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => {
@@ -1246,6 +1252,7 @@ pub(crate) fn render_consult_reveal_put_all_revealed_into_hand(
     };
     let selection = describe_search_selection_with_cards(&consult.filter.description());
     let stop_text = match &consult.stop_rule {
+        crate::effects::ConsultTopOfLibraryStopRule::TotalManaValue(_) => return None,
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection,
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => selection,
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => {
@@ -1842,6 +1849,7 @@ pub(crate) fn render_sacrifice_then_consult_reveal_put_battlefield_rest_bottom(
 
     let selection = describe_search_selection_with_cards(&consult.filter.description());
     let stop_text = match &consult.stop_rule {
+        crate::effects::ConsultTopOfLibraryStopRule::TotalManaValue(_) => return None,
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
         | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => selection,
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count)

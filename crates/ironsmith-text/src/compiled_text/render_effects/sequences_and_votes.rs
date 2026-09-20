@@ -18,6 +18,7 @@ pub(super) fn describe_consult_stop_text(
     max_exposed: Option<&Value>,
 ) -> String {
     let match_text = match stop_rule {
+        crate::effects::ConsultTopOfLibraryStopRule::TotalManaValue(value) => format!("cards with total mana value {} or greater", describe_value(value)),
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
         | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
             ensure_indefinite_article(selection)

@@ -70,7 +70,7 @@ pub enum ExileWouldDieSpec {
         damager_filter_tokens: Vec<OwnedLexToken>,
     },
     SimpleSource(SimpleSourceReplacementKind),
-    SimpleCreature(ReplacementPlayerKind),
+    SimpleCreature { controller: ReplacementPlayerKind, follow_up_tokens: Vec<OwnedLexToken> },
 }
 
 pub fn parse_exile_to_graveyard_replacement_tokens(
@@ -562,8 +562,11 @@ fn parse_simple_creature_exile_would_die_lexed<'a>(
     primitives::phrase(&["would", "die"]).parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
     primitives::phrase(&["exile", "it", "instead"]).parse_next(input)?;
-    primitives::sentence_end().parse_next(input)?;
-    Ok(ExileWouldDieSpec::SimpleCreature(player))
+    opt(primitives::period()).parse_next(input)?;
+    let follow_up_tokens = if input.first().is_some_and(|token| token.as_word() == Some("when")) {
+        repeat::<_, _, Vec<_>, _, _>(0.., any.map(Clone::clone)).parse_next(input)?
+    } else { Vec::new() };
+    Ok(ExileWouldDieSpec::SimpleCreature { controller: player, follow_up_tokens })
 }
 
 #[cfg(test)]

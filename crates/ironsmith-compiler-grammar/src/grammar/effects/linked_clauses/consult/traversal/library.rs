@@ -35,6 +35,21 @@ pub(super) fn parse_active_stop(tokens: &[OwnedLexToken]) -> Option<ConsultTrave
     if filter.is_empty() {
         return None;
     }
+    if let Some((card_filter, total)) = primitives::split_lexed_once_on_separator(filter, || {
+        primitives::phrase(&["with", "total", "mana", "value"]).void()
+    }) {
+        let words = TokenWordView::new(total).word_refs();
+        if let [threshold, "or", "greater"] = words.as_slice()
+            && let Ok(threshold) = threshold.parse::<i32>()
+        {
+            return Some(ConsultTraversalStopShape {
+                stop_rule: LibraryConsultStopRuleAst::TotalManaValue(Value::Fixed(threshold)),
+                max_exposed: None,
+                filter: card_filter.to_vec(),
+                kind: ConsultTraversalStopKind::Active,
+            });
+        }
+    }
     if let Some(stop) = parse_equal_to_counted_active_stop(filter) {
         return Some(stop);
     }

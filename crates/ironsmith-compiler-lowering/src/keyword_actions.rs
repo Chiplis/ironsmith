@@ -73,8 +73,9 @@ pub fn apply_keyword_action(
         KeywordAction::Blitz(cost) => builder.blitz(cost),
         KeywordAction::BlitzFromGraveyard => {
             builder.with_ability(crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::keyword_marker(
-                    KeywordAction::BlitzFromGraveyard.display_text(),
+                crate::static_abilities::StaticAbility::native_alternative_cast_from_zone(
+                    crate::zone::Zone::Graveyard,
+                    ironsmith_core::alternative_cast_model::AlternativeCastKeyword::Blitz,
                 ),
             ))
         }

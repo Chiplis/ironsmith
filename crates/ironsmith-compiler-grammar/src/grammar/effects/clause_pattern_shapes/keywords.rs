@@ -74,6 +74,7 @@ pub enum KeywordMechanicShape<'a> {
     },
     ManifestDread {
         repeat: KeywordRepeatShape<'a>,
+        source_exiled_owner: bool,
     },
     ManifestTop {
         player: ManifestPlayerShape,
@@ -401,9 +402,16 @@ fn repeat_tail<'a>(input: &mut LexStream<'a>) -> WResult<KeywordRepeatShape<'a>>
 }
 
 fn parse_manifest_dread<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
-    primitives::phrase(&["manifest", "dread"]).parse_next(input)?;
+    let source_exiled_owner = opt((
+        opt(primitives::kw("the")),
+        primitives::kw("exiled"),
+        alt((primitives::kw("cards"), primitives::kw("card's"))),
+        primitives::kw("owner"),
+    )).parse_next(input)?.is_some();
+    alt((primitives::kw("manifest"), primitives::kw("manifests"))).parse_next(input)?;
+    primitives::kw("dread").parse_next(input)?;
     let repeat = repeat_tail.parse_next(input)?;
-    Ok(KeywordMechanicShape::ManifestDread { repeat })
+    Ok(KeywordMechanicShape::ManifestDread { repeat, source_exiled_owner })
 }
 
 fn parse_manifest_top_you<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {

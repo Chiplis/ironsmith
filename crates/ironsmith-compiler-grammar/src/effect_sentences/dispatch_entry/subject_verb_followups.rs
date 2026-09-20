@@ -707,6 +707,56 @@ fn pre_rule_optional_source_exile_and_collect_evidence(
     })))
 }
 
+fn pre_rule_search_exiled_cards_owner(
+    state: &mut SentenceDispatchState<'_>,
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(sentence_tokens);
+    let words = words.strip_prefix(&["then"]).unwrap_or(&words);
+    if !words.starts_with(&["search", "its", "owners"])
+        && !words.starts_with(&["search", "its", "owner's"])
+    { return Ok(None); }
+    if !words.windows(3).any(|words| words == ["with", "that", "name"]) { return Ok(None); }
+    let Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. })) = state.effects.last_mut() else { return Ok(None); };
+    if !tag_latest_prior_exile(if_true) { return Ok(None); }
+    let mut combined = sentence_tokens.to_vec();
+    let mut consumed = 1;
+    if let Some(next) = sentences.get(sentence_idx + 1) {
+        let next_words = crate::lexer::parser_token_word_refs(next.lexed());
+        if next_words.starts_with(&["that", "player"]) {
+            combined.extend(crate::lexer::lex_line(".", 0)?);
+            combined.extend_from_slice(next.lexed());
+            consumed += 1;
+        }
+    }
+    let mut effects = parse_effect_sentences_lexed(&combined)?;
+    fn bind_name(effects: &mut [EffectAst]) {
+        for effect in effects {
+            if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { filter, .. }) = effect {
+                if matches!(filter.owner, Some(PlayerFilter::OwnerOf(crate::target::ObjectRef::Target))) {
+                    filter.owner = Some(PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(crate::tag::CompilerReferenceTag::PriorExiledCard.key())));
+                }
+                for constraint in &mut filter.tagged_constraints {
+                    if constraint.tag == crate::tag::CompilerReferenceTag::ChosenName.key() {
+                        constraint.tag = crate::tag::CompilerReferenceTag::PriorExiledCard.key();
+                    }
+                }
+            }
+            for_each_nested_effects_mut(effect, true, bind_name);
+        }
+    }
+    bind_name(&mut effects);
+    if_true.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag: crate::tag::CompilerReferenceTag::PriorExiledCard.bind(), effects,
+    }));
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: consumed,
+        route: None,
+    }))
+}
+
 #[cfg(test)]
 #[path = "subject_verb_followups_inline_collect_evidence_followup_tests_2.rs"]
 mod collect_evidence_followup_tests;
@@ -1280,7 +1330,119 @@ fn pre_rule_permission_spell_discount(
     }))
 }
 
+fn pre_rule_permission_payment_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let Some(tail) = words.strip_prefix(&["if", "you", "cast", "a", "spell", "this", "way"]) else { return Ok(None); };
+    let life = tail == ["pay", "life", "equal", "to", "its", "mana", "value", "rather", "than", "pay", "its", "mana", "cost"];
+    let mode = match tail {
+        ["you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any", "type", "to", "cast", "it"] => Some(ironsmith_core::value_model::ManaSpendMode::AnyType),
+        ["you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any", "color", "to", "cast", "it"] => Some(ironsmith_core::value_model::ManaSpendMode::AnyColor),
+        _ => None,
+    };
+    if !life && mode.is_none() { return Ok(None); }
+    fn annotate(effect: &mut EffectAst, life: bool, mode: Option<ironsmith_core::value_model::ManaSpendMode>, rider: &mut Option<EffectAst>) -> bool {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Grants(grant), .. }) = effect {
+            let parts = match grant {
+                GrantActionAst::GrantPlayTaggedUntilEndOfTurn { tag, player, allow_any_color_for_cast, .. } => Some((tag, player, allow_any_color_for_cast, true)),
+                GrantActionAst::GrantPlayTaggedForAsLongAsExiled { tag, player, allow_any_color_for_cast, .. }
+                | GrantActionAst::GrantPlayTaggedUntilYourNextTurn { tag, player, allow_any_color_for_cast, .. }
+                | GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { tag, player, allow_any_color_for_cast, .. } => Some((tag, player, allow_any_color_for_cast, false)),
+                _ => None,
+            };
+            if let Some((tag, player, spending, until_end_of_turn)) = parts {
+                if life {
+                    if !until_end_of_turn { return false; }
+                    let pool_tag = tag.clone();
+                    *rider = Some(EffectAst::subject_verb_grant_tagged_spell_alternative_cost_pay_life_by_mana_value_until_end_of_turn(pool_tag.clone(), *player));
+                    // The ordinary play permission is only for lands. Spells
+                    // must use the life-payment method supplied by the rider.
+                    *tag = crate::tag::CompilerReferenceTag::It.bind();
+                    let land_grant = effect.clone();
+                    *effect = EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                        tag: pool_tag,
+                        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                            predicate: PredicateAst::TaggedMatches(
+                                crate::tag::CompilerReferenceTag::It.bind(),
+                                ObjectFilter::default().with_type(crate::types::CardType::Land),
+                            ),
+                            if_true: vec![land_grant],
+                            if_false: Vec::new(),
+                        })],
+                    });
+                } else if let Some(mode) = mode { *spending = mode; }
+                return true;
+            }
+        }
+        let mut found = false;
+        crate::model::visit::for_each_nested_effects_mut(effect, false, |nested| {
+            for child in nested.iter_mut().rev() {
+                if !found { found = annotate(child, life, mode, rider); }
+            }
+        });
+        found
+    }
+    let mut rider = None;
+    let Some(last) = state.effects.last_mut() else { return Ok(None); };
+    if !annotate(last, life, mode, &mut rider) { return Ok(None); }
+    if let Some(rider) = rider { state.effects.push(rider); }
+    Ok(Some(PreParseFollowupResult::Handled { consumed_sentences: 1, route: Some("permission-payment-followup") }))
+}
+
+// A repeated sacrifice procedure keeps its result-dependent consequence,
+// replacing only the kind of permanent selected by the sacrifice action.
+fn pre_rule_repeat_sacrifice_for_types(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let words = words.strip_prefix(&["then"]).unwrap_or(&words);
+    let Some(tail) = words.strip_prefix(&["repeat", "this", "process", "for"]) else { return Ok(None); };
+    let mut types = Vec::new();
+    for word in tail {
+        if matches!(*word, "a" | "an" | "and") { continue; }
+        let Some(kind) = crate::util::parse_card_type(word) else { return Ok(None); };
+        types.push(kind);
+    }
+    if types.is_empty() || state.effects.is_empty() { return Ok(None); }
+    fn replace_sacrifice(effects: &mut [EffectAst], kind: crate::types::CardType) -> usize {
+        let mut replaced = 0;
+        for effect in effects {
+            if let EffectAst::SubjectVerb(subject) = effect
+                && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { filter, target: None, .. }) = &mut subject.action
+                && filter.card_types.len() == 1
+            {
+                filter.card_types = vec![kind];
+                if matches!(subject.subject.player, PlayerAst::Target | PlayerAst::TargetOpponent) {
+                    subject.subject.player = PlayerAst::That;
+                }
+                replaced += 1;
+            }
+            crate::model::visit::for_each_nested_effects_mut(effect, false, |nested| {
+                replaced += replace_sacrifice(nested, kind);
+            });
+        }
+        replaced
+    }
+    let mut repetitions = Vec::new();
+    for kind in types {
+        let mut process = state.effects.clone();
+        if replace_sacrifice(&mut process, kind) != 1 { return Ok(None); }
+        repetitions.extend(process);
+    }
+    state.effects.extend(repetitions);
+    Ok(Some(PreParseFollowupResult::Handled { consumed_sentences: 1, route: Some("repeat-sacrifice-for-types") }))
+}
+
 const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
+    pre_followup_rule!("repeat-sacrifice-for-types", &["then", "repeat"], pre_rule_repeat_sacrifice_for_types),
+    pre_followup_rule!("permission-payment-followup", &["if"], pre_rule_permission_payment_followup),
     pre_followup_rule!(
         "permission-spell-discount",
         &["spells"],
@@ -1295,6 +1457,11 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         "optional-source-exile-and-collect-evidence",
         &["you"],
         pre_rule_optional_source_exile_and_collect_evidence
+    ),
+    pre_followup_rule!(
+        "search-exiled-cards-owner",
+        &["then", "search"],
+        pre_rule_search_exiled_cards_owner
     ),
     pre_followup_rule!(
         "prepare-returned-permanent-enters-followup",
@@ -1355,6 +1522,11 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
     ),
     pre_followup_rule!("if-no-one-does", &["if"], pre_rule_if_no_one_does_followup),
     pre_followup_rule!("if-you-win", &["if"], pre_rule_if_you_win_followup),
+    pre_followup_rule!(
+        "conditional-optional-result",
+        &["if", "when"],
+        pre_rule_conditional_optional_result_followup
+    ),
     pre_followup_rule!(
         "choose-for-each-player-instead",
         &["if"],
@@ -1587,7 +1759,8 @@ mod subject_verb_followups_condition_programs;
 pub(super) use subject_verb_followups_condition_programs::post_rule_future_zone_and_self_replacement;
 use subject_verb_followups_condition_programs::{
     default_effects_for_self_replacement, post_rule_self_replacement_common_suffix,
-    pre_rule_if_no_one_does_followup, pre_rule_if_you_win_followup,
+    pre_rule_conditional_optional_result_followup, pre_rule_if_no_one_does_followup,
+    pre_rule_if_you_win_followup,
     predicate_explicitly_says_that_land, take_self_replacement_condition,
 };
 #[path = "subject_verb_followups/subject_verb_followups_core.rs"]

@@ -1697,8 +1697,8 @@ where
             payload.chooser.clone(),
         )));
     }
-    if M::downcast_ref::<ironsmith_core::ManifestDreadEffect>(&effect).is_some() {
-        return Ok(Effect::new(crate::effects::ManifestDreadEffect::new()));
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::ManifestDreadEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::ManifestDreadEffect::for_player(payload.player.clone())));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ManifestTopCardOfLibraryEffect>(&effect)
@@ -1799,6 +1799,7 @@ where
                 crate::effects::FlipCoinEffect::face_only(payload.player.clone())
             }
         };
+        runtime.count = payload.count;
         runtime.forced_face = payload.forced_face;
         runtime.forced_winner = payload.forced_winner.clone();
         runtime.forced_loser = payload.forced_loser.clone();

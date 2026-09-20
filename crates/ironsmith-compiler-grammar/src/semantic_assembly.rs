@@ -154,7 +154,7 @@ fn assemble_triggered_line(
         })?;
     let chunk = crate::cards::builders::LineAst::Triggered {
         trigger: compiler_ability.event.semantics,
-        effects: compiler_ability.effects,
+        effects: if triggered.presentation == Some(ironsmith_core::PresentationLabel::CaseToSolve) { vec![crate::cards::builders::EffectAst::SolveCase] } else { compiler_ability.effects },
         max_triggers_per_turn: triggered.max_triggers_per_turn,
     };
     let chunk = crate::semantic_line_parsing::apply_explicit_intervening_if_to_triggered_chunk(

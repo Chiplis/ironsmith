@@ -227,13 +227,18 @@ const OTHER_BOTTOM: &[&[&str]] = &[
     &["rest", "onto", "bottom"],
 ];
 
+pub fn is_one_hand_rest_bottom_shape(tokens: &[OwnedLexToken]) -> bool {
+    starts_sequence(tokens, ONE_HAND)
+        && contains_content_sequence(tokens, OTHER_BOTTOM)
+        && contains_sequence_word(tokens, "library")
+        && contains_sequence_phrase(tokens, &[&["in", "any", "order"]])
+}
+
 pub fn is_nonhand_replacement_looked_split_shape(
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
 ) -> bool {
-    starts_sequence(second, ONE_HAND)
-        && contains_content_sequence(second, OTHER_BOTTOM)
-        && contains_sequence_word(second, "library")
+    is_one_hand_rest_bottom_shape(second)
         && matches_complete_sequence(
             third,
             &[&[

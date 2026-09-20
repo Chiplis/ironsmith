@@ -626,8 +626,11 @@ pub(super) fn format_alternative_method(
                 .unwrap_or_else(|| "0".to_string());
             ("Blitz".to_string(), cost_desc)
         }
-        AlternativeCastingMethod::Warp { cost } => {
-            let cost_desc = format_mana_cost_simple(cost);
+        AlternativeCastingMethod::Warp { cost, additional_cost } => {
+            let mut cost_desc = format_mana_cost_simple(cost);
+            for component in additional_cost.costs() {
+                cost_desc.push_str(&format!(", {}", component.display()));
+            }
             (
                 "Warp".to_string(),
                 format!("{cost_desc}, exile later and cast from exile"),
@@ -3247,6 +3250,7 @@ pub(super) fn auto_pay_spell_tap_cost_steps(
         cost_ctx.tagged_objects = pending.tagged_objects.clone();
         cost_ctx.effect_outcomes = pending.effect_outcomes.clone();
         cost_ctx.x_value = pending.x_value;
+        cost_ctx.announced_targets = pending.chosen_targets.clone();
 
         match cost.pay(game, &mut cost_ctx).map_err(|err| {
             GameLoopError::InvalidState(format!(
@@ -3295,6 +3299,7 @@ pub(super) fn continue_spell_cost_payment(
             cost_ctx.tagged_objects = pending.tagged_objects.clone();
             cost_ctx.effect_outcomes = pending.effect_outcomes.clone();
             cost_ctx.x_value = pending.x_value;
+        cost_ctx.announced_targets = pending.chosen_targets.clone();
 
             let payment = cost.pay(game, &mut cost_ctx).map_err(|err| {
                 GameLoopError::InvalidState(format!(
@@ -3661,6 +3666,16 @@ pub(super) fn continue_to_mana_payment(
             pending.chosen_targets.len(),
             pending.from_zone,
         );
+        // CR 601.2f: fix target-derived costs before mana abilities and cost
+        // payments can change or remove those targets.
+        for step in &mut pending.remaining_cost_steps {
+            if let ActivationCostStep::Cost(cost) = step
+                && let Some(effect) = cost.effect_ref()
+                && let Some(frozen) = freeze_target_aggregate_cost(effect, game, &pending.chosen_targets)
+            {
+                *cost = crate::costs::Cost::validated_effect(frozen);
+            }
+        }
         if let Some(spell) = game.object(pending.spell_id) {
             let surcharge = crate::decision::battlefield_life_cost_increase_for_spell(
                 game,
@@ -4314,6 +4329,35 @@ fn deterministic_named_source_card_cost(
         | ActivationCardCostChoice::ExileFromGraveyard { .. }
         | ActivationCardCostChoice::RevealFromHand { .. } => false,
     }
+}
+
+fn freeze_target_aggregate_cost(
+    effect: &crate::effect::Effect,
+    game: &GameState,
+    targets: &[Target],
+) -> Option<crate::effect::Effect> {
+    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
+        let constraint = choose.aggregate_constraint.as_ref()?;
+        let crate::effect::Value::AnnouncedTargetTotal(metric) = constraint.minimum.as_ref()?.unhinted() else { return None; };
+        let ids: std::collections::HashSet<_> = targets.iter().filter_map(|target| match target {
+            Target::Object(id) => Some(*id), Target::Player(_) => None,
+        }).collect();
+        let amount = crate::targeting::aggregate_object_set_value(game, ids, *metric);
+        let mut frozen = choose.clone();
+        frozen.aggregate_constraint.as_mut().unwrap().minimum = Some(crate::effect::Value::Fixed(amount));
+        return Some(crate::effect::Effect::new(frozen));
+    }
+    if let Some(wrapper) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        let mut frozen = wrapper.clone();
+        frozen.effect = Box::new(freeze_target_aggregate_cost(&wrapper.effect, game, targets)?);
+        return Some(crate::effect::Effect::new(frozen));
+    }
+    if let Some(wrapper) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        let mut frozen = wrapper.clone();
+        frozen.effect = Box::new(freeze_target_aggregate_cost(&wrapper.effect, game, targets)?);
+        return Some(crate::effect::Effect::new(frozen));
+    }
+    None
 }
 
 pub(super) fn collect_spell_cost_steps(

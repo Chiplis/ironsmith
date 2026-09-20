@@ -384,12 +384,8 @@ impl AttacksTrigger {
             .iter()
             .filter(|info| self.matches_attacker_info(info, ctx))
             .map(|info| crate::targeting::aggregate_object_value(ctx.game, info.creature, metric));
-        let mut matched = false;
-        let total = values.fold(0, |sum, value| {
-            matched = true;
-            sum + value
-        });
-        matched.then_some(total)
+        let values = values.collect::<Vec<_>>();
+        (!values.is_empty()).then(|| crate::targeting::aggregate_contributions(metric, values))
     }
 
     pub(crate) fn matches_attacker_info(
@@ -630,6 +626,7 @@ impl TriggerMatcher for AttacksTrigger {
                 ChoiceAggregateMetric::Power => "power",
                 ChoiceAggregateMetric::Toughness => "toughness",
                 ChoiceAggregateMetric::ManaValue => "mana value",
+                ChoiceAggregateMetric::DistinctCardTypes => "distinct card types",
             };
             let comparison = match comparison {
                 Comparison::Equal(value) => value.to_string(),

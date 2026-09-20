@@ -47,7 +47,8 @@ pub fn terminal_result_producer(effect: &EffectAst) -> Option<TerminalResultProd
                 Some(TerminalResultProducer::Clash)
             }
             SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
-            | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly) => {
+            | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
+            | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. }) => {
                 Some(TerminalResultProducer::FlipCoin)
             }
             _ => None,

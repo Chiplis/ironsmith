@@ -252,6 +252,11 @@ impl EffectExecutor for ExileEffect {
                 let selected = {
                     let mut selected = if let ChooseSpec::Object(filter) = self.spec.base() {
                         let filter_ctx = ctx.filter_context(game);
+                        // Target legality already checked the relative "other"
+                        // restriction. Rechecking it against the announced set
+                        // would exclude every selected target from itself.
+                        let mut filter = filter.clone();
+                        filter.other = false;
                         ctx.targets
                             .iter()
                             .filter(|target| match target {
@@ -305,6 +310,7 @@ impl EffectExecutor for ExileEffect {
         // count successful moves to exile.
         let mut affected_ids = Vec::new();
         let mut affected_memory = Vec::new();
+        let mut moved_source = None;
         let apply_result = match apply_to_selected_objects(
             game,
             ctx,
@@ -335,6 +341,9 @@ impl EffectExecutor for ExileEffect {
                             ctx.refresh_target_snapshot(pre_snapshot.clone());
                             if pre_snapshot.object_id == ctx.source {
                                 ctx.refresh_source_snapshot(pre_snapshot.clone());
+                                if matches!(self.spec.base(), ChooseSpec::Source) {
+                                    moved_source = result.new_object_ids.first().copied();
+                                }
                             }
                             affected_memory.push(OutcomeObjectMemory::from_snapshot(&pre_snapshot));
                             affected_ids.extend(result.new_object_ids.iter().copied());
@@ -379,6 +388,12 @@ impl EffectExecutor for ExileEffect {
             Err(_) => return Ok(EffectOutcome::target_invalid()),
         };
 
+        // An explicit self-exile in this resolution exports its new identity
+        // to subsequent instructions (e.g. "return it transformed"). Do not
+        // follow unrelated zone changes that happened before resolution.
+        if let Some(new_source) = moved_source {
+            ctx.source = new_source;
+        }
         Ok(apply_result
             .outcome
             .with_affected_objects(affected_ids)
@@ -558,6 +573,53 @@ mod tests {
             .build();
         game.add_object(Object::from_card(id, &card, owner, zone));
         id
+    }
+
+    #[test]
+    fn self_exile_preserves_source_for_return_during_spell_cast_trigger() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = add_card_to_zone(
+            &mut game,
+            alice,
+            Zone::Battlefield,
+            "Self Exile Probe",
+            vec![],
+            CardType::Creature,
+        );
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::spells::SpellCastEvent::new(ObjectId(999), alice, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let mut stale_trigger = ExecutionContext::new_default(source, alice)
+            .with_triggering_event(event.clone())
+            .with_source_snapshot(ObjectSnapshot::from_object(
+                game.object(source).unwrap(),
+                &game,
+            ));
+        let mut ctx = ExecutionContext::new_default(source, alice).with_triggering_event(event);
+        ExileEffect::with_spec(ChooseSpec::Source)
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+        assert_ne!(ctx.source, source);
+        assert_eq!(game.object(ctx.source).unwrap().zone, Zone::Exile);
+
+        crate::effects::MoveToZoneEffect::new(ChooseSpec::Source, Zone::Battlefield, false)
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+        assert_eq!(game.object(ctx.source).unwrap().zone, Zone::Battlefield);
+        assert_eq!(game.battlefield.len(), 1);
+        assert!(game.exile.is_empty());
+
+        ExileEffect::with_spec(ChooseSpec::Source)
+            .execute(&mut game, &mut stale_trigger)
+            .unwrap();
+        assert_eq!(
+            game.object(ctx.source).unwrap().zone,
+            Zone::Battlefield,
+            "another trigger from the old object must not exile the returned permanent"
+        );
+        assert!(game.exile.is_empty());
     }
 
     #[test]

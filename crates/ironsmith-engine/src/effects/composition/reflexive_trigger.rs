@@ -68,6 +68,13 @@ fn resolve_reflexive_choice_spec(
     ctx: &ExecutionContext,
     spec: &ChooseSpec,
 ) -> Option<ChooseSpec> {
+    let specialized;
+    let spec = if let Some(player) = ctx.iteration.iterated_player {
+        specialized = crate::game_loop::specialize_iterated_player_choose_spec(spec, player);
+        &specialized
+    } else {
+        spec
+    };
     let mut count = spec.count();
     if !count.is_dynamic_x() {
         return Some(spec.clone());
@@ -94,8 +101,9 @@ fn choose_reflexive_targets(
     game: &GameState,
     ctx: &mut ExecutionContext,
     choices: &[ChooseSpec],
-) -> Option<Vec<crate::game_state::Target>> {
+) -> Option<(Vec<crate::game_state::Target>, Vec<crate::game_state::TargetAssignment>)> {
     let mut chosen_targets = Vec::new();
+    let mut assignments = Vec::new();
 
     for spec in choices {
         let resolved_spec = resolve_reflexive_choice_spec(game, ctx, spec)?;
@@ -150,10 +158,15 @@ fn choose_reflexive_targets(
         }
         let selected = normalize_targets_for_requirements(&targets_ctx.requirements, selected)?;
 
+        let start = chosen_targets.len();
         chosen_targets.extend(selected);
+        assignments.push(crate::game_state::TargetAssignment {
+            spec: resolved_spec,
+            range: start..chosen_targets.len(),
+        });
     }
 
-    Some(chosen_targets)
+    Some((chosen_targets, assignments))
 }
 
 fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> ObjectSnapshot {
@@ -297,7 +310,7 @@ impl EffectExecutor for ReflexiveTriggerEffect {
         }
         let fallback_it_snapshots = reflexive_it_snapshots(game, &outcome);
 
-        let targets = choose_reflexive_targets(game, ctx, &self.choices)
+        let (targets, assignments) = choose_reflexive_targets(game, ctx, &self.choices)
             .ok_or(ExecutionError::InvalidTarget)?;
 
         let mut tagged_objects = ctx.tagged_objects.clone();
@@ -308,6 +321,7 @@ impl EffectExecutor for ReflexiveTriggerEffect {
 
         let mut entry = StackEntry::ability(ctx.source, ctx.controller, self.effects.clone())
             .with_targets(targets)
+            .with_target_assignments(assignments)
             .with_optional_costs_paid(ctx.optional_costs_paid.clone())
             .with_tagged_objects(tagged_objects)
             .with_effect_outcomes(ctx.effect_outcomes.clone());
@@ -411,10 +425,11 @@ mod tests {
             },
         )];
 
-        let selected =
+        let (selected, assignments) =
             choose_reflexive_targets(&game, &mut ctx, &choices).expect("up-to-zero is legal");
 
         assert!(selected.is_empty());
+        assert_eq!(assignments[0].spec.count().max, Some(2));
         drop(ctx);
         assert_eq!(dm.min, Some(0));
         assert_eq!(dm.max, Some(Some(2)));
@@ -436,7 +451,7 @@ mod tests {
         let choices =
             vec![ChooseSpec::target(ChooseSpec::creature()).with_count(ChoiceCount::exactly(2))];
 
-        let selected = choose_reflexive_targets(&game, &mut ctx, &choices).expect("valid targets");
+        let (selected, _) = choose_reflexive_targets(&game, &mut ctx, &choices).expect("valid targets");
 
         assert_eq!(selected.len(), 2);
         assert_eq!(selected[0], Target::Object(first));

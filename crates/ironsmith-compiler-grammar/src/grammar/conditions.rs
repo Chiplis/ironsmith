@@ -55,6 +55,7 @@ enum LifeRelationShape {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CardsInHandRelationShape {
     MoreThanYou,
+    AtLeastMoreThanYou(u32),
     MoreThanEachOtherPlayer,
 }
 
@@ -301,6 +302,7 @@ pub struct PlayerLifeRelationConditionAst {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlayerCardsInHandRelationAst {
     HasMoreCardsInHandThanYou,
+    HasAtLeastMoreCardsInHandThanYou(u32),
     HasMoreCardsInHandThanEachOtherPlayer,
 }
 
@@ -1416,6 +1418,10 @@ fn parse_player_cards_in_hand_relation_shape(
     let relation_clause = relation.tail_clause;
 
     match parse_cards_in_hand_relation_shape(relation_clause)? {
+        CardsInHandRelationShape::AtLeastMoreThanYou(amount) => Some(PlayerCardsInHandRelationConditionAst {
+            player: subject,
+            relation: PlayerCardsInHandRelationAst::HasAtLeastMoreCardsInHandThanYou(amount),
+        }),
         CardsInHandRelationShape::MoreThanYou => Some(PlayerCardsInHandRelationConditionAst {
             player: subject,
             relation: PlayerCardsInHandRelationAst::HasMoreCardsInHandThanYou,
@@ -1754,6 +1760,7 @@ fn parse_battlefield_entry_shape(tokens: &[OwnedLexToken]) -> Option<Battlefield
             window,
             other,
             you_had_surface,
+            face_down,
         } => {
             let mut object_tokens = object_tokens;
             let mut min_count = None;
@@ -1793,6 +1800,7 @@ fn parse_battlefield_entry_shape(tokens: &[OwnedLexToken]) -> Option<Battlefield
                 filter.other = true;
             }
             filter.set_you_had_entry_surface(you_had_surface);
+            if face_down { filter.face_down = Some(true); }
             Some(BattlefieldEntryConditionAst::ObjectEntered {
                 filter,
                 min_count,
@@ -1929,6 +1937,7 @@ fn parse_life_change_subject_clause(clause: LexedClause<'_>) -> Option<PlayerFil
     )?;
     match reference {
         LeafPlayerReference::You => Some(PlayerFilter::You),
+        LeafPlayerReference::ThatPlayer => Some(PlayerFilter::IteratedPlayer),
         LeafPlayerReference::Opponent => Some(PlayerFilter::Opponent),
         LeafPlayerReference::AnyPlayer => Some(PlayerFilter::Any),
         _ => None,

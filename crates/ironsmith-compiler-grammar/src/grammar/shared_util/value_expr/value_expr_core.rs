@@ -192,7 +192,9 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
             ],
         ],
     ) {
-        return Some((Value::ManaSpentToCastTriggeringObject, used));
+        return Some((Value::ManaSpentToCast(Box::new(crate::target::ChooseSpec::Tagged(
+            (crate::tag::CompilerReferenceTag::It.bind()).into(),
+        ))), used));
     }
     if words.len() >= 5
         && (permission_shapes::prefix_words(words, &["the", "number", "of"])

@@ -3816,6 +3816,20 @@ impl GameState {
         use crate::ability::AbilityKind;
         use crate::static_abilities::StaticAbility;
 
+        // A duration ends permanently at its first false transition.
+        let expired: std::collections::HashSet<usize> = self.effect_store.restriction_effects.iter().enumerate()
+            .filter_map(|(index, effect)| match &effect.duration {
+                crate::effect::Until::ForAsLongAs(predicate)
+                    if !crate::continuous::continuous_duration_predicate_matches(predicate, self) => Some(index),
+                _ => None,
+            }).collect();
+        let mut index = 0;
+        self.effect_store.restriction_effects.retain(|_| {
+            let retain = !expired.contains(&index);
+            index += 1;
+            retain
+        });
+
         // Clear existing tracker
         self.effect_store.cant_effects.clear();
         self.effect_store

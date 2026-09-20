@@ -301,6 +301,14 @@ pub const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
         &[LexRuleHeadHint::Single("exile")],
         parse_sentence_exile_hand_and_graveyard_bundle
     ),
+    primitive!(
+        "comma-then-chain-special",
+        180,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("target"), LexRuleHeadHint::Single("draw"), LexRuleHeadHint::Single("tap"), LexRuleHeadHint::Single("untap"), LexRuleHeadHint::Single("look")],
+        parse_sentence_comma_then_chain_special
+    ),
+
 ];
 
 pub static PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX: LazyLock<LexRuleHintIndex> =
@@ -478,13 +486,6 @@ pub const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
         PostDiagnostic,
         &[LexRuleHeadHint::Single("destroy")],
         parse_sentence_destroy_all_attached_to_target
-    ),
-    primitive!(
-        "comma-then-chain-special",
-        180,
-        PostDiagnostic,
-        &[LexRuleHeadHint::Single("target")],
-        parse_sentence_comma_then_chain_special
     ),
     primitive!(
         "destroy-then-land-controller-graveyard-count-damage",

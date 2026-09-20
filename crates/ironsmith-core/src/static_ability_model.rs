@@ -806,6 +806,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         condition: Option<ActivatedAbilityCostCondition>,
         per_matching_objects: Option<ObjectFilter>,
         per_basic_land_types_among: Option<ObjectFilter>,
+        #[cfg_attr(feature = "serde", serde(default))]
+        multiplier: Option<Value>,
         minimum_total_mana: Option<u32>,
     },
     ActivatedAbilityCostIncrease {
@@ -903,6 +905,13 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         exile_with_counters: Vec<(CounterType, u32)>,
         follow_up_effects: Vec<E>,
     },
+    /// A removable static ability redirecting matching zone-change events.
+    RedirectZoneChange {
+        filter: ObjectFilter,
+        from_zone: Option<Zone>,
+        to_zone: Option<Zone>,
+        destination: Zone,
+    },
     ModifyDamageAmountReplacement {
         source_filter: ObjectFilter,
         target_player_filter: Option<PlayerFilter>,
@@ -959,7 +968,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         filter: ObjectFilter,
         player_filter: Option<PlayerFilter>,
         counter_type: Option<CounterType>,
-        additional: u32,
+        additional: i64,
         display: String,
     },
     PlayerCounterPerTurnLimitReplacement {
@@ -1162,6 +1171,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker(u32),
     CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl,
     Grants(Box<GrantSpecModel<T, E, C, Cond, ICond>>),
+    NativeAlternativeCastFromZone {
+        zone: Zone,
+        method: crate::alternative_cast_model::AlternativeCastKeyword,
+    },
     EntersTappedUnlessCondition {
         condition: ICond,
         display: String,
@@ -1495,6 +1508,7 @@ where
                 zone: spec.zone,
                 beneficiary: spec.beneficiary,
                 usage_limit: spec.usage_limit,
+                max_plays: spec.max_plays,
                 cast_this_way_filter: spec.cast_this_way_filter,
                 source_exiled_surface: spec.source_exiled_surface,
                 cast_this_way_grants: spec
@@ -2117,6 +2131,7 @@ where
                 condition,
                 per_matching_objects,
                 per_basic_land_types_among,
+                multiplier,
                 minimum_total_mana,
             } => StaticAbilityPayload::ActivatedAbilityCostReduction {
                 filter,
@@ -2126,6 +2141,7 @@ where
                 condition,
                 per_matching_objects,
                 per_basic_land_types_among,
+                multiplier,
                 minimum_total_mana,
             },
             StaticAbilityPayload::ActivatedAbilityCostIncrease {
@@ -2330,6 +2346,11 @@ where
                     .into_iter()
                     .map(map_effect)
                     .collect::<Result<Vec<_>, _>>()?,
+            },
+            StaticAbilityPayload::RedirectZoneChange {
+                filter, from_zone, to_zone, destination,
+            } => StaticAbilityPayload::RedirectZoneChange {
+                filter, from_zone, to_zone, destination,
             },
             StaticAbilityPayload::ModifyDamageAmountReplacement {
                 source_filter,
@@ -2717,6 +2738,9 @@ where
                     map_intervening,
                 )?))
             }
+            StaticAbilityPayload::NativeAlternativeCastFromZone { zone, method } => {
+                StaticAbilityPayload::NativeAlternativeCastFromZone { zone, method }
+            }
             StaticAbilityPayload::EntersTappedUnlessCondition { condition, display } => {
                 StaticAbilityPayload::EntersTappedUnlessCondition {
                     condition: map_intervening(condition)?,
@@ -2945,6 +2969,18 @@ impl<
             id: None,
             label: format!("{label:?}"),
             payload: StaticAbilityPayload::None,
+        }
+    }
+
+    pub fn native_alternative_cast_from_zone(
+        zone: Zone,
+        method: crate::alternative_cast_model::AlternativeCastKeyword,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::NativeAlternativeCastFromZone),
+            label: format!("You may cast this card from your {} using its {} ability.",
+                format!("{zone:?}").to_lowercase(), format!("{method:?}").to_lowercase()),
+            payload: StaticAbilityPayload::NativeAlternativeCastFromZone { zone, method },
         }
     }
 
@@ -4106,6 +4142,7 @@ impl<
                 condition: None,
                 per_matching_objects: None,
                 per_basic_land_types_among: None,
+                multiplier: None,
                 minimum_total_mana,
             },
         }
@@ -4127,6 +4164,7 @@ impl<
                 condition: None,
                 per_matching_objects: None,
                 per_basic_land_types_among: None,
+                multiplier: None,
                 minimum_total_mana,
             },
         }
@@ -4148,6 +4186,7 @@ impl<
                 condition: Some(condition),
                 per_matching_objects: None,
                 per_basic_land_types_among: None,
+                multiplier: None,
                 minimum_total_mana,
             },
         }
@@ -4169,6 +4208,7 @@ impl<
                 condition: None,
                 per_matching_objects: Some(per_filter),
                 per_basic_land_types_among: None,
+                multiplier: None,
                 minimum_total_mana,
             },
         }
@@ -4190,6 +4230,7 @@ impl<
                 condition: None,
                 per_matching_objects: None,
                 per_basic_land_types_among: Some(lands_filter),
+                multiplier: None,
                 minimum_total_mana,
             },
         }
@@ -4210,6 +4251,7 @@ impl<
                 condition: None,
                 per_matching_objects: None,
                 per_basic_land_types_among: None,
+                multiplier: None,
                 minimum_total_mana: None,
             },
         }
@@ -5928,6 +5970,21 @@ impl<
         Self::exile_would_die_instead_with_damage_source(filter, None)
     }
 
+    pub fn redirect_zone_change(
+        filter: ObjectFilter,
+        from_zone: Option<Zone>,
+        to_zone: Option<Zone>,
+        destination: Zone,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::RedirectZoneChange),
+            label: "zone-change replacement".into(),
+            payload: StaticAbilityPayload::RedirectZoneChange {
+                filter, from_zone, to_zone, destination,
+            },
+        }
+    }
+
     pub fn exile_would_die_instead_with_damage_source(
         filter: ObjectFilter,
         damaged_by: Option<DamagedBySource>,
@@ -6206,10 +6263,11 @@ impl<
     pub fn add_counters_placement_replacement(
         filter: ObjectFilter,
         counter_type: Option<CounterType>,
-        additional: u32,
+        additional: impl Into<i64>,
         display: impl Into<String>,
     ) -> Self {
         let display = display.into();
+        let additional = additional.into();
         Self {
             id: Some(StaticAbilityId::AddCountersPlacementReplacement),
             label: display.clone(),
@@ -6228,10 +6286,11 @@ impl<
     pub fn add_player_counters_placement_replacement(
         player_filter: PlayerFilter,
         counter_type: Option<CounterType>,
-        additional: u32,
+        additional: impl Into<i64>,
         display: impl Into<String>,
     ) -> Self {
         let display = display.into();
+        let additional = additional.into();
         Self {
             id: Some(StaticAbilityId::AddCountersPlacementReplacement),
             label: display.clone(),

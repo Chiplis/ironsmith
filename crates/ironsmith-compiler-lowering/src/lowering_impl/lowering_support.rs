@@ -4419,6 +4419,20 @@ pub(crate) fn lower_compiler_static_ability_core(
 ) -> Result<StaticAbility, CardTextError> {
     let crate::model::CompilerStaticAbilityCore { id, label, payload } = ability;
     match payload {
+        crate::model::CompilerStaticAbilityPayloadCore::ExileWouldDieInstead {
+            filter, damaged_by, damager_filter, damager_filter_surface, exile_with_counters, follow_up_effects,
+        } => {
+            let mut ctx = crate::model::facts::EffectLoweringContext::new();
+            ctx.last_effect_id = Some(crate::effect::EffectId::REPLACED_EVENT);
+            ctx.last_object_tag = Some(ironsmith_core::tag::ZONE_REPLACEMENT_OBJECT_TAG.into());
+            let (follow_up_effects, choices) = crate::compile_support::compile_effects(&follow_up_effects, &mut ctx)?;
+            if !choices.is_empty() {
+                return Err(CardTextError::InvariantViolation("replacement follow-up cannot announce targets outside a reflexive trigger".into()));
+            }
+            Ok(StaticAbility { id, label, payload: crate::static_abilities::StaticAbilityPayload::ExileWouldDieInstead {
+                filter, damaged_by, damager_filter, damager_filter_surface, exile_with_counters, follow_up_effects,
+            } })
+        }
         crate::model::CompilerStaticAbilityPayloadCore::DamagePreventionWithFollowUp {
             source_filter, target_filter, combat_only, recipient_tag, effects,
         } => {
@@ -5048,13 +5062,18 @@ fn validate_effect_for_iterated_player(
         return Ok(());
     }
     if let Some(reflexive) = effect.downcast_ref::<crate::effects::ReflexiveTriggerEffect>() {
+        // Reflexive abilities retain the enclosing trigger's event context.
         validate_choose_specs_for_iterated_player(
             &reflexive.choices,
             &reflexive.effects,
-            false,
+            iterated_player_bound,
             context,
         )?;
-        return validate_effects_for_iterated_player(&reflexive.effects, false, context);
+        return validate_effects_for_iterated_player(
+            &reflexive.effects,
+            iterated_player_bound,
+            context,
+        );
     }
     if let Some(schedule_delayed) =
         effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()

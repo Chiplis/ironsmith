@@ -237,6 +237,7 @@ fn restriction_references_identity(
         | Restriction::NoMaximumHandSize(player)
         | Restriction::GainLife(player)
         | Restriction::SearchLibraries(player)
+        | Restriction::SearchOwnLibraryFromOwnEffects(player)
         | Restriction::CastSpellsOnlyAsSorcery(player)
         | Restriction::ActivateNonManaAbilities(player)
         | Restriction::DrawCards(player)

@@ -1174,6 +1174,13 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::SearchOwnLibraryFromOwnEffects(filter) => {
+                for player in &game.players {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
+                        tracker.cant_search_own_library_from_own_effects.insert(player.id);
+                    }
+                }
+            }
             Restriction::SearchLibraries(filter) => {
                 for player in &game.players {
                     if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {

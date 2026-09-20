@@ -335,7 +335,7 @@ impl LayerValueContext<'_, '_> {
     ) -> i32 {
         use crate::effects::helpers::value_eval::NumericProperty;
         let ctx = self.calculation;
-        if matches!(property, NumericProperty::ManaValue) {
+        if matches!(property, NumericProperty::ManaValue | NumericProperty::ManaSpent) {
             return ctx
                 .objects
                 .get(&id)

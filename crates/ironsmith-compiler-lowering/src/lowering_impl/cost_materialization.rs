@@ -727,12 +727,16 @@ fn lower_materialization_costs(
                     "exile_cost_{exile_tag_id}"
                 ));
                 exile_tag_id += 1;
+                let aggregate_constraint = filter.target_set_aggregate_constraint.take();
                 let mut choose = crate::effects::ChooseObjectsEffect::new(
                     filter,
                     *choice_count,
                     PlayerFilter::You,
                     tag.clone(),
                 );
+                if let Some(constraint) = aggregate_constraint {
+                    choose = choose.with_aggregate_constraint(*constraint);
+                }
                 if *top_only {
                     choose = choose.top_only();
                 }

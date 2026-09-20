@@ -2333,9 +2333,15 @@ fn process_zone_change_inner(
                         replacement_controller,
                         dm,
                     );
-                    if let Some(snapshot) = replacement_object_snapshot {
-                        ctx.tag_object(crate::tag::ZONE_REPLACEMENT_OBJECT_TAG, snapshot);
-                    }
+                    let replacement_outcome = match replacement_object_snapshot {
+                        Some(snapshot) => {
+                            let outcome = crate::effect::EffectOutcome::with_objects(vec![snapshot.object_id]);
+                            ctx.tag_object(crate::tag::ZONE_REPLACEMENT_OBJECT_TAG, snapshot);
+                            outcome
+                        }
+                        None => crate::effect::EffectOutcome::count(0),
+                    };
+                    ctx.effect_outcomes.insert(crate::effect::EffectId::REPLACED_EVENT, replacement_outcome);
                     for effect in effects {
                         if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut ctx)
                         {

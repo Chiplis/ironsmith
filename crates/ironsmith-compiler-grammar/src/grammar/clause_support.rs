@@ -103,6 +103,21 @@ pub fn parse_color_only_hexproof_filter_words(words: &[&str]) -> Option<ObjectFi
 fn parse_color_only_hexproof_filter_word_slice(
     input: &mut WordSliceInput<'_>,
 ) -> WResult<ObjectFilter> {
+    match *input {
+        ["monocolored"] => {
+            *input = &[];
+            return Ok(ObjectFilter::default().monocolored());
+        }
+        ["multicolored"] => {
+            *input = &[];
+            return Ok(ObjectFilter::default().multicolored());
+        }
+        ["colorless"] => {
+            *input = &[];
+            return Ok(ObjectFilter::default().colorless());
+        }
+        _ => {}
+    }
     let mut each_color = *input;
     if (
         primitives::word_slice_exact("each"),

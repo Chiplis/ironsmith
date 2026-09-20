@@ -198,6 +198,7 @@ impl PayAnyLifeEffect {
 pub enum ConsultTopOfLibraryStopRule {
     FirstMatch,
     MatchCount(Value),
+    TotalManaValue(Value),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1698,6 +1699,8 @@ pub enum CoinFlipKind {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct FlipCoinEffect {
+    #[cfg_attr(feature = "serde", serde(default = "single_coin_count"))]
+    pub count: u32,
     pub player: PlayerFilter,
     pub kind: CoinFlipKind,
     pub forced_face: Option<CoinFace>,
@@ -1705,9 +1708,12 @@ pub struct FlipCoinEffect {
     pub forced_loser: Option<PlayerFilter>,
 }
 
+fn single_coin_count() -> u32 { 1 }
+
 impl FlipCoinEffect {
     pub fn new(player: PlayerFilter) -> Self {
         Self {
+            count: 1,
             player,
             kind: CoinFlipKind::Called,
             forced_face: None,
@@ -1718,6 +1724,7 @@ impl FlipCoinEffect {
 
     pub fn face_only(player: PlayerFilter) -> Self {
         Self {
+            count: 1,
             player,
             kind: CoinFlipKind::FaceOnly,
             forced_face: None,

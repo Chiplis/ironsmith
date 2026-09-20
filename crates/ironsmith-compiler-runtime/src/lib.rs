@@ -228,6 +228,7 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             zone: spec.zone,
             beneficiary: spec.beneficiary,
             usage_limit: spec.usage_limit,
+                max_plays: spec.max_plays,
             cast_this_way_filter: spec.cast_this_way_filter,
             source_exiled_surface: spec.source_exiled_surface,
             cast_this_way_grants: spec

@@ -110,6 +110,11 @@ pub(super) fn parse_triggered_line_impl(
         trigger_parse_tokens,
         effect_parse_tokens,
     )?;
+    if line.presentation == Some(PresentationLabel::CaseToSolve) {
+        // The synthetic recognition text mentions a level counter only to
+        // locate the trigger. It must never replace the typed solve action.
+        return Ok(parsed);
+    }
     hoist_delayed_copy_retargeting_in_line(&mut parsed);
     apply_source_spell_cast_trigger_spec(&mut parsed, line.info.source_tokens.as_slice())?;
     apply_protected_battle_iteration_surface(&mut parsed, line.info.source_tokens.as_slice());
@@ -551,6 +556,16 @@ pub(super) fn parse_triggered_ability_line_impl(
     let chosen_option = line.chosen_option.as_ref();
     let presentation_label = line.presentation.as_ref();
     let inferred_max_triggers_per_turn = line.max_triggers_per_turn;
+    if line.presentation == Some(PresentationLabel::CaseToSolve) {
+        let trigger = parse_trigger_clause_lexed(trigger_parse_tokens)?;
+        return apply_chosen_option_to_triggered_chunk(
+            apply_explicit_intervening_if_to_triggered_chunk(LineAst::Triggered {
+                trigger, effects: vec![EffectAst::SolveCase],
+                max_triggers_per_turn: inferred_max_triggers_per_turn,
+            }, line.intervening_if.clone())?,
+            trigger_facts, inferred_max_triggers_per_turn, chosen_option, presentation_label,
+        );
+    }
     let full_text_facts = semantic_grammar::parse_triggered_text_facts_tokens(full_parse_tokens);
     let effect_text_facts =
         semantic_grammar::parse_triggered_text_facts_tokens(effect_parse_tokens);

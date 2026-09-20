@@ -277,6 +277,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                         || object_filter_mentions_iterated_player(filter)
                 }
                 TurnHistoryCount::TokensCreated(player)
+                | TurnHistoryCount::TurnedFaceUp(player)
                 | TurnHistoryCount::PlayersAttackedThisCombat(player)
                 | TurnHistoryCount::OpponentsAttacked(player)
                 | TurnHistoryCount::PlayersDiscarded(player)
@@ -481,6 +482,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | NoMaximumHandSize(player)
         | GainLife(player)
         | SearchLibraries(player)
+        | SearchOwnLibraryFromOwnEffects(player)
         | CastSpellsOnlyAsSorcery(player)
         | ActivateNonManaAbilities(player)
         | DrawCards(player)

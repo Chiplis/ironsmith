@@ -299,7 +299,9 @@ impl EffectExecutor for ChooseObjectsEffect {
     }
 
     fn references_cost_x(&self) -> bool {
-        self.count.dynamic_x
+        self.count.dynamic_x || self.aggregate_constraint.as_ref().is_some_and(|constraint| {
+            constraint.minimum.as_ref().is_some_and(|value| matches!(value.unhinted(), crate::effect::Value::X))
+        })
     }
 
     fn max_cost_x(
@@ -310,6 +312,9 @@ impl EffectExecutor for ChooseObjectsEffect {
     ) -> Option<u32> {
         if !self.references_cost_x() {
             return None;
+        }
+        if self.aggregate_constraint.is_some() {
+            return aggregate_cost_capacity(self, game, source, controller).ok().map(|amount| amount.max(0) as u32);
         }
         cost_candidate_count(self, game, source, controller)
             .ok()
@@ -454,6 +459,12 @@ impl CostExecutableEffect for ChooseObjectsEffect {
         source: crate::ids::ObjectId,
         controller: crate::ids::PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
+        if let Some(constraint) = &self.aggregate_constraint
+            && let Some(crate::effect::Value::Fixed(minimum)) = constraint.minimum.as_ref().map(|value| value.unhinted())
+            && aggregate_cost_capacity(self, game, source, controller)? < *minimum
+        {
+            return Err(CostValidationError::NotEnoughCards);
+        }
         if self.count.min == 0 {
             return Ok(());
         }
@@ -469,6 +480,36 @@ impl CostExecutableEffect for ChooseObjectsEffect {
 
         Ok(())
     }
+}
+
+fn aggregate_cost_capacity(
+    effect: &ChooseObjectsEffect,
+    game: &GameState,
+    source: crate::ids::ObjectId,
+    controller: crate::ids::PlayerId,
+) -> Result<i32, CostValidationError> {
+    let constraint = effect.aggregate_constraint.as_ref().expect("aggregate cost");
+    let context = crate::filter::FilterContext::new(controller).with_source(source);
+    let mut contributions: Vec<_> = search_zones(effect)
+        .map_err(|error| CostValidationError::Other(format!("{error:?}")))?
+        .into_iter().flat_map(|zone| game.objects_in_zone(zone))
+        .filter(|id| game.object(*id).is_some_and(|object| effect.filter.matches(object, &context, game)))
+        .map(|id| crate::targeting::aggregate_object_value(game, id, constraint.metric))
+        .collect();
+    if constraint.metric == crate::effect::ChoiceAggregateMetric::DistinctCardTypes {
+        let mut states = std::collections::HashMap::from([(0i32, 0usize)]);
+        for value in contributions {
+            for (mask, count) in states.clone() {
+                if count >= effect.count.max.unwrap_or(usize::MAX) { continue; }
+                let entry = states.entry(mask | value).or_insert(usize::MAX);
+                *entry = (*entry).min(count + 1);
+            }
+        }
+        return Ok(states.keys().map(|mask| mask.count_ones() as i32).max().unwrap_or(0));
+    }
+    contributions.sort_unstable_by(|left, right| right.cmp(left));
+    Ok(contributions.into_iter().take(effect.count.max.unwrap_or(usize::MAX))
+        .filter(|amount| *amount > 0).fold(0i32, i32::saturating_add))
 }
 
 #[cfg(test)]

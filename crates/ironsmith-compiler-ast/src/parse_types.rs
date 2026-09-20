@@ -57,6 +57,7 @@ pub enum LibraryConsultModeAst {
 pub enum LibraryConsultStopRuleAst<Value = crate::effect::Value> {
     FirstMatch,
     MatchCount(Value),
+    TotalManaValue(Value),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]

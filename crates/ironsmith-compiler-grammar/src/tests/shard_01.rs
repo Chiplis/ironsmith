@@ -90,7 +90,7 @@ pub(super) fn aetherflux_conduit_uses_triggering_spell_mana_spent_value() {
         .expect("Aetherflux Conduit should parse");
     let debug = format!("{:#?}", def.abilities);
 
-    assert!(debug.contains("ManaSpentToCastTriggeringObject"), "{debug}");
+    assert!(debug.contains("ManaSpentToCast"), "{debug}");
     assert!(debug.contains("ForEachObject"), "{debug}");
     assert!(format!("{:?}", def.abilities).contains("zone: Some(Hand)"));
     assert!(debug.contains("CastTagged"), "{debug}");

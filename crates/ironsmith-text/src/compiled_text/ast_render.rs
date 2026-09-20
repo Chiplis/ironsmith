@@ -30017,7 +30017,11 @@ pub(super) fn describe_alternative_cast_line(
             additional_cost.to_oracle()
         ),
         AlternativeCastingMethod::Plot { cost } => format!("Plot {}", cost.to_oracle()),
-        AlternativeCastingMethod::Warp { cost } => format!("Warp {}", cost.to_oracle()),
+        AlternativeCastingMethod::Warp { cost, additional_cost } => {
+            let costs = additional_cost.costs();
+            if costs.is_empty() { format!("Warp {}", cost.to_oracle()) }
+            else { format!("Warp—{}, {}", cost.to_oracle(), capitalize_first(&describe_alternative_costs(costs))) }
+        },
         AlternativeCastingMethod::Suspend { cost, time } => {
             format!("Suspend {time}—{}", cost.to_oracle())
         }
@@ -30064,8 +30068,15 @@ pub(super) fn describe_alternative_cast_line(
         AlternativeCastingMethod::Retrace { .. } => "Retrace".to_string(),
         AlternativeCastingMethod::JumpStart { .. } => "Jump-start".to_string(),
         AlternativeCastingMethod::Escape {
-            cost, exile_count, ..
+            cost, exile_count, additional_cost,
         } => {
+            if *exile_count == 0 && !additional_cost.is_free() {
+                let extra = capitalize_first(&describe_alternative_costs(additional_cost.costs()));
+                return match cost {
+                    Some(cost) => format!("Escape—{}, {extra}", cost.to_oracle()),
+                    None => format!("Escape—{extra}"),
+                };
+            }
             let count_text =
                 small_number_word(*exile_count).unwrap_or_else(|| exile_count.to_string());
             if let Some(cost) = cost {

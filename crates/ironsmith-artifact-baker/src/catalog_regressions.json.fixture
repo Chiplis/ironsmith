@@ -1,0 +1,154 @@
+[
+  {
+    "name": "Accumulate Wisdom",
+    "text": "Mana cost: {1}{U}\nType: Instant — Lesson\nLook at the top three cards of your library. Put one of those cards into your hand and the rest on the bottom of your library in any order. Put each of those cards into your hand instead if there are three or more Lesson cards in your graveyard."
+  },
+  {
+    "name": "Ashiok, Dream Render",
+    "text": "Mana cost: {1}{U/B}{U/B}\nType: Legendary Planeswalker — Ashiok\nLoyalty: 5\nSpells and abilities your opponents control can't cause their controller to search their library.\n−1: Target player mills four cards. Then exile each opponent's graveyard."
+  },
+  {
+    "name": "Braided Net",
+    "text": "Mana cost: {2}{U}\nType: Artifact\nThis artifact enters with three net counters on it.\n{T}, Remove a net counter from this artifact: Tap another target nonland permanent. Its activated abilities can't be activated for as long as it remains tapped.\nCraft with artifact {1}{U}"
+  },
+  {
+    "name": "Braided Quipu",
+    "text": "Type: Artifact\n{3}{U}, {T}: Draw a card for each artifact you control, then put this artifact into its owner's library third from the top."
+  },
+  {
+    "name": "Case of the Crimson Pulse",
+    "text": "Mana cost: {2}{R}\nType: Enchantment — Case\nWhen this Case enters, discard a card, then draw two cards.\nTo solve — You have no cards in hand. (If unsolved, solve at the beginning of your end step.)\nSolved — At the beginning of your upkeep, discard your hand, then draw two cards."
+  },
+  {
+    "name": "Deadly Cover-Up",
+    "text": "Mana cost: {3}{B}{B}\nType: Sorcery\nAs an additional cost to cast this spell, you may collect evidence 6.\nDestroy all creatures. If evidence was collected, exile a card from an opponent's graveyard. Then search its owner's graveyard, hand, and library for any number of cards with that name and exile them. That player shuffles, then draws a card for each card exiled from their hand this way."
+  },
+  {
+    "name": "Decorum Dissertation",
+    "text": "Mana cost: {3}{B}{B}\nType: Sorcery — Lesson\nTarget player draws two cards and loses 2 life.\nParadigm (Then exile this spell. After you first resolve a spell with this name, you may cast a copy of it from exile without paying its mana cost at the beginning of each of your first main phases.)"
+  },
+  {
+    "name": "Detective's Phoenix",
+    "text": "Mana cost: {2}{R}\nType: Enchantment Creature — Phoenix\nPower/Toughness: 2/2\nBestow—{R}, Collect evidence 6. (To pay this bestow cost, pay {R} and exile cards with total mana value 6 or greater from your graveyard.)\nFlying, haste\nEnchanted creature gets +2/+2 and has flying and haste.\nYou may cast this card from your graveyard using its bestow ability."
+  },
+  {
+    "name": "Dragonfire Blade",
+    "text": "Mana cost: {1}\nType: Artifact — Equipment\nEquipped creature gets +2/+2 and has hexproof from monocolored.\nEquip {4}. This ability costs {1} less to activate for each color of the creature it targets."
+  },
+  {
+    "name": "Enduring Curiosity",
+    "text": "Mana cost: {2}{U}{U}\nType: Enchantment Creature — Cat Glimmer\nPower/Toughness: 4/3\nFlash\nWhenever a creature you control deals combat damage to a player, draw a card.\nWhen Enduring Curiosity dies, if it was a creature, return it to the battlefield under its owner's control. It's an enchantment. (It's not a creature.)"
+  },
+  {
+    "name": "Enduring Innocence",
+    "text": "Mana cost: {1}{W}{W}\nType: Enchantment Creature — Sheep Glimmer\nPower/Toughness: 2/1\nLifelink\nWhenever one or more other creatures you control with power 2 or less enter, draw a card. This ability triggers only once each turn.\nWhen Enduring Innocence dies, if it was a creature, return it to the battlefield under its owner's control. It's an enchantment. (It's not a creature.)"
+  },
+  {
+    "name": "Enduring Vitality",
+    "text": "Mana cost: {1}{G}{G}\nType: Enchantment Creature — Elk Glimmer\nPower/Toughness: 3/3\nVigilance\nCreatures you control have \"{T}: Add one mana of any color.\"\nWhen Enduring Vitality dies, if it was a creature, return it to the battlefield under its owner's control. It's an enchantment. (It's not a creature.)"
+  },
+  {
+    "name": "Head of the Hunt",
+    "text": "Mana cost: {2}{B}{B}\nType: Creature — Wolf\nFirst printed set: The Hobbit\nPower/Toughness: 4/3\nFlash\nIf a creature an opponent controls would die, exile it instead. When you do, create a 2/2 green Wolf creature token."
+  },
+  {
+    "name": "Improvisation Capstone",
+    "text": "Mana cost: {5}{R}{R}\nType: Sorcery — Lesson\nExile cards from the top of your library until you exile cards with total mana value 4 or greater. You may cast any number of spells from among them without paying their mana costs.\nParadigm (Then exile this spell. After you first resolve a spell with this name, you may cast a copy of it from exile without paying its mana cost at the beginning of each of your first main phases.)"
+  },
+  {
+    "name": "Inside Information",
+    "text": "Mana cost: {X}{B}{B}\nType: Sorcery\nFirst printed set: The Hobbit\nExile the top X cards of target opponent's library. You may play those cards this turn. If you cast a spell this way, pay life equal to its mana value rather than pay its mana cost."
+  },
+  {
+    "name": "Invoke Despair",
+    "text": "Mana cost: {1}{B}{B}{B}{B}\nType: Sorcery\nTarget opponent sacrifices a creature of their choice. If they can't, they lose 2 life and you draw a card. Then repeat this process for an enchantment and a planeswalker."
+  },
+  {
+    "name": "Malcolm, Alluring Scoundrel",
+    "text": "Mana cost: {1}{U}\nType: Legendary Creature — Siren Pirate\nPower/Toughness: 2/1\nFlash\nFlying\nWhenever Malcolm deals combat damage to a player, put a chorus counter on it. Draw a card, then discard a card. If there are four or more chorus counters on Malcolm, you may cast the discarded card without paying its mana cost."
+  },
+  {
+    "name": "Nethergoyf",
+    "text": "Mana cost: {B}\nType: Creature — Lhurgoyf\nPower/Toughness: */1+*\nNethergoyf's power is equal to the number of card types among cards in your graveyard and its toughness is equal to that number plus 1.\nEscape—{2}{B}, Exile any number of other cards from your graveyard with four or more card types among them. (You may cast this card from your graveyard for its escape cost.)"
+  },
+  {
+    "name": "Oblivious Bookworm",
+    "text": "Mana cost: {G}{U}\nType: Creature — Human Wizard\nPower/Toughness: 2/3\nAt the beginning of your end step, you may draw a card. If you do, discard a card unless a permanent entered the battlefield face down under your control this turn or you turned a permanent face up this turn."
+  },
+  {
+    "name": "Osteomancer Adept",
+    "text": "Mana cost: {1}{B}\nType: Creature — Squirrel Warlock\nPower/Toughness: 2/2\nDeathtouch\n{T}: Until end of turn, you may cast creature spells from your graveyard by foraging in addition to paying their other costs. If you cast a spell this way, that creature enters with a finality counter on it. (To forage, exile three cards from your graveyard or sacrifice a Food. If a creature with a finality counter on it would die, exile it instead.)"
+  },
+  {
+    "name": "Outrageous Robbery",
+    "text": "Mana cost: {X}{B}{B}\nType: Instant\nTarget opponent exiles the top X cards of their library face down. You may look at and play those cards for as long as they remain exiled. If you cast a spell this way, you may spend mana as though it were mana of any type to cast it."
+  },
+  {
+    "name": "Past in Flames",
+    "text": "Mana cost: {3}{R}\nType: Sorcery\nEach instant and sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost.\nFlashback {4}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)"
+  },
+  {
+    "name": "Proft's Eidetic Memory",
+    "text": "Mana cost: {1}{U}\nType: Legendary Enchantment\nWhen Proft's Eidetic Memory enters, draw a card.\nYou have no maximum hand size.\nAt the beginning of combat on your turn, if you've drawn more than one card this turn, put X +1/+1 counters on target creature you control, where X is the number of cards you've drawn this turn minus one."
+  },
+  {
+    "name": "Ral Zarek, Guest Lecturer",
+    "text": "Mana cost: {1}{B}{B}\nType: Legendary Planeswalker — Ral\nLoyalty: 3\n+1: Surveil 2.\n−1: Any number of target players each discard a card.\n−2: Return target creature card with mana value 3 or less from your graveyard to the battlefield.\n−7: Flip five coins. Target opponent skips their next X turns, where X is the number of coins that came up heads."
+  },
+  {
+    "name": "Reckoner Bankbuster",
+    "text": "Mana cost: {2}\nType: Artifact — Vehicle\nPower/Toughness: 4/4\nThis Vehicle enters with three charge counters on it.\n{2}, {T}, Remove a charge counter from this Vehicle: Draw a card. Then if there are no charge counters on this Vehicle, create a Treasure token and a 1/1 colorless Pilot creature token with \"This token crews Vehicles as though its power were 2 greater.\"\nCrew 3"
+  },
+  {
+    "name": "Redcap Melee",
+    "text": "Mana cost: {R}\nType: Instant\nRedcap Melee deals 4 damage to target creature or planeswalker. If a nonred permanent is dealt damage this way, you sacrifice a land."
+  },
+  {
+    "name": "Teachings of the Archaics",
+    "text": "Mana cost: {2}{U}\nType: Sorcery — Lesson\nIf an opponent has more cards in hand than you, draw two cards. Draw three cards instead if an opponent has at least four more cards in hand than you."
+  },
+  {
+    "name": "The Mind Stone",
+    "text": "Mana cost: {1}{W}\nType: Legendary Artifact — Infinity Stone\nIndestructible\n{T}: Add {W}.\n{5}{W}, {T}: Harness The Mind Stone. (Once harnessed, its ∞ ability is active.)\n∞ — At the beginning of your end step, exile up to one other target nonland permanent you control, then return that card to the battlefield under its owner's control."
+  },
+  {
+    "name": "The Soul Stone",
+    "text": "Mana cost: {1}{B}\nType: Legendary Artifact — Infinity Stone\nIndestructible\n{T}: Add {B}.\n{6}{B}, {T}, Exile a creature you control: Harness The Soul Stone. (Once harnessed, its ∞ ability is active.)\n∞ — At the beginning of your upkeep, return target creature card from your graveyard to the battlefield."
+  },
+  {
+    "name": "Thought-Stalker Warlock",
+    "text": "Mana cost: {2}{B}\nType: Creature — Lizard Warlock\nPower/Toughness: 2/2\nMenace (This creature can't be blocked except by two or more creatures.)\nWhen this creature enters, choose target opponent. If they lost life this turn, they reveal their hand, you choose a nonland card from it, and they discard that card. Otherwise, they discard a card."
+  },
+  {
+    "name": "Timeline Culler",
+    "text": "Mana cost: {B}{B}\nType: Creature — Drix Warlock\nPower/Toughness: 2/2\nHaste\nYou may cast this card from your graveyard using its warp ability.\nWarp—{B}, Pay 2 life. (You may cast this card from your hand or graveyard for its warp cost. If you do, exile this creature at the beginning of the next end step, then you may cast it from exile on a later turn.)"
+  },
+  {
+    "name": "Town Greeter",
+    "text": "Mana cost: {1}{G}\nType: Creature — Human Citizen\nPower/Toughness: 1/1\nWhen this creature enters, mill four cards. You may put a land card from among them into your hand. If you put a Town card into your hand this way, you gain 2 life. (To mill four cards, a player puts the top four cards of their library into their graveyard.)"
+  },
+  {
+    "name": "Unidentified Hovership",
+    "text": "Mana cost: {1}{W}{W}\nType: Artifact — Vehicle\nPower/Toughness: 2/2\nFlying\nWhen this Vehicle enters, exile up to one target creature with toughness 5 or less.\nWhen this Vehicle leaves the battlefield, the exiled card's owner manifests dread.\nCrew 1"
+  },
+  {
+    "name": "Unravel",
+    "text": "Mana cost: {1}{U}{U}\nType: Instant\nCounter target spell. If the amount of mana spent to cast that spell was less than its mana value, you draw a card."
+  },
+  {
+    "name": "Urgent Necropsy",
+    "text": "Mana cost: {2}{B}{G}\nType: Instant\nAs an additional cost to cast this spell, collect evidence X, where X is the total mana value of the permanents this spell targets.\nDestroy up to one target artifact, up to one target creature, up to one target enchantment, and up to one target planeswalker."
+  },
+  {
+    "name": "Vizier of Remedies",
+    "text": "Mana cost: {1}{W}\nType: Creature — Human Cleric\nPower/Toughness: 2/1\nIf one or more -1/-1 counters would be put on a creature you control, that many -1/-1 counters minus one are put on it instead."
+  },
+  {
+    "name": "Wish",
+    "text": "Mana cost: {2}{R}\nType: Sorcery\nYou may play a card you own from outside the game this turn."
+  },
+  {
+    "name": "Witch's Oven",
+    "text": "Mana cost: {1}\nType: Artifact\n{T}, Sacrifice a creature: Create a Food token. If the sacrificed creature's toughness was 4 or greater, create two Food tokens instead. (They're artifacts with \"{2}, {T}, Sacrifice this token: You gain 3 life.\")"
+  }
+]

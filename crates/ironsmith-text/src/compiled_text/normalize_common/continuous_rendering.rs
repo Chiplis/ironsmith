@@ -4832,6 +4832,9 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 None => format!("{subject} lose unspent mana as steps and phases end"),
             }
         }
+        crate::effect::Restriction::SearchOwnLibraryFromOwnEffects(filter) => format!(
+            "Spells and abilities {} control can't cause their controller to search their library", describe_player_set_filter(filter)
+        ),
         crate::effect::Restriction::SearchLibraries(filter) => {
             format!(
                 "{} can't search libraries",

@@ -29,6 +29,11 @@ pub fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
             continue;
         }
 
+        if let Some(hexproof_actions) = crate::clause_support::parse_hexproof_from_chain(segment) {
+            actions.extend(hexproof_actions);
+            continue;
+        }
+
         // Try the segment as-is first, then split on "and" for compound keywords
         if let Some(action) = parse_ability_phrase(segment) {
             actions.push(action);

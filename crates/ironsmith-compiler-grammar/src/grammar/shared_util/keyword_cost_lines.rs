@@ -188,6 +188,31 @@ pub fn parse_escape(
     if !permission_shapes::prefix_words(&tail_words, &["exile"]) {
         return Err(unsupported_escape(&tail_words));
     }
+    // Some escape costs constrain the types represented by a freely chosen
+    // set, rather than requiring a fixed number of cards.
+    if permission_shapes::prefix_words(&tail_words, &["exile", "any", "number", "of", "other", "cards", "from", "your", "graveyard", "with"]) {
+        let count_index = tail_view.token_start_indices()[10];
+        if let Some(parsed) = leaf::parse_leaf_number_prefix_tokens(&tail[count_index..]) {
+            if let Some((count, consumed)) = parsed.into_fixed() {
+                let suffix = TokenWordView::new(&tail[count_index + consumed..]).word_refs();
+                if permission_shapes::exact_words(&suffix, &["or", "more", "card", "types", "among", "them"]) {
+                    let mut filter = ObjectFilter::default().owned_by(crate::target::PlayerFilter::You).in_zone(Zone::Graveyard);
+                    filter.other = true;
+                    filter.target_set_aggregate_constraint = Some(Box::new(ironsmith_core::ChoiceAggregateConstraint::at_least(
+                        ironsmith_core::ChoiceAggregateMetric::DistinctCardTypes, count as i32,
+                    )));
+                    return Ok(Some(AlternativeCastingMethod::Escape {
+                        cost: Some(mana_cost), exile_count: 0,
+                        additional_cost: ironsmith_core::TotalCost::from_cost(CompilerCost::ExileChosen {
+                            count: crate::effect::ChoiceCount::any_number(), filter,
+                            top_only: false, turn_face_up: false, binding: None,
+                        }),
+                    }));
+                }
+            }
+        }
+        return Err(unsupported_escape(&tail_words));
+    }
     let count_start = tail_view
         .token_start_indices()
         .get(1)
@@ -266,7 +291,6 @@ pub fn parse_bestow(
     let mana_prefix = leaf::parse_leaf_mana_cost_prefix_tokens(&tokens[1..])
         .ok_or_else(|| CardTextError::ParseError("bestow keyword missing mana cost".to_string()))?;
     let mana_cost = mana_prefix.cost;
-    let mut total_cost = ironsmith_core::TotalCost::<CompilerCost>::mana(mana_cost.clone());
     let mut cost_tokens = tokens[1..1 + mana_prefix.consumed].to_vec();
     let tail = tokens.get(1 + mana_prefix.consumed..).unwrap_or_default();
     if tail.first().is_some_and(OwnedLexToken::is_comma) {
@@ -276,9 +300,7 @@ pub fn parse_bestow(
             cost_tokens.extend_from_slice(clause);
         }
     }
-    if let Ok(parsed) = parse_activation_cost(&cost_tokens) {
-        total_cost = ensure_mana_component(parsed, mana_cost);
-    }
+    let total_cost = ensure_mana_component(parse_activation_cost(&cost_tokens)?, mana_cost);
     Ok(Some(AlternativeCastingMethod::Bestow { total_cost }))
 }
 

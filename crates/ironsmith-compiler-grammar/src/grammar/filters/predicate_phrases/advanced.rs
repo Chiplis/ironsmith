@@ -411,7 +411,9 @@ fn parse_turn_history_intervening_predicate(
         ],
     ) {
         return Ok(Some(PredicateAst::ValueComparison {
-            left: Value::ManaSpentToCastTriggeringObject,
+            left: Value::ManaSpentToCast(Box::new(crate::target::ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            ))),
             operator: ValueComparisonOperator::LessThan,
             right: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
                 (crate::tag::CompilerReferenceTag::Triggering.bind()).into(),
@@ -1279,8 +1281,16 @@ pub(super) fn parse_player_cards_in_hand_relation_predicate(
 ) -> Option<PredicateAst> {
     let relation =
         crate::grammar::conditions::parse_player_cards_in_hand_relation_condition(tokens)?;
+    if let crate::grammar::conditions::PlayerCardsInHandRelationAst::HasAtLeastMoreCardsInHandThanYou(amount) = relation.relation {
+        return Some(PredicateAst::ValueComparison {
+            left: Value::MaxCardsInHand(relation.player),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Add(Box::new(Value::CardsInHand(PlayerFilter::You)), Box::new(Value::Fixed(amount as i32))),
+        });
+    }
     let player = player_ast_from_status_player_filter(relation.player)?;
     match relation.relation {
+        crate::grammar::conditions::PlayerCardsInHandRelationAst::HasAtLeastMoreCardsInHandThanYou(_) => unreachable!(),
         crate::grammar::conditions::PlayerCardsInHandRelationAst::HasMoreCardsInHandThanYou => {
             Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreCardsInHandThanYou { player }))
         }
@@ -1560,6 +1570,21 @@ pub(super) fn parse_controlled_creatures_total_power_predicate(
 pub(super) fn parse_value_reference_comparison_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let words = words.strip_prefix(&["the"]).unwrap_or(&words);
+    if words.first() == Some(&"sacrificed") && words.len() >= 6 {
+        let kind = words[1].trim_end_matches("'s").trim_end_matches('s');
+        let axis = words[2];
+        if matches!(axis, "power" | "toughness") && matches!(words[3], "was" | "is") {
+            let (comparison, used) = parse_filter_comparison_tokens(axis, &words[4..], words).ok()??;
+            if used == words.len() - 4 {
+                let mut filter = ObjectFilter::default();
+                if let Some(card_type) = parse_card_type(kind) { filter.card_types.push(card_type); }
+                if axis == "power" { filter.power = Some(comparison); } else { filter.toughness = Some(comparison); }
+                return Some(PredicateAst::TaggedMatches(crate::tag::CompilerReferenceTag::ThisWaySacrificed.bind(), filter));
+            }
+        }
+    }
     for comparison_start in 1..tokens.len() {
         let Some((left, left_used)) = parse_value(&tokens[..comparison_start]) else {
             continue;
@@ -1567,8 +1592,17 @@ pub(super) fn parse_value_reference_comparison_predicate(
         if left_used != comparison_start || !is_predicate_reference_value(&left) {
             continue;
         }
+        // Mana spent is recorded by the cast event. A past-tense comparison
+        // can use that value directly; past power/toughness must instead go
+        // through the dedicated last-known-characteristics predicate reader.
+        let mut comparison_tokens = &tokens[comparison_start..];
+        if matches!(left, Value::ManaSpentToCast(_) | Value::ManaSpentToCastTriggeringObject)
+            && comparison_tokens.first().is_some_and(|token| token.is_word("was"))
+        {
+            comparison_tokens = &comparison_tokens[1..];
+        }
         let Some((operator, right_tokens)) =
-            crate::grammar::values::parse_value_comparison_tokens(&tokens[comparison_start..])
+            crate::grammar::values::parse_value_comparison_tokens(comparison_tokens)
         else {
             continue;
         };
@@ -1600,6 +1634,7 @@ pub(super) fn is_predicate_reference_value(value: &Value) -> bool {
             | Value::ManaValueOf(_)
             | Value::SourcePower
             | Value::SourceToughness
+            | Value::ManaSpentToCast(_)
             | Value::ManaSpentToCastTriggeringObject
     )
 }
@@ -1956,6 +1991,24 @@ pub(super) fn parse_player_would_action_predicate(
 }
 
 pub(super) fn parse_battlefield_entry_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    // Both alternatives remain independent event-history queries.
+    for (index, token) in tokens.iter().enumerate().filter(|(_, token)| token.is_word("or")) {
+        let _ = token;
+        if let (Some(left), Some(right)) = (parse_battlefield_entry_predicate(&tokens[..index]), parse_battlefield_entry_predicate(&tokens[index + 1..])) {
+            return Some(PredicateAst::Or(Box::new(left), Box::new(right)));
+        }
+    }
+    let words = crate::lexer::token_word_refs(tokens);
+    if crate::word_primitives::parse_any_sequence_complete(&words, &[
+        &["you", "turned", "a", "permanent", "face", "up", "this", "turn"],
+        &["you", "turned", "permanent", "face", "up", "this", "turn"],
+    ]) {
+        return Some(PredicateAst::ValueComparison {
+            left: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::TurnedFaceUp(PlayerFilter::You)),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(1),
+        });
+    }
     let condition = crate::grammar::conditions::parse_battlefield_entry_condition(tokens)?;
     match condition {
         crate::grammar::conditions::BattlefieldEntryConditionAst::ObjectEntered {
@@ -2669,6 +2722,7 @@ pub(super) fn parse_this_spell_paid_named_label_shape(
         .or_else(|| parse_this_spell_was_kicked_shape(tokens))
         .or_else(|| parse_this_spell_was_cast_using_teamwork_shape(tokens))
         .or_else(|| parse_this_spell_was_bargained_shape(tokens))
+        .or_else(|| parse_named_spell_label_action_shape(tokens, "Evidence", &["was", "collected"], false))
         .or_else(|| {
             parse_named_spell_label_action_shape(tokens, "Gift", &["was", "promised"], false)
         })

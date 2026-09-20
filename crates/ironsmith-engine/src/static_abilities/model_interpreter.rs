@@ -392,6 +392,7 @@ impl StaticAbilityModelInterpreter {
             zone: spec.zone,
             beneficiary: spec.beneficiary.clone(),
             usage_limit: spec.usage_limit,
+                max_plays: spec.max_plays,
             cast_this_way_filter: spec.cast_this_way_filter.clone(),
             source_exiled_surface: spec.source_exiled_surface.clone(),
             cast_this_way_grants: spec
@@ -573,6 +574,7 @@ impl StaticAbilityModelInterpreter {
                 condition,
                 per_matching_objects,
                 per_basic_land_types_among,
+                multiplier,
                 minimum_total_mana,
             } => {
                 let mut converted = if let Some(replacement_mana_cost) = replacement_mana_cost {
@@ -598,6 +600,7 @@ impl StaticAbilityModelInterpreter {
                 if let Some(minimum) = minimum_total_mana {
                     converted = converted.with_minimum_total_mana(*minimum);
                 }
+                converted.multiplier = multiplier.clone();
                 if let Some(per_matching_objects) = per_matching_objects {
                     converted = converted.with_per_matching_objects(per_matching_objects.clone());
                 }
@@ -2217,6 +2220,15 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn display(&self) -> String {
+        if let ironsmith_core::StaticAbilityPayload::RedirectZoneChange {
+            filter, from_zone: Some(crate::zone::Zone::Battlefield), to_zone: None,
+            destination: crate::zone::Zone::Exile,
+        } = &self.model.payload {
+            return format!(
+                "If {} would leave the battlefield, exile it instead of putting it anywhere else.",
+                filter.description(),
+            );
+        }
         if self.model.label == "Aftermath" {
             return "Aftermath".to_string();
         }
@@ -2400,6 +2412,18 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
+        if let ironsmith_core::StaticAbilityPayload::RedirectZoneChange {
+            filter, from_zone, to_zone, destination,
+        } = &self.model.payload {
+            return Some(ReplacementEffect::with_matcher(
+                source,
+                controller,
+                crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                    filter.clone(), *from_zone, *to_zone,
+                ),
+                crate::replacement::ReplacementAction::ChangeDestination(*destination),
+            ));
+        }
         self.leaf_static_ability()?
             .generate_replacement_effect(source, controller)
     }

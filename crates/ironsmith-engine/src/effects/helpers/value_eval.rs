@@ -74,6 +74,15 @@ pub(crate) fn resolve(
         Value::TotalManaValue(filter) => {
             Ok(context.aggregate(filter, NumericProperty::ManaValue, Reduction::Sum))
         }
+        Value::AnnouncedTargetTotal(metric) => {
+            let Some(ctx) = context.execution() else { return Ok(0); };
+            let targets = ctx.announced_targets.as_deref().unwrap_or(&ctx.targets);
+            let ids: std::collections::HashSet<_> = targets.iter().filter_map(|target| match target {
+                ResolvedTarget::Object(id) => Some(*id),
+                ResolvedTarget::Player(_) => None,
+            }).collect();
+            Ok(crate::targeting::aggregate_object_set_value(game, ids, *metric))
+        }
         Value::GreatestPower(filter) => {
             Ok(context.aggregate(filter, NumericProperty::Power, Reduction::Max))
         }
@@ -268,6 +277,7 @@ pub(crate) fn resolve(
         Value::ToughnessOf(target_spec) => {
             context.object_number(target_spec, NumericProperty::Toughness)
         }
+        Value::ManaSpentToCast(target_spec) => context.object_number(target_spec, NumericProperty::ManaSpent),
         Value::ManaValueOf(target_spec) => {
             context.object_number(target_spec, NumericProperty::ManaValue)
         }

@@ -433,6 +433,12 @@ fn main() -> Result<(), String> {
 }
 
 #[cfg(test)]
+mod optional_result_tests;
+
+#[cfg(test)]
+mod catalog_support_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

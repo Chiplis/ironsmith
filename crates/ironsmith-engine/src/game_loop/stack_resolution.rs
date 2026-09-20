@@ -1126,6 +1126,22 @@ pub(super) fn resolve_stack_entry_full(
         && let Some(obj) = &obj
     {
         install_epic_resolution_effects(game, &entry, obj)?;
+        let first_with_name = game.turn_store.resolved_spell_names.insert((entry.controller, obj.name.to_string()));
+        if spell_has_keyword_marker(obj, "paradigm") {
+            if first_with_name {
+                let delayed = crate::effects::delayed::DelayedTriggerConfig::new(
+                    Trigger::beginning_of_precombat_main_phase(crate::target::PlayerFilter::Specific(entry.controller)),
+                    crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(crate::effects::CastStoredCardCopyEffect::new(obj))]),
+                    false, Vec::new(), entry.controller,
+                ).with_ability_source(Some(entry.object_id));
+                crate::effects::delayed::queue_delayed_trigger(game, delayed);
+            }
+            // Paradigm exiles every resolving spell, even when its name has
+            // already resolved and therefore creates no new delayed trigger.
+            let _ = crate::effects::zones::apply_zone_change(game, entry.object_id, Zone::Stack, Zone::Exile,
+                EventCause::from_effect(entry.object_id, entry.controller), decision_maker);
+            return Ok(());
+        }
     }
 
     // Resolving an ability removes only that stack entry. The source object can
@@ -1984,6 +2000,10 @@ fn install_epic_resolution_effects(
 }
 
 fn spell_has_epic_ability(obj: &crate::object::Object) -> bool {
+    spell_has_keyword_marker(obj, "epic")
+}
+
+fn spell_has_keyword_marker(obj: &crate::object::Object, keyword: &str) -> bool {
     obj.abilities.iter().any(|ability| {
         let AbilityKind::Static(static_ability) = &ability.kind else {
             return false;
@@ -1993,7 +2013,7 @@ fn spell_has_epic_ability(obj: &crate::object::Object) -> bool {
                 .display()
                 .trim()
                 .trim_end_matches('.')
-                .eq_ignore_ascii_case("epic")
+                .eq_ignore_ascii_case(keyword)
     })
 }
 

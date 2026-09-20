@@ -182,6 +182,21 @@ pub fn annotate_effect_sequence_owned(
         config.initial_last_effect_id,
     );
     let mut id_gen = id_gen;
+    let mut effects = effects;
+    // Persist result identities before transparent wrappers are traversed again
+    // during lowering. Otherwise their consumers can reference an earlier ID.
+    fn assign_discard_tags(effects: &mut Vec<EffectAst>, ids: &mut IdGenContext) {
+        for effect in effects {
+            if let EffectAst::SubjectVerb(subject) = effect
+                && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { tag, .. }) = &mut subject.action
+                && tag.is_none()
+            {
+                *tag = Some(crate::tag::TagRef::of(next_reference_tag(ids, "discarded")));
+            }
+            for_each_nested_effect_vec_mut(effect, false, |nested| assign_discard_tags(nested, ids));
+        }
+    }
+    assign_discard_tags(&mut effects, &mut id_gen);
     annotate_effect_sequence_with_env_internal(effects, env, config, &mut id_gen)
 }
 
@@ -675,6 +690,7 @@ fn value_object_target_spec(value: &Value) -> Option<&ChooseSpec> {
         }
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
+        | Value::ManaSpentToCast(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
@@ -2375,6 +2391,17 @@ fn annotate_effect_sequence_with_env_internal(
             auto_tag_object_targets_for_env,
             suppress_force_auto_tag_object_targets,
         )?;
+        // Persist a generated discard result on the AST itself. Transparent
+        // coordination/sentence wrappers are annotated again during lowering;
+        // allocating a second name there disconnects already-bound consumers.
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { tag, .. }), ..
+        }) = &mut effect
+            && tag.is_none()
+            && let Some(result_tag) = out_env.known_last_object_tag()
+        {
+            *tag = Some(ironsmith_compiler_semantic::tag::TagRef::of(result_tag.clone()));
+        }
         if is_offer_followup {
             // The participant is local to the positive branch. In
             // particular, a following "otherwise" is one collective
@@ -2741,7 +2768,8 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => matches!(
             subject_verb.action,
-            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. })
+            SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { .. })
                 | SubjectVerbActionAst::ZoneMoves(
                     ZoneMoveActionAst::DestroyAllOfChosenColor { .. }
@@ -3646,7 +3674,8 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
             max_exposed,
             ..
         }) => {
-            if let crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value) = stop_rule
+            if let crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value)
+                | crate::cards::builders::LibraryConsultStopRuleAst::TotalManaValue(value) = stop_rule
             {
                 visit(value);
             }
@@ -4333,6 +4362,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
+            | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
@@ -4712,7 +4742,8 @@ fn resolve_effect_result_values_in_fields(
                 max_exposed,
                 ..
             }) => {
-                if let crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value) =
+                if let crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value)
+                | crate::cards::builders::LibraryConsultStopRuleAst::TotalManaValue(value) =
                     stop_rule
                 {
                     resolve_effect_result_value(value, state)?;
@@ -5246,6 +5277,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
+            | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
@@ -6152,7 +6184,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 let mut replacements = bind_unresolved_it_in_filter(filter, seed_tag)
                     + bind_unresolved_it_in_tag(&mut all_tag.key, seed_tag)
                     + bind_unresolved_it_in_tag(&mut match_tag.key, seed_tag);
-                if let crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value) =
+                if let crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value)
+                | crate::cards::builders::LibraryConsultStopRuleAst::TotalManaValue(value) =
                     stop_rule
                 {
                     replacements += bind_unresolved_it_in_value(value, seed_tag);
@@ -6514,6 +6547,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         }
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
+        | Value::ManaSpentToCast(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }

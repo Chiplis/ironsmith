@@ -73,7 +73,9 @@ pub fn classify_typed_clause_head<'a>(
         );
     }
 
-    if words.iter().any(|word| is_structural_action(word)) {
+    if words.iter().any(|word| is_structural_action(word))
+        || matches!(first_word, "its" | "it's" | "it’s" | "theyre" | "they're" | "they’re")
+    {
         return ParseOutcome::matched(
             TypedClauseHeadAst {
                 first_word,

@@ -391,7 +391,8 @@ pub(super) fn read_negative_put_tagged_object_predicate(
     input: &Predicate<'_>,
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let predicate_tokens = input.predicate_tokens;
-    if let Some(predicate) = parse_negative_put_tagged_object_predicate(predicate_tokens) {
+    if let Some(predicate) = parse_negative_put_tagged_object_predicate(predicate_tokens)
+        .or_else(|| parse_positive_put_tagged_object_predicate(predicate_tokens)) {
         return Ok(Some(predicate));
     }
     Ok(None)

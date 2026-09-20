@@ -2229,6 +2229,7 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
             crate::effect::ChoiceAggregateMetric::Power => "power",
             crate::effect::ChoiceAggregateMetric::Toughness => "toughness",
             crate::effect::ChoiceAggregateMetric::ManaValue => "mana value",
+            crate::effect::ChoiceAggregateMetric::DistinctCardTypes => "distinct card types",
         };
         if let Some(minimum) = constraint.minimum.as_ref() {
             let minimum = describe_value(minimum);
@@ -5295,6 +5296,7 @@ pub(super) fn describe_choice_aggregate_constraint_suffix(
         crate::effect::ChoiceAggregateMetric::Power => "power",
         crate::effect::ChoiceAggregateMetric::Toughness => "toughness",
         crate::effect::ChoiceAggregateMetric::ManaValue => "mana value",
+        crate::effect::ChoiceAggregateMetric::DistinctCardTypes => "distinct card types",
     };
     if let Some(minimum_value) = constraint.minimum.as_ref() {
         let minimum = describe_value(minimum_value);

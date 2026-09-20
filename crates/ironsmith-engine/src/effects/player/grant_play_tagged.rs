@@ -639,7 +639,7 @@ mod tests {
         game.turn_store.extra_turns.clear();
         game.turn.active_player = bob;
         game.turn.turn_number = 30;
-        game.turn_store.skip_next_turn = HashSet::from([alice]);
+        game.turn_store.skip_next_turn = [alice].into_iter().collect();
         let expires_with_skip =
             GrantPlayTaggedEffect::until_your_next_turn("it", PlayerFilter::You)
                 .expires_end_of_turn(&game, alice);

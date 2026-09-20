@@ -23,11 +23,7 @@ impl ResolvedTargetAggregateConstraint {
     }
 
     pub fn allows(&self, targets: &[Target]) -> bool {
-        targets
-            .iter()
-            .map(|target| self.value_for(*target))
-            .sum::<i32>()
-            <= self.maximum
+        aggregate_contributions(self.metric, targets.iter().map(|target| self.value_for(*target))) <= self.maximum
     }
 
     pub fn supports_minimum(&self, minimum: usize) -> bool {
@@ -39,9 +35,35 @@ impl ResolvedTargetAggregateConstraint {
             .iter()
             .map(|(_, value)| *value)
             .collect::<Vec<_>>();
+        if self.metric == ChoiceAggregateMetric::DistinctCardTypes {
+            let mut states = std::collections::HashMap::from([(0i32, 0usize)]);
+            for value in values {
+                for (mask, count) in states.clone() {
+                    let mask = mask | value;
+                    if mask.count_ones() as i32 <= self.maximum {
+                        let entry = states.entry(mask).or_default();
+                        *entry = (*entry).max(count + 1);
+                    }
+                }
+            }
+            return states.values().any(|count| *count >= minimum);
+        }
         values.sort_unstable();
         values.len() >= minimum && values.into_iter().take(minimum).sum::<i32>() <= self.maximum
     }
+}
+
+/// Contributions are numeric for totals and a type bitset for set union.
+pub(crate) fn aggregate_contributions(metric: ChoiceAggregateMetric, values: impl IntoIterator<Item = i32>) -> i32 {
+    if metric == ChoiceAggregateMetric::DistinctCardTypes {
+        values.into_iter().fold(0i32, |mask, value| mask | value).count_ones() as i32
+    } else {
+        values.into_iter().fold(0i32, i32::saturating_add)
+    }
+}
+
+pub(crate) fn aggregate_object_set_value(game: &GameState, ids: impl IntoIterator<Item = ObjectId>, metric: ChoiceAggregateMetric) -> i32 {
+    aggregate_contributions(metric, ids.into_iter().map(|id| aggregate_object_value(game, id, metric)))
 }
 
 pub(crate) fn aggregate_object_value(
@@ -61,6 +83,8 @@ pub(crate) fn aggregate_object_value(
             .calculated_toughness(id)
             .or_else(|| object.toughness())
             .unwrap_or(0),
+        ChoiceAggregateMetric::DistinctCardTypes => game.current_card_types(id).into_iter().flatten()
+            .fold(0i32, |mask, card_type| mask | (1 << card_type as u32)),
         ChoiceAggregateMetric::ManaValue => object
             .mana_cost
             .as_ref()

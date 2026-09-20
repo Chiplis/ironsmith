@@ -418,6 +418,7 @@ struct BattlefieldFlags {
     devoured_counts: HashMap<ObjectId, u32>,
     /// Cases that have become solved.
     solved_cases: HashSet<ObjectId>,
+    harnessed: HashSet<ObjectId>,
     /// Creatures that are renowned.
     renowned: HashSet<ObjectId>,
     /// Flipped permanents.
@@ -674,6 +675,9 @@ pub struct DepartedPlayerHistory {
 /// Turn-order, skip/extra-turn, and per-turn history state.
 #[derive(Debug, Clone, Default)]
 pub struct TurnStore {
+    /// Names of spells each player has resolved during this game, including
+    /// spells without paradigm. Not cleared between turns.
+    pub resolved_spell_names: HashSet<(PlayerId, String)>,
     pub turn_order: Vec<PlayerId>,
     /// Whether the active turn was created as an extra turn.
     ///
@@ -701,7 +705,7 @@ pub struct TurnStore {
     pub additional_phase_continuation: Option<Phase>,
     /// Players who will skip their next turn.
     /// Checked and cleared when a player would start their turn.
-    pub skip_next_turn: HashSet<PlayerId>,
+    pub skip_next_turn: PendingTurnSkips,
     /// Consumable one-shot step skips, preserving independently created effects.
     pub skipped_steps: HashMap<(PlayerId, Step), u32>,
     /// Extra steps waiting at a named step/phase boundary in this turn.
@@ -1396,6 +1400,7 @@ pub struct CantEffectTracker {
     /// Players who can't search libraries.
     /// Example: Stranglehold, Aven Mindcensor (partial)
     pub cant_search: HashSet<PlayerId>,
+    pub cant_search_own_library_from_own_effects: HashSet<PlayerId>,
 
     /// Positive targeting permissions that ignore one named ability without
     /// removing it or widening permissions for other source controllers.
@@ -1688,6 +1693,8 @@ impl RestrictionEffectInstance {
                     obj.zone == Zone::Battlefield && game.controller_of(obj) == self.controller
                 })
             }
+            crate::effect::Until::ForAsLongAs(ref predicate) =>
+                crate::continuous::continuous_duration_predicate_matches(predicate, game),
             _ => true,
         }
     }
@@ -1852,6 +1859,7 @@ impl CantEffectTracker {
     pub fn merge(&mut self, other: CantEffectTracker) {
         self.cant_gain_life.extend(other.cant_gain_life);
         self.cant_search.extend(other.cant_search);
+        self.cant_search_own_library_from_own_effects.extend(other.cant_search_own_library_from_own_effects);
         self.targeting_as_though_overrides
             .extend(other.targeting_as_though_overrides);
         self.cant_attack.extend(other.cant_attack);
@@ -1958,6 +1966,7 @@ impl CantEffectTracker {
     pub fn clear(&mut self) {
         self.cant_gain_life.clear();
         self.cant_search.clear();
+        self.cant_search_own_library_from_own_effects.clear();
         self.targeting_as_though_overrides.clear();
         self.cant_attack.clear();
         self.cant_attack_defenders.clear();
@@ -6026,6 +6035,11 @@ impl GameState {
     }
 
     /// Can the player search their library?
+    pub fn can_search_library_from_effect(&self, searcher: PlayerId, owner: PlayerId, controller: PlayerId) -> bool {
+        self.can_search_library(searcher) && !(searcher == owner && searcher == controller
+            && self.effect_store.cant_effects.cant_search_own_library_from_own_effects.contains(&searcher))
+    }
+
     pub fn can_search_library(&self, player: PlayerId) -> bool {
         self.effect_store.cant_effects.can_search_library(player)
     }
@@ -6850,5 +6864,37 @@ impl GameState {
         }
 
         self.load_linked_face_definition(name, id)
+    }
+}
+
+/// Outstanding skipped turns. Each instruction adds a separate replacement;
+/// consuming one turn uses exactly one of them (CR 614.10a).
+#[derive(Debug, Clone, Default)]
+pub struct PendingTurnSkips {
+    counts: std::collections::HashMap<PlayerId, u32>,
+}
+impl PendingTurnSkips {
+    pub fn insert(&mut self, player: PlayerId) {
+        let count = self.counts.entry(player).or_default();
+        *count = count.saturating_add(1);
+    }
+    pub fn remove(&mut self, player: &PlayerId) -> bool {
+        let Some(count) = self.counts.get_mut(player) else { return false; };
+        *count -= 1;
+        if *count == 0 { self.counts.remove(player); }
+        true
+    }
+    pub fn contains(&self, player: &PlayerId) -> bool { self.counts.contains_key(player) }
+    pub fn len(&self) -> usize { self.counts.len() }
+    pub fn is_empty(&self) -> bool { self.counts.is_empty() }
+    pub fn iter(&self) -> impl Iterator<Item = &PlayerId> { self.counts.keys() }
+    pub fn pending(&self, player: PlayerId) -> u32 { self.counts.get(&player).copied().unwrap_or(0) }
+    pub fn remove_all(&mut self, player: PlayerId) { self.counts.remove(&player); }
+}
+impl FromIterator<PlayerId> for PendingTurnSkips {
+    fn from_iter<T: IntoIterator<Item = PlayerId>>(players: T) -> Self {
+        let mut schedule = Self::default();
+        for player in players { schedule.insert(player); }
+        schedule
     }
 }

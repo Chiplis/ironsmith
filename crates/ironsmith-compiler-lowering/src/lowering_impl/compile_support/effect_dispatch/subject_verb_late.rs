@@ -1769,7 +1769,7 @@ pub(super) fn compile_subject_verb_late(
             }
             let tag = tag
                 .clone()
-                .unwrap_or_else(|| crate::tag::TagRef::of(ctx.next_tag("discarded")));
+                .unwrap_or_else(|| crate::tag::TagRef::of(reserved_or_next_object_tag(ctx, "discarded")));
             ctx.last_object_tag = Some(tag.clone().into());
             let effect = Effect::new(
                 crate::effects::DiscardEffect::new_with_filter(

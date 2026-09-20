@@ -2896,6 +2896,16 @@ fn apply_play_from_cast_this_way_grants(
             .insert(crate::tag::SOURCE_EXILED_TAG.into(), vec![origin]);
     }
     let mut granted = Vec::new();
+    let mut specs = Vec::new();
+    for grant in game.effect_store.grant_registry.active_grants(game) {
+        if grant.source.source_id() == source_id && grant.player == caster && grant.zone == zone
+            && !grant.cast_this_way_grants.is_empty() {
+            let mut spec = crate::grant::GrantSpec::new(grant.grantable, grant.filter.unwrap_or_default(), zone);
+            spec.cast_this_way_grants = grant.cast_this_way_grants;
+            spec.cast_this_way_filter = grant.cast_this_way_filter;
+            specs.push(spec);
+        }
+    }
     for ability in source.abilities.iter() {
         let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
             continue;
@@ -2906,6 +2916,9 @@ fn apply_play_from_cast_this_way_grants(
         let Some(spec) = static_ability.grant_spec() else {
             continue;
         };
+        specs.push(spec.clone());
+    }
+    for spec in specs {
         let grantable_matches_cast = match &spec.grantable {
             crate::grant::Grantable::PlayFrom => true,
             crate::grant::Grantable::AlternativeCast(method) => {

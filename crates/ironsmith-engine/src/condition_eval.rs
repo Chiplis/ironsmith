@@ -3825,6 +3825,7 @@ fn evaluate_condition_in_context(
 
             Ok(game.devoured_count(ctx.source) >= *count)
         }
+        Condition::SourceIsHarnessed => Ok(!ctx.is_cast_time() && game.is_harnessed(ctx.source)),
         Condition::SourceIsMonstrous => {
             if ctx.is_cast_time() {
                 return Ok(false);

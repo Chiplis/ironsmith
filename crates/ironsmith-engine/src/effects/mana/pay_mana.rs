@@ -12,7 +12,7 @@ use crate::target::{ChooseSpec, PlayerFilter};
 
 /// Effect that asks a player to pay a mana cost.
 ///
-/// Returns `Count(1)` for a fixed or externally defined payment. For a bounded
+/// Returns `Count(1)` for a fixed or externally defined payment. For a
 /// player-chosen X payment, returns `Count(X)` and records the chosen number.
 pub type PayManaEffect = ironsmith_core::PayManaEffect;
 
@@ -197,8 +197,13 @@ impl EffectExecutor for PayManaEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
-        let bounded_x = if let Some(maximum) = &self.x_maximum {
-            let semantic_maximum = resolve_value(game, maximum, ctx)?.max(0) as u32;
+        let chooses_x = self.cost.has_x() && self.x_value.is_none() && ctx.x_value.is_none();
+        let bounded_x = if self.x_maximum.is_some() || chooses_x {
+            let semantic_maximum = if let Some(maximum) = &self.x_maximum {
+                resolve_value(game, maximum, ctx)?.max(0) as u32
+            } else {
+                crate::derived_view::DerivedGameView::new(game).potential_mana(player_id).total()
+            };
             let Some(affordable_maximum) =
                 maximum_affordable_bounded_x(self, game, ctx, player_id, semantic_maximum)
             else {
@@ -226,7 +231,7 @@ impl EffectExecutor for PayManaEffect {
                 .as_ref()
                 .map(|value| resolve_value(game, value, ctx))
                 .transpose()?
-                .unwrap_or(0)
+                .unwrap_or(ctx.x_value.unwrap_or(0) as i32)
                 .max(0) as u32
         };
 

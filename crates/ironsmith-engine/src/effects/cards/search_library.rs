@@ -34,7 +34,7 @@ impl EffectExecutor for SearchLibraryEffect {
         let search_override = opposition_agent_search(game, chooser_id, player_id);
 
         // Check if the searching player can search libraries.
-        if !game.can_search_library(chooser_id) {
+        if !game.can_search_library_from_effect(chooser_id, player_id, ctx.controller) {
             return Ok(EffectOutcome::prevented());
         }
 

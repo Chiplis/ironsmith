@@ -2956,9 +2956,15 @@ pub fn parse_warp_line(
     let Some(fact) = keyword_line_facts::parse_warp_line_tokens(tokens) else {
         return Ok(None);
     };
-    let (cost, _) = leading_mana_cost_from_tokens(fact.cost_tokens)
+    let tokens = fact.cost_tokens;
+    let tokens = tokens.first().filter(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash)).map_or(tokens, |_| &tokens[1..]);
+    let (cost, consumed) = leading_mana_cost_from_tokens(tokens)
         .ok_or_else(|| CardTextError::ParseError("warp keyword missing mana cost".to_string()))?;
-    Ok(Some(AlternativeCastingMethod::Warp { cost }))
+    let tail = &tokens[consumed..];
+    let tail = if tail.first().is_some_and(OwnedLexToken::is_comma) { &tail[1..] } else { tail };
+    let end = tail.iter().position(|token| token.kind == TokenKind::Period).unwrap_or(tail.len());
+    let additional_cost = if end == 0 { ironsmith_core::TotalCost::default() } else { parse_activation_cost(&tail[..end])? };
+    Ok(Some(AlternativeCastingMethod::Warp { cost, additional_cost }))
 }
 
 pub fn parse_warp_line_lexed(

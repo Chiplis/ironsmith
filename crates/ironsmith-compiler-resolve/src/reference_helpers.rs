@@ -1032,6 +1032,9 @@ pub fn resolve_restriction_it_tag(
         Restriction::GainLife(player) => {
             Restriction::gain_life(resolve_contextual_player_filter(player, refs)?)
         }
+        Restriction::SearchOwnLibraryFromOwnEffects(player) => {
+            Restriction::SearchOwnLibraryFromOwnEffects(resolve_contextual_player_filter(player, refs)?)
+        }
         Restriction::SearchLibraries(player) => {
             Restriction::search_libraries(resolve_contextual_player_filter(player, refs)?)
         }
@@ -1295,6 +1298,12 @@ fn resolve_choose_spec_it_tag_preserving_selection(
 
 pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value, CardTextError> {
     match value {
+        Value::LifeLostThisTurn(player) => Ok(Value::LifeLostThisTurn(
+            resolve_contextual_player_filter(player, refs)?,
+        )),
+        Value::LifeGainedThisTurn(player) => Ok(Value::LifeGainedThisTurn(
+            resolve_contextual_player_filter(player, refs)?,
+        )),
         Value::X if refs.bind_unbound_x_to_last_effect => {
             if let Some(id) = refs.known_last_effect_id() {
                 Ok(Value::EffectValue(id))
@@ -1387,6 +1396,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                 },
                 TurnHistoryCount::EnteredBattlefield(filter) => {
                     TurnHistoryCount::EnteredBattlefield(resolve_it_tag(filter, refs)?)
+                }
+                TurnHistoryCount::TurnedFaceUp(player) => {
+                    TurnHistoryCount::TurnedFaceUp(resolve_contextual_player_filter(player, refs)?)
                 }
                 TurnHistoryCount::TokensCreated(player) => {
                     TurnHistoryCount::TokensCreated(resolve_contextual_player_filter(player, refs)?)
@@ -1504,6 +1516,7 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::ColorsOf(spec) => Ok(Value::ColorsOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),
+        Value::ManaSpentToCast(spec) => Ok(Value::ManaSpentToCast(Box::new(resolve_choose_spec_it_tag(spec, refs)?))),
         Value::ManaValueOf(spec) => Ok(Value::ManaValueOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),

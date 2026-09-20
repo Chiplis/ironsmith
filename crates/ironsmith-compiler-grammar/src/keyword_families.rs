@@ -241,6 +241,12 @@ mod spell_keywords {
             parse: structured_keyword_parser!(registry::parse_evoke),
         },
         KeywordLineRule {
+            cst_kind: super::super::recognized_document::KeywordLineKind::Paradigm,
+            hints: &[KeywordDispatchHint::Paradigm],
+            id: RuleId::new("parse_paradigm"),
+            parse: structured_keyword_parser!(registry::parse_paradigm),
+        },
+        KeywordLineRule {
             cst_kind: super::super::recognized_document::KeywordLineKind::Epic,
             hints: &[KeywordDispatchHint::Epic],
             id: RuleId::new("parse_epic"),

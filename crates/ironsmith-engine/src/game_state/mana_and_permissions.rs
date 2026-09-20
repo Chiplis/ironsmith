@@ -74,9 +74,8 @@ impl GameState {
             .clear_static_ability_effects();
 
         // Generate and register new ones from current battlefield state
-        // without eagerly calculating every permanent. Replacement generation
-        // reads printed/granted source abilities; unusual dynamic generators
-        // can still request characteristics through the normal on-demand cache.
+        // using current battlefield abilities, including grants and ability loss.
+        // Other zones retain their printed/granted source abilities.
         let effects = generate_replacement_effects_from_abilities(self);
         for effect in effects {
             let decline = effect.optional_decline_effect();

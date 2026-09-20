@@ -166,6 +166,14 @@ pub(super) fn parse_cards_in_hand_relation(
     tokens: &[OwnedLexToken],
 ) -> Option<CardsInHandRelationShape> {
     let tokens = trim_clause(tokens);
+    if let Some((amount, _)) = primitives::parse_prefix(tokens, (
+        primitives::phrase(&["at", "least"]),
+        crate::grammar::leaf::parse_leaf_number_prefix_lexed,
+        primitives::phrase(&["more", "cards", "in", "hand", "than", "you"]),
+        eof,
+    ).map(|(_, amount, _, _)| amount)) {
+        return Some(CardsInHandRelationShape::AtLeastMoreThanYou(amount));
+    }
     let mut input = LexStream::new(tokens);
     crate::grammar::primitives::take_leaf(&mut input, parse_more_cards_in_hand_head)?;
     crate::grammar::primitives::take_leaf(&mut input, primitives::kw("than"))?;
@@ -183,7 +191,7 @@ pub(super) fn parse_cards_in_hand_relation(
 
 pub(super) fn parse_cards_drawn_this_turn(tokens: &[OwnedLexToken]) -> Option<TurnEventShape<'_>> {
     let tokens = trim_clause(tokens);
-    for action in [0u8, 1, 2] {
+    for action in [0u8, 1, 2, 3] {
         let mut input = LexStream::new(tokens);
         let Ok(subject_tokens) = repeat_till::<_, _, (), _, _, _, _>(
             1..,
@@ -564,7 +572,8 @@ fn parse_draw_action(input: &mut LexStream<'_>, kind: u8) -> WResult<()> {
     match kind {
         0 => primitives::phrase(&["has", "drawn"]).parse_next(input),
         1 => primitives::phrase(&["have", "drawn"]).parse_next(input),
-        _ => primitives::kw("drew").void().parse_next(input),
+        2 => primitives::kw("drew").void().parse_next(input),
+        _ => primitives::kw("drawn").void().parse_next(input),
     }
 }
 

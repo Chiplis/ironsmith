@@ -446,3 +446,32 @@ fn u070_day_night_counts_each_previous_active_teammate_separately() {
         "two spells by one active teammate make it day"
     );
 }
+
+#[test]
+fn repeated_skip_instructions_each_skip_a_shared_team_turn() {
+    let (mut game, players @ [alice, _bob, charlie, _diana]) = four_player_game();
+    enable_shared(&mut game, players);
+    let source = game.new_object_id();
+    let effect = Effect::new(ironsmith::effects::RepeatEffectsEffect::new(
+        3,
+        vec![Effect::new(ironsmith::effects::SkipTurnEffect::new(
+            PlayerFilter::Specific(charlie),
+        ))],
+    ));
+    let mut ctx = EffectContext::new_default(source, alice);
+    execute_effect(&mut game, &effect, &mut ctx).expect("repeated skip resolves");
+    let team_player = game
+        .turn_store
+        .skip_next_turn
+        .iter()
+        .next()
+        .copied()
+        .unwrap();
+    assert_eq!(game.turn_store.skip_next_turn.pending(team_player), 3);
+    for _ in 0..3 {
+        game.next_turn();
+        assert!(game.active_players().contains(&alice));
+    }
+    game.next_turn();
+    assert!(game.active_players().contains(&charlie));
+}

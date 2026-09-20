@@ -2,6 +2,46 @@ use super::*;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::SourcePredicateAst;
 
+pub(super) fn pre_rule_conditional_optional_result_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let continuation =
+        super::super::super::super::token_primitives::strip_leading_if_you_do_lexed(sentence_tokens);
+    let is_when_you_do = sentence_tokens.len() >= 3
+        && sentence_tokens[0].is_word("when")
+        && sentence_tokens[1].is_word("you")
+        && sentence_tokens[2].is_word("do");
+    if continuation.len() == sentence_tokens.len() && !is_when_you_do {
+        return Ok(None);
+    }
+    let Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })) =
+        state.effects.last_mut()
+    else {
+        return Ok(None);
+    };
+    if !matches!(
+        effects.last(),
+        Some(EffectAst::Permissions(
+            PermissionEffectAst::May { .. } | PermissionEffectAst::MayByPlayer { .. }
+        ))
+    ) {
+        return Ok(None);
+    }
+
+    // The authored "if/when you do" refers to the optional action inside the
+    // preceding branch, not that branch's original coin flip/clash result.
+    // Preserve that scope before both spellings lower to a result predicate.
+    let followup = super::super::super::parse_effect_chain_lexed(sentence_tokens)?;
+    effects.extend(followup);
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: None,
+    }))
+}
+
 pub(super) fn pre_rule_if_no_one_does_followup(
     _state: &mut SentenceDispatchState<'_>,
     _sentences: &[SentenceInput],

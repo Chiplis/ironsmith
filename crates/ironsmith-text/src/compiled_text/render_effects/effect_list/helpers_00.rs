@@ -2255,6 +2255,7 @@ pub(crate) fn describe_consult_reveal_put_battlefield_then_bottom(
         stop_text
     };
     let moved_phrase = match &consult.stop_rule {
+        crate::effects::ConsultTopOfLibraryStopRule::TotalManaValue(_) => return None,
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
         | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
             "that card".to_string()

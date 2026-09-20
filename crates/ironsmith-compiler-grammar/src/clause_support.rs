@@ -456,7 +456,7 @@ fn color_only_hexproof_filter_words(words: &[&str]) -> Option<ObjectFilter> {
     clause_grammar::parse_color_only_hexproof_filter_words(words)
 }
 
-fn parse_hexproof_from_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+pub(crate) fn parse_hexproof_from_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     let words_view = TokenWordView::new(tokens);
     let words = words_view.word_refs();
     let first_word_idx = if words.first().is_some_and(|word| is_and_word(word)) {

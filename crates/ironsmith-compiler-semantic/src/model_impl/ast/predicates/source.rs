@@ -60,4 +60,5 @@ pub enum SourcePredicateAst {
     SourceIsUntapped,
     /// "as long as this creature is monstrous"
     SourceIsMonstrous,
+    SourceIsHarnessed,
 }

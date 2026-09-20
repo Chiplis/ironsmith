@@ -603,7 +603,7 @@ impl EffectExecutor for OpenAttractionEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ManifestDreadEffect;
+pub struct ManifestDreadEffect { pub player: PlayerFilter }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ManifestTopCardOfLibraryEffect {
@@ -639,9 +639,8 @@ impl Default for ManifestDreadEffect {
 }
 
 impl ManifestDreadEffect {
-    pub fn new() -> Self {
-        Self
-    }
+    pub fn new() -> Self { Self { player: PlayerFilter::You } }
+    pub fn for_player(player: PlayerFilter) -> Self { Self { player } }
 }
 
 impl Default for ManifestCardFromHandEffect {
@@ -858,8 +857,9 @@ impl EffectExecutor for ManifestDreadEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let player = crate::effects::helpers::resolve_player_filter(game, &self.player, ctx)?;
         let top_cards = game
-            .player(ctx.controller)
+            .player(player)
             .map(|player| {
                 player
                     .library
@@ -879,7 +879,7 @@ impl EffectExecutor for ManifestDreadEffect {
                 EffectOutcome::count(0).with_event(TriggerEvent::new_with_provenance(
                     KeywordActionEvent::new(
                         KeywordActionKind::ManifestDread,
-                        ctx.controller,
+                        player,
                         ctx.source,
                         1,
                     )
@@ -895,7 +895,7 @@ impl EffectExecutor for ManifestDreadEffect {
             let selection = make_decision(
                 game,
                 ctx.decision_maker,
-                ctx.controller,
+                player,
                 Some(ctx.source),
                 ChooseObjectsSpec::new(
                     ctx.source,
@@ -923,7 +923,7 @@ impl EffectExecutor for ManifestDreadEffect {
             game,
             ctx,
             card_to_manifest,
-            ctx.controller,
+            player,
             false,
             KeywordActionKind::ManifestDread,
         )?;
@@ -961,7 +961,7 @@ impl EffectExecutor for ManifestDreadEffect {
         outcome.events.push(TriggerEvent::new_with_provenance(
             KeywordActionEvent::new(
                 KeywordActionKind::ManifestDread,
-                ctx.controller,
+                player,
                 ctx.source,
                 1,
             )

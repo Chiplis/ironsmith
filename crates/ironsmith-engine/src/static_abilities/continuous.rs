@@ -1808,6 +1808,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         crate::ConditionExpr::SourceIsEnchanted => {
             "as long as this creature is enchanted".to_string()
         }
+        crate::ConditionExpr::SourceIsHarnessed => "as long as this permanent is harnessed".to_string(),
         crate::ConditionExpr::SourceIsMonstrous => {
             "as long as this creature is monstrous".to_string()
         }

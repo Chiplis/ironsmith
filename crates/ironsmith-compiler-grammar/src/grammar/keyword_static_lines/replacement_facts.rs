@@ -9,6 +9,11 @@ use super::nearby_primitives::{semantic_all, semantic_kw, semantic_noise, semant
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CounterReplacementShape<'a> {
+    CounterAdjustment {
+        filter_tokens: &'a [OwnedLexToken],
+        counter_type: ironsmith_core::CounterType,
+        adjustment: i64,
+    },
     GenericUnderYourControl,
     EnergyYouGet,
     /// "If you would put one or more counters on a permanent or player, put
@@ -130,6 +135,7 @@ pub fn parse_counter_replacement_tokens(
         tokens,
         alt((
             parse_player_counter_per_turn_limit_lexed,
+            parse_counter_adjustment_lexed,
             parse_plus_one_add_lexed,
             parse_plus_one_double_lexed,
             parse_any_kind_add_lexed,
@@ -662,6 +668,29 @@ fn parse_actor_any_kind_multiply_lexed<'a>(
     }
     primitives::sentence_end().parse_next(input)?;
     Ok(CounterReplacementShape::ActorAnyKindMultiply { opponent, halve })
+}
+
+fn parse_counter_adjustment_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CounterReplacementShape<'a>> {
+    primitives::phrase(&["if", "one", "or", "more"]).parse_next(input)?;
+    let counter_tokens = take_until_replacement_phrase(input, &["counters", "would", "be", "put", "on"])?;
+    let counter_type = filters::parse_counter_type_from_tokens(counter_tokens)
+        .ok_or_else(|| primitives::backtrack_err("counter adjustment", "counter kind"))?;
+    primitives::phrase(&["counters", "would", "be", "put", "on"]).parse_next(input)?;
+    let filter_tokens = take_until_replacement_phrase(input, &["that", "many"])?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["that", "many"]).parse_next(input)?;
+    let repeated = take_until_replacement_phrase(input, &["counters"])?;
+    if filters::parse_counter_type_from_tokens(repeated) != Some(counter_type) {
+        return Err(primitives::backtrack_err("counter adjustment", "matching counter kind"));
+    }
+    primitives::kw("counters").parse_next(input)?;
+    let sign = alt((primitives::kw("minus").value(-1i64), primitives::kw("plus").value(1i64))).parse_next(input)?;
+    let count = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    primitives::phrase(&["are", "put", "on"]).parse_next(input)?;
+    alt((primitives::kw("it").void(), primitives::phrase(&["that", "permanent"]), primitives::phrase(&["that", "creature"]))).parse_next(input)?;
+    primitives::kw("instead").parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(CounterReplacementShape::CounterAdjustment { filter_tokens: trim_lexed_commas(filter_tokens), counter_type, adjustment: sign * i64::from(count) })
 }
 
 fn parse_plus_one_add_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CounterReplacementShape<'a>> {

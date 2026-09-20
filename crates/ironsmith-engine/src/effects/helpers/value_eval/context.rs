@@ -19,6 +19,7 @@ pub(crate) enum NumericProperty {
     Power,
     Toughness,
     ManaValue,
+    ManaSpent,
     ColorCount,
 }
 #[derive(Clone, Copy)]
@@ -289,10 +290,8 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                         visit(match property {
                             NumericProperty::Power => snapshot.power,
                             NumericProperty::Toughness => snapshot.toughness,
-                            NumericProperty::ManaValue => snapshot
-                                .mana_cost
-                                .as_ref()
-                                .map(|cost| cost.mana_value() as i32),
+                            NumericProperty::ManaValue => NumericProperty::ManaValue.snapshot(snapshot),
+                            NumericProperty::ManaSpent => Some(snapshot.mana_spent_to_cast.total() as i32),
                             NumericProperty::ColorCount => Some(snapshot.colors.count() as i32),
                         });
                     }
@@ -312,10 +311,8 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                                 .game
                                 .calculated_toughness(id)
                                 .or_else(|| object.toughness()),
-                            NumericProperty::ManaValue => object
-                                .mana_cost
-                                .as_ref()
-                                .map(|cost| cost.mana_value() as i32),
+                            NumericProperty::ManaValue => NumericProperty::ManaValue.raw(object),
+                            NumericProperty::ManaSpent => Some(object.mana_spent_to_cast.total() as i32),
                             NumericProperty::ColorCount => Some(object.colors().count() as i32),
                         });
                     }
@@ -332,6 +329,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                             .as_ref()
                             .map_or(0, |cost| cost.mana_value() as i32),
                     ),
+                    NumericProperty::ManaSpent => Some(object.mana_spent_to_cast.total() as i32),
                     NumericProperty::ColorCount => Some(chars.colors.count() as i32),
                 })
             }),
@@ -449,6 +447,7 @@ impl NumericProperty {
             Self::Power => "power",
             Self::Toughness => "toughness",
             Self::ManaValue => "mana value",
+            Self::ManaSpent => "mana spent to cast",
             Self::ColorCount => "colors",
         }
     }
@@ -456,10 +455,11 @@ impl NumericProperty {
         match self {
             Self::Power => snapshot.power,
             Self::Toughness => snapshot.toughness,
-            Self::ManaValue => snapshot
-                .mana_cost
-                .as_ref()
-                .map(|cost| cost.mana_value() as i32),
+            Self::ManaValue => snapshot.mana_cost.as_ref().map(|cost| {
+                let x = if snapshot.zone == crate::zone::Zone::Stack { snapshot.x_value.unwrap_or(0) } else { 0 };
+                cost.mana_value_with_x(x) as i32
+            }),
+            Self::ManaSpent => Some(snapshot.mana_spent_to_cast.total() as i32),
             Self::ColorCount => Some(snapshot.colors.count() as i32),
         }
     }
@@ -467,10 +467,11 @@ impl NumericProperty {
         match self {
             Self::Power => object.power(),
             Self::Toughness => object.toughness(),
-            Self::ManaValue => object
-                .mana_cost
-                .as_ref()
-                .map(|cost| cost.mana_value() as i32),
+            Self::ManaValue => object.mana_cost.as_ref().map(|cost| {
+                let x = if object.zone == crate::zone::Zone::Stack { object.x_value.unwrap_or(0) } else { 0 };
+                cost.mana_value_with_x(x) as i32
+            }),
+            Self::ManaSpent => Some(object.mana_spent_to_cast.total() as i32),
             Self::ColorCount => Some(object.colors().count() as i32),
         }
     }
@@ -480,7 +481,7 @@ impl NumericProperty {
             Self::Toughness => game
                 .calculated_toughness(object.id)
                 .or_else(|| object.toughness()),
-            Self::ManaValue | Self::ColorCount => self.raw(object),
+            Self::ManaValue | Self::ManaSpent | Self::ColorCount => self.raw(object),
         }
     }
     pub(crate) fn characteristics(
@@ -490,7 +491,7 @@ impl NumericProperty {
         match self {
             Self::Power => chars.power,
             Self::Toughness => chars.toughness,
-            Self::ManaValue | Self::ColorCount => None,
+            Self::ManaValue | Self::ManaSpent | Self::ColorCount => None,
         }
     }
 }

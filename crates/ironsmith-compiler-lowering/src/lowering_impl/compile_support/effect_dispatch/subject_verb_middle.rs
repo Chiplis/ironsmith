@@ -2649,6 +2649,11 @@ pub(super) fn compile_subject_verb_middle(
             let resolved_all_tag = resolve_it_tag_key(all_tag, &current_reference_env(ctx))?;
             let resolved_match_tag = resolve_it_tag_key(match_tag, &current_reference_env(ctx))?;
             let resolved_stop_rule = match stop_rule {
+                crate::cards::builders::LibraryConsultStopRuleAst::TotalManaValue(value) => {
+                    crate::effects::ConsultTopOfLibraryStopRule::TotalManaValue(
+                        subject.resolve_object_refs_and_bind_player_refs_in_value(value, ctx)?,
+                    )
+                }
                 crate::cards::builders::LibraryConsultStopRuleAst::FirstMatch => {
                     crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
                 }

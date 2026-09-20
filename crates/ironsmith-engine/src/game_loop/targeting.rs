@@ -2027,7 +2027,7 @@ fn delegated_target_chooser_candidates(
         .collect()
 }
 
-pub(super) fn specialize_iterated_player_choose_spec(
+pub(crate) fn specialize_iterated_player_choose_spec(
     spec: &ChooseSpec,
     player: PlayerId,
 ) -> ChooseSpec {

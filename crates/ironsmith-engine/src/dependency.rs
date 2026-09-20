@@ -1492,6 +1492,7 @@ fn evaluate_value_simple(value: &Value, chars: &CalculatedCharacteristics) -> Va
 /// power, it depends on effects that modify that creature's power.
 fn value_references_pt(value: &Value) -> bool {
     match value {
+        Value::AnnouncedTargetTotal(metric) => matches!(metric, ironsmith_core::ChoiceAggregateMetric::Power | ironsmith_core::ChoiceAggregateMetric::Toughness),
         Value::SurfaceHinted { value, .. } => value_references_pt(value),
         // These directly reference P/T of objects
         Value::SourcePower | Value::SourceToughness => true,
@@ -1573,6 +1574,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ManaSpentToCastThisSpell
         | Value::ManaSymbolSpentToCastThisSpell { .. }
         | Value::ManaFromSourceSpentToCastThisSpell { .. }
+        | Value::ManaSpentToCast(_)
         | Value::ManaSpentToCastTriggeringObject
         | Value::UnspentMana(_)
         | Value::ColorsOfManaSpentToCastThisSpell
@@ -2089,6 +2091,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::SourceIsTapped
         | C::SourceIsSaddled
         | C::SourceDevouredCreaturesOrMore(_)
+        | C::SourceIsHarnessed
         | C::SourceIsMonstrous
         | C::SourceIsRenowned
         | C::SourceIsFaceDown
@@ -2191,6 +2194,7 @@ fn anthem_count_could_be_affected_by(
 fn value_could_be_affected_by(value: &Value, modification: &Modification) -> bool {
     let pt_affected = modification.layer() == Layer::PowerToughness;
     match value {
+        Value::AnnouncedTargetTotal(_) => true,
         Value::SurfaceHinted { value, .. } => value_could_be_affected_by(value, modification),
         Value::Fixed(_)
         | Value::X
@@ -2235,6 +2239,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::ManaSpentToCastThisSpell
         | Value::ManaSymbolSpentToCastThisSpell { .. }
         | Value::ManaFromSourceSpentToCastThisSpell { .. }
+        | Value::ManaSpentToCast(_)
         | Value::ManaSpentToCastTriggeringObject
         | Value::UnspentMana(_)
         | Value::ColorsOfManaSpentToCastThisSpell

@@ -5044,6 +5044,7 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
                 None => format!("the number of {subject} that entered the battlefield this turn"),
             }
         }
+        TurnHistoryCount::TurnedFaceUp(player) => format!("the number of permanents {} turned face up this turn", describe_player_filter(player)),
         TurnHistoryCount::TokensCreated(player) => match player {
             PlayerFilter::You => "the number of tokens you created this turn".to_string(),
             _ => format!(
@@ -5667,6 +5668,15 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_aggregate_filter_value_subject(filter)
             )
         }
+        Value::AnnouncedTargetTotal(metric) => {
+            let property = match metric {
+                ironsmith_core::ChoiceAggregateMetric::Power => "power",
+                ironsmith_core::ChoiceAggregateMetric::Toughness => "toughness",
+                ironsmith_core::ChoiceAggregateMetric::ManaValue => "mana value",
+                ironsmith_core::ChoiceAggregateMetric::DistinctCardTypes => "distinct card types",
+            };
+            format!("the total {property} of the objects this spell targets")
+        }
         Value::GreatestPower(filter) => {
             format!(
                 "the greatest power among {}",
@@ -5859,6 +5869,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 "the number of colors it is".to_string()
             }
         }
+        Value::ManaSpentToCast(spec) => format!("the amount of mana spent to cast {}", describe_choose_spec(spec)),
         Value::ManaValueOf(spec) => {
             // For implicit off-battlefield references, oracle text usually prefers
             // "that card's mana value" over "its mana value".

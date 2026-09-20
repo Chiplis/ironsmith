@@ -634,6 +634,15 @@ mod cant_clause_readings;
 pub fn parse_cant_clauses(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    if crate::word_primitives::parse_choice_sequence_complete(&crate::lexer::token_word_refs(tokens), &[
+        &["spells"], &["and"], &["abilities"], &["your"], &["opponents"], &["control"], &["cant", "can't"],
+        &["cause"], &["their"], &["controller"], &["to"], &["search"], &["their"], &["library"],
+    ]) {
+        return Ok(Some(vec![StaticAbility::restriction(
+            crate::effect::Restriction::SearchOwnLibraryFromOwnEffects(PlayerFilter::Opponent),
+            "Spells and abilities your opponents control can't cause their controller to search their library".to_owned(),
+        )]));
+    }
     // These complete shapes lower through dedicated static-ability
     // productions. The generic negated-restriction grammar owns neither the
     // source-owner marker nor a quantified per-creature granted restriction.

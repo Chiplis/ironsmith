@@ -523,7 +523,8 @@ fn collect_candidates_in_zone(
             }
         }
         Zone::Library => {
-            let owner_ids = library_candidate_players(effect, game, ctx, &filter_ctx, chooser_id)?;
+            let owner_ids = library_candidate_players(effect, game, ctx, &filter_ctx, chooser_id)?
+                .into_iter().filter(|owner| !effect.is_search || game.can_search_library_from_effect(chooser_id, *owner, ctx.controller)).collect::<Vec<_>>();
             if effect.top_only {
                 let mut top_matches = Vec::new();
                 for owner_id in owner_ids {
@@ -846,10 +847,30 @@ fn normalize_chosen_aggregate_constraint(
         Some(_) => return chosen,
         None => i32::MIN,
     };
-    let chosen_total: i32 = chosen
-        .iter()
-        .map(|id| crate::targeting::aggregate_object_value(game, *id, constraint.metric))
-        .sum();
+    if constraint.metric == crate::effect::ChoiceAggregateMetric::DistinctCardTypes {
+        let total = |ids: &[ObjectId]| crate::targeting::aggregate_object_set_value(game, ids.iter().copied(), constraint.metric);
+        if chosen.len() >= min && total(&chosen) >= minimum && total(&chosen) <= maximum {
+            return chosen;
+        }
+        // Keep a selection for each type union and cardinality, so a
+        // minimum card count is not lost when several cards share types.
+        let mut states = std::collections::BTreeMap::from([((0i32, 0usize), Vec::<ObjectId>::new())]);
+        for id in chosen.iter().chain(candidates.iter()).copied() {
+            let contribution = crate::targeting::aggregate_object_value(game, id, constraint.metric);
+            for ((mask, _), selection) in states.clone() {
+                if selection.contains(&id) || selection.len() >= max { continue; }
+                let next_mask = mask | contribution;
+                if next_mask.count_ones() as i32 > maximum { continue; }
+                let mut next = selection;
+                next.push(id);
+                states.entry((next_mask, next.len())).or_insert(next);
+            }
+        }
+        return states.into_iter().filter(|((mask, _), selection)|
+            mask.count_ones() as i32 >= minimum && selection.len() >= min)
+            .min_by_key(|(_, selection)| selection.len()).map(|(_, selection)| selection).unwrap_or_default();
+    }
+    let chosen_total = crate::targeting::aggregate_object_set_value(game, chosen.iter().copied(), constraint.metric);
     if chosen_total >= minimum && chosen_total <= maximum {
         return chosen;
     }
@@ -1132,7 +1153,7 @@ pub(crate) fn run_choose_objects(
         crate::effects::helpers::resolve_player_filter_as_chooser(game, &effect.chooser, ctx)?;
 
     let search_zones = search_zones(effect)?;
-    let library_owner = if effect.is_search && search_zones.as_slice() == [Zone::Library] {
+    let library_owner = if effect.is_search && search_zones.contains(&Zone::Library) {
         let filter_ctx = if object_filter_mentions_iterated_player(&effect.filter)
             && matches!(effect.chooser, PlayerFilter::Target(_))
         {
@@ -1159,14 +1180,14 @@ pub(crate) fn run_choose_objects(
 
     if effect.is_search
         && search_zones == vec![Zone::Library]
-        && !game.can_search_library(chooser_id)
+        && library_owner.is_some_and(|owner| !game.can_search_library_from_effect(chooser_id, owner, ctx.controller))
     {
         return Ok(EffectOutcome::prevented());
     }
     let search_control = begin_opposition_agent_search_control(game, chooser_id, search_override);
     let result = (|| -> Result<EffectOutcome, ExecutionError> {
         let search_viewer = chooser_id;
-        if let Some(owner) = library_owner {
+        if let Some(owner) = library_owner.filter(|owner| game.can_search_library_from_effect(chooser_id, *owner, ctx.controller)) {
             let library_cards = game
                 .player(owner)
                 .map(|player| player.library.clone())
@@ -1181,7 +1202,7 @@ pub(crate) fn run_choose_objects(
             );
         }
 
-        if let Some(owner) = library_owner {
+        if let Some(owner) = library_owner.filter(|owner| game.can_search_library_from_effect(chooser_id, *owner, ctx.controller)) {
             offer_library_search_casts(game, ctx, owner)?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
@@ -1189,7 +1210,7 @@ pub(crate) fn run_choose_objects(
         }
         let search_event = (effect.is_search
             && search_zones.contains(&Zone::Library)
-            && game.can_search_library(chooser_id))
+            && library_owner.is_none_or(|owner| game.can_search_library_from_effect(chooser_id, owner, ctx.controller)))
         .then(|| {
             TriggerEvent::new_with_provenance(
                 SearchLibraryEvent::new(chooser_id, library_owner),
@@ -1206,7 +1227,7 @@ pub(crate) fn run_choose_objects(
             });
         }
         let hidden_library_candidates =
-            if effect.is_search && search_zones.as_slice() == [Zone::Library] {
+            if effect.is_search && search_zones.contains(&Zone::Library) {
                 library_owner
                     .map(|owner| hidden_library_search_candidates(effect, game, ctx, owner))
                     .unwrap_or_default()
@@ -1220,6 +1241,7 @@ pub(crate) fn run_choose_objects(
         }
         if candidates.is_empty() && effect.is_search && search_zones.contains(&Zone::Library) {
             for player in &game.players {
+                if !game.can_search_library_from_effect(chooser_id, player.id, ctx.controller) { continue; }
                 for &id in &player.library {
                     let is_hidden_library_card = game.is_hidden_card_placeholder(id)
                         || game.object(id).is_some_and(|obj| {
@@ -1489,10 +1511,7 @@ pub(crate) fn run_choose_objects(
             && let Some(crate::effect::Value::Fixed(minimum)) =
                 constraint.minimum.as_ref().map(|value| value.unhinted())
         {
-            let chosen_total = chosen
-                .iter()
-                .map(|id| crate::targeting::aggregate_object_value(game, *id, constraint.metric))
-                .sum::<i32>();
+            let chosen_total = crate::targeting::aggregate_object_set_value(game, chosen.iter().copied(), constraint.metric);
             if chosen_total < *minimum {
                 return Err(ExecutionError::Impossible(format!(
                     "chosen objects have aggregate value {chosen_total}, below required minimum {minimum}"

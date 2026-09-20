@@ -1173,7 +1173,7 @@ impl CardDefinitionBuilder {
 
     pub fn warp(mut self, cost: ManaCost) -> Self {
         self.alternative_casts
-            .push(crate::alternative_cast::AlternativeCastingMethod::Warp { cost });
+            .push(crate::alternative_cast::AlternativeCastingMethod::Warp { cost, additional_cost: Default::default() });
         self
     }
 

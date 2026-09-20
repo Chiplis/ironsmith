@@ -88,6 +88,7 @@ pub enum TokenKind {
     ManaGroup,
     #[regex(r"[0-9]+", priority = 3)]
     Number,
+    #[token("∞")]
     #[token("&")]
     #[regex(
         r"(?:\+[0-9xXyY]+|-[0-9xXyY]+|[\p{L}0-9]+)(?:(?:['’‘](?:[\p{L}0-9]+)?)|(?:(?://)|[-−/])(?:\+[0-9xXyY]+|-[0-9xXyY]+|[\p{L}0-9]+))*"

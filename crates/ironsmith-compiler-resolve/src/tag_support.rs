@@ -1018,7 +1018,8 @@ pub fn value_references_tag(value: &Value, tag: &str) -> bool {
         | Value::DistinctPowers(filter) => filter_references_tag(filter, tag),
         Value::StaticAbilitiesAmong { filter, .. } => filter_references_tag(filter, tag),
         Value::PowerOf(spec) | Value::ToughnessOf(spec) => choose_spec_references_tag(spec, tag),
-        Value::ManaValueOf(spec)
+        Value::ManaSpentToCast(spec)
+        | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. } => {
             choose_spec_references_tag(spec, tag)
@@ -1411,6 +1412,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
         | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
+            | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
         | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
@@ -1886,6 +1888,7 @@ pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
                         matches!(
                             stop_rule,
                             crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value)
+                            | crate::cards::builders::LibraryConsultStopRuleAst::TotalManaValue(value)
                                 if value_references_event_derived_amount(value)
                         ) || max_exposed
                             .as_ref()

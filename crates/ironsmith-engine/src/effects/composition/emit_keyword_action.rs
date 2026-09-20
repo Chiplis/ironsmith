@@ -130,6 +130,18 @@ fn object_tags_from_config(
     Ok(tags)
 }
 
+fn forage_payments(exclude_source: bool) -> [crate::effect::Effect; 2] {
+    use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
+    let mut graveyard = ObjectFilter::default().owned_by(PlayerFilter::You).in_zone(crate::zone::Zone::Graveyard);
+    graveyard.other = exclude_source;
+    [
+        crate::effect::Effect::new(crate::effects::ExileEffect::with_spec(
+            ChooseSpec::Object(graveyard).with_count(crate::effect::ChoiceCount::exactly(3)))),
+        crate::effect::Effect::new(crate::effects::SacrificeEffect::you(
+            ObjectFilter::default().with_subtype(crate::types::Subtype::Food), 1)),
+    ]
+}
+
 impl EffectExecutor for EmitKeywordActionEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
@@ -144,6 +156,28 @@ impl EffectExecutor for EmitKeywordActionEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if self.action == KeywordActionKind::Forage {
+            let mut outcomes = Vec::new();
+            for _ in 0..self.amount {
+                let payments = forage_payments(false);
+                let options: Vec<_> = payments.iter().enumerate().filter(|(_, effect)|
+                    effect.0.can_execute_as_cost(game, ctx.source, ctx.controller).is_ok())
+                    .map(|(index, _)| (if index == 0 { "Exile three cards from your graveyard" } else { "Sacrifice a Food" }.to_string(), index)).collect();
+                if options.is_empty() { return Err(ExecutionError::Impossible("cannot forage".into())); }
+                let choice = crate::decisions::ask_choose_one(game, &mut ctx.decision_maker, ctx.controller, ctx.source, &options);
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                let index = choice.unwrap_or(options[0].1);
+                let outcome = crate::effects::execute_effect(game, &payments[index], ctx)?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(outcome); }
+                if outcome.status.is_failure() { return Ok(outcome); }
+                outcomes.push(outcome);
+                outcomes.push(EffectOutcome::count(1).with_event(TriggerEvent::new_with_provenance(
+                    KeywordActionEvent::new(self.action, ctx.controller, ctx.source, 1), ctx.provenance)));
+            }
+            let mut outcome = EffectOutcome::aggregate(outcomes);
+            outcome.value = crate::effect::OutcomeValue::Count(self.amount as i32);
+            return Ok(outcome);
+        }
         if self.action == KeywordActionKind::AssembleContraption {
             // CR 701.45a deliberately does not define the Unstable Contraption
             // procedure. Keep the action typed and observable for an external
@@ -235,6 +269,9 @@ impl EffectExecutor for EmitKeywordActionEffect {
                 .map_err(ExecutionError::Impossible)?;
             return Ok(EffectOutcome::resolved().with_affected_objects(vec![scheme]));
         }
+        if self.action == KeywordActionKind::Harness && !game.harness(ctx.source) {
+            return Ok(EffectOutcome::count(0));
+        }
         let object_tags = object_tags_from_config(self, game, ctx)?;
         let event = TriggerEvent::new_with_provenance(
             KeywordActionEvent::new(self.action, ctx.controller, ctx.source, self.amount)
@@ -245,6 +282,7 @@ impl EffectExecutor for EmitKeywordActionEffect {
     }
 
     fn cost_description(&self) -> Option<String> {
+        if self.action == KeywordActionKind::Forage { return Some("Forage".into()); }
         // Internal scaffolding effect used to emit trigger-visible events from costs.
         // This should not show up as part of the printed/visible cost.
         Some(String::new())
@@ -252,12 +290,14 @@ impl EffectExecutor for EmitKeywordActionEffect {
 }
 
 impl CostExecutableEffect for EmitKeywordActionEffect {
-    fn can_execute_as_cost(
-        &self,
-        _game: &GameState,
-        _source: crate::ids::ObjectId,
-        _controller: crate::ids::PlayerId,
-    ) -> Result<(), crate::effects::CostValidationError> {
+    fn can_execute_as_cost(&self, game: &GameState, source: crate::ids::ObjectId, controller: crate::ids::PlayerId) -> Result<(), crate::effects::CostValidationError> {
+        CostExecutableEffect::can_execute_as_cost_with_reason(self, game, source, controller, crate::costs::PaymentReason::Other)
+    }
+    fn can_execute_as_cost_with_reason(&self, game: &GameState, source: crate::ids::ObjectId, controller: crate::ids::PlayerId, reason: crate::costs::PaymentReason) -> Result<(), crate::effects::CostValidationError> {
+        if self.action == KeywordActionKind::Forage && !forage_payments(reason == crate::costs::PaymentReason::CastSpell).iter()
+            .any(|effect| effect.0.can_execute_as_cost(game, source, controller).is_ok()) {
+            return Err(crate::effects::CostValidationError::NotEnoughCards);
+        }
         Ok(())
     }
 }

@@ -3927,6 +3927,7 @@ pub(super) fn describe_consult_reveal_move_matches_then_bottom(
         selection = shorter.to_string();
     }
     let (stop_text, matched_reference, singular) = match &consult.stop_rule {
+        crate::effects::ConsultTopOfLibraryStopRule::TotalManaValue(_) => return None,
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
         | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
             (with_indefinite_article(&selection), "it".to_string(), true)

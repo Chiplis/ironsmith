@@ -90,6 +90,9 @@ const PLAYER_HAS_QUANTITY_SUBJECT_PHRASES: &[PlayerSubjectPhrase] = &[
 const LIFE_RELATION_SUBJECT_PHRASES: &[PlayerSubjectPhrase] = &[
     subject_phrase(&["player", "who"], LeafPlayerReference::ThatPlayer),
     subject_phrase(&["that", "player"], LeafPlayerReference::ThatPlayer),
+    subject_phrase(&["they"], LeafPlayerReference::ThatPlayer),
+    subject_phrase(&["theyve"], LeafPlayerReference::ThatPlayer),
+    subject_phrase(&["they've"], LeafPlayerReference::ThatPlayer),
     subject_phrase(&["target", "opponent"], LeafPlayerReference::TargetOpponent),
     subject_phrase(&["target", "player"], LeafPlayerReference::TargetPlayer),
     subject_phrase(&["each", "opponents"], LeafPlayerReference::EachOpponent),
@@ -110,6 +113,8 @@ const LIFE_RELATION_SUBJECT_PHRASES: &[PlayerSubjectPhrase] = &[
     subject_phrase(&["opponent"], LeafPlayerReference::Opponent),
     subject_phrase(&["player"], LeafPlayerReference::AnyPlayer),
     subject_phrase(&["you"], LeafPlayerReference::You),
+    subject_phrase(&["youve"], LeafPlayerReference::You),
+    subject_phrase(&["you've"], LeafPlayerReference::You),
 ];
 
 const SPELL_CAST_THIS_TURN_SUBJECT_PHRASES: &[PlayerSubjectPhrase] = &[
@@ -123,6 +128,8 @@ const SPELL_CAST_THIS_TURN_SUBJECT_PHRASES: &[PlayerSubjectPhrase] = &[
 ];
 
 const LIFE_CHANGE_SUBJECT_PHRASES: &[PlayerSubjectPhrase] = &[
+    subject_phrase(&["they"], LeafPlayerReference::ThatPlayer),
+    subject_phrase(&["that", "player"], LeafPlayerReference::ThatPlayer),
     subject_phrase(
         &["one", "or", "more", "opponents"],
         LeafPlayerReference::Opponent,

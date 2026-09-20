@@ -653,6 +653,36 @@ fn parse_granted_ability_component_for_gain(
         return Ok(None);
     }
     let ability_words = crate::lexer::token_word_refs(&ability_tokens);
+    if authored_as_quoted_ability
+        && ability_words.len() >= 3
+        && ability_words[..2] == ["if", "this"]
+        && matches!(ability_words[2], "permanent" | "creature" | "artifact" | "enchantment" | "land")
+        && ability_words[3..] == [
+            "would", "leave", "the", "battlefield", "exile", "it", "instead",
+            "of", "putting", "it", "anywhere", "else",
+        ]
+    {
+        return Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(
+            StaticAbilityAst::Static(StaticAbility::redirect_zone_change(
+                ObjectFilter::source().with_source_surface(
+                    crate::target::SourceReferenceSurface::ThisPermanentType(
+                        format!("this {}", ability_words[2]),
+                    ),
+                ),
+                Some(Zone::Battlefield),
+                None,
+                Zone::Exile,
+            )),
+        ))]));
+    }
+    if let Some(shape) = crate::grammar::token_definitions::parse_token_power_as_though_greater_shape_tokens(&ability_tokens) {
+        let actions = if ability_words.contains(&"saddles") { "saddles Mounts and crews Vehicles" } else { "crews Vehicles" };
+        return Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(
+            StaticAbilityAst::Static(StaticAbility::keyword_marker(format!(
+                "This creature {actions} as though its power were {} greater.", shape.amount
+            ))),
+        ))]));
+    }
     // "gain all creature types" (Mirror Entity, Maskwood Nexus): the
     // changeling characteristic as a granted static ability.
     if ability_words == ["all", "creature", "types"] {

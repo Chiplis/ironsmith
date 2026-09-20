@@ -14,6 +14,7 @@ use std::collections::{HashMap, HashSet};
 pub enum LibraryConsultStopRule {
     FirstMatch,
     MatchCount(u32),
+    TotalManaValue(u32),
     FirstMatchOrExposedCount(u32),
 }
 
@@ -22,6 +23,8 @@ impl LibraryConsultStopRule {
         match self {
             Self::FirstMatch => 1,
             Self::MatchCount(count) => *count,
+            Self::TotalManaValue(0) => 0,
+            Self::TotalManaValue(_) => u32::MAX,
             Self::FirstMatchOrExposedCount(_) => 1,
         }
     }
@@ -95,6 +98,7 @@ pub fn execute_library_consult(
     }
 
     let mut result = LibraryConsultResult::default();
+    let mut matched_mana_value = 0u32;
 
     match mode {
         LibraryConsultMode::Reveal => {
@@ -108,6 +112,10 @@ pub fn execute_library_consult(
                     continue;
                 };
                 let snapshot = ObjectSnapshot::from_object(object, game);
+                let mana_value = object
+                    .mana_cost
+                    .as_ref()
+                    .map_or(0, |cost| cost.mana_value());
                 let matched = is_match(object, game);
 
                 result.exposed_object_ids.push(object_id);
@@ -124,7 +132,10 @@ pub fn execute_library_consult(
                 ));
                 if matched {
                     result.matched_snapshots.push(snapshot);
-                    if result.matched_snapshots.len() >= required_matches {
+                    matched_mana_value = matched_mana_value.saturating_add(mana_value);
+                    if result.matched_snapshots.len() >= required_matches
+                        || matches!(stop_rule, LibraryConsultStopRule::TotalManaValue(threshold) if matched_mana_value >= threshold)
+                    {
                         break;
                     }
                 }
@@ -159,6 +170,10 @@ pub fn execute_library_consult(
                 continue;
             };
             let snapshot = ObjectSnapshot::from_object(object, game);
+            let mana_value = object
+                .mana_cost
+                .as_ref()
+                .map_or(0, |cost| cost.mana_value());
             let matched = is_match(object, game);
 
             // Exile-mode consultation performs the zone change directly
@@ -173,7 +188,10 @@ pub fn execute_library_consult(
             result.exposed_snapshots.push(snapshot.clone());
             if matched {
                 result.matched_snapshots.push(snapshot);
-                if result.matched_snapshots.len() >= required_matches {
+                matched_mana_value = matched_mana_value.saturating_add(mana_value);
+                if result.matched_snapshots.len() >= required_matches
+                    || matches!(stop_rule, LibraryConsultStopRule::TotalManaValue(threshold) if matched_mana_value >= threshold)
+                {
                     break;
                 }
             }

@@ -258,7 +258,7 @@ pub enum ReplacementAction {
     /// ("that many plus one ... counters are put on it instead").
     AddCountersToPlacement {
         counter_type: Option<CounterType>,
-        additional: u32,
+        additional: i64,
     },
 
     /// Replace one player-counter event with a fixed amount and establish a

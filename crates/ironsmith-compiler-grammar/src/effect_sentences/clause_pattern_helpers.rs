@@ -2061,8 +2061,15 @@ pub fn parse_keyword_mechanic_clause(
                 false,
             )
         }
-        clause_shapes::KeywordMechanicShape::ManifestDread { repeat } => {
-            let manifest = EffectAst::subject_verb_manifest_dread(PlayerAst::Implicit);
+        clause_shapes::KeywordMechanicShape::ManifestDread { repeat, source_exiled_owner } => {
+            let manifest = if source_exiled_owner {
+                EffectAst::ForEach(ForEachEffectAst::ForEachObject {
+                    filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind()).in_zone(Zone::Exile),
+                    effects: vec![EffectAst::subject_verb_manifest_dread(PlayerAst::ItsOwner)],
+                })
+            } else {
+                EffectAst::subject_verb_manifest_dread(PlayerAst::Implicit)
+            };
             match repeat {
                 clause_shapes::KeywordRepeatShape::Once => manifest,
                 _ => EffectAst::ForEach(ForEachEffectAst::RepeatEffects {

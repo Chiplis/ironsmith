@@ -1256,7 +1256,7 @@ fn apply_trait_halve_counters(event: &Event, counter_type: Option<CounterType>) 
 fn apply_trait_add_counters_to_placement(
     event: &Event,
     counter_type: Option<CounterType>,
-    additional: u32,
+    additional: i64,
 ) -> Option<Event> {
     use crate::events::{EnterBattlefieldEvent, PutCountersEvent, downcast_event};
 
@@ -1266,7 +1266,7 @@ fn apply_trait_add_counters_to_placement(
             if counter_type.is_none_or(|ct| ct == put_counters.counter_type)
                 && put_counters.count > 0
             {
-                Some(event.rewrap(put_counters.with_additional(additional)))
+                Some(event.rewrap(put_counters.with_count((i64::from(put_counters.count).saturating_add(additional)).clamp(0, i64::from(u32::MAX)) as u32)))
             } else {
                 None
             }
@@ -1277,7 +1277,7 @@ fn apply_trait_add_counters_to_placement(
             let mut changed = false;
             for (existing_type, count) in &mut increased.enters_with_counters {
                 if *count > 0 && counter_type.is_none_or(|ct| ct == *existing_type) {
-                    *count = count.saturating_add(additional);
+                    *count = i64::from(*count).saturating_add(additional).clamp(0, i64::from(u32::MAX)) as u32;
                     changed = true;
                 }
             }

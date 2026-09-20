@@ -478,6 +478,17 @@ impl GameState {
     }
 
     /// Check if a Case permanent has become solved.
+    pub fn is_harnessed(&self, id: ObjectId) -> bool {
+        self.battlefield_flags.harnessed.contains(&id)
+    }
+
+    pub fn harness(&mut self, id: ObjectId) -> bool {
+        if !self.object(id).is_some_and(|object| object.zone == Zone::Battlefield) { return false; }
+        let changed = self.battlefield_flags_mut().harnessed.insert(id);
+        if changed { self.mark_continuous_state_dirty(); }
+        changed
+    }
+
     pub fn is_case_solved(&self, id: ObjectId) -> bool {
         self.battlefield_flags.solved_cases.contains(&id)
     }
@@ -1329,6 +1340,7 @@ impl GameState {
             flags.regeneration_shields.remove(&id);
             flags.devoured_counts.remove(&id);
             flags.solved_cases.remove(&id);
+            flags.harnessed.remove(&id);
             flags.renowned.remove(&id);
             flags.flipped.remove(&id);
             flags.face_down.remove(&id);

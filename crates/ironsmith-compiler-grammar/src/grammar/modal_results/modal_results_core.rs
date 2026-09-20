@@ -121,6 +121,11 @@ pub(super) fn parse_direct_prior_effect_result_surface(
         ],
     ) {
         PriorEffectAction::PutIntoGraveyard
+    } else if after == ["dealt", "damage", "this", "way"] {
+        // Damage result conditions examine only recipients of actual damage.
+        // Player recipients have their own result predicate below.
+        parse_prior_result_object_filter(&tokens[..copula_idx])?;
+        PriorEffectAction::DealtDamage
     } else if after.first() == Some(&"removed") {
         PriorEffectAction::Removed
     } else if after.first() == Some(&"prevented") {

@@ -419,6 +419,8 @@ pub enum TurnHistoryCount {
     EnteredBattlefield(ObjectFilter),
     /// Tokens created under the control of matching players this turn.
     TokensCreated(PlayerFilter),
+    /// Permanents turned face up by the matching players this turn.
+    TurnedFaceUp(PlayerFilter),
     /// Cards owned by matching players which were put into a graveyard this
     /// turn. An empty `from` list means "from anywhere".
     PutIntoGraveyard {
@@ -542,6 +544,9 @@ pub enum Value {
     TotalPower(ObjectFilter),
     TotalToughness(ObjectFilter),
     TotalManaValue(ObjectFilter),
+    /// Aggregate over distinct announced object targets, rather than every
+    /// object matching a filter on the battlefield.
+    AnnouncedTargetTotal(crate::ChoiceAggregateMetric),
     GreatestPower(ObjectFilter),
     GreatestToughness(ObjectFilter),
     GreatestManaValue(ObjectFilter),
@@ -595,6 +600,8 @@ pub enum Value {
     PowerOf(Box<ChooseSpec>),
     ToughnessOf(Box<ChooseSpec>),
     ManaValueOf(Box<ChooseSpec>),
+    /// Mana actually paid to cast the referenced object, using its last known information.
+    ManaSpentToCast(Box<ChooseSpec>),
     /// Number of colors the referenced object is ("the number of colors that
     /// spell is").
     ColorsOf(Box<ChooseSpec>),
@@ -882,6 +889,8 @@ pub enum Restriction {
     NoMaximumHandSize(PlayerFilter),
     GainLife(PlayerFilter),
     SearchLibraries(PlayerFilter),
+    /// A player's own spells and abilities cannot make that player search their own library.
+    SearchOwnLibraryFromOwnEffects(PlayerFilter),
     CastSpellsMatching(PlayerFilter, ObjectFilter),
     CastSpellsOnlyAsSorcery(PlayerFilter),
     ActivateNonManaAbilities(PlayerFilter),
@@ -1757,6 +1766,7 @@ pub enum Condition {
     },
     SourceDevouredCreaturesOrMore(u32),
     SourceIsMonstrous,
+    SourceIsHarnessed,
     SourceIsRenowned,
     SourceIsFaceDown,
     SourceMatches(ObjectFilter),

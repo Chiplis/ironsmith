@@ -211,6 +211,8 @@ pub struct ExecutionContext<'a> {
     pub controller: PlayerId,
     /// Resolved targets for the effect.
     pub targets: Vec<ResolvedTarget>,
+    /// Original spell/ability targets while `targets` holds cost choices.
+    pub announced_targets: Option<Vec<ResolvedTarget>>,
     /// True when `targets` carries preselected cost-payment choices rather than
     /// spell or ability targets.
     pub targets_are_cost_choices: bool,
@@ -355,6 +357,7 @@ impl<'a> ExecutionContext<'a> {
             source,
             controller,
             targets: Vec::new(),
+            announced_targets: None,
             targets_are_cost_choices: false,
             target_assignments: Vec::new(),
             target_distributions: Vec::new(),
@@ -404,6 +407,7 @@ impl<'a> ExecutionContext<'a> {
             source,
             controller,
             targets: Vec::new(),
+            announced_targets: None,
             targets_are_cost_choices: false,
             target_assignments: Vec::new(),
             target_distributions: Vec::new(),
@@ -443,6 +447,7 @@ impl<'a> ExecutionContext<'a> {
             source: self.source,
             controller: self.controller,
             targets: self.targets,
+            announced_targets: self.announced_targets,
             targets_are_cost_choices: self.targets_are_cost_choices,
             target_assignments: self.target_assignments,
             target_distributions: self.target_distributions,

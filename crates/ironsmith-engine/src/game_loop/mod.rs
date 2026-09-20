@@ -79,6 +79,7 @@ mod priority_state;
 mod saga;
 mod sba_triggers;
 mod stack_resolution;
+pub(crate) use targeting::specialize_iterated_player_choose_spec;
 mod targeting;
 #[cfg(all(test, feature = "engine-integration-tests"))]
 mod tests;

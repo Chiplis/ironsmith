@@ -275,6 +275,17 @@ impl EffectExecutor for CantEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let duration = if let Until::ForAsLongAs(predicate) = &self.duration {
+            let Some(predicate) = crate::effects::continuous::materialize_duration_predicate(
+                predicate, &crate::continuous::EffectTarget::Source, &None, game, ctx,
+            ) else { return Ok(EffectOutcome::count(0)); };
+            if !crate::continuous::continuous_duration_predicate_matches(&predicate, game) {
+                return Ok(EffectOutcome::count(0));
+            }
+            Until::ForAsLongAs(predicate)
+        } else {
+            self.duration.clone()
+        };
         let restriction = normalize_restriction_for_resolution(&self.restriction, ctx, game);
         if self.start == RestrictionStart::LastAddedCombatPhase {
             // A missing phase cannot turn a phase-bound restriction into an
@@ -282,7 +293,7 @@ impl EffectExecutor for CantEffect {
             if let Some(order) = ctx.combat.last_added_combat_order {
                 game.add_restriction_effect_with_start_and_tagged_objects(
                     restriction,
-                    self.duration.clone(),
+                    duration.clone(),
                     ctx.source,
                     ctx.controller,
                     ctx.iteration.iterated_player,
@@ -304,7 +315,7 @@ impl EffectExecutor for CantEffect {
                 crate::effects::helpers::resolve_player_filter(game, player, ctx)?,
             ),
         };
-        if matches!(self.duration, Until::ControllersNextUntapStep)
+        if matches!(duration, Until::ControllersNextUntapStep)
             && let Restriction::Untap(filter) = &restriction
         {
             let filter_ctx = ctx.filter_context(game);
@@ -325,7 +336,7 @@ impl EffectExecutor for CantEffect {
                 for (object_id, controller) in targets {
                     game.add_restriction_effect_with_start_and_tagged_objects(
                         Restriction::untap(crate::target::ObjectFilter::specific(object_id)),
-                        self.duration.clone(),
+                        duration.clone(),
                         ctx.source,
                         controller,
                         ctx.iteration.iterated_player,
@@ -336,7 +347,7 @@ impl EffectExecutor for CantEffect {
             } else {
                 game.add_restriction_effect_with_start_and_tagged_objects(
                     self.restriction.clone(),
-                    self.duration.clone(),
+                    duration.clone(),
                     ctx.source,
                     ctx.controller,
                     ctx.iteration.iterated_player,
@@ -347,7 +358,7 @@ impl EffectExecutor for CantEffect {
         } else {
             game.add_restriction_effect_with_start_and_tagged_objects(
                 restriction,
-                self.duration.clone(),
+                duration.clone(),
                 ctx.source,
                 ctx.controller,
                 ctx.iteration.iterated_player,

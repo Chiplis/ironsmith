@@ -528,6 +528,12 @@ fn describe_turn_history_value_comparison(
             let action = format!("entered the battlefield{controller}");
             Some(quantified_history(subject, plural, &action))
         }
+        ironsmith_core::TurnHistoryCount::TurnedFaceUp(player) => {
+            let player = describe_history_player_subject(player);
+            Some(if is_present { format!("{player} turned a permanent face up this turn") }
+                else if is_absent { format!("{player} didn't turn a permanent face up this turn") }
+                else { format!("{player} turned {count_text} or more permanents face up this turn") })
+        }
         ironsmith_core::TurnHistoryCount::TokensCreated(player) => {
             let player = describe_history_player_subject(player);
             if is_present {
@@ -3361,6 +3367,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceIsEquipped => "this permanent is equipped".to_string(),
         Condition::SourceIsEnchanted => "this permanent is enchanted".to_string(),
         Condition::SourceIsMonstrous => "this permanent is monstrous".to_string(),
+        Condition::SourceIsHarnessed => "this permanent is harnessed".to_string(),
         Condition::SourceIsRenowned => "this creature is renowned".to_string(),
         Condition::EnchantedPermanentIsCreature => {
             "enchanted permanent is a creature".to_string()

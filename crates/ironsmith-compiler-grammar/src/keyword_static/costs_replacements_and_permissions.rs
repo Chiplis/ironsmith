@@ -2769,6 +2769,11 @@ pub fn parse_double_counters_replacement_line(
         return Ok(None);
     };
     Ok(Some(match shape {
+        keyword_static_lines::CounterReplacementShape::CounterAdjustment { filter_tokens, counter_type, adjustment } =>
+            StaticAbility::add_counters_placement_replacement(
+                parse_object_filter_lexed(filter_tokens, false)?, Some(counter_type), adjustment,
+                display_text_for_tokens(tokens, true),
+            ),
         keyword_static_lines::CounterReplacementShape::GenericUnderYourControl => {
             StaticAbility::double_counters_replacement(
                 ObjectFilter::permanent().controlled_by(PlayerFilter::You),
@@ -4969,13 +4974,16 @@ pub fn parse_exile_would_die_instead_line(
             };
             StaticAbility::exile_would_die_instead(filter)
         }
-        keyword_static_lines::ExileWouldDieSpec::SimpleCreature(player) => {
+        keyword_static_lines::ExileWouldDieSpec::SimpleCreature { controller: player, follow_up_tokens } => {
             let player = match player {
                 keyword_static_lines::ReplacementPlayerKind::Any => PlayerFilter::Any,
                 keyword_static_lines::ReplacementPlayerKind::You => PlayerFilter::You,
                 keyword_static_lines::ReplacementPlayerKind::Opponent => PlayerFilter::Opponent,
             };
-            StaticAbility::exile_would_die_instead(ObjectFilter::creature().controlled_by(player))
+            StaticAbility::exile_would_die_instead_with_damage_source_counters_and_follow_up(
+                ObjectFilter::creature().controlled_by(player), None, Vec::new(),
+                super::super::clause_support::parse_effect_sentences_lexed(&follow_up_tokens)?,
+            )
         }
     };
     Ok(Some(ability))

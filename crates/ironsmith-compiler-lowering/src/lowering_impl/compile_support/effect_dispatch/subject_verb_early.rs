@@ -87,6 +87,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::FightIterated { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
+            | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
             | SubjectVerbActionAst::Control(ControlActionAst::GainControl { .. })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantProtectionChoice { .. })
@@ -987,7 +988,8 @@ pub(super) fn compile_subject_verb_early(
             Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestDread) => {
-            let mut effect = Effect::manifest_dread();
+            let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
+            let mut effect = Effect::new(crate::effects::ManifestDreadEffect::for_player(subject.into_player_filter()));
             if ctx.auto_tag_object_targets {
                 let tag = reserved_or_next_object_tag(ctx, "manifested");
                 effect = effect.tag(tag.clone());
@@ -1042,6 +1044,13 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::Random(RandomActionAst::FlipCoin) => {
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
                 Effect::flip_coin(subject.into_player_filter())
+            })
+        }
+        SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count }) => {
+            compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
+                let mut effect = crate::effects::FlipCoinEffect::face_only(subject.into_player_filter());
+                effect.count = *count;
+                Effect::new(effect)
             })
         }
         SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly) => {

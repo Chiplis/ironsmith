@@ -577,7 +577,7 @@ const PAIR_SHAPES: &[Shape] = &[
     },
     Shape {
         id: RuleId::new("flashback-grant"),
-        head: HeadDiscriminator::words(&["target"]),
+        head: HeadDiscriminator::words(&["target", "each", "all"]),
         consumed: 2,
         read: |sentences, sentence_idx| {
             reading(

@@ -171,7 +171,10 @@ impl EffectExecutor for RepeatEffectsEffect {
         let pending_token_event_start = game.effect_store.pending_trigger_events.len();
 
         for _ in 0..count {
-            let outcome = sequence.execute(game, ctx)?;
+            let previous_operations = std::mem::take(&mut ctx.shared_team_structure_operations);
+            let result = sequence.execute(game, ctx);
+            ctx.shared_team_structure_operations = previous_operations;
+            let outcome = result?;
             all_events.extend(outcome.events.clone());
             all_execution_facts.extend(outcome.execution_facts.clone());
             if let Some(objects) = outcome.objects() {

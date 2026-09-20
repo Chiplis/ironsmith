@@ -102,12 +102,17 @@ impl EffectExecutor for LookAtObjectsEffect {
 }
 
 fn remember_hidden_views(
-    game: &GameState,
+    game: &mut GameState,
     ctx: &mut ExecutionContext,
     viewed: &[ObjectId],
     viewers: &[PlayerId],
 ) {
     for viewer in viewers {
+        for id in viewed {
+            if game.object(*id).is_some_and(|object| object.zone == Zone::Exile) && game.is_face_down(*id) {
+                game.grant_face_down_exile_view(*id, *viewer);
+            }
+        }
         view_hidden_candidate_objects(game, ctx, *viewer, viewed, "Look at hidden objects", false);
     }
 }

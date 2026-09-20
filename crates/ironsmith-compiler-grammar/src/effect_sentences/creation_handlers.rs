@@ -931,6 +931,18 @@ fn attach_inline_token_granted_abilities_to_effect(
         return true;
     }
 
+    if let EffectAst::Coordination(program) = effect {
+        // The final creation operand owns a trailing quoted ability.
+        // Walking conjunction members forward attaches the Pilot's rule to
+        // the preceding Treasure in "create A and B with ...".
+        for member in program.members.iter_mut().rev() {
+            if attach_inline_token_granted_abilities_to_last_create(&mut member.effects, tokens) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     let mut found = false;
     crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
         if !found {

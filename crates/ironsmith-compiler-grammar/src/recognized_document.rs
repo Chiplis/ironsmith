@@ -121,6 +121,7 @@ pub enum KeywordLineKind {
     CastThisSpellOnly,
     Gift,
     Epic,
+    Paradigm,
     Warp,
     ExertAttack,
     Exploit,

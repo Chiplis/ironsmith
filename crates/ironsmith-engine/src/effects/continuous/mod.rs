@@ -9,3 +9,5 @@ mod exchange_text_boxes;
 
 pub use apply_continuous::{ApplyContinuousEffect, RuntimeModification};
 pub use exchange_text_boxes::ExchangeTextBoxesEffect;
+
+pub(crate) use apply_continuous::materialize_duration_predicate;

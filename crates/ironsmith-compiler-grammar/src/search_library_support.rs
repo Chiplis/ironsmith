@@ -150,6 +150,11 @@ pub fn parse_restriction_duration_lexed(
         // has a vow counter on it" (Promise of Loyalty): the restriction lasts
         // while the restricted object keeps the named counter.
         let suffix_words = token_word_refs(suffix_tokens);
+        if suffix_words == ["for", "as", "long", "as", "it", "remains", "tapped"] {
+            return Ok(Some((Until::ForAsLongAs(ironsmith_core::ContinuousDurationPredicate::ObjectTapped(
+                ironsmith_core::ContinuousDurationObject::Tagged(crate::tag::CompilerReferenceTag::It.bind().into()),
+            )), trim_lexed_commas(&tokens[..token_idx]).to_vec())));
+        }
         if let ["for", "as", "long", "as", "it", "has", article, counter_word, "counter", "on", "it"] =
             suffix_words.as_slice()
             && matches!(*article, "a" | "an")

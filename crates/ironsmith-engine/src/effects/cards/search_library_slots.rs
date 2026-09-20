@@ -37,7 +37,7 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let search_override = opposition_agent_search(game, chooser_id, player_id);
 
-        if !game.can_search_library(chooser_id) {
+        if !game.can_search_library_from_effect(chooser_id, player_id, ctx.controller) {
             return Ok(EffectOutcome::prevented());
         }
         let search_control =

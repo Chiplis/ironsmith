@@ -7013,6 +7013,7 @@ pub(super) fn describe_add_mana_then_conditional_consult_hand_bottom(
 
     let selection = describe_search_selection_with_cards(&consult.filter.description());
     let stop_text = match &consult.stop_rule {
+        crate::effects::ConsultTopOfLibraryStopRule::TotalManaValue(_) => return None,
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection,
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => selection,
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => format!(

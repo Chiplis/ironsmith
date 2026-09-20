@@ -711,11 +711,11 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
                 {
                     return false;
                 }
-                let mut filter = self.filter.clone();
-                filter.zone = None;
-                ctx.game
-                    .object(etb.object)
-                    .is_some_and(|obj| filter.matches(obj, &ctx.filter_ctx, ctx.game))
+                // Match the characteristics and controller the object will have
+                // on the battlefield, including other entry replacements.
+                crate::events::zones::matchers::WouldEnterBattlefieldMatcher::new(
+                    self.filter.clone(),
+                ).matches_event(event, ctx)
             }
             _ => false,
         }
@@ -766,13 +766,13 @@ impl StaticAbilityKind for DoubleCountersReplacement {
 }
 
 /// "If one or more [type] counters would be put on a [filter], that many plus
-/// N are put on it instead." (Hardened Scales, Conclave Mentor.)
+/// N (or minus N) are put on it instead.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddCountersPlacementReplacement {
     pub filter: ObjectFilter,
     pub player_filter: Option<PlayerFilter>,
     pub counter_type: Option<CounterType>,
-    pub additional: u32,
+    pub additional: i64,
     pub display: String,
 }
 
@@ -780,14 +780,14 @@ impl AddCountersPlacementReplacement {
     pub fn new(
         filter: ObjectFilter,
         counter_type: Option<CounterType>,
-        additional: u32,
+        additional: impl Into<i64>,
         display: String,
     ) -> Self {
         Self {
             filter,
             player_filter: None,
             counter_type,
-            additional,
+            additional: additional.into(),
             display,
         }
     }

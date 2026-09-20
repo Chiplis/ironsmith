@@ -20,3 +20,6 @@ pub(crate) use epic_spell_copy::EpicSpellCopyEffect;
 pub use retarget_stack_object::{NewTargetRestriction, RetargetMode, RetargetStackObjectEffect};
 pub use scale_x_value::ScaleXValueEffect;
 pub use variable_casualty_planeswalker_copy::VariableCasualtyPlaneswalkerCopyEffect;
+
+mod cast_stored_card_copy;
+pub(crate) use cast_stored_card_copy::CastStoredCardCopyEffect;

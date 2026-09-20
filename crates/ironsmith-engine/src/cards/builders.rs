@@ -1801,7 +1801,10 @@ impl CardDefinitionBuilder {
             KeywordAction::Dash(cost) => self.dash(cost),
             KeywordAction::Blitz(cost) => self.blitz(cost),
             KeywordAction::BlitzFromGraveyard => self.with_ability(Ability::static_ability(
-                StaticAbility::keyword_marker(KeywordAction::BlitzFromGraveyard.display_text()),
+                StaticAbility::from_model(ironsmith_core::StaticAbility::native_alternative_cast_from_zone(
+                    Zone::Graveyard,
+                    ironsmith_core::alternative_cast_model::AlternativeCastKeyword::Blitz,
+                )),
             )),
             KeywordAction::Warp(cost) => self.warp(cost),
             KeywordAction::Plot(cost) => self.plot(cost),
@@ -4378,7 +4381,7 @@ impl CardDefinitionBuilder {
     /// Add warp with the given cost.
     pub fn warp(mut self, cost: ManaCost) -> Self {
         self.alternative_casts
-            .push(AlternativeCastingMethod::Warp { cost });
+            .push(AlternativeCastingMethod::Warp { cost, additional_cost: Default::default() });
         self
     }
 

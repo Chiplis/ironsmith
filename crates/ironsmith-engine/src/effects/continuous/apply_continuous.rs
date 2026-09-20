@@ -557,7 +557,7 @@ fn materialize_duration_player(
     Some(PlayerRef::Specific(id))
 }
 
-fn materialize_duration_predicate(
+pub(crate) fn materialize_duration_predicate(
     predicate: &ironsmith_core::ContinuousDurationPredicate,
     target: &EffectTarget,
     source_type: &Option<EffectSourceType>,

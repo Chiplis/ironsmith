@@ -34,18 +34,23 @@ pub(super) fn open_flashback_grant(
     let Some(next) = sentences.get(sentence_idx + 1) else {
         return Ok(None);
     };
-    if crate::lexer::token_word_refs(sentence.lowered()).first() == Some(&"target")
-        && let Some(shape) =
-            sequence_grammar::parse_flashback_grant_shape(sentence.lowered(), next.lowered())
-    {
-        let target = crate::effect_sentences::parse_target_phrase(shape.target_tokens)?;
-        return Ok(Some(Pair::FlashbackGrant(
-            EffectAst::subject_verb_grant_to_target(
-                target,
-                crate::model::CompilerGrantableCore::flashback_from_cards_mana_cost(),
-                crate::grant::GrantDuration::UntilEndOfTurn,
-            ),
-        )));
+    if let Some(shape) = sequence_grammar::parse_flashback_grant_shape(sentence.lowered(), next.lowered()) {
+        let collective = shape.target_tokens.first().is_some_and(|t| t.is_word("each") || t.is_word("all"));
+        let target_tokens = if collective { &shape.target_tokens[1..] } else { shape.target_tokens };
+        let grantable = crate::model::CompilerGrantableCore::flashback_from_cards_mana_cost();
+        let effect = if collective {
+            let filter = crate::object_filters::parse_object_filter(target_tokens, false)?;
+            EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachObject {
+                filter,
+                effects: vec![EffectAst::subject_verb_grant_to_target(
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
+                    grantable, crate::grant::GrantDuration::UntilEndOfTurn,
+                )],
+            })
+        } else {
+            EffectAst::subject_verb_grant_to_target(crate::effect_sentences::parse_target_phrase(target_tokens)?, grantable, crate::grant::GrantDuration::UntilEndOfTurn)
+        };
+        return Ok(Some(Pair::FlashbackGrant(effect)));
     }
     Ok(None)
 }
@@ -430,4 +435,18 @@ pub(super) fn open_opponents_sacrifice_or_discard_damage(
         return Ok(Some(Pair::OpponentsSacrificeOrDiscardDamage(effects)));
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod catalog_grant_tests {
+    use super::*;
+    #[test]
+    fn collective_flashback_grant_is_a_snapshot_iteration() {
+        let tokens = crate::lexer::lex_line("Each instant and sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost.", 0).unwrap();
+        let sentences = crate::lexer::split_lexed_sentences(&tokens).into_iter()
+            .map(SentenceInput::from_lexed).collect::<Vec<_>>();
+        assert!(open_flashback_grant(&sentences, 0).unwrap().is_some());
+        let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+        assert!(format!("{effects:?}").contains("ForEachObject"), "{effects:#?}");
+    }
 }

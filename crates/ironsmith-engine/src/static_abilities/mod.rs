@@ -3896,7 +3896,7 @@ impl StaticAbility {
     pub fn add_counters_placement_replacement(
         filter: crate::target::ObjectFilter,
         counter_type: Option<crate::object::CounterType>,
-        additional: u32,
+        additional: impl Into<i64>,
         display: String,
     ) -> Self {
         Self::new(AddCountersPlacementReplacement::new(
@@ -3911,7 +3911,7 @@ impl StaticAbility {
     pub fn add_player_counters_placement_replacement(
         player_filter: crate::target::PlayerFilter,
         counter_type: Option<crate::object::CounterType>,
-        additional: u32,
+        additional: impl Into<i64>,
         display: String,
     ) -> Self {
         Self::new(

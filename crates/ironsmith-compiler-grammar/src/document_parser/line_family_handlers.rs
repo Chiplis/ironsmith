@@ -2214,6 +2214,11 @@ pub(super) fn run_statement_probe_line_family(
     {
         return ParseOutcome::NoMatch;
     }
+    // A reflexive follow-up belongs to the replacement's performed action,
+    // not to a separate spell statement without an antecedent.
+    if line_family_try!(ctx, rule, crate::keyword_static::parse_exile_would_die_instead_line(&ctx.line.tokens)).is_some() {
+        return ParseOutcome::NoMatch;
+    }
     let replacement_sentences = split_lexed_sentences(&ctx.line.tokens);
     let replacement_split_candidate = matches!(
         line_grammar::parse_statement_static_preference(&ctx.line.tokens),
@@ -2292,6 +2297,13 @@ pub(super) fn run_static_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
     let rule = RuleId::new("static-line");
+    if ctx.line.tokens.first().is_some_and(|token| token.is_word("∞")) {
+        return line_family_match(ctx, LineDispatchResult::single(
+            RecognizedLine::Static(RecognizedStaticLine {
+                info: ctx.line.info.clone(), parse_tokens: ctx.line.tokens.clone(), chosen_option: None, parsed: None,
+            }), ctx.idx + 1));
+    }
+
     if line_family_claimed!(rule, run_keyword_line_family(ctx))
         || line_family_claimed!(rule, run_start_your_engines_line_family(ctx))
     {

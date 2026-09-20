@@ -440,6 +440,8 @@ pub struct Grant {
     pub player: PlayerId,
     /// What is being granted (ability or alternative casting method).
     pub grantable: Grantable,
+    pub cast_this_way_grants: Vec<crate::static_abilities::StaticAbility>,
+    pub cast_this_way_filter: Option<ObjectFilter>,
     /// How often this grant may be used from the same source.
     pub usage_limit: Option<GrantUsageLimit>,
     /// First turn number on which this grant may be used.
@@ -511,6 +513,8 @@ impl GrantRegistry {
             usage_limit: None,
             available_starting_turn: None,
             play_from_constraints: constraints,
+            cast_this_way_grants: Vec::new(),
+            cast_this_way_filter: None,
             shared_usage_id: Some(shared_usage_id),
             source,
         });
@@ -577,6 +581,8 @@ impl GrantRegistry {
             usage_limit: None,
             available_starting_turn: None,
             play_from_constraints: PlayFromConstraints::default(),
+            cast_this_way_grants: Vec::new(),
+            cast_this_way_filter: None,
             shared_usage_id: None,
             source,
         });
@@ -602,6 +608,8 @@ impl GrantRegistry {
             usage_limit: None,
             available_starting_turn: Some(available_starting_turn),
             play_from_constraints: PlayFromConstraints::default(),
+            cast_this_way_grants: Vec::new(),
+            cast_this_way_filter: None,
             shared_usage_id: None,
             source,
         });
@@ -627,6 +635,8 @@ impl GrantRegistry {
             usage_limit: None,
             available_starting_turn: None,
             play_from_constraints: PlayFromConstraints::default(),
+            cast_this_way_grants: Vec::new(),
+            cast_this_way_filter: None,
             shared_usage_id: None,
             source,
         });
@@ -653,6 +663,8 @@ impl GrantRegistry {
             usage_limit: None,
             available_starting_turn: None,
             play_from_constraints: constraints,
+            cast_this_way_grants: Vec::new(),
+            cast_this_way_filter: None,
             shared_usage_id: None,
             source,
         });
@@ -681,6 +693,8 @@ impl GrantRegistry {
             usage_limit: None,
             available_starting_turn: None,
             play_from_constraints: constraints,
+            cast_this_way_grants: Vec::new(),
+            cast_this_way_filter: None,
             shared_usage_id: None,
             source,
         });
@@ -706,9 +720,18 @@ impl GrantRegistry {
             usage_limit: None,
             available_starting_turn: None,
             play_from_constraints: PlayFromConstraints::default(),
+            cast_this_way_grants: Vec::new(),
+            cast_this_way_filter: None,
             shared_usage_id: None,
             source,
         });
+    }
+
+    /// A single budget covers every matching card, including cards added later.
+    pub fn grant_play_from_to_filter_with_budget(&mut self, filter: ObjectFilter, zone: Zone, player: PlayerId, source: GrantSource, max_plays: u32) {
+        let budget = self.create_shared_usage_budget(max_plays);
+        self.grant_to_filter(filter, zone, player, Grantable::PlayFrom, source);
+        self.grants.last_mut().expect("just inserted").shared_usage_id = Some(budget);
     }
 
     /// Add a filter grant from a resolving effect until end of turn.
@@ -1262,6 +1285,8 @@ impl GrantRegistry {
                         usage_limit: spec.usage_limit,
                         available_starting_turn: None,
                         play_from_constraints: PlayFromConstraints::default(),
+            cast_this_way_grants: Vec::new(),
+            cast_this_way_filter: None,
                         shared_usage_id: None,
                         source: GrantSource::StaticAbility { source_id },
                     });

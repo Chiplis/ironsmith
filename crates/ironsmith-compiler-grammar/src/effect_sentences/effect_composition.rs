@@ -404,6 +404,9 @@ fn parse_exile_top_library_then_play_bundle(
         effect.clone()
     };
 
+    let mut look_at_collection = face_down
+        && !matches!(exile_effect, EffectAst::ForEach(_))
+        && words(permission_sentence).windows(3).any(|words| words == ["look", "at", "and"]);
     // Face-down collection permissions can spell out that the controller may
     // "look at and play" the cards. Some generic surfaces preserve the look as
     // an explicit action before the persistent grant. Here the top-library
@@ -432,6 +435,7 @@ fn parse_exile_top_library_then_play_bundle(
             {
                 return Ok(None);
             }
+            look_at_collection = !matches!(exile_effect, EffectAst::ForEach(_));
             permission.clone()
         }
         EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
@@ -477,6 +481,9 @@ fn parse_exile_top_library_then_play_bundle(
         return Ok(None);
     };
 
+    let look_effect = look_at_collection.then(|| EffectAst::subject_verb_look_at_objects(
+        PlayerAst::You, ObjectFilter::tagged(tag.key.clone()).in_zone(Zone::Exile),
+    ));
     let (permission_tag, inline_choice_effect) = if let Some(choice_tokens) = inline_choice_tokens {
         let chosen_tag = helper_tag_for_tokens(&choice_tokens, "chosen_exiled");
         let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
@@ -587,6 +594,7 @@ fn parse_exile_top_library_then_play_bundle(
     };
 
     leading_effects.push(exile_effect);
+    if let Some(look_effect) = look_effect { leading_effects.push(look_effect); }
     if let Some(choice_effect) = inline_choice_effect {
         leading_effects.push(choice_effect);
     }

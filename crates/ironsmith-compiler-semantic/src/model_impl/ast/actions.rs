@@ -411,6 +411,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 f.debug_tuple("Clash").field(opponent).finish()
             }
             Self::Random(RandomActionAst::FlipCoin) => f.write_str("FlipCoin"),
+            Self::Random(RandomActionAst::FlipCoins { count }) => f.debug_struct("FlipCoins").field("count", count).finish(),
             Self::Random(RandomActionAst::FlipCoinFaceOnly) => f.write_str("FlipCoinFaceOnly"),
             Self::Random(RandomActionAst::RollDie { sides, surface }) => {
                 if let Some(surface) = surface {

@@ -2408,6 +2408,14 @@ fn try_parse_labeled_line_dispatch(
     if let Some((label, label_tokens, body_tokens)) =
         split_label_prefix_lexed(&line.info.source_tokens)
     {
+        if label == "∞" {
+            return Ok(Some(LineDispatchResult::single(RecognizedLine::Static(RecognizedStaticLine {
+                info: line.info.clone(), parse_tokens: line.info.source_tokens.clone(), chosen_option: None, parsed: None,
+            }), idx + 1)));
+        }
+        if let Some(triggered) = recognize_case_to_solve_line(line, label_tokens, body_tokens)? {
+            return Ok(Some(LineDispatchResult::single(RecognizedLine::Triggered(triggered), idx + 1)));
+        }
         let body_line = rewrite_line_tokens(line, body_tokens);
         let is_eminence = label.eq_ignore_ascii_case("eminence");
         let mut authored_trigger = recognize_labeled_qualified_ability_trigger(&body_line);

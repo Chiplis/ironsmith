@@ -380,32 +380,8 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
     ) {
         return Some((Value::SourceRegeneratedThisTurnCount, filter_end));
     }
-    if exact_one_of(
-        count_words,
-        &[
-            &["card", "youve", "drawn", "this", "turn"],
-            &["cards", "youve", "drawn", "this", "turn"],
-            &["card", "you've", "drawn", "this", "turn"],
-            &["cards", "you've", "drawn", "this", "turn"],
-            &["card", "you", "have", "drawn", "this", "turn"],
-            &["cards", "you", "have", "drawn", "this", "turn"],
-        ],
-    ) {
-        return Some((Value::MaxCardsDrawnThisTurn(PlayerFilter::You), filter_end));
-    }
-    if exact_one_of(
-        count_words,
-        &[
-            &["card", "an", "opponent", "has", "drawn", "this", "turn"],
-            &["cards", "an", "opponent", "has", "drawn", "this", "turn"],
-            &["card", "opponents", "have", "drawn", "this", "turn"],
-            &["cards", "opponents", "have", "drawn", "this", "turn"],
-        ],
-    ) {
-        return Some((
-            Value::MaxCardsDrawnThisTurn(PlayerFilter::Opponent),
-            filter_end,
-        ));
+    if let Some(value) = parse_cards_drawn_count_words(count_words) {
+        return Some((value, filter_end));
     }
     if is_kick_count(count_words) {
         return Some((Value::KickCount, filter_end));
@@ -637,4 +613,32 @@ pub(super) fn is_kick_count(words: &[&str]) -> bool {
             &["it"],
         ],
     ) || source_reference_surface_for_words(source_words).is_some()
+}
+
+pub fn parse_cards_drawn_count_words(count_words: &[&str]) -> Option<Value> {
+    if exact_one_of(
+        count_words,
+        &[
+            &["card", "youve", "drawn", "this", "turn"],
+            &["cards", "youve", "drawn", "this", "turn"],
+            &["card", "you've", "drawn", "this", "turn"],
+            &["cards", "you've", "drawn", "this", "turn"],
+            &["card", "you", "have", "drawn", "this", "turn"],
+            &["cards", "you", "have", "drawn", "this", "turn"],
+        ],
+    ) {
+        return Some(Value::MaxCardsDrawnThisTurn(PlayerFilter::You));
+    }
+    if exact_one_of(
+        count_words,
+        &[
+            &["card", "an", "opponent", "has", "drawn", "this", "turn"],
+            &["cards", "an", "opponent", "has", "drawn", "this", "turn"],
+            &["card", "opponents", "have", "drawn", "this", "turn"],
+            &["cards", "opponents", "have", "drawn", "this", "turn"],
+        ],
+    ) {
+        return Some(Value::MaxCardsDrawnThisTurn(PlayerFilter::Opponent));
+    }
+    None
 }

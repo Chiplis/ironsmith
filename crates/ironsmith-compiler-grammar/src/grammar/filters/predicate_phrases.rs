@@ -3324,6 +3324,19 @@ fn parse_active_this_way_discard_predicate(
     )))
 }
 
+fn parse_positive_put_tagged_object_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let tokens = primitives::strip_lexed_prefix_phrase(tokens, &["you", "put"])?;
+    let object_tokens = primitives::strip_lexed_suffix_phrase(tokens, &["into", "your", "hand", "this", "way"])?;
+    let mut filter = parse_this_way_object_filter_clause(LexedClause::new(object_tokens))?;
+    filter.zone = Some(Zone::Hand);
+    Some(PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
+        player: PlayerAst::You,
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
+        filter,
+        mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
+    }))
+}
+
 fn parse_negative_put_tagged_object_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let destination_phrases: &[&[&str]] = &[

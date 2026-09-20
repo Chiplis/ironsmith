@@ -664,6 +664,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
+            | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)

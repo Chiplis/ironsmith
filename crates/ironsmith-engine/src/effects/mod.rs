@@ -203,7 +203,7 @@ pub use replacement::{
     RegisterNextBatchEnterWithCountersEffect, RegisterZoneReplacementEffect, ReplacementApplyMode,
 };
 pub use restrictions::CantEffect;
-pub(crate) use stack::EpicSpellCopyEffect;
+pub(crate) use stack::{EpicSpellCopyEffect, CastStoredCardCopyEffect};
 pub use stack::{
     ChooseNewTargetsEffect, CopySpellEffect, CopySpellForEachTargetEffect, CounterEffect,
     NewTargetRestriction, RetargetMode, RetargetStackObjectEffect, ScaleXValueEffect,

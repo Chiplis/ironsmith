@@ -15,6 +15,11 @@ impl EffectExecutor for ConsultTopOfLibraryEffect {
         let player = resolve_player_filter(game, &self.player, ctx)?;
         let filter_ctx = ctx.filter_context(game);
         let stop_rule = match (&self.stop_rule, &self.max_exposed) {
+            (ConsultTopOfLibraryStopRule::TotalManaValue(value), _) => {
+                LibraryConsultStopRule::TotalManaValue(
+                    resolve_value(game, value, ctx)?.max(0) as u32
+                )
+            }
             (ConsultTopOfLibraryStopRule::FirstMatch, Some(max_exposed)) => {
                 let resolved = resolve_value(game, max_exposed, ctx)?.max(0) as u32;
                 LibraryConsultStopRule::FirstMatchOrExposedCount(resolved)

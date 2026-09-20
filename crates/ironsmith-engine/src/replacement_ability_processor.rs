@@ -132,6 +132,14 @@ pub fn generate_replacement_effects_from_abilities(game: &GameState) -> Vec<Repl
     let mut effects = Vec::new();
 
     let object_ids = game.object_ids_in_deterministic_order();
+    let layered_abilities = game.all_continuous_effects_arc().iter().any(|effect| {
+        matches!(
+            effect.modification.layer(),
+            crate::continuous::Layer::Copy
+                | crate::continuous::Layer::Text
+                | crate::continuous::Layer::Ability
+        )
+    });
 
     // Iterate over all objects and apply static abilities only in zones where they function.
     for object_id in object_ids {
@@ -153,8 +161,12 @@ pub fn generate_replacement_effects_from_abilities(game: &GameState) -> Vec<Repl
                     .from_zone(crate::zone::Zone::Stack).build(object_id, controller));
             }
 
-            // Process each static ability on the object.
-            for ability in object.abilities.iter() {
+            // Layer-six grants and ability loss also affect replacements.
+            let current_abilities = (zone == crate::zone::Zone::Battlefield
+                && (layered_abilities || game.is_face_down(object_id)))
+                .then(|| game.current_abilities(object_id).unwrap_or_default());
+            let abilities = current_abilities.as_deref().unwrap_or(&object.abilities);
+            for ability in abilities {
                 if let AbilityKind::Static(static_ability) = &ability.kind {
                     if !ability.functions_in(&zone) {
                         continue;
@@ -173,17 +185,17 @@ pub fn generate_replacement_effects_from_abilities(game: &GameState) -> Vec<Repl
                 }
             }
 
-            for grant in &object.temporary_static_ability_grants {
-                if grant.is_expired(game.turn.turn_number) {
-                    continue;
-                }
-                let Some(static_ability) = grant.materialize() else {
-                    continue;
-                };
-                if let Some(effect) =
-                    static_ability.generate_replacement_effect(object_id, controller)
-                {
-                    effects.push(effect);
+            if current_abilities.is_none() {
+                for grant in &object.temporary_static_ability_grants {
+                    if grant.is_expired(game.turn.turn_number) {
+                        continue;
+                    }
+                    if let Some(ability) = grant.materialize()
+                        && let Some(effect) =
+                            ability.generate_replacement_effect(object_id, controller)
+                    {
+                        effects.push(effect);
+                    }
                 }
             }
         }

@@ -9,6 +9,7 @@ use crate::target::PlayerFilter;
 /// Flip a coin for a player using the game's deterministic RNG.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlipCoinEffect {
+    pub count: u32,
     pub player: PlayerFilter,
     pub kind: ironsmith_core::CoinFlipKind,
     pub forced_face: Option<ironsmith_core::CoinFace>,
@@ -19,6 +20,7 @@ pub struct FlipCoinEffect {
 impl FlipCoinEffect {
     pub fn new(player: PlayerFilter) -> Self {
         Self {
+            count: 1,
             player,
             kind: ironsmith_core::CoinFlipKind::Called,
             forced_face: None,
@@ -29,6 +31,7 @@ impl FlipCoinEffect {
 
     pub fn face_only(player: PlayerFilter) -> Self {
         Self {
+            count: 1,
             player,
             kind: ironsmith_core::CoinFlipKind::FaceOnly,
             forced_face: None,
@@ -68,6 +71,22 @@ impl EffectExecutor for FlipCoinEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if self.count != 1 {
+            let mut single = self.clone();
+            single.count = 1;
+            let mut count = 0;
+            let mut events = Vec::new();
+            let mut facts = Vec::new();
+            for _ in 0..self.count {
+                let outcome = single.execute(game, ctx)?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(outcome); }
+                count += outcome.as_count().unwrap_or(0);
+                events.extend(outcome.events);
+                facts.extend(outcome.execution_facts);
+            }
+            return Ok(EffectOutcome::with_details(crate::effect::OutcomeStatus::Succeeded,
+                crate::effect::OutcomeValue::Count(count), events, facts));
+        }
         let player = resolve_player_filter(game, &self.player, ctx)?;
         let call = if self.kind == ironsmith_core::CoinFlipKind::Called {
             let options = [

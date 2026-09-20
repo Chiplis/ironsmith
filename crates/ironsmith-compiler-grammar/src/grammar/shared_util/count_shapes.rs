@@ -133,7 +133,7 @@ mod tests;
 
 #[path = "count_shapes/count_shapes_core.rs"]
 mod count_shapes_core_programs;
-pub use count_shapes_core_programs::parse_for_each_count_value_words;
+pub use count_shapes_core_programs::{parse_for_each_count_value_words, parse_cards_drawn_count_words};
 use count_shapes_core_programs::{
     exact_one_of, is_kick_count, parse_exact_dynamic_count_basis, parse_for_each_head,
     value_boundary,

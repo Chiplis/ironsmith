@@ -85,3 +85,8 @@ pub(in super::super) fn parse_exploit(
         max_triggers_per_turn: None,
     }))
 }
+
+pub(in super::super) fn parse_paradigm(_line: &PreprocessedLine, tokens: &[OwnedLexToken], _full_tokens: &[OwnedLexToken]) -> KeywordParseResult {
+    if crate::lexer::TokenWordView::new(tokens).word_refs() != ["paradigm"] { return Ok(None); }
+    Ok(ast(LineAst::StaticAbility(crate::model::CompilerStaticAbilityCore::keyword_marker("Paradigm").into())))
+}

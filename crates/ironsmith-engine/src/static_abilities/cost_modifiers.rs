@@ -1761,6 +1761,7 @@ pub struct ActivatedAbilityCostReduction {
     pub minimum_total_mana: Option<u32>,
     pub per_matching_objects: Option<ObjectFilter>,
     pub per_basic_land_types_among: Option<ObjectFilter>,
+    pub multiplier: Option<crate::effect::Value>,
     pub condition: Option<ActivatedAbilityCostCondition>,
     pub static_condition: Option<crate::ConditionExpr>,
 }
@@ -1775,6 +1776,7 @@ impl ActivatedAbilityCostReduction {
             minimum_total_mana: None,
             per_matching_objects: None,
             per_basic_land_types_among: None,
+            multiplier: None,
             condition: None,
             static_condition: None,
         }
@@ -1793,6 +1795,7 @@ impl ActivatedAbilityCostReduction {
             minimum_total_mana: None,
             per_matching_objects: None,
             per_basic_land_types_among: None,
+            multiplier: None,
             condition: None,
             static_condition: None,
         }

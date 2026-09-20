@@ -223,34 +223,30 @@ fn append_native_alternative_cast_actions_for_card_from_zone(
     view: &DerivedGameView<'_>,
 ) {
     for (idx, alt_cast) in card.alternative_casts.iter().enumerate() {
-        let graveyard_blitz_allowed = from_zone == Zone::Graveyard
-            && matches!(
-                alt_cast,
-                crate::alternative_cast::AlternativeCastingMethod::Blitz { .. }
-            )
-            && card_has_graveyard_blitz_permission(card);
-        if (alt_cast.cast_from_zone() == from_zone || graveyard_blitz_allowed)
+        let additional_zone_allowed = card.abilities.iter().any(|ability| {
+            let crate::ability::AbilityKind::Static(ability) = &ability.kind else { return false; };
+            matches!(ability.compiled_model().map(|model| &model.payload),
+                Some(ironsmith_core::StaticAbilityPayload::NativeAlternativeCastFromZone { zone, method })
+                if *zone == from_zone && alt_cast.keyword() == Some(*method))
+        });
+        if (alt_cast.cast_from_zone() == from_zone || additional_zone_allowed)
             && can_cast_with_alternative_with_view(game, player, card, alt_cast, view)
         {
             actions.push(LegalAction::CastSpell {
                 spell_id: card_id,
                 from_zone,
-                casting_method: CastingMethod::Alternative(idx),
+                casting_method: if alt_cast.cast_from_zone() == from_zone {
+                    CastingMethod::Alternative(idx)
+                } else {
+                    CastingMethod::PlayFrom {
+                        source: card_id,
+                        zone: from_zone,
+                        use_alternative: Some(idx),
+                    }
+                },
             });
         }
     }
-}
-
-fn card_has_graveyard_blitz_permission(card: &crate::object::Object) -> bool {
-    let permission_text = "from your graveyard using its blitz ability";
-    card.compiled_card_text
-        .to_ascii_lowercase()
-        .contains(permission_text)
-        || card.abilities.iter().any(|ability| {
-            crate::runtime_display::ability_surface_text(ability)
-                .to_ascii_lowercase()
-                .contains(permission_text)
-        })
 }
 
 fn append_graveyard_granted_alternative_cast_actions_for_card(
@@ -1174,6 +1170,8 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
     let library_has_active_grants = view.player_has_active_grants_for_zone(player, Zone::Library);
     perf.active_grant_zone_checks_ms = active_grant_zone_started_at.elapsed_ms();
 
+
+
     let hand_summary_started_at = PerfTimer::start();
     let hand_summaries = build_hand_summaries(game, hand);
     perf.hand_summary_ms = hand_summary_started_at.elapsed_ms();
@@ -1258,6 +1256,14 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
     perf.exile_casts_ms = exile_casts_started_at.elapsed_ms();
 
     add_library_cast_actions(game, &mut actions, player, &view, library_has_active_grants);
+    if view.player_has_active_grants_for_zone(player, Zone::OutsideGame) {
+        for &card_id in &game.player(player).expect("active player").sideboard {
+            if !requested_action_source(card_id) { continue; }
+            let Some(card) = game.object(card_id) else { continue; };
+            append_cast_actions_from_zone_for_card(game, &mut actions, player, card_id, card, Zone::OutsideGame, &view, true);
+        }
+        append_granted_land_play_actions_from_public_zone(game, &mut actions, player, Zone::OutsideGame, &view);
+    }
 
     let hand_alternatives_started_at = PerfTimer::start();
     add_hand_alternative_cast_actions(

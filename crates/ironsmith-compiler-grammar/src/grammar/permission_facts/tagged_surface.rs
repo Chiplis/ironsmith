@@ -452,7 +452,7 @@ fn parse_tagged_permission_target_lexed<'a>(
                 TaggedPermissionTargetSurface::It,
                 None,
             )),
-            primitives::phrase(&["that", "card"]).value((
+            primitives::any_phrase(&[&["that", "card"], &["the", "discarded", "card"], &["that", "discarded", "card"]]).value((
                 TaggedPermissionReference::LastTagged,
                 false,
                 TaggedPermissionTargetSurface::ThatCard,

@@ -849,6 +849,10 @@ impl SentenceInput {
     }
 }
 
+#[cfg(test)]
+#[path = "dispatch_entry/optional_result_dependency_tests.rs"]
+mod optional_result_dependency_tests;
+
 struct SentenceDispatchState<'a> {
     effects: &'a mut Vec<EffectAst>,
     carried_context: &'a mut Option<CarryContext>,
@@ -957,6 +961,13 @@ fn future_zone_replacement_counters(
 }
 
 pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    // A result-gated instruction may grant a quoted replacement ability.
+    // Parse its outer result envelope before recognizing any replacement.
+    if tokens.iter().any(|token| token.kind == crate::lexer::TokenKind::Quote)
+        && crate::grammar::structure::split_leading_result_prefix_lexed(tokens).is_some()
+    {
+        return None;
+    }
     let target = || TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
     if tokens.first().is_some_and(|token| token.is_word("if"))
         && sentence_contains(tokens, WOULD_LEAVE_THE_BATTLEFIELD_PHRASE)
@@ -4635,7 +4646,7 @@ pub(super) fn parse_complete_become_statement(
 pub(super) fn parse_complete_compound_gain_statement(
     sentence: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if crate::grammar::structure::split_leading_numeric_result_prefix_lexed(sentence).is_some() {
+    if crate::grammar::structure::split_leading_result_prefix_lexed(sentence).is_some() {
         return Ok(None);
     }
     if sentence
@@ -5461,6 +5472,12 @@ pub fn parse_effect_sentences_lexed(
 fn parse_effect_sentences_lexed_unfinalized(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effect) = crate::permission_helpers::parse_forage_cast_permission(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if let Some(effects) = parse_coin_batch_and_counted_turn_skip(tokens)? {
+        return Ok(effects);
+    }
     // A demonstrative leave watcher in resolving instructions retains its event header.
     if let Some(effects) =
         super::dispatch_inner::parse_delayed_when_that_leaves_battlefield_sentence(tokens)?
@@ -6335,7 +6352,8 @@ fn is_direct_coin_flip(effect: &EffectAst) -> bool {
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
-                | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly),
+                | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
+            | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. }),
             ..
         })
     )
@@ -9888,6 +9906,58 @@ mod tests {
     }
 
     #[test]
+    fn optional_action_inside_result_branch_owns_if_you_do_followup() {
+        let tokens = lex_line(
+            "Flip a coin. If you lose the flip, this creature deals 1 damage to you. If you win the flip, you may exile this creature. If you do, return it to the battlefield transformed under its owner's control.",
+            0,
+        ).unwrap();
+        let parsed = super::parse_effect_sentences_lexed(&tokens).unwrap();
+        assert_eq!(
+            parsed.len(),
+            3,
+            "the optional followup belongs inside the winning branch: {parsed:#?}"
+        );
+        let EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. }) = &parsed[2]
+        else {
+            panic!("expected winning branch: {parsed:#?}");
+        };
+        assert!(
+            matches!(
+                effects.last(),
+                Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                    predicate: IfResultPredicate::Did,
+                    ..
+                }))
+            ),
+            "the return must depend on the optional exile: {effects:#?}"
+        );
+    }
+
+    #[test]
+    fn coin_loss_after_optional_win_still_refers_to_the_flip() {
+        let tokens = lex_line(
+            "Flip a coin. If you win the flip, you may draw a card. If you lose the flip, you lose 1 life.",
+            0,
+        ).unwrap();
+        let parsed = super::parse_effect_sentences_lexed(&tokens).unwrap();
+        assert_eq!(
+            parsed.len(),
+            3,
+            "coin outcomes must remain siblings: {parsed:#?}"
+        );
+        assert!(
+            matches!(
+                parsed.last(),
+                Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                    predicate: IfResultPredicate::DidNot,
+                    ..
+                }))
+            ),
+            "{parsed:#?}"
+        );
+    }
+
+    #[test]
     fn leading_if_you_do_sequence_retains_the_conjoined_result_boundary() {
         let tokens = lex_line(
             "You may pay {1}. If you do, draw a card and gain 2 life.",
@@ -11198,7 +11268,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 ..
             }) => {
                 replace_in_filter(filter, replacement, clause)?;
-                if let LibraryConsultStopRuleAst::MatchCount(count) = stop_rule {
+                if let LibraryConsultStopRuleAst::MatchCount(count) | LibraryConsultStopRuleAst::TotalManaValue(count) = stop_rule {
                     replace_value(count, replacement, clause)?;
                 }
                 if let Some(max_exposed) = max_exposed {
@@ -11291,6 +11361,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
+            | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
@@ -12913,3 +12984,30 @@ pub use crate::model::ast::{
     apply_cant_be_regenerated_to_last_target_effect, primary_damage_target_from_effect,
     primary_target_from_effect,
 };
+
+/// A batch of face-only coin flips followed by a turn-skip count referring
+/// to its heads. The batch is the numeric producer; target selection still
+/// happens when announcing the ability, before any coins are flipped.
+fn parse_coin_batch_and_counted_turn_skip(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentences = split_lexed_sentences(tokens);
+    let [flips, skip] = sentences.as_slice() else { return Ok(None); };
+    if !flips.first().is_some_and(|token| token.is_word("flip")) { return Ok(None); }
+    let Some(number) = crate::grammar::leaf::parse_leaf_number_prefix_tokens(&flips[1..]) else { return Ok(None); };
+    let Some((count, consumed)) = number.into_fixed() else { return Ok(None); };
+    if crate::lexer::TokenWordView::new(&flips[1 + consumed..]).word_refs() != ["coins"] { return Ok(None); }
+    let words = crate::lexer::TokenWordView::new(skip).word_refs();
+    let (player, tail) = if words.starts_with(&["target", "opponent"]) {
+        (PlayerAst::TargetOpponent, &words[2..])
+    } else if words.starts_with(&["target", "player"]) {
+        (PlayerAst::Target, &words[2..])
+    } else { return Ok(None); };
+    if tail != ["skips", "their", "next", "x", "turns", "where", "x", "is", "the", "number", "of", "coins", "that", "came", "up", "heads"] { return Ok(None); }
+    Ok(Some(vec![
+        EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count })),
+        EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+            count: Value::PendingEffectMetric { source: ironsmith_core::EffectMetricSource::Outcome, metric: ironsmith_core::EffectMetric::Count },
+            effects: vec![EffectAst::subject_verb_skip_turn(player)],
+        }),
+    ]))
+}

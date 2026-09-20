@@ -1005,11 +1005,12 @@
         }
         return "Open an Attraction".to_string();
     }
-    if effect
-        .downcast_ref::<crate::effects::ManifestDreadEffect>()
-        .is_some()
-    {
-        return "Manifest dread".to_string();
+    if let Some(manifest) = effect.downcast_ref::<crate::effects::ManifestDreadEffect>() {
+        return if manifest.player == crate::filter::PlayerFilter::You {
+            "Manifest dread".to_string()
+        } else {
+            format!("{} manifests dread", capitalize_first(&describe_player_filter(&manifest.player)))
+        };
     }
     if let Some(manifest) = effect.downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>()
     {
@@ -4883,15 +4884,11 @@
             crate::grant::GrantDuration::UntilYourNextTurnEnd => " until the end of your next turn",
             crate::grant::GrantDuration::Forever => "",
         };
-        return format!(
-            "{}{}",
-            grant
-                .spec
-                .clone()
-                .with_beneficiary(grant.player.clone())
-                .display(),
-            duration
-        );
+        let permission = grant.spec.clone().with_beneficiary(grant.player.clone()).display();
+        if !grant.spec.cast_this_way_grants.is_empty() && !duration.is_empty() {
+            return format!("{}, {}", capitalize_first(duration.trim()), lowercase_first(&permission));
+        }
+        return format!("{permission}{duration}");
     }
     if let Some(grant_play_tagged) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
     {
@@ -5821,6 +5818,9 @@
         };
     }
     if let Some(keyword) = effect.downcast_ref::<crate::effects::EmitKeywordActionEffect>() {
+        if keyword.action == crate::events::KeywordActionKind::Harness && keyword.amount == 1 {
+            return "harness this permanent".to_string();
+        }
         if keyword.action == crate::events::KeywordActionKind::Forage && keyword.amount == 1 {
             return "forage".to_string();
         }

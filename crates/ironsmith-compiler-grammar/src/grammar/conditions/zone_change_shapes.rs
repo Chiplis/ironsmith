@@ -51,6 +51,7 @@ pub(super) enum EntryShape<'a> {
         window: EntryWindowShape,
         other: bool,
         you_had_surface: bool,
+        face_down: bool,
     },
 }
 
@@ -252,6 +253,7 @@ fn parse_object_entry_last_turn(tokens: &[OwnedLexToken]) -> Option<EntryShape<'
         window: EntryWindowShape::LastTurn,
         other: has_other_prefix(object_tokens),
         you_had_surface: true,
+        face_down: false,
     })
 }
 
@@ -269,14 +271,17 @@ fn parse_object_entry_this_turn(tokens: &[OwnedLexToken]) -> Option<EntryShape<'
     crate::grammar::primitives::take_leaf(&mut input, opt(primitives::kw("the")))?;
     crate::grammar::primitives::take_leaf(
         &mut input,
-        primitives::phrase(&["battlefield", "under", "your", "control", "this", "turn"]),
+        primitives::kw("battlefield"),
     )?;
+    let face_down = crate::grammar::primitives::take_leaf(&mut input, opt(primitives::phrase(&["face", "down"])))?.is_some();
+    crate::grammar::primitives::take_leaf(&mut input, primitives::phrase(&["under", "your", "control", "this", "turn"]))?;
     crate::grammar::primitives::take_leaf(&mut input, parse_end)?;
     Some(EntryShape::Object {
         object_tokens,
         window: EntryWindowShape::ThisTurn,
         other: has_other_prefix(object_tokens),
         you_had_surface: you_had_surface.is_some(),
+        face_down,
     })
 }
 
@@ -409,12 +414,14 @@ mod tests {
             other,
             window,
             you_had_surface,
+            face_down,
         } = parse_entry(&had_entry).expect("entry shape with explicit history subject")
         else {
             panic!("expected object entry");
         };
         assert!(other);
         assert!(you_had_surface);
+        assert!(!face_down);
         assert_eq!(window, EntryWindowShape::ThisTurn);
         assert_eq!(
             crate::lexer::parser_token_word_refs(object_tokens),

@@ -290,6 +290,7 @@ pub enum StaticAbilityId {
     ExileToCounteredExileInsteadOfGraveyard,
     ExileToExileInsteadOfGraveyard,
     ExileWouldDieInstead,
+    RedirectZoneChange,
     ModifyDamageAmountReplacement,
     PreventHalfDamageReplacement,
     DoubleCountersReplacement,
@@ -337,6 +338,7 @@ pub enum StaticAbilityId {
     RuleFallbackText,
     UnsupportedParserLine,
     Grants,
+    NativeAlternativeCastFromZone,
     EntersUnderChosenControl,
 }
 
@@ -623,6 +625,7 @@ impl StaticAbilityId {
             | ExileToCounteredExileInsteadOfGraveyard
             | ExileToExileInsteadOfGraveyard
             | ExileWouldDieInstead
+            | RedirectZoneChange
             | ModifyDamageAmountReplacement
             | PreventHalfDamageReplacement
             | DoubleCountersReplacement
@@ -670,7 +673,8 @@ impl StaticAbilityId {
             | RuleFallbackText
             | UnsupportedParserLine
             | Grants
-            | EntersUnderChosenControl => {}
+            | EntersUnderChosenControl
+            | NativeAlternativeCastFromZone => {}
         }
     }
 

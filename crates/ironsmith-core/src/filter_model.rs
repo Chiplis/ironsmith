@@ -5143,6 +5143,7 @@ impl ObjectFilter {
                 crate::ChoiceAggregateMetric::Power => "power",
                 crate::ChoiceAggregateMetric::Toughness => "toughness",
                 crate::ChoiceAggregateMetric::ManaValue => "mana value",
+                crate::ChoiceAggregateMetric::DistinctCardTypes => "distinct card types",
             };
             if let Some(minimum) = constraint.minimum.as_ref() {
                 let minimum = match minimum.unhinted() {
@@ -7080,6 +7081,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::ToughnessOf(spec) => {
                 format!("{} toughness", describe_value_choose_spec_possessive(spec))
             }
+            Value::ManaSpentToCast(_) => "the amount of mana spent to cast it".to_string(),
             Value::ManaValueOf(spec) => {
                 if let ChooseSpec::Tagged(tag) = spec.base() {
                     if tag.as_str() == "triggering" {

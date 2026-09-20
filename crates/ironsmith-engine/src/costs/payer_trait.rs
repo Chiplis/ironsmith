@@ -86,6 +86,7 @@ pub struct CostContext<'dm> {
     /// Pre-chosen cards for costs that require card selection (e.g., ExileFromHand).
     /// When present, costs should use these instead of prompting for choice.
     pub pre_chosen_cards: Vec<ObjectId>,
+    pub announced_targets: Vec<crate::game_state::Target>,
     /// Tagged objects that persist across cost effects.
     ///
     /// This allows effects like "choose a creature, then sacrifice it" to work
@@ -137,6 +138,7 @@ impl<'dm> CostContext<'dm> {
             requesting_effect_cause: None,
             decision_maker,
             pre_chosen_cards: Vec::new(),
+            announced_targets: Vec::new(),
             tagged_objects: HashMap::new(),
             effect_outcomes: HashMap::new(),
             provenance: ProvNodeId::default(),
@@ -242,6 +244,7 @@ impl CostCheckContext {
             requesting_effect_cause: None,
             decision_maker: dm,
             pre_chosen_cards: self.pre_chosen_cards.clone(),
+            announced_targets: Vec::new(),
             tagged_objects: HashMap::new(),
             effect_outcomes: HashMap::new(),
             provenance: ProvNodeId::default(),

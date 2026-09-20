@@ -108,7 +108,7 @@ mod tests {
     }
 
     #[test]
-    fn test_skip_turn_idempotent() {
+    fn test_skip_turn_accumulates_pending_skips() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
@@ -116,12 +116,14 @@ mod tests {
         let mut ctx = ExecutionContext::new_default(source, alice);
         let effect = SkipTurnEffect::you();
 
-        // Skip twice - should still only skip once (it's a set)
+        // Each resolved skip instruction replaces a separate future turn.
         effect.execute(&mut game, &mut ctx).unwrap();
         effect.execute(&mut game, &mut ctx).unwrap();
 
         assert!(game.turn_store.skip_next_turn.contains(&alice));
-        assert_eq!(game.turn_store.skip_next_turn.len(), 1);
+        assert_eq!(game.turn_store.skip_next_turn.pending(alice), 2);
+        assert!(game.turn_store.skip_next_turn.remove(&alice));
+        assert_eq!(game.turn_store.skip_next_turn.pending(alice), 1);
     }
 
     #[test]

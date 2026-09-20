@@ -231,9 +231,6 @@ export default function LobbyOverlay({
       ? String(lobbyDeckDefault.commanderText || "")
       : String(initialJoinCommanderText || "")
   );
-  const [inviteName, setInviteName] = useState("");
-  const [inviteDeckText, setInviteDeckText] = useState("");
-  const [inviteCommanderText, setInviteCommanderText] = useState("");
 
   const lobbyActive = multiplayer.mode !== "idle";
   const playerCount = multiplayer.players.length;
@@ -308,17 +305,8 @@ export default function LobbyOverlay({
   const offlinePlayers = connectionWarnings.filter((warning) => !warning.local);
   const shareLobbyCode = multiplayer.lobbyId || multiplayer.hostPeerId || "";
   const inviteLink = useMemo(
-    () => buildLobbyInviteLink({
-      lobbyId: shareLobbyCode,
-      name: inviteName,
-      deckText: inviteDeckText,
-      commanderText:
-        activeFormat === MATCH_FORMAT_COMMANDER
-        || activeFormat === MATCH_FORMAT_PLANECHASE
-          ? inviteCommanderText
-          : "",
-    }),
-    [activeFormat, inviteCommanderText, inviteDeckText, inviteName, shareLobbyCode]
+    () => buildLobbyInviteLink({ lobbyId: shareLobbyCode }),
+    [shareLobbyCode]
   );
 
   const publicDeckStatus = isRelayId(multiplayer.lobbyId) ? validateFormatDeck(activeFormat,
@@ -403,14 +391,14 @@ export default function LobbyOverlay({
     }}>
       <SheetContent
         side="center"
-        className="fantasy-sheet lobby-sheet flex max-h-[96vh] w-[min(96vw,1040px)] flex-col p-0"
+        className={`fantasy-sheet lobby-sheet flex max-h-[96vh] w-[min(96vw,1120px)] flex-col p-0${lobbyActive ? " lobby-sheet-active" : ""}`}
       >
         <SheetHeader className="fantasy-sheet-header pr-12">
           <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Multiplayer")}</div>
           <SheetTitle>
             {lobbyActive ? ui("Multiplayer Lobby") : mode === "join" ? ui("Join Lobby") : ui("Create Lobby")}
           </SheetTitle>
-          <SheetDescription className="max-w-[46ch] text-[13px] leading-5">{ui("Host or join a multiplayer table, submit decks, and manage invite links from one place.")}</SheetDescription>
+          <SheetDescription className={lobbyActive ? "sr-only" : "max-w-[46ch] text-[13px] leading-5"}>{ui("Host or join a multiplayer table, submit decks, and manage invite links from one place.")}</SheetDescription>
         </SheetHeader>
 
         <div className="lobby-sheet-body grid min-h-0 gap-4 p-4">
@@ -674,8 +662,8 @@ export default function LobbyOverlay({
               )}
             </div>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-              <div className="grid gap-4">
+            <div className="lobby-sheet-active-grid">
+              <div className="lobby-sheet-discovery">
                 <div className="lobby-sheet-panel fantasy-sheet-section grid gap-1 p-4">
                   <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Lobby Code")}</span>
                   <div className="lobby-sheet-code font-mono text-[24px] font-bold tracking-[0.04em] text-foreground">
@@ -714,85 +702,36 @@ export default function LobbyOverlay({
                 </div>
 
                 {!multiplayer.matchStarted ? (
-                  <div className="lobby-sheet-panel fantasy-sheet-section grid gap-3 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Invite Link")}</span>
-                      <button
-                        type="button"
-                        disabled={!inviteLink}
-                        className={`${startButtonClass} w-auto px-3 py-2`}
-                        onClick={() => {
-                          void handleCopyInviteLink();
-                        }}
-                      >{ui("Copy Link")}</button>
-                    </div>
-                    <label className={labelClass}>{ui("Invitee Name")}<input
-                        className={inputClass}
-                        value={inviteName}
-                        onChange={(event) => setInviteName(event.target.value)}
-                        placeholder={ui("Optional player name")}
-                      />
+                  <div className="lobby-sheet-invite">
+                    <label className={labelClass}>{ui("Invite Link")}
+                      <input className={inputClass} readOnly value={inviteLink} />
                     </label>
-                    <label className={labelClass}>{ui("Main Deck")}<textarea
-                        className={textareaClass}
-                        value={inviteDeckText}
-                        onChange={(event) => setInviteDeckText(event.target.value)}
-                        placeholder={
-                          ui(activeFormat === MATCH_FORMAT_COMMANDER
-                            ? `Optional ${COMMANDER_DECK_SIZE}-card or ${PARTNER_DECK_SIZE}-card main deck for this invitee`
-                            : `Optional ${LOBBY_DECK_SIZE}-card main deck for this invitee`)
-                        }
-                      />
-                    </label>
-                    {activeFormat === MATCH_FORMAT_COMMANDER
-                    || activeFormat === MATCH_FORMAT_PLANECHASE ? (
-                      <label className={labelClass}>
-                        {activeFormat === MATCH_FORMAT_PLANECHASE
-                          ? ui("Planar Deck")
-                          : ui("Commander(s)")}
-                        <textarea
-                          className={commanderTextareaClass}
-                          value={inviteCommanderText}
-                          onChange={(event) => setInviteCommanderText(event.target.value)}
-                          placeholder={
-                            ui(activeFormat === MATCH_FORMAT_PLANECHASE
-                              ? "Optional planar deck for this invitee"
-                              : "Optional until the invitee finalizes their commander choice")
-                          }
-                        />
-                      </label>
-                    ) : null}
-                    <label className={labelClass}>{ui("Generated Link")}<textarea
-                        className={`${commanderTextareaClass} min-h-[96px]`}
-                        readOnly
-                        value={inviteLink}
-                        placeholder={ui("Invite link will appear once the lobby code is available")}
-                      />
-                    </label>
-                    <div className={infoTextClass}>
-                      <span>{ui("Includes the current lobby code plus any optional name, deck, and supplemental fields above.")}</span>
-                      <span>{ui("Incomplete deck submissions still join the lobby and can be finished there before the player becomes ready.")}</span>
-                    </div>
+                    <button type="button" disabled={!inviteLink}
+                      className={pill} onClick={() => { void handleCopyInviteLink(); }}>
+                      {ui("Copy Link")}
+                    </button>
                   </div>
                 ) : null}
+                {/* A player who already joined can still swap to a catalog
+                    deck, to one the host prepared, or to their own list. */}
+                {!multiplayer.matchStarted && activeFormat === MATCH_FORMAT_NORMAL && !startPending ? (
+                  <CompetitiveDeckPicker
+                    format="modern"
+                    onApply={({ deckText, commanderText }) => {
+                      updateLobbyDeck({ deckText, commanderText: commanderText || "" });
+                    }}
+                  />
+                ) : null}
+              </div>
 
+              <div className="lobby-sheet-sidebar">
                 {!multiplayer.matchStarted ? (
-                  <div className="lobby-sheet-panel fantasy-sheet-section grid gap-3 p-4">
+                  <div className="lobby-sheet-deck lobby-sheet-panel fantasy-sheet-section grid gap-3 p-4">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Your Deck")}</span>
                       <span className="text-[13px] text-muted-foreground">{ui("Format:") + " "}{ui(formatName(activeFormat))}
                       </span>
                     </div>
-                    {/* A player who already joined can still swap to a catalog
-                        deck, to one the host prepared, or to their own list. */}
-                    {activeFormat === MATCH_FORMAT_NORMAL && !startPending ? (
-                      <CompetitiveDeckPicker
-                        format="modern"
-                        onApply={({ deckText, commanderText }) => {
-                          updateLobbyDeck({ deckText, commanderText: commanderText || "" });
-                        }}
-                      />
-                    ) : null}
                     {deckOptions.length > 1 ? (
                       <label className={labelClass}>
                         {ui("Available deck")}
@@ -817,7 +756,8 @@ export default function LobbyOverlay({
                       </label>
                     ) : null}
                     <textarea
-                      className={textareaClass}
+                      aria-label={ui("Your Deck")}
+                      className={`${textareaClass} lobby-sheet-main-deck`}
                       disabled={startPending}
                       value={multiplayer.localDeckText}
                       onChange={(event) =>
@@ -866,10 +806,8 @@ export default function LobbyOverlay({
                     </div>
                   </div>
                 ) : null}
-              </div>
 
-              <div className="grid gap-4">
-                <div className="lobby-sheet-panel fantasy-sheet-section grid gap-2 p-4">
+                <div className="lobby-sheet-players lobby-sheet-panel fantasy-sheet-section grid gap-2 p-4">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Players")}</span>
                     <span className="text-[13px] text-muted-foreground">
@@ -908,7 +846,7 @@ export default function LobbyOverlay({
                   <button
                     type="button"
                     disabled={!canStartHostedMatch || startPending}
-                    className={startButtonClass}
+                    className={`${startButtonClass} lobby-sheet-start`}
                     onClick={() => {
                       void startHostedMatch();
                     }}
@@ -917,7 +855,7 @@ export default function LobbyOverlay({
                   </button>
                 ) : null}
 
-                <div className="flex items-center justify-between gap-2">
+                <div className="lobby-sheet-footer flex items-center justify-between gap-2">
                   <span className="text-[13px] text-muted-foreground">
                     {ui(formatName(activeFormat))}{" " + ui("• Starting life:") + " "}{multiplayer.startingLife}
                   </span>

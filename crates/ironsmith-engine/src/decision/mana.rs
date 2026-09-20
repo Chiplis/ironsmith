@@ -550,7 +550,15 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view(
                     continue;
                 }
 
-                let multiplier = if let Some(per_filter) = &reduction.per_matching_objects {
+                let multiplier = if let Some(value) = &reduction.multiplier {
+                    let mut dm = SelectFirstDecisionMaker;
+                    let targets = chosen_targets.iter().map(|target| match target {
+                        Target::Object(id) => crate::effects::ResolvedTarget::Object(*id),
+                        Target::Player(id) => crate::effects::ResolvedTarget::Player(*id),
+                    }).collect();
+                    let ctx = ExecutionContext::new(ability_source, activator, &mut dm).with_targets(targets);
+                    resolve_value(game, value, &ctx).unwrap_or(0).max(0) as u32
+                } else if let Some(per_filter) = &reduction.per_matching_objects {
                     game.objects_in_deterministic_order()
                         .into_iter()
                         .filter(|obj| per_filter.matches(obj, &filter_ctx, game))
@@ -3349,6 +3357,11 @@ fn tagged_dependency_satisfied_by_prior_cost(
         &sacrifice.filter.tagged_constraints
     } else if let Some(sacrifice) = effect.downcast_ref::<ironsmith_core::SacrificePlayerEffect>() {
         &sacrifice.filter.tagged_constraints
+    } else if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
+        match exile.spec.base() {
+            ChooseSpec::Tagged(tag) => return available_tags.contains(tag),
+            _ => return false,
+        }
     } else if let Some(returned) = effect.downcast_ref::<crate::effects::ReturnToHandEffect>() {
         match returned.spec.base() {
             ChooseSpec::Object(filter) | ChooseSpec::All(filter) => &filter.tagged_constraints,

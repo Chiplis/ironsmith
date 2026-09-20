@@ -1695,6 +1695,8 @@ pub fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
         crate::grammar::shared_util::value_helper_shapes::parse_party_size_player(&filter_words)
     {
         Value::PartySize(player)
+    } else if let Some(value) = crate::grammar::shared_util::count_shapes::parse_cards_drawn_count_words(&filter_words) {
+        value
     } else if etb_grammar::etb_tokens_have_your_hand_count_value(&filter_tokens) {
         Value::CardsInHand(PlayerFilter::You)
     } else {

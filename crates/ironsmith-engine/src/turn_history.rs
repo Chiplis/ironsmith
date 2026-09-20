@@ -1231,6 +1231,9 @@ pub(crate) fn resolve_turn_history_count(
                 .filter(|snapshot| historical_filter.matches_snapshot(snapshot, filter_ctx, game))
                 .count() as i32
         }
+        TurnHistoryCount::TurnedFaceUp(player_filter) => history.projected_records()
+            .filter_map(|record| record.event.downcast::<crate::events::TurnedFaceUpEvent>())
+            .filter(|event| player_filter.matches_player(event.player, filter_ctx)).count() as i32,
         TurnHistoryCount::TokensCreated(player_filter) => history
             .projected_records()
             .filter_map(|record| record.event.downcast::<CreateTokensEvent>())

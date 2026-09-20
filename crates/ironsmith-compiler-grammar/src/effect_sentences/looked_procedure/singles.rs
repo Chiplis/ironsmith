@@ -898,19 +898,30 @@ pub(super) fn reveal_then_bargain(
 /// library in any order." followed by "If this spell was cast from anywhere
 /// other than your hand, put each of those cards into your hand instead.",
 /// read together as a replacement of the whole procedure.
+fn all_hand_replacement_predicate(
+    sentence: &SentenceInput,
+    rest: &[SentenceInput],
+    revealed: bool,
+) -> Option<crate::cards::builders::PredicateAst> {
+    let [replacement, ..] = rest else { return None; };
+    if revealed { return None; }
+    if triple_grammar::is_nonhand_replacement_looked_split_shape(trimmed(sentence), replacement.lowered()) {
+        return Some(crate::cards::builders::PredicateAst::ThisSpellWasCastFromNonHand);
+    }
+    if !triple_grammar::is_one_hand_rest_bottom_shape(trimmed(sentence)) { return None; }
+    let tokens = replacement.lowered();
+    let split = tokens.iter().position(|token| token.is_word("if"))?;
+    let prefix = crate::lexer::parser_token_word_refs(&tokens[..split]);
+    if prefix != ["put", "each", "of", "those", "cards", "into", "your", "hand", "instead"] { return None; }
+    crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens[split + 1..]).ok()
+}
+
 pub(super) fn nonhand_replacement_shape(
     sentence: &SentenceInput,
     rest: &[SentenceInput],
     revealed: bool,
 ) -> bool {
-    let [replacement, ..] = rest else {
-        return false;
-    };
-    !revealed
-        && triple_grammar::is_nonhand_replacement_looked_split_shape(
-            trimmed(sentence),
-            replacement.lowered(),
-        )
+    all_hand_replacement_predicate(sentence, rest, revealed).is_some()
 }
 
 pub(super) fn nonhand_replacement(
@@ -918,9 +929,9 @@ pub(super) fn nonhand_replacement(
     sentence: &SentenceInput,
     rest: &[SentenceInput],
 ) -> bool {
-    if !nonhand_replacement_shape(sentence, rest, group.revealed) {
+    let Some(predicate) = all_hand_replacement_predicate(sentence, rest, group.revealed) else {
         return false;
-    }
+    };
     let player = group.owner;
     let hand_tag = helper_tag_for_tokens(sentence.lowered(), "hand");
     let mut hand_filter = ObjectFilter::tagged(group.tag.clone());
@@ -956,19 +967,17 @@ pub(super) fn nonhand_replacement(
     ];
     let replacement_effects = vec![
         look_effect,
-        EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(crate::tag::TagRef::of(group.tag.clone()), None),
-            Zone::Hand,
-            false,
-            ReturnControllerAst::Preserve,
-            false,
-            None,
-        ),
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+            tag: crate::tag::TagRef::of(group.tag.clone()),
+            effects: vec![EffectAst::subject_verb_move_to_zone(
+                it(), Zone::Hand, false, ReturnControllerAst::Preserve, false, None,
+            )],
+        }),
     ];
     // The replacement spells the view itself, in both branches.
     group.view_style = ViewStyle::Absorbed;
     group.effects = vec![EffectAst::SelfReplacement {
-        predicate: crate::cards::builders::PredicateAst::ThisSpellWasCastFromNonHand,
+        predicate,
         if_true: replacement_effects,
         if_false: default_effects,
         attach_to_previous_ability: false,

@@ -431,6 +431,9 @@ pub struct GrantSpec<SA, E, C, Cond> {
     pub beneficiary: PlayerFilter,
     /// How often this permission may be used from the same source.
     pub usage_limit: Option<GrantUsageLimit>,
+    /// Total plays shared by all cards under a resolving effect's permission.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub max_plays: Option<u32>,
     /// Static abilities granted to a spell as it is cast using this permission.
     pub cast_this_way_grants: Vec<SA>,
     /// An optional narrower filter for the spell that receives
@@ -451,6 +454,7 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             zone,
             beneficiary: PlayerFilter::You,
             usage_limit: None,
+            max_plays: None,
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             source_exiled_surface: None,
@@ -476,6 +480,7 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             zone: self.zone,
             beneficiary: self.beneficiary,
             usage_limit: self.usage_limit,
+            max_plays: self.max_plays,
             cast_this_way_grants: self
                 .cast_this_way_grants
                 .into_iter()
@@ -489,6 +494,11 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
     /// Return a copy of this grant specification with an explicit beneficiary.
     pub fn with_beneficiary(mut self, beneficiary: PlayerFilter) -> Self {
         self.beneficiary = beneficiary;
+        self
+    }
+
+    pub fn with_max_plays(mut self, max_plays: u32) -> Self {
+        self.max_plays = Some(max_plays);
         self
     }
 
@@ -548,6 +558,7 @@ where
             zone: Zone::Hand,
             beneficiary: PlayerFilter::You,
             usage_limit: None,
+            max_plays: None,
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             source_exiled_surface: None,
@@ -608,6 +619,7 @@ where
             zone: Zone::Graveyard,
             beneficiary: PlayerFilter::You,
             usage_limit: None,
+            max_plays: None,
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             source_exiled_surface: None,
@@ -827,7 +839,12 @@ where
         }
 
         fn cast_this_way_spell_subject(filter: &ObjectFilter) -> String {
-            let cast_desc = castable_filter_description(filter);
+            let mut filter = filter.clone();
+            if filter.zone == Some(Zone::Graveyard) && filter.owner == Some(PlayerFilter::You) {
+                filter.zone = None;
+                filter.owner = None;
+            }
+            let cast_desc = castable_filter_description(&filter);
             if let Some(base) = cast_desc.strip_suffix(" spells") {
                 return format!("a {base} spell");
             }
@@ -1263,6 +1280,12 @@ where
         {
             may_prefix = format!("Once during each of your turns, you may{rest}");
         }
+        if matches!(self.grantable, Grantable::PlayFrom) && self.zone == Zone::OutsideGame
+            && self.filter == ObjectFilter::default().owned_by(PlayerFilter::You)
+            && self.max_plays == Some(1)
+        {
+            return format!("{may_prefix} play a card you own from outside the game");
+        }
         let cast_this_way_suffix = || {
             if self.cast_this_way_grants.is_empty() {
                 return String::new();
@@ -1674,6 +1697,7 @@ where
         {
             let mut cast_filter = self.filter.clone();
             cast_filter.zone = None;
+            if cast_filter.owner == Some(PlayerFilter::You) { cast_filter.owner = None; }
             let filter_desc = castable_filter_description(&cast_filter);
             let cost_text = graveyard_cast_cost_text(additional_costs);
             if self.filter == ObjectFilter::source() {

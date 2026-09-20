@@ -953,7 +953,7 @@ impl GameState {
         self.turn_store
             .extra_turns
             .retain(|candidate| *candidate != player);
-        self.turn_store.skip_next_turn.remove(&player);
+        self.turn_store.skip_next_turn.remove_all(player);
         self.turn_store
             .skipped_steps
             .retain(|(candidate, _), _| *candidate != player);
