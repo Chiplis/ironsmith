@@ -3,7 +3,7 @@ name: Deploy IronSmith UI to GitHub Pages
 on:
   push:
     branches:
-      - feature/deck-catalog-automation
+      - main
   workflow_dispatch:
 
 permissions:

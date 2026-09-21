@@ -746,7 +746,7 @@ cd web/ui && pnpm install && pnpm dev
 
 ### Preview deploy from the fork
 
-The fork's `feature/deck-catalog-automation` branch is wired to GitHub Pages.
+The fork's `main` branch is wired to GitHub Pages.
 Every push to that branch, or a manual run of **Deploy IronSmith UI to GitHub
 Pages**, builds the WASM runtime and the Vite UI, then publishes `web/ui/dist`.
 The first run can take longer because it downloads the Scryfall card data and
