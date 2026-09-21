@@ -5,6 +5,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or commit SHA to deploy"
+        required: true
+        default: main
+        type: string
 
 permissions:
   contents: read
@@ -19,6 +25,8 @@ jobs:
     steps:
       - name: Check out the fork
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -38,6 +46,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Restore generated engine and card assets
+        id: generated-cache
         uses: actions/cache@v4
         with:
           path: |
@@ -51,11 +60,17 @@ jobs:
             web/ui/public/cards
             web/ui/public/ironsmith_semantic_scores.json
           key: ironsmith-pages-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rebuild-wasm.sh', 'scripts/generate_baked_registry.py', 'scripts/stream_scryfall_blocks.py', 'crates/**') }}
-          restore-keys: |
-            ironsmith-pages-${{ runner.os }}-
 
       - name: Build the engine and browser card assets
+        if: steps.generated-cache.outputs.cache-hit != 'true'
         run: ./rebuild-wasm.sh
+
+      - name: Verify generated runtime
+        shell: bash
+        run: |
+          test -s web/wasm_demo/pkg/engine_bg.wasm
+          test -s web/wasm_demo/pkg/compiler_bg.wasm
+          test -s web/wasm_demo/pkg/verifier_bg.wasm
 
       - name: Install UI dependencies
         working-directory: web/ui

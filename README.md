@@ -748,9 +748,12 @@ cd web/ui && pnpm install && pnpm dev
 
 The fork's `main` branch is wired to GitHub Pages.
 Every push to that branch, or a manual run of **Deploy IronSmith UI to GitHub
-Pages**, builds the WASM runtime and the Vite UI, then publishes `web/ui/dist`.
+Pages**, builds the WASM runtime when its source cache changes and the Vite UI,
+then publishes `web/ui/dist`. For a manual run, use the `ref` input to choose
+`main`, another branch, a tag, or an exact commit SHA.
 The first run can take longer because it downloads the Scryfall card data and
-creates the browser card assets; later runs reuse the Actions cache.
+creates the browser card assets; later UI-only runs reuse the exact engine
+cache and do not rebuild those assets.
 
 Enable **Settings → Pages → Source: GitHub Actions** once in the fork. The
 preview will then be available at:
