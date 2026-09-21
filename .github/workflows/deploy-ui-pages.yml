@@ -1,0 +1,85 @@
+name: Deploy IronSmith UI to GitHub Pages
+
+on:
+  push:
+    branches:
+      - feature/deck-catalog-automation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the fork
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.1.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: pnpm
+          cache-dependency-path: web/ui/pnpm-lock.yaml
+
+      - name: Set up Rust and WebAssembly target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Restore generated engine and card assets
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/wasm-bindgen
+            ~/.cargo/registry
+            ~/.cargo/git
+            cards.json
+            cards.json.scryfall-bulk-data.json
+            reports/engine-status.sqlite3
+            web/wasm_demo/pkg
+            web/ui/public/cards
+            web/ui/public/ironsmith_semantic_scores.json
+          key: ironsmith-pages-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rebuild-wasm.sh', 'scripts/generate_baked_registry.py', 'scripts/stream_scryfall_blocks.py', 'crates/**') }}
+          restore-keys: |
+            ironsmith-pages-${{ runner.os }}-
+
+      - name: Build the engine and browser card assets
+        run: ./rebuild-wasm.sh
+
+      - name: Install UI dependencies
+        working-directory: web/ui
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the Vite application
+        working-directory: web/ui
+        run: pnpm build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/ui/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
