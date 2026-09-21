@@ -168,10 +168,10 @@ const SavedDeckRow = memo(function SavedDeckRow({ preset, isBusy, onSelect, targ
   );
 });
 
-export default function CompetitiveDeckBrowser({ onSelect, targetName = "", savedDecks = [] }) {
+export default function CompetitiveDeckBrowser({ onSelect, targetName = "", savedDecks = [], initialFormat = "modern" }) {
   const ui = useUiText();
   const [catalog, setCatalog] = useState(null);
-  const [catalogFormat, setCatalogFormat] = useState("modern");
+  const [catalogFormat, setCatalogFormat] = useState(initialFormat);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
@@ -358,7 +358,7 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
           <input className={`${fieldClass} pl-8`} value={query} onChange={(event) => { setQuery(event.target.value); resetScroll(); }} placeholder={ui("Search by name, archetype, card, event…")} aria-label={ui("Search the catalog")} />
         </label>
       </div>
-      <div className="flex items-end gap-3">
+      <div className="flex flex-wrap items-end gap-3">
         <label className="grid gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b806b]">{ui("Format")}
           <select className={selectClass.replace("w-full", "w-auto min-w-[136px]")} style={selectStyle} value={catalogFormat} onChange={(event) => { setCatalogFormat(event.target.value); resetScroll(); }}>
             {catalogFormats.map((formatOption) => <option key={formatOption.id} value={formatOption.id}>{formatOption.label}</option>)}

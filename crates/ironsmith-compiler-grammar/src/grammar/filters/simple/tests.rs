@@ -33,6 +33,21 @@ fn compound_time_lord_surface_keeps_its_distinct_subtype() {
 }
 
 #[test]
+fn split_hyphenated_subtype_keeps_creature_constraint() {
+    for words in [
+        vec!["assembly", "worker", "creature"],
+        vec!["assembly-worker", "creature"],
+    ] {
+        let filter = parse_simple_object_filter_words(&words, false)
+            .expect("compound subtype and explicit creature noun should parse");
+        assert_eq!(filter.subtypes, [Subtype::AssemblyWorker]);
+        assert_eq!(filter.card_types, [CardType::Creature]);
+        assert!(filter.all_subtypes.is_empty(), "{filter:#?}");
+    }
+    assert!(parse_simple_object_filter_words(&["assembly", "goblin", "creature"], false).is_none());
+}
+
+#[test]
 fn controller_suffixes_preserve_target_and_iterated_players() {
     let controller_only = parse("you control");
     assert_eq!(controller_only.controller, Some(PlayerFilter::You));

@@ -2512,6 +2512,16 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             "the target is paired with another creature".to_string()
         }
         Condition::TaggedObjectMatches(tag, filter) => {
+            if let [constraint] = filter.tagged_constraints.as_slice()
+                && constraint.tag.as_str() == "__chosen_name__"
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+            {
+                let mut remainder = filter.clone();
+                remainder.tagged_constraints.clear();
+                if remainder == ObjectFilter::default() {
+                    return "that card has the chosen name".into();
+                }
+            }
             if filter.attacking_player_only
                 && filter.attacking_player_or_planeswalker_controlled_by == Some(PlayerFilter::Opponent)
             {
@@ -6036,5 +6046,21 @@ mod exact_keyword_condition_tests {
             .excluded_static_abilities
             .push(crate::static_abilities::StaticAbilityId::Reach);
         assert!(describe_exact_keyword_condition("it", &filter).is_none());
+    }
+}
+
+#[cfg(test)]
+mod chosen_name_condition_tests {
+    use super::*;
+    #[test]
+    fn chosen_name_condition_preserves_additional_qualifiers() {
+        let mut filter = ObjectFilter::default().match_tagged(
+            TagKey::from("__chosen_name__"),
+            crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
+        );
+        let tag = TagKey::from("observed_card");
+        assert_eq!(describe_condition(&Condition::TaggedObjectMatches(tag.clone(), filter.clone())), "that card has the chosen name");
+        filter.card_types.push(CardType::Creature);
+        assert_ne!(describe_condition(&Condition::TaggedObjectMatches(tag, filter)), "that card has the chosen name");
     }
 }

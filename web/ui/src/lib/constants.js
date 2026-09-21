@@ -1,3 +1,4 @@
+import { manaSymbolUrl } from './mana-assets.js';
 export const PHASE_TRACK = [
   "Untap",
   "Upkeep",
@@ -10,12 +11,12 @@ export const PHASE_TRACK = [
 ];
 
 export const MANA_SYMBOLS = [
-  { key: "white", symbol: "W", label: "White", svg: "https://svgs.scryfall.io/card-symbols/W.svg" },
-  { key: "blue", symbol: "U", label: "Blue", svg: "https://svgs.scryfall.io/card-symbols/U.svg" },
-  { key: "black", symbol: "B", label: "Black", svg: "https://svgs.scryfall.io/card-symbols/B.svg" },
-  { key: "red", symbol: "R", label: "Red", svg: "https://svgs.scryfall.io/card-symbols/R.svg" },
-  { key: "green", symbol: "G", label: "Green", svg: "https://svgs.scryfall.io/card-symbols/G.svg" },
-  { key: "colorless", symbol: "C", label: "Colorless", svg: "https://svgs.scryfall.io/card-symbols/C.svg" },
+  { key: "white", symbol: "W", label: "White", svg: manaSymbolUrl("W") },
+  { key: "blue", symbol: "U", label: "Blue", svg: manaSymbolUrl("U") },
+  { key: "black", symbol: "B", label: "Black", svg: manaSymbolUrl("B") },
+  { key: "red", symbol: "R", label: "Red", svg: manaSymbolUrl("R") },
+  { key: "green", symbol: "G", label: "Green", svg: manaSymbolUrl("G") },
+  { key: "colorless", symbol: "C", label: "Colorless", svg: manaSymbolUrl("C") },
 ];
 
 const PHASE_KEYS = {

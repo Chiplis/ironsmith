@@ -8,6 +8,33 @@ fn parse(raw: &str) -> TargetAst {
     parse_target_phrase_inner(&tokens).expect(raw)
 }
 
+#[test]
+fn enchanted_creature_card_reference_is_not_limited_to_battlefield() {
+    let TargetAst::Object(filter, explicit_target, _) = parse("enchanted creature card") else {
+        panic!("expected an object reference");
+    };
+    assert!(explicit_target.is_none());
+    assert_eq!(filter.zone, None);
+    assert_eq!(filter.card_types, vec![CardType::Creature]);
+    assert!(filter.has_explicit_card_noun());
+    assert_eq!(filter.tagged_constraints.len(), 1);
+    assert_eq!(filter.tagged_constraints[0].tag, crate::tag::CompilerReferenceTag::Enchanted.bind().into());
+}
+
+#[test]
+fn bare_demonstrative_type_is_a_reference_not_a_current_type_requirement() {
+    for text in ["that creature", "that artifact", "that land"] {
+        let TargetAst::Object(filter, explicit_target, _) = parse(text) else {
+            panic!("expected reference: {text}");
+        };
+        assert!(explicit_target.is_none());
+        assert!(filter.card_types.is_empty(), "{text}: {filter:?}");
+        assert_eq!(filter.zone, None);
+        assert_eq!(filter.tagged_constraints.len(), 1);
+        assert!(filter.source_surface.is_some());
+    }
+}
+
 fn parse_with_source(raw: &str, source_name: &str) -> TargetAst {
     let context =
         crate::parse_context::ParseContext::for_fragment(source_name, Vec::new(), Vec::new(), raw);

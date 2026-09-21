@@ -252,6 +252,7 @@ export function createEmptyState() {
     policy: buildMatchClockConfig(),
   });
   return {
+    chatMessages: [],
     role: null,
     mode: "idle",
     lobbyId: "",
@@ -946,7 +947,14 @@ export function createPeer(peerId, options) {
   const requestedPeerId = String(peerId || "").trim();
   if (options?.transport === "websocket") return new WebSocketPeer(requestedPeerId, options);
   if (options?.transport === "lan") return new NativeLanPeer(requestedPeerId);
-  return requestedPeerId ? new Peer(requestedPeerId, options) : new Peer(options);
+  // Reclaiming a saved ID can legitimately report unavailable-id while an
+  // old socket closes or another host is elected. The error event is handled
+  // by recovery and surfaced in status; avoid PeerJS's duplicate console errors.
+  const peer = requestedPeerId ? new Peer(requestedPeerId, { ...options, debug: 0 }) : new Peer(options);
+  const release = () => peer.destroy();
+  window.addEventListener('pagehide', release, { once: true });
+  peer.on('close', () => window.removeEventListener('pagehide', release));
+  return peer;
 }
 
 export function connectionHeartbeatKey(kind, peerId) {

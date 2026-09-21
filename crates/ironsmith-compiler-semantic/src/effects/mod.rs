@@ -51,7 +51,7 @@ pub use ironsmith_core::{
     NewTargetRestriction, NinjutsuCostEffect, NinjutsuEffect, NoteLifeTotalEffect,
     OpenAttractionEffect, PayAnyEnergyEffect, PayAnyLifeEffect, PayEnergyEffect, PayLifeEffect,
     PayManaEffect, PhaseInEffect, PhaseOutDuration, PhaseOutEffect, PlaySubgameEffect,
-    PoisonCountersEffect, PopulateEffect, PrepareEffect, PreventAllCombatDamageEffect,
+    BecomePlottedEffect, PoisonCountersEffect, PopulateEffect, PrepareEffect, PreventAllCombatDamageEffect,
     PreventAllDamageEffect, PreventAllDamageToTargetEffect as CorePreventAllDamageToTargetEffect,
     PreventDamageEffect as CorePreventDamageEffect, PreventNextTimeDamageEffect,
     PreventNextTimeDamageSource, PreventNextTimeDamageTarget, ProliferateEffect,

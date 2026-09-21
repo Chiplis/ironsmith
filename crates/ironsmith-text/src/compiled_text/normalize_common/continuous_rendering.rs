@@ -5177,6 +5177,9 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::BeCountered(filter) => {
             format!("{} can't be countered", filter.description())
         }
+        crate::effect::Restriction::TurnFaceUp(filter) => {
+            format!("{} can't be turned face up", filter.description())
+        }
         crate::effect::Restriction::Transform(filter) => {
             format!("{} can't transform", filter.description())
         }

@@ -6374,6 +6374,8 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 format!("the number of counters on {}", describe_choose_spec(spec))
             }
         }
+        Value::PendingComparisonLeft | Value::PendingComparisonRight | Value::PendingComparisonDifference =>
+            "<unresolved comparison reference>".to_string(),
         Value::TaggedCount => "the tagged object count".to_string(),
     }
 }

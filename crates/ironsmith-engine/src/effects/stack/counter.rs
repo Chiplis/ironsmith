@@ -28,11 +28,11 @@ fn counter_one_stack_object(
             .unwrap_or_else(|| obj.abilities_vec());
         let cant_be_countered = abilities.iter().any(|ability| {
             if let AbilityKind::Static(s) = &ability.kind {
-                let display = s.display().to_ascii_lowercase();
+                // Only a self-protection capability applies on this spell.
+                // Battlefield-wide restrictions are evaluated by the tracker;
+                // their display text does not protect their source on the stack.
                 s.cant_be_countered()
                     || s.id() == crate::static_abilities::StaticAbilityId::CantBeCountered
-                    || display.contains("can't be countered")
-                    || display.contains("cant be countered")
             } else {
                 false
             }

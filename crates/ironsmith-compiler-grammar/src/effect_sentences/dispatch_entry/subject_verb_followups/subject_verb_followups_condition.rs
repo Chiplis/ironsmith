@@ -14,20 +14,26 @@ pub(super) fn pre_rule_conditional_optional_result_followup(
         && sentence_tokens[0].is_word("when")
         && sentence_tokens[1].is_word("you")
         && sentence_tokens[2].is_word("do");
-    if continuation.len() == sentence_tokens.len() && !is_when_you_do {
+    let words = crate::lexer::parser_token_word_refs(sentence_tokens);
+    let is_if_you_dont = words.starts_with(&["if", "you", "don't"])
+        || words.starts_with(&["if", "you", "dont"])
+        || words.starts_with(&["if", "you", "do", "not"]);
+    if continuation.len() == sentence_tokens.len() && !is_when_you_do && !is_if_you_dont {
         return Ok(None);
     }
-    let Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })) =
-        state.effects.last_mut()
-    else {
-        return Ok(None);
+    let effects = match state.effects.last_mut() {
+        Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })) => effects,
+        Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, if_false, .. }))
+            if if_false.is_empty() => if_true,
+        _ => return Ok(None),
     };
-    if !matches!(
-        effects.last(),
-        Some(EffectAst::Permissions(
-            PermissionEffectAst::May { .. } | PermissionEffectAst::MayByPlayer { .. }
-        ))
-    ) {
+    // Both acceptance and refusal continuations belong to the optional action's
+    // branch. A skipped outer condition must not execute the refusal outcome.
+    let producer = effects.iter().rev().find(|effect| !matches!(effect,
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. })));
+    if !matches!(producer, Some(EffectAst::Permissions(
+        PermissionEffectAst::May { .. } | PermissionEffectAst::MayByPlayer { .. }
+    ))) {
         return Ok(None);
     }
 

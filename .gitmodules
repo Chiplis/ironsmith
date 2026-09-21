@@ -1,0 +1,3 @@
+[submodule "vendor/mana"]
+	path = vendor/mana
+	url = https://github.com/andrewgioia/Mana.git

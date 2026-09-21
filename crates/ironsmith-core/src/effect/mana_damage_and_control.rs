@@ -3294,11 +3294,25 @@ impl ShuffleObjectsIntoLibraryEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ExchangeTextBoxesEffect {
     pub target: ChooseSpec,
+    /// Exchange the source with the single selected object. Otherwise select two objects.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub include_source: bool,
+    #[cfg_attr(feature = "serde", serde(default = "exchange_text_box_default_duration"))]
+    pub duration: crate::effect::Until,
+}
+
+fn exchange_text_box_default_duration() -> crate::effect::Until {
+    crate::effect::Until::ThisLeavesTheBattlefield
 }
 
 impl ExchangeTextBoxesEffect {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self { target, include_source: false, duration: exchange_text_box_default_duration() }
+    }
+
+    pub fn with_source(mut self) -> Self {
+        self.include_source = true;
+        self
     }
 }
 

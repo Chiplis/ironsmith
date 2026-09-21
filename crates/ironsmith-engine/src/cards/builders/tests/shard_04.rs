@@ -1152,9 +1152,9 @@ pub(super) fn test_parse_dash_kicker_with_typed_discard_cost_compiles_to_optiona
         "{2}{B}"
     );
     match costs[1].processing_mode() {
-        crate::costs::CostProcessingMode::DiscardCards { count, card_types } => {
+        crate::costs::CostProcessingMode::DiscardCards { count, filter } => {
             assert_eq!(count, 1);
-            assert_eq!(card_types, vec![CardType::Creature]);
+            assert_eq!(filter.card_types, vec![CardType::Creature]);
         }
         other => panic!("expected typed discard cost, got {other:?}"),
     }

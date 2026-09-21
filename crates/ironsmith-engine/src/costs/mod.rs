@@ -697,9 +697,9 @@ mod tests {
         let cost = Cost::discard(2, Some(crate::types::CardType::Creature));
         assert!(cost.0.effect_ref().is_some());
         match cost.processing_mode() {
-            CostProcessingMode::DiscardCards { count, card_types } => {
+            CostProcessingMode::DiscardCards { count, filter } => {
                 assert_eq!(count, 2);
-                assert_eq!(card_types, vec![crate::types::CardType::Creature]);
+                assert_eq!(filter.card_types, vec![crate::types::CardType::Creature]);
             }
             other => panic!("expected discard processing mode, got {other:?}"),
         }
@@ -828,4 +828,26 @@ mod tests {
             "effect-backed remove-counters-among ref should survive Cost trait-object wrapping"
         );
     }
+}
+
+/// Cards available for a selected discard cost. The source cannot pay a selected
+/// discard: source-only costs use the immediate payment path instead.
+pub(crate) fn legal_discard_cost_cards(
+    game: &crate::game_state::GameState,
+    player: crate::ids::PlayerId,
+    source: crate::ids::ObjectId,
+    filter: &crate::filter::ObjectFilter,
+) -> Vec<crate::ids::ObjectId> {
+    use crate::filter::ObjectFilterExt;
+    let ctx = crate::filter::FilterContext::new(player).with_source(source);
+    game.player(player)
+        .into_iter()
+        .flat_map(|p| p.hand.iter().copied())
+        .filter(|id| {
+            *id != source
+                && game
+                    .object(*id)
+                    .is_some_and(|object| filter.matches(object, &ctx, game))
+        })
+        .collect()
 }

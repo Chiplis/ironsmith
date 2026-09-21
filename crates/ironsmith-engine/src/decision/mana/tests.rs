@@ -699,3 +699,49 @@ fn optional_and_x_proposals_reuse_characteristics_without_mutating_live_state() 
         assert_eq!(game.object(id).unwrap().x_value, None);
     }
 }
+
+#[test]
+fn composed_discard_costs_assign_distinct_cards_across_overlapping_filters() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Creature spell")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let source = game.create_object_from_definition(&creature, alice, Zone::Hand);
+    let broad = crate::costs::Cost::discard(1, None);
+    let narrow = crate::costs::Cost::discard(1, Some(CardType::Creature));
+    // The spell being cast cannot itself satisfy even an unrestricted discard.
+    assert!(!can_pay_non_mana_cost_sequence_for_cast(
+        &game,
+        alice,
+        source,
+        vec![broad.clone()]
+    ));
+    game.create_object_from_definition(&creature, alice, Zone::Hand);
+    assert!(!can_pay_non_mana_cost_sequence_for_cast(
+        &game,
+        alice,
+        source,
+        vec![broad.clone(), narrow.clone()]
+    ));
+    let artifact = CardDefinitionBuilder::new(CardId::new(), "Artifact card")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_definition(&artifact, alice, Zone::Hand);
+    // The broad slot initially encounters the creature; it must be reassigned
+    // to the artifact so the narrow slot can use the creature.
+    for costs in [
+        vec![broad.clone(), narrow.clone()],
+        vec![narrow.clone(), broad.clone()],
+    ] {
+        assert!(can_pay_non_mana_cost_sequence_for_cast(
+            &game, alice, source, costs
+        ));
+    }
+    assert!(!can_pay_non_mana_cost_sequence_for_cast(
+        &game,
+        alice,
+        source,
+        vec![crate::costs::Cost::discard(2, None), narrow]
+    ));
+}

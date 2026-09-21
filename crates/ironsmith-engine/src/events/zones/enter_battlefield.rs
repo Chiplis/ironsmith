@@ -49,6 +49,10 @@ pub struct EnterBattlefieldEvent {
     pub set_base_power_toughness: Option<(i32, i32)>,
     /// If set, the object enters under this player's control.
     pub controller_override: Option<PlayerId>,
+    /// Selected entry program awaiting execution without committing the event.
+    pub(crate) pending_program: Option<(crate::resolution::ResolutionProgram, PlayerId)>,
+    /// Effects and links accumulated by entry programs before final choices.
+    pub(crate) program_choices: crate::game_state::PreparedEtbChoices,
     /// As-entry choices already collected against this provisional object.
     pub(crate) prepared_choices: Option<crate::game_state::PreparedEtbChoices>,
 }
@@ -74,6 +78,8 @@ impl EnterBattlefieldEvent {
             set_base_power_toughness: None,
             controller_override: None,
             prepared_choices: None,
+            pending_program: None,
+            program_choices: Default::default(),
         }
     }
 
@@ -97,6 +103,8 @@ impl EnterBattlefieldEvent {
             set_base_power_toughness: None,
             controller_override: None,
             prepared_choices: None,
+            pending_program: None,
+            program_choices: Default::default(),
         }
     }
 

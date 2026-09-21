@@ -317,6 +317,8 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
 
     /// Retain the compiler's typed static-ability model for structural
     /// rendering passes. Hand-authored runtime abilities return `None`.
+    fn is_source_only_graveyard_replacement(&self) -> bool { false }
+
     fn compiled_model(&self) -> Option<&CompiledStaticAbility> {
         None
     }
@@ -1420,6 +1422,21 @@ impl StaticAbilityInstanceId {
 #[derive(Debug, Clone)]
 pub struct StaticAbility(pub Arc<dyn StaticAbilityKind>, StaticAbilityInstanceId);
 
+impl ironsmith_core::functional_zones::StaticAbilityFunctionalZones for StaticAbility {
+    fn default_functional_zones(&self) -> Vec<crate::zone::Zone> {
+        if let Some(model) = self.compiled_model() {
+            return model.default_functional_zones();
+        }
+        ironsmith_core::functional_zones::static_ability_zone_defaults(
+            Some(self.id()),
+            self.is_source_only_graveyard_replacement(),
+            self.grant_spec()
+                .filter(|spec| spec.filter.source)
+                .map(|spec| spec.zone),
+        )
+    }
+}
+
 impl PartialEq for StaticAbility {
     fn eq(&self, other: &Self) -> bool {
         if self.0.id() != other.0.id() {
@@ -1427,6 +1444,7 @@ impl PartialEq for StaticAbility {
         }
 
         match self.0.id() {
+            StaticAbilityId::Enchant => self.enchant_filter() == other.enchant_filter(),
             StaticAbilityId::Protection => self.0.protection_from() == other.0.protection_from(),
             StaticAbilityId::HexproofFrom => {
                 self.0.hexproof_from_filter() == other.0.hexproof_from_filter()
@@ -1593,6 +1611,21 @@ impl StaticAbility {
 
     pub fn compiled_model(&self) -> Option<&CompiledStaticAbility> {
         self.0.compiled_model()
+    }
+
+    /// Only replacements of this object's own graveyard move function from
+    /// every origin zone by default. Global replacement abilities stay in
+    /// their declared functional zones.
+    pub fn is_source_only_graveyard_replacement(&self) -> bool {
+        if let Some(model) = self.compiled_model() {
+            return match &model.payload {
+                ironsmith_core::StaticAbilityPayload::ExileToExileInsteadOfGraveyard { filter, .. }
+                | ironsmith_core::StaticAbilityPayload::ExileWouldDieInstead { filter, .. } => filter.source,
+                _ => false,
+            };
+        }
+        self.0.is_source_only_graveyard_replacement()
+            || self.exile_would_die_instead_spec().is_some_and(|(filter, ..)| filter.source)
     }
 
     pub fn exile_would_die_instead_spec(

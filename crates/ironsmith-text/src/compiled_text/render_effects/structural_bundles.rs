@@ -3194,6 +3194,40 @@ pub(in crate::compiled_text) fn describe_single_hand_reveal_setup(
         .then(|| format!("Reveal {selection} from your hand"))
 }
 
+/// A random hand selection followed by a private view is one look action.
+/// Keep owner, viewer, selection count, and reference identity in the model.
+pub(in crate::compiled_text) fn describe_random_hand_look_setup(effects: &[&Effect]) -> Option<String> {
+    let (target, choose_effect, look_effect) = match effects {
+        [choose, look] => (None, *choose, *look),
+        [target, choose, look] => (Some(structural_unwrap_render_wrappers(target)
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()?), *choose, *look),
+        _ => return None,
+    };
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let look = structural_unwrap_render_wrappers(look_effect)
+        .downcast_ref::<crate::effects::LookAtObjectsEffect>()?;
+    let owner = choose.filter.owner.as_ref()?;
+    if let Some(target) = target {
+        if target.chooser.is_some() || choose_spec_player_filter(&target.target).as_ref() != Some(owner) {
+            return None;
+        }
+    }
+    if choose.is_search || choose.reveal || choose.top_only
+        || !choose.additional_zones.is_empty()
+        || !choose.count.is_random() || choose_exact_count(choose) != Some(1)
+        || choose.count_value.is_some()
+        || choose_primary_zone(choose) != Some(Zone::Hand)
+        || &choose.chooser != owner
+        || look.viewer != PlayerFilter::You || look.subject != PlayerFilter::You
+        || look.filter != ObjectFilter::tagged(choose.tag.clone())
+    { return None; }
+    let selection = describe_choose_selection(choose);
+    selection.contains("card").then(|| format!(
+        "Look at {selection} in {} hand", describe_possessive_player_filter(owner)
+    ))
+}
+
 fn describe_search_exile_shuffle_tail_view<'a>(
     effects: &[&'a Effect],
 ) -> Option<(&'a PlayerFilter, String)> {
@@ -13853,4 +13887,52 @@ pub(super) fn describe_restricted_player_target_life_loss(effects: &[Effect]) ->
     let rendered = describe_effect(life_effect);
     let consequence = rendered.strip_prefix("That player ").or_else(|| rendered.strip_prefix("that player "))?;
     Some(format!("{} {consequence}", capitalize_first(&describe_choose_spec(&target.target))))
+}
+
+#[cfg(test)]
+mod nested_hand_reveal_tests {
+    use super::*;
+    #[test]
+    fn nested_hand_reveal_preserves_randomness_and_tag_identity() {
+        for random in [false, true] {
+            let tag = TagKey::from("hand_reveal_probe");
+            let count = if random { crate::ChoiceCount::exactly(1).at_random() } else { crate::ChoiceCount::exactly(1) };
+            let choose = Effect::new(crate::effects::ChooseObjectsEffect::new(
+                ObjectFilter::default().in_zone(Zone::Hand).owned_by(PlayerFilter::You),
+                count, PlayerFilter::You, tag.clone(),
+            ).in_zone(Zone::Hand));
+            let reveal = Effect::new(crate::effects::RevealTaggedEffect::new(tag));
+            let sequence = Effect::new(crate::effects::SequenceEffect::new(vec![choose.clone(), reveal]));
+            assert_eq!(describe_effect(&sequence), if random { "Reveal a card at random from your hand" } else { "Reveal a card from your hand" });
+            let unrelated = Effect::new(crate::effects::RevealTaggedEffect::new(TagKey::from("other")));
+            assert!(describe_single_hand_reveal_setup(&[&choose, &unrelated]).is_none());
+        }
+    }
+}
+
+#[cfg(test)]
+mod random_hand_look_tests {
+    use super::*;
+    #[test]
+    fn private_random_hand_look_preserves_owner_viewer_and_tag() {
+        for (owner, expected) in [(PlayerFilter::You, "your"), (PlayerFilter::target_player(), "target player's"), (PlayerFilter::target_opponent(), "target opponent's")] {
+            let tag = TagKey::from("random_look_probe");
+            let choose = Effect::new(crate::effects::ChooseObjectsEffect::new(
+                ObjectFilter::default().in_zone(Zone::Hand).owned_by(owner.clone()),
+                crate::ChoiceCount::exactly(1).at_random(), owner.clone(), tag.clone(),
+            ).in_zone(Zone::Hand));
+            let look = Effect::new(crate::effects::LookAtObjectsEffect::new(ObjectFilter::tagged(tag.clone()), PlayerFilter::You, PlayerFilter::You));
+            assert_eq!(describe_random_hand_look_setup(&[&choose, &look]), Some(format!("Look at a card at random in {expected} hand")));
+            if let PlayerFilter::Target(inner) = &owner {
+                let target = Effect::new(crate::effects::TargetOnlyEffect::new(ChooseSpec::target(ChooseSpec::Player(inner.as_ref().clone()))));
+                assert_eq!(describe_random_hand_look_setup(&[&target, &choose, &look]), Some(format!("Look at a card at random in {expected} hand")));
+                let other_target = Effect::new(crate::effects::TargetOnlyEffect::new(ChooseSpec::Player(PlayerFilter::You)));
+                assert!(describe_random_hand_look_setup(&[&other_target, &choose, &look]).is_none());
+            }
+            let other_viewer = Effect::new(crate::effects::LookAtObjectsEffect::new(ObjectFilter::tagged(tag), PlayerFilter::Opponent, PlayerFilter::You));
+            assert!(describe_random_hand_look_setup(&[&choose, &other_viewer]).is_none());
+            let other_tag = Effect::new(crate::effects::LookAtObjectsEffect::new(ObjectFilter::tagged(TagKey::from("other")), PlayerFilter::You, PlayerFilter::You));
+            assert!(describe_random_hand_look_setup(&[&choose, &other_tag]).is_none());
+        }
+    }
 }

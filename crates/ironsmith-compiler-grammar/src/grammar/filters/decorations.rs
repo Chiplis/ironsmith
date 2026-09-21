@@ -41,6 +41,7 @@ const NOT_ON_BATTLEFIELD_PHRASES: &[&[&str]] = &[
     &["isn't", "on", "the", "battlefield"],
     &["are", "not", "on", "the", "battlefield"],
     &["is", "not", "on", "the", "battlefield"],
+    &["not", "on", "the", "battlefield"],
 ];
 
 const ODD_MANA_VALUE_PHRASES: &[&[&str]] = &[&["odd", "mana", "value"], &["odd", "mana", "values"]];

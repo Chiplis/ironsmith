@@ -331,3 +331,11 @@ pub fn parse_attached_is_goaded_tokens(tokens: &[OwnedLexToken]) -> Option<Attac
     primitives::take_leaf(&mut input, semantic_finish)?;
     Some(subject)
 }
+
+/// Return a typed attachment subject and its remaining predicate tokens.
+pub fn split_attached_subject_tokens(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    let mut input = LexStream::new(tokens);
+    primitives::take_leaf(&mut input, parse_attached_subject_lexed)?;
+    let boundary = tokens.len().checked_sub(input.len())?;
+    Some(tokens.split_at(boundary))
+}

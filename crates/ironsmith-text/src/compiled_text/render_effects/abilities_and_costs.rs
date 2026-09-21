@@ -815,27 +815,26 @@ fn restore_command_zone_origin(
     ability: &Ability,
     activated: &crate::ability::ActivatedAbility,
 ) -> String {
-    if ability.functional_zones.as_slice() != [Zone::Command]
-        || effects.contains("command zone")
-    {
+    if ability.functional_zones.as_slice() != [Zone::Command] || effects.contains("command zone") {
         return effects;
     }
-    let moves_from_command_zone = activated
-        .effects
-        .flattened_default_effects()
-        .iter()
-        .any(|effect| {
-            effect
-                .downcast_ref::<crate::effects::MoveToZoneEffect>()
-                .is_some_and(|move_to_zone| {
-                    matches!(move_to_zone.zone, Zone::Battlefield | Zone::Hand)
-                        && match move_to_zone.target.base() {
-                            ChooseSpec::Source => true,
-                            ChooseSpec::Object(filter) => filter.is_commander,
-                            _ => false,
-                        }
-                })
-        });
+    let moves_from_command_zone =
+        activated
+            .effects
+            .flattened_default_effects()
+            .iter()
+            .any(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                    .is_some_and(|move_to_zone| {
+                        matches!(move_to_zone.zone, Zone::Battlefield | Zone::Hand)
+                            && match move_to_zone.target.base() {
+                                ChooseSpec::Source => true,
+                                ChooseSpec::Object(filter) => filter.is_commander,
+                                _ => false,
+                            }
+                    })
+            });
     if !moves_from_command_zone {
         return effects;
     }
@@ -2828,6 +2827,36 @@ pub(super) fn describe_reveal_from_hand_or_pay_mode_cost(
 }
 
 pub(crate) fn describe_alternative_costs(costs: &[crate::costs::Cost]) -> String {
+    // Each discard is a separate consuming payment. Coordinate their noun
+    // phrases under one verb, making distinctness explicit for later cards.
+    if !costs.is_empty()
+        && let Some(discards) = costs
+            .iter()
+            .map(|cost| {
+                let discard = cost
+                    .effect_ref()?
+                    .downcast_ref::<crate::effects::DiscardEffect>()?;
+                let phrase = describe_simple_discard_cost(discard)?;
+                Some((discard, phrase.strip_prefix("Discard ")?.to_string()))
+            })
+            .collect::<Option<Vec<_>>>()
+    {
+        let nouns = discards
+            .into_iter()
+            .enumerate()
+            .map(|(index, (discard, noun))| {
+                if index > 0 && discard.count == Value::Fixed(1) {
+                    if let Some(rest) = noun.strip_prefix("a ").or_else(|| noun.strip_prefix("an "))
+                    {
+                        return format!("another {rest}");
+                    }
+                }
+                noun
+            })
+            .collect::<Vec<_>>();
+        return format!("discard {}", join_with_and(&nouns));
+    }
+
     if costs.iter().any(|cost| {
         cost.effect_ref()
             .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
@@ -3205,6 +3234,49 @@ mod activation_condition_surface_tests {
                 unrelated,
             ),
             "Create two tokens that are copies of it"
+        );
+    }
+}
+
+#[cfg(test)]
+mod coordinated_discard_tests {
+    use super::*;
+
+    #[test]
+    fn alternative_discard_costs_share_verb_and_preserve_restrictions() {
+        let filter = ObjectFilter {
+            zone: Some(Zone::Hand),
+            subtypes: vec![crate::types::Subtype::Island],
+            ..Default::default()
+        };
+        let restricted =
+            crate::costs::Cost::effect(crate::effects::DiscardEffect::new_with_filter(
+                1,
+                PlayerFilter::You,
+                false,
+                Some(filter),
+            ));
+        assert_eq!(
+            describe_alternative_costs(&[crate::costs::Cost::discard(
+                2,
+                Some(crate::types::CardType::Artifact),
+            )]),
+            "discard two artifact cards"
+        );
+        assert_eq!(
+            describe_alternative_costs(&[restricted.clone()]),
+            "discard an Island card"
+        );
+        assert_eq!(
+            describe_alternative_costs(&[restricted, crate::costs::Cost::discard(1, None)]),
+            "discard an Island card and another card"
+        );
+        assert_eq!(
+            describe_alternative_costs(&[
+                crate::costs::Cost::discard(1, Some(crate::types::CardType::Artifact)),
+                crate::costs::Cost::discard(1, Some(crate::types::CardType::Creature)),
+            ]),
+            "discard an artifact card and another creature card"
         );
     }
 }

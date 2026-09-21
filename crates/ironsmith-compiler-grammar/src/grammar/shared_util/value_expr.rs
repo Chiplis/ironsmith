@@ -183,6 +183,8 @@ fn tagged_characteristic_reference_tag(words: &[&str]) -> crate::tag::CompilerRe
         crate::tag::CompilerReferenceTag::SourceExiled
     } else if words.contains(&"exploited") {
         crate::tag::CompilerReferenceTag::Exploited
+    } else if words.contains(&"sacrificed") {
+        crate::tag::CompilerReferenceTag::AdditionalCostObject
     } else {
         crate::tag::CompilerReferenceTag::It
     }
@@ -279,7 +281,7 @@ pub fn colored_mana_symbols_in_costs(words: &[&str]) -> Option<(Value, usize)> {
     Some((
         Value::ManaSymbolsInManaCostOf {
             spec: Box::new(ChooseSpec::Tagged(
-                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                (crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()).into(),
             )),
             color,
         }

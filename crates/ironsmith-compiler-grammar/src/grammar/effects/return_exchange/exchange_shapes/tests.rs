@@ -114,3 +114,16 @@ fn parses_heterogeneous_disjunctive_exchange_with_relative_suffix() {
     assert_eq!(shape.shared_type, Some(ExchangeSharedTypeShape::CardType));
     assert!(!shape.invalid_shared_type);
 }
+
+#[test]
+fn source_text_box_exchange_preserves_the_other_object_phrase() {
+    for possessive in ["its", "his", "her"] {
+        let tokens = lex_line(&format!("{possessive} text box and another creature's"), 0).unwrap();
+        let Some(ExchangeClauseShape::SourceTextBox { other_tokens }) = parse_exchange_clause_shape(&tokens) else {
+            panic!("source text box should be recognized: {possessive}");
+        };
+        assert_eq!(render_token_slice(other_tokens), "another creature's");
+    }
+    let tokens = lex_line("his text box and another creature", 0).unwrap();
+    assert!(parse_exchange_clause_shape(&tokens).is_none());
+}

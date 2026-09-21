@@ -364,19 +364,6 @@ fn materialize_static_zones(
     if uses_spell_only_functional_zones(&ability) {
         materialized = materialized.in_zones(spell_only_functional_zones());
     }
-    if uses_all_zone_functional_zones(&ability) {
-        materialized = materialized.in_zones(vec![
-            Zone::Battlefield,
-            Zone::Hand,
-            Zone::Stack,
-            Zone::Graveyard,
-            Zone::Exile,
-            Zone::Library,
-            Zone::Command,
-            Zone::Ante,
-            Zone::OutsideGame,
-        ]);
-    }
     if uses_referenced_ability_functional_zones(&ability, facts.references_this_ability_cost) {
         materialized = materialized.in_zones(vec![
             Zone::Battlefield,

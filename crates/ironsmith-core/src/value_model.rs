@@ -729,6 +729,11 @@ pub enum Value {
     /// Parse-time form of [`Value::PriorEffectMetric`]. Reference resolution
     /// binds it to the nearest compatible memory-producing effect.
     PendingPriorEffectMetric(PriorEffectMetricQuery),
+    /// Compiler-only references to the operands of the preceding comparison.
+    /// These must be bound before constructing an executable program.
+    PendingComparisonLeft,
+    PendingComparisonRight,
+    PendingComparisonDifference,
     EventValue(EventValueSpec),
     EventValueOffset(EventValueSpec, i32),
     WasKicked,
@@ -957,6 +962,8 @@ pub enum Restriction {
     BeTargetedPlayerFrom(PlayerFilter, ObjectFilter),
     BeCountered(ObjectFilter),
     Transform(ObjectFilter),
+    /// Matching permanents cannot be turned face up by any means.
+    TurnFaceUp(ObjectFilter),
     PhaseOut(ObjectFilter),
     PhaseIn(ObjectFilter),
     AttackOrBlock(ObjectFilter),
@@ -1351,6 +1358,10 @@ impl Restriction {
 
     pub fn be_countered(filter: ObjectFilter) -> Self {
         Self::BeCountered(filter)
+    }
+
+    pub fn turn_face_up(filter: ObjectFilter) -> Self {
+        Self::TurnFaceUp(filter)
     }
 
     pub fn transform(filter: ObjectFilter) -> Self {

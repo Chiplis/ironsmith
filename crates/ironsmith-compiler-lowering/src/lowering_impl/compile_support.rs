@@ -1539,10 +1539,14 @@ fn compile_exchange_zones_effect(
 
 fn compile_exchange_text_boxes_effect(
     target: &TargetAst,
+    include_source: bool,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     let (spec, choices) = resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-    let effect = Effect::exchange_text_boxes(spec);
+    let mut exchange = crate::effects::ExchangeTextBoxesEffect::new(spec);
+    exchange.include_source = include_source;
+    if include_source { exchange.duration = Until::Forever; }
+    let effect = Effect::new(exchange);
     let tag = ctx.next_tag("exchanged");
     ctx.last_object_tag = Some(tag.clone());
     Ok((vec![effect.tag(tag)], choices))

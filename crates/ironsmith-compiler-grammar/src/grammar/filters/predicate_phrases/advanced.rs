@@ -1572,6 +1572,20 @@ pub(super) fn parse_value_reference_comparison_predicate(
 ) -> Option<PredicateAst> {
     let words = crate::lexer::parser_token_word_refs(tokens);
     let words = words.strip_prefix(&["the"]).unwrap_or(&words);
+    let comparison = match words {
+        ["it", "greater"] | ["it", "is", "greater"] | ["it's", "greater"] | ["its", "greater"] =>
+            Some(crate::effect::ValueComparisonOperator::GreaterThan),
+        ["it", "less"] | ["it", "is", "less"] | ["it's", "less"] | ["its", "less"] =>
+            Some(crate::effect::ValueComparisonOperator::LessThan),
+        _ => None,
+    };
+    if let Some(operator) = comparison {
+        return Some(PredicateAst::ValueComparison {
+            left: Value::PendingComparisonLeft,
+            operator,
+            right: Value::PendingComparisonRight,
+        });
+    }
     if words.first() == Some(&"sacrificed") && words.len() >= 6 {
         let kind = words[1].trim_end_matches("'s").trim_end_matches('s');
         let axis = words[2];
@@ -3248,6 +3262,28 @@ pub(super) fn parse_additional_cost_object_state_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
+    for (copula, negated) in [
+        (&["wasnt"][..], true),
+        (&["wasn't"][..], true),
+        (&["was", "not"][..], true),
+        (&["was"][..], false),
+    ] {
+        let atoms = [
+            WinnowSequence::subject("subject", WinnowCaptureKind::UntilPhrase(copula)),
+            WinnowSequence::action("copula", WinnowCaptureKind::WordCount(copula.len())),
+            WinnowSequence::modifier("descriptor", WinnowCaptureKind::Rest),
+        ];
+        let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else { continue; };
+        let Some(subject) = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause) else { continue; };
+        let subject = LexedClause::new(strip_leading_article_tokens(subject.tokens()));
+        if !surface::exact_any(subject, &[&["discarded", "card"]]) { continue; }
+        let Some(descriptor) = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause) else { continue; };
+        if descriptor.tokens().is_empty() { continue; }
+        let filter = parse_object_filter(descriptor.tokens(), false)?;
+        let predicate = PredicateAst::TaggedMatches(crate::tag::CompilerReferenceTag::DiscardedCost.bind(), filter);
+        return Ok(Some(if negated { PredicateAst::Not(Box::new(predicate)) } else { predicate }));
+    }
+
     let optional_article = [WinnowSequence::any_word(&["a", "an", "the"])];
     let atoms = [
         WinnowSequence::optional(&optional_article),
@@ -3349,8 +3385,30 @@ pub(super) fn parse_tagged_exiled_predicate(tokens: &[OwnedLexToken]) -> Option<
     ))
 }
 
+fn parse_tagged_chosen_name_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let verbs: &[&[&str]] = &[&["has"], &["have"]];
+    let atoms = [
+        WinnowSequence::subject("subject", WinnowCaptureKind::UntilAnyPhrase(verbs)),
+        WinnowSequence::action("action", WinnowCaptureKind::OneOf(&["has", "have"])),
+        WinnowSequence::object("name", WinnowCaptureKind::Rest),
+    ];
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
+    if !is_implicit_object_state_subject_clause(subject) { return None; }
+    let name = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
+    let name = LexedClause::new(strip_leading_article_tokens(name.trimmed().tokens()));
+    if !surface::exact(name, &["chosen", "name"]) { return None; }
+    let filter = ObjectFilter::default().match_tagged(
+        crate::tag::CompilerReferenceTag::ChosenName.bind(),
+        crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
+    );
+    Some(PredicateAst::ItMatches(filter))
+}
+
 pub(super) fn parse_tagged_state_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    parse_tagged_controlled_permanent_shape(tokens)
+    parse_tagged_chosen_name_shape(tokens)
+        .or_else(|| parse_tagged_controlled_permanent_shape(tokens))
         .or_else(|| parse_tagged_entered_under_your_control_shape(tokens))
         .or_else(|| parse_tagged_wasnt_blocking_shape(tokens))
         .or_else(|| parse_implicit_object_present_state_shape(tokens))
@@ -5213,4 +5271,21 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     Err(CardTextError::ParseError(
         render_unsupported_predicate_message(predicate_tokens),
     ))
+}
+
+#[cfg(test)]
+mod chosen_name_predicate_tests {
+    use super::*;
+    #[test]
+    fn referenced_object_chosen_name_is_a_typed_name_comparison() {
+        for text in ["that card has the chosen name", "it has the chosen name", "that permanent has chosen name"] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let Some(PredicateAst::ItMatches(filter)) = parse_tagged_chosen_name_shape(&tokens) else { panic!("{text}"); };
+            assert_eq!(filter.tagged_constraints.len(), 1);
+            assert_eq!(filter.tagged_constraints[0].tag.as_str(), crate::tag::CompilerReferenceTag::ChosenName.as_str());
+            assert_eq!(filter.tagged_constraints[0].relation, crate::filter::TaggedOpbjectRelation::SameNameAsTagged);
+        }
+        let tokens = crate::lexer::lex_line("that card has the chosen type", 0).unwrap();
+        assert!(parse_tagged_chosen_name_shape(&tokens).is_none());
+    }
 }

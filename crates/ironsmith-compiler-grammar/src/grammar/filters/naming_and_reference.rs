@@ -1143,8 +1143,54 @@ pub(super) fn parse_spell_filter_from_words(words: &[&str]) -> ObjectFilter {
     apply_spell_filter_tagged_relations(&mut filter, words);
     apply_spell_filter_source_creature_type_relation(&mut filter, words);
     apply_spell_filter_parity_phrases(words, &mut filter);
+    apply_spell_filter_cast_origin_tail(&mut filter, words);
 
     build_spell_filter_power_or_toughness_disjunction(&filter, words, words).unwrap_or(filter)
+}
+
+/// A terminal "cast from <zone> [or [from] <zone>]" constrains the
+/// spell's origin, rather than a nested card mentioned elsewhere in the filter.
+fn apply_spell_filter_cast_origin_tail(filter: &mut ObjectFilter, words: &[&str]) {
+    let start = if let Some(start) = words.windows(2).rposition(|pair| pair == ["cast", "from"]) {
+        start + 2
+    } else if words.first() == Some(&"from") {
+        // Cost-modifier grammar extracts the caster phrase separately.
+        1
+    } else {
+        return;
+    };
+    let mut rest = &words[start..];
+    let mut origins = Vec::new();
+    loop {
+        let Some((word, tail)) = rest.split_first() else { return; };
+        let zone = match *word {
+            "graveyard" | "graveyards" => Zone::Graveyard,
+            "exile" => Zone::Exile,
+            "hand" | "hands" => Zone::Hand,
+            "library" | "libraries" => Zone::Library,
+            "command" if tail.first() == Some(&"zone") => Zone::Command,
+            _ => return,
+        };
+        origins.push(zone);
+        rest = if zone == Zone::Command { &tail[1..] } else { tail };
+        if rest.is_empty() { break; }
+        if rest.first() != Some(&"or") { return; }
+        rest = &rest[1..];
+        if rest.first() == Some(&"from") { rest = &rest[1..]; }
+    }
+    if origins.len() == 1 {
+        filter.zone = Some(origins[0]);
+        filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+    } else {
+        // Preserve an existing disjunction as a nested constraint in every
+        // origin branch instead of flattening two independent OR conditions.
+        let inner = std::mem::take(&mut filter.any_of);
+        filter.any_of = origins.into_iter().map(|zone| {
+            let mut origin = ObjectFilter::spell().in_zone(zone);
+            origin.any_of = inner.clone();
+            origin
+        }).collect();
+    }
 }
 
 fn apply_spell_filter_source_creature_type_relation(filter: &mut ObjectFilter, words: &[&str]) {
@@ -1478,4 +1524,37 @@ fn apply_with_keyword_constraint(filter: &mut ObjectFilter, words: &[&str]) -> O
         return Some(consumed);
     }
     None
+}
+
+#[cfg(test)]
+mod spell_cast_origin_tail_tests {
+    use super::*;
+
+    #[test]
+    fn origin_disjunction_retains_each_zone_and_the_caster() {
+        // The cost grammar binds the caster independently before merging
+        // descriptor filters. Origin recognition must preserve that binding.
+        let mut filter = ObjectFilter::default();
+        filter.cast_by = Some(PlayerFilter::Opponent);
+        apply_spell_filter_cast_origin_tail(&mut filter, &[
+            "spells", "your", "opponents", "cast", "from", "graveyards", "or", "from", "exile",
+        ]);
+        assert_eq!(filter.cast_by, Some(PlayerFilter::Opponent));
+        assert_eq!(filter.any_of.len(), 2);
+        assert_eq!(filter.any_of[0].zone, Some(Zone::Graveyard));
+        assert_eq!(filter.any_of[1].zone, Some(Zone::Exile));
+        let fragment = parse_spell_filter_from_words(&["from", "graveyards", "or", "exile"]);
+        assert_eq!(fragment.any_of, filter.any_of);
+    }
+
+    #[test]
+    fn nested_zone_and_nonterminal_from_phrases_do_not_become_cast_origins() {
+        let filter = parse_spell_filter_from_words(&[
+            "creature", "spells", "with", "power", "greater", "than", "a", "card", "from", "exile",
+        ]);
+        assert!(filter.any_of.is_empty());
+        assert_eq!(filter.zone, None);
+        let filter = parse_spell_filter_from_words(&["spells", "you", "cast", "from", "exile", "this", "turn"]);
+        assert!(filter.any_of.is_empty());
+    }
 }

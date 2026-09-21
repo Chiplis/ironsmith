@@ -1352,6 +1352,7 @@ pub(super) fn compile_subject_verb_middle(
         }
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
             target,
+            result_tag,
             target_reference_surface,
             from_graveyard_or_exile,
             tapped,
@@ -1500,7 +1501,7 @@ pub(super) fn compile_subject_verb_middle(
                 if let Some(as_aura) = as_aura {
                     let attachment_filter = as_aura.attachment_filter.clone();
                     if !as_aura.granted_abilities.is_empty() {
-                        let returned_tag = reserved_or_next_object_tag(ctx, "returned");
+                        let returned_tag = result_tag.as_ref().map(|tag| tag.key.clone()).unwrap_or_else(|| reserved_or_next_object_tag(ctx, "returned"));
                         aura_return_tag = Some(returned_tag.clone());
                         for modification in
                             lower_granted_ability_grant_modifications(&as_aura.granted_abilities)?
@@ -1538,6 +1539,7 @@ pub(super) fn compile_subject_verb_middle(
             {
                 let tag = aura_return_tag
                     .clone()
+                    .or_else(|| result_tag.as_ref().map(|tag| tag.key.clone()))
                     .unwrap_or_else(|| reserved_or_next_object_tag(ctx, "returned"));
                 ctx.last_object_tag = Some(tag.clone());
                 effect = if aura_return_tag.is_some() {

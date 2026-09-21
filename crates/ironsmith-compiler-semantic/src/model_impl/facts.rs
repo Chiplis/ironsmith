@@ -163,6 +163,7 @@ pub struct LoweringFrame {
     pub last_effect_id: Option<EffectId>,
     pub last_library_search_effect_id: Option<EffectId>,
     pub last_object_tag: Option<TagKey>,
+    pub last_value_comparison: Option<(crate::effect::Value, crate::effect::Value)>,
     pub last_it_choice_is_set: bool,
     /// Parse-time tag aliases bound by `SnapshotLastObjectTag`, mapping a
     /// stable parse-time placeholder tag to the concrete runtime tag that was

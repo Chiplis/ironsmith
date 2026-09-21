@@ -1310,8 +1310,13 @@ pub(super) fn apply_targets_response(
         .take(prompt_count)
         .cloned()
         .collect::<Vec<_>>();
-    let assignments =
-        build_target_assignments(&requirements, targets, pending.chosen_targets.len())?;
+    let assignments = match build_target_assignments(&requirements, targets, pending.chosen_targets.len()) {
+        Ok(assignments) => assignments,
+        Err(error) => {
+            state.rollback_action(game);
+            return Err(error);
+        }
+    };
 
     // Combine previously chosen targets with new ones
     let mut pending = pending;

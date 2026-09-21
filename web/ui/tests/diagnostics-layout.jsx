@@ -7,7 +7,7 @@ import { CombatArrowProvider } from "../src/context/CombatArrowContext";
 import { I18nProvider } from "../src/i18n/I18nContext";
 import { TooltipProvider } from "../src/components/ui/tooltip";
 import TableCore from "../src/components/board/TableCore";
-import Topbar from "../src/components/layout/TopBar";
+import Topbar from "../src/components/layout/Topbar";
 import "../src/index.css";
 const names = ["Ornithopter", "Myr Moonvessel", "Omniscience", "Mountain", "Forest", "Island", "Plains", "Swamp"];
 const players = ["Alice", "Bob", "Charlie", "Diana"].map((name,id)=>({id,index:id,name,life:20,mana_pool:{},
@@ -16,6 +16,7 @@ const players = ["Alice", "Bob", "Charlie", "Diana"].map((name,id)=>({id,index:i
 }));
 function Fixture(){
  const [result,setResult]=useState('none');
+ const [expanded,setExpanded]=useState(true);
  const [targeting,setTargeting]=useState(true);
  const kind = new URLSearchParams(location.search).get('kind') || 'targets';
  const decisions = {
@@ -25,9 +26,9 @@ function Fixture(){
  attackers: {kind:'attackers',player:0,attacker_options:[{creature:1,name:'Ornithopter',valid_targets:[{kind:'player',player:1}]}]},
  };
 
- const state={players,perspective:0,priority_player:0,active_player:0,decision: decisions[kind], mana_payment: kind === 'mana_payment' ? {source_name:'Grizzly Bears',planning_complete:true,request_hash:'test',plan_id:'test',pips:[['1'],['G']],pool_before:{green:2},pool_after_activations:{green:2},pool_after_payment:{},planned_sources:[],available_sources:[],allocations:[],warnings:[],life_to_pay:0} : null,stack:[9000],stack_objects:[{id:9000,name:"Lightning Bolt",controller:0,owner:0,type_line:"Instant",mana_cost:"{R}",targets:[]}],snapshot_id:1,phase:"Main",step:"Main1"};
- return <I18nProvider><GameContext.Provider value={{state,multiplayer:{mode:"idle"},playerAccentOverrides:{},game:null,holdRule:"never",setHoldRule:()=>{},dispatch:async()=>{},dispatchInBackground:async()=>{}}}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
- <main style={{height:"96vh"}}><button onClick={()=>setTargeting(true)}>Target graveyard cards</button><TableCore legalTargetObjectIds={targeting?new Set([1000,1001]):new Set()} onInspect={(id)=>setResult(String(id))} zoneViews={["battlefield"]} middleTopbar={<Topbar middleDocked />} zoneActionControls={<div className="table-zone-action-controls">{["Verify Match","Add Card","Compile Card","Load Decks","Puzzle Setup","Share Table","Create Lobby"].map(label=><button key={label} className="table-zone-action-button">{label}</button>)}</div>} /><output>{result}</output></main>
+ const state={players,perspective:0,priority_player:0,active_player:0,decision: expanded ? decisions[kind] : null, mana_payment: kind === 'mana_payment' ? {source_name:'Grizzly Bears',planning_complete:true,request_hash:'test',plan_id:'test',pips:[['1'],['G']],pool_before:{green:2},pool_after_activations:{green:2},pool_after_payment:{},planned_sources:[],available_sources:[],allocations:[],warnings:[],life_to_pay:0} : null,stack:[9000],stack_objects:[{id:9000,name:"Lightning Bolt",controller:0,owner:0,type_line:"Instant",mana_cost:"{R}",targets:[]}],snapshot_id:1,phase:"Main",step:"Main1"};
+ return <I18nProvider><GameContext.Provider value={{state,matchClockStore:{subscribe:()=>()=>{},getSnapshot:()=>null},multiplayer:{mode:"idle"},playerAccentOverrides:{},game:null,holdRule:"never",setHoldRule:()=>{},dispatch:async()=>{},dispatchInBackground:async()=>{}}}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
+ <main style={{height:"96vh"}}><button onClick={()=>setExpanded(value=>!value)}>Toggle decision</button><button onClick={()=>setTargeting(true)}>Target graveyard cards</button><TableCore legalTargetObjectIds={targeting?new Set([1000,1001]):new Set()} onInspect={(id)=>setResult(String(id))} zoneViews={["battlefield"]} middleTopbar={<Topbar middleDocked />} middleUtilityControls={<div className="topbar-minor-controls--utility" />} zoneActionControls={<div className="table-zone-action-controls">{["Verify Match","Add Card","Compile Card","Load Decks","Puzzle Setup","Share Table","Create Lobby"].map(label=><button key={label} className="table-zone-action-button">{label}</button>)}</div>} /><output>{result}</output></main>
  </TooltipProvider></CombatArrowProvider></DragProvider></HoverProvider></GameContext.Provider></I18nProvider>;
 }
 createRoot(document.getElementById('root')).render(<Fixture/>);

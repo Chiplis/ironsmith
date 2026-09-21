@@ -1737,6 +1737,7 @@ export function GameProvider({ children }) {
     updateRematchDecks,
     readyForRematch,
     submitMultiplayerCommand,
+    sendLobbyChat,
     submitMultiplayerAddCardCheat,
     exportAuditTranscript,
     routePeerIdForPlayer,
@@ -2844,6 +2845,7 @@ export function GameProvider({ children }) {
       setAuditReplayPosition,
       exitAuditReplaySession,
       submitMultiplayerCommand,
+      sendLobbyChat,
       submitMultiplayerAddCardCheat,
       cancelBackgroundDispatch,
       setExternalAutoPassGate,
@@ -2877,6 +2879,7 @@ export function GameProvider({ children }) {
       setAuditReplayPosition,
       exitAuditReplaySession,
       submitMultiplayerCommand,
+      sendLobbyChat,
       submitMultiplayerAddCardCheat,
       setExternalAutoPassGate,
     ]

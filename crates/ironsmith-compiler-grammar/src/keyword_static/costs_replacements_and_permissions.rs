@@ -3923,6 +3923,15 @@ pub fn parse_cast_this_spell_as_though_it_had_flash_line(
     if is_cast_this_spell_as_though_it_had_flash_line_lexed(tokens) {
         return Ok(Some(StaticAbility::flash()));
     }
+    if let Some(index) = tokens.iter().position(|token| token.is_word("if"))
+        && is_cast_this_spell_as_though_it_had_flash_line_lexed(&tokens[..index])
+    {
+        let tail = trim_edge_punctuation(&tokens[index + 1..]);
+        if tail.len() > 2 && tail[0].is_word("it") && tail[1].is_word("targets") {
+            let filter = parse_object_filter_lexed(&tail[2..], false)?;
+            return Ok(Some(StaticAbility::flash_if_targets_matching(filter)));
+        }
+    }
     Ok(None)
 }
 
@@ -6637,4 +6646,69 @@ pub fn parse_play_from_top_pay_life_line(
             "You may cast spells from the top of your library by paying life equal to their mana value rather than paying their mana costs",
         ),
     ]))
+}
+
+/// A scoped permission changes loyalty timing without changing activation limits.
+pub fn parse_loyalty_abilities_any_time_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let prefix = crate::grammar::abilities::split_as_long_as_condition_prefix_lexed(tokens);
+    let body = prefix.as_ref().map_or(tokens, |prefix| prefix.remainder_tokens);
+    let words: Vec<&str> = body.iter()
+        .filter(|token| token.as_word().is_some())
+        .map(|token| token.parser_text())
+        .collect();
+    const START: &[&str] = &["you", "may", "activate"];
+    const END: &[&str] = &["any", "time", "you", "could", "cast", "an", "instant"];
+    if !crate::word_primitives::parse_sequence_prefix(&words, START)
+        || !crate::word_primitives::parse_sequence_suffix(&words, END)
+    {
+        return Ok(None);
+    }
+    let subject = &words[START.len()..words.len() - END.len()];
+    let mut filter = match subject {
+        ["its" | "her" | "his" | "their", "loyalty", "abilities"] => ObjectFilter::source(),
+        ["loyalty", "abilities", "of", rest @ ..] if !rest.is_empty() => {
+            let view = crate::lexer::TokenWordView::new(body);
+            let first = view.token_start_indices()[START.len() + 3];
+            let end = view.token_start_indices()[words.len() - END.len()];
+            parse_object_filter(&body[first..end], false)?
+        }
+        _ => return Ok(None),
+    };
+    if let Some(prefix) = prefix {
+        // A source predicate can be carried by the permission's source filter.
+        // Other conditions need a conditional permission representation instead.
+        let condition = parse_static_condition_clause(prefix.condition_tokens)?;
+        let PredicateAst::CountComparison {
+            count: AnthemCountExpression::MatchingFilter(condition_filter),
+            comparison: crate::effect::Comparison::GreaterThanOrEqual(1), ..
+        } = condition else { return Ok(None); };
+        if !filter.source || !condition_filter.source { return Ok(None); }
+        filter = condition_filter;
+    }
+    Ok(Some(StaticAbility::loyalty_abilities_any_time(filter)))
+}
+
+#[cfg(test)]
+mod loyalty_timing_tests {
+    use super::*;
+    #[test]
+    fn loyalty_permission_parses_scoped_and_conditional_filters() {
+        for (line, is_source, entered) in [
+            ("You may activate its loyalty abilities any time you could cast an instant.", true, false),
+            ("You may activate loyalty abilities of planeswalkers you control any time you could cast an instant.", false, false),
+            ("As long as this entered this turn, you may activate its loyalty abilities any time you could cast an instant.", true, true),
+        ] {
+            let tokens = crate::lexer::lex_line(line, 0).unwrap();
+            let ability = parse_loyalty_abilities_any_time_line(&tokens).unwrap().expect(line);
+            let ironsmith_core::StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter } = ability.payload else { panic!("{line}"); };
+            assert_eq!(filter.source, is_source, "{line}");
+            assert_eq!(filter.entered_battlefield_this_turn, entered, "{line}");
+            if !is_source {
+                assert!(filter.card_types.contains(&CardType::Planeswalker));
+                assert_eq!(filter.controller, Some(PlayerFilter::You));
+            }
+        }
+    }
 }

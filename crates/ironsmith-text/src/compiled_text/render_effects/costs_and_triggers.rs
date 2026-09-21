@@ -844,12 +844,13 @@ pub(super) fn describe_simple_discard_cost(
     if let Some(card_type) = card_type {
         descriptors.push(describe_card_type_word_local(card_type).to_string());
     }
-    let type_text = with_indefinite_article(&format!("{} card", descriptors.join(" ")));
+    let descriptors = descriptors.join(" ");
     Some(if count == 1 {
+        let type_text = with_indefinite_article(&format!("{descriptors} card"));
         format!("Discard {type_text}")
     } else {
         let count = number_word(count as i32).unwrap_or_else(|| count.to_string());
-        format!("Discard {count} {type_text}")
+        format!("Discard {count} {descriptors} cards")
     })
 }
 
@@ -3333,6 +3334,17 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
     if let Some(stripped) = base.strip_suffix('.') {
         base = stripped.trim_end();
         trailing = ".";
+    }
+    // Coordinated color adjectives modify the following noun; they are not
+    // separate nouns to pluralize ("black or red card" -> "black or red cards").
+    let words: Vec<&str> = base.split_whitespace().collect();
+    if words.first().is_some_and(|word| crate::color::Color::from_name(word).is_some()) {
+        let mut end = 1;
+        while end + 1 < words.len() && matches!(words[end], "or" | "and")
+            && crate::color::Color::from_name(words[end + 1]).is_some() { end += 2; }
+        if end > 1 && end < words.len() {
+            return format!("{} {}{trailing}", words[..end].join(" "), pluralize_noun_phrase(&words[end..].join(" ")));
+        }
     }
     if let Some(rest) = base.strip_prefix("another ") {
         return format!("other {}{}", pluralize_noun_phrase(rest), trailing);

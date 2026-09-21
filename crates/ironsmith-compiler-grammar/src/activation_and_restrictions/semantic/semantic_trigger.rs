@@ -1,6 +1,40 @@
 use super::*;
 use crate::cards::builders::PlayerPredicateAst;
 
+// Private-zone membership implies ownership. Parse the complete origin list so
+// a shared or repeated "your" stays attached to every alternative.
+fn owned_exile_origin_words(words: &[&str]) -> Option<(usize, Vec<Zone>)> {
+    let start = words.windows(6).position(|part| {
+        matches!(part[0], "is" | "are")
+            && part[1..] == ["put", "into", "exile", "from", "your"]
+    })?;
+    let mut rest = &words[start + 6..];
+    let mut zones = Vec::new();
+    loop {
+        let zone = match *rest.first()? {
+            "hand" => Zone::Hand,
+            "library" => Zone::Library,
+            "graveyard" => Zone::Graveyard,
+            _ => return None,
+        };
+        if !zones.contains(&zone) {
+            zones.push(zone);
+        }
+        rest = &rest[1..];
+        if rest.is_empty() {
+            return Some((start, zones));
+        }
+        if !matches!(rest[0], "and/or" | "or" | "and") {
+            return None;
+        }
+        let connector_len = if rest.starts_with(&["and", "or"]) { 2 } else { 1 };
+        rest = &rest[connector_len..];
+        if rest.first() == Some(&"your") {
+            rest = &rest[1..];
+        }
+    }
+}
+
 pub(super) fn try_parse_combat_damage_trigger_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggerSpec>, CardTextError> {
@@ -1886,7 +1920,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         ));
     }
 
-    for (tail, from_zones) in [
+    let owned_exile_origin = owned_exile_origin_words(zone_change_words);
+    for (tail_len, from_zones, from_your_hand) in [
         (["is", "put", "into", "exile"].as_slice(), Vec::new()),
         (["are", "put", "into", "exile"].as_slice(), Vec::new()),
         (
@@ -2025,14 +2060,17 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             ["are", "put", "into", "exile", "from", "your", "graveyard"].as_slice(),
             vec![Zone::Graveyard],
         ),
-    ] {
-        if trigger_pattern_accepts(zone_change_words, ClauseShape::new().suffix(tail)) {
-            let from_your_hand = trigger_pattern_accepts(tail, FROM_YOUR_HAND_SUFFIX_PATTERN)
-                || crate::word_primitives::parse_sequence_suffix(
-                    tail,
-                    &["from", "your", "graveyard"],
-                );
-            let subject_word_len = zone_change_words.len().saturating_sub(tail.len());
+    ].into_iter().filter_map(|(tail, zones)| {
+        trigger_pattern_accepts(zone_change_words, ClauseShape::new().suffix(tail)).then(|| {
+            let owned = trigger_pattern_accepts(tail, FROM_YOUR_HAND_SUFFIX_PATTERN)
+                || crate::word_primitives::parse_sequence_suffix(tail, &["from", "your", "graveyard"]);
+            (tail.len(), zones, owned)
+        })
+    }).chain(owned_exile_origin.as_ref().map(|(start, zones)| {
+        (zone_change_words.len() - start, zones.clone(), true)
+    })) {
+        {
+            let subject_word_len = zone_change_words.len().saturating_sub(tail_len);
             let subject_tokens = trigger_word_token_start(tokens, subject_word_len)
                 .map(|idx| &tokens[..idx])
                 .unwrap_or_default();

@@ -44,6 +44,9 @@ pub struct ExchangeControlShape<'a> {
 pub enum ExchangeClauseShape<'a> {
     LifeTotalsOnly,
     LifeTotalsWith(PlayerAst),
+    SourceTextBox {
+        other_tokens: &'a [OwnedLexToken],
+    },
     TextBoxes {
         target_tokens: &'a [OwnedLexToken],
     },
@@ -397,6 +400,16 @@ pub fn parse_exchange_clause_shape(tokens: &[OwnedLexToken]) -> Option<ExchangeC
         return Some(ExchangeClauseShape::LifeTotalsWith(partner_shape(
             partner_tokens,
         )?));
+    }
+    for possessive in ["its", "his", "her"] {
+        if let Some((_, other_tokens)) = primitives::parse_prefix(
+            tokens, dynamic_phrase(&[possessive, "text", "box", "and"]),
+        ) {
+            if other_tokens.last().and_then(OwnedLexToken::as_word)
+                .is_some_and(|word| word.ends_with("'s") || word.ends_with("’s")) {
+                return Some(ExchangeClauseShape::SourceTextBox { other_tokens });
+            }
+        }
     }
     let text_box_prefixes = [
         &["the", "text", "boxes", "of"][..],

@@ -208,6 +208,8 @@ impl EffectExecutor for ExileEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let pending_start = game.effect_store.pending_trigger_events.len();
+        let outcome = (|| -> Result<EffectOutcome, ExecutionError> {
         // Handle targeted effects with special single-target behavior
         // BUT skip for special specs (Tagged, Source, SpecificObject) which don't use ctx.targets
         if self.spec.is_target() && uses_ctx_targets(self) {
@@ -398,6 +400,29 @@ impl EffectExecutor for ExileEffect {
             .outcome
             .with_affected_objects(affected_ids)
             .with_affected_object_memory(affected_memory))
+        })();
+        // A single exile instruction moves its selected objects simultaneously.
+        // Keep the original event payloads and their per-object replacement
+        // outcomes, while giving this instruction a unique grouping identity.
+        if let Ok(result) = &outcome {
+            let selected: Vec<_> = result.affected_object_memory().unwrap_or_default().iter()
+                .map(|memory| memory.object_id).collect();
+            if selected.len() > 1 {
+                let batch = game.provenance_graph_mut().alloc_root_event(crate::events::EventKind::ZoneChange);
+                for event in &mut game.effect_store.pending_trigger_events[pending_start..] {
+                    if event.downcast::<crate::events::ZoneChangeEvent>().is_some_and(|change| {
+                        if change.snapshots().is_empty() {
+                            change.objects.iter().all(|id| selected.contains(id))
+                        } else {
+                            change.snapshots().iter().all(|snapshot| selected.contains(&snapshot.object_id))
+                        }
+                    }) {
+                        *event = event.clone().with_simultaneous_batch(batch);
+                    }
+                }
+            }
+        }
+        outcome
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

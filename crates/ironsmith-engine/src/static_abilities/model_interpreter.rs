@@ -325,42 +325,9 @@ impl StaticAbilityModelInterpreter {
                 crate::ability::AbilityKind::Activated(activated.clone())
             }
         };
-        Self::ability_with_inherent_functional_zones(crate::ability::Ability {
+        crate::ability::Ability {
             kind,
             functional_zones: ability.functional_zones.clone(),
-        })
-    }
-
-    fn ability_with_inherent_functional_zones(
-        ability: crate::ability::Ability,
-    ) -> crate::ability::Ability {
-        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
-            return ability;
-        };
-        match static_ability.id() {
-            StaticAbilityId::ExileToExileInsteadOfGraveyard
-            | StaticAbilityId::ExileToCounteredExileInsteadOfGraveyard
-            | StaticAbilityId::ExileWouldDieInstead => ability.in_zones(vec![
-                crate::zone::Zone::Battlefield,
-                crate::zone::Zone::Stack,
-                crate::zone::Zone::Graveyard,
-                crate::zone::Zone::Hand,
-                crate::zone::Zone::Library,
-                crate::zone::Zone::Exile,
-                crate::zone::Zone::Command,
-            ]),
-            StaticAbilityId::Dredge => ability.in_zones(vec![crate::zone::Zone::Graveyard]),
-            StaticAbilityId::Grants => {
-                if let Some(spec) = static_ability.grant_spec()
-                    && spec.filter.source
-                    && spec.zone != crate::zone::Zone::Battlefield
-                {
-                    ability.in_zones(vec![spec.zone])
-                } else {
-                    ability
-                }
-            }
-            _ => ability,
         }
     }
 
@@ -932,6 +899,8 @@ impl StaticAbilityModelInterpreter {
         }
 
         Some(match &model.payload {
+            ironsmith_core::StaticAbilityPayload::Enchant(_)
+            | ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(_) => return None,
             ironsmith_core::StaticAbilityPayload::CommanderTaxLifeSubstitution { .. } => {
                 return None;
             }
@@ -2147,6 +2116,17 @@ impl StaticAbilityModelInterpreter {
 }
 
 impl StaticAbility {
+    pub fn enchant(filter: crate::object::AuraAttachmentFilter) -> Self {
+        Self::from_model(CompiledStaticAbility::enchant(filter))
+    }
+
+    pub fn enchant_filter(&self) -> Option<&crate::object::AuraAttachmentFilter> {
+        match &self.compiled_model()?.payload {
+            ironsmith_core::StaticAbilityPayload::Enchant(filter) => Some(filter),
+            _ => None,
+        }
+    }
+
     pub fn from_model(model: CompiledStaticAbility) -> Self {
         Self::new(StaticAbilityModelInterpreter::new(model))
     }
@@ -2575,6 +2555,7 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             && !matches!(
                 self.payload(),
                 ironsmith_core::StaticAbilityPayload::Conditional { .. }
+                    | ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(_)
             )
     }
 

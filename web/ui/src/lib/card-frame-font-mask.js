@@ -1,6 +1,54 @@
 const alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,:;!?'-—–()/+−*•&©";
 const banks=new Map();
 
+// Pale letters with dark edging have both contrast polarities. Recognize the
+// repeated pale glyphs before sampling their ink or constructing a removal
+// mask; the darkest pixels belong to their shadow, not their fill.
+export function hasOutlinedLightText({data,width,height}) {
+  // On pale paper, the white islands enclosed by dark letters are background.
+  // Require a darker majority before treating those islands as light ink.
+  let darker=0,opaque=0;
+  for(let p=0;p<data.length;p+=4)if(data[p+3]>=128) {
+    opaque++;
+    if((data[p]+data[p+1]+data[p+2])/3<190)darker++;
+  }
+  if(!opaque||darker/opaque<.6)return false;
+  const pale=new Uint8Array(width*height),seen=new Uint8Array(width*height),letters=[];
+  const paperAt=paperField({data,width,height});
+  for(let p=0;p<pale.length;p++) {
+    const r=data[p*4],g=data[p*4+1],b=data[p*4+2];
+    pale[p]=data[p*4+3]>=128&&Math.min(r,g,b)>170&&Math.max(r,g,b)-Math.min(r,g,b)<65
+      &&(r+g+b)/3>paperAt(p%width,Math.floor(p/width))+40?1:0;
+  }
+  for(let p=0;p<pale.length;p++)if(pale[p]&&!seen[p]) {
+    const pending=[p],points=[];seen[p]=1;
+    let left=width,right=0,top=height,bottom=0;
+    while(pending.length) {
+      const at=pending.pop(),x=at%width,y=Math.floor(at/width);points.push(at);
+      left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y);
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++) {
+        const nx=x+dx,ny=y+dy,next=ny*width+nx;
+        if(nx>=0&&nx<width&&ny>=0&&ny<height&&pale[next]&&!seen[next]){seen[next]=1;pending.push(next);}
+      }
+    }
+    const w=right-left+1,h=bottom-top+1;
+    if(h<5||h>40||w>h*2.5||points.length<h||left===0||top===0||right===width-1||bottom===height-1)continue;
+    let edged=0;
+    for(const at of points) {
+      const x=at%width,y=Math.floor(at/width);
+      let dark=false;
+      for(let dy=-2;dy<=2&&!dark;dy++)for(let dx=-2;dx<=2;dx++) {
+        if(x+dx<0||x+dx>=width||y+dy<0||y+dy>=height)continue;
+        const i=((y+dy)*width+x+dx)*4;
+        if((data[i]+data[i+1]+data[i+2])/3<110){dark=true;break;}
+      }
+      if(dark)edged++;
+    }
+    if(edged/points.length>.45)letters.push({top,bottom,h});
+  }
+  return letters.some(a=>letters.filter(b=>Math.abs(a.bottom-b.bottom)<=3&&b.h>=a.h*.6&&b.h<=a.h*1.6).length>=3);
+}
+
 function glyphBank(family,weight,italic=false,text='') {
   const words=String(text||'').replace(/\{[^}]+\}/g,' ').split(/\s+/).filter(Boolean);
   const extras=new Set();
@@ -234,6 +282,7 @@ export function isPanelInk(r,g,b,paper,{outlined=false}={}) {
 }
 
 function* fontGuidedPanelSteps(scan,{family,weight=400,italic=false,allowItalic=false,symbols=false,text='',section='',outlined=false,excludedPixels,protectBottomBoundary=false}) {
+  outlined ||= hasOutlinedLightText(scan);
   const {data,width,height}=scan;
   const paperAt=paperField(scan);
   const ink=new Uint8Array(width*height);

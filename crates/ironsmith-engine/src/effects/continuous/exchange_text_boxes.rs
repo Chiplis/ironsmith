@@ -23,7 +23,11 @@ fn is_current_creature(game: &GameState, object_id: crate::ids::ObjectId) -> boo
 fn current_text_box_overlay(
     game: &GameState,
     object_id: crate::ids::ObjectId,
+    entry: Option<&crate::events::EnterBattlefieldEvent>,
 ) -> Result<TextBoxOverlay, ExecutionError> {
+    let preview = entry.filter(|entry| entry.object == object_id)
+        .and_then(|entry| entry.prospective_game_state(game));
+    let game = preview.as_ref().unwrap_or(game);
     let effects: Vec<_> = game.effect_store.continuous_effects.effects().to_vec();
     let chars = text_box_characteristics_with_effects(
         object_id,
@@ -47,22 +51,36 @@ impl EffectExecutor for ExchangeTextBoxesEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let resolved = resolve_objects_for_effect(game, ctx, &self.target)?;
+        let mut resolved = resolve_objects_for_effect(game, ctx, &self.target)?;
+        if self.include_source {
+            resolved.insert(0, ctx.source);
+        }
         if resolved.len() != 2 {
             return Ok(EffectOutcome::target_invalid());
         }
 
         let first = resolved[0];
         let second = resolved[1];
+        let fallback_entry = ctx.replacement.entry_counter_source.and_then(|source| {
+            let from = game.object(source)?.zone;
+            Some(crate::events::EnterBattlefieldEvent::new(source, from))
+        });
+        let entry = ctx.replacement.entry_event.as_deref().or(fallback_entry.as_ref());
+        let preview = entry.and_then(|entry| entry.prospective_game_state(game));
+        let creature_game = |id| {
+            if entry.is_some_and(|entry| entry.object == id) {
+                preview.as_ref().unwrap_or(game)
+            } else { &*game }
+        };
         if first == second
-            || !is_current_creature(game, first)
-            || !is_current_creature(game, second)
+            || !is_current_creature(creature_game(first), first)
+            || !is_current_creature(creature_game(second), second)
         {
             return Ok(EffectOutcome::target_invalid());
         }
 
-        let first_overlay = current_text_box_overlay(game, first)?;
-        let second_overlay = current_text_box_overlay(game, second)?;
+        let first_overlay = current_text_box_overlay(game, first, entry)?;
+        let second_overlay = current_text_box_overlay(game, second, entry)?;
 
         game.effect_store.continuous_effects.add_effect(
             crate::continuous::ContinuousEffect::from_resolution(
@@ -71,7 +89,7 @@ impl EffectExecutor for ExchangeTextBoxesEffect {
                 vec![first],
                 Modification::SetTextBox(second_overlay),
             )
-            .until(crate::effect::Until::ThisLeavesTheBattlefield),
+            .until(self.duration.clone()),
         );
         game.effect_store.continuous_effects.add_effect(
             crate::continuous::ContinuousEffect::from_resolution(
@@ -80,7 +98,7 @@ impl EffectExecutor for ExchangeTextBoxesEffect {
                 vec![second],
                 Modification::SetTextBox(first_overlay),
             )
-            .until(crate::effect::Until::ThisLeavesTheBattlefield),
+            .until(self.duration.clone()),
         );
 
         Ok(EffectOutcome::resolved())
@@ -162,6 +180,32 @@ mod tests {
         game.add_object(object);
         game.effect_store.continuous_effects.record_entry(object_id);
         object_id
+    }
+
+    #[test]
+    fn ordinary_two_object_exchange_preserves_source_bound_duration() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let flying = CardDefinitionBuilder::new(CardId::new(), "Flying creature")
+            .card_types(vec![CardType::Creature])
+            .with_ability(crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::flying()))
+            .build();
+        let plain = vanilla_creature_definition("Plain creature", 700_200);
+        let first = create_creature_from_definition(&mut game, &flying, alice);
+        let second = create_creature_from_definition(&mut game, &plain, alice);
+        let source = create_exchange_source(&mut game, alice);
+        let mut ctx = ExecutionContext::new_default(source, alice).with_targets(vec![
+            crate::effects::ResolvedTarget::Object(first),
+            crate::effects::ResolvedTarget::Object(second),
+        ]);
+        ExchangeTextBoxesEffect::new(
+            ChooseSpec::target(ChooseSpec::creature()).with_count(crate::effect::ChoiceCount::exactly(2)),
+        ).execute(&mut game, &mut ctx).unwrap();
+        assert!(!game.object_has_static_ability_id(first, crate::static_abilities::StaticAbilityId::Flying));
+        assert!(game.object_has_static_ability_id(second, crate::static_abilities::StaticAbilityId::Flying));
+        game.move_object_by_effect(source, Zone::Graveyard).unwrap();
+        assert!(game.object_has_static_ability_id(first, crate::static_abilities::StaticAbilityId::Flying));
+        assert!(!game.object_has_static_ability_id(second, crate::static_abilities::StaticAbilityId::Flying));
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

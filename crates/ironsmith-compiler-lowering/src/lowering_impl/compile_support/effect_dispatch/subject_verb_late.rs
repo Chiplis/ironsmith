@@ -15,6 +15,33 @@ use crate::cards::builders::StackActionAst;
 use crate::cards::builders::TokenActionAst;
 use crate::cards::builders::TurnStructureActionAst;
 
+// A sacrifice refers to the captured permanent, not a later incarnation of
+// the same card after it leaves and returns to the battlefield.
+fn sacrifice_incarnation_reference(mut spec: ChooseSpec) -> ChooseSpec {
+    fn exact_filter(filter: &mut ObjectFilter) {
+        for constraint in &mut filter.tagged_constraints {
+            if constraint.relation == TaggedOpbjectRelation::IsTaggedObject {
+                constraint.relation = TaggedOpbjectRelation::SameObjectId;
+            }
+        }
+        for branch in &mut filter.any_of {
+            exact_filter(branch);
+        }
+    }
+    match &mut spec {
+        ChooseSpec::Tagged(tag) => return ChooseSpec::Object(ObjectFilter::exact_tagged(tag.clone())),
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => exact_filter(filter),
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => {
+            **spec = sacrifice_incarnation_reference((**spec).clone());
+        }
+        _ => {}
+    }
+    spec
+}
+
 pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
     matches!(
         action,
@@ -107,6 +134,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
                 TurnStructureActionAst::SkipNextCombatPhaseThisTurn
             )
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
             | SubjectVerbActionAst::PermanentState(
@@ -2262,6 +2290,10 @@ pub(super) fn compile_subject_verb_late(
             track_selected_object_player_provenance(&spec, ctx);
             Ok((vec![effect], choices))
         }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { target }) => {
+            let (spec, choices) = resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            Ok((vec![Effect::new(crate::effects::BecomePlottedEffect::new(spec))], choices))
+        }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -2419,7 +2451,7 @@ pub(super) fn compile_subject_verb_late(
                 }
                 let (effects, mut choices) =
                     compile_tagged_effect_for_target(&target, ctx, "sacrificed", |spec| {
-                        Effect::new(crate::effects::SacrificeTargetEffect::new(spec))
+                        Effect::new(crate::effects::SacrificeTargetEffect::new(sacrifice_incarnation_reference(spec)))
                     })?;
                 ctx.last_player_filter = Some(chooser);
                 for choice in subject.into_choices() {
@@ -2485,7 +2517,7 @@ pub(super) fn compile_subject_verb_late(
             {
                 let mut effects = target_prelude;
                 effects.push(Effect::new(crate::effects::SacrificeTargetEffect::new(
-                    ChooseSpec::tagged(tag),
+                    ChooseSpec::Object(ObjectFilter::exact_tagged(tag)),
                 )));
                 return Ok(Some((effects, subject.into_choices())));
             }

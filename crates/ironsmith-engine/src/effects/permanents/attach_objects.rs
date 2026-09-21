@@ -155,7 +155,7 @@ impl EffectExecutor for AttachObjectsEffect {
             Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
             Err(err) => return Err(err),
         };
-        if !game.attachment_target_exists_on_battlefield(target) {
+        if !game.attachment_target_exists(target) {
             return Ok(EffectOutcome::target_invalid());
         }
 
@@ -268,6 +268,106 @@ mod tests {
             Some(crate::object::AuraAttachmentFilter::from(ObjectFilter::creature()).into());
         game.add_object(object);
         id
+    }
+
+    #[test]
+    fn enchant_abilities_are_added_removed_and_combined_in_ability_layer() {
+        use crate::continuous::Modification;
+        use crate::effects::ApplyContinuousEffect;
+        use crate::static_abilities::StaticAbility;
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let aura = create_aura(&mut game, "Mutable Aura", alice);
+        let creature = create_creature(&mut game, "Creature", alice);
+        let land = create_land(&mut game, "Land", alice);
+        let creature_target = AttachmentTarget::Object(creature);
+        let land_target = AttachmentTarget::Object(land);
+        let legal = |game: &GameState, target| super::super::attachment_can_attach_to_target(game, aura, target);
+        assert!(legal(&game, creature_target));
+        assert!(!legal(&game, land_target));
+        let mut ctx = ExecutionContext::new_default(aura, alice);
+        let apply = |game: &mut GameState, ctx: &mut ExecutionContext, modification| {
+            ApplyContinuousEffect::with_spec(ChooseSpec::Source, modification, crate::effect::Until::Forever)
+                .execute(game, ctx).unwrap();
+        };
+        let land_enchant = StaticAbility::enchant(ObjectFilter::land().into());
+        apply(&mut game, &mut ctx, Modification::AddAbility(land_enchant.clone()));
+        // Both enchant restrictions apply, so neither ordinary creature nor land qualifies.
+        assert!(!legal(&game, creature_target));
+        assert!(!legal(&game, land_target));
+        apply(&mut game, &mut ctx, Modification::RemoveAbility(StaticAbility::enchant(ObjectFilter::creature().into())));
+        assert!(legal(&game, land_target));
+        assert!(!legal(&game, creature_target));
+        apply(&mut game, &mut ctx, Modification::RemoveAllAbilities);
+        assert!(!legal(&game, land_target));
+        assert!(game.current_characteristics(aura).unwrap().aura_attach_filter.is_none());
+        apply(&mut game, &mut ctx, Modification::AddAbility(land_enchant));
+        assert!(legal(&game, land_target), "later enchant grant survives earlier ability removal");
+    }
+
+    #[test]
+    fn graveyard_aura_attachment_obeys_filter_and_survives_state_based_checks() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let card = CardBuilder::new(CardId::from_raw(900), "Graveyard creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let buried = game.new_object_id();
+        game.add_object(Object::from_card(buried, &card, bob, Zone::Graveyard));
+        let aura = create_aura(&mut game, "Graveyard Aura", alice);
+        let mut filter = ObjectFilter::creature();
+        filter.zone = Some(Zone::Graveyard);
+        game.object_mut(aura).unwrap().aura_attach_filter =
+            Some(crate::object::AuraAttachmentFilter::from(filter).into());
+        let spec = game
+            .object(aura)
+            .unwrap()
+            .aura_attach_filter_owned()
+            .unwrap()
+            .target_spec();
+        assert_eq!(
+            crate::targeting::compute_legal_targets(&game, &spec, alice, Some(aura)),
+            vec![crate::game_state::Target::Object(buried)],
+        );
+        let effect = AttachObjectsEffect::new(
+            ChooseSpec::SpecificObject(aura),
+            ChooseSpec::SpecificObject(buried),
+        );
+        let mut ctx = ExecutionContext::new_default(aura, alice);
+        effect.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(
+            game.object(aura).unwrap().attached_to,
+            Some(AttachmentTarget::Object(buried))
+        );
+        assert!(game.object(buried).unwrap().attachments.contains(&aura));
+        assert!(!crate::rules::state_based::check_state_based_actions(&game).iter().any(
+            |action| matches!(action, crate::rules::state_based::StateBasedAction::AuraFallsOff(id) if *id == aura)
+        ));
+        let ordinary = create_aura(&mut game, "Battlefield Aura", alice);
+        let equipment = create_equipment(&mut game, "Equipment", alice);
+        for attachment in [ordinary, equipment] {
+            assert!(!attach_battlefield_object_to_target(
+                &mut game,
+                attachment,
+                AttachmentTarget::Object(buried)
+            ));
+        }
+        let living = create_creature(&mut game, "Living creature", alice);
+        assert!(!attach_battlefield_object_to_target(
+            &mut game,
+            aura,
+            AttachmentTarget::Object(living)
+        ));
+        assert_eq!(
+            game.object(aura).unwrap().attached_to,
+            Some(AttachmentTarget::Object(buried))
+        );
+        game.move_object_by_effect(buried, Zone::Exile).unwrap();
+        assert!(crate::rules::state_based::check_state_based_actions(&game).iter().any(
+            |action| matches!(action, crate::rules::state_based::StateBasedAction::AuraFallsOff(id) if *id == aura)
+        ));
     }
 
     #[test]

@@ -2,7 +2,7 @@ import { RUNTIME_VERSION, assertRuntimeVersion } from "../../lib/runtime-version
 import { withActionPrefixes, EMPTY_ACTION_PREFIX, actionPrefixHash } from '../../lib/accepted-actions.js';
 import { needsFullStateResync, matchingActionPrefix } from '../../lib/relay/resync.js';
 import { replayTrustedMatch, replayTrustedActions } from '../../lib/relay/replay-trusted-match.js';
-import { readRelaySession, relayCheckpoint, relayMatchId } from '../../lib/relay/session.js';
+import { readRelaySession, readPeerSession, relayCheckpoint, relayMatchId } from '../../lib/relay/session.js';
 import { PUBLIC_FORMATS, isRelayId, relayBaseUrl } from '../../lib/relay/formats.js';
 import { loadFormatCatalog, validateFormatDeck, assertFormatMatch } from '../../lib/relay/format-legality.js';
 import { buildPeerOptions, describePeerServer } from './shared.js';
@@ -177,6 +177,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
   const ziffleRoutePeerCandidates = useCallback((...args) => servicesRef.current.ziffleRoutePeerCandidates(...args), [servicesRef]);
   const ziffleTokensForPosition = useCallback((...args) => servicesRef.current.ziffleTokensForPosition(...args), [servicesRef]);
   const lastForegroundRecoveryRef = useRef(0);
+  const hostRecoveryGraceRef = useRef(null);
   const resyncInProgressRef = useRef(false);
   const resyncRetryRef = useRef({ attempts: 0, timer: null });
   const requestResync = useCallback((reason = "Resyncing with host...", { forceCheckpoint = true } = {}) => {
@@ -1928,6 +1929,38 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 	        });
   }
 
+  const receiveLobbyChat = useCallback((entry) => {
+    if (!entry || typeof entry.id !== "string" || typeof entry.text !== "string"
+      || !entry.text.trim() || entry.text.length > 500 || typeof entry.name !== "string") return;
+    updateMultiplayer((prev) => ({
+      ...prev,
+      chatMessages: (prev.chatMessages || []).some((item) => item.id === entry.id)
+        ? prev.chatMessages
+        : [...(prev.chatMessages || []), entry].slice(-100),
+    }));
+  }, [updateMultiplayer]);
+
+  const publishLobbyChat = useCallback((peerId, text) => {
+    const session = multiplayerRef.current;
+    const player = session.players.find((item) => item.peerId === peerId);
+    if (!player || player.connected === false || typeof text !== "string"
+      || !text.trim() || text.length > 500) return false;
+    const entry = { id: crypto.randomUUID(), peerId, name: player.name,
+      text: text.trim(), sentAt: Date.now() };
+    receiveLobbyChat(entry);
+    broadcastToClients({ type: "lobby_chat", protocolVersion: PROTOCOL_VERSION, entry });
+    return true;
+  }, [multiplayerRef, receiveLobbyChat, broadcastToClients]);
+
+  const sendLobbyChat = useCallback((text) => {
+    const session = multiplayerRef.current;
+    if (!session.role || typeof text !== "string" || !text.trim() || text.length > 500) return false;
+    if (session.role === "host") return publishLobbyChat(session.localPeerId, text);
+    return safeSend(hostConnectionRef.current, {
+      type: "lobby_chat_send", protocolVersion: PROTOCOL_VERSION, text: text.trim(),
+    });
+  }, [multiplayerRef, hostConnectionRef, publishLobbyChat]);
+
   const handleHostMessage = useCallback(
     async (message) => {
       if (!message || typeof message !== "object") return;
@@ -1937,6 +1970,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       }
 
       switch (message.type) {
+        case "lobby_chat":
+          receiveLobbyChat(message.entry);
+          return;
         case "lobby_state": {
           const nextSession = updateMultiplayer((prev) => {
             const localEntry = (message.players || []).find(
@@ -2203,6 +2239,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       }
     },
     [
+      receiveLobbyChat,
       answerCryptoMaterialRequest,
       answerActionQuorumVoteRequest,
       answerTimeoutVoteRequest,
@@ -2637,6 +2674,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       }
 
       switch (message.type) {
+      case "lobby_chat_send":
+        publishLobbyChat(conn.peer, message.text);
+        return;
       case "ziffle_shuffle_step_request":
         await answerZiffleShuffleStepRequest(conn, message);
         return;
@@ -3255,6 +3295,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       }
     },
     [
+      publishLobbyChat,
       answerCryptoMaterialRequest,
       answerActionQuorumVoteRequest,
       answerTimeoutVoteRequest,
@@ -3383,6 +3424,15 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       const session = multiplayerRef.current;
       const lobbyId = String(session.lobbyId || session.hostPeerId || "").trim();
       if (isRelayId(lobbyId)) return false;
+      // A refreshed host restores its journal before reclaiming the signaling
+      // ID. Do not elect a competing host during that recovery window.
+      if (session.matchStarted && isTrustedMultiplayerSecurityMode(session.securityMode)) {
+        const now = Date.now();
+        if (hostRecoveryGraceRef.current?.lobbyId !== lobbyId) {
+          hostRecoveryGraceRef.current = { lobbyId, startedAt: now };
+        }
+        if (now - hostRecoveryGraceRef.current.startedAt < 15000) return false;
+      }
       const localPlayerIndex = resolveReconnectPlayerIndex(session, lobbyId);
       if (session.role !== "client" || !lobbyId || localPlayerIndex == null) {
         return false;
@@ -3543,7 +3593,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             : "Retrying lobby host takeover..."
         );
 
-        takeoverPeer.on("open", (peerId) => {
+        takeoverPeer.on("open", async (peerId) => {
           if (peerRef.current !== takeoverPeer) return;
           clearTimeout(openTimeout);
           clearReconnect();
@@ -3617,6 +3667,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 	            };
 	          }
 
+          try {
+            await servicesRef.current.persistRelayCheckpoint();
+          } catch (error) {
+            setStatus(`Could not save recovered host match: ${toErrorMessage(error)}`, true);
+            return;
+          }
           rememberDefaultLobbyDeck(current.localDeckText, current.localCommanderText);
           setStatus(`You are now the lobby host: ${lobbyId}`);
         });
@@ -3715,7 +3771,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           players: resume.session.players.map(player => ({ ...player, connected: player.peerId === resume.session.localPeerId })) });
         if (resume.match) {
           try {
-            assertFormatMatch(resume.match);
+            if (isRelayId(resume.session.lobbyId)) assertFormatMatch(resume.match);
             // Start continuity from the persisted transcript rather than an old in-memory game.
             actionHistoryRef.current = [];
             updateMultiplayer(prev => ({ ...prev, lastAppliedSequence: 0, matchStarted: false }));
@@ -3727,7 +3783,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           } catch (error) { setStatus(`Could not restore saved game: ${error.message}`, true); return; }
         }
       }
-      const peer = createPeer("", peerOptionsRef.current);
+      const peer = createPeer(resume && transport !== "websocket" ? resume.session.localPeerId : "", peerOptionsRef.current);
       peerRef.current = peer;
       let reconnectTimer = null;
       let reconnectAttempts = 0;
@@ -3891,6 +3947,24 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       peer.on("connection", configureIncomingConnection);
       peer.on("error", (err) => {
         clearTimeout(openTimeout);
+        if (resume && err?.type === 'unavailable-id' && (resume.reconnectAttempts || 0) < 15) {
+          if ((resume.reconnectAttempts || 0) >= 3) {
+            // Another player may have taken over while this browser was away.
+            // Rejoin that live host as the original seat instead of competing
+            // indefinitely for its signaling ID or replacing its newer history.
+            void servicesRef.current.joinLobby({ name, lobbyId: resume.session.lobbyId,
+              deckText, commanderText, resumeAsGuest: true });
+            return;
+          }
+          setStatus('Waiting for the previous host connection to close...');
+          window.setTimeout(() => {
+            if (peerRef.current !== peer) return;
+            void createLobby({ name, desiredPlayers, startingLife, format, securityMode,
+              deckText, commanderText, transport, advertise,
+              resume: { ...resume, reconnectAttempts: (resume.reconnectAttempts || 0) + 1 } });
+          }, 1000);
+          return;
+        }
         if (isRecoverablePeerError(err)) {
           scheduleReconnect(formatPeerError(err, "Lost lobby signaling"));
           return;
@@ -3927,20 +4001,21 @@ export function usePeerLobbyMessaging(base, servicesRef) {
   );
 
   const joinLobby = useCallback(
-    async ({ name, lobbyId, deckText = "", commanderText = "" }) => {
+    async ({ name, lobbyId, deckText = "", commanderText = "", resumeAttempt = 0, resumeAsGuest = false }) => {
       if (isRelayId(lobbyId)) {
         if (!relayBaseUrl()) { setStatus('WebSocket lobby service is not configured', true); return; }
         try { await loadFormatCatalog(); } catch (error) { setStatus(error.message, true); return; }
       }
-      const saved = isRelayId(lobbyId) ? readRelaySession(lobbyId.split('-')[1]) : null;
-      if (saved?.peerId === lobbyId) {
+      const saved = isRelayId(lobbyId) ? readRelaySession(lobbyId.split('-')[1]) : readPeerSession(lobbyId);
+      if (saved?.peerId === lobbyId && !resumeAsGuest) {
         try {
           const checkpoint = await relayCheckpoint(lobbyId);
           const session = checkpoint?.session || saved.session;
           if (!session) throw new Error('Host session is missing from this browser');
           if (session.matchStarted && !checkpoint) throw new Error('Saved game checkpoint is missing');
           return await createLobby({ name: session.localName, desiredPlayers: session.desiredPlayers,
-            startingLife: session.startingLife, format: session.format, transport: 'websocket', advertise: saved.advertise,
+            startingLife: session.startingLife, format: session.format, securityMode: session.securityMode,
+            transport: isRelayId(lobbyId) ? 'websocket' : 'peerjs', advertise: saved.advertise,
             deckText: session.localDeckText, commanderText: session.localCommanderText,
             resume: checkpoint || { session } });
         } catch (error) { setStatus(`Could not resume lobby: ${error.message}`, true); return; }
@@ -3967,7 +4042,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         parseDeckSubmission(MATCH_FORMAT_NORMAL, deckText, commanderText),
         { game: gameRef.current, onSubstitute: reportCardSubstitutions },
       );
-      const peer = createPeer("", peerOptionsRef.current);
+      const peer = createPeer(!isRelayId(lobbyId) && saved && !resumeAsGuest ? saved.peerId : "", peerOptionsRef.current);
       peerRef.current = peer;
       let reconnectTimer = null;
       let reconnectAttempts = 0;
@@ -3981,6 +4056,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         reconnectAttempts = 0;
       };
       const clearHostReconnect = () => {
+        hostRecoveryGraceRef.current = null;
         if (hostReconnectTimer) {
           clearTimeout(hostReconnectTimer);
           hostReconnectTimer = null;
@@ -4311,6 +4387,14 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       });
       peer.on("error", (err) => {
         clearTimeout(peerOpenTimeout);
+        if (saved && !isRelayId(lobbyId) && err?.type === 'unavailable-id' && resumeAttempt < 15) {
+          setStatus('Waiting for the previous player connection to close...');
+          window.setTimeout(() => {
+            if (peerRef.current !== peer) return;
+            void joinLobby({ name, lobbyId, deckText, commanderText, resumeAttempt: resumeAttempt + 1 });
+          }, 1000);
+          return;
+        }
         if (isRecoverablePeerError(err)) {
           scheduleReconnect(formatPeerError(err, "Lost lobby signaling"));
           return;
@@ -4356,5 +4440,5 @@ export function usePeerLobbyMessaging(base, servicesRef) {
   );
 
 
-  return { applyStateResync, broadcastLobbyState, broadcastRematchState, clearReconnectChallenge, configureHostConnection, configureIncomingConnection, configurePeerConnection, connectDirectPeer, createLobby, handleClientDisconnect, handleClientMessage, handleHostMessage, handlePeerDisconnect, handlePeerMessage, issueReconnectChallenge, joinLobby, promoteLocalPlayerToHost, publishLocalDeckUpdateForAssignedSeat, readyForRematch, reconnectChallengeMapKey, reportSyncFailure, requestResync, sendDirectPeerMessage, startHostedMatch, startRematchFromState, startRematchSideboarding, startTrustedMatchFromPlayers, updateRematchDecks };
+  return { sendLobbyChat, applyStateResync, broadcastLobbyState, broadcastRematchState, clearReconnectChallenge, configureHostConnection, configureIncomingConnection, configurePeerConnection, connectDirectPeer, createLobby, handleClientDisconnect, handleClientMessage, handleHostMessage, handlePeerDisconnect, handlePeerMessage, issueReconnectChallenge, joinLobby, promoteLocalPlayerToHost, publishLocalDeckUpdateForAssignedSeat, readyForRematch, reconnectChallengeMapKey, reportSyncFailure, requestResync, sendDirectPeerMessage, startHostedMatch, startRematchFromState, startRematchSideboarding, startTrustedMatchFromPlayers, updateRematchDecks };
 }

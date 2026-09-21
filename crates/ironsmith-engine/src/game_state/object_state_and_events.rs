@@ -674,7 +674,8 @@ impl GameState {
         if !self.is_face_down(id) {
             return false;
         }
-        !self.merged_permanent_blocks_turn_face_up(id)
+        !self.effect_store.cant_effects.cant_turn_face_up.contains(&id)
+            && !self.merged_permanent_blocks_turn_face_up(id)
     }
 
     fn merged_permanent_blocks_turn_face_up(&self, id: ObjectId) -> bool {
@@ -721,6 +722,10 @@ impl GameState {
 
     /// Turn an object face up, including every face-down merged component.
     pub fn set_face_up(&mut self, id: ObjectId) -> bool {
+        self.refresh_continuous_state();
+        if self.effect_store.cant_effects.cant_turn_face_up.contains(&id) {
+            return false;
+        }
         if !self.is_face_down(id) {
             return false;
         }
@@ -1289,6 +1294,30 @@ impl GameState {
         self.exile_tracking_mut()
             .plotted_cards
             .insert(id, (player, turn));
+    }
+
+    /// The plotted designation itself grants casting permission, even when the
+    /// card has no printed plot ability. Keep this tied to the exile object.
+    pub(crate) fn plotted_cast_permission(
+        &self,
+        id: ObjectId,
+        zone: Zone,
+        player: PlayerId,
+    ) -> Option<crate::grant_registry::GrantedAlternativeCast> {
+        use crate::alternative_cast::AlternativeCastingMethod;
+        let card = self.object(id)?;
+        if zone != Zone::Exile || card.zone != Zone::Exile || card.owner != player
+            || !self.is_plotted_by(id, player)
+            || card.alternative_casts.iter().any(|method| matches!(method, AlternativeCastingMethod::Plot { .. }))
+        {
+            return None;
+        }
+        Some(crate::grant_registry::GrantedAlternativeCast {
+            method: AlternativeCastingMethod::Plot { cost: crate::mana::ManaCost::new() },
+            source_id: id,
+            zone,
+            usage_limit: None,
+        })
     }
 
     /// Clear plot state for a card.

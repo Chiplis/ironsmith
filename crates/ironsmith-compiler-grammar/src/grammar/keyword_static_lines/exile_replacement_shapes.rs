@@ -185,7 +185,7 @@ fn parse_exile_to_graveyard_replacement_lexed<'a>(
     primitives::phrase(&["would", "be", "put", "into"]).parse_next(input)?;
     let graveyard_owner = parse_graveyard_owner_lexed(input)?;
     primitives::kw("graveyard").parse_next(input)?;
-    primitives::phrase(&["from", "anywhere"]).parse_next(input)?;
+    opt(primitives::phrase(&["from", "anywhere"])).parse_next(input)?;
     let exclude_cycled = opt((
         primitives::kw("and"),
         primitives::kw("it"),

@@ -124,7 +124,7 @@ fn flattens_owned_nonbattlefield_zone_set_beside_a_controlled_battlefield_set() 
     let filter = parse_branch_scoped_object_filter_union_lexed(&tokens, false)
         .expect("the two authored domains should remain independently scoped");
 
-    assert_eq!(filter.any_of.len(), 6, "{filter:#?}");
+    assert_eq!(filter.any_of.len(), 9, "{filter:#?}");
     assert!(filter.any_of.iter().any(|branch| {
         branch.zone == Some(Zone::Battlefield)
             && branch.controller == Some(PlayerFilter::You)
@@ -137,12 +137,17 @@ fn flattens_owned_nonbattlefield_zone_set_beside_a_controlled_battlefield_set() 
         Zone::Graveyard,
         Zone::Exile,
         Zone::Command,
+        Zone::Stack,
+        Zone::Ante,
+        Zone::OutsideGame,
     ] {
         assert!(filter.any_of.iter().any(|branch| {
             branch.zone == Some(zone)
                 && branch.owner == Some(PlayerFilter::You)
                 && branch.controller.is_none()
                 && branch.card_types == [CardType::Land]
+                && (zone != Zone::Stack
+                    || branch.stack_kind == Some(crate::filter::StackObjectKind::Spell))
         }));
     }
 }
@@ -660,4 +665,22 @@ fn parses_elided_owned_selector_with_repeated_card_alternatives() {
         filter.any_of.iter().all(|branch| branch.owner.is_none()),
         "{filter:#?}"
     );
+}
+
+#[test]
+fn coordinated_object_domains_share_leading_colors_but_keep_independent_colors() {
+    let tokens = lex_line("a black or red permanent, spell, or card not on the battlefield", 0).unwrap();
+    let direct = parse_branch_scoped_object_filter_union_lexed(&tokens, false).expect("direct domain union");
+    assert_eq!(direct.colors, Some(ColorSet::BLACK.union(ColorSet::RED)));
+    let filter = crate::object_filters::parse_object_filter_lexed(&tokens, false).unwrap();
+    assert_eq!(filter.colors, Some(ColorSet::BLACK.union(ColorSet::RED)), "{filter:#?}");
+    assert!(filter.any_of.iter().any(|arm| arm.zone == Some(Zone::Battlefield)), "{filter:#?}");
+    assert!(filter.any_of.iter().any(|arm| arm.zone == Some(Zone::Stack)), "{filter:#?}");
+    assert!(filter.any_of.iter().any(|arm| arm.zone == Some(Zone::Hand) || arm.any_of.iter().any(|inner| inner.zone == Some(Zone::Hand))), "{filter:#?}");
+    let tokens = lex_line("a blue permanent, a red spell, or a green card in a graveyard", 0).unwrap();
+    let filter = crate::object_filters::parse_object_filter_lexed(&tokens, false).unwrap();
+    assert!(filter.colors.is_none(), "{filter:#?}");
+    for color in [ColorSet::BLUE, ColorSet::RED, ColorSet::GREEN] {
+        assert!(filter.any_of.iter().any(|arm| arm.colors == Some(color)), "{filter:#?}");
+    }
 }

@@ -63,7 +63,7 @@ test('zone piles align, scroll, animate and require a separate target click', as
     assert.equal(await menu.evaluate(el=>getComputedStyle(el).animationDuration),'0.22s');
     assert.deepEqual(await page.locator('.zone-pile-card-row').evaluateAll(rows=>rows.slice(0,3).map(row=>row.dataset.objectId)),['19','18','17']);
     assert.ok(await page.locator('.zone-pile-card-list').evaluate(el=>el.scrollWidth>el.clientWidth));
-    assert.equal(await page.locator('.zone-pile-card-row:disabled').count(),19);
+    assert.equal(await page.locator('.zone-pile-card-row[aria-disabled="true"]').count(),19);
     await page.locator('.zone-pile-card-row[data-object-id="20"]').click();
     assert.equal(await page.locator('output').textContent(),'20');
     await menu.waitFor({state:'hidden'});

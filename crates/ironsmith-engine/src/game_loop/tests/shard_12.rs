@@ -926,6 +926,39 @@ pub(super) fn test_suspend_creature_gains_haste_until_control_changes() {
 
 #[test]
 pub(super) fn test_warp_marks_cast_exiles_at_next_end_step_and_grants_play_next_turn() {
+    check_warp_lifecycle(WarpScenario::None);
+}
+
+#[test]
+fn test_warp_delayed_exile_after_creature_dies_before_end_step() {
+    check_warp_lifecycle(WarpScenario::BeforeEndStep);
+}
+
+#[test]
+fn test_warp_delayed_exile_after_creature_dies_in_response() {
+    check_warp_lifecycle(WarpScenario::InResponse);
+}
+
+#[test]
+fn test_warp_delayed_exile_does_not_follow_returned_creature() {
+    check_warp_lifecycle(WarpScenario::ReturnToBattlefield);
+}
+
+#[test]
+fn test_warp_normal_hand_cast_has_no_delayed_exile() {
+    check_warp_lifecycle(WarpScenario::NormalCast);
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum WarpScenario {
+    None,
+    BeforeEndStep,
+    InResponse,
+    ReturnToBattlefield,
+    NormalCast,
+}
+
+fn check_warp_lifecycle(scenario: WarpScenario) {
     use crate::cards::CardDefinitionBuilder;
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::triggers::TriggerQueue;
@@ -961,13 +994,42 @@ pub(super) fn test_warp_marks_cast_exiles_at_next_end_step_and_grants_play_next_
     let cast_response = PriorityResponse::PriorityAction(LegalAction::CastSpell {
         spell_id: warp_id,
         from_zone: Zone::Hand,
-        casting_method: CastingMethod::Alternative(0),
+        casting_method: if scenario == WarpScenario::NormalCast {
+            CastingMethod::Normal
+        } else {
+            CastingMethod::Alternative(0)
+        },
     });
-    apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
-        .expect("warp cast should succeed");
-    assert!(
+    let mut dm = SelectFirstDecisionMaker;
+    let mut progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &cast_response,
+        &mut dm,
+    )
+    .expect("cast should start");
+    if scenario == WarpScenario::NormalCast {
+        progress = apply_priority_response_with_dm(
+            &mut game,
+            &mut trigger_queue,
+            &mut state,
+            &PriorityResponse::CastingMethodChoice(0),
+            &mut dm,
+        )
+        .expect("choose normal mana cost");
+    }
+    finish_warp_cast(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        progress,
+        &mut dm,
+        "Warp Runtime Probe",
+    );
+    assert_eq!(
         game.turn_store.turn_history.spell_warped_this_turn,
-        "a spell is warped as soon as it is cast for its warp cost"
+        scenario != WarpScenario::NormalCast
     );
     resolve_stack_entry(&mut game).expect("warp spell should resolve");
 
@@ -980,17 +1042,58 @@ pub(super) fn test_warp_marks_cast_exiles_at_next_end_step_and_grants_play_next_
         })
         .expect("warped creature should be on battlefield");
 
+    let mut departed_id = None;
+    if scenario == WarpScenario::BeforeEndStep || scenario == WarpScenario::ReturnToBattlefield {
+        let grave_id = game
+            .move_object_by_effect(warped_id, Zone::Graveyard)
+            .unwrap();
+        departed_id = Some(if scenario == WarpScenario::ReturnToBattlefield {
+            game.move_object_by_effect(grave_id, Zone::Battlefield)
+                .unwrap()
+        } else {
+            grave_id
+        });
+    }
+
     let end_step_event = TriggerEvent::new_with_provenance(
         crate::events::phase::BeginningOfEndStepEvent::new(game.turn.active_player),
         crate::provenance::ProvNodeId::default(),
     );
+    if scenario == WarpScenario::NormalCast {
+        assert!(crate::triggers::check_delayed_triggers(&mut game, &end_step_event).is_empty());
+        assert!(game.battlefield.contains(&warped_id));
+        return;
+    }
     for trigger in crate::triggers::check_delayed_triggers(&mut game, &end_step_event) {
         trigger_queue.add(trigger);
     }
     put_triggers_on_stack(&mut game, &mut trigger_queue)
         .expect("put warp delayed trigger on stack");
+    assert_eq!(game.stack.len(), 1, "Warp schedules one delayed trigger");
+    if scenario == WarpScenario::InResponse {
+        departed_id = Some(
+            game.move_object_by_effect(warped_id, Zone::Graveyard)
+                .unwrap(),
+        );
+    }
     while !game.stack_is_empty() {
         resolve_stack_entry(&mut game).expect("resolve warp delayed trigger");
+    }
+
+    if let Some(id) = departed_id {
+        assert_eq!(
+            game.object(id).unwrap().zone,
+            if scenario == WarpScenario::ReturnToBattlefield {
+                Zone::Battlefield
+            } else {
+                Zone::Graveyard
+            }
+        );
+        assert!(
+            game.exile.is_empty(),
+            "Warp must not follow a new incarnation"
+        );
+        return;
     }
 
     assert!(
@@ -1039,6 +1142,93 @@ pub(super) fn test_warp_marks_cast_exiles_at_next_end_step_and_grants_play_next_
         )),
         "warped card should be castable from exile after being exiled"
     );
+    assert!(
+        !legal_actions.iter().any(|action| matches!(action,
+            LegalAction::CastSpell { spell_id, casting_method: CastingMethod::PlayFrom {
+                use_alternative: Some(0), .. }, .. } if *spell_id == exiled_id
+        )),
+        "Warp must not be offered from exile"
+    );
+    let normal_cast = legal_actions
+        .into_iter()
+        .find(|action| {
+            matches!(action,
+                LegalAction::CastSpell { spell_id, casting_method: CastingMethod::PlayFrom {
+                    use_alternative: None, .. }, .. } if *spell_id == exiled_id
+            )
+        })
+        .expect("normal-cost cast from exile");
+    game.turn_store.turn_history.spell_warped_this_turn = false;
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(normal_cast),
+        &mut dm,
+    )
+    .expect("cast normally from exile");
+    finish_warp_cast(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        progress,
+        &mut dm,
+        "Warp Runtime Probe",
+    );
+    assert!(!game.turn_store.turn_history.spell_warped_this_turn);
+    resolve_stack_entry(&mut game).expect("resolve normal exile cast");
+    let returned_id = *game.battlefield.last().unwrap();
+    let triggers = crate::triggers::check_delayed_triggers(&mut game, &end_step_event);
+    assert!(
+        triggers.is_empty(),
+        "Normal exile cast must not schedule Warp again"
+    );
+    assert!(game.battlefield.contains(&returned_id));
+}
+
+fn finish_warp_cast(
+    game: &mut GameState,
+    queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    mut progress: crate::decision::GameProgress,
+    dm: &mut SelectFirstDecisionMaker,
+    spell_name: &str,
+) {
+    use crate::decision::GameProgress;
+    use crate::decisions::context::DecisionContext;
+    for _ in 0..16 {
+        if !game.stack_is_empty() {
+            return;
+        }
+        let response = match progress {
+            GameProgress::NeedsDecisionCtx(DecisionContext::ManaPayment(ctx)) => {
+                PriorityResponse::ManaPaymentPlan(
+                    crate::mana_payment::ManaPaymentResponse::Confirm {
+                        plan_id: ctx.plan.id,
+                        request_hash: ctx.plan.request_hash,
+                    },
+                )
+            }
+            GameProgress::NeedsDecisionCtx(DecisionContext::SelectOptions(ctx)) => {
+                assert!(
+                    ctx.description
+                        .to_ascii_lowercase()
+                        .starts_with("choose the next cost to pay")
+                );
+                PriorityResponse::NextCostChoice(
+                    ctx.options
+                        .iter()
+                        .find(|option| option.legal)
+                        .unwrap()
+                        .index,
+                )
+            }
+            other => panic!("unexpected cast progress for {spell_name}: {other:?}"),
+        };
+        progress = apply_priority_response_with_dm(game, queue, state, &response, dm)
+            .expect("complete cast payment");
+    }
+    panic!("cast did not reach stack");
 }
 
 #[test]
@@ -3734,4 +3924,73 @@ pub(super) fn test_gift_promise_updates_cast_time_target_requirements() {
         vec![Target::Object(artifact_id)],
         "expected the promised Gift branch to target the opponent's nonland permanent"
     );
+}
+
+#[test]
+fn graveyard_aura_cast_resolves_attached_to_opponents_card() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Buried creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let buried = game.create_object_from_definition(&creature, bob, Zone::Graveyard);
+    let mut filter = crate::target::ObjectFilter::creature();
+    filter.zone = Some(Zone::Graveyard);
+    let aura = CardDefinitionBuilder::new(CardId::new(), "Graveyard Aura")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![crate::types::Subtype::Aura])
+        .enchants(filter)
+        .build();
+    let in_hand = game.create_object_from_definition(&aura, alice, Zone::Hand);
+    let action = LegalAction::CastSpell {
+        spell_id: in_hand,
+        from_zone: Zone::Hand,
+        casting_method: CastingMethod::Normal,
+    };
+    assert!(crate::decision::compute_legal_actions(&game, alice).contains(&action));
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut triggers = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut triggers,
+        &mut state,
+        &PriorityResponse::PriorityAction(action),
+    )
+    .unwrap();
+    assert!(matches!(
+        progress,
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_))
+    ));
+    apply_priority_response(
+        &mut game,
+        &mut triggers,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(buried)]),
+    )
+    .unwrap();
+    resolve_stack_entry(&mut game).unwrap();
+    let resolved = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|id| {
+            game.object(*id)
+                .is_some_and(|obj| obj.name == "Graveyard Aura")
+        })
+        .expect("Aura resolves onto battlefield");
+    assert_eq!(
+        game.object(resolved).unwrap().attached_to,
+        Some(crate::object::AttachmentTarget::Object(buried))
+    );
+    assert!(game.object(buried).unwrap().attachments.contains(&resolved));
+    assert!(!crate::rules::state_based::check_state_based_actions(&game).iter().any(
+        |action| matches!(action, crate::rules::state_based::StateBasedAction::AuraFallsOff(id) if *id == resolved)
+    ));
 }

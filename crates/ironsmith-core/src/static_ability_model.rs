@@ -541,6 +541,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         filter: ObjectFilter,
         display: String,
     },
+    /// Timing permission for loyalty abilities of matching permanents.
+    /// This does not change activation counts, costs, or who may activate them.
+    LoyaltyAbilitiesAnyTime {
+        filter: ObjectFilter,
+    },
     CostIncreaseManaCost(CostIncreaseManaCost<ICond>),
     ThisSpellCostReduction(ThisSpellCostReduction<Cond>),
     ThisSpellCostReductionManaCost(ThisSpellCostReductionManaCost<Cond>),
@@ -654,6 +659,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     MaxCreaturesCanBlockEachCombat(usize),
     ChooseBasicLandTypeAsEnters(String),
     ChooseLandTypeAsEnters(String),
+    Enchant(crate::AuraAttachmentFilter),
+    /// Cast timing permission requiring at least one matching chosen object target.
+    FlashIfTargetsMatching(ObjectFilter),
     EnchantedLandIsChosenType(String),
     /// "This land is the chosen type." (Multiversal Passage): the source land's
     /// subtypes become the basic land type chosen as it entered.
@@ -1699,6 +1707,9 @@ where
             StaticAbilityPayload::ActivateAbilitiesAsThoughHaste { filter, display } => {
                 StaticAbilityPayload::ActivateAbilitiesAsThoughHaste { filter, display }
             }
+            StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter } => {
+                StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter }
+            }
             StaticAbilityPayload::CostIncreaseManaCost(increase) => StaticAbilityPayload::CostIncreaseManaCost(
                 increase.try_map_condition(&mut *map_intervening)?,
             ),
@@ -1907,6 +1918,8 @@ where
             StaticAbilityPayload::ChooseLandTypeAsEnters(display) => {
                 StaticAbilityPayload::ChooseLandTypeAsEnters(display)
             }
+            StaticAbilityPayload::Enchant(filter) => StaticAbilityPayload::Enchant(filter),
+            StaticAbilityPayload::FlashIfTargetsMatching(filter) => StaticAbilityPayload::FlashIfTargetsMatching(filter),
             StaticAbilityPayload::EnchantedLandIsChosenType(display) => {
                 StaticAbilityPayload::EnchantedLandIsChosenType(display)
             }
@@ -2989,6 +3002,14 @@ impl<
             id: Some(StaticAbilityId::LevelAbilities),
             label: "level".to_string(),
             payload: StaticAbilityPayload::LevelAbility(Box::new(ability)),
+        }
+    }
+
+    pub fn flash_if_targets_matching(filter: ObjectFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::Flash),
+            label: format!("You may cast this spell as though it had flash if it targets {}", filter.description()),
+            payload: StaticAbilityPayload::FlashIfTargetsMatching(filter),
         }
     }
 
@@ -4925,6 +4946,21 @@ impl<
             payload: StaticAbilityPayload::SourceLandIsChosenType(display),
         }
     }
+    pub fn enchant(filter: crate::AuraAttachmentFilter) -> Self {
+        let description = match &filter {
+            crate::AuraAttachmentFilter::Object(filter) => filter.description(),
+            crate::AuraAttachmentFilter::Player(filter) => filter.description(),
+        };
+        let description = description.strip_prefix("an ")
+            .or_else(|| description.strip_prefix("a "))
+            .unwrap_or(&description);
+        Self {
+            id: Some(StaticAbilityId::Enchant),
+            label: format!("Enchant {description}"),
+            payload: StaticAbilityPayload::Enchant(filter),
+        }
+    }
+
     pub fn enchanted_land_is_chosen_type(display: impl Into<String>) -> Self {
         let display = display.into();
         Self {
@@ -5338,6 +5374,14 @@ impl<
             payload: StaticAbilityPayload::CostIncreaseManaCostPerTargetBeyondFirst(cost),
         }
     }
+    pub fn loyalty_abilities_any_time(filter: ObjectFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::LoyaltyAbilitiesAnyTime),
+            label: "You may activate loyalty abilities any time you could cast an instant".to_string(),
+            payload: StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter },
+        }
+    }
+
     pub fn activate_abilities_as_though_haste(
         filter: ObjectFilter,
         display: impl Into<String>,

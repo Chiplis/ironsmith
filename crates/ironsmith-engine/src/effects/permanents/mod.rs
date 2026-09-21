@@ -58,8 +58,7 @@ pub(crate) fn attachment_can_attach_to_target(
     let Some(attachment) = game.object(attachment_id) else {
         return false;
     };
-    if attachment.zone != Zone::Battlefield || !game.attachment_target_exists_on_battlefield(target)
-    {
+    if attachment.zone != Zone::Battlefield || !game.attachment_target_exists(target) {
         return false;
     }
 
@@ -70,15 +69,19 @@ pub(crate) fn attachment_can_attach_to_target(
 
     let subtypes = game.calculated_subtypes(attachment_id);
     if subtypes.contains(&Subtype::Aura) {
-        let Some(filter) = game
-            .current_characteristics(attachment_id)
-            .and_then(|chars| chars.aura_attach_filter)
-            .or_else(|| attachment.aura_attach_filter_owned())
-        else {
-            return false;
-        };
         let filter_ctx = game.filter_context_for(attachment_controller, Some(attachment_id));
-        return filter.matches_target(target, &filter_ctx, game);
+        if let Some(chars) = game.current_characteristics(attachment_id) {
+            let filters = chars.static_abilities.iter()
+                .filter_map(|ability| ability.enchant_filter()).collect::<Vec<_>>();
+            return !filters.is_empty()
+                && filters.iter().all(|filter| filter.matches_target(target, &filter_ctx, game));
+        }
+        return attachment.aura_attach_filter_owned()
+            .is_some_and(|filter| filter.matches_target(target, &filter_ctx, game));
+    }
+
+    if !game.attachment_target_exists_on_battlefield(target) {
+        return false;
     }
 
     if subtypes.contains(&Subtype::Equipment) {
@@ -122,6 +125,11 @@ pub(crate) fn attach_battlefield_object_to_target(
     target: AttachmentTarget,
 ) -> bool {
     if !attachment_can_attach_to_target(game, attachment_id, target) {
+        return false;
+    }
+    if let AttachmentTarget::Object(target_id) = target
+        && crate::targeting::has_protection_from_source(game, target_id, attachment_id)
+    {
         return false;
     }
 

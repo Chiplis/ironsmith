@@ -544,16 +544,37 @@ fn has_protection_from_subject_with_view(
         return false;
     };
 
-    // Get calculated abilities for the target
-    let target_abilities = view
-        .static_abilities_rc(target_id)
-        .unwrap_or_else(|| std::sync::Arc::new(extract_static_abilities(&target.abilities)));
-
-    for ability in target_abilities.iter() {
+    // A card can have protection in its text box without that ability
+    // functioning in its current zone (for example, in a graveyard).
+    let target_abilities = view.abilities_rc(target_id);
+    let target_abilities = target_abilities.as_deref().map(Vec::as_slice)
+        .unwrap_or(&target.abilities);
+    for ability in target_abilities.iter().filter(|ability| ability.functions_in(&target.zone)) {
+        let crate::ability::AbilityKind::Static(ability) = &ability.kind else { continue; };
         if ability.has_protection()
             && let Some(protection_from) = ability.protection_from()
         {
-            let matches = match protection_from {
+            let matches = protection_from_subject_with_view(game, target_id, source, protection_from, view);
+            if matches {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+/// Evaluate one protection quality against live or last-known source data.
+/// Shared by targeting and damage prevention.
+pub(crate) fn protection_from_subject_with_view(
+    game: &GameState,
+    target_id: ObjectId,
+    source: ObjectSubject<'_>,
+    protection_from: &crate::ability::ProtectionFrom,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> bool {
+    let Some(target) = game.object(target_id) else { return false; };
+    match protection_from {
                 crate::ability::ProtectionFrom::ChosenPlayer => game
                     .chosen_player(target_id)
                     .is_some_and(|chosen| source.protection_controller(game) == chosen),
@@ -575,14 +596,7 @@ fn has_protection_from_subject_with_view(
                     )
                 }
                 _ => subject_matches_protection(source, protection_from, game, view),
-            };
-            if matches {
-                return true;
             }
-        }
-    }
-
-    false
 }
 
 /// Check if a source matches a protection quality.
@@ -745,6 +759,73 @@ pub fn compute_legal_targets_with_tagged_objects(
         tagged_objects,
         &view,
     )
+}
+
+/// Target selection during an ability must retain values and identities produced
+/// by earlier instructions, rather than reconstructing them from the source.
+pub fn compute_legal_targets_with_execution_context(
+    game: &GameState,
+    spec: &ChooseSpec,
+    ctx: &crate::effects::ExecutionContext,
+) -> Vec<Target> {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    compute_legal_targets_with_execution_context_and_view(game, spec, ctx, &view)
+}
+
+pub(crate) fn compute_legal_targets_with_execution_context_and_view(
+    game: &GameState,
+    spec: &ChooseSpec,
+    ctx: &crate::effects::ExecutionContext,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Vec<Target> {
+    let objects = |filter: &ObjectFilter| compute_object_targets_with_filter_context(
+        game, filter, ctx.controller, Some(ctx.source), ctx.source_snapshot.as_ref(),
+        None, None, Some(ctx.filter_context(game)), view,
+    );
+    let players = |filter: &PlayerFilter| {
+        let filter = match filter { PlayerFilter::Target(inner) => inner.as_ref(), other => other };
+        let mut filter_ctx = ctx.filter_context(game);
+        if game.source_snapshot_is_exempt_from_range(Some(ctx.source), ctx.source_snapshot.as_ref()) {
+            filter_ctx.players_in_range = None;
+        }
+        game.players.iter().filter(|p| p.is_in_game())
+            .filter(|p| can_target_player_from_source_or_snapshot(
+                game, p.id, ctx.source, ctx.source_snapshot.as_ref()))
+            .filter(|p| player_filter_matches_game(filter, p.id, game, &filter_ctx))
+            .map(|p| Target::Player(p.id)).collect::<Vec<_>>()
+    };
+    match spec.base() {
+        ChooseSpec::Object(filter) => objects(filter),
+        ChooseSpec::Player(filter) => players(filter),
+        ChooseSpec::ObjectOrPlayer(object, player) => {
+            let mut targets = objects(object);
+            targets.extend(players(player));
+            targets
+        }
+        _ => compute_legal_targets_with_tagged_objects_source_snapshot_with_view(
+            game, spec, ctx.controller, Some(ctx.source), ctx.source_snapshot.as_ref(),
+            Some(&ctx.tagged_objects), view,
+        ),
+    }
+}
+
+/// Unlike an absent restriction, an unresolvable authored limit is an error.
+pub fn resolved_target_aggregate_constraint_with_context(
+    game: &GameState,
+    spec: &ChooseSpec,
+    ctx: &crate::effects::ExecutionContext,
+    legal_targets: &[Target],
+) -> Result<Option<crate::targeting::ResolvedTargetAggregateConstraint>, crate::effects::ExecutionError> {
+    let Some(constraint) = spec.target_set_aggregate_constraint() else { return Ok(None); };
+    let maximum = crate::effects::helpers::resolve_value(game, &constraint.maximum, ctx)?;
+    Ok(Some(crate::targeting::ResolvedTargetAggregateConstraint {
+        metric: constraint.metric,
+        maximum,
+        target_values: legal_targets.iter().map(|target| (*target, match target {
+            Target::Object(id) => crate::targeting::aggregate_object_value(game, *id, constraint.metric),
+            Target::Player(_) => 0,
+        })).collect(),
+    }))
 }
 
 pub(crate) fn compute_legal_targets_with_tagged_objects_with_view(
@@ -1178,6 +1259,23 @@ fn compute_object_targets_with_view(
     combat_context: Option<(PlayerId, PlayerId)>,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<Target> {
+    compute_object_targets_with_filter_context(
+        game, filter, caster, source_id, source_snapshot, tagged_objects,
+        combat_context, None, view,
+    )
+}
+
+fn compute_object_targets_with_filter_context(
+    game: &GameState,
+    filter: &ObjectFilter,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    source_snapshot: Option<&ObjectSnapshot>,
+    tagged_objects: Option<&std::collections::HashMap<TagKey, Vec<ObjectSnapshot>>>,
+    combat_context: Option<(PlayerId, PlayerId)>,
+    execution_filter: Option<crate::target::FilterContext>,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Vec<Target> {
     let mut targets = Vec::new();
 
     let mut candidate_filter;
@@ -1188,7 +1286,7 @@ fn compute_object_targets_with_view(
     } else { filter };
 
     // Build filter context
-    let mut filter_ctx = target_filter_context(game, caster, source_id);
+    let mut filter_ctx = execution_filter.unwrap_or_else(|| target_filter_context(game, caster, source_id));
     if game.source_snapshot_is_exempt_from_range(source_id, source_snapshot) {
         filter_ctx.players_in_range = None;
     }

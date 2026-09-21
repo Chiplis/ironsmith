@@ -440,52 +440,17 @@ fn runtime_ability_from_core_model(
         }
         ironsmith::ability::AbilityKind::Static(_) => {}
     }
-    converted = runtime_ability_with_inherent_functional_zones(converted);
     Ok(converted)
-}
-
-fn runtime_ability_with_inherent_functional_zones(
-    ability: ironsmith::ability::Ability,
-) -> ironsmith::ability::Ability {
-    let ironsmith::ability::AbilityKind::Static(static_ability) = &ability.kind else {
-        return ability;
-    };
-    match static_ability.id() {
-        ironsmith::static_abilities::StaticAbilityId::ExileToExileInsteadOfGraveyard
-        | ironsmith::static_abilities::StaticAbilityId::ExileToCounteredExileInsteadOfGraveyard
-        | ironsmith::static_abilities::StaticAbilityId::ExileWouldDieInstead => {
-            ability.in_zones(vec![
-                ironsmith::zone::Zone::Battlefield,
-                ironsmith::zone::Zone::Stack,
-                ironsmith::zone::Zone::Graveyard,
-                ironsmith::zone::Zone::Hand,
-                ironsmith::zone::Zone::Library,
-                ironsmith::zone::Zone::Exile,
-                ironsmith::zone::Zone::Command,
-            ])
-        }
-        ironsmith::static_abilities::StaticAbilityId::Dredge => {
-            ability.in_zones(vec![ironsmith::zone::Zone::Graveyard])
-        }
-        ironsmith::static_abilities::StaticAbilityId::Grants => {
-            if let Some(spec) = static_ability.grant_spec()
-                && spec.filter.source
-                && spec.zone != ironsmith::zone::Zone::Battlefield
-            {
-                ability.in_zones(vec![spec.zone])
-            } else {
-                ability
-            }
-        }
-        _ => ability,
-    }
 }
 
 fn combine_level_ability_statics(
     abilities: Vec<ironsmith::ability::Ability>,
 ) -> Vec<ironsmith::ability::Ability> {
     let mut out = Vec::with_capacity(abilities.len());
-    let mut levels = Vec::new();
+    let mut groups: Vec<(
+        Vec<ironsmith::zone::Zone>,
+        Vec<ironsmith::ability::LevelAbility>,
+    )> = Vec::new();
 
     for ability in abilities {
         let ironsmith::ability::AbilityKind::Static(static_ability) = &ability.kind else {
@@ -496,15 +461,25 @@ fn combine_level_ability_statics(
             out.push(ability);
             continue;
         };
-        levels.extend(level_abilities.iter().cloned());
+        // Combining level rows must not broaden or discard their source zones.
+        if let Some((_, levels)) = groups
+            .iter_mut()
+            .find(|(zones, _)| *zones == ability.functional_zones)
+        {
+            levels.extend(level_abilities.iter().cloned());
+        } else {
+            groups.push((ability.functional_zones, level_abilities.to_vec()));
+        }
     }
 
-    if !levels.is_empty() {
-        out.push(ironsmith::ability::Ability::static_ability(
-            ironsmith::static_abilities::StaticAbility::with_level_abilities(levels),
-        ));
+    for (zones, levels) in groups {
+        out.push(
+            ironsmith::ability::Ability::static_ability(
+                ironsmith::static_abilities::StaticAbility::with_level_abilities(levels),
+            )
+            .in_zones(zones),
+        );
     }
-
     out
 }
 
@@ -572,6 +547,18 @@ fn apply_class_level_runtime_gates(definition: &mut ironsmith::cards::CardDefini
         let Some(level) = current_level else {
             continue;
         };
+        if let ironsmith::ability::AbilityKind::Static(static_ability) = &mut ability.kind {
+            // Classes start at level 1 with zero level counters. Grant the
+            // entire static ability so its existing conditions stay intact.
+            *static_ability = ironsmith::static_abilities::StaticAbility::new(
+                ironsmith::static_abilities::GrantAbility::source(static_ability.clone())
+                    .with_condition(ironsmith::ConditionExpr::SourceHasCounterAtLeast {
+                        counter_type: ironsmith::CounterType::Level,
+                        count: level.saturating_sub(1),
+                        surface: ironsmith::SourceCounterThresholdSurface::SourceHas,
+                    }),
+            );
+        }
         if let ironsmith::ability::AbilityKind::Triggered(triggered) = &mut ability.kind
             && triggered.presentation_label.is_none()
         {
@@ -1445,3 +1432,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod functional_zone_tests;

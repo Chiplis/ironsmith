@@ -471,6 +471,11 @@ fn append_cast_actions_from_zone_for_card(
             game, actions, player, card_id, card, view,
         );
     }
+    if from_zone == Zone::Exile && game.plotted_cast_permission(card_id, from_zone, player).is_some() {
+        append_zone_granted_alternative_cast_actions_for_card(
+            game, actions, player, card_id, card, from_zone, view,
+        );
+    }
     if zone_has_active_grants && from_zone == Zone::Library && !card.is_land() {
         // Only the top card reaches this path (see `add_library_cast_actions`).
         append_zone_granted_alternative_cast_actions_for_card(
@@ -1361,6 +1366,11 @@ pub(crate) fn activation_timing_allows(
         crate::ability::ActivationTiming::AnyTime => true,
         crate::ability::ActivationTiming::DuringCombat => matches!(game.turn.phase, Phase::Combat),
         crate::ability::ActivationTiming::SorcerySpeed => {
+            if activated.is_loyalty_ability()
+                && player_may_activate_loyalty_abilities_any_time(game, controller, source, view)
+            {
+                return true;
+            }
             if is_equip_ability(game, source, activated)
                 && player_may_activate_equip_abilities_any_time(game, controller, view)
             {
@@ -1392,15 +1402,17 @@ fn loyalty_activation_special_rules_allow(
     controller: PlayerId,
     source: ObjectId,
     activated: &crate::ability::ActivatedAbility,
+    view: &DerivedGameView<'_>,
 ) -> bool {
     if !activated.is_loyalty_ability() {
         return true;
     }
 
-    game.is_active_player(controller)
-        && matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain)
-        && game.stack_is_empty()
-        && !game.loyalty_ability_activated_this_turn(source)
+    !game.loyalty_ability_activated_this_turn(source)
+        && ((game.is_active_player(controller)
+            && matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain)
+            && game.stack_is_empty())
+            || player_may_activate_loyalty_abilities_any_time(game, controller, source, view))
 }
 
 fn loyalty_remove_counters_cost_amount(cost: &crate::costs::Cost) -> Option<u32> {
@@ -1523,6 +1535,30 @@ fn is_equip_ability(
                 .downcast_ref::<crate::effects::AttachToEffect>()
                 .is_some()
         })
+}
+
+fn player_may_activate_loyalty_abilities_any_time(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    use crate::filter::ObjectFilterExt;
+    let Some(activated_object) = game.object(source) else { return false; };
+    game.battlefield.iter().copied().any(|permission_source| {
+        let Some(object) = game.object(permission_source) else { return false; };
+        if game.controller_of(object) != controller { return false; }
+        let abilities = view.abilities_rc(permission_source)
+            .unwrap_or_else(|| std::sync::Arc::new(object.abilities_vec()));
+        let ctx = game.filter_context_for(controller, Some(permission_source));
+        abilities.iter().any(|ability| {
+            if !ability.functional_zones.contains(&Zone::Battlefield) { return false; }
+            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else { return false; };
+            let Some(model) = static_ability.compiled_model() else { return false; };
+            let ironsmith_core::StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter } = &model.payload else { return false; };
+            filter.matches(activated_object, &ctx, game)
+        })
+    })
 }
 
 fn player_may_activate_equip_abilities_any_time(
@@ -1799,7 +1835,7 @@ fn activation_precheck_with_view(
     }
 
     if activated_ability_uses_simple_precheck(activated) {
-        if !loyalty_activation_special_rules_allow(game, controller, source, activated) {
+        if !loyalty_activation_special_rules_allow(game, controller, source, activated, view) {
             if let Some(perf_ctx) = perf_ctx {
                 perf_ctx.add_precheck_ms(started_at.elapsed_ms());
             }
@@ -1880,7 +1916,7 @@ fn activation_precheck_with_view(
         options: Default::default(),
     };
 
-    if !loyalty_activation_special_rules_allow(game, controller, source, activated) {
+    if !loyalty_activation_special_rules_allow(game, controller, source, activated, view) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }

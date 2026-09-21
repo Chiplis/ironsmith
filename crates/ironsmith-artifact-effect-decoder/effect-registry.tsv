@@ -286,3 +286,4 @@ WithIdEffect	ironsmith_core::WithIdEffect<wire::WireEffect>
 ImprintFromHandEffect	wire::WireImprintFromHandEffect
 ScaleXValueEffect	wire::WireScaleXValueEffect
 RevealChosenSubtypeEffect	ironsmith_core::RevealChosenSubtypeEffect
+BecomePlottedEffect	ironsmith_core::BecomePlottedEffect

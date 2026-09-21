@@ -2257,6 +2257,7 @@ fn is_delayed_when_that_dies_this_turn_followup_sentence(tokens: &[OwnedLexToken
 
 fn is_delayed_when_that_leaves_battlefield_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
     effect_grammar::delayed_sentence_shapes::parse_delayed_tagged_leaves_shape(tokens).is_some()
+        || effect_grammar::delayed_sentence_shapes::parse_delayed_source_leaves_shape(tokens).is_some()
 }
 
 fn is_delayed_next_end_step_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
@@ -6482,6 +6483,15 @@ mod tests {
                 "Whenever it deals combat damage to a player, create a Treasure token".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn trigger_sentence_chunk_splitter_keeps_delayed_source_leaves_followup() {
+        let tokens = lex_line(
+            "When this artifact enters, draw a card. When this artifact leaves the battlefield, discard a card.", 0,
+        ).unwrap();
+        let chunks = split_trigger_sentence_chunks_rewrite_lexed(&tokens);
+        assert_eq!(chunks.len(), 1);
     }
 
     #[test]

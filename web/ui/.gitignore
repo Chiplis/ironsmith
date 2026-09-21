@@ -26,3 +26,6 @@ dist-ssr
 # Generated localized card text assets (built by scripts/build-scryfall-i18n.mjs)
 public/card-i18n
 reports/i18n/scryfall-all-cards*.json*
+
+# Copied/generated from the pinned Mana submodule
+public/mana/

@@ -9,6 +9,7 @@ pub enum ExchangeActionAst {
     },
     ExchangeTextBoxes {
         target: TargetAst,
+        include_source: bool,
     },
     ExchangeZones {
         zone1: Zone,

@@ -57,6 +57,30 @@ pub(super) fn contains_target_player_or_planeswalker_controller_relation(
     })
 }
 
+// A color adjective before a coordinated list of object domains scopes the
+// entire list: "blue permanent, spell, or card in a graveyard". Independently
+// qualified arms ("blue permanent or a red spell") do not share the adjective.
+fn leading_shared_domain_colors(segments: &[&[OwnedLexToken]]) -> Option<crate::color::ColorSet> {
+    if segments.len() < 2 { return None; }
+    let domain = |word: &str| matches!(word, "permanent" | "permanents" | "spell" | "spells" | "card" | "cards");
+    if !segments.iter().skip(1).all(|segment| {
+        TokenWordView::new(segment).word_refs().first().is_some_and(|word| domain(word))
+    }) { return None; }
+    let view = TokenWordView::new(segments[0]);
+    let words = view.word_refs();
+    let noun = words.iter().position(|word| domain(word))?;
+    let mut prefix = &words[..noun];
+    if prefix.first().is_some_and(|word| matches!(*word, "a" | "an")) { prefix = &prefix[1..]; }
+    let mut colors = crate::color::ColorSet::COLORLESS;
+    let mut next_color = true;
+    for word in prefix {
+        if next_color { colors = colors.union(crate::util::parse_color(word)?); }
+        else if *word != "or" { return None; }
+        next_color = !next_color;
+    }
+    (!next_color && !colors.is_empty()).then_some(colors)
+}
+
 /// Parse a union whose branches each name their own object class and may
 /// carry independent qualifiers.
 ///
@@ -144,6 +168,8 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
             .is_some_and(|word| matches!(word, "a" | "an"))
     });
 
+    let shared_colors = leading_shared_domain_colors(&segments);
+
     let branches = segments
         .into_iter()
         .enumerate()
@@ -224,6 +250,7 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
     propagate_trailing_shared_attachment_scope(&mut branches);
     propagate_leading_shared_state(tokens, &mut branches);
     let mut union = ObjectFilter::default();
+    union.colors = shared_colors;
     factor_common_domain_scope(&mut branches, &mut union);
     if repeated_other_surface && union.other {
         // Every arm authored its own `other` determiner. Keep that identity
@@ -257,6 +284,11 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
     }
 
     union.any_of = branches;
+    // Early union recognition bypasses the ordinary filter tail pass. Shared
+    // trailing restrictions still qualify every type arm of this selector.
+    super::super::reference_tag_stage::lift_shared_trailing_mana_value_from_type_union(
+        &mut union, tokens,
+    );
     union.set_explicit_union_branch_articles(repeats_indefinite_article);
     if has_and_or {
         union.set_union_connective(ObjectFilterUnionConnective::AndOr);

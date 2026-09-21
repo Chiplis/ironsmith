@@ -1,4 +1,5 @@
 import { sha256Bytes } from './sha256.js';
+import { canonicalWireJson } from './wire-json.js';
 export const EMPTY_ACTION_PREFIX = '0'.repeat(64);
 // PeerJS BinaryPack encodes an `undefined` object property as `null`, while the
 // JSON canonicalization below (like JSON.stringify) drops it. An entry hashed
@@ -6,10 +7,8 @@ export const EMPTY_ACTION_PREFIX = '0'.repeat(64);
 // Everything that is hashed, stored or sent must first pass through this JSON
 // round trip so the local and transmitted forms are byte-identical.
 export const wireStablePayload = value => (value == null ? value : JSON.parse(JSON.stringify(value)));
-const canonical = value => JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
-  ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
 export function actionPrefixHash(previous, entry) {
-  const bytes = new TextEncoder().encode(canonical([previous, Number(entry.seq), Number(entry.actorIndex), entry.command, entry.clock ?? null]));
+  const bytes = new TextEncoder().encode(canonicalWireJson([previous, Number(entry.seq), Number(entry.actorIndex), entry.command, entry.clock ?? null]));
   return Array.from(sha256Bytes(bytes), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 export function withActionPrefixes(entries) {

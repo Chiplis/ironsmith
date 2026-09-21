@@ -2263,8 +2263,12 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     {
         return Some(fabricate);
     }
-    if let AbilityKind::Triggered(triggered) = &ability.kind
-        && let Some(riot) = describe_structural_riot_keyword(triggered)
+    if let AbilityKind::Static(static_ability) = &ability.kind
+        && let Some(ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram {
+            program, also_turns_face_up: false, turns_face_up_only: false,
+            transforms_into: None, ..
+        }) = static_ability.compiled_model().map(|model| &model.payload)
+        && let Some(riot) = describe_structural_riot_program(program)
     {
         return Some(riot);
     }
@@ -3667,16 +3671,10 @@ pub(super) fn cumulative_upkeep_put_counters_text(
     Some(format!("Put {counter_text} on this creature"))
 }
 
-pub(super) fn describe_structural_riot_keyword(
-    triggered: &crate::ability::TriggeredAbility,
+pub(super) fn describe_structural_riot_program(
+    program: &crate::resolution::ResolutionProgram,
 ) -> Option<String> {
-    if triggered.intervening_if.is_some()
-        || !triggered.choices.is_empty()
-        || !trigger_is_this_enters_battlefield(&triggered.trigger)
-    {
-        return None;
-    }
-    let [segment] = triggered.effects.segments.as_slice() else {
+    let [segment] = program.segments.as_slice() else {
         return None;
     };
     if !segment.self_replacements.is_empty() {

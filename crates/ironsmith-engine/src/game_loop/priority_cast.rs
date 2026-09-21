@@ -626,7 +626,10 @@ pub(super) fn format_alternative_method(
                 .unwrap_or_else(|| "0".to_string());
             ("Blitz".to_string(), cost_desc)
         }
-        AlternativeCastingMethod::Warp { cost, additional_cost } => {
+        AlternativeCastingMethod::Warp {
+            cost,
+            additional_cost,
+        } => {
             let mut cost_desc = format_mana_cost_simple(cost);
             for component in additional_cost.costs() {
                 cost_desc.push_str(&format!(", {}", component.display()));
@@ -2474,6 +2477,47 @@ pub(super) fn continue_to_targets_or_mana_payment(
         {
             specialize_target_requirement_for_chooser(game, player, source, chooser, requirement);
         }
+        // When a single target remains, omit choices that cannot supply the only
+        // available timing permission. Keep the permission out of the resolution
+        // target specification: it is checked only while casting.
+        if !pending.effect_driven
+            && pending.remaining_requirements.len() == 1
+            && pending.remaining_requirements[0].max_targets == Some(1)
+            && let Some(spell) = game.object(pending.spell_id)
+            && !crate::decision::completed_cast_proposal_is_legal(
+                game,
+                pending.caster,
+                spell,
+                &pending.casting_method,
+                &pending.chosen_targets,
+            )
+        {
+            let requirement = &mut pending.remaining_requirements[0];
+            requirement.legal_targets.retain(|target| {
+                let mut targets = pending.chosen_targets.clone();
+                targets.push(*target);
+                crate::decision::completed_cast_proposal_is_legal(
+                    game,
+                    pending.caster,
+                    spell,
+                    &pending.casting_method,
+                    &targets,
+                )
+            });
+            requirement.legal_target_sets.retain(|targets| {
+                targets
+                    .iter()
+                    .all(|target| requirement.legal_targets.contains(target))
+            });
+            requirement.min_targets = requirement.min_targets.max(1);
+            if requirement.legal_targets.is_empty() {
+                state.rollback_action(game);
+                return Err(GameLoopError::ActionCancelled(
+                    "No target satisfies the spell's casting permission".into(),
+                ));
+            }
+        }
+
         let requirements = pending.remaining_requirements[..requirement_count].to_vec();
         pending.stage = CastStage::ChoosingTargets;
         pending.active_target_requirement_count = requirements.len();
@@ -3299,7 +3343,7 @@ pub(super) fn continue_spell_cost_payment(
             cost_ctx.tagged_objects = pending.tagged_objects.clone();
             cost_ctx.effect_outcomes = pending.effect_outcomes.clone();
             cost_ctx.x_value = pending.x_value;
-        cost_ctx.announced_targets = pending.chosen_targets.clone();
+            cost_ctx.announced_targets = pending.chosen_targets.clone();
 
             let payment = cost.pay(game, &mut cost_ctx).map_err(|err| {
                 GameLoopError::InvalidState(format!(
@@ -3588,6 +3632,7 @@ pub(super) fn continue_to_mana_payment(
                 pending.caster,
                 spell,
                 &pending.casting_method,
+                &pending.chosen_targets,
             )
         }
     });
@@ -3671,7 +3716,8 @@ pub(super) fn continue_to_mana_payment(
         for step in &mut pending.remaining_cost_steps {
             if let ActivationCostStep::Cost(cost) = step
                 && let Some(effect) = cost.effect_ref()
-                && let Some(frozen) = freeze_target_aggregate_cost(effect, game, &pending.chosen_targets)
+                && let Some(frozen) =
+                    freeze_target_aggregate_cost(effect, game, &pending.chosen_targets)
             {
                 *cost = crate::costs::Cost::validated_effect(frozen);
             }
@@ -3991,27 +4037,9 @@ pub(super) fn get_legal_discard_cards(
     game: &GameState,
     player: PlayerId,
     source: ObjectId,
-    card_types: &[crate::types::CardType],
+    filter: &crate::filter::ObjectFilter,
 ) -> Vec<ObjectId> {
-    game.player(player)
-        .map(|p| {
-            p.hand
-                .iter()
-                .copied()
-                .filter(|&card_id| {
-                    if card_id == source {
-                        return false;
-                    }
-                    game.object(card_id).is_some_and(|obj| {
-                        card_types.is_empty()
-                            || card_types
-                                .iter()
-                                .any(|card_type| obj.card_types.contains(card_type))
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+    crate::costs::legal_discard_cost_cards(game, player, source, filter)
 }
 
 /// Get legal cards in hand that can be exiled for a cost.
@@ -4175,12 +4203,12 @@ pub(super) fn card_cost_choice_description_and_candidates(
 ) -> (String, Vec<ObjectId>) {
     let (description, mut candidates) = match card_choice_cost {
         ActivationCardCostChoice::Discard {
-            card_types,
+            filter,
             description,
             ..
         } => (
             format!("Choose a card to discard: {}", description),
-            get_legal_discard_cards(game, player, source, card_types),
+            get_legal_discard_cards(game, player, source, filter),
         ),
         ActivationCardCostChoice::ExileFromHand {
             color_filter,
@@ -4338,23 +4366,40 @@ fn freeze_target_aggregate_cost(
 ) -> Option<crate::effect::Effect> {
     if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
         let constraint = choose.aggregate_constraint.as_ref()?;
-        let crate::effect::Value::AnnouncedTargetTotal(metric) = constraint.minimum.as_ref()?.unhinted() else { return None; };
-        let ids: std::collections::HashSet<_> = targets.iter().filter_map(|target| match target {
-            Target::Object(id) => Some(*id), Target::Player(_) => None,
-        }).collect();
+        let crate::effect::Value::AnnouncedTargetTotal(metric) =
+            constraint.minimum.as_ref()?.unhinted()
+        else {
+            return None;
+        };
+        let ids: std::collections::HashSet<_> = targets
+            .iter()
+            .filter_map(|target| match target {
+                Target::Object(id) => Some(*id),
+                Target::Player(_) => None,
+            })
+            .collect();
         let amount = crate::targeting::aggregate_object_set_value(game, ids, *metric);
         let mut frozen = choose.clone();
-        frozen.aggregate_constraint.as_mut().unwrap().minimum = Some(crate::effect::Value::Fixed(amount));
+        frozen.aggregate_constraint.as_mut().unwrap().minimum =
+            Some(crate::effect::Value::Fixed(amount));
         return Some(crate::effect::Effect::new(frozen));
     }
     if let Some(wrapper) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
         let mut frozen = wrapper.clone();
-        frozen.effect = Box::new(freeze_target_aggregate_cost(&wrapper.effect, game, targets)?);
+        frozen.effect = Box::new(freeze_target_aggregate_cost(
+            &wrapper.effect,
+            game,
+            targets,
+        )?);
         return Some(crate::effect::Effect::new(frozen));
     }
     if let Some(wrapper) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         let mut frozen = wrapper.clone();
-        frozen.effect = Box::new(freeze_target_aggregate_cost(&wrapper.effect, game, targets)?);
+        frozen.effect = Box::new(freeze_target_aggregate_cost(
+            &wrapper.effect,
+            game,
+            targets,
+        )?);
         return Some(crate::effect::Effect::new(frozen));
     }
     None
@@ -5854,7 +5899,9 @@ pub(super) fn continue_activation(
                 // Record every committed activation. Lifetime limits and
                 // activation-history effects need the same event as turn caps.
                 game.record_ability_activation_with_origin(
-                    pending.source, pending.ability_index, pending.ability_origin.clone(),
+                    pending.source,
+                    pending.ability_index,
+                    pending.ability_origin.clone(),
                 );
                 if pending.is_loyalty_ability {
                     game.record_loyalty_ability_activation(pending.source);

@@ -16,8 +16,11 @@ function* maskSourceFrameSteps(scan, boxes, stats, statsPanel, panels = {}) {
       // Without a registered symbol, extending across unknown pixels can
       // capture a boxed set logo as lettering. Use the complete measured line
       // in that case; only an independent symbol anchor permits expansion.
-      const right=Math.floor(Math.min(b.x+b.width,stop!=null?stop-1:text.x+text.width+3));
-      regions.push({name,x:text.x-3,y:text.y-3,width:Math.max(1,right-(text.x-3)),height:text.height+6});
+      // Include the dark edging outside the measured pale glyph fill. Its
+      // cleanup radius is larger than an ordinary anti-aliased text edge.
+      const padding=6;
+      const right=Math.floor(Math.min(b.x+b.width,stop!=null?stop-1:text.x+text.width+padding));
+      regions.push({name,x:text.x-padding,y:text.y-padding,width:Math.max(1,right-(text.x-padding)),height:text.height+padding*2});
       continue;
     }
     const integrated=panels[name]==='integrated';

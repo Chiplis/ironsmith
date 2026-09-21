@@ -471,6 +471,15 @@ pub(super) fn apply_trait_replacement(
             TraitApplyResult::Modified(event.rewrap(modified))
         }
 
+        ReplacementAction::AsEntersProgram(program) => {
+            let Some(etb) = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner()) else {
+                return TraitApplyResult::Unchanged(event);
+            };
+            let mut pending = etb.clone();
+            pending.pending_program = Some((program.clone(), effect.controller));
+            TraitApplyResult::Modified(event.rewrap(pending))
+        }
+
         ReplacementAction::Additionally(_effects) => TraitApplyResult::Modified(event),
 
         ReplacementAction::DeclineOptional(_) => TraitApplyResult::Modified(event),

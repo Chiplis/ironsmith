@@ -1609,6 +1609,15 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::TurnFaceUp(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_turn_face_up.insert(obj_id);
+                    }
+                }
+            }
             Restriction::Transform(filter) => {
                 for &obj_id in &game.battlefield {
                     if let Some(obj) = game.object(obj_id)

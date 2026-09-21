@@ -295,7 +295,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         {
             return Some((
                 constructor(Box::new(ChooseSpec::Tagged(
-                    (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                    (crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()).into(),
                 )))
                 .with_surface_hint(ValueSurfaceHint::SacrificedObject(kind)),
                 used,
@@ -621,10 +621,11 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         ));
     }
     if let Some(used) = prefix_len(words, TAGGED_MANA_VALUE_PREFIXES) {
+        let tag = tagged_characteristic_reference_tag(&words[..used]);
         return Some((
             with_sacrificed_object_surface(
                 Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-                    (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                    tag.bind().into(),
                 ))),
                 &words[..used],
             ),
@@ -910,6 +911,16 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
     }
     let filter =
         crate::grammar::primitives::probe_shape(parse_object_filter_words(filter_words, false))?;
+    // The legacy relational filter reader can ignore unknown trailing words.
+    // If a complete simple prefix already describes exactly the same filter,
+    // report only that proven prefix as consumed so enclosing grammars reject
+    // or explicitly handle the remaining clause.
+    let filter_end = if crate::grammar::filters::parse_simple_object_filter_words(filter_words, false).is_none() {
+        (1..filter_words.len()).rev().find_map(|end| {
+            let prefix = crate::grammar::filters::parse_simple_object_filter_words(&filter_words[..end], false)?;
+            (prefix == filter).then_some(filter_start + end)
+        }).unwrap_or(filter_end)
+    } else { filter_end };
     let mut value = Value::Count(filter);
     if value_helper_shapes::has_that_player_possessive(filter_words) {
         value = value.with_surface_hint(ValueSurfaceHint::ThatPlayerPossessive);

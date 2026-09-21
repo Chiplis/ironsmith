@@ -15,6 +15,7 @@ pub struct OpponentDrainSentenceShape<'a> {
 pub struct RevealSelectedHandShape<'a> {
     pub descriptor_tokens: &'a [OwnedLexToken],
     pub your_hand: bool,
+    pub random: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -132,10 +133,17 @@ pub fn parse_reveal_selected_hand_tail_shape(
     if !crate::util::trim_edge_punctuation_tokens(rest).is_empty() {
         return None;
     }
-    let descriptor_tokens = trim_lexed_commas(body.get(..suffix_offset)?);
+    let mut descriptor_tokens = trim_lexed_commas(body.get(..suffix_offset)?);
+    let mut random = false;
+    if let Some((offset, _, remaining)) = primitives::find_prefix(descriptor_tokens, || primitives::phrase(&["at", "random"])) {
+        if !crate::util::trim_edge_punctuation_tokens(remaining).is_empty() { return None; }
+        descriptor_tokens = trim_lexed_commas(descriptor_tokens.get(..offset)?);
+        random = true;
+    }
     (!descriptor_tokens.is_empty()).then_some(RevealSelectedHandShape {
         descriptor_tokens,
         your_hand,
+        random,
     })
 }
 

@@ -106,6 +106,9 @@ pub fn parse_cant_cast_restriction_fact_words(words: &[&str]) -> Option<CantCast
                 filter,
             });
         }
+        if let Some(filter) = parse_cast_restriction_tail_filter_words(cant_tail) {
+            return Some(CantCastRestrictionFact::CastSpellsMatching { player: subject.player, filter });
+        }
         return None;
     }
 
@@ -151,20 +154,11 @@ pub fn parse_spell_restriction_subject_filter_words(words: &[&str]) -> Option<Ob
     while !input.is_empty() {
         input = prefix_remainder(input, &["with"])?;
         if let Some(rest) = prefix_remainder(input, &["mana", "value"]) {
-            let value = crate::grammar::primitives::probe_shape(leaf::parse_number_i32_complete(
-                rest.first().copied()?,
-            ))?;
-            let after_value = &rest[1..];
-            if let Some(tail) = prefix_remainder(after_value, &["or", "greater"]) {
-                filter = filter.with_mana_value(Comparison::GreaterThanOrEqual(value));
-                input = tail;
-            } else if let Some(tail) = prefix_remainder(after_value, &["or", "less"]) {
-                filter = filter.with_mana_value(Comparison::LessThanOrEqual(value));
-                input = tail;
-            } else {
-                filter = filter.with_mana_value(Comparison::Equal(value));
-                input = after_value;
-            }
+            let (comparison, consumed) = crate::grammar::shared_util::value_semantics::parse_filter_comparison_tokens(
+                "mana value", rest, words,
+            ).ok().flatten()?;
+            filter = filter.with_mana_value(comparison);
+            input = &rest[consumed..];
             continue;
         }
         if let Some(rest) = parse_x_in_mana_cost_prefix(input) {

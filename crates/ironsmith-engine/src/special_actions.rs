@@ -1098,12 +1098,9 @@ fn can_play_land(game: &GameState, player: PlayerId, card_id: ObjectId) -> Resul
         || (object.zone == Zone::Exile
             && game.is_adventure_exiled(card_id)
             && game.controller_of(object) == player)
-        || !permission_view.granted_play_from_for_card_view(
-            card_id,
-            proposed_land,
-            object.zone,
-            player,
-        ).is_empty();
+        || !permission_view
+            .granted_play_from_for_card_view(card_id, proposed_land, object.zone, player)
+            .is_empty();
     if !can_play_from_zone {
         return Err(ActionError::WrongZone {
             expected: Zone::Hand,
@@ -2891,10 +2888,10 @@ fn pay_activation_card_choice_without_execution_context(
     match choice {
         crate::game_loop::ActivationCardCostChoice::Discard {
             cost,
-            card_types,
+            filter,
             description,
         } => {
-            let candidates = legal_discard_cards(game, cost_ctx.payer, cost_ctx.source, card_types);
+            let candidates = legal_discard_cards(game, cost_ctx.payer, cost_ctx.source, filter);
             let Some(target_id) = choose_single_cost_object(
                 game,
                 cost_ctx,
@@ -3420,30 +3417,55 @@ pub(crate) fn resolve_dynamic_mana_cost(
         .transpose()?
         .unwrap_or(1);
 
-    let expanded = expand_dynamic_mana_base(&base, x_value, multiplier).add_generic(additional_generic);
+    let expanded =
+        expand_dynamic_mana_base(&base, x_value, multiplier).add_generic(additional_generic);
     let Some(condition) = dynamic_mana.source_mana_cost_reduction_condition.as_deref() else {
         return Ok(expanded);
     };
-    let applies = crate::condition_eval::evaluate_condition_resolution(game, condition, execution_ctx)
-        .map_err(|error| CostPaymentError::Other(format!("failed to evaluate mana reduction: {error:?}")))?;
-    if !applies { return Ok(expanded); }
+    let applies =
+        crate::condition_eval::evaluate_condition_resolution(game, condition, execution_ctx)
+            .map_err(|error| {
+                CostPaymentError::Other(format!("failed to evaluate mana reduction: {error:?}"))
+            })?;
+    if !applies {
+        return Ok(expanded);
+    }
     // A source with no mana cost contributes no reduction (CR 702.193b).
-    let reduction = game.current_characteristics(execution_ctx.source)
+    let reduction = game
+        .current_characteristics(execution_ctx.source)
         .and_then(|characteristics| characteristics.mana_cost)
         .unwrap_or_default();
     let options = expanded.reduced_by_mana_cost_options(&reduction);
-    if options.len() == 1 { return Ok(options[0].clone()); }
+    if options.len() == 1 {
+        return Ok(options[0].clone());
+    }
     use crate::decisions::context::{SelectOptionsContext, SelectableOption};
-    let choice = SelectOptionsContext::new(execution_ctx.controller, Some(execution_ctx.source),
-        "Choose mana cost after reduction", options.iter().enumerate()
-            .map(|(index,cost)| SelectableOption::new(index,cost.to_oracle())).collect(),1,1);
-    let selected = execution_ctx.decision_maker.decide_options(game,&choice);
+    let choice = SelectOptionsContext::new(
+        execution_ctx.controller,
+        Some(execution_ctx.source),
+        "Choose mana cost after reduction",
+        options
+            .iter()
+            .enumerate()
+            .map(|(index, cost)| SelectableOption::new(index, cost.to_oracle()))
+            .collect(),
+        1,
+        1,
+    );
+    let selected = execution_ctx.decision_maker.decide_options(game, &choice);
     if execution_ctx.decision_maker.awaiting_choice() {
-        return Err(CostPaymentError::Other("awaiting mana reduction payment choice".into()));
+        return Err(CostPaymentError::Other(
+            "awaiting mana reduction payment choice".into(),
+        ));
     }
     match selected.as_slice() {
-        [index] => options.get(*index).cloned().ok_or_else(|| CostPaymentError::Other("invalid mana reduction choice".into())),
-        _ => Err(CostPaymentError::Other("mana reduction requires one payment choice".into())),
+        [index] => options
+            .get(*index)
+            .cloned()
+            .ok_or_else(|| CostPaymentError::Other("invalid mana reduction choice".into())),
+        _ => Err(CostPaymentError::Other(
+            "mana reduction requires one payment choice".into(),
+        )),
     }
 }
 
@@ -3553,8 +3575,8 @@ fn resolve_cost_choice(
                 EventOutcome::Replaced => Ok(()),
             }
         }
-        CostProcessingMode::DiscardCards { count, card_types } => {
-            let candidates = legal_discard_cards(game, ctx.payer, ctx.source, &card_types);
+        CostProcessingMode::DiscardCards { count, filter } => {
+            let candidates = legal_discard_cards(game, ctx.payer, ctx.source, &filter);
             let required = (count as usize).min(candidates.len());
             if required < count as usize {
                 return Err(CostPaymentError::InsufficientCardsInHand);
@@ -3812,29 +3834,11 @@ fn legal_sacrifice_targets(
 
 fn legal_discard_cards(
     game: &GameState,
-    payer: PlayerId,
+    player: PlayerId,
     source: ObjectId,
-    card_types: &[crate::types::CardType],
+    filter: &crate::filter::ObjectFilter,
 ) -> Vec<ObjectId> {
-    game.player(payer)
-        .map(|p| {
-            p.hand
-                .iter()
-                .copied()
-                .filter(|&card_id| {
-                    if card_id == source {
-                        return false;
-                    }
-                    if !card_types.is_empty() {
-                        return game
-                            .object(card_id)
-                            .is_some_and(|obj| card_types.iter().any(|ct| obj.has_card_type(*ct)));
-                    }
-                    true
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+    crate::costs::legal_discard_cost_cards(game, player, source, filter)
 }
 
 fn legal_exile_cards(

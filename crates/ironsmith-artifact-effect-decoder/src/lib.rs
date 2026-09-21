@@ -144,6 +144,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "GrantRepeatableManaPaymentActionUntilEndOfTurnEffect" => Some(EffectFamily::CompositionAL),
         "GrantTaggedSpellFreeCastUntilEndOfTurnEffect" => Some(EffectFamily::Player),
         "GrantTaggedSpellLifeCostByManaValueEffect" => Some(EffectFamily::Player),
+        "BecomePlottedEffect" => Some(EffectFamily::ZoneLibrary),
         "HauntExileEffect" => Some(EffectFamily::ZoneLibrary),
         "HealDamageEffect" => Some(EffectFamily::Combat),
         "IfEffect" => Some(EffectFamily::CompositionAL),

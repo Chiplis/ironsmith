@@ -2143,7 +2143,7 @@ impl GameState {
                         if let Some(spell) = self.object_mut(spell_id) {
                             spell
                                 .abilities_mut()
-                                .push(crate::cards::builders::riot_triggered_ability());
+                                .push(crate::cards::builders::riot_ability());
                         }
                     }
                 }

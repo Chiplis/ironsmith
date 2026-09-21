@@ -156,7 +156,7 @@ fn mana_payment_waits_until_selected_from_the_total_cost_order() {
     pending.remaining_cost_steps = vec![ActivationCostStep::CardChoice(
         ActivationCardCostChoice::Discard {
             cost: crate::costs::Cost::discard(1, None),
-            card_types: Vec::new(),
+            filter: crate::filter::ObjectFilter::default(),
             description: "Discard a card".to_string(),
         },
     )];

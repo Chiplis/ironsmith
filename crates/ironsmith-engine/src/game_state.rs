@@ -1571,6 +1571,9 @@ pub struct CantEffectTracker {
     /// Example: "Non-Human Werewolves you control can't transform."
     pub cant_transform: HashSet<ObjectId>,
 
+    /// Permanents prohibited from turning face up.
+    pub cant_turn_face_up: HashSet<ObjectId>,
+
     /// Permanents that can't phase out.
     /// Example: "Target permanent can't phase out."
     pub cant_phase_out: HashSet<ObjectId>,
@@ -1951,6 +1954,7 @@ impl CantEffectTracker {
             .extend(other.cant_target_players_from.clone());
         self.cant_be_countered.extend(other.cant_be_countered);
         self.cant_transform.extend(other.cant_transform);
+        self.cant_turn_face_up.extend(other.cant_turn_face_up);
         self.cant_phase_out.extend(other.cant_phase_out);
         self.cant_phase_in.extend(other.cant_phase_in);
         for (player, scopes) in other.dont_lose_unspent_mana {
@@ -2008,6 +2012,7 @@ impl CantEffectTracker {
         self.cant_target_players_from.clear();
         self.cant_be_countered.clear();
         self.cant_transform.clear();
+        self.cant_turn_face_up.clear();
         self.cant_phase_out.clear();
         self.cant_phase_in.clear();
         self.dont_lose_unspent_mana.clear();

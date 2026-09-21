@@ -336,6 +336,9 @@ pub fn parse_become_clause(
             target,
         ));
     }
+    if become_surface.exact_kind == Some(become_grammar::BecomeExactKind::Plotted) {
+        return Ok(EffectAst::subject_verb_become_plotted(target));
+    }
     if become_surface.exact_kind == Some(become_grammar::BecomeExactKind::Prepared) {
         return Ok(EffectAst::subject_verb_prepare(target));
     }

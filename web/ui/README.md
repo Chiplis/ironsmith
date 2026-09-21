@@ -88,3 +88,23 @@ VITE_PEER_ICE_SERVERS=[{"urls":["stun:stun.l.google.com:19302"]},{"urls":"turn:t
 Keep TURN credentials out of git and inject them at deployment time. No
 browser-only P2P setup can guarantee connectivity when a device is offline or
 the browser is suspended; TURN removes the common NAT traversal failure mode.
+
+### Mana symbols and deployment
+
+[Andrew Gioia’s Mana](https://github.com/andrewgioia/Mana) is pinned as the
+`vendor/mana` Git submodule. `pnpm build` (also `pnpm build:lan`, `pnpm dev`,
+and `pnpm lan`) initializes that submodule at its recorded commit and runs
+`scripts/sync-mana-assets.mjs`. Git and access to GitHub are required on the
+first build of a checkout. Subsequent builds reuse the pinned checkout.
+
+The script copies upstream SVGs into `public/mana/svg`, builds colored costs
+and hybrid/Phyrexian combinations in `public/mana/symbols`, and copies the
+upstream attribution/license notice to `public/mana/NOTICE.md`. Vite includes
+all of these in `dist/mana`; deploy the entire `dist` directory using the
+existing `~/home/ironsmith` deployment workflow. Symbols need no runtime CDN
+access. Asset URLs respect Vite’s base path. Unknown counter kinds retain
+their text labels; unsupported mana codes retain a numeric/text fallback.
+
+To intentionally upgrade Mana, update the submodule checkout, run
+`pnpm assets:mana`, and commit the submodule pointer and generated manifest
+(`src/lib/mana-assets.generated.js`). Generated public assets are ignored.

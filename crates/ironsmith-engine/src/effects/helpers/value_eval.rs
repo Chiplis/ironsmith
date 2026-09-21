@@ -875,6 +875,9 @@ pub(crate) fn resolve(
                 "pending effect metric was not bound to a prior effect".to_string(),
             ))
         }
+        Value::PendingComparisonLeft | Value::PendingComparisonRight | Value::PendingComparisonDifference => {
+            Err(ExecutionError::UnresolvableValue("comparison reference was not bound by the compiler".into()))
+        }
         Value::PendingPriorEffectMetric(_) => {
             let _ctx = context.require_execution(value, RESOLUTION_ONLY);
             Err(ExecutionError::UnresolvableValue(

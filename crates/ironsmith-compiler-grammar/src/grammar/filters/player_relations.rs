@@ -34,6 +34,11 @@ pub(super) struct SegmentPhraseVariant {
 const LEADING_TAGGED_REFERENCE_WORDS: &[&str] = &["that", "those", "chosen"];
 const IT_OR_THEM_WORDS: &[&str] = &["it", "them"];
 const PUT_ONTO_BATTLEFIELD_WITH_SOURCE_PHRASES: &[&[&str]] = &[
+    &["put", "onto", "battlefield", "with", "this", "aura"],
+    &["put", "onto", "battlefield", "with", "this", "creature"],
+    &["put", "onto", "battlefield", "with", "this", "land"],
+    &["put", "onto", "battlefield", "with", "this", "planeswalker"],
+    &["put", "onto", "battlefield", "with", "this", "battle"],
     &["put", "onto", "battlefield", "with", "this", "artifact"],
     &["put", "onto", "battlefield", "with", "this", "enchantment"],
     &["put", "onto", "battlefield", "with", "this", "permanent"],
@@ -1263,59 +1268,9 @@ pub(super) fn try_apply_put_onto_battlefield_with_source_clause(
         ));
     filter.zone = Some(Zone::Battlefield);
     all_words.drain(word_start..word_start + phrase.len());
-    drain_segment_phrase_variants(
-        segment_tokens,
-        &[
-            SegmentPhraseVariant {
-                words: &[
-                    "put",
-                    "onto",
-                    "the",
-                    "battlefield",
-                    "with",
-                    "this",
-                    "artifact",
-                ],
-                drain_start_offset: 0,
-            },
-            SegmentPhraseVariant {
-                words: &[
-                    "put",
-                    "onto",
-                    "the",
-                    "battlefield",
-                    "with",
-                    "this",
-                    "enchantment",
-                ],
-                drain_start_offset: 0,
-            },
-            SegmentPhraseVariant {
-                words: &[
-                    "put",
-                    "onto",
-                    "the",
-                    "battlefield",
-                    "with",
-                    "this",
-                    "permanent",
-                ],
-                drain_start_offset: 0,
-            },
-            SegmentPhraseVariant {
-                words: &[
-                    "put",
-                    "onto",
-                    "the",
-                    "battlefield",
-                    "with",
-                    "this",
-                    "source",
-                ],
-                drain_start_offset: 0,
-            },
-        ],
-    );
+    let mut authored_phrase = phrase.to_vec();
+    authored_phrase.insert(2, "the");
+    drain_segment_matching_phrase(segment_tokens, &[&authored_phrase, phrase]);
     true
 }
 

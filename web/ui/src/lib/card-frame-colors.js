@@ -1,7 +1,7 @@
 import { sourceMaskLayoutGap } from './card-frame-layout.js';
 import {manaTemplates,locateManaSymbols} from './card-mana-match.js';
 import { locateSetSymbol } from './card-set-symbol.js';
-import { fontGuidedPanelAsync, inpaintGlyphMask } from './card-frame-font-mask.js';
+import { fontGuidedPanelAsync, inpaintGlyphMask, hasOutlinedLightText, isPanelInk } from './card-frame-font-mask.js';
 import { maskSourceFrameAsync } from './card-frame-source.js';
 import { frameCanvas, frameCanvasUrl } from './card-frame-canvas.js';
 
@@ -38,10 +38,13 @@ function luminance(rgb) {
 
 function analyzeSection({ data, width, height }, {minGlyphHeight=5,minimumGlyphs=4} = {}) {
   const paper = materialColor(data), light = luminance(paper);
+  const outlined=hasOutlinedLightText({data,width,height});
   const mask = new Uint8Array(width * height), ink = [];
   for (let p = 0; p < mask.length; p++) {
     const value = luminance([data[p * 4], data[p * 4 + 1], data[p * 4 + 2]]);
-    mask[p] = data[p * 4 + 3] >= 128 && (Math.max(light, value) + 0.05) / (Math.min(light, value) + 0.05) >= 2.5 ? 1 : 0;
+    mask[p] = data[p * 4 + 3] >= 128 && (outlined
+      ? isPanelInk(data[p*4],data[p*4+1],data[p*4+2],0,{outlined:true})
+      : (Math.max(light, value) + 0.05) / (Math.min(light, value) + 0.05) >= 2.5) ? 1 : 0;
   }
   let glyphs = 0;
   const heights = [], boxes = [];
@@ -95,7 +98,7 @@ function analyzeSection({ data, width, height }, {minGlyphHeight=5,minimumGlyphs
   } : null;
 
   return {
-    ink: glyphs >= 2 && ink.length >= 24 ? materialColor(ink) : light > .35 ? [23, 24, 25] : [245, 241, 230],
+    ink: outlined ? [255,255,255] : glyphs >= 2 && ink.length >= 24 ? materialColor(ink) : light > .35 ? [23, 24, 25] : [245, 241, 230],
     glyphBounds,
     textBounds,
     glyphHeight: cluster.length >= minimumGlyphs ? cluster[Math.floor((cluster.length - 1) * .8)] : null,
@@ -1118,7 +1121,9 @@ export async function sampleCardFramePixels({fullScan, artScan, symbolScan, icon
           // A rounded title's detected rail can start inside the first capital.
           // Include the space just outside that estimate so the connected-component
           // scan sees complete glyphs; clipped components are deliberately rejected.
-          const x = Math.max(0, Math.ceil(box.x + (enclosed && section === 'title' ? -6 : insetX))), y = Math.max(0,Math.floor(box.y + (enclosed && section === 'title' ? -3 : insetY)));
+          // Integrated labels can start left of the artwork's inset. Include
+          // that frame margin so a clipped initial cannot escape the mask.
+          const x = Math.max(0, Math.ceil(enclosed ? box.x + (section === 'title' ? -6 : insetX) : Math.min(box.x,fullScan.width*.075))), y = Math.max(0,Math.floor(box.y + (enclosed && section === 'title' ? -3 : insetY)));
           const sampleHeight=Math.ceil(box.height+(enclosed&&section==='title'?6:-insetY*2));
           // Keep complete terminal glyphs when a long localized label reaches
           // the registered symbol. Cropping four pixels early can cut its last

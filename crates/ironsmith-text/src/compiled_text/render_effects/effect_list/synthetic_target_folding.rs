@@ -296,6 +296,7 @@ fn restriction_references_identity(
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::BeTargeted(filter)
         | Restriction::BeCountered(filter)
+        | Restriction::TurnFaceUp(filter)
         | Restriction::Transform(filter)
         | Restriction::PhaseOut(filter)
         | Restriction::PhaseIn(filter)

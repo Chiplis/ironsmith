@@ -247,6 +247,7 @@ pub struct LoseAllTransformShape {
     pub power_toughness_word: usize,
     pub name_words: Option<Range<usize>>,
     pub except_mana_abilities: bool,
+    pub preserve_other_types: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -996,6 +997,8 @@ pub fn parse_lose_all_transform_shape(tokens: &[OwnedLexToken]) -> Option<LoseAl
         descriptor_words: is_word + 1..with_word,
         power_toughness_word,
         name_words,
+        preserve_other_types: word_phrase_occurs(&words, &["in", "addition", "to", "its", "other", "types"])
+            || word_phrase_occurs(&words, &["in", "addition", "to", "their", "other", "types"]),
         except_mana_abilities: word_phrase_occurs(&words, &["except", "mana", "abilities"]),
     })
 }

@@ -31,6 +31,7 @@ pub enum ResourceLookShape<'a> {
         followup: ResourceLookHandFollowup,
     },
     EachPlayerHand,
+    RandomHandCard { player: PlayerAst },
     Object {
         kind: ResourceLookObjectKind,
         surface_tokens: &'a [OwnedLexToken],
@@ -480,6 +481,16 @@ pub fn parse_resource_look_shape<'a>(
     }
 
     let hand_surface = strip_articles(clause);
+    if let Some(((), rest)) = primitives::parse_prefix(hand_surface, |input: &mut LexStream<'_>| {
+        primitives::phrase(&["card", "at", "random"]).parse_next(input)?;
+        alt((primitives::kw("in"), primitives::kw("from"))).void().parse_next(input)
+    }) {
+        let (player, rest) = primitives::parse_prefix(rest, hand_owner)?;
+        if !matches!(player, PlayerAst::Any) && sentence_finished(rest) {
+            return Some(ResourceLookShape::RandomHandCard { player });
+        }
+        return None;
+    }
     if let Some((player, rest)) = primitives::parse_prefix(hand_surface, hand_owner) {
         let rest = trimmed(rest);
         if matches!(player, PlayerAst::Any) {

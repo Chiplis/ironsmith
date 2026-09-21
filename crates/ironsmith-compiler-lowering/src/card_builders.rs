@@ -779,9 +779,14 @@ impl CardDefinitionBuilder {
             ),
         ];
 
-        self.with_ability(crate::ability::Ability::triggered(
-            crate::triggers::Trigger::this_enters_battlefield(),
-            vec![crate::effect::Effect::choose_one(modes)],
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::as_enters_effect_program(
+                vec![crate::effect::Effect::choose_one(modes)].into(),
+                "this creature",
+                false,
+                false,
+                None,
+            ),
         ))
     }
 

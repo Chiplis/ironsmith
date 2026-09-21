@@ -1849,6 +1849,9 @@
     if let Some(suspect) = effect.downcast_ref::<crate::effects::SuspectEffect>() {
         return format!("Suspect {}", describe_choose_spec(&suspect.target));
     }
+    if let Some(plotted) = effect.downcast_ref::<crate::effects::BecomePlottedEffect>() {
+        return format!("{} becomes plotted", describe_choose_spec(&plotted.target));
+    }
     if let Some(prepare) = effect.downcast_ref::<crate::effects::PrepareEffect>() {
         return format!("{} becomes prepared", describe_choose_spec(&prepare.target));
     }

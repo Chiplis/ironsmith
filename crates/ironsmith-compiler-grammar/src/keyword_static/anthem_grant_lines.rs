@@ -942,6 +942,9 @@ pub fn parse_granted_keyword_static_line(
     }
     // A full characteristic-setting bundle owns its type, color and P/T
     // together; interpreting only a descriptor as a grant loses that bundle.
+    if crate::keyword_static::parse_attached_type_transform_line(tokens)?.is_some() {
+        return Ok(None);
+    }
     if crate::grammar::static_keyword_facts::type_and_color::parse_power_toughness_type_addition_tokens(tokens).is_some() {
         return Ok(None);
     }
@@ -1804,16 +1807,18 @@ pub fn parse_lose_all_abilities_and_transform_base_pt_line(
     }];
 
     if !set_card_types.is_empty() {
-        abilities.push(StaticAbility::set_card_types(
-            filter.clone(),
-            set_card_types,
-        ));
+        abilities.push(if shape.preserve_other_types {
+            StaticAbility::add_card_types(filter.clone(), set_card_types)
+        } else {
+            StaticAbility::set_card_types(filter.clone(), set_card_types)
+        });
     }
     if !creature_subtypes.is_empty() {
-        abilities.push(StaticAbility::set_creature_subtypes(
-            filter.clone(),
-            creature_subtypes,
-        ));
+        abilities.push(if shape.preserve_other_types {
+            StaticAbility::add_subtypes(filter.clone(), creature_subtypes)
+        } else {
+            StaticAbility::set_creature_subtypes(filter.clone(), creature_subtypes)
+        });
     }
     if !set_colors.is_empty() {
         abilities.push(StaticAbility::set_colors(filter.clone(), set_colors));

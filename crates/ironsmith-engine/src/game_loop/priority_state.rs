@@ -380,7 +380,7 @@ pub enum ActivationCardCostChoice {
     /// Choose a card to discard from hand.
     Discard {
         cost: crate::costs::Cost,
-        card_types: Vec<CardType>,
+        filter: crate::filter::ObjectFilter,
         description: String,
     },
     /// Choose a card to exile from hand.
@@ -654,8 +654,14 @@ fn single_choice_cost(cost: &crate::costs::Cost) -> crate::costs::Cost {
     use crate::costs::CostProcessingMode;
 
     match cost.processing_mode() {
-        CostProcessingMode::DiscardCards { card_types, .. } => {
-            crate::costs::Cost::discard_types(1, card_types)
+        CostProcessingMode::DiscardCards { .. } => {
+            let mut effect = cost
+                .effect_ref()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::DiscardEffect>())
+                .expect("discard processing mode must contain a discard effect")
+                .clone();
+            effect.count = crate::effect::Value::Fixed(1);
+            crate::costs::Cost::validated_effect(crate::effect::Effect::new(effect))
         }
         CostProcessingMode::ExileFromHand { color_filter, .. } => {
             crate::costs::Cost::exile_from_hand(1, color_filter)
@@ -722,12 +728,12 @@ pub(crate) fn append_activation_cost_steps_from_cost(
                 choice_tag: None,
             });
         }
-        CostProcessingMode::DiscardCards { count, card_types } => {
+        CostProcessingMode::DiscardCards { count, filter } => {
             for _ in 0..count {
                 out.push(ActivationCostStep::CardChoice(
                     ActivationCardCostChoice::Discard {
                         cost: single_choice_cost(cost),
-                        card_types: card_types.clone(),
+                        filter: filter.clone(),
                         description: description.clone(),
                     },
                 ));

@@ -784,6 +784,18 @@ pub fn parse_delayed_when_that_dies_this_turn_sentence(
 pub fn parse_delayed_when_that_leaves_battlefield_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some((trigger_tokens, effect_tokens)) = delayed_shapes::parse_delayed_source_leaves_shape(tokens) {
+        let trigger = crate::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(trigger_tokens)?;
+        let effects = parse_effect_chain(effect_tokens)?;
+        return Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
+            trigger,
+            effects,
+            one_shot: true,
+            duration: crate::effect::Until::Forever,
+            either_of_watched_objects: false,
+            while_any_tagged_object_in_zone: None,
+        })]));
+    }
     let Some(shape) = delayed_shapes::parse_delayed_tagged_leaves_shape(tokens) else {
         return Ok(None);
     };

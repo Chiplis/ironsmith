@@ -50,3 +50,15 @@ pub(super) fn parses_resource_shuffle_shapes() {
         Some(ResourceShuffleShape::SimpleLibrary)
     );
 }
+
+#[test]
+pub(super) fn random_hand_look_preserves_owner_and_rejects_extra_qualifiers() {
+    for (text, expected) in [
+        ("at a card at random in target player's hand", PlayerAst::Target),
+        ("at a card at random from target opponent's hand", PlayerAst::TargetOpponent),
+        ("at a card at random in your hand", PlayerAst::You),
+    ] {
+        assert!(matches!(parse_resource_look_shape(&lex(text), None), Some(ResourceLookShape::RandomHandCard { player }) if player == expected));
+    }
+    assert!(parse_resource_look_shape(&lex("at a card at random in target player's hand with mana value 3"), None).is_none());
+}

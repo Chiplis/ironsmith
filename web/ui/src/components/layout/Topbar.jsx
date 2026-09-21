@@ -59,6 +59,7 @@ export default function Topbar({
   onChangePerspective,
   utilityControls,
   tableToolsToggle,
+  statusOnly = false,
 }) {
   const ui = useUiText();
   const {
@@ -252,6 +253,67 @@ export default function Topbar({
     </div>
   ) : null;
 
+  const turnStatus = (
+    <div
+      className="topbar-phase-status"
+      aria-label={t("game.currentTurnSummary")}
+    >
+      <span>{t("game.turn", { turn: state?.turn_number ?? "-" })}</span>
+      {activePlayer ? (
+        <>
+          <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
+          <span>{t("game.activePlayer", { player: playerDisplayName(players, activePlayer) })}</span>
+        </>
+      ) : null}
+      {decisionOwnerDiffersFromPriority ? (
+        <>
+          <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
+          <span>{t("game.decisionPlayer", { player: playerDisplayName(players, decisionPlayer) })}</span>
+        </>
+      ) : priorityPlayer ? (
+        <>
+          <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
+          <span>
+            {t("game.priorityPlayer").split("{player}").map((part, index) => (
+              <span key={index}>
+                {index > 0 ? (
+                  <span style={{ color: getPlayerAccent(players, priorityPlayer.id, state?.perspective, playerAccentOverrides)?.hex }}>
+                    {playerDisplayName(players, priorityPlayer)}
+                  </span>
+                ) : null}
+                {part}
+              </span>
+            ))}
+          </span>
+        </>
+      ) : null}
+      {players.length > 0 ? (
+        <>
+          <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
+          <label className="topbar-phase-perspective">
+            <span>{t("action.playingAs")}</span>
+            <select
+              className="stone-select topbar-phase-perspective-select"
+              value={state?.perspective ?? me?.id ?? 0}
+              disabled={multiplayer.matchStarted}
+              onChange={(event) => onChangePerspective?.(Number(event.target.value))}
+              aria-label={t("action.playingAs")}
+            >
+              {players.map((player) => (
+                <option key={player.id} value={player.id}>
+                  {playerDisplayName(players, player)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
+      ) : null}
+      {matchClockPill}
+    </div>
+  );
+
+  if (statusOnly) return turnStatus;
+
   return (
     <header
       className={`table-toolbar table-toolbar--primary topbar-shell rounded-none px-3 py-2${middleDocked ? " topbar-shell--middle-docked" : ""}`}
@@ -301,62 +363,7 @@ export default function Topbar({
         {showCenterLane ? (
           <div className="topbar-phase-shell">
             <PhaseTrack compact={middleDocked} />
-            <div
-              className="topbar-phase-status"
-              aria-label={t("game.currentTurnSummary")}
-            >
-              <span>{t("game.turn", { turn: state?.turn_number ?? "-" })}</span>
-              {activePlayer ? (
-                <>
-                  <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
-                  <span>{t("game.activePlayer", { player: playerDisplayName(players, activePlayer) })}</span>
-                </>
-              ) : null}
-              {decisionOwnerDiffersFromPriority ? (
-                <>
-                  <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
-                  <span>{t("game.decisionPlayer", { player: playerDisplayName(players, decisionPlayer) })}</span>
-                </>
-              ) : priorityPlayer ? (
-                <>
-                  <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
-                  <span>
-                    {t("game.priorityPlayer").split("{player}").map((part, index) => (
-                      <span key={index}>
-                        {index > 0 ? (
-                          <span style={{ color: getPlayerAccent(players, priorityPlayer.id, state?.perspective, playerAccentOverrides)?.hex }}>
-                            {playerDisplayName(players, priorityPlayer)}
-                          </span>
-                        ) : null}
-                        {part}
-                      </span>
-                    ))}
-                  </span>
-                </>
-              ) : null}
-              {players.length > 0 ? (
-                <>
-                  <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
-                  <label className="topbar-phase-perspective">
-                    <span>{t("action.playingAs")}</span>
-                    <select
-                      className="stone-select topbar-phase-perspective-select"
-                      value={state?.perspective ?? me?.id ?? 0}
-                      disabled={multiplayer.matchStarted}
-                      onChange={(event) => onChangePerspective?.(Number(event.target.value))}
-                      aria-label={t("action.playingAs")}
-                    >
-                      {players.map((player) => (
-                        <option key={player.id} value={player.id}>
-                          {playerDisplayName(players, player)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </>
-              ) : null}
-              {matchClockPill}
-            </div>
+            {turnStatus}
           </div>
         ) : null}
         {showCompactPhase ? (

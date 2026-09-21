@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { GameContext } from "../src/context/GameContext.shared";
 import { DragProvider, useDragActions, useDragState } from "../src/context/DragContext";
 import { HoverProvider } from "../src/context/HoverContext";
+import { SymbolText } from "../src/lib/mana-symbols";
 import FloatingCardPreview from "../src/components/right-rail/FloatingCardPreview";
 import { I18nProvider } from "../src/i18n/I18nContext";
 import ActionPopover from "../src/components/overlays/ActionPopover";
@@ -27,9 +28,20 @@ function Fixture() {
   const [selected, setSelected] = useState(null);
   const cards = Array.from({length:20}, (_, i) => ({ id:20-i, name:i % 2 ? "Island" : "Plains" }));
   const player = {id:0, name:"Alice", graveyard_size:cards.length, graveyard_cards:cards, exile_cards:[{id:30,name:"Hidden card",face_down:true}, {id:31,name:"Swamp"}]};
+  const lookSelection = new URLSearchParams(location.search).has("look-selection");
   const state = {players:[player], perspective:0,decision:targeting?{kind:"targets",player:0}:{kind:"priority",player:0}};
+  if (lookSelection) {
+    state.viewed_cards = { cards: [{id:41,name:"Island"}, {id:42,name:"Duress"}] };
+    state.decision = {kind:"select_objects",player:0,candidates:[{id:41,legal:false},{id:42,legal:true}]};
+  }
   return <GameContext.Provider value={{state}}>
-    {!actionsOpen && <FloatingCardPreview pinnedObjectId={targeting ? null : selected} />}
+    {new URLSearchParams(location.search).has("glossary") && selected != null && (
+      <aside data-card-hover-preview="true" data-visible="true" data-preview-object-id={selected}
+        style={{position:"fixed",left:400,top:200,zIndex:30010,background:"white",padding:30}}>
+        <SymbolText text="Flying" />
+      </aside>
+    )}
+    {!new URLSearchParams(location.search).has("glossary") && !actionsOpen && <FloatingCardPreview pinnedObjectId={targeting ? null : selected} />}
     <button onClick={() => setActionsOpen(true)}>Show cast choices</button>
     {actionsOpen && <div style={{position:"relative",zIndex:1,transform:"translateZ(0)"}}>
       <div className="floating-card-preview" style={{position:"fixed",inset:0}} />
@@ -42,7 +54,7 @@ function Fixture() {
     <div style={{margin:20,width:"calc(100% - 40px)",height:400}}>
       <header style={{height:44}}>20 Alice</header>
       <div className="has-zone-piles" style={{height:350,background:"#141414"}}>
-        <PlayerZonePiles player={player} legalTargetObjectIds={new Set([20])} onCardClick={(_,card)=>setSelected(card.id)} />
+        <PlayerZonePiles player={player} legalTargetObjectIds={new Set([20,31])} onCardClick={(_,card)=>setSelected(card.id)} />
         <div className="battlefield-row" style={{position:"relative",height:330,paddingTop:50}}>
           <div className="battlefield-row-card" style={{marginLeft:160,width:72,height:100,background:"#776644"}}>Creature</div>
         </div>

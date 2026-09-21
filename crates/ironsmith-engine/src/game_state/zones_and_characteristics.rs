@@ -18,6 +18,7 @@ pub(crate) struct PreparedEtbChoices {
     pub(crate) as_enters_tagged_objects:
         std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     pub(crate) transfer_as_enters_source_links: bool,
+    pub(crate) as_enters_continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
 }
 
 #[derive(Debug, Clone)]
@@ -103,6 +104,7 @@ fn ability_retains_counters_moving_to(
 #[derive(Debug, Clone, Default)]
 struct AsEntersProgramExecution {
     ran: bool,
+    continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
     tagged_objects:
         std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
 }
@@ -169,12 +171,15 @@ impl GameState {
         controller: PlayerId,
         programs: Vec<crate::resolution::ResolutionProgram>,
         preparing_entry: bool,
+        entry_event: Option<&crate::events::EnterBattlefieldEvent>,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Result<AsEntersProgramExecution, crate::game_loop::GameLoopError> {
         if programs.is_empty() {
             return Ok(AsEntersProgramExecution::default());
         }
 
+        let initial_effect_ids: std::collections::HashSet<_> = self.effect_store
+            .continuous_effects.effects().iter().map(|effect| effect.id).collect();
         let mut execution = AsEntersProgramExecution {
             ran: true,
             ..AsEntersProgramExecution::default()
@@ -195,6 +200,7 @@ impl GameState {
                     ))
                     .with_provenance(provenance);
             context.replacement.entry_counter_source = preparing_entry.then_some(source);
+            context.replacement.entry_event = entry_event.cloned().map(Box::new);
             let _ = crate::game_loop::execute_resolution_program(
                 self,
                 &mut context,
@@ -204,6 +210,9 @@ impl GameState {
                 None,
                 &[],
             )?;
+            execution.continuous_effects = self.effect_store.continuous_effects.effects()
+                .iter().filter(|effect| !initial_effect_ids.contains(&effect.id))
+                .map(|effect| effect.id).collect();
             let awaiting_choice = context.decision_maker.awaiting_choice();
             merge_retained_tagged_objects(&mut execution.tagged_objects, &context.tagged_objects);
             if awaiting_choice {
@@ -211,6 +220,44 @@ impl GameState {
             }
         }
         Ok(execution)
+    }
+
+    pub(crate) fn execute_entry_programs(
+        &mut self,
+        source: ObjectId,
+        controller: PlayerId,
+        programs: Vec<crate::resolution::ResolutionProgram>,
+        entry_event: Option<&crate::events::EnterBattlefieldEvent>,
+        dm: &mut dyn crate::decision::DecisionMaker,
+    ) -> Option<PreparedEtbChoices> {
+        let before = self.object(source)?.counters.clone();
+        let execution = self.execute_immediate_effect_programs(source, controller, programs, true, entry_event, dm).ok()?;
+        if dm.awaiting_choice() { return None; }
+        let after = self.object(source)?.counters.clone();
+        let counters = after.iter().filter_map(|(kind, count)| {
+            let previous = before.get(kind).copied().unwrap_or(0);
+            (*count > previous).then(|| (*kind, *count - previous))
+        }).collect();
+        self.object_mut(source)?.counters = before;
+        Some(PreparedEtbChoices {
+            as_enters_counters: counters,
+            as_enters_tagged_objects: execution.tagged_objects,
+            transfer_as_enters_source_links: execution.ran,
+            as_enters_continuous_effects: execution.continuous_effects,
+            ..Default::default()
+        })
+    }
+
+    fn entry_text_abilities(&self, source: ObjectId) -> Option<Vec<crate::ability::Ability>> {
+        let from = self.object(source)?.zone;
+        let preview = crate::events::EnterBattlefieldEvent::new(source, from)
+            .prospective_game_state(self)?;
+        let effects = preview.all_continuous_effects();
+        let chars = crate::continuous::text_box_characteristics_with_effects(
+            source, preview.objects_map(), &effects, &preview.battlefield,
+            preview.commander_objects(), &preview,
+        )?;
+        Some(chars.abilities.iter().cloned().collect())
     }
 
     fn execute_as_enters_effect_programs_from_abilities(
@@ -221,27 +268,43 @@ impl GameState {
         for_turn_face_up: bool,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Result<AsEntersProgramExecution, crate::game_loop::GameLoopError> {
-        let programs = abilities
-            .iter()
-            .filter_map(as_enters_effect_program_from_ability)
-            .filter_map(
-                |(program, also_turns_face_up, program_turns_face_up_only)| {
-                    let applies = if for_turn_face_up {
-                        also_turns_face_up
-                    } else {
-                        !program_turns_face_up_only
-                    };
-                    applies.then_some(program)
-                },
-            )
-            .collect::<Vec<_>>();
-        self.execute_immediate_effect_programs(
-            source,
-            controller,
-            programs,
-            !for_turn_face_up,
-            decision_maker,
-        )
+        let mut current_abilities = abilities.to_vec();
+        let mut applied = std::collections::HashSet::new();
+        let mut combined = AsEntersProgramExecution::default();
+        loop {
+            let next = current_abilities.iter().find_map(|ability| {
+                let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else { return None; };
+                if applied.contains(&static_ability.instance_id()) { return None; }
+                let (program, also_face_up, only_face_up) = as_enters_effect_program_from_ability(ability)?;
+                let applies = if for_turn_face_up { also_face_up } else { !only_face_up };
+                applies.then_some((static_ability.instance_id(), program))
+            });
+            let Some((identity, program)) = next else { break; };
+            applied.insert(identity);
+            let execution = self.execute_immediate_effect_programs(
+                source, controller, vec![program], !for_turn_face_up, None, decision_maker,
+            )?;
+            combined.ran |= execution.ran;
+            combined.continuous_effects.extend(execution.continuous_effects.iter().copied());
+            merge_retained_tagged_objects(&mut combined.tagged_objects, &execution.tagged_objects);
+            if decision_maker.awaiting_choice() { return Ok(combined); }
+            // A text exchange can remove a not-yet-applied program and supply
+            // another one. Each ability instance applies at most once to this
+            // event, even if a later exchange brings its text back.
+            let changed_text = self.effect_store.continuous_effects.effects().iter().any(|effect| {
+                execution.continuous_effects.contains(&effect.id)
+                    && matches!(effect.modification, crate::continuous::Modification::SetTextBox(_))
+                    && matches!(&effect.source_type,
+                        crate::continuous::EffectSourceType::Resolution { locked_targets }
+                        if locked_targets.contains(&source))
+            });
+            if changed_text {
+                if let Some(abilities) = self.entry_text_abilities(source) {
+                    current_abilities = abilities;
+                }
+            }
+        }
+        Ok(combined)
     }
 
     pub(crate) fn execute_as_transforms_effect_programs(
@@ -263,6 +326,7 @@ impl GameState {
             controller,
             programs,
             false,
+            None,
             decision_maker,
         )?;
         if let Some(object) = self.object_mut(source) {
@@ -1088,9 +1152,20 @@ impl GameState {
     pub(crate) fn prepare_etb_entry_with_controller_and_dm(
         &mut self,
         old_id: ObjectId,
+        result: crate::events::processing::EtbEventResult,
+        entering_controller: Option<PlayerId>,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Option<PreparedEtbEntry> {
+        self.prepare_etb_entry_after_programs(old_id, result, entering_controller, decision_maker, None)
+    }
+
+    pub(crate) fn prepare_etb_entry_after_programs(
+        &mut self,
+        old_id: ObjectId,
         mut result: crate::events::processing::EtbEventResult,
         entering_controller: Option<PlayerId>,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
+        completed_programs: Option<(PreparedEtbChoices, Vec<crate::ability::Ability>)>,
     ) -> Option<PreparedEtbEntry> {
         if result.prevented {
             return Some(PreparedEtbEntry {
@@ -1135,40 +1210,22 @@ impl GameState {
             }
         }
 
-        // Execute arbitrary as-enters setup in the same transactional clone
-        // used by the rest of ETB preparation. Effects aimed at the source's
-        // counters act on the source-zone object, so convert only their net
-        // additions into counters on the prospective battlefield object.
-        let counters_before = self
-            .object(old_id)
-            .map(|object| object.counters.clone())
-            .unwrap_or_default();
-        let as_enters_execution = self
-            .execute_as_enters_effect_programs_from_abilities(
-                old_id,
-                prospective_controller,
-                &prospective_abilities,
-                false,
-                decision_maker,
-            )
-            .ok()?;
-        if decision_maker.awaiting_choice() {
-            return None;
-        }
-        let counters_after = self
-            .object(old_id)
-            .map(|object| object.counters.clone())
-            .unwrap_or_default();
-        let mut as_enters_counters = Vec::new();
-        for (counter_type, after) in &counters_after {
-            let before = counters_before.get(counter_type).copied().unwrap_or(0);
-            if *after > before {
-                as_enters_counters.push((*counter_type, *after - before));
+        let mut program_choices = if let Some((choices, abilities)) = completed_programs {
+            prospective_abilities = abilities;
+            choices
+        } else {
+            let programs = prospective_abilities.iter().filter_map(|ability| {
+                let (program, _, face_up_only) = as_enters_effect_program_from_ability(ability)?;
+                (!face_up_only).then_some(program)
+            }).collect();
+            let choices = self.execute_entry_programs(old_id, prospective_controller, programs, None, decision_maker)?;
+            if !choices.as_enters_continuous_effects.is_empty() {
+                if let Some(abilities) = self.entry_text_abilities(old_id) {
+                    prospective_abilities = abilities;
+                }
             }
-        }
-        if let Some(source) = self.object_mut(old_id) {
-            source.counters = counters_before;
-        }
+            choices
+        };
 
         let battle_protector = if prospective_card_types.contains(&crate::types::CardType::Battle) {
             let legal = self.legal_battle_protectors_for(
@@ -1211,13 +1268,8 @@ impl GameState {
             None
         };
 
-        let mut choices = PreparedEtbChoices {
-            battle_protector,
-            as_enters_counters,
-            as_enters_tagged_objects: as_enters_execution.tagged_objects,
-            transfer_as_enters_source_links: as_enters_execution.ran,
-            ..PreparedEtbChoices::default()
-        };
+        program_choices.battle_protector = battle_protector;
+        let mut choices = program_choices;
         for ability in prospective_abilities {
             let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
                 continue;
@@ -1813,6 +1865,9 @@ impl GameState {
                 &choices.as_enters_tagged_objects,
             );
         }
+        self.effect_store.continuous_effects.retarget_entry_effects(
+            &choices.as_enters_continuous_effects, old_id, new_id,
+        );
         // As-enters effect programs execute against the pre-move object id;
         // migrate any choices they recorded to the battlefield id.
         if new_id != old_id {
@@ -2618,6 +2673,18 @@ impl GameState {
         self.object_store.objects_map()
     }
 
+    /// Whether an attachment destination still exists. Aura enchant filters
+    /// determine its permitted zone; Equipment and Fortifications additionally
+    /// require a battlefield destination in attachment legality checks.
+    pub fn attachment_target_exists(&self, target: AttachmentTarget) -> bool {
+        match target {
+            AttachmentTarget::Object(id) => self.object(id).is_some(),
+            AttachmentTarget::Player(id) => {
+                self.player(id).is_some_and(|player| player.is_in_game())
+            }
+        }
+    }
+
     pub fn attachment_target_exists_on_battlefield(&self, target: AttachmentTarget) -> bool {
         match target {
             AttachmentTarget::Object(id) => self
@@ -2692,7 +2759,7 @@ impl GameState {
         if !self
             .object(attachment_id)
             .is_some_and(|object| object.zone == Zone::Battlefield)
-            || !self.attachment_target_exists_on_battlefield(target)
+            || !self.attachment_target_exists(target)
         {
             return false;
         }

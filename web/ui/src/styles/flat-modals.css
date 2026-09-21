@@ -686,12 +686,24 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+.lobby-sheet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  flex: none;
+}
+
 .lobby-sheet-invite {
+  flex: 1;
+  min-width: 180px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: 8px;
 }
+
+.lobby-sheet-invite > label { min-width: 0; }
 
 .lobby-sheet-active .lobby-sheet-players {
   flex: none;
@@ -715,6 +727,9 @@
 .lobby-sheet-player-row > span:last-child { flex-shrink: 0; }
 
 .lobby-sheet-active .lobby-sheet-start {
+  background: #a62932 !important;
+  color: #fff0ed !important;
+  flex: none;
   width: auto;
   justify-self: end;
   align-self: flex-end;
@@ -722,9 +737,13 @@
   padding: 6px 16px !important;
 }
 
+.lobby-sheet-active .lobby-sheet-start:hover:not(:disabled) {
+  background: #c73540 !important;
+}
+
 @media (min-width: 760px) and (min-height: 560px) {
   .lobby-sheet.lobby-sheet-active {
-    height: min(780px, calc(100dvh - 32px));
+    height: calc(100dvh - 32px);
     gap: 0;
   }
 
@@ -768,7 +787,7 @@
     min-height: 0;
   }
 
-  .lobby-sheet-discovery [data-lobby-catalog-list] {
+  .lobby-sheet-discovery [data-deck-catalog-list] {
     flex: 1;
     min-height: 0;
     max-height: none;

@@ -494,11 +494,23 @@ fn parse_conjoined_payment_clause_as_total_cost(
         if left_tokens.is_empty() || right_tokens.is_empty() {
             continue;
         }
-        let (Ok(Some(left)), Ok(Some(right))) = (
-            parse_payment_clause_as_total_cost(&left_tokens),
-            parse_payment_clause_as_total_cost(&right_tokens),
-        ) else {
+        let Ok(Some(left)) = parse_payment_clause_as_total_cost(&left_tokens) else {
             continue;
+        };
+        let right = match parse_payment_clause_as_total_cost(&right_tokens) {
+            Ok(Some(right)) => right,
+            _ if left_tokens.first().is_some_and(|token| token.is_word("discard")) => {
+                // Coordinated discard objects share their action verb:
+                // "discard a creature card and another card" pays both costs.
+                // Each half still must parse as a complete payment.
+                let mut inherited = vec![left_tokens[0].clone()];
+                inherited.extend(right_tokens.iter().cloned());
+                let Ok(Some(right)) = parse_payment_clause_as_total_cost(&inherited) else {
+                    continue;
+                };
+                right
+            }
+            _ => continue,
         };
         let (Some(left), Some(right)) = (left.as_all(), right.as_all()) else {
             continue;
@@ -1732,4 +1744,15 @@ mod tests {
             .expect("typed source subject should be stripped");
         assert!(stripped.first().is_some_and(|token| token.is_word("deals")));
     }
+    #[test]
+    fn conjoined_discard_payment_keeps_subtype_and_second_card() {
+        let filtered = parse_payment_clause_as_total_cost(&lex("discard an Island card"))
+            .unwrap().expect("a subtype-filtered discard should parse");
+        assert!(format!("{filtered:#?}").contains("Island"));
+        let total = parse_payment_clause_as_total_cost(&lex("discard an Island card and another card"))
+            .unwrap().expect("coordinated discard objects should inherit the verb");
+        assert_eq!(total.costs().len(), 2, "{total:#?}");
+        assert!(format!("{total:#?}").contains("Island"));
+    }
+
 }

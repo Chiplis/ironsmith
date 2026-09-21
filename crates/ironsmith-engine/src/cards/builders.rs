@@ -39,26 +39,33 @@ use super::CardDefinition;
 ///
 /// Keeping this constructor reusable lets both printed riot and effects that
 /// grant riot to a spell install the same gameplay representation.
-pub(crate) fn riot_triggered_ability() -> Ability {
+pub(crate) fn riot_ability() -> Ability {
     let modes = vec![
         EffectMode {
             source_text: "This creature enters with a +1/+1 counter on it".to_string(),
             effects: vec![Effect::plus_one_counters(1, ChooseSpec::Source)],
         },
         EffectMode {
-            source_text: "This creature gains haste until end of turn".to_string(),
-            effects: vec![Effect::grant_abilities_all(
-                ObjectFilter::source(),
-                vec![StaticAbility::haste()],
-                Until::EndOfTurn,
-            )],
+            source_text: "This creature gains haste".to_string(),
+            effects: vec![Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+                ChooseSpec::Source,
+                crate::continuous::Modification::AddAbilityGeneric(
+                    Ability::static_ability(StaticAbility::haste()),
+                ),
+                Until::Forever,
+            ))],
         },
     ];
 
-    Ability::triggered(
-        Trigger::this_enters_battlefield(),
-        vec![Effect::choose_one(modes)],
-    )
+    Ability::static_ability(StaticAbility::from_model(
+        crate::static_abilities::CompiledStaticAbility::as_enters_effect_program(
+            vec![Effect::choose_one(modes)].into(),
+            "this creature",
+            false,
+            false,
+            None,
+        ),
+    ))
 }
 
 #[cfg(any(test, ironsmith_runtime_parser_tests))]
@@ -222,36 +229,6 @@ fn delayed_trigger_spec_from_label(
         "end_of_combat" => Some(Trigger::end_of_combat()),
         "this_dies" => Some(Trigger::this_dies()),
         _ => None,
-    }
-}
-
-fn ability_with_inherent_functional_zones(ability: Ability) -> Ability {
-    let AbilityKind::Static(static_ability) = &ability.kind else {
-        return ability;
-    };
-    match static_ability.id() {
-        crate::static_abilities::StaticAbilityId::ExileToExileInsteadOfGraveyard
-        | crate::static_abilities::StaticAbilityId::ExileToCounteredExileInsteadOfGraveyard
-        | crate::static_abilities::StaticAbilityId::ExileWouldDieInstead => ability.in_zones(vec![
-            Zone::Battlefield,
-            Zone::Stack,
-            Zone::Graveyard,
-            Zone::Hand,
-            Zone::Library,
-            Zone::Exile,
-            Zone::Command,
-        ]),
-        crate::static_abilities::StaticAbilityId::Grants => {
-            if let Some(spec) = static_ability.grant_spec()
-                && spec.filter.source
-                && spec.zone != Zone::Battlefield
-            {
-                ability.in_zones(vec![spec.zone])
-            } else {
-                ability
-            }
-        }
-        _ => ability,
     }
 }
 
@@ -2288,18 +2265,13 @@ impl CardDefinitionBuilder {
 
     /// Add abilities to the card.
     pub fn with_abilities(mut self, abilities: Vec<Ability>) -> Self {
-        self.abilities.extend(
-            abilities
-                .into_iter()
-                .map(ability_with_inherent_functional_zones),
-        );
+        self.abilities.extend(abilities);
         self
     }
 
     /// Add a single ability to the card.
     pub fn with_ability(mut self, ability: Ability) -> Self {
-        self.abilities
-            .push(ability_with_inherent_functional_zones(ability));
+        self.abilities.push(ability);
         self
     }
 
@@ -3508,7 +3480,7 @@ impl CardDefinitionBuilder {
     ///
     /// Riot means "This creature enters with your choice of a +1/+1 counter or haste."
     pub fn riot(self) -> Self {
-        self.with_ability(riot_triggered_ability())
+        self.with_ability(riot_ability())
     }
 
     /// Add unleash.

@@ -4103,3 +4103,40 @@ fn entry_or_damage_trigger_preserves_both_events() {
         );
     }
 }
+
+#[test]
+fn source_leaves_followup_is_registered_by_resolving_enter_trigger() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Delayed source fixture")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("When this artifact enters, draw a card. When this artifact leaves the battlefield, discard a card.")
+        .expect("source-leaves followup should compile");
+    assert_eq!(definition.abilities.len(), 1, "{definition:#?}");
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("ScheduleDelayedTriggerEffect"), "{debug}");
+    assert!(debug.contains("ThisLeavesBattlefield"), "{debug}");
+}
+
+#[test]
+fn owned_exile_origin_union_preserves_owner_and_batch_count() {
+    for (origin, expected) in [
+        ("your library and/or your graveyard", vec![crate::zone::Zone::Library, crate::zone::Zone::Graveyard]),
+        ("your graveyard or library", vec![crate::zone::Zone::Graveyard, crate::zone::Zone::Library]),
+        ("your library", vec![crate::zone::Zone::Library]),
+        ("your hand and your graveyard", vec![crate::zone::Zone::Hand, crate::zone::Zone::Graveyard]),
+    ] {
+        let tokens = lex_line(&format!("one or more cards are put into exile from {origin}"), 0).unwrap();
+        let parsed = super::super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(&tokens).unwrap();
+        match parsed {
+            crate::cards::builders::TriggerSpec::PutIntoExileFromZones { filter, from, one_or_more, .. } => {
+                assert_eq!(from, expected);
+                assert_eq!(filter.owner, Some(PlayerFilter::You));
+                assert!(filter.nontoken && one_or_more);
+            }
+            other => panic!("unexpected trigger: {other:?}"),
+        }
+    }
+    for origin in ["your library and/or opponent graveyard", "your library and/or", "your library nonsense"] {
+        let tokens = lex_line(&format!("one or more cards are put into exile from {origin}"), 0).unwrap();
+        assert!(super::super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(&tokens).is_err(), "{origin}");
+    }
+}

@@ -9309,10 +9309,81 @@ fn characteristic_value_is_source_toughness(value: &Value) -> bool {
     }
 }
 
+fn describe_loyalty_timing_permission(filter: &ObjectFilter, subject: &str) -> String {
+    let mut scope = filter.clone();
+    scope.source_surface = None;
+    if scope == ObjectFilter::source() {
+        return format!("You may activate {} loyalty abilities any time you could cast an instant", possessive_subject(subject));
+    }
+    if scope.source && scope.entered_battlefield_this_turn {
+        scope.entered_battlefield_this_turn = false;
+        if scope == ObjectFilter::source() {
+            return format!("As long as {subject} entered this turn, you may activate its loyalty abilities any time you could cast an instant");
+        }
+    }
+    format!("You may activate loyalty abilities of {} any time you could cast an instant", describe_count_filter_value_subject(filter))
+}
+
 pub(crate) fn describe_static_ability_with_subject(
     static_ability: &crate::static_abilities::StaticAbility,
     subject: &str,
 ) -> String {
+    if let Some(model) = static_ability.compiled_model() {
+        match &model.payload {
+            ironsmith_core::StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter } => {
+                return describe_loyalty_timing_permission(filter, subject);
+            }
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
+                if let (ironsmith_core::StaticAbilityPayload::RuleRestriction { restriction, additional_restrictions, .. }, Condition::AttachedToSourceMatches(property)) = (&ability.payload, condition)
+                    && additional_restrictions.is_empty()
+                {
+                    use crate::effect::Restriction;
+                    let affected = match restriction {
+                        Restriction::TurnFaceUp(filter) | Restriction::Transform(filter)
+                        | Restriction::AttackOrBlock(filter) => Some(filter),
+                        _ => None,
+                    };
+                    if let Some(affected) = affected
+                        && let [attachment] = affected.tagged_constraints.as_slice()
+                        && matches!(attachment.tag.as_str(), "enchanted" | "equipped")
+                        && attachment.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    {
+                        let mut domain = affected.clone();
+                        domain.tagged_constraints.clear();
+                        domain.zone = None;
+                        let mut state = property.clone();
+                        let orientation = state.face_down.take();
+                        if orientation.is_some() && state == domain {
+                            let subject = affected.description();
+                            let clause = describe_restriction(restriction);
+                            if let Some(tail) = clause.strip_prefix(&subject) {
+                                let orientation = if orientation == Some(true) { "face down" } else { "face up" };
+                                return format!("As long as {subject} is {orientation}, it{tail}");
+                            }
+                        }
+                    }
+                }
+                if let ironsmith_core::StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter } = &ability.payload {
+                    let condition_text = if let Condition::CountComparison {
+                        count: crate::static_abilities::AnthemCountExpression::MatchingFilter(condition_filter),
+                        comparison: crate::effect::Comparison::GreaterThanOrEqual(1), ..
+                    } = condition {
+                        let mut scope = condition_filter.clone();
+                        scope.source_surface = None;
+                        if scope.zone == Some(Zone::Battlefield) {
+                            scope.zone = None;
+                        }
+                        scope.entered_battlefield_this_turn = false;
+                        if condition_filter.entered_battlefield_this_turn && scope == ObjectFilter::source() {
+                            format!("{subject} entered this turn")
+                        } else { describe_condition(condition) }
+                    } else { describe_condition(condition) };
+                    return format!("As long as {}, {}", lowercase_first(&condition_text), lowercase_first(&describe_loyalty_timing_permission(filter, subject)));
+                }
+            }
+            _ => {}
+        }
+    }
     if let Some(tax) = static_ability.block_cost_model()
         && !tax.is_attached_to_source()
         && tax.blockers() == &ObjectFilter::creature()
@@ -9596,6 +9667,11 @@ pub(crate) fn describe_static_ability_with_subject(
         presentation_label,
     }) = static_ability.compiled_model().map(|model| &model.payload)
     {
+        if !also_turns_face_up && !turns_face_up_only && transforms_into.is_none()
+            && let Some(riot) = describe_structural_riot_program(program)
+        {
+            return riot;
+        }
         let timing = if let Some(destination) = transforms_into {
             format!("As {authored_subject} transforms into {destination}")
         } else if *turns_face_up_only {
@@ -17345,4 +17421,21 @@ mod typed_attack_tax_render_tests {
             );
         }
     }
+}
+
+#[cfg(test)]
+#[test]
+fn attached_orientation_restrictions_render_from_typed_predicates() {
+    let affected = ObjectFilter::creature().match_tagged(
+        "equipped", crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+    );
+    let mut property = ObjectFilter::creature();
+    property.zone = None;
+    property.face_down = Some(true);
+    let model = crate::static_abilities::CompiledStaticAbility::restriction(
+        crate::effect::Restriction::transform(affected), "unrelated display text",
+    ).with_condition(Condition::AttachedToSourceMatches(property));
+    let ability = crate::static_abilities::StaticAbility::from_model(model);
+    assert_eq!(describe_static_ability_with_subject(&ability, "this equipment"),
+        "As long as equipped creature is face down, it can't transform");
 }

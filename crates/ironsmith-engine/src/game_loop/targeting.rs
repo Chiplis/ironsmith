@@ -127,7 +127,9 @@ pub(super) fn queue_triggers_for_simultaneous_events(
     let trigger_groups = check_triggers_batch(game, &events);
     let mut speed_controllers = std::collections::HashSet::new();
     let mut simultaneous_groups_seen = HashSet::new();
+    let mut zone_groups = std::collections::HashMap::new();
     for triggers in trigger_groups {
+        let mut zone_occurrences = std::collections::HashMap::new();
         // Delay inserting keys until this event's complete group is handled.
         // That preserves multiple identical ability instances on one object,
         // while suppressing their duplicate matches on later assignments in
@@ -140,7 +142,29 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                 .simultaneous_trigger_key(&trigger.triggering_event)
             {
                 let key = (trigger.source_stable_id, trigger.trigger_identity, group);
-                if simultaneous_groups_seen.contains(&key) {
+                if group == crate::triggers::matcher_trait::SimultaneousTriggerKey::ZoneChangeBatch {
+                    // Identical ability instances remain separate; match each
+                    // occurrence to its corresponding entry from earlier events.
+                    let occurrence = zone_occurrences.entry(key).or_insert(0usize);
+                    let instance_key = (key, *occurrence);
+                    *occurrence += 1;
+                    if let Some(&index) = zone_groups.get(&instance_key) {
+                        let previous: &mut crate::triggers::TriggeredAbilityEntry = &mut trigger_queue.entries[index];
+                        if let Some(amount) = trigger.event_value_amount {
+                            previous.event_value_amount = Some(previous.event_value_amount.unwrap_or(0) + amount);
+                        }
+                        for (tag, snapshots) in trigger.tagged_objects {
+                            let combined = previous.tagged_objects.entry(tag).or_default();
+                            for snapshot in snapshots {
+                                if !combined.iter().any(|old| old.object_id == snapshot.object_id) {
+                                    combined.push(snapshot);
+                                }
+                            }
+                        }
+                        continue;
+                    }
+                    zone_groups.insert(instance_key, trigger_queue.entries.len());
+                } else if simultaneous_groups_seen.contains(&key) {
                     continue;
                 }
                 groups_from_this_event.push(key);
@@ -543,7 +567,7 @@ pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut Tr
             if let Some(batch) = event.simultaneous_batch()
                 && matches!(
                     event.kind(),
-                    crate::events::EventKind::Damage | crate::events::EventKind::LifeLoss
+                    crate::events::EventKind::Damage | crate::events::EventKind::LifeLoss | crate::events::EventKind::ZoneChange
                 )
             {
                 let mut simultaneous = vec![event];
@@ -561,6 +585,14 @@ pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut Tr
                 for event in &simultaneous {
                     for trigger in crate::triggers::check_delayed_triggers(game, event) {
                         trigger_queue.add(trigger);
+                    }
+                    if let Some(change) = event.downcast::<crate::events::ZoneChangeEvent>()
+                        && change.from == crate::zone::Zone::Battlefield
+                        && change.to != crate::zone::Zone::Battlefield
+                    {
+                        for source in &change.objects {
+                            game.return_exiled_for_source_leave(*source);
+                        }
                     }
                 }
                 continue;
@@ -3696,7 +3728,29 @@ pub(super) fn validate_stack_entry_targets_with_view(
             {
                 specialize_target_player_relation_in_choose_spec(&mut resolved_spec, player);
             }
-            let legal_targets = compute_legal_targets_with_source_snapshot_and_view(
+            // Reflexive entries retain the resolving parent's results. Use
+            // them again when rechecking legality after players can respond.
+            let legal_targets = if !entry.effect_outcomes.is_empty() {
+                let mut ctx = crate::effects::ExecutionContext::new_default(entry.object_id, entry.controller);
+                ctx.x_value = entry.x_value;
+                ctx.effect_outcomes = entry.effect_outcomes.clone();
+                ctx.tagged_objects = entry.tagged_objects.clone();
+                ctx.source_snapshot = entry.source_snapshot.clone();
+                ctx.triggering_event = entry.triggering_event.clone();
+                ctx.event_value_amount = entry.event_value_amount;
+                ctx.combat.defending_player = entry.defending_player;
+                ctx.combat.attacking_player = combat_attacking_player_for_entry(game, entry);
+                crate::targeting::compute_legal_targets_with_execution_context_and_view(
+                    game, &resolved_spec, &ctx, view,
+                )
+            } else if entry.defending_player.is_some() {
+                compute_legal_targets_with_tagged_objects_combat_context_and_view(
+                    game, &resolved_spec, entry.controller, Some(entry.object_id),
+                    entry.source_snapshot.as_ref(), Some(&entry.tagged_objects),
+                    entry.defending_player, combat_attacking_player_for_entry(game, entry), view,
+                )
+            } else {
+                compute_legal_targets_with_source_snapshot_and_view(
                 game,
                 &resolved_spec,
                 entry.controller,
@@ -3708,25 +3762,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
                     Some(&entry.tagged_objects)
                 },
                 view,
-            );
-            let legal_targets = if entry.defending_player.is_some() {
-                compute_legal_targets_with_tagged_objects_combat_context_and_view(
-                    game,
-                    &resolved_spec,
-                    entry.controller,
-                    Some(entry.object_id),
-                    entry.source_snapshot.as_ref(),
-                    if entry.tagged_objects.is_empty() {
-                        None
-                    } else {
-                        Some(&entry.tagged_objects)
-                    },
-                    entry.defending_player,
-                    combat_attacking_player_for_entry(game, entry),
-                    view,
-                )
-            } else {
-                legal_targets
+            )
             };
 
             let start = valid_targets.len();

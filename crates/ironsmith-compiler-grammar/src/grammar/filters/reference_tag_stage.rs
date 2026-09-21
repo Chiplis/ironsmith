@@ -1242,9 +1242,8 @@ use reference_tag_stage_core_programs::{
 };
 #[path = "reference_tag_stage/reference_tag_stage_resource.rs"]
 mod reference_tag_stage_resource_programs;
-use reference_tag_stage_resource_programs::{
-    lift_shared_trailing_mana_value_from_type_union, try_apply_distinct_mana_values_clause,
-};
+pub(crate) use reference_tag_stage_resource_programs::lift_shared_trailing_mana_value_from_type_union;
+use reference_tag_stage_resource_programs::try_apply_distinct_mana_values_clause;
 #[path = "reference_tag_stage/reference_tag_stage_library.rs"]
 mod reference_tag_stage_library_programs;
 use reference_tag_stage_library_programs::{

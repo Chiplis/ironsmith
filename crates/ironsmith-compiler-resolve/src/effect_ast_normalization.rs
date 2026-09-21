@@ -269,6 +269,23 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     for effect in effects.iter_mut() {
         normalize_nested_effects(effect);
         collapse_single_nested_coordination(effect);
+        // The generic "you may" parser can wrap an already optional repeat
+        // marker. Expose that marker so cross-sentence normalization can bind
+        // it to the preceding process, and leave exactly one continuation choice.
+        let optional_repeat = match effect {
+            EffectAst::Permissions(PermissionEffectAst::May { effects })
+            | EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                player: crate::cards::builders::PlayerAst::You,
+                effects,
+            }) => matches!(
+                effects.as_slice(),
+                [EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)]
+            ),
+            _ => false,
+        };
+        if optional_repeat {
+            *effect = EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay);
+        }
         normalize_singular_source_exiled_move(effect);
     }
     // A full-card parse can normalize a named source reference only after the
@@ -1540,6 +1557,16 @@ fn bind_counted_set_followups(effects: &mut [EffectAst]) {
 
 fn normalize_nested_effects(effect: &mut EffectAst) {
     match effect {
+        EffectAst::ForEach(ForEachEffectAst::RepeatProcess { effects, .. }) => {
+            // This body already owns its continuation marker and indexes its
+            // condition by position. Rewriting the whole vector would wrap an
+            // optional repeat in another loop and invalidate that index.
+            for effect in effects {
+                normalize_nested_effects(effect);
+                collapse_single_nested_coordination(effect);
+                normalize_singular_source_exiled_move(effect);
+            }
+        }
         EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             if_true, if_false, ..
         })
@@ -1579,7 +1606,6 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         | EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid { effects, .. })
         | EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid { effects, .. })
         | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer { effects, .. })
-        | EffectAst::ForEach(ForEachEffectAst::RepeatProcess { effects, .. })
         | EffectAst::ForEach(ForEachEffectAst::RepeatEffects { effects, .. })
         | EffectAst::Votes(VoteEffectAst::BidLife {
             winner_effects: effects,
@@ -2569,6 +2595,22 @@ mod tests {
                 ..
             })]
         ));
+        assert_eq!(normalize_effects_ast(&normalized), normalized,
+            "normalizing an existing optional loop must preserve its continuation index");
+        for tail in [
+            EffectAst::Permissions(PermissionEffectAst::May {
+                effects: vec![effects.last().unwrap().clone()],
+            }),
+            EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                player: PlayerAst::You,
+                effects: vec![effects.last().unwrap().clone()],
+            }),
+        ] {
+            let mut wrapped = effects.clone();
+            *wrapped.last_mut().unwrap() = tail;
+            assert_eq!(normalize_effects_ast(&wrapped), normalized,
+                "the generic optional wrapper must not hide the loop or add a second prompt");
+        }
     }
 
     #[test]

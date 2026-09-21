@@ -1,4 +1,5 @@
 import { isRelayId, relayBaseUrl } from './formats.js';
+const journalKey = lobbyId => key(lobbyId, isRelayId(lobbyId) ? relayBaseUrl() : 'peerjs');
 const prefix = 'ironsmith-relay-session-v1:';
 const key = (room, url = relayBaseUrl()) => `${prefix}${url}:${room}`;
 export function readRelaySession(room, url) {
@@ -19,7 +20,28 @@ export function durableRelaySession(session) {
   return Object.fromEntries(durableFields.filter(field => session[field] !== undefined)
     .map(field => [field, session[field]]));
 }
+// PeerJS has no relay token: preserve its generated peer ID in this browser.
+// Only trusted matches can currently be reconstructed from the public journal.
+export function readPeerSession(lobbyId) {
+  try {
+    const value = JSON.parse(localStorage.getItem(`ironsmith-peerjs-resume-v1:${lobbyId}`));
+    return value?.session?.lobbyId === lobbyId && value.peerId === value.session.localPeerId
+      && value.session.securityMode === 'trusted' ? value : null;
+  } catch { return null; }
+}
+export function canPersistMatch(session) {
+  return isRelayId(session?.lobbyId)
+    || Boolean(session?.lobbyId && session?.securityMode === 'trusted');
+}
 export function saveRelayLobby(session, previous) {
+  if (!isRelayId(session.lobbyId)) {
+    if (!canPersistMatch(session) || !session.localPeerId) return;
+    if (previous && durableFields.every(field => previous[field] === session[field])) return;
+    localStorage.setItem(`ironsmith-peerjs-resume-v1:${session.lobbyId}`, JSON.stringify({
+      peerId: session.localPeerId, session: durableRelaySession(session),
+    }));
+    return;
+  }
   if (!isRelayId(session.lobbyId) || !session.localPeerId) return;
   if (previous && durableFields.every(field => previous[field] === session[field])) return;
   const room = session.lobbyId.split('-')[1];
@@ -66,7 +88,7 @@ export async function initializeRelayMatch(lobbyId, value) {
   const db = await database();
   return transaction(db, ['checkpoints', 'actions'], 'readwrite', (tx, done, fail) => {
     const headers = tx.objectStore('checkpoints'), actions = tx.objectStore('actions');
-    const roomKey = key(lobbyId), matchId = relayMatchId(value.match);
+    const roomKey = journalKey(lobbyId), matchId = relayMatchId(value.match);
     const request = headers.get(roomKey);
     request.onsuccess = () => {
       try {
@@ -92,7 +114,7 @@ export async function appendRelayAction(lobbyId, match, session, entry) {
   const db = await database();
   return transaction(db, ['checkpoints', 'actions'], 'readwrite', (tx, done, fail) => {
     const headers = tx.objectStore('checkpoints'), actions = tx.objectStore('actions');
-    const roomKey = key(lobbyId), matchId = relayMatchId(match);
+    const roomKey = journalKey(lobbyId), matchId = relayMatchId(match);
     const request = headers.get(roomKey);
     request.onsuccess = () => {
       try {
@@ -111,7 +133,7 @@ export async function relayCheckpoint(lobbyId, value) {
   if (value !== undefined) return initializeRelayMatch(lobbyId, value);
   const db = await database();
   return transaction(db, ['checkpoints', 'actions'], 'readonly', (tx, done, fail) => {
-    const roomKey = key(lobbyId);
+    const roomKey = journalKey(lobbyId);
     const request = tx.objectStore('checkpoints').get(roomKey);
     request.onsuccess = () => {
       const header = request.result;

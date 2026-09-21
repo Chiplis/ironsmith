@@ -97,6 +97,10 @@ pub enum GenericNegatedCantAction<'a> {
         negation_tokens: &'a [OwnedLexToken],
         attacker_tokens: &'a [OwnedLexToken],
     },
+    SubjectCantTurnFaceUp {
+        subject_tokens: &'a [OwnedLexToken],
+        negation_tokens: &'a [OwnedLexToken],
+    },
     SubjectCantTransform {
         subject_tokens: &'a [OwnedLexToken],
         negation_tokens: &'a [OwnedLexToken],
@@ -335,6 +339,12 @@ pub fn parse_generic_negated_cant_action_tokens(
             negation_tokens,
             attacker_tokens,
         });
+    }
+
+    if !subject_tokens.is_empty() && crate::grammar::primitives::probe_all(
+        tail_tokens, parse_turn_face_up_tail_lexed, "cant turn face up tail",
+    ).is_some() {
+        return Some(GenericNegatedCantAction::SubjectCantTurnFaceUp { subject_tokens, negation_tokens });
     }
 
     crate::grammar::primitives::probe_all(
@@ -578,6 +588,14 @@ fn parse_source_blocks_attacker_tail_lexed<'a>(
         .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(attacker_tokens)
+}
+
+fn parse_turn_face_up_tail_lexed(input: &mut LexStream<'_>) -> WResult<()> {
+    primitives::kw("be").parse_next(input)?;
+    primitives::kw("turned").parse_next(input)?;
+    primitives::kw("face").parse_next(input)?;
+    primitives::kw("up").parse_next(input)?;
+    primitives::sentence_end().parse_next(input)
 }
 
 fn parse_transform_tail_lexed(input: &mut LexStream<'_>) -> WResult<()> {

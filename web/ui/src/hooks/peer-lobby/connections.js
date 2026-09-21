@@ -286,7 +286,9 @@ export function usePeerLobbyConnections(base, servicesRef) {
       actionSubmissionStartedAtMsRef.current = 0;
     }
     multiplayerRef.current = normalized;
-    try { saveRelayLobby(normalized, previous); } catch { /* Transport reports unavailable persistent storage on connect. */ }
+    try { saveRelayLobby(normalized, previous); } catch (error) {
+      setStatus(`Could not save reconnect identity. Keep this tab open: ${toErrorMessage(error)}`, true);
+    }
     base.matchClockStore?.current.set(normalized.matchClock || normalized.actionTimer || null);
     // Clock epochs live in a separate subscription; board consumers only see
     // semantic session changes. Check the raw next object before warning shaping.

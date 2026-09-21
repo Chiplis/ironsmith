@@ -234,14 +234,11 @@ export default function LobbyOverlay({
 
   const lobbyActive = multiplayer.mode !== "idle";
   const playerCount = multiplayer.players.length;
-  const connectedPlayers = multiplayer.players.filter((player) => player.connected !== false).length;
   const readyPlayers = multiplayer.players.filter(
     (player) => player.connected !== false && player.ready
   ).length;
-  const slotsRemaining = Math.max(0, multiplayer.desiredPlayers - connectedPlayers);
   const activeFormat = normalizeMatchFormat(multiplayer.format);
 
-  const activeSecurityMode = normalizeMultiplayerSecurityMode(multiplayer.securityMode);
   const createDeckCount = useMemo(
     () => parseDeckList(createDeckText).length,
     [createDeckText]
@@ -664,54 +661,6 @@ export default function LobbyOverlay({
           ) : (
             <div className="lobby-sheet-active-grid">
               <div className="lobby-sheet-discovery">
-                <div className="lobby-sheet-panel fantasy-sheet-section grid gap-1 p-4">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Lobby Code")}</span>
-                  <div className="lobby-sheet-code font-mono text-[24px] font-bold tracking-[0.04em] text-foreground">
-                    {multiplayer.lobbyId || multiplayer.hostPeerId || ui("Connecting")}
-                  </div>
-                  <p className="text-[13px] text-muted-foreground">
-                    {multiplayer.mode === "hosting"
-                      ? ui("Registering lobby with PeerJS...")
-                      : multiplayer.mode === "joining"
-                        ? ui("Connecting to lobby host...")
-                        : multiplayer.matchStarted
-                          ? ui("Seat {0} is active.", { 0: multiplayer.localPlayerIndex != null
-                                ? multiplayer.localPlayerIndex + 1
-                                : "-" })
-                          : startPending
-                            ? ui("Starting match.")
-                            : multiplayer.role === "host"
-                              ? slotsRemaining > 0
-                                ? ui("Share this code. {0} slot{1} remaining.", { 0: slotsRemaining, 1: slotsRemaining === 1 ? "" : "s" })
-                                : canStartHostedMatch
-                                  ? ui("All players are ready. Start the match when you're ready.")
-                                  : ui("Waiting for {0} player{1} to submit a valid {2} deck.", { 0: playerCount - readyPlayers, 1: playerCount - readyPlayers === 1 ? "" : "s", 2: formatName(activeFormat) })
-                              : localReady
-                                ? readyPlayers === multiplayer.desiredPlayers
-                                  ? ui("All players are ready. Waiting for the host to start.")
-                                  : ui("Ready. Waiting for the remaining players.")
-                                : formatDeckRequirement(activeFormat)}
-                  </p>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8b806b]">{ui("Signaling:") + " "}{multiplayer.signalingServer || "0.peerjs.com:443"}
-                  </p>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8b806b]">{ui("Mode:") + " "}{ui(securityModeName(activeSecurityMode))}
-                  </p>
-                  <p className="text-[13px] text-muted-foreground">
-                    {ui(securityModeSummary(activeSecurityMode))}
-                  </p>
-                </div>
-
-                {!multiplayer.matchStarted ? (
-                  <div className="lobby-sheet-invite">
-                    <label className={labelClass}>{ui("Invite Link")}
-                      <input className={inputClass} readOnly value={inviteLink} />
-                    </label>
-                    <button type="button" disabled={!inviteLink}
-                      className={pill} onClick={() => { void handleCopyInviteLink(); }}>
-                      {ui("Copy Link")}
-                    </button>
-                  </div>
-                ) : null}
                 {/* A player who already joined can still swap to a catalog
                     deck, to one the host prepared, or to their own list. */}
                 {!multiplayer.matchStarted && activeFormat === MATCH_FORMAT_NORMAL && !startPending ? (
@@ -842,17 +791,31 @@ export default function LobbyOverlay({
                   </div>
                 ) : null}
 
-                {!multiplayer.matchStarted && multiplayer.role === "host" ? (
-                  <button
-                    type="button"
-                    disabled={!canStartHostedMatch || startPending}
-                    className={`${startButtonClass} lobby-sheet-start`}
-                    onClick={() => {
-                      void startHostedMatch();
-                    }}
-                  >
-                    {startPending ? ui("Starting...") : ui("Start game")}
-                  </button>
+                {!multiplayer.matchStarted ? (
+                  <div className="lobby-sheet-actions">
+                    <div className="lobby-sheet-invite">
+                      <label className={labelClass}>{ui("Invite Link")}
+                        <input className={inputClass} readOnly value={inviteLink} />
+                      </label>
+                      <button type="button" disabled={!inviteLink}
+                        className={pill} onClick={() => { void handleCopyInviteLink(); }}>
+                        {ui("Copy Link")}
+                      </button>
+                    </div>
+                    {multiplayer.role === "host" ? (
+                      <button
+                        type="button"
+                        disabled={!canStartHostedMatch || startPending}
+                        className={`${startButtonClass} lobby-sheet-start`}
+                        onClick={() => {
+                          void startHostedMatch();
+                        }}
+                      >
+                        {startPending ? ui("Starting...") : ui("Start game")}
+                      </button>
+                    ) : null}
+
+                  </div>
                 ) : null}
 
                 <div className="lobby-sheet-footer flex items-center justify-between gap-2">

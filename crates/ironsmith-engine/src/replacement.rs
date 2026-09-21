@@ -268,6 +268,9 @@ pub enum ReplacementAction {
         amount: u32,
     },
 
+    /// Execute a selected as-enters program, then reconsider the pending entry.
+    AsEntersProgram(crate::resolution::ResolutionProgram),
+
     /// Add an additional effect
     Additionally(Vec<Effect>),
 

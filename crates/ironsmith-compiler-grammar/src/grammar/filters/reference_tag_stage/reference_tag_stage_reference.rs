@@ -2403,14 +2403,15 @@ pub(in super::super) fn parse_object_filter_inner(
         || !filter.characteristic_relations.is_empty()
         || !filter.any_of.is_empty();
 
-    if !has_constraints {
+    if !has_constraints && !not_on_battlefield {
         return Err(CardTextError::ParseError(format!(
             "unsupported target phrase (clause: '{}')",
             all_words.join(" ")
         )));
     }
 
-    let has_object_identity = !filter.card_types.is_empty()
+    let has_object_identity = (not_on_battlefield && filter.has_explicit_card_noun())
+        || !filter.card_types.is_empty()
         // `other card` names an object by exclusion. Like the `nonattacking`
         // and `nonblocking` restrictions below, it narrows the phrase to
         // something the bare noun does not cover, so it is identity even
@@ -2514,11 +2515,17 @@ pub(in super::super) fn parse_object_filter_inner(
             Zone::Graveyard,
             Zone::Exile,
             Zone::Command,
+            Zone::Stack,
+            Zone::Ante,
+            Zone::OutsideGame,
         ]
         .into_iter()
         .map(|zone| {
             let mut branch = base.clone();
             branch.zone = Some(zone);
+            if zone == Zone::Stack {
+                branch.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+            }
             branch
         })
         .collect();

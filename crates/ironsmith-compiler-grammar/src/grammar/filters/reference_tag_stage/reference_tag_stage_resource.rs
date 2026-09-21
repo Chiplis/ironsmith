@@ -8,7 +8,7 @@ use super::*;
 /// comparison only on the final `sorcery card` arm. By contrast,
 /// `land card or creature card with mana value ...` repeats the noun and
 /// deliberately keeps the qualifier branch-local.
-pub(super) fn lift_shared_trailing_mana_value_from_type_union(
+pub(crate) fn lift_shared_trailing_mana_value_from_type_union(
     filter: &mut ObjectFilter,
     tokens: &[OwnedLexToken],
 ) {

@@ -27,6 +27,7 @@ pub mod effect;
 pub mod effect_model;
 pub mod event_model;
 pub mod filter_model;
+pub mod functional_zones;
 pub mod grant_model;
 pub mod ids;
 pub mod interned;
@@ -136,7 +137,7 @@ pub use effect::{
     NoteLifeTotalEffect, OpenAttractionEffect, PayAnyEnergyEffect, PayAnyLifeEffect,
     PayEnergyEffect, PayLifeEffect, PayManaEffect, PhaseInEffect, PhaseOutDuration, PhaseOutEffect,
     PlaySubgameEffect, PlayerControlDuration, PlayerControlStart, PoisonCountersEffect,
-    PopulateEffect, PrepareEffect, PreventAllCombatDamageEffect, PreventAllDamageEffect,
+    BecomePlottedEffect, PopulateEffect, PrepareEffect, PreventAllCombatDamageEffect, PreventAllDamageEffect,
     PreventAllDamageToTargetEffect, PreventDamageEffect, PreventNextTimeDamageEffect,
     PreventNextTimeDamageSource, PreventNextTimeDamageTarget, PreventionTarget,
     PriorEffectResultActor, PriorEffectResultQuantifier, PriorEffectResultSurface,

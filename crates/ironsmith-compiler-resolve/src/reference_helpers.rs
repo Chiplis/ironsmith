@@ -571,6 +571,9 @@ fn resolve_object_filter_player_refs(
     refs: &ReferenceEnv,
 ) -> Result<ObjectFilter, CardTextError> {
     let mut resolved = filter.clone();
+    if let Some(constraint) = resolved.target_set_aggregate_constraint.as_mut() {
+        constraint.maximum = resolve_value_it_tag(&constraint.maximum, refs)?;
+    }
     if let Some(controller) = resolved.controller.as_mut() {
         *controller = resolve_contextual_player_filter(controller, refs)?;
     }
@@ -1143,6 +1146,7 @@ pub fn resolve_restriction_it_tag(
             Restriction::be_countered(resolve_it_tag(filter, refs)?)
         }
         Restriction::Transform(filter) => Restriction::transform(resolve_it_tag(filter, refs)?),
+        Restriction::TurnFaceUp(filter) => Restriction::turn_face_up(resolve_it_tag(filter, refs)?),
         Restriction::PhaseOut(filter) => Restriction::phase_out(resolve_it_tag(filter, refs)?),
         Restriction::PhaseIn(filter) => Restriction::phase_in(resolve_it_tag(filter, refs)?),
         Restriction::AttackOrBlock(filter) => {
@@ -1298,6 +1302,17 @@ fn resolve_choose_spec_it_tag_preserving_selection(
 
 pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value, CardTextError> {
     match value {
+        Value::PendingComparisonLeft | Value::PendingComparisonRight | Value::PendingComparisonDifference => {
+            let crate::model::reference_state::RefState::Known((left, right)) = &refs.last_value_comparison else {
+                return Err(CardTextError::ParseError("comparison reference requires an earlier explicit value comparison".into()));
+            };
+            Ok(match value {
+                Value::PendingComparisonLeft => left.clone(),
+                Value::PendingComparisonRight => right.clone(),
+                _ => Value::absolute_difference(left.clone(), right.clone()).with_surface_hint(ironsmith_core::ValueSurfaceHint::Difference),
+            })
+        }
+
         Value::LifeLostThisTurn(player) => Ok(Value::LifeLostThisTurn(
             resolve_contextual_player_filter(player, refs)?,
         )),
@@ -1333,6 +1348,18 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                     source: ironsmith_core::EffectMetricSource::Outcome,
                     metric: ironsmith_core::EffectMetric::LifeGained,
                 }),
+                hints: hints.clone(),
+            })
+        }
+        Value::SurfaceHinted { value, hints }
+            if hints.contains(&ironsmith_core::ValueSurfaceHint::PriorEffectResult)
+                && matches!(value.unhinted(), Value::EventValue(EventValueSpec::Amount)) =>
+        {
+            let id = refs.known_last_effect_id().ok_or_else(|| {
+                CardTextError::ParseError("prior-effect result requires a prior effect".into())
+            })?;
+            Ok(Value::SurfaceHinted {
+                value: Box::new(Value::EffectValue(id)),
                 hints: hints.clone(),
             })
         }

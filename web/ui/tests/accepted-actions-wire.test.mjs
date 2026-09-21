@@ -57,3 +57,22 @@ test('wireStablePayload keeps null, arrays and nested values and drops only unde
   assert.equal(wireStablePayload(null), null);
   assert.deepEqual(wireStablePayload({ a: null, b: undefined, c: [1, undefined, { d: undefined, e: 0 }] }), { a: null, c: [1, null, { e: 0 }] });
 });
+
+test('exile action matches the live WASM form after peer transport and resync', async () => {
+  const { isDecisionCommandCompatible } = await import('../src/lib/sync-commands.js');
+  const wire = await loadWire();
+  const action = { index: 5, action_ref: {
+    kind: 'cast_spell', spell_id: 214, from_zone: 'exile',
+    casting_method: { kind: 'play_from', source: 212, zone: 'exile', use_alternative: undefined },
+  } };
+  const decision = { kind: 'priority', player: 0, actions: [action] };
+  const entry = withActionPrefixes([{ seq: 162, actorIndex: 0, clock: null,
+    command: wireStablePayload({ type: 'priority_action', action_ref: action.action_ref }),
+  }])[0];
+  const received = wire(entry);
+  const resynced = wire(JSON.parse(JSON.stringify(received)));
+  for (const copy of [entry, received, resynced]) {
+    assert.equal(isDecisionCommandCompatible(decision, copy.command), true);
+    assert.equal(actionPrefixHash(EMPTY_ACTION_PREFIX, copy), entry.prefixHash);
+  }
+});

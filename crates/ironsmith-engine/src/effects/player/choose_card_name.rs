@@ -148,13 +148,13 @@ impl EffectExecutor for ChooseCardNameEffect {
             .iter()
             .any(|name| name.eq_ignore_ascii_case(&canonical_name))
         {
-            chosen_names.push(canonical_name);
+            chosen_names.push(canonical_name.clone());
         }
         game.set_chosen_named_option(ctx.source, chosen_names.join("\n"));
-        let snapshots = chosen_names
-            .into_iter()
-            .map(|name| synthetic_chosen_name_snapshot(ctx.source, chooser, name))
-            .collect();
+        // The resolution tag names this choice only. Persistent source names
+        // may include other choices made by its abilities, but must not leak
+        // into a later resolution's singular chosen-name comparison.
+        let snapshots = vec![synthetic_chosen_name_snapshot(ctx.source, chooser, canonical_name)];
         ctx.set_tagged_objects(self.tag.clone(), snapshots);
         Ok(EffectOutcome::count(1))
     }

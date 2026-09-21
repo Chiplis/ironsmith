@@ -42,6 +42,7 @@ pub struct ChosenObjectTarget<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnchantedObjectTargetKind {
     Creature,
+    CreatureCard,
     Other,
 }
 
@@ -118,6 +119,12 @@ pub fn parse_enchanted_object_target_kind(words: &[&str]) -> Option<EnchantedObj
     primitives::parse_full_word_slice(
         words,
         alt((
+            (
+                primitives::word_slice_exact("enchanted"),
+                primitives::word_slice_exact("creature"),
+                primitives::word_slice_exact("card"),
+            )
+                .value(EnchantedObjectTargetKind::CreatureCard),
             (
                 primitives::word_slice_exact("enchanted"),
                 primitives::word_slice_exact("creature"),

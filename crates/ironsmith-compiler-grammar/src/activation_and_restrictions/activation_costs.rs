@@ -931,6 +931,22 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
                     ),
                 )));
             }
+            cant_shapes::GenericNegatedCantAction::SubjectCantTurnFaceUp {
+                subject_tokens, ..
+            } => {
+                let subject_tokens = trim_commas(subject_tokens);
+                let Some(filter) = parse_subject_object_filter(&subject_tokens)? else {
+                    return Ok(None);
+                };
+                let subject_text = crate::lexer::token_word_refs(&subject_tokens).join(" ");
+                if subject_text.is_empty() {
+                    return Ok(None);
+                }
+                return Ok(Some(StaticAbility::restriction(
+                    crate::effect::Restriction::turn_face_up(filter),
+                    format!("{subject_text} can't be turned face up"),
+                )));
+            }
             cant_shapes::GenericNegatedCantAction::SubjectCantTransform {
                 subject_tokens, ..
             } => {

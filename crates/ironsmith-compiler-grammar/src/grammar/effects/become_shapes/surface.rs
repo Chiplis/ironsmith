@@ -102,6 +102,7 @@ pub enum BecomeExactKind {
     Colorless,
     Saddled,
     Prepared,
+    Plotted,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

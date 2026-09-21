@@ -319,6 +319,9 @@ pub fn value_contains_pending_effect_metric(value: &Value) -> bool {
     match value {
         Value::PendingEffectMetric { .. }
         | Value::PendingEffectMetricOffset { .. }
+        | Value::PendingComparisonLeft
+        | Value::PendingComparisonRight
+        | Value::PendingComparisonDifference
         | Value::PendingPriorEffectMetric(_) => true,
         Value::SurfaceHinted { value, .. }
         | Value::Scaled(value, _)
@@ -522,6 +525,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | HaveCountersPlaced(filter)
         | BeTargeted(filter)
         | BeCountered(filter)
+        | TurnFaceUp(filter)
         | Transform(filter)
         | PhaseOut(filter)
         | PhaseIn(filter)

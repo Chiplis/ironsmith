@@ -13,11 +13,12 @@ const decks = Array.from({length: 6}, (_, index) => ({
   placement: index + 1,
   mainboardCount: 60,
   sideboardCount: 15,
+  collections: index < 3 ? ['mono-color'] : [],
   cards: ['Mountain'],
   cardNames: ['Mountain'],
   artCard: 'Atraxa',
   manaProfile: {
-    colors: ['R', 'W'],
+    colors: index < 3 ? ['R'] : ['R', 'W'],
     landCount: 24,
     predominantColors: ['R'],
     predominantLands: [{name: 'Mountain', count: 8}],
@@ -45,13 +46,23 @@ test('the lobby picker shows catalog decks with art and applies one flatly', asy
     await page.route('**/cards/atraxa.json', (route) => route.fulfill({json: {scryfall: {image_uris: {art_crop: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2210%22 height=%2210%22%3E%3C/svg%3E'}}}}));
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/lobby-deck-picker.html`, {waitUntil: 'domcontentloaded'});
 
-    const rows = page.locator('[data-lobby-deck-row]');
+    const rows = page.locator('[data-deck-row]');
     await rows.first().waitFor();
     assert.equal(await rows.count(), 6);
 
     // Every deck is offered as art plus a single Use, like the workspace.
     await page.waitForFunction(() => document.querySelectorAll('[data-deck-art="loaded"]').length === 6);
-    assert.equal(await page.locator('[data-lobby-deck-row] button').count(), 6);
+    assert.equal(await page.locator('[data-deck-row] button').count(), 6);
+
+    await page.locator('[data-catalog-tab="mono-color"]').click();
+    assert.equal(await rows.count(), 3);
+    await page.locator('[data-catalog-tab="all"]').click();
+    await page.getByRole('button', {name: 'Filter by W mana', exact: true}).click();
+    assert.equal(await rows.count(), 3);
+    await page.getByRole('button', {name: 'Only these', exact: true}).click();
+    assert.equal(await rows.count(), 0);
+    await page.getByRole('button', {name: 'Clear', exact: true}).click();
+    assert.equal(await rows.count(), 6);
 
     // The sheet's chrome draws borders on controls with !important; the flat
     // scope has to win inside it.

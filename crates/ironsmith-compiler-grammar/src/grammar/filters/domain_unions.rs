@@ -99,7 +99,8 @@ fn domain_selector_signature(filter: &ObjectFilter) -> Option<ObjectFilter> {
 }
 
 fn branch_has_explicit_object_selector(filter: &ObjectFilter) -> bool {
-    filter.stack_kind.is_some()
+    (!filter.any_of.is_empty() && filter.any_of.iter().all(branch_has_explicit_object_selector))
+        || filter.stack_kind.is_some()
         || (filter.zone == Some(Zone::Stack) && filter.has_mana_cost)
         || !filter.card_types.is_empty()
         || !filter.all_card_types.is_empty()

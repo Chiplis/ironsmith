@@ -37,11 +37,11 @@ test('rejects mana registration on a flat panel',()=>{
 
 test('mask templates cover Phyrexian and hybrid costs used by the visible renderer',()=>{
   for(const color of ['W','U','B','R','G']) {
-    assert.equal(manaTemplateSource(`${color}/P`),`https://svgs.scryfall.io/card-symbols/${color}P.svg`);
-    assert.equal(manaTemplateSource(`2/${color}`),`https://svgs.scryfall.io/card-symbols/2${color}.svg`);
+    assert.equal(manaTemplateSource(`${color}/P`),`/mana/symbols/${color}-P.svg`);
+    assert.equal(manaTemplateSource(`2/${color}`),`/mana/symbols/2-${color}.svg`);
   }
-  assert.equal(manaTemplateSource('W/U'),'https://svgs.scryfall.io/card-symbols/WU.svg');
-  assert.equal(manaTemplateSource('G/U/P'),'https://svgs.scryfall.io/card-symbols/GUP.svg');
-  assert.ok(manaTemplateSource('R').startsWith('data:image/svg+xml,'));
+  assert.equal(manaTemplateSource('W/U'),'/mana/symbols/W-U.svg');
+  assert.equal(manaTemplateSource('G/U/P'),'/mana/symbols/G-U-P.svg');
+  assert.equal(manaTemplateSource('R'), '/mana/symbols/R.svg');
   assert.equal(manaTemplateSource('invalid'),null);
 });

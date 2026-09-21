@@ -545,6 +545,8 @@ pub struct TraitEventProcessingState {
     pub applied_effect_keys: std::collections::HashSet<ReplacementEffectKey>,
     /// Iteration count to detect infinite loops.
     pub iteration_count: u32,
+    /// The entry driver refreshes prospective abilities between replacements.
+    pub yield_after_etb_replacement: bool,
 }
 
 impl TraitEventProcessingState {
@@ -647,6 +649,9 @@ fn process_event_direct(
         mark_applied_replacement_choice(state, &chosen_effect);
         consume_one_shot_if_applied(game, effect_id, &result);
         return match result {
+            TraitApplyResult::Modified(modified_event)
+                if state.yield_after_etb_replacement && crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(modified_event.inner()).is_some() =>
+                TraitEventResult::Modified(modified_event),
             TraitApplyResult::Modified(modified_event) => process_event_direct(
                 game,
                 modified_event,
@@ -723,7 +728,10 @@ fn process_event_direct(
     consume_one_shot_if_applied(game, effect_id, &result);
 
     match result {
-        TraitApplyResult::Modified(modified_event) => process_event_direct(
+        TraitApplyResult::Modified(modified_event)
+                if state.yield_after_etb_replacement && crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(modified_event.inner()).is_some() =>
+                TraitEventResult::Modified(modified_event),
+            TraitApplyResult::Modified(modified_event) => process_event_direct(
             game,
             modified_event,
             state,
@@ -2838,6 +2846,74 @@ fn assign_ephemeral_effect_ids(effects: &mut [ReplacementEffect], id_base: u64) 
     }
 }
 
+/// Entry programs may change the entrant's text or characteristics. Re-read
+/// its abilities in the pending battlefield state, retaining a stable local
+/// effect ID for each static ability across replacement-loop iterations.
+fn prepared_object_etb_replacement_effects(
+    game: &GameState,
+    event: &Event,
+    ids: &mut std::collections::HashMap<(crate::static_abilities::StaticAbilityInstanceId, usize), ReplacementEffectId>,
+    state: &TraitEventProcessingState,
+    reserved_objects: &std::collections::HashSet<ObjectId>,
+) -> Option<Vec<ReplacementEffect>> {
+    let etb = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())?;
+    let changed_text = !etb.program_choices.as_enters_continuous_effects.is_empty();
+    // Entry replacements can be granted by another permanent. Inspect the
+    // prospective characteristics, not only the entering card's printed text.
+    let prospective = etb.prospective_game_state(game)?;
+    let chars = prospective.calculated_characteristics(etb.object)?;
+    let has_program = chars.abilities.iter().any(|ability| {
+        matches!(&ability.kind, crate::ability::AbilityKind::Static(ability)
+            if ability.compiled_model().is_some_and(|model| matches!(&model.payload,
+                ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram { turns_face_up_only: false, transforms_into: None, .. })))
+    });
+    if !changed_text && !has_program { return None; }
+    let controller = prospective.current_controller(etb.object)?;
+    let mut effects = Vec::new();
+    for ability in chars.abilities.iter() {
+        let crate::ability::AbilityKind::Static(ability) = &ability.kind else { continue; };
+        if let Some(model) = ability.compiled_model()
+            && let ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram {
+                program, turns_face_up_only: false, transforms_into: None, ..
+            } = &model.payload {
+            let mut effect = ReplacementEffect::with_matcher(
+                etb.object, controller, crate::ThisWouldEnterBattlefieldMatcher,
+                ReplacementAction::AsEntersProgram(program.clone()),
+            );
+            let next_id = ReplacementEffectId(u64::MAX - 250_000 + ids.len() as u64);
+            effect.id = *ids.entry((ability.instance_id(), usize::MAX)).or_insert(next_id);
+            effect.static_ability_instance = Some(ability.instance_id());
+            effects.push(effect);
+        }
+        if let Some(mut effect) = ability.generate_replacement_effect(etb.object, controller)
+            && effect.matcher.as_ref().is_some_and(|matcher| matcher.applies_from_entering_source()) {
+            let next_id = ReplacementEffectId(u64::MAX - 250_000 + ids.len() as u64);
+            effect.id = *ids.entry((ability.instance_id(), 0)).or_insert(next_id);
+            effects.push(effect);
+        }
+        if let Some(spec) = ability.enter_as_copy_as_enters()
+            && spec.affected_filter.is_none() {
+            // All candidates (including declining) are alternative outcomes
+            // of one replacement, not independently applicable replacements.
+            let consumed = ids.iter().any(|((instance, slot), id)| {
+                *instance == ability.instance_id() && *slot > 0 && *slot != usize::MAX && state.was_applied(*id)
+            });
+            if consumed { continue; }
+            let mut copies = Vec::new();
+            push_enter_as_copy_effects_for_spec(
+                game, etb.object, etb.object, controller, spec, reserved_objects, &mut copies,
+            );
+            for (index, mut effect) in copies.into_iter().enumerate() {
+                let next_id = ReplacementEffectId(u64::MAX - 250_000 + ids.len() as u64);
+                effect.id = *ids.entry((ability.instance_id(), index + 1)).or_insert(next_id);
+                effect.static_ability_instance = Some(ability.instance_id());
+                effects.push(effect);
+            }
+        }
+    }
+    Some(effects)
+}
+
 fn copied_object_etb_replacement_effects(
     game: &GameState,
     object: crate::ids::ObjectId,
@@ -2866,6 +2942,7 @@ fn copied_object_etb_replacement_effects(
     for ability in copied_abilities {
         if let crate::ability::AbilityKind::Static(static_ability) = ability.kind
             && let Some(effect) = static_ability.generate_replacement_effect(object, controller)
+            && effect.matcher.as_ref().is_some_and(|matcher| matcher.applies_from_entering_source())
         {
             effects.push(effect);
         }
@@ -4158,10 +4235,12 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
         }
         for s in &current_static_abilities {
             // Check for unified replacement effects
-            if let Some(effect) = s.generate_replacement_effect(object, controller) {
+            if let Some(effect) = s.generate_replacement_effect(object, controller)
+                && effect.matcher.as_ref().is_some_and(|matcher| matcher.applies_from_entering_source()) {
                 object_etb_effects.push(effect);
             }
-            if let Some(spec) = s.enter_as_copy_as_enters() {
+            if let Some(spec) = s.enter_as_copy_as_enters()
+                && spec.affected_filter.is_none() {
                 push_enter_as_copy_effects_for_spec(
                     game,
                     object,
@@ -4273,19 +4352,50 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
             set_base_power_toughness: None,
             controller_override: entering_controller,
             prepared_choices: None,
+            pending_program: None,
+            program_choices: Default::default(),
         },
         etb_event_provenance,
     );
-    let mut state = TraitEventProcessingState::default();
+    let mut state = TraitEventProcessingState { yield_after_etb_replacement: true, ..Default::default() };
     let mut paid_labels = Vec::new();
+    let mut prepared_ability_ids = std::collections::HashMap::new();
 
     loop {
         if let Some(etb) = downcast_event::<EnterBattlefieldEvent>(current_event.inner()) {
             reserved_objects.extend(etb.linked_exile_with_entering.iter().copied());
         }
+        if let Some(etb) = downcast_event::<EnterBattlefieldEvent>(current_event.inner())
+            && let Some((program, controller)) = etb.pending_program.clone() {
+            let mut resumed = etb.clone();
+            resumed.pending_program = None;
+            let Some(mut choices) = game.execute_entry_programs(object, controller, vec![program], Some(&resumed), dm) else {
+                return EtbEventResult { prevented: true, ..Default::default() };
+            };
+            for (kind, count) in choices.as_enters_counters.drain(..) {
+                resumed = resumed.with_counters(kind, count);
+            }
+            resumed.program_choices.transfer_as_enters_source_links |= choices.transfer_as_enters_source_links;
+            resumed.program_choices.as_enters_continuous_effects.extend(choices.as_enters_continuous_effects);
+            for (tag, snapshots) in choices.as_enters_tagged_objects {
+                let retained = resumed.program_choices.as_enters_tagged_objects.entry(tag).or_default();
+                for snapshot in snapshots {
+                    if !retained.iter().any(|existing| existing.stable_id == snapshot.stable_id) {
+                        retained.push(snapshot);
+                    }
+                }
+            }
+            game.update_replacement_effects();
+            current_event = Event::new_with_provenance(resumed, current_event.provenance());
+            continue;
+        }
+        let prepared_object_effects = prepared_object_etb_replacement_effects(
+            game, &current_event, &mut prepared_ability_ids, &state, &reserved_objects,
+        );
         let copy_choice_consumed = copy_choice_effects
             .iter()
-            .any(|effect| state.was_applied(effect.id));
+            .any(|effect| state.was_applied(effect.id))
+            || prepared_ability_ids.iter().any(|((_, slot), id)| *slot > 0 && *slot != usize::MAX && state.was_applied(*id));
         let original_object_effects_still_apply =
             downcast_event::<EnterBattlefieldEvent>(current_event.inner())
                 .map(|etb| etb.enters_as_copy_of.is_none())
@@ -4298,17 +4408,18 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
         );
         let current_additional_effects: Vec<ReplacementEffect> = copy_choice_effects
             .iter()
-            .filter(|_| !copy_choice_consumed)
+            .filter(|effect| !copy_choice_consumed && (effect.source != object || prepared_object_effects.is_none()))
             .chain(
                 object_etb_effects
                     .iter()
-                    .filter(|_| original_object_effects_still_apply),
+                    .filter(|_| original_object_effects_still_apply && prepared_object_effects.is_none()),
             )
             .chain(
                 copied_object_etb_effects
                     .iter()
-                    .filter(|effect| !state.was_applied(effect.id)),
+                    .filter(|effect| prepared_object_effects.is_none() && !state.was_applied(effect.id)),
             )
+            .chain(prepared_object_effects.iter().flatten())
             .cloned()
             .collect();
         let result = process_event_direct(
@@ -4326,7 +4437,11 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                     ..Default::default()
                 };
             }
-            TraitEventResult::Proceed(e) | TraitEventResult::Modified(e) => {
+            TraitEventResult::Modified(e) => {
+                current_event = e;
+                continue;
+            }
+            TraitEventResult::Proceed(e) => {
                 if let Some(etb) = downcast_event::<EnterBattlefieldEvent>(e.inner()) {
                     // Copy-as-enters effects are applied before other ETB
                     // modifications. Recompute a battle's intrinsic defense
@@ -4348,18 +4463,6 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                                 .push((CounterType::Defense, defense));
                         }
                         current_event = Event::new_with_provenance(copied_etb, e.provenance());
-                        continue;
-                    }
-                    let copied_effects = copied_object_etb_replacement_effects(
-                        game,
-                        object,
-                        &e,
-                        COPIED_OBJECT_ETB_ID_BASE,
-                    );
-                    if !find_applicable_trait_replacements(game, &e, &state, &copied_effects, None)
-                        .is_empty()
-                    {
-                        current_event = e;
                         continue;
                     }
                     let event_result = EtbEventResult {
@@ -4384,11 +4487,22 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                         interactive_replacement: None,
                     };
                     if etb.prepared_choices.is_none() {
-                        let Some(prepared) = game.prepare_etb_entry_with_controller_and_dm(
+                        let abilities = if etb.program_choices.as_enters_continuous_effects.is_empty() {
+                            let mut abilities = game.object(etb.enters_as_copy_of.unwrap_or(object))
+                                .map(|object| object.abilities_vec()).unwrap_or_default();
+                            abilities.extend(etb.added_abilities.clone());
+                            abilities
+                        } else {
+                            etb.prospective_game_state(game)
+                                .and_then(|prospective| prospective.calculated_characteristics(object).map(|chars| chars.abilities.iter().cloned().collect()))
+                                .unwrap_or_default()
+                        };
+                        let Some(prepared) = game.prepare_etb_entry_after_programs(
                             object,
                             event_result,
                             etb.controller_override,
                             dm,
+                            Some((etb.program_choices.clone(), abilities)),
                         ) else {
                             return EtbEventResult {
                                 prevented: true,
@@ -4411,7 +4525,15 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                             }
                         }
                         prepared_event.enters_with_counters = combined;
+                        let entry_program_ran = choices.transfer_as_enters_source_links;
                         prepared_event.prepared_choices = Some(choices);
+                        // Entry programs can remove or exchange the abilities
+                        // of existing permanents. Refresh the registered set
+                        // before reconsidering the changed event; stable
+                        // application keys retain the once-per-event history.
+                        if entry_program_ran {
+                            game.update_replacement_effects();
+                        }
                         current_event = Event::new_with_provenance(prepared_event, e.provenance());
                         continue;
                     }

@@ -86,6 +86,7 @@ fn retarget_it_restriction_for_counter_followup(
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::BeTargeted(filter)
         | Restriction::BeCountered(filter)
+        | Restriction::TurnFaceUp(filter)
         | Restriction::Transform(filter)
         | Restriction::PhaseOut(filter)
         | Restriction::PhaseIn(filter)

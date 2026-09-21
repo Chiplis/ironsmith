@@ -658,8 +658,24 @@ fn parse_compound_subtype_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjec
     alt((
         parse_time_lord_compound_atom,
         parse_urzas_land_compound_atom,
+        parse_split_hyphenated_subtype_atom,
     ))
     .parse_next(input)
+}
+
+/// Normalized document tokens can split a hyphenated subtype into two words.
+/// Only join a pair when the subtype vocabulary recognizes the whole name.
+fn parse_split_hyphenated_subtype_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {
+    if let [first, second, rest @ ..] = *input
+        && let Some(subtype) = parse_subtype_flexible(&format!("{first}-{second}"))
+    {
+        *input = rest;
+        return Ok(SimpleObjectFilterAtom::Subtype(subtype));
+    }
+    Err(primitives::backtrack_err(
+        "split hyphenated subtype",
+        "two words forming a recognized hyphenated subtype",
+    ))
 }
 
 /// Parse Magic's compound `Time Lord` creature type.

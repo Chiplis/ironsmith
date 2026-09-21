@@ -128,6 +128,9 @@ pub enum KeywordActionAst {
         /// "goad" (Kardur, Doomscourge).
         spelled_out_requirement: bool,
     },
+    BecomePlotted {
+        target: TargetAst,
+    },
     Suspect {
         target: TargetAst,
     },

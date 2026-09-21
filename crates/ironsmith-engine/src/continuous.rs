@@ -640,7 +640,6 @@ impl Modification {
             | Modification::RemoveSubtypes(_)
             | Modification::RemoveAllSubtypesOfFamily(_)
             | Modification::SetSubtypes(_)
-            | Modification::SetAuraAttachmentFilter(_)
             | Modification::AddSupertypes(_)
             | Modification::RemoveSupertypes(_)
             | Modification::RemoveAllCreatureTypes => Layer::Type,
@@ -650,7 +649,8 @@ impl Modification {
             | Modification::SetColors(_)
             | Modification::MakeColorless => Layer::Color,
 
-            Modification::AddAbility(_)
+            Modification::SetAuraAttachmentFilter(_)
+            | Modification::AddAbility(_)
             | Modification::AddAbilityGeneric(_)
             | Modification::SetAbilities(_)
             | Modification::CopyActivatedAbilities { .. }
@@ -865,6 +865,33 @@ impl ContinuousEffectManager {
         if let Some(state) = self.latched_duration_states.borrow_mut().get_mut(&id) {
             *state = LatchedDurationState::Expired;
         }
+    }
+
+    /// Transfer only continuous effects created by this entry's replacement
+    /// programs to the new permanent incarnation. Existing spell effects do
+    /// not survive an ordinary zone change.
+    pub(crate) fn retarget_entry_effects(
+        &mut self,
+        ids: &[ContinuousEffectId],
+        old: ObjectId,
+        new: ObjectId,
+    ) {
+        let mut changed = false;
+        for effect in Arc::make_mut(&mut self.effects).iter_mut().filter(|e| ids.contains(&e.id)) {
+            if effect.source == old { effect.source = new; changed = true; }
+            match &mut effect.applies_to {
+                EffectTarget::Specific(id) | EffectTarget::AttachedTo(id) if *id == old => {
+                    *id = new; changed = true;
+                }
+                _ => {}
+            }
+            if let EffectSourceType::Resolution { locked_targets } = &mut effect.source_type {
+                for target in locked_targets {
+                    if *target == old { *target = new; changed = true; }
+                }
+            }
+        }
+        if changed { self.revision += 1; }
     }
 
     /// CR 702.140f: effects that modified a mutating creature spell apply to
@@ -1562,7 +1589,7 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
     });
     let object = restored.as_ref().unwrap_or(object);
     let supertypes = object.supertypes.clone();
-    CalculatedCharacteristics {
+    let mut chars = CalculatedCharacteristics {
         name: object.name.clone(),
         mana_cost: object.mana_cost_owned(),
         compiled_card_text: object.compiled_card_text.clone(),
@@ -1580,7 +1607,34 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         ability_gain_prohibitions: Vec::new(),
         aura_attach_filter: object.aura_attach_filter_owned(),
         controller: object.owner,
+    };
+    install_enchant_metadata(&mut chars);
+    chars
+}
+
+/// Older definitions store their printed enchant ability in attachment metadata.
+/// Materialize it in the ability list before applying layers, so normal ability
+/// gain/loss and copy effects operate on the same representation.
+fn install_enchant_metadata(chars: &mut CalculatedCharacteristics) {
+    if let Some(filter) = chars.aura_attach_filter.clone()
+        && !chars.abilities.iter().any(|ability| matches!(
+            &ability.kind, AbilityKind::Static(ability) if ability.enchant_filter() == Some(&filter)
+        ))
+    {
+        push_static_ability_once(chars, StaticAbility::enchant(filter));
     }
+}
+
+fn replace_enchant_metadata(
+    chars: &mut CalculatedCharacteristics,
+    filter: &crate::object::AuraAttachmentFilter,
+) {
+    chars.abilities.retain(|ability| !matches!(
+        &ability.kind, AbilityKind::Static(ability) if ability.enchant_filter().is_some()
+    ));
+    chars.static_abilities.retain(|ability| ability.enchant_filter().is_none());
+    chars.aura_attach_filter = Some(filter.clone());
+    install_enchant_metadata(chars);
 }
 
 fn retain_active_static_abilities(
@@ -1597,6 +1651,8 @@ fn retain_active_static_abilities(
     // by `push_static_ability_once`; retaining a prior cache entry here loses
     // its originating effect duration (for example, EOT unblockability).
     chars.static_abilities = extract_static_abilities(&chars.abilities).into();
+    chars.aura_attach_filter = chars.static_abilities.iter()
+        .find_map(|ability| ability.enchant_filter().cloned());
 }
 
 fn apply_copy_effect_exceptions(
@@ -1644,6 +1700,7 @@ fn copy_characteristics_from_copiable_values(
     chars.abilities = values.abilities.as_ref().clone().into();
     chars.abilities.rebind_origin(origin);
     chars.aura_attach_filter = values.aura_attach_filter.clone();
+    install_enchant_metadata(chars);
 
     if let Some(preserved_abilities) = preserved_abilities {
         for (index, ability) in preserved_abilities.iter().enumerate() {
@@ -4460,7 +4517,7 @@ fn apply_modification_to_chars(
             replace_subtypes_for_set(&mut chars.subtypes, subtypes);
         }
         Modification::SetAuraAttachmentFilter(filter) => {
-            chars.aura_attach_filter = Some(filter.clone());
+            replace_enchant_metadata(chars, filter);
         }
         Modification::AddSupertypes(supertypes) => {
             for st in supertypes {

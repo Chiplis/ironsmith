@@ -483,3 +483,6 @@ mod tests {
         assert!(artifacts.iter().all(|artifact| artifact.validate().is_ok()));
     }
 }
+
+#[cfg(test)]
+mod hex_magic_tests;

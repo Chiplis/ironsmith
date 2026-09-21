@@ -2708,6 +2708,8 @@ impl ExileToExileInsteadOfGraveyard {
 }
 
 impl StaticAbilityKind for ExileToExileInsteadOfGraveyard {
+    fn is_source_only_graveyard_replacement(&self) -> bool { self.filter.source }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::ExileToExileInsteadOfGraveyard
     }

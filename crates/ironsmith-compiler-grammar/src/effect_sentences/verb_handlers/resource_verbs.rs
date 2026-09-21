@@ -366,6 +366,27 @@ pub fn parse_look(
             ))
         })?;
     match shape {
+        ResourceLookShape::RandomHandCard { player } => {
+            let owner = match player {
+                PlayerAst::You => PlayerFilter::You,
+                PlayerAst::Target => PlayerFilter::target_player(),
+                PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+                PlayerAst::Opponent => PlayerFilter::Opponent,
+                PlayerAst::That => PlayerFilter::IteratedPlayer,
+                _ => return Err(CardTextError::ParseError("unsupported random hand owner".into())),
+            };
+            let tag = crate::util::helper_tag_for_tokens(tokens, "looked");
+            Ok(EffectAst::Sequence { effects: vec![
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                    filter: ObjectFilter::default().in_zone(Zone::Hand).owned_by(owner),
+                    count: ChoiceCount::exactly(1).at_random(),
+                    count_value: None,
+                    player,
+                    tag: crate::tag::TagRef::of(tag.clone()),
+                }),
+                EffectAst::subject_verb_look_at_target(TargetAst::Tagged(tag, span_from_tokens(tokens))),
+            ] })
+        }
         ResourceLookShape::Tagged => Ok(EffectAst::subject_verb_look_at_target(TargetAst::Tagged(
             crate::tag::CompilerReferenceTag::It.bind(), span_from_tokens(tokens)))),
         ResourceLookShape::PlayTaggedWhileExiled => Ok(

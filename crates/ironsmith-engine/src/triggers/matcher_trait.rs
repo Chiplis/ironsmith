@@ -22,6 +22,8 @@ use super::TriggerEvent;
 pub enum SimultaneousTriggerKey {
     /// All matching damage assignments in the action form one event group.
     DamageBatch,
+    /// All matching zone changes in one simultaneous action.
+    ZoneChangeBatch,
     /// Damage assignments are grouped independently for each source.
     DamageSource(ObjectId),
     /// Damage assignments are grouped independently for each recipient.

@@ -215,7 +215,7 @@ pub use tokens::{
 };
 pub use zones::{
     BattlefieldController, DestroyEffect, DestroyNoRegenerationEffect, EachPlayerSacrificesEffect,
-    ExchangeZonesEffect, ExileEffect, ExileUntilDuration, ExileUntilEffect, HauntExileEffect,
+    BecomePlottedEffect, ExchangeZonesEffect, ExileEffect, ExileUntilDuration, ExileUntilEffect, HauntExileEffect,
     LibraryPlacementOrder, MayMoveToZoneEffect, MoveToLibraryNthFromTopEffect,
     MoveToLibraryTopOrBottomChoiceEffect, MoveToZoneAttackTargetMode, MoveToZoneEffect,
     PutOntoBattlefieldEffect, ReorderGraveyardEffect, ReorderLibraryTopEffect,

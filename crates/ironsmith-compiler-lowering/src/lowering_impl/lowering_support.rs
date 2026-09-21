@@ -4408,9 +4408,9 @@ pub fn lower_static_ability_ast(ability: StaticAbilityAst) -> Result<StaticAbili
             let lowered = lower_parsed_ability(ability)?;
             Ok(StaticAbility::soulbond_shared_object_ability(lowered))
         }
-        StaticAbilityAst::AttachmentRestriction { .. } => Err(CardTextError::InvariantViolation(
-            "attachment restrictions must be lowered through card definition state".to_string(),
-        )),
+        StaticAbilityAst::AttachmentRestriction { filter, .. } => {
+            Ok(StaticAbility::enchant(filter))
+        }
     }
 }
 

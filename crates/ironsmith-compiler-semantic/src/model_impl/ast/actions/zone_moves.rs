@@ -30,6 +30,7 @@ pub enum ZoneMoveActionAst {
     },
     ReturnToBattlefield {
         target: TargetAst,
+        result_tag: Option<TagRef>,
         target_reference_surface: Option<ironsmith_core::SearchResultReferenceSurface>,
         from_graveyard_or_exile: bool,
         tapped: bool,

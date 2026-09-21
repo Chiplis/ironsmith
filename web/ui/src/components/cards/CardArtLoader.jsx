@@ -1,4 +1,4 @@
-import { MANA_SYMBOL_SVGS } from "@/lib/mana-symbol-svg";
+import { manaSymbolUrl } from "@/lib/mana-assets";
 import { cardArtSymbolLayout } from "@/lib/card-art-colors";
 import useUiText from "@/i18n/useUiText";
 
@@ -11,9 +11,8 @@ export default function CardArtLoader({ variant = "hand", failed = false, colors
     <span className="card-art-loader__ring" aria-hidden="true" />
     <svg className="card-art-loader__sigil" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false">
       {cardArtSymbolLayout(colors).map(({ color, size, x, y }) => (
-        <svg key={color} data-mana-color={color} x={x} y={y} width={size} height={size}
-          viewBox={MANA_SYMBOL_SVGS[color].vb}
-          dangerouslySetInnerHTML={{ __html: MANA_SYMBOL_SVGS[color].html }} />
+        <image key={color} data-mana-color={color} x={x} y={y} width={size} height={size}
+          href={manaSymbolUrl(color)} />
       ))}
     </svg>
     <span className="card-art-loader__sweep" aria-hidden="true" />

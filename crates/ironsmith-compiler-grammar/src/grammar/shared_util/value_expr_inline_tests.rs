@@ -438,7 +438,7 @@ fn generic_number_of_value_keeps_hand_threshold_on_qualified_players() {
 #[test]
 fn sacrificed_characteristic_values_keep_identity_and_typed_surface() {
     let sacrificed_creature = Value::ToughnessOf(Box::new(ChooseSpec::Tagged(
-        crate::tag::CompilerReferenceTag::It.key(),
+        crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
     )))
     .with_surface_hint(ValueSurfaceHint::SacrificedObject(
         SacrificedObjectKind::Creature,
@@ -449,7 +449,7 @@ fn sacrificed_characteristic_values_keep_identity_and_typed_surface() {
     );
 
     let sacrificed_permanent = Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-        crate::tag::CompilerReferenceTag::It.key(),
+        crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
     )))
     .with_surface_hint(ValueSurfaceHint::SacrificedObject(
         SacrificedObjectKind::Permanent,
@@ -469,7 +469,7 @@ fn sacrificed_characteristic_values_keep_identity_and_typed_surface() {
 
     let red_symbols = Value::ManaSymbolsInManaCostOf {
         spec: Box::new(ChooseSpec::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
         )),
         color: Color::Red,
     }

@@ -1,3 +1,4 @@
+import { counterSymbolUrl } from "@/lib/mana-assets";
 import { cardArtColors } from "@/lib/card-art-colors";
 import LoadingCardArt from "./LoadingCardArt";
 import MobileArenaCardFace from "./MobileArenaCardFace";
@@ -235,6 +236,7 @@ function buildCounterBadge(counter) {
       fullLabel: `${amount} +1/+1 counter${amount === 1 ? "" : "s"}`,
       shortLabel: "+1",
       palette: counterPalette(rawKind),
+      icon: counterSymbolUrl(rawKind),
     };
   }
   if (rawKind === "Minus One Minus One") {
@@ -243,6 +245,7 @@ function buildCounterBadge(counter) {
       fullLabel: `${amount} -1/-1 counter${amount === 1 ? "" : "s"}`,
       shortLabel: "-1",
       palette: counterPalette(rawKind),
+      icon: counterSymbolUrl(rawKind),
     };
   }
 
@@ -251,6 +254,7 @@ function buildCounterBadge(counter) {
     fullLabel: `${amount} ${rawKind.toLowerCase()} counter${amount === 1 ? "" : "s"}`,
     shortLabel: abbreviateCounterKind(rawKind),
     palette: counterPalette(rawKind),
+    icon: counterSymbolUrl(rawKind),
   };
 }
 
@@ -299,6 +303,7 @@ function BattlefieldCounterBadge({ badge }) {
         >
           {ui(amountLabel)}
         </text>
+        {badge.icon ? <image href={badge.icon} x="39" y="3" width="22" height="22" style={{ filter: "brightness(0) invert(1)" }} /> : (
         <text
           x="50"
           y="18"
@@ -311,6 +316,7 @@ function BattlefieldCounterBadge({ badge }) {
         >
           {ui(badge.shortLabel)}
         </text>
+        )}
       </svg>
     </span>
   );

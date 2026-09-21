@@ -1014,6 +1014,7 @@ impl<'a> DerivedGameView<'a> {
                 }
                 Grantable::Ability(_) | Grantable::PlayFrom => None,
             })
+            .chain(self.game.plotted_cast_permission(card_id, zone, player))
             .collect();
         self.granted_alternative_casts
             .borrow_mut()

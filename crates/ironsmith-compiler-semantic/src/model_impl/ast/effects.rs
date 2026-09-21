@@ -1385,6 +1385,7 @@ impl EffectAst {
             PlayerAst::Implicit,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
                 target,
+                result_tag: None,
                 target_reference_surface: None,
                 from_graveyard_or_exile: false,
                 tapped,
@@ -3980,11 +3981,19 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_exchange_source_text_box(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes { target, include_source: true }),
+        )
+    }
+
     pub fn subject_verb_exchange_text_boxes(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes { target }),
+            SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes { target, include_source: false }),
         )
     }
 
@@ -5636,6 +5645,14 @@ impl EffectAst {
                 duration,
                 spelled_out_requirement: true,
             }),
+        )
+    }
+
+    pub fn subject_verb_become_plotted(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { target }),
         )
     }
 

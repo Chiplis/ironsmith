@@ -36,7 +36,7 @@ use super::render_effects::{
     describe_separated_countered_spell_exile_with_counters_gain_suspend,
     describe_sequenced_d20_numeric_result_table_program,
     describe_shuffle_reveal_repeated_permanent_groups_rest_bottom,
-    describe_single_hand_reveal_same_name_search, describe_single_hand_reveal_setup,
+    describe_single_hand_reveal_same_name_search, describe_single_hand_reveal_setup, describe_random_hand_look_setup,
     describe_source_owner_shuffle_then_reveal_named_to_battlefield,
     describe_tagged_copy_then_plural_retarget_pair, describe_tagged_target_then_conditional_action,
     describe_target_groups_then_random_destroy, describe_target_player_draw_exile_then_copy_result,
@@ -14530,6 +14530,7 @@ fn describe_cross_segment_same_name_search_window(
             .or_else(|| describe_same_name_reference_search_bundle(&flattened))
             .or_else(|| describe_target_player_search_exile_shuffle_bundle(&flattened))
             .or_else(|| describe_single_hand_reveal_setup(&flattened))
+            .or_else(|| describe_random_hand_look_setup(&flattened))
         {
             return Some((rendered, consumed));
         }
@@ -34157,6 +34158,56 @@ fn describe_source_line_entry_counter_list(abilities: &[Ability], subject: &str)
     Some(format!("{} enters with {} on it", capitalize_first(subject), join_english_list(&counters)))
 }
 
+/// Render additive characteristic changes from a single structural group.
+/// Every member must share its filter and functional zones; no display text
+/// participates in extracting the changed types or base characteristics.
+fn describe_source_line_additive_type_loss_group(abilities: &[Ability]) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let mut shared_filter: Option<&ObjectFilter> = None;
+    let zones = &abilities.first()?.functional_zones;
+    let mut loses_abilities = false;
+    let mut types = Vec::new();
+    let mut subtypes = Vec::new();
+    let mut base = None;
+    for ability in abilities {
+        if &ability.functional_zones != zones { return None; }
+        let AbilityKind::Static(ability) = &ability.kind else { return None; };
+        let model = ability.compiled_model()?;
+        let filter = match &model.payload {
+            P::RemoveAllAbilities(filter) if !loses_abilities => {
+                loses_abilities = true;
+                filter
+            }
+            P::AddCardTypes { filter, card_types } if types.is_empty() => {
+                types = card_types.clone();
+                filter
+            }
+            P::AddSubtypes { filter, subtypes: added } if subtypes.is_empty() => {
+                subtypes = added.clone();
+                filter
+            }
+            P::SetBasePowerToughness { filter, power, toughness } if base.is_none() => {
+                base = Some((*power, *toughness));
+                filter
+            }
+            _ => return None,
+        };
+        if shared_filter.is_some_and(|shared| shared != filter) { return None; }
+        shared_filter = Some(filter);
+    }
+    if !loses_abilities || (types.is_empty() && subtypes.is_empty()) { return None; }
+    let descriptor = subtypes.iter().map(ToString::to_string)
+        .chain(types.iter().map(|kind| kind.to_string().to_ascii_lowercase()))
+        .collect::<Vec<_>>().join(" ");
+    let subject = capitalize_first(&shared_filter?.description());
+    let mut text = format!("{subject} loses all abilities and is {}", with_indefinite_article(&descriptor));
+    if let Some((power, toughness)) = base {
+        text.push_str(&format!(" with base power and toughness {power}/{toughness}"));
+    }
+    text.push_str(" in addition to its other types");
+    Some(text)
+}
+
 fn describe_source_line_static_group(
     abilities: &[Ability],
     member_count: usize,
@@ -34166,8 +34217,8 @@ fn describe_source_line_static_group(
         return None;
     }
     let members = abilities.get(..member_count)?;
-    describe_structural_attached_subtype_base_pt_keyword_loss_bundle(members)
-        .and_then(|(text, consumed)| (consumed == member_count).then_some(text))
+    describe_source_line_additive_type_loss_group(members).or_else(|| describe_structural_attached_subtype_base_pt_keyword_loss_bundle(members)
+        .and_then(|(text, consumed)| (consumed == member_count).then_some(text)))
         .or_else(|| {
             describe_structural_labeled_animation_grant_bundle(members, subject)
                 .and_then(|(text, consumed)| (consumed == member_count).then_some(text))
@@ -42799,5 +42850,27 @@ mod countered_set_cross_segment_surface_tests {
             describe_resolution_program(&program),
             "Put a +1/+1 counter on each creature you control. You gain 1 life for each of those creatures"
         );
+    }
+}
+
+#[cfg(test)]
+mod additive_type_loss_group_tests {
+    use super::*;
+    #[test]
+    fn structural_additive_types_do_not_read_display_text_or_merge_different_subjects() {
+        use crate::static_abilities::{StaticAbility, CompiledStaticAbility};
+        let wrap = |model| Ability::static_ability(StaticAbility::from_model(model));
+        let filter = ObjectFilter::creature();
+        let members = vec![
+            wrap(CompiledStaticAbility::remove_all_abilities(filter.clone())),
+            wrap(CompiledStaticAbility::add_card_types(filter.clone(), vec![CardType::Artifact])),
+            wrap(CompiledStaticAbility::add_subtypes(filter.clone(), vec![crate::types::Subtype::Vehicle])),
+            wrap(CompiledStaticAbility::set_base_power_toughness(filter.clone(), 3, 5)),
+        ];
+        assert_eq!(describe_source_line_additive_type_loss_group(&members).unwrap(),
+            "Creature loses all abilities and is a Vehicle artifact with base power and toughness 3/5 in addition to its other types");
+        let mut mismatched = members;
+        mismatched[1] = wrap(CompiledStaticAbility::add_card_types(ObjectFilter::source(), vec![CardType::Artifact]));
+        assert!(describe_source_line_additive_type_loss_group(&mismatched).is_none());
     }
 }

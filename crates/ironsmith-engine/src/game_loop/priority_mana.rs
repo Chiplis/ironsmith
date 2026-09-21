@@ -1901,15 +1901,9 @@ pub(super) fn apply_sacrifice_target_response(
                 })?;
 
             match next_cost {
-                ActivationCardCostChoice::Discard {
-                    cost, card_types, ..
-                } => {
-                    let legal_cards = get_legal_discard_cards(
-                        game,
-                        pending.activator,
-                        pending.source,
-                        &card_types,
-                    );
+                ActivationCardCostChoice::Discard { cost, filter, .. } => {
+                    let legal_cards =
+                        get_legal_discard_cards(game, pending.activator, pending.source, &filter);
                     if !legal_cards.contains(&target_id) {
                         return Err(GameLoopError::InvalidState(
                             "Selected card is not a legal discard cost choice".to_string(),
@@ -2229,15 +2223,9 @@ pub(super) fn apply_card_cost_choice_response(
                 delve_generic_reduction(&ActivationCostStep::CardChoice(next_cost.clone()));
 
             match next_cost {
-                ActivationCardCostChoice::Discard {
-                    cost, card_types, ..
-                } => {
-                    let legal_cards = get_legal_discard_cards(
-                        game,
-                        pending.caster,
-                        pending.spell_id,
-                        &card_types,
-                    );
+                ActivationCardCostChoice::Discard { cost, filter, .. } => {
+                    let legal_cards =
+                        get_legal_discard_cards(game, pending.caster, pending.spell_id, &filter);
                     if !legal_cards.contains(&chosen_id) {
                         return Err(GameLoopError::InvalidState(
                             "Selected card is not a legal spell discard cost choice".to_string(),
@@ -2898,9 +2886,16 @@ fn apply_play_from_cast_this_way_grants(
     let mut granted = Vec::new();
     let mut specs = Vec::new();
     for grant in game.effect_store.grant_registry.active_grants(game) {
-        if grant.source.source_id() == source_id && grant.player == caster && grant.zone == zone
-            && !grant.cast_this_way_grants.is_empty() {
-            let mut spec = crate::grant::GrantSpec::new(grant.grantable, grant.filter.unwrap_or_default(), zone);
+        if grant.source.source_id() == source_id
+            && grant.player == caster
+            && grant.zone == zone
+            && !grant.cast_this_way_grants.is_empty()
+        {
+            let mut spec = crate::grant::GrantSpec::new(
+                grant.grantable,
+                grant.filter.unwrap_or_default(),
+                zone,
+            );
             spec.cast_this_way_grants = grant.cast_this_way_grants;
             spec.cast_this_way_filter = grant.cast_this_way_filter;
             specs.push(spec);

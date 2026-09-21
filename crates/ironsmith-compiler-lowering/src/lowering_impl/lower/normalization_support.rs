@@ -14,7 +14,18 @@ pub(super) struct RewriteNormalizationState {
 
 impl RewriteNormalizationState {
     fn statement_reference_imports(&self) -> ReferenceImports {
-        let additional_cost_imports = self.latest_additional_cost_exports.to_imports();
+        let mut additional_cost_imports = self.latest_additional_cost_exports.to_imports();
+        if let Some(tag) = additional_cost_imports.last_object_tag.as_ref()
+            && tag.as_str().starts_with("discarded_")
+        {
+            // Effect-backed discard payments export their own concrete tag.
+            // Bind the explicit cost reference before body effects can advance
+            // ordinary object memory (for example, by drawing more cards).
+            additional_cost_imports.snapshot_tag_aliases.push((
+                crate::tag::CompilerReferenceTag::DiscardedCost.key(),
+                tag.clone(),
+            ));
+        }
         if !additional_cost_imports.is_empty() {
             return additional_cost_imports;
         }

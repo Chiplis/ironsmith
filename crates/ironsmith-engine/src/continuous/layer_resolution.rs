@@ -314,7 +314,7 @@ pub(super) fn calculate_with_layers(
                     replace_subtypes_for_set(&mut chars.subtypes, types);
                 }
                 Modification::SetAuraAttachmentFilter(filter) => {
-                    chars.aura_attach_filter = Some(filter.clone());
+                    replace_enchant_metadata(&mut chars, filter);
                 }
                 Modification::AddSupertypes(types) => {
                     for t in types {

@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-pub const FORMAT_VERSION: u32 = 3;
+// Version 4 stores authoritative functional zones, including intrinsic defaults.
+// Older artifacts could rely on runtime zone inference and must be rebuilt.
+pub const FORMAT_VERSION: u32 = 4;
 pub const ENGINE_SCHEMA_HASH: &str =
     "ae7c0125d24414668cf49f94857c3ae4bf6a8245dd483582822a22faf9d56421";
 

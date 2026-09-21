@@ -563,7 +563,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Exchanges(ExchangeActionAst::ExchangeLifeTotals { player2 }) => {
                 f.debug_tuple("ExchangeLifeTotals").field(player2).finish()
             }
-            Self::Exchanges(ExchangeActionAst::ExchangeTextBoxes { target }) => {
+            Self::Exchanges(ExchangeActionAst::ExchangeTextBoxes { target, .. }) => {
                 f.debug_tuple("ExchangeTextBoxes").field(target).finish()
             }
             Self::Exchanges(ExchangeActionAst::ExchangeZones { zone1, zone2 }) => f
@@ -1227,6 +1227,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
                 target,
+                result_tag,
                 target_reference_surface,
                 from_graveyard_or_exile,
                 tapped,
@@ -1238,6 +1239,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 top_only,
             }) => f
                 .debug_struct("ReturnToBattlefield")
+                .field("result_tag", result_tag)
                 .field("target", target)
                 .field("target_reference_surface", target_reference_surface)
                 .field("from_graveyard_or_exile", from_graveyard_or_exile)
@@ -2475,6 +2477,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("duration", duration)
                 .field("spelled_out_requirement", spelled_out_requirement)
                 .finish(),
+            Self::KeywordActions(KeywordActionAst::BecomePlotted { target }) => {
+                f.debug_tuple("BecomePlotted").field(target).finish()
+            }
             Self::KeywordActions(KeywordActionAst::Prepare { target }) => {
                 f.debug_tuple("Prepare").field(target).finish()
             }

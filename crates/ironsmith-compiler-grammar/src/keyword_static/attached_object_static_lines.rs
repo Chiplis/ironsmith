@@ -234,6 +234,9 @@ fn parse_attached_keyword_grant_and_loses_all_other_abilities_line(
     let filter = parse_object_filter(subject_tokens, false)?;
     let subject = crate::lexer::token_word_refs(subject_tokens).join(" ");
     let mut abilities = Vec::with_capacity(actions.len() + 1);
+    // "Other" excludes the abilities granted by this same instruction.
+    // Apply the removal before the grants in the shared ability layer.
+    abilities.push(StaticAbility::remove_all_abilities(filter).into());
     for action in actions {
         reject_unimplemented_keyword_actions(std::slice::from_ref(&action), &clause_text)?;
         if !action.lowers_to_static_ability() {
@@ -249,7 +252,6 @@ fn parse_attached_keyword_grant_and_loses_all_other_abilities_line(
             protection_does_not_remove_controlled_attachments: false,
         });
     }
-    abilities.push(StaticAbility::remove_all_abilities(filter).into());
     Ok(Some(abilities))
 }
 

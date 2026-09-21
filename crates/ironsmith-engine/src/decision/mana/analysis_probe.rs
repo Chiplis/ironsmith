@@ -123,13 +123,13 @@ pub(crate) struct ProbeBoard {
 }
 
 fn mana_permanent(name: &str, outputs: &[Vec<ManaSymbol>], snow: bool) -> CardDefinitionBuilder {
-    let mut builder = CardDefinitionBuilder::new(CardId::new(), name).card_types(vec![
-        if name.starts_with("Rock") {
-            CardType::Artifact
-        } else {
-            CardType::Land
-        },
-    ]);
+    let mut builder = CardDefinitionBuilder::new(CardId::new(), name).card_types(vec![if name
+        .starts_with("Rock")
+    {
+        CardType::Artifact
+    } else {
+        CardType::Land
+    }]);
     if snow {
         builder = builder.supertypes(vec![crate::types::Supertype::Snow]);
     }
@@ -295,25 +295,55 @@ fn priority_analysis_fixed_cost_breakdown() {
         ("derived_view", perf.derived_view_ms),
         ("prewarm", perf.prewarm_ms),
         ("cast_context", perf.cast_context_ms),
-        ("battlefield_ability_context", perf.battlefield_ability_context_ms),
+        (
+            "battlefield_ability_context",
+            perf.battlefield_ability_context_ms,
+        ),
         ("active_grant_zone_checks", perf.active_grant_zone_checks_ms),
         ("hand_summary", perf.hand_summary_ms),
         ("controlled_battlefield", perf.controlled_battlefield_ms),
         ("lands", perf.lands_ms),
         ("hand_casts", perf.hand_casts_ms),
-        ("  can_cast_spell_with_view", perf.can_cast_spell_with_view_ms),
-        ("  hand_casts_affordability", perf.hand_casts_affordability_ms),
-        ("  hand_casts_cost_adjustment", perf.hand_casts_cost_adjustment_ms),
-        ("  hand_casts_target_legality", perf.hand_casts_target_legality_ms),
-        ("  compute_potential_mana_with_view", perf.compute_potential_mana_with_view_ms),
+        (
+            "  can_cast_spell_with_view",
+            perf.can_cast_spell_with_view_ms,
+        ),
+        (
+            "  hand_casts_affordability",
+            perf.hand_casts_affordability_ms,
+        ),
+        (
+            "  hand_casts_cost_adjustment",
+            perf.hand_casts_cost_adjustment_ms,
+        ),
+        (
+            "  hand_casts_target_legality",
+            perf.hand_casts_target_legality_ms,
+        ),
+        (
+            "  compute_potential_mana_with_view",
+            perf.compute_potential_mana_with_view_ms,
+        ),
         ("hand_alternatives", perf.hand_alternatives_ms),
         ("battlefield_abilities", perf.battlefield_abilities_ms),
-        ("  battlefield_ability_affordability", perf.battlefield_ability_affordability_ms),
-        ("  battlefield_ability_precheck", perf.battlefield_ability_precheck_ms),
-        ("non_battlefield_abilities", perf.non_battlefield_abilities_ms),
+        (
+            "  battlefield_ability_affordability",
+            perf.battlefield_ability_affordability_ms,
+        ),
+        (
+            "  battlefield_ability_precheck",
+            perf.battlefield_ability_precheck_ms,
+        ),
+        (
+            "non_battlefield_abilities",
+            perf.non_battlefield_abilities_ms,
+        ),
     ];
     rows.sort_by(|a, b| b.1.total_cmp(&a.1));
-    println!("total {:.2} ms, {} actions", perf.total_ms, perf.action_count);
+    println!(
+        "total {:.2} ms, {} actions",
+        perf.total_ms, perf.action_count
+    );
     for (label, ms) in rows {
         if ms >= 0.01 {
             println!("  {label:38} {ms:7.2} ms");
@@ -448,9 +478,7 @@ fn ability_is_offered(game: &GameState, player: PlayerId, adept: ObjectId) -> bo
 #[test]
 #[ignore = "manual performance probe"]
 fn agatha_payment_planner_report() {
-    use crate::mana_payment::{
-        check_mana_payment, plan_mana_payment, ManaPaymentRequest,
-    };
+    use crate::mana_payment::{ManaPaymentRequest, check_mana_payment, plan_mana_payment};
     println!(
         "{:>8} {:>6} {:>5} {:>12} {:>12} {:>10} {:>9} {:>7}",
         "cauldron", "lands", "cost", "check_ms", "plan_ms", "plans", "nodes", "limited"
@@ -614,7 +642,7 @@ fn heterogeneous_board(
 #[test]
 #[ignore = "manual performance probe"]
 fn heterogeneous_payment_planner_report() {
-    use crate::mana_payment::{plan_mana_payment, ManaPaymentRequest};
+    use crate::mana_payment::{ManaPaymentRequest, plan_mana_payment};
     println!(
         "{:>8} {:>6} {:>6} {:>12} {:>10} {:>9} {:>8}",
         "cauldron", "duals", "rocks", "plan_ms", "plans", "nodes", "limited"

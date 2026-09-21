@@ -344,3 +344,62 @@ test("resolveSyncedCommand keeps non-library ziffle refs private", () => {
     },
   );
 });
+
+test("priority actions match their wire form with omitted nested optional fields", () => {
+  const action = {
+    index: 5,
+    action_ref: {
+      kind: "cast_spell", spell_id: 214, from_zone: "exile",
+      casting_method: { kind: "play_from", source: 212, zone: "exile", use_alternative: undefined },
+    },
+  };
+  const decision = { kind: "priority", player: 0, actions: [action] };
+  const command = JSON.parse(JSON.stringify(priorityCommandForAction(action)));
+  assert.equal(isDecisionCommandCompatible(decision, command), true);
+  assert.equal(findPriorityActionForCommand(decision, command), action);
+  // Reordering actions must not fall back to the transmitted index.
+  command.action_index = 999;
+  assert.equal(findPriorityActionForCommand(decision, command), action);
+  for (const patch of [{ source: 215 }, { zone: "graveyard" }, { use_alternative: 0 }, { use_alternative: null }]) {
+    const changed = structuredClone(command);
+    Object.assign(changed.action_ref.casting_method, patch);
+    assert.equal(isDecisionCommandCompatible(decision, changed), false, JSON.stringify(patch));
+  }
+  const differentSpell = structuredClone(command);
+  differentSpell.action_ref.spell_id = 213;
+  assert.equal(isDecisionCommandCompatible(decision, differentSpell), false);
+});
+
+test("action matching uses JSON rules recursively without dropping array positions", () => {
+  const action = { index: 0, action_ref: {
+    kind: "special_action", action: { kind: "probe", omitted: undefined, values: [undefined, , { absent: undefined, value: 0 }, false, ""] },
+  } };
+  const decision = { kind: "priority", actions: [action] };
+  const wire = JSON.parse(JSON.stringify(priorityCommandForAction(action)));
+  assert.equal(isDecisionCommandCompatible(decision, wire), true);
+  wire.action_ref.action.values.shift();
+  assert.equal(isDecisionCommandCompatible(decision, wire), false);
+});
+
+test("every casting method retains its identity across a JSON round trip", () => {
+  const methods = [
+    { kind: "normal" }, { kind: "face_down" }, { kind: "split_other_half" }, { kind: "fuse" },
+    { kind: "alternative", index: 0 },
+    { kind: "granted_escape", source: 12, exile_count: 3 },
+    { kind: "granted_flashback" },
+    { kind: "play_from", source: 12, zone: "exile", use_alternative: undefined },
+    { kind: "play_from", source: 12, zone: "exile", use_alternative: 0 },
+    { kind: "split_other_half_play_from", source: 12, zone: "exile", use_alternative: 0 },
+  ];
+  const actions = methods.map((casting_method, index) => ({ index, action_ref: {
+    kind: "cast_spell", spell_id: 42, from_zone: "exile", casting_method,
+  } }));
+  const decision = { kind: "priority", actions };
+  for (const action of actions) {
+    const command = JSON.parse(JSON.stringify(priorityCommandForAction(action)));
+    assert.equal(findPriorityActionForCommand(decision, command), action);
+    for (const other of actions.filter(other => other !== action)) {
+      assert.equal(isDecisionCommandCompatible({ kind: "priority", actions: [other] }, command), false);
+    }
+  }
+});

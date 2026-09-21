@@ -1632,7 +1632,10 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::DraftNotedHighestNumber { .. }
         | Value::TaggedCount
         | Value::EventValue(_)
-        | Value::EventValueOffset(_, _) => false,
+        | Value::EventValueOffset(_, _)
+        | Value::PendingComparisonLeft
+        | Value::PendingComparisonRight
+        | Value::PendingComparisonDifference => false,
     }
 }
 
@@ -2345,6 +2348,9 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::PendingEffectMetric { .. }
         | Value::PendingEffectMetricOffset { .. }
         | Value::PriorEffectMetric { .. }
+        | Value::PendingComparisonLeft
+        | Value::PendingComparisonRight
+        | Value::PendingComparisonDifference
         | Value::PendingPriorEffectMetric(_) => {
             pt_affected || modification_can_change_abilities_or_matching_characteristics(modification)
         }

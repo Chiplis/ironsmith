@@ -4016,6 +4016,20 @@ impl GoadEffect {
     }
 }
 
+/// Mark an exiled card as plotted. This does not perform the plot special
+/// action or emit its keyword-action event.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct BecomePlottedEffect {
+    pub target: ChooseSpec,
+}
+
+impl BecomePlottedEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self { target }
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct SuspectEffect {

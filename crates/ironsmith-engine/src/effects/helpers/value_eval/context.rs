@@ -455,10 +455,10 @@ impl NumericProperty {
         match self {
             Self::Power => snapshot.power,
             Self::Toughness => snapshot.toughness,
-            Self::ManaValue => snapshot.mana_cost.as_ref().map(|cost| {
+            Self::ManaValue => Some(snapshot.mana_cost.as_ref().map_or(0, |cost| {
                 let x = if snapshot.zone == crate::zone::Zone::Stack { snapshot.x_value.unwrap_or(0) } else { 0 };
                 cost.mana_value_with_x(x) as i32
-            }),
+            })),
             Self::ManaSpent => Some(snapshot.mana_spent_to_cast.total() as i32),
             Self::ColorCount => Some(snapshot.colors.count() as i32),
         }
@@ -467,10 +467,10 @@ impl NumericProperty {
         match self {
             Self::Power => object.power(),
             Self::Toughness => object.toughness(),
-            Self::ManaValue => object.mana_cost.as_ref().map(|cost| {
+            Self::ManaValue => Some(object.mana_cost.as_ref().map_or(0, |cost| {
                 let x = if object.zone == crate::zone::Zone::Stack { object.x_value.unwrap_or(0) } else { 0 };
                 cost.mana_value_with_x(x) as i32
-            }),
+            })),
             Self::ManaSpent => Some(object.mana_spent_to_cast.total() as i32),
             Self::ColorCount => Some(object.colors().count() as i32),
         }

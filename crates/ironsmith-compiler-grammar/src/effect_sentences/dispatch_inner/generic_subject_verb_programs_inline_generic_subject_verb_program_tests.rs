@@ -1688,3 +1688,24 @@ fn triggering_object_counter_total_binds_create_x_without_duplicating_condition(
             if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "triggering")
     ));
 }
+
+#[test]
+fn elliptical_value_comparison_and_difference_keep_typed_references() {
+    let tokens = crate::lexer::lex_line("If it's greater, you may pay {X}, where X is the difference.", 0).unwrap();
+    let effects = super::parse_effect_sentence_lexed(&tokens).expect("contextual comparison syntax should parse");
+    let debug = format!("{effects:#?}");
+    assert!(debug.contains("PendingComparisonLeft"), "{debug}");
+    assert!(debug.contains("PendingComparisonRight"), "{debug}");
+    assert!(debug.contains("PendingComparisonDifference"), "{debug}");
+}
+
+#[test]
+fn comparison_payment_chain_retains_difference_binding() {
+    let tokens = crate::lexer::lex_line("If it's greater, you may pay {X}, where X is the difference. If you do, put it onto the battlefield. If you don't, put it into its owner's graveyard. Then shuffle.", 0).unwrap();
+    let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+    let debug = format!("{effects:#?}");
+    assert!(debug.contains("PendingComparisonDifference"), "{debug}");
+    let EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. }) = &effects[0] else { panic!("{debug}") };
+    assert_eq!(if_true.len(), 3, "acceptance and refusal stay inside the state condition: {debug}");
+    assert_eq!(effects.len(), 2, "shuffle stays outside the optional-payment condition: {debug}");
+}

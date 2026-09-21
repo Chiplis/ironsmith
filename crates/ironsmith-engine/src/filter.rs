@@ -1602,6 +1602,17 @@ fn resolve_filter_comparison_rhs_value(
         Value::XTimes(multiplier) => {
             resolve_x_value(game, ctx, stack_entry).map(|value| value * multiplier)
         }
+        Value::EffectMetric { .. } | Value::EffectMetricOffset { .. }
+        | Value::PriorEffectMetric { .. } => {
+            // Metrics describe a previous instruction, not the candidate
+            // object's characteristics. Retain the producer's outcome memory.
+            let mut execution = crate::effects::ExecutionContext::new_default(ctx.source?, ctx.you?);
+            execution.effect_outcomes = ctx.effect_outcomes.clone();
+            execution.tagged_objects = ctx.tagged_objects.clone();
+            execution.source_snapshot = ctx.source_snapshot.clone();
+            execution.x_value = ctx.x_value;
+            crate::effects::helpers::resolve_value(game, rhs, &execution).ok()
+        }
         Value::EffectValue(effect_id) => ctx
             .effect_outcomes
             .get(effect_id)

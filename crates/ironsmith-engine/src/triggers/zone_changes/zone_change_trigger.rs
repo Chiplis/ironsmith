@@ -423,7 +423,7 @@ impl ZoneChangeTrigger {
             }
         }
 
-        fn graveyard_subject_description(trigger: &ZoneChangeTrigger) -> String {
+        fn card_zone_subject_description(trigger: &ZoneChangeTrigger) -> String {
             let mut subject = trigger.object_filter.clone();
 
             // A parsed `card` subject is represented by `nontoken` so tokens
@@ -728,7 +728,24 @@ impl ZoneChangeTrigger {
             )
         }
 
+        fn private_origin_zones(trigger: &ZoneChangeTrigger) -> Option<Vec<Zone>> {
+            let zones = match &trigger.from {
+                ZonePattern::Specific(zone) => vec![*zone],
+                ZonePattern::OneOf(zones) => zones.clone(),
+                _ => return None,
+            };
+            (!zones.is_empty() && zones.iter().all(|zone| matches!(zone, Zone::Hand | Zone::Library | Zone::Graveyard)))
+                .then_some(zones)
+        }
+
         fn source_zone_phrase(trigger: &ZoneChangeTrigger) -> Option<String> {
+            if let Some(zones) = private_origin_zones(trigger) {
+                let origins = zones.iter().map(|zone| {
+                    let name = match zone { Zone::Hand => "hand", Zone::Library => "library", _ => "graveyard" };
+                    owned_zone_phrase(trigger.object_filter.owner.as_ref(), name)
+                }).collect::<Vec<_>>();
+                return Some(format!("from {}", origins.join(" and/or ")));
+            }
             match &trigger.from {
                 ZonePattern::Specific(Zone::Graveyard) => Some("from a graveyard".to_string()),
                 ZonePattern::Specific(Zone::Battlefield) => {
@@ -921,8 +938,10 @@ impl ZoneChangeTrigger {
         if enters_under_controller {
             display_filter.controller = None;
         }
-        let mut filter_desc = if self.to == ZonePattern::Specific(Zone::Graveyard) {
-            graveyard_subject_description(self)
+        let mut filter_desc = if self.to == ZonePattern::Specific(Zone::Graveyard)
+            || (self.to == ZonePattern::Specific(Zone::Exile) && private_origin_zones(self).is_some())
+        {
+            card_zone_subject_description(self)
         } else if is_nontoken_card_subject_from_card_zones(self) {
             if self.count_mode == CountMode::OneOrMore {
                 "cards".to_string()
@@ -1492,6 +1511,11 @@ impl TriggerMatcher for ZoneChangeTrigger {
                 .count()
         };
         (count > 0).then_some(count as i32)
+    }
+
+    fn simultaneous_trigger_key(&self, event: &TriggerEvent) -> Option<crate::triggers::matcher_trait::SimultaneousTriggerKey> {
+        (self.count_mode == CountMode::OneOrMore && event.downcast::<ZoneChangeEvent>().is_some())
+            .then_some(crate::triggers::matcher_trait::SimultaneousTriggerKey::ZoneChangeBatch)
     }
 
     fn uses_snapshot(&self) -> bool {
@@ -2275,6 +2299,22 @@ mod tests {
             trigger.display(),
             "When this creature is put into exile from the battlefield"
         );
+    }
+
+    #[test]
+    fn exile_owned_origin_union_display_preserves_origin_and_subject() {
+        for (zones, origin) in [
+            (vec![Zone::Library, Zone::Graveyard], "your library and/or your graveyard"),
+            (vec![Zone::Hand, Zone::Library], "your hand and/or your library"),
+            (vec![Zone::Library], "your library"),
+        ] {
+            let trigger = ZoneChangeTrigger::new()
+                .from(ZonePattern::OneOf(zones))
+                .to(Zone::Exile)
+                .filter(ObjectFilter::default().nontoken().owned_by(PlayerFilter::You))
+                .count(CountMode::OneOrMore);
+            assert_eq!(trigger.display(), format!("Whenever one or more cards are put into exile from {origin}"));
+        }
     }
 
     #[test]

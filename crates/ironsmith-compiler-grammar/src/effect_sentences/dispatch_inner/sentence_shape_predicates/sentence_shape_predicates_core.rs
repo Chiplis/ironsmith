@@ -378,7 +378,7 @@ pub(super) fn parse_effect_sentence_with_where_x_lexed(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { target, .. })
-            | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes { target })
+            | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes { target, .. })
             | SubjectVerbActionAst::Control(ControlActionAst::Attach { target, .. })
             | SubjectVerbActionAst::Control(ControlActionAst::Unattach { object: target })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. })

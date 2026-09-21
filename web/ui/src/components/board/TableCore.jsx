@@ -4,6 +4,7 @@ import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
 import { useCastPlayerHovered } from "@/context/DragContext";
 import { cloneElement, useCallback, useEffect, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
+import useDecisionControlMotion from "@/hooks/useDecisionControlMotion";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import OpponentZone from "./OpponentZone";
 import MyZone from "./MyZone";
@@ -105,6 +106,7 @@ export default function TableCore({
     decision
     && decision.kind !== "priority"
   );
+  useDecisionControlMotion(tableRef, expandedActionBar);
   const compactPriorityBarHeight = portraitCompactViewport
     ? 188
     : (landscapeMobileViewport ? 44 : 58);
@@ -288,7 +290,7 @@ export default function TableCore({
           <div className="player-header-utility-controls">
             {cloneElement(middleUtilityControls, {
               children: (
-                <div id="table-inline-header-tools" className="table-inline-header-tools" data-expanded={tableToolsExpanded ? "true" : "false"} aria-hidden={!tableToolsExpanded} inert={!tableToolsExpanded}>
+                <div id="table-inline-header-tools" className="table-inline-header-tools" data-expanded={tableToolsExpanded || expandedActionBar ? "true" : "false"} aria-hidden={!tableToolsExpanded && !expandedActionBar} inert={!tableToolsExpanded && !expandedActionBar}>
                   <DiagnosticsSheet />
                   {zoneActionControls}
                 </div>
@@ -319,19 +321,24 @@ export default function TableCore({
         "--middle-inspector-width": "clamp(460px, calc(100vw - 600px), 840px)",
       }}
     >
-      <div className="table-decision-strips relative min-w-0">
-        <div
-          className="table-shared-control-stack relative z-[1] grid min-h-0 gap-0 overflow-visible"
-          aria-hidden={expandedActionBar ? "true" : undefined}
-          inert={expandedActionBar ? true : undefined}
-        >
-          <div className="table-shared-toolbar-slot relative overflow-visible">
-            {middleToolbarElement}
-          </div>
-          <div className="table-shared-player-slot relative overflow-visible">
-            {middlePlayerHeaderElement}
-          </div>
+      {expandedActionBar && middleTopbar ? (
+        <div className="table-decision-turn-status">
+          {cloneElement(middleTopbar, { statusOnly: true })}
         </div>
+      ) : null}
+      <div className="table-decision-strips relative min-w-0">
+        {!expandedActionBar ? (
+          <div
+            className="table-shared-control-stack relative z-[1] grid min-h-0 gap-0 overflow-visible"
+          >
+            <div className="table-shared-toolbar-slot relative overflow-visible">
+              {middleToolbarElement}
+            </div>
+            <div className="table-shared-player-slot relative overflow-visible">
+              {middlePlayerHeaderElement}
+            </div>
+          </div>
+        ) : null}
         {expandedActionBar ? (
           <div
             className="table-shared-action-slot table-decision-overlay-slot absolute inset-0 z-[115] overflow-visible"
@@ -361,7 +368,11 @@ export default function TableCore({
           </div>
         ) : null}
       </div>
-
+      {expandedActionBar ? (
+        <div className="table-decision-utility-row">
+          {middlePlayerHeaderElement}
+        </div>
+      ) : null}
     </div>
   ) : null;
   const planarZoneElement = (

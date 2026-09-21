@@ -319,11 +319,23 @@ impl<'a> ObjectSubject<'a> {
         self,
         game: &GameState,
         entry: Option<&StackEntry>,
+        ctx: &FilterContext,
         exclude: bool,
     ) -> Option<Zone> {
         match self {
             Self::Live(object) => {
                 entry.and_then(|entry| stack_spell_cast_origin_zone(object, entry))
+                    .or_else(|| {
+                        // A casting preview uses a stack-shaped copy while the
+                        // actual card remains in its hand/graveyard/exile/etc.
+                        if ctx.prospective_cast != Some(object.id) {
+                            return None;
+                        }
+                        game.cast_origin_snapshot(object.id)
+                            .map(|snapshot| snapshot.zone)
+                            .or_else(|| game.object(object.id).map(|original| original.zone))
+                            .filter(|zone| *zone != Zone::Stack)
+                    })
             }
             Self::Snapshot(snapshot) => {
                 if exclude && snapshot.kind == ObjectKind::SpellCopy {
@@ -368,7 +380,8 @@ impl<'a> ObjectSubject<'a> {
             None
         };
         if self.is_live() && wants_stack {
-            let prospective_spell = self.zone() == Zone::Stack
+            let prospective_spell = (self.zone() == Zone::Stack
+                || ctx.prospective_cast == Some(self.object_id()))
                 && filter.stack_kind == Some(StackObjectKind::Spell)
                 && ctx.caster.is_some()
                 && filter.target_count.is_none()
@@ -393,19 +406,20 @@ impl<'a> ObjectSubject<'a> {
             let cast_from_zone = self.zone() == Zone::Stack
                 && zone != Zone::Stack
                 && (filter.stack_kind == Some(StackObjectKind::Spell)
+                    || ctx.prospective_cast == Some(self.object_id())
                     || (self.is_live()
                         && game
                             .turn_store
                             .turn_history
                             .spell_cast_order(self.object_id())
                             .is_some()))
-                && self.cast_origin(game, entry, false) == Some(zone);
+                && self.cast_origin(game, entry, ctx, false) == Some(zone);
             if !live_stack_entry && !cast_from_zone {
                 return None;
             }
         }
         if let Some(zone) = filter.excluded_cast_origin_zone
-            && (self.zone() != Zone::Stack || self.cast_origin(game, entry, true) == Some(zone))
+            && (self.zone() != Zone::Stack || self.cast_origin(game, entry, ctx, true) == Some(zone))
         {
             return None;
         }
@@ -416,7 +430,8 @@ impl<'a> ObjectSubject<'a> {
                 if !ObjectFilter::stack_entry_matches_kind(entry, kind) {
                     return None;
                 }
-            } else if !(self.zone() == Zone::Stack
+            } else if !((self.zone() == Zone::Stack
+                || ctx.prospective_cast == Some(self.object_id()))
                 && kind == StackObjectKind::Spell
                 && ctx.caster.is_some())
             {

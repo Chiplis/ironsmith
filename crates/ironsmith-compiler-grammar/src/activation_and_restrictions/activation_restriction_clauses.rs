@@ -183,7 +183,22 @@ pub fn format_negated_restriction_display(tokens: &[OwnedLexToken]) -> String {
         let subject_words = words(&tokens[..negation]);
         source_reference_surface_for_words(&subject_words)
     });
-    let words = crate::lexer::token_word_refs(tokens);
+    // Word-only projection discards mana groups such as {X} and {T}.
+    // Keep them in the display stream while retaining the word normalization.
+    let display_tokens = tokens
+        .iter()
+        .flat_map(|token| {
+            if token.mana_group_inner().is_some() {
+                vec![token.slice.to_ascii_uppercase()]
+            } else {
+                crate::lexer::token_word_refs(std::slice::from_ref(token))
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect()
+            }
+        })
+        .collect::<Vec<_>>();
+    let words = display_tokens.iter().map(String::as_str).collect::<Vec<_>>();
     let mut out = Vec::with_capacity(words.len());
     let mut idx = 0usize;
     while idx < words.len() {
@@ -483,10 +498,24 @@ pub fn strip_static_restriction_condition(
                     )));
                 }
             };
-            Ok(Some((
-                condition,
-                trim_commas(&tokens[remainder_first..]).to_vec(),
-            )))
+            let condition = match condition {
+                PredicateAst::TaggedMatches(tag, filter)
+                    if matches!(tag.as_str(), "enchanted" | "equipped") => {
+                        PredicateAst::AttachedToSourceMatches(filter)
+                    }
+                other => other,
+            };
+            let mut remainder = trim_commas(&tokens[remainder_first..]).to_vec();
+            // A dependent subject refers to the attachment named by the
+            // condition, not to an unbound event-object tag.
+            if remainder.first().is_some_and(|token| token.is_word("it") || token.is_word("they"))
+                && let Some((subject, _)) = crate::grammar::attached_object_static_lines::split_attached_subject_tokens(&condition_tokens)
+            {
+                let mut bound = subject.to_vec();
+                bound.extend_from_slice(&remainder[1..]);
+                remainder = bound;
+            }
+            Ok(Some((condition, remainder)))
         }
         StaticRestrictionConditionShape::ExtraTurn {
             remainder_first,
@@ -1309,6 +1338,13 @@ pub fn parse_subject_object_filter(
         .map(String::as_str)
         .collect::<Vec<_>>();
     match restriction_grammar::parse_restriction_subject_surface_words(&normalized_words) {
+        Some(restriction_grammar::RestrictionSubjectSurface::StackAbility(kind)) => {
+            return Ok(Some(ObjectFilter {
+                zone: Some(crate::zone::Zone::Stack),
+                stack_kind: Some(kind),
+                ..Default::default()
+            }));
+        }
         Some(restriction_grammar::RestrictionSubjectSurface::Damage) => {
             return Ok(Some(ObjectFilter::default()));
         }
@@ -1378,6 +1414,21 @@ mod blocker_union_tests {
             panic!("expected a blocker restriction");
         };
         blockers
+    }
+
+    #[test]
+    fn negated_restriction_display_preserves_mana_symbols() {
+        for (text, expected) in [
+            ("noncreature spells with {X} in their mana costs can't be cast.",
+             "noncreature spells with {X} in their mana costs can't be cast"),
+            ("activated abilities with {T} in their costs can't be activated.",
+             "activated abilities with {T} in their costs can't be activated"),
+            ("spells with {W/U} in their mana costs can't be cast.",
+             "spells with {W/U} in their mana costs can't be cast"),
+        ] {
+            let tokens = lex_line(text, 0).expect("restriction should lex");
+            assert_eq!(format_negated_restriction_display(&tokens), expected);
+        }
     }
 
     #[test]
@@ -1511,5 +1562,41 @@ mod blocker_union_tests {
             Some(ironsmith_core::DamagedBySource::ThisCreature),
             "{filter:#?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod stack_ability_subject_tests {
+    use super::*;
+
+    #[test]
+    fn counter_restrictions_accept_stack_ability_subjects() {
+        use crate::filter::StackObjectKind;
+        for (text, kind) in [
+            ("Abilities", StackObjectKind::Ability),
+            ("Activated abilities", StackObjectKind::ActivatedAbility),
+            ("Triggered abilities", StackObjectKind::TriggeredAbility),
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let filter = parse_subject_object_filter(&tokens).unwrap().unwrap();
+            assert_eq!(filter.zone, Some(crate::zone::Zone::Stack));
+            assert_eq!(filter.stack_kind, Some(kind));
+        }
+        let tokens = crate::lexer::lex_line("Spells and abilities can't be countered.", 0).unwrap();
+        let restrictions = parse_cant_restrictions(&tokens).unwrap().unwrap();
+        assert!(!restrictions.is_empty());
+        assert!(restrictions.iter().all(|r| matches!(r.restriction, crate::effect::Restriction::BeCountered(_))));
+    }
+}
+
+#[cfg(test)]
+mod conditional_attachment_subject_tests {
+    use super::*;
+    #[test]
+    fn binds_attachment_pronoun_in_conditional_restriction() {
+        let tokens = crate::lexer::lex_line("As long as enchanted creature is face down, it can't be turned face up.", 0).unwrap();
+        let (condition, remainder) = strip_static_restriction_condition(&tokens).unwrap().unwrap();
+        assert!(matches!(condition, PredicateAst::AttachedToSourceMatches(filter) if filter.face_down == Some(true)));
+        assert_eq!(&crate::lexer::parser_token_word_refs(&remainder)[..2], &["enchanted", "creature"]);
     }
 }

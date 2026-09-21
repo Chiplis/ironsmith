@@ -1437,8 +1437,8 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeLifeTotals { player2 }) => {
             compile_exchange_life_totals_effect(player, *player2, ctx)
         }
-        SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes { target }) => {
-            compile_exchange_text_boxes_effect(target, ctx)
+        SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes { target, include_source }) => {
+            compile_exchange_text_boxes_effect(target, *include_source, ctx)
         }
         SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeZones { zone1, zone2 }) => {
             compile_exchange_zones_effect(player, *zone1, *zone2, ctx)

@@ -42,6 +42,11 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
+        // A delayed effect tracks the original object, not the card's new
+        // incarnation after a zone change. There is nothing left to exile.
+        let Some(from_zone) = game.object(target_id).map(|obj| obj.zone) else {
+            return Ok(EffectOutcome::count(0));
+        };
         let player = resolve_player_filter(game, &self.player, ctx)?;
         let expires = match self.duration {
             GrantDuration::UntilEndOfTurn => game.turn.turn_number,
@@ -53,9 +58,7 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
         let outcome = crate::effects::zones::apply_zone_change_with_additional_effects(
             game,
             target_id,
-            game.object(target_id)
-                .map(|obj| obj.zone)
-                .ok_or(ExecutionError::ObjectNotFound(target_id))?,
+            from_zone,
             Zone::Exile,
             crate::events::cause::EventCause::from_effect(ctx.source, ctx.controller),
             ctx.decision_maker,

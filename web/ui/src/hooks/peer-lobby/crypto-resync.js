@@ -1,5 +1,5 @@
 import { matchingActionPrefix } from '../../lib/relay/resync.js';
-import { relayMatchId } from '../../lib/relay/session.js';
+import { relayMatchId, canPersistMatch } from '../../lib/relay/session.js';
 import { initializeRelayMatch, appendRelayAction } from '../../lib/relay/session.js';
 import { immutableAction, actionCursor, restoreActionCursor, actionPrefixHash, wireStablePayload, EMPTY_ACTION_PREFIX } from '../../lib/accepted-actions.js';
 import { isRelayId } from '../../lib/relay/formats.js';
@@ -4070,7 +4070,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     const nextSequence = Number(message.seq || 0);
     const entry = acceptedActionEntryForMessage(message);
     const session = multiplayerRef.current;
-    if (isRelayId(session.lobbyId) && session.role === "host" && session.matchStarted) {
+    if (canPersistMatch(session) && session.role === "host" && session.matchStarted) {
       const started = performance.now();
       await appendRelayAction(session.lobbyId, matchStartPayloadRef.current, session, entry);
       markActionStage(null, "durable acceptance", { sequence: nextSequence, persist_ms: performance.now() - started });
@@ -4096,7 +4096,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 
   async function persistRelayCheckpoint() {
     const session = multiplayerRef.current;
-    if (!isRelayId(session.lobbyId) || session.role !== "host" || !session.matchStarted) return;
+    if (!canPersistMatch(session) || session.role !== "host" || !session.matchStarted) return;
     const match = buildHostedResyncPayload();
     if (!match) return;
     await initializeRelayMatch(session.lobbyId, {

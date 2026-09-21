@@ -5,10 +5,10 @@ use crate::filter::{
 };
 use crate::types::CardType;
 
-mod mechanics;
-mod resumable;
 #[cfg(test)]
 mod analysis_probe;
+mod mechanics;
+mod resumable;
 pub use resumable::ManaAnalysisSession;
 
 pub use mechanics::*;
@@ -372,16 +372,19 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
         }
     }
 
-
     // Mana added by a cost increase is part of the same total. Merge it before
     // reductions; separate payment components otherwise overwrite one another
     // when the priority loop constructs its single mana payment.
     let components = adjusted.costs();
-    let dynamic_indices = components.iter().enumerate()
-        .filter_map(|(index,cost)| cost.dynamic_mana_cost_ref().map(|_| index))
+    let dynamic_indices = components
+        .iter()
+        .enumerate()
+        .filter_map(|(index, cost)| cost.dynamic_mana_cost_ref().map(|_| index))
         .collect::<Vec<_>>();
     let merge_index = match dynamic_indices.as_slice() {
-        [] => components.iter().position(|cost| cost.mana_cost_ref().is_some()),
+        [] => components
+            .iter()
+            .position(|cost| cost.mana_cost_ref().is_some()),
         [index] => {
             let mut probe = components[*index].dynamic_mana_cost_ref().unwrap().clone();
             probe.source_mana_cost_reduction_condition = None;
@@ -391,7 +394,7 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
     };
     if let Some(merge_index) = merge_index {
         let mut pips = Vec::new();
-        for (index,component) in components.iter().enumerate() {
+        for (index, component) in components.iter().enumerate() {
             if let Some(mana) = component.mana_cost_ref() {
                 pips.extend_from_slice(mana.pips());
             } else if index == merge_index {
@@ -403,13 +406,24 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
             let mut dynamic = dynamic.clone();
             dynamic.base = mana;
             crate::costs::Cost::dynamic_mana(dynamic)
-        } else { crate::costs::Cost::mana(mana) };
-        adjusted = crate::cost::TotalCost::from_costs(components.iter().enumerate()
-            .filter_map(|(index,component)| {
-                if index == merge_index { Some(merged.clone()) }
-                else if component.mana_cost_ref().is_some() { None }
-                else { Some(component.clone()) }
-            }).collect());
+        } else {
+            crate::costs::Cost::mana(mana)
+        };
+        adjusted = crate::cost::TotalCost::from_costs(
+            components
+                .iter()
+                .enumerate()
+                .filter_map(|(index, component)| {
+                    if index == merge_index {
+                        Some(merged.clone())
+                    } else if component.mana_cost_ref().is_some() {
+                        None
+                    } else {
+                        Some(component.clone())
+                    }
+                })
+                .collect(),
+        );
     }
     let cost = &adjusted;
     let mut costs = Vec::with_capacity(cost.costs().len());
@@ -433,7 +447,12 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
                 // the conditional source-cost reduction keeps its payer choices
                 // until the activation's dynamic payment step.
                 adjusted_dynamic.base = calculate_effective_activation_mana_cost_with_view(
-                    game, activator, ability_source, &base, chosen_targets, view,
+                    game,
+                    activator,
+                    ability_source,
+                    &base,
+                    chosen_targets,
+                    view,
                 );
             }
             costs.push(crate::costs::Cost::dynamic_mana(adjusted_dynamic));
@@ -552,11 +571,15 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view(
 
                 let multiplier = if let Some(value) = &reduction.multiplier {
                     let mut dm = SelectFirstDecisionMaker;
-                    let targets = chosen_targets.iter().map(|target| match target {
-                        Target::Object(id) => crate::effects::ResolvedTarget::Object(*id),
-                        Target::Player(id) => crate::effects::ResolvedTarget::Player(*id),
-                    }).collect();
-                    let ctx = ExecutionContext::new(ability_source, activator, &mut dm).with_targets(targets);
+                    let targets = chosen_targets
+                        .iter()
+                        .map(|target| match target {
+                            Target::Object(id) => crate::effects::ResolvedTarget::Object(*id),
+                            Target::Player(id) => crate::effects::ResolvedTarget::Player(*id),
+                        })
+                        .collect();
+                    let ctx = ExecutionContext::new(ability_source, activator, &mut dm)
+                        .with_targets(targets);
                     resolve_value(game, value, &ctx).unwrap_or(0).max(0) as u32
                 } else if let Some(per_filter) = &reduction.per_matching_objects {
                     game.objects_in_deterministic_order()
@@ -1074,21 +1097,42 @@ pub(crate) fn violates_any_cant_cast_restriction_from_other_sources(
     spell: &crate::object::Object,
     ignore_source: Option<ObjectId>,
 ) -> bool {
-    game.effect_store
+    let Some(filters) = game
+        .effect_store
         .cant_effects
         .cast_filters_for_player(player)
-        .is_some_and(|filters| {
-            filters.iter().any(|restriction| {
-                if ignore_source.is_some() && restriction.source == ignore_source {
-                    return false;
-                }
-                let mut ctx = crate::target::FilterContext::default();
-                if let Some(source) = restriction.source {
-                    ctx = ctx.with_source(source);
-                }
-                restriction.filter.matches(spell, &ctx, game)
-            })
-        })
+    else {
+        return false;
+    };
+    // Restrictions describe the spell being proposed, regardless of its origin
+    // zone or casting permission (normal, flashback, escape, granted casts, ...).
+    // Keep the real object in its origin zone until casting actually begins.
+    let prospective;
+    let spell = if spell.zone != Zone::Stack {
+        prospective = {
+            let mut proposal = spell.clone();
+            proposal.zone = Zone::Stack;
+            proposal
+        };
+        &prospective
+    } else {
+        spell
+    };
+    filters.iter().any(|restriction| {
+        if ignore_source.is_some() && restriction.source == ignore_source {
+            return false;
+        }
+        let mut ctx = crate::target::FilterContext::default()
+            .with_caster(Some(player))
+            // A restriction stored for one affected player evaluates "that
+            // player" against the caster whose proposal is being checked.
+            .with_iterated_player(Some(player))
+            .with_prospective_cast(spell.id);
+        if let Some(source) = restriction.source {
+            ctx = ctx.with_source(source);
+        }
+        restriction.filter.matches(spell, &ctx, game)
+    })
 }
 
 fn optional_cost_selection_subsets(
@@ -1583,7 +1627,81 @@ pub(crate) fn has_valid_spell_timing(
     has_valid_spell_timing_with_view(game, player, spell, spell_id, &view)
 }
 
+/// Test the existential target condition against a proposed set of targets.
+/// This is a cast permission, not a restriction on later resolution or retargeting.
+pub(crate) fn target_dependent_flash_matches(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    targets: &[crate::Target],
+) -> bool {
+    let context = game.filter_context_for(player, Some(spell.id));
+    spell.abilities.iter().any(|ability| {
+        let crate::ability::AbilityKind::Static(ability) = &ability.kind else {
+            return false;
+        };
+        let Some(model) = ability.compiled_model() else {
+            return false;
+        };
+        let ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(filter) = &model.payload
+        else {
+            return false;
+        };
+        targets.iter().any(|target| match target {
+            crate::Target::Object(id) => game
+                .object(*id)
+                .is_some_and(|object| filter.matches(object, &context, game)),
+            crate::Target::Player(_) => false,
+        })
+    })
+}
+
+fn target_dependent_flash_can_begin(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+) -> bool {
+    if game
+        .effect_store
+        .cant_effects
+        .cast_spells_only_as_sorcery
+        .contains(&player)
+    {
+        return false;
+    }
+    // Avoid extracting target requirements for spells with no such permission.
+    if !spell.abilities.iter().any(|ability| matches!(&ability.kind,
+        crate::ability::AbilityKind::Static(ability) if ability.compiled_model().is_some_and(|model|
+            matches!(model.payload, ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(_))))) {
+        return false;
+    }
+    let Some(program) = spell.spell_effect.as_deref() else {
+        return false;
+    };
+    let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+        game,
+        program,
+        player,
+        Some(spell.id),
+        None,
+    );
+    requirements.iter().any(|requirement| {
+        target_dependent_flash_matches(game, player, spell, &requirement.legal_targets)
+    })
+}
+
 pub(crate) fn has_valid_spell_timing_with_view(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    spell_id: ObjectId,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    has_valid_spell_timing_without_target_permission(game, player, spell, spell_id, view)
+        || target_dependent_flash_can_begin(game, player, spell)
+}
+
+pub(crate) fn has_valid_spell_timing_without_target_permission(
     game: &GameState,
     player: PlayerId,
     spell: &crate::object::Object,
@@ -1889,6 +2007,34 @@ pub(crate) fn alternative_method_for_casting_method(
     }
 }
 
+fn plotted_cast_method_allows(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> bool {
+    if !matches!(
+        alternative_method_for_casting_method(game, player, spell, casting_method),
+        Some(crate::alternative_cast::AlternativeCastingMethod::Plot { .. })
+    ) {
+        return true;
+    }
+    if spell.owner != player
+        || !game.is_active_player(player)
+        || !crate::turn::is_sorcery_timing(game)
+    {
+        return false;
+    }
+    // The accepted proposal carries its selected alternative method onto the
+    // stack; zone-change cleanup has removed the old exile object's designation.
+    spell.zone == Zone::Stack
+        || (spell.zone == Zone::Exile
+            && game.is_plotted_by(spell.id, player)
+            && game
+                .plotted_turn(spell.id)
+                .is_some_and(|turn| turn < game.turn.turn_number))
+}
+
 pub(crate) fn alternative_method_uses_printed_mana_cost(
     method: &crate::alternative_cast::AlternativeCastingMethod,
 ) -> bool {
@@ -1955,6 +2101,7 @@ pub(crate) fn completed_cast_proposal_is_legal(
     player: PlayerId,
     spell: &crate::object::Object,
     casting_method: &CastingMethod,
+    targets: &[crate::Target],
 ) -> bool {
     completed_cast_proposal_is_legal_with_timing_permission(
         game,
@@ -1962,6 +2109,7 @@ pub(crate) fn completed_cast_proposal_is_legal(
         spell,
         casting_method,
         false,
+        targets,
     )
 }
 
@@ -1981,6 +2129,7 @@ pub(crate) fn completed_effect_driven_cast_proposal_is_legal(
         spell,
         casting_method,
         true,
+        &[],
     )
 }
 
@@ -1990,7 +2139,11 @@ fn completed_cast_proposal_is_legal_with_timing_permission(
     spell: &crate::object::Object,
     casting_method: &CastingMethod,
     timing_permission_from_effect: bool,
+    targets: &[crate::Target],
 ) -> bool {
+    if !plotted_cast_method_allows(game, player, spell, casting_method) {
+        return false;
+    }
     if violates_any_cant_cast_restriction_from_other_sources(game, player, spell, Some(spell.id))
         || violates_any_cast_limit(game, player, spell)
         || spell.is_land()
@@ -2002,7 +2155,13 @@ fn completed_cast_proposal_is_legal_with_timing_permission(
     let view = DerivedGameView::new(game);
     let ctx = CastLegalityContext::new(game, player, &view);
     timing_permission_from_effect
-        || has_valid_spell_timing_with_view(game, player, spell, spell.id, &view)
+        || has_valid_spell_timing_without_target_permission(game, player, spell, spell.id, &view)
+        || (!game
+            .effect_store
+            .cant_effects
+            .cast_spells_only_as_sorcery
+            .contains(&player)
+            && target_dependent_flash_matches(game, player, spell, targets))
         || casting_method_grants_special_timing(&ctx, spell, spell.id, casting_method)
 }
 
@@ -2497,6 +2656,30 @@ pub(crate) fn can_cast_spell_with_context(
     if game.is_planar_card(spell.id) {
         return false;
     }
+    // Permission to play a card from another zone does not waive Warp's
+    // explicit "from your hand" restriction.
+    let selected_alternative = match casting_method {
+        CastingMethod::Alternative(idx) => spell.alternative_casts.get(*idx).cloned(),
+        CastingMethod::PlayFrom {
+            zone,
+            use_alternative: Some(idx),
+            ..
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom {
+            zone,
+            use_alternative: idx,
+            ..
+        } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx),
+        _ => None,
+    };
+    if spell.zone != Zone::Hand
+        && matches!(
+            selected_alternative,
+            Some(crate::alternative_cast::AlternativeCastingMethod::Warp { .. })
+        )
+    {
+        return false;
+    }
     let cast_view = match casting_method {
         CastingMethod::FaceDown => {
             if !spell_can_be_cast_face_down(spell) {
@@ -2805,6 +2988,9 @@ pub(crate) fn can_cast_with_cost_with_context(
     let game = ctx.game;
     let player = ctx.player;
     let view = ctx.view;
+    if !plotted_cast_method_allows(game, player, spell, casting_method) {
+        return false;
+    }
     if game.is_planar_card(spell_id) {
         return false;
     }
@@ -3388,8 +3574,18 @@ pub(crate) fn can_pay_non_mana_cost_sequence_for_cast(
     let check_ctx = crate::costs::CostCheckContext::new(source, player)
         .with_reason(crate::costs::PaymentReason::CastSpell);
     let mut available_tags = Vec::new();
+    let mut discard_slots = Vec::new();
 
     for cost in costs {
+        if let crate::costs::CostProcessingMode::DiscardCards { count, filter } =
+            cost.processing_mode()
+        {
+            let candidates = crate::costs::legal_discard_cost_cards(game, player, source, &filter);
+            if candidates.len() < count as usize {
+                return false;
+            }
+            discard_slots.extend(std::iter::repeat_n(candidates, count as usize));
+        }
         if game
             .validate_cost_for_payment_reason(player, source, &cost, check_ctx.reason)
             .is_err()
@@ -3410,7 +3606,39 @@ pub(crate) fn can_pay_non_mana_cost_sequence_for_cast(
         }
     }
 
-    true
+    distinct_discard_assignment_exists(&discard_slots)
+}
+
+/// Match each required discard to a different card. Reassigning earlier slots
+/// avoids rejecting payable costs merely because their filters overlap.
+fn distinct_discard_assignment_exists(slots: &[Vec<ObjectId>]) -> bool {
+    fn assign(
+        slot: usize,
+        slots: &[Vec<ObjectId>],
+        owners: &mut std::collections::HashMap<ObjectId, usize>,
+        visited: &mut std::collections::HashSet<ObjectId>,
+    ) -> bool {
+        for &card in &slots[slot] {
+            if !visited.insert(card) {
+                continue;
+            }
+            let previous = owners.get(&card).copied();
+            if previous.is_none_or(|other| assign(other, slots, owners, visited)) {
+                owners.insert(card, slot);
+                return true;
+            }
+        }
+        false
+    }
+    let mut owners = std::collections::HashMap::new();
+    (0..slots.len()).all(|slot| {
+        assign(
+            slot,
+            slots,
+            &mut owners,
+            &mut std::collections::HashSet::new(),
+        )
+    })
 }
 
 /// Check if a spell can be cast with an alternative cost from hand (e.g., Force of Will).
@@ -4516,13 +4744,14 @@ fn spell_matches_cost_modifier_filter(
     let overlaid_spell =
         spell_view_for_cost_filter_match(game, caster, spell, casting_method, cast_from_zone);
     let spell_for_match = overlaid_spell.as_ref().unwrap_or(spell);
-    let matches = cast_filter.matches_non_recursive(
-        spell_for_match,
-        &ctx.clone()
-            .with_caster(Some(caster))
-            .with_prospective_cast(spell.id),
-        game,
-    ) || disturb_linked_face_matches_cost_filter(game, caster, spell, &cast_filter, ctx);
+    let matches =
+        cast_filter.matches_non_recursive(
+            spell_for_match,
+            &ctx.clone()
+                .with_caster(Some(caster))
+                .with_prospective_cast(spell.id),
+            game,
+        ) || disturb_linked_face_matches_cost_filter(game, caster, spell, &cast_filter, ctx);
     targets_match
         && matches
         && alternative_cast.is_none_or(|kind| {

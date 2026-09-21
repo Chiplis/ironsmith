@@ -11,6 +11,7 @@ import { samePlayerId } from "@/lib/player-display";
 import { isFaceUpZoneCard, PILE_ZONES, zonePileCards } from "@/lib/zone-piles";
 import { isObjectChosen, requestObjectSelection } from "@/lib/object-selection";
 import { useChosenObjectIds } from "@/context/ObjectSelectionContext";
+import LobbyChat from "@/components/right-rail/LobbyChat";
 import SelectionCheckBadge from "@/components/cards/SelectionCheckBadge";
 
 // How long a zone takes to grow when it starts holding something to pick.
@@ -29,6 +30,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
   const triggerRef = useRef(null);
   const menuRef = useRef(null);
   const closeTimerRef = useRef(null);
+  const pointerInsideRef = useRef(false);
   // Dismissing the overlay exposes the trigger under the same stationary pointer.
   const dismissedRef = useRef(false);
   const changeOpen = (nextOpen) => {
@@ -36,12 +38,15 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     setOpen(nextOpen);
   };
   const keepOpen = () => {
+    pointerInsideRef.current = true;
     clearTimeout(closeTimerRef.current);
     if (!dismissedRef.current) setOpen(true);
   };
   const closeAfterLeave = () => {
     clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = setTimeout(() => setOpen(false), 120);
+    closeTimerRef.current = setTimeout(() => {
+      if (!pointerInsideRef.current) setOpen(false);
+    }, 120);
   };
   useEffect(() => () => clearTimeout(closeTimerRef.current), []);
   const [stripBounds, setStripBounds] = useState({ width: 240, cardWidth: 72 });
@@ -64,6 +69,32 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
   }, [open, zone]);
   const cards = cardsOverride ?? zonePileCards(player, zone);
+  // The inspector and its portaled glossary are part of this pile's surface.
+  const isPreviewTarget = (target) => {
+    if (!(target instanceof Element)) return false;
+    const preview = document.querySelector('[data-card-hover-preview="true"][data-visible="true"]');
+    if (!preview || !cards.some(card => String(card.id) === preview.dataset.previewObjectId)) return false;
+    if (preview.contains(target)) return true;
+    const tooltip = target.closest('[data-ui-layer="tooltip"]');
+    return Boolean(tooltip?.id && Array.from(preview.querySelectorAll('[aria-controls]'))
+      .some(trigger => trigger.getAttribute("aria-controls") === tooltip.id));
+  };
+  useEffect(() => {
+    if (!open) return undefined;
+    const trackPointer = (event) => {
+      const inside = Boolean(menuRef.current?.contains(event.target)
+        || triggerRef.current?.contains(event.target) || isPreviewTarget(event.target));
+      if (inside) {
+        pointerInsideRef.current = true;
+        clearTimeout(closeTimerRef.current);
+      } else if (pointerInsideRef.current) {
+        pointerInsideRef.current = false;
+        closeAfterLeave();
+      }
+    };
+    document.addEventListener("pointerover", trackPointer);
+    return () => document.removeEventListener("pointerover", trackPointer);
+  });
   const topCard = cards.find(isFaceUpZoneCard) || cards[0];
   const remainingCards = cards.filter((card) => card !== topCard);
   const label = t(zone === "graveyard" ? "zone.graveyardFull" : zone === "look" ? "zone.look" : "zone.exileFull");
@@ -115,7 +146,9 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     }
     if (!openedByHoverRef.current) return undefined;
     openedByHoverRef.current = false;
-    const timer = setTimeout(() => setOpen(false), 160);
+    const timer = setTimeout(() => {
+      if (!pointerInsideRef.current) setOpen(false);
+    }, 160);
     return () => clearTimeout(timer);
   }, [holdsHoveredCard]);
   // The strip scrolls sideways; a target deep in a long graveyard would open
@@ -164,10 +197,10 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
         aria-label={card.name || ui("Face-down card")}
         data-object-id={String(card.id).startsWith("look-top-") ? undefined : card.id} data-zone-card={zone}
         data-target-legal={legal ? "true" : undefined} data-stack-target={stackTargeted ? "true" : undefined}
-        data-hover-source={hoverSource ? "true" : undefined} disabled={disabled}
+        data-hover-source={hoverSource ? "true" : undefined} aria-disabled={disabled || undefined}
         onPointerEnter={(event) => {
           setRowHoveredId(card.id);
-          if (event.pointerType === "touch" || disabled || !isFaceUpZoneCard(card) || String(card.id).startsWith("look-top-")) return;
+          if (event.pointerType === "touch" || !isFaceUpZoneCard(card) || String(card.id).startsWith("look-top-")) return;
           hoverCard(card.id);
         }}
         onPointerLeave={(event) => {
@@ -175,11 +208,11 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
           if (event.pointerType !== "touch") clearHover();
         }}
         onFocus={() => {
-          if (!disabled && isFaceUpZoneCard(card) && !String(card.id).startsWith("look-top-")) hoverCard(card.id);
+          if (isFaceUpZoneCard(card) && !String(card.id).startsWith("look-top-")) hoverCard(card.id);
         }}
         onBlur={() => clearHover()}
         onClick={(event) => {
-          if (castIntent && state?.decision?.kind !== "targets") return;
+          if (disabled || (castIntent && state?.decision?.kind !== "targets")) return;
           if (choosingObject && legal) {
             // Searches take several picks: leave the zone open, add the card,
             // and let its check be the only way back out.
@@ -232,6 +265,9 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
         opacity: fading ? 0 : 1,
         transition: `${fading ? `opacity ${LOOK_FADE_MS}ms linear` : "opacity 120ms ease"}, transform ${ZONE_TARGET_GROW_MS}ms ease`,
       }}>
+      {zone === "graveyard" && samePlayerId(player.id ?? player.index, state?.perspective) && (
+        <div className="graveyard-chat-dock"><LobbyChat /></div>
+      )}
       <span className="zone-pile-label">{ui(label)} <strong>{count}</strong></span>
       <PopoverTrigger asChild>
         <button ref={triggerRef} type="button" className="zone-pile" data-zone-pile={zone}
@@ -244,6 +280,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
           }}
           onPointerLeave={(event) => {
             if (!(event.relatedTarget instanceof Node) || !menuRef.current?.contains(event.relatedTarget)) dismissedRef.current = false;
+            pointerInsideRef.current = event.relatedTarget instanceof Node && Boolean(menuRef.current?.contains(event.relatedTarget));
             closeAfterLeave();
           }}
           onPointerDown={(event) => event.stopPropagation()}
@@ -266,11 +303,18 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
         data-local-zone-strip={samePlayerId(player.id ?? player.index, state?.perspective) ? "true" : undefined}
         style={{ "--zone-strip-width": `${stripBounds.width}px`, "--zone-strip-card-width": `${stripBounds.cardWidth}px` }}
         aria-label={ui("{0}'s {1}", { 0: player.name, 1: ui(label) })}
+        onInteractOutside={(event) => {
+          if (isPreviewTarget(event.target)) event.preventDefault();
+        }}
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
-        onPointerEnter={() => clearTimeout(closeTimerRef.current)}
+        onPointerEnter={() => {
+          pointerInsideRef.current = true;
+          clearTimeout(closeTimerRef.current);
+        }}
         onPointerLeave={(event) => {
           if (open && event.relatedTarget instanceof Node && !triggerRef.current?.contains(event.relatedTarget)) dismissedRef.current = false;
+          pointerInsideRef.current = event.relatedTarget instanceof Node && Boolean(triggerRef.current?.contains(event.relatedTarget) || isPreviewTarget(event.relatedTarget));
           closeAfterLeave();
         }}
         onClick={(event) => event.stopPropagation()}
@@ -349,12 +393,11 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
       if (board) {
         board.style.setProperty("--battlefield-objects-top", `${Math.max(0, top - boardBounds.top)}px`);
         const lookTop = Math.max(0, top - boardBounds.top);
-        const pileWidth = Math.min(56, cardWidth * 0.7);
-        // Keep Look above the stack, reserving its label and card height even
-        // between temporary reveals so the stack never jumps or overlaps it.
+        // Let the stack use the full height from Look's top edge. The zone
+        // piles layer above the stack, so an expanded Look still covers it.
         piles.style.setProperty("--look-area-top", `${boardBounds.top + lookTop - pilesBounds.top}px`);
         piles.style.setProperty("--look-area-left", `${boardBounds.left + 70 - pilesBounds.left}px`);
-        board.style.setProperty("--stack-area-top", `${lookTop + 20 + pileWidth * 88 / 63 + 8}px`);
+        board.style.setProperty("--stack-area-top", `${lookTop}px`);
       }
     };
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); };

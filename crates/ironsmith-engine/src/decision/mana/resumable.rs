@@ -436,7 +436,9 @@ fn advance(
         // remains in the query key; equivalence is local to this payment's
         // resolved policy and output choices, and the partition is computed
         // once per query rather than rescanned per source.
-        search.classes.representatives(&node.used, &mut representatives);
+        search
+            .classes
+            .representatives(&node.used, &mut representatives);
         // Reverse insertion preserves the old depth-first preference: life,
         // floating pool, then the first available source/output.
         for &symbol in pips[node.pip].iter().rev() {

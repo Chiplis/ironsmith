@@ -2260,7 +2260,12 @@ fn collect_lookback_source_triggers(
                 source_stable_id: source_snapshot.stable_id,
                 source_name: source_snapshot.name.to_string(),
                 source_snapshot: Some(source_snapshot.clone()),
-                tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
+                tagged_objects: tagged_objects_for_matched_trigger(
+                    game,
+                    trigger_event,
+                    &trigger_ability.trigger,
+                    &ctx,
+                ),
                 source_kind: TriggeredAbilitySourceKind::Object,
                 trigger_identity,
             };

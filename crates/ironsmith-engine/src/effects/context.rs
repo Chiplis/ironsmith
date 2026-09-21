@@ -194,6 +194,8 @@ pub struct ReplacementExecutionContext {
     /// Source counter additions being proposed during battlefield entry.
     /// Their replacements run on the combined ETB event, not the source-zone card.
     pub entry_counter_source: Option<ObjectId>,
+    /// Prospective characteristics, including earlier copy replacements.
+    pub entry_event: Option<Box<crate::events::EnterBattlefieldEvent>>,
     pub additional_replacement_effects: Vec<ReplacementEffect>,
     pub suppressed_replacement_effects: HashSet<ReplacementEffectId>,
     pub suppressed_replacement_effect_keys: HashSet<ReplacementEffectKey>,

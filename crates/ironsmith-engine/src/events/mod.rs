@@ -342,6 +342,8 @@ impl Event {
                 set_base_power_toughness: None,
                 controller_override: None,
                 prepared_choices: None,
+                pending_program: None,
+                program_choices: Default::default(),
             },
             ProvNodeId::default(),
         )

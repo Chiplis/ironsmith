@@ -218,8 +218,9 @@ fn attached_transform_subject_carries_into_keyword_and_all_other_ability_loss() 
         .unwrap()
         .expect("transform subject should carry into the keyword/loss sentence");
     let debug = format!("{abilities:#?}");
-    assert_eq!(abilities.len(), 5, "{debug}");
-    assert!(debug.contains("SetCardTypes"), "{debug}");
+    assert_eq!(abilities.len(), 4, "{debug}");
+    // Setting only a creature subtype must preserve other card types.
+    assert!(!debug.contains("SetCardTypes"), "{debug}");
     assert!(debug.contains("SetCreatureSubtypes"), "{debug}");
     assert!(debug.contains("SetBasePowerToughness"), "{debug}");
     assert!(debug.contains("Defender"), "{debug}");
@@ -675,4 +676,21 @@ fn standalone_attached_goad_requires_a_complete_static_clause() {
         let tokens = crate::lexer::lex_line(line, 0).unwrap();
         assert!(parse_attached_is_goaded_line(&tokens).unwrap().is_none(), "{line}");
     }
+}
+
+#[test]
+fn attached_vehicle_transform_grants_crew_and_replaces_card_types() {
+    let tokens = crate::lexer::lex_line(
+        "Enchanted permanent is a Vehicle artifact with crew 5 and it loses all other card types.", 0,
+    ).unwrap();
+    let shape = crate::grammar::attached_object_static_lines::parse_attached_transform_tokens(&tokens)
+        .expect("attached Vehicle shape");
+    assert_eq!(shape.loss, Some(crate::grammar::attached_object_static_lines::AttachedTransformLossKind::OtherCardTypes));
+    let abilities = parse_attached_type_transform_line(&tokens).unwrap().expect("attached Vehicle transform");
+    let debug = format!("{abilities:#?}");
+    assert!(debug.contains("SetCardTypes"), "{debug}");
+    assert!(debug.contains("AddSubtypes"), "{debug}");
+    assert!(debug.contains("Crew"), "{debug}");
+    assert!(!debug.contains("RemoveAllAbilities"), "{debug}");
+    assert!(crate::keyword_static::parse_static_ability_ast_line_lexed(&tokens).unwrap().is_some());
 }

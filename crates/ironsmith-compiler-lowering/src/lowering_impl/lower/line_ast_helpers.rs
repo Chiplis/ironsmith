@@ -168,6 +168,7 @@ pub fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -> bool 
         ironsmith_core::StaticAbilityPayload::CostIncreaseManaCost(increase)
             if increase.filter.source
     ) || match &static_ability.payload {
+        ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(_) => true,
         ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
             ability.id == Some(crate::static_abilities::StaticAbilityId::Flash)
                 || uses_spell_only_functional_zones(ability)
@@ -182,14 +183,6 @@ pub fn uses_referenced_ability_functional_zones(
 ) -> bool {
     static_ability.id() == crate::static_abilities::StaticAbilityId::ActivatedAbilityCostReduction
         && references_this_ability_cost
-}
-
-pub fn uses_all_zone_functional_zones(static_ability: &StaticAbility) -> bool {
-    matches!(
-        static_ability.id(),
-        crate::static_abilities::StaticAbilityId::ShuffleIntoLibraryFromGraveyard
-            | crate::static_abilities::StaticAbilityId::CountersRemainAcrossZoneChanges
-    )
 }
 
 pub fn effect_target_uses_it_reference(spec: &ChooseSpec) -> bool {

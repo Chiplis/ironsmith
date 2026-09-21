@@ -1746,6 +1746,9 @@ where
         }
         return Ok(Effect::new(goad));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::BecomePlottedEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::BecomePlottedEffect::new(payload.target.clone())));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::PrepareEffect>(&effect) {
         return Ok(Effect::new(crate::effects::PrepareEffect::new(
             payload.target.clone(),

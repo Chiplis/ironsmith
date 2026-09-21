@@ -67,6 +67,7 @@ pub enum SimpleObjectRestrictionKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RestrictionSubjectSurface {
+    StackAbility(crate::filter::StackObjectKind),
     Damage,
     Source,
     TaggedObjectPronoun,
@@ -453,7 +454,13 @@ pub fn parse_simple_object_restriction_words(
 pub fn parse_restriction_subject_surface_words(
     words: &[&str],
 ) -> Option<RestrictionSubjectSurface> {
-    if exact_any(
+    if exact_any(words, &[&["ability"], &["abilities"]]) {
+        Some(RestrictionSubjectSurface::StackAbility(crate::filter::StackObjectKind::Ability))
+    } else if exact_any(words, &[&["activated", "ability"], &["activated", "abilities"]]) {
+        Some(RestrictionSubjectSurface::StackAbility(crate::filter::StackObjectKind::ActivatedAbility))
+    } else if exact_any(words, &[&["triggered", "ability"], &["triggered", "abilities"]]) {
+        Some(RestrictionSubjectSurface::StackAbility(crate::filter::StackObjectKind::TriggeredAbility))
+    } else if exact_any(
         words,
         &[&["damage"], &["the", "damage"], &["that", "damage"]],
     ) {

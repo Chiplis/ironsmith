@@ -123,6 +123,7 @@ pub struct ReferenceFrame {
     pub last_effect_id: Option<EffectId>,
     pub last_library_search_effect_id: Option<EffectId>,
     pub last_object_tag: Option<TagKey>,
+    pub last_value_comparison: Option<(crate::effect::Value, crate::effect::Value)>,
     pub recent_object_target_bindings: Arc<Vec<ObjectTargetBinding>>,
     pub snapshot_tag_aliases: Vec<(TagKey, TagKey)>,
     pub last_it_choice_is_set: bool,
@@ -143,6 +144,7 @@ impl ReferenceFrame {
             last_effect_id: frame.last_effect_id,
             last_library_search_effect_id: frame.last_library_search_effect_id,
             last_object_tag: frame.last_object_tag.clone(),
+            last_value_comparison: frame.last_value_comparison.clone(),
             recent_object_target_bindings: Arc::default(),
             snapshot_tag_aliases: frame.snapshot_tag_aliases.clone(),
             last_it_choice_is_set: frame.last_it_choice_is_set,
@@ -163,6 +165,7 @@ impl ReferenceFrame {
             last_effect_id: self.last_effect_id,
             last_library_search_effect_id: self.last_library_search_effect_id,
             last_object_tag: self.last_object_tag.clone(),
+            last_value_comparison: self.last_value_comparison.clone(),
             snapshot_tag_aliases: self.snapshot_tag_aliases.clone(),
             last_it_choice_is_set: self.last_it_choice_is_set,
             last_revealed_tag: None,
@@ -212,6 +215,7 @@ impl<T: Clone + PartialEq> RefState<T> {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ReferenceImports {
     pub last_object_tag: Option<TagKey>,
+    pub last_value_comparison: Option<(crate::effect::Value, crate::effect::Value)>,
     pub recent_object_target_bindings: Arc<Vec<ObjectTargetBinding>>,
     /// Stable parse-time aliases already bound by the enclosing reference
     /// context. Nested lowering must import these alongside `last_object_tag`;
@@ -228,7 +232,8 @@ pub struct ReferenceImports {
 
 impl ReferenceImports {
     pub fn is_empty(&self) -> bool {
-        self.last_object_tag.is_none()
+        self.last_value_comparison.is_none()
+            && self.last_object_tag.is_none()
             && self.recent_object_target_bindings.is_empty()
             && self.snapshot_tag_aliases.is_empty()
             && !self.last_it_choice_is_set
@@ -251,6 +256,7 @@ impl ReferenceImports {
     pub fn from_frame(frame: &ReferenceFrame) -> Self {
         Self {
             last_object_tag: frame.last_object_tag.clone(),
+            last_value_comparison: frame.last_value_comparison.clone(),
             recent_object_target_bindings: frame.recent_object_target_bindings.clone(),
             snapshot_tag_aliases: frame.snapshot_tag_aliases.clone(),
             last_it_choice_is_set: frame.last_it_choice_is_set,
@@ -270,6 +276,7 @@ impl ReferenceImports {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReferenceEnv {
     pub last_object_tag: RefState<TagKey>,
+    pub last_value_comparison: RefState<(crate::effect::Value, crate::effect::Value)>,
     pub recent_object_target_bindings: Arc<Vec<ObjectTargetBinding>>,
     /// Parse-time tag aliases bound by `SnapshotLastObjectTag`, mapping a stable
     /// parse-time placeholder tag to the concrete tag captured from
@@ -291,6 +298,7 @@ impl Default for ReferenceEnv {
     fn default() -> Self {
         Self {
             last_object_tag: RefState::Unknown,
+            last_value_comparison: RefState::Unknown,
             recent_object_target_bindings: Arc::default(),
             snapshot_tag_aliases: Vec::new(),
             last_it_choice_is_set: false,
@@ -316,6 +324,7 @@ impl ReferenceEnv {
     ) -> Self {
         Self {
             last_object_tag: RefState::from_option(imports.last_object_tag.clone()),
+            last_value_comparison: RefState::from_option(imports.last_value_comparison.clone()),
             recent_object_target_bindings: imports.recent_object_target_bindings.clone(),
             snapshot_tag_aliases: imports.snapshot_tag_aliases.clone(),
             last_it_choice_is_set: imports.last_it_choice_is_set,
@@ -337,6 +346,7 @@ impl ReferenceEnv {
     pub fn from_frame(frame: &ReferenceFrame) -> Self {
         Self {
             last_object_tag: RefState::from_option(frame.last_object_tag.clone()),
+            last_value_comparison: RefState::from_option(frame.last_value_comparison.clone()),
             recent_object_target_bindings: frame.recent_object_target_bindings.clone(),
             snapshot_tag_aliases: frame.snapshot_tag_aliases.clone(),
             last_it_choice_is_set: frame.last_it_choice_is_set,
@@ -366,6 +376,7 @@ impl ReferenceEnv {
             last_effect_id: self.last_effect_id.clone().into_option(),
             last_library_search_effect_id: self.last_library_search_effect_id.clone().into_option(),
             last_object_tag: self.last_object_tag.clone().into_option(),
+            last_value_comparison: self.last_value_comparison.clone().into_option(),
             recent_object_target_bindings: self.recent_object_target_bindings.clone(),
             snapshot_tag_aliases: self.snapshot_tag_aliases.clone(),
             last_it_choice_is_set: self.last_it_choice_is_set,
@@ -419,6 +430,7 @@ impl ReferenceEnv {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReferenceExports {
     pub last_object_tag: RefState<TagKey>,
+    pub last_value_comparison: RefState<(crate::effect::Value, crate::effect::Value)>,
     pub recent_object_target_bindings: Arc<Vec<ObjectTargetBinding>>,
     pub last_it_choice_is_set: bool,
     pub last_player_filter: RefState<PlayerFilter>,
@@ -432,6 +444,7 @@ impl Default for ReferenceExports {
     fn default() -> Self {
         Self {
             last_object_tag: RefState::Unknown,
+            last_value_comparison: RefState::Unknown,
             recent_object_target_bindings: Arc::default(),
             last_it_choice_is_set: false,
             last_player_filter: RefState::Unknown,
@@ -447,6 +460,7 @@ impl ReferenceExports {
     pub fn from_env(env: &ReferenceEnv) -> Self {
         Self {
             last_object_tag: env.last_object_tag.clone(),
+            last_value_comparison: env.last_value_comparison.clone(),
             recent_object_target_bindings: env.recent_object_target_bindings.clone(),
             last_it_choice_is_set: env.last_it_choice_is_set,
             last_player_filter: env.last_player_filter.clone(),
@@ -460,6 +474,7 @@ impl ReferenceExports {
     pub fn join(left: &Self, right: &Self) -> Self {
         Self {
             last_object_tag: RefState::join(&left.last_object_tag, &right.last_object_tag),
+            last_value_comparison: RefState::join(&left.last_value_comparison, &right.last_value_comparison),
             recent_object_target_bindings: join_object_target_bindings(
                 &left.recent_object_target_bindings,
                 &right.recent_object_target_bindings,
@@ -480,6 +495,7 @@ impl ReferenceExports {
     pub fn to_imports(&self) -> ReferenceImports {
         ReferenceImports {
             last_object_tag: self.last_object_tag.clone().into_option(),
+            last_value_comparison: self.last_value_comparison.clone().into_option(),
             recent_object_target_bindings: self.recent_object_target_bindings.clone(),
             snapshot_tag_aliases: Vec::new(),
             last_it_choice_is_set: self.last_it_choice_is_set,

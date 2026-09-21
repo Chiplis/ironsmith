@@ -300,6 +300,7 @@ fn nested_effect_can_produce_reference(effect: &Effect, reference: NestedResultR
         | NestedResultReferenceKind::Metric(ironsmith_core::EffectMetricSource::Outcome) => {
             effect.contains_mana_production()
                 || nested_effect_is_move_to_zone(effect)
+                || nested_effect_is_exile(effect)
                 || nested_effect_is_discard(effect)
                 || nested_effect_is_sacrifice(effect)
         }

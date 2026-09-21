@@ -989,6 +989,7 @@ impl GrantRegistry {
         self.get_grants_for_card(game, card_id, zone, player)
             .into_iter()
             .filter_map(|grant| materialize_granted_alternative_cast(game, card_id, grant))
+            .chain(game.plotted_cast_permission(card_id, zone, player))
             .collect()
     }
 

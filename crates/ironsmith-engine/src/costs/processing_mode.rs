@@ -39,8 +39,8 @@ pub enum CostProcessingMode {
     DiscardCards {
         /// Number of cards to discard.
         count: u32,
-        /// Optional card type restrictions ("discard an enchantment, instant, or sorcery card").
-        card_types: Vec<CardType>,
+        /// Full restriction on the cards that may be discarded.
+        filter: ObjectFilter,
     },
 
     /// Cost requires selecting cards to exile from hand.
@@ -102,8 +102,8 @@ impl CostProcessingMode {
 
             CostProcessingMode::SacrificeTarget { filter } => describe_sacrifice_filter(filter),
 
-            CostProcessingMode::DiscardCards { count, card_types } => {
-                let type_str = format_discard_card_type_phrase(card_types);
+            CostProcessingMode::DiscardCards { count, filter } => {
+                let type_str = format_discard_card_type_phrase(&filter.card_types);
 
                 if *count == 1 {
                     format!("Discard a {}", type_str)
@@ -439,7 +439,7 @@ mod tests {
     fn test_discard_cards_mode() {
         let mode = CostProcessingMode::DiscardCards {
             count: 2,
-            card_types: Vec::new(),
+            filter: ObjectFilter::default(),
         };
 
         assert!(mode.needs_player_choice());
@@ -447,13 +447,19 @@ mod tests {
 
         let mode_typed = CostProcessingMode::DiscardCards {
             count: 1,
-            card_types: vec![CardType::Creature],
+            filter: ObjectFilter {
+                card_types: vec![CardType::Creature],
+                ..ObjectFilter::default()
+            },
         };
         assert_eq!(mode_typed.display(), "Discard a creature card");
 
         let mode_multi = CostProcessingMode::DiscardCards {
             count: 1,
-            card_types: vec![CardType::Enchantment, CardType::Instant, CardType::Sorcery],
+            filter: ObjectFilter {
+                card_types: vec![CardType::Enchantment, CardType::Instant, CardType::Sorcery],
+                ..ObjectFilter::default()
+            },
         };
         assert_eq!(
             mode_multi.display(),

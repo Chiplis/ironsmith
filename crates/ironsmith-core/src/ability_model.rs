@@ -273,6 +273,7 @@ impl<E: PartialEq> Eq for RestrictedManaUnit<E> {}
 #[derive(TagKeyWalk)]
 pub struct Ability<SA, T, E, C, Cond = Condition> {
     pub kind: AbilityKind<SA, T, E, C, Cond>,
+    /// Resolved source zones. Conversion and loading must preserve these exactly.
     pub functional_zones: Vec<Zone>,
 }
 
@@ -558,10 +559,14 @@ where
     E: Clone,
     C: CoreCostComponent,
 {
-    pub fn static_ability(effect: SA) -> Self {
+    pub fn static_ability(effect: SA) -> Self
+    where
+        SA: crate::functional_zones::StaticAbilityFunctionalZones,
+    {
+        let functional_zones = effect.default_functional_zones();
         Self {
             kind: AbilityKind::Static(effect),
-            functional_zones: vec![Zone::Battlefield],
+            functional_zones,
         }
     }
 
@@ -765,6 +770,7 @@ where
 
 impl<SA, T, E, C, Cond> From<SA> for Ability<SA, T, E, C, Cond>
 where
+    SA: crate::functional_zones::StaticAbilityFunctionalZones,
     E: Clone,
     C: CoreCostComponent,
 {

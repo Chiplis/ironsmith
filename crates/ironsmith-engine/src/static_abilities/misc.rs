@@ -1295,6 +1295,8 @@ impl StaticAbilityKind for EntersTappedUnlessTwoOrMoreOpponents {
 struct ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLandsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLandsMatcher {
+    fn applies_from_entering_source(&self) -> bool { true }
+
     fn matches_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
@@ -1327,6 +1329,8 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLands
 struct ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLandsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLandsMatcher {
+    fn applies_from_entering_source(&self) -> bool { true }
+
     fn matches_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
@@ -1359,6 +1363,8 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLand
 struct ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLandsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLandsMatcher {
+    fn applies_from_entering_source(&self) -> bool { true }
+
     fn matches_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
@@ -1395,6 +1401,8 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLands
 struct ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatcher {
+    fn applies_from_entering_source(&self) -> bool { true }
+
     fn matches_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
@@ -1423,6 +1431,8 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatc
 struct ThisWouldEnterTappedUnlessTwoOrMoreOpponentsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessTwoOrMoreOpponentsMatcher {
+    fn applies_from_entering_source(&self) -> bool { true }
+
     fn matches_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
@@ -1504,6 +1514,8 @@ struct ThisWouldEnterTappedUnlessConditionMatcher {
 }
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessConditionMatcher {
+    fn applies_from_entering_source(&self) -> bool { true }
+
     fn matches_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
@@ -1624,6 +1636,8 @@ impl StaticAbilityKind for Bloodthirst {
 struct ThisWouldEnterWithBloodthirstMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterWithBloodthirstMatcher {
+    fn applies_from_entering_source(&self) -> bool { true }
+
     fn matches_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
@@ -2055,6 +2069,8 @@ struct ThisWouldEnterWithCountersIfConditionMatcher {
 }
 
 impl ReplacementMatcher for ThisWouldEnterWithCountersIfConditionMatcher {
+    fn applies_from_entering_source(&self) -> bool { true }
+
     fn matches_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
@@ -4065,6 +4081,8 @@ impl ConditionalWouldEnterBattlefieldMatcher {
 }
 
 impl ReplacementMatcher for ConditionalWouldEnterBattlefieldMatcher {
+    fn applies_from_entering_source(&self) -> bool { self.enter_matcher.applies_from_entering_source() }
+
     fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
         self.enter_matcher.matches_event(event, ctx) && self.condition_matches(event, ctx)
     }

@@ -31,7 +31,7 @@ impl EffectExecutor for AuraSwapEffect {
         let Some(attached_to) = source.attached_to else {
             return Ok(EffectOutcome::resolved());
         };
-        if !game.attachment_target_exists_on_battlefield(attached_to) {
+        if !game.attachment_target_exists(attached_to) {
             return Ok(EffectOutcome::resolved());
         }
 

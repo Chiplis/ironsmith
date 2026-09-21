@@ -11435,6 +11435,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DiscardHand)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { .. })
@@ -11814,6 +11815,9 @@ pub fn parse_exact_where_x_value_expression(tokens: &[OwnedLexToken]) -> Option<
         return None;
     }
     let body = words.get(3..)?;
+    if body == ["the", "difference"] {
+        return Some(Value::PendingComparisonDifference);
+    }
     let (value, used) = crate::grammar::shared_util::value_expr::parse_value_expr_words(body)?;
     (used == body.len()).then_some(value)
 }

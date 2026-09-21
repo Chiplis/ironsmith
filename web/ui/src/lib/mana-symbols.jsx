@@ -2,19 +2,12 @@ import { useI18n } from "@/i18n/I18nContext";
 import { localeCatalogs } from "@/i18n/catalog";
 import useUiText from "@/i18n/useUiText";
 import { translateUiText as ui } from "@/i18n/catalog";
-import { MANA_SYMBOL_SVGS as SVG_DATA } from './mana-symbol-svg.js';
+import { manaSymbolUrl } from './mana-assets.js';
 import { createContext, useContext } from "react";
 import { ComicTooltip } from "@/components/ui/comic-tooltip";
 import { splitTextWithMtgKeywordRules } from "@/lib/mtg-keywords";
 
-/**
- * Inline Scryfall mana symbol SVGs — extracted once, no external fetches.
- * Each entry stores the viewBox and inner SVG markup for dangerouslySetInnerHTML.
- */
-
-
-
-// For numbers > 10 and other unknowns, fall back to a simple circle with text
+// Preserve unsupported symbols and arbitrary generic costs as readable text.
 function fallbackCircle(label, size) {
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" style={{ display: "inline-block", verticalAlign: "-0.15em" }}>
@@ -24,30 +17,6 @@ function fallbackCircle(label, size) {
         fontWeight="bold" fontFamily="serif">{ui(label)}</text>
     </svg>
   );
-}
-
-// Scryfall CDN symbol URL: {W/U} → "WU", {2/W} → "2W", {W/P} → "WP"
-function scryfallSymbolUrl(code) {
-  return `https://svgs.scryfall.io/card-symbols/${code}.svg`;
-}
-
-function scryfallImg(code, size) {
-  return (
-    <img
-      src={scryfallSymbolUrl(code)}
-      alt=""
-      aria-hidden="true"
-      width={size}
-      height={size}
-      style={{ display: "inline-block", verticalAlign: "-0.15em", borderRadius: "50%" }}
-      loading="lazy"
-      referrerPolicy="no-referrer"
-    />
-  );
-}
-
-function symbolGraphicStyle() {
-  return { display: "inline-block", verticalAlign: "-0.15em" };
 }
 
 function wrapSymbolWithTooltip(sym, rendered, ui) {
@@ -191,36 +160,18 @@ export function ManaSymbol({ sym, size = 14 }) {
   if (!sym) return null;
   const key = sym.toUpperCase();
 
-  // Check for exact match in SVG_DATA
-  const data = SVG_DATA[key];
-  if (data) {
-    return withTooltip((
-      <svg
-        width={size}
-        height={size}
-        viewBox={data.vb}
-        style={symbolGraphicStyle()}
-        aria-hidden="true"
-        dangerouslySetInnerHTML={{ __html: data.html }}
-      />
-    ));
+  // Some localized printings group consecutive mana in one pair of braces
+  // (e.g. Spanish Pyretic Ritual's {RRR}). Each letter is a separate symbol.
+  // Only expand plain mana letters; hybrid, Phyrexian and numeric codes stay whole.
+  if (/^[WUBRGC]{2,}$/.test(key)) {
+    return <>{[...key].map((code, index) => <ManaSymbol key={index} sym={code} size={size} />)}</>;
   }
 
-  // Generic mana numbers (11+)
-  if (/^\d+$/.test(key)) return withTooltip(fallbackCircle(key, size));
-
-  // Y, Z variables
-  if (/^[YZ]$/.test(key)) return withTooltip(fallbackCircle(key, size));
-
-  // Hybrid: W/U, U/B, 2/W, etc. → Scryfall CDN
-  const hybridMatch = key.match(/^([WUBRGC2])\/([WUBRG])$/);
-  if (hybridMatch) {
-    return withTooltip(scryfallImg(`${hybridMatch[1]}${hybridMatch[2]}`, size));
+  const source = manaSymbolUrl(key);
+  if (source) {
+    return withTooltip(<img src={source} alt="" aria-hidden="true" width={size} height={size}
+      style={{ display: "inline-block", verticalAlign: "-0.15em" }} />);
   }
-
-  // Phyrexian: W/P, U/P, etc. → Scryfall CDN
-  const phyMatch = key.match(/^([WUBRG])\/P$/);
-  if (phyMatch) return withTooltip(scryfallImg(`${phyMatch[1]}P`, size));
 
   // Fallback
   return withTooltip(fallbackCircle(sym, size));

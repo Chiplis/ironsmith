@@ -102,11 +102,15 @@ fn returned_aura_modifications(options: &ReturnAsAuraOptions) -> Vec<Modificatio
             CardType::Planeswalker,
         ]),
         Modification::AddSubtypes(vec![Subtype::Aura]),
-        Modification::SetAuraAttachmentFilter(options.attachment_filter.clone().into()),
     ];
     if options.remove_all_abilities {
         modifications.push(Modification::RemoveAllAbilities);
     }
+    // The returned Aura loses its previous abilities, then gains the enchant
+    // ability specified by this effect. Both are ability-layer operations.
+    modifications.push(Modification::SetAuraAttachmentFilter(
+        options.attachment_filter.clone().into(),
+    ));
 
     modifications
 }

@@ -29,6 +29,11 @@
         return String::new();
     }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        let members: Vec<&Effect> = sequence.effects.iter().collect();
+        if let Some(text) = describe_single_hand_reveal_setup(&members)
+            .or_else(|| describe_random_hand_look_setup(&members)) {
+            return text;
+        }
         if let Some(text) = effect_lists::describe_coordinated_keyword_grants(&sequence.effects) {
             return text;
         }
@@ -6095,6 +6100,9 @@
     if let Some(exchange_text_boxes) =
         effect.downcast_ref::<crate::effects::ExchangeTextBoxesEffect>()
     {
+        if exchange_text_boxes.include_source {
+            return format!("Exchange this creature's text box and {}'s", describe_choose_spec(&exchange_text_boxes.target));
+        }
         return format!(
             "Exchange the text boxes of {}",
             describe_choose_spec(&exchange_text_boxes.target)

@@ -14,6 +14,8 @@ use crate::replacement::ReplacementEffect;
 use crate::zone::Zone;
 
 mod battlefield_entry;
+mod become_plotted;
+pub use become_plotted::BecomePlottedEffect;
 mod destroy;
 mod destroy_no_regen;
 mod exchange_zones;

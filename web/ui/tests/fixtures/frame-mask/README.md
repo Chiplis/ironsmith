@@ -4,12 +4,19 @@ Run from `web/ui`:
 
 ```sh
 node --test tests/card-frame-font-mask.test.js tests/card-frame-source.test.js tests/card-frame-mask-corpus.browser.test.js
+node --test tests/card-frame-mixed-ink.browser.test.js
 ```
 
 The browser test runs offline against small, original text-region crops. `corpus.js`
 records the Scryfall printing ID, language, frame version, and mask parameters.
 The PNGs retain the scan's pixels, including connected lettering and frame edges.
 Do not replace them with already-cleaned images.
+
+`arnjlot-normal.jpg` and `arnjlot-art.jpg` are the normal and art-crop scans of
+Scryfall printing `2307fb16-8b77-45b5-8a02-51a13214791d` (Ice Age, English).
+The mixed-ink test checks white shadowed name/type lettering independently of
+black rules, both scan and registered-field sampling, and removal of the full
+labels including their initial letters.
 
 Coverage includes Yawgmoth in Spanish and English, Brineborn Cutthroat in Spanish,
 JPEG compression, and rendered classic white-on-gold, modern gold, and silver

@@ -33,10 +33,11 @@ impl EffectExecutor for RevealTopEffect {
         )?;
 
         let count = result.exposed_object_ids.len() as i32;
-        if let Some(tag) = &self.tag
-            && !result.exposed_snapshots.is_empty()
-        {
-            ctx.tag_objects_unique(tag.clone(), result.exposed_snapshots.clone());
+        if let Some(tag) = &self.tag {
+            // This reference names the card revealed by this execution, not
+            // the first card of an earlier iteration. Also clear it when the
+            // library is empty so follow-up effects cannot reuse a stale card.
+            ctx.set_tagged_objects(tag.clone(), result.exposed_snapshots.clone());
         }
         if !result.exposed_snapshots.is_empty() {
             ctx.tag_objects(

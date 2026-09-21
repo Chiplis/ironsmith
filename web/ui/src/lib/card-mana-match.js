@@ -1,33 +1,14 @@
-import {MANA_SYMBOL_SVGS} from './mana-symbol-svg.js';
-const templates=new Map();
-// Match the same symbol artwork as the visible renderer. Hybrid/Phyrexian
-// costs are not in the small embedded SVG table, but still need mask templates.
-export function manaTemplateSource(key) {
-  const svg=MANA_SYMBOL_SVGS[key];
-  if(svg)return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${svg.vb}" width="48" height="48">${svg.html}</svg>`)}`;
-  if (/^(?:[WUBRG]\/P|[WUBRGC2]\/[WUBRG]|[WUBRG]\/[WUBRG]\/P)$/.test(key)) {
-    return `https://svgs.scryfall.io/card-symbols/${key.replaceAll('/', '')}.svg`;
-  }
-  return null;
-}
-// The rules text renders the same CDN symbols as plain <img> elements, whose
-// requests carry no Origin header, so the CDN answers them without CORS
-// headers. Chromium then reuses that cached response for a CORS request to the
-// same URL and the template fails to load, exactly for the symbols the card
-// displays. A distinct URL keeps the template out of that cache entry, and a
-// blob URL is same-origin for the canvas.
+import { manaSymbolUrl } from './mana-assets.js';
+const templates = new Map();
+export const manaTemplateSource = manaSymbolUrl;
 async function loadTemplateImage(source) {
-  let url=source,revoke=null;
-  if(!source.startsWith('data:')) {
-    const response=await fetch(`${source}${source.includes('?')?'&':'?'}template`,{mode:'cors',referrerPolicy:'no-referrer'});
-    if(!response.ok)throw new Error(`Mana symbol unavailable: ${response.status}`);
-    url=URL.createObjectURL(await response.blob());revoke=url;
-  }
-  try {
-    const image=new Image();
-    await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(new Error('Mana symbol failed to load'));image.src=url;});
-    return image;
-  } finally {if(revoke)URL.revokeObjectURL(revoke);}
+  const image = new Image();
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = () => reject(new Error('Mana symbol failed to load'));
+    image.src = source;
+  });
+  return image;
 }
 export async function manaTemplates(cost) {
   const keys=[...String(cost||'').matchAll(/\{([^}]+)\}/g)].map(m=>m[1].toUpperCase());

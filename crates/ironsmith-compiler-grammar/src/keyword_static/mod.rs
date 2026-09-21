@@ -468,6 +468,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_prevent_half_damage_replacement_line" => vec![StaticAbilityLineHeadHint::Single("if")],
         "parse_if_you_would_draw_instead_effects_line" => vec![StaticAbilityLineHeadHint::Single("if")],
         "parse_activate_abilities_as_though_haste_line" => vec![StaticAbilityLineHeadHint::Single("you")],
+        "parse_loyalty_abilities_any_time_line" => vec![StaticAbilityLineHeadHint::Single("you"), StaticAbilityLineHeadHint::Single("as")],
         "parse_play_from_top_pay_life_line" => vec![StaticAbilityLineHeadHint::Single("you")],
         "parse_double_counters_replacement_line" => vec![StaticAbilityLineHeadHint::Single("if")],
         "parse_players_skip_extra_turns_line" => vec![
@@ -490,6 +491,10 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_attached_all_creatures_able_to_block_line" => vec![
             StaticAbilityLineHeadHint::Single("all"),
             StaticAbilityLineHeadHint::Pair("all", "creatures"),
+        ],
+        "parse_attached_type_transform_line" => vec![
+            StaticAbilityLineHeadHint::Single("enchanted"),
+            StaticAbilityLineHeadHint::Single("equipped"),
         ],
         "parse_attached_cant_attack_or_block_line" => vec![
             StaticAbilityLineHeadHint::Single("enchanted"),
@@ -1289,6 +1294,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_if_opponent_would_draw_redirect_line),
         single_static_ability_ast_rule!(parse_if_you_would_draw_instead_effects_line),
         single_static_ability_ast_rule!(parse_activate_abilities_as_though_haste_line),
+        single_static_ability_ast_rule!(parse_loyalty_abilities_any_time_line),
         single_static_ability_ast_rule!(parse_draw_replacement_double_line),
         single_static_ability_ast_rule!(parse_draw_replacement_skip_empty_library_line),
         single_static_ability_ast_rule!(parse_exile_to_exile_instead_of_graveyard_line),
@@ -2157,6 +2163,15 @@ mod conditional_flash_permission_tests {
         parse_static_ability_ast_line_lexed(&tokens)
             .expect("line should parse")
             .expect("line should be claimed")
+    }
+
+    #[test]
+    fn target_dependent_flash_retains_a_structured_object_filter() {
+        let parsed = parse_line("You may cast this spell as though it had flash if it targets a permanent you control.");
+        let [StaticAbilityAst::Static(ability)] = parsed.as_slice() else { panic!("{parsed:#?}"); };
+        let ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(filter) = &ability.payload else { panic!("{ability:#?}"); };
+        assert_eq!(filter.zone, Some(crate::zone::Zone::Battlefield));
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
     }
 
     #[test]

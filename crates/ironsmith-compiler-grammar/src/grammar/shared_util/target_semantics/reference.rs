@@ -325,10 +325,14 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         ));
     }
     if let Some(enchanted) = parse_enchanted_object_target_kind(&remaining_words) {
-        if enchanted == EnchantedObjectTargetKind::Creature {
+        if matches!(enchanted, EnchantedObjectTargetKind::Creature | EnchantedObjectTargetKind::CreatureCard) {
             let mut filter =
                 ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Enchanted.bind());
             filter.card_types.push(CardType::Creature);
+            if enchanted == EnchantedObjectTargetKind::CreatureCard {
+                filter.set_explicit_card_noun(true);
+                filter.set_explicit_card_type_noun(Some(CardType::Creature));
+            }
             return Ok(wrap_target_count(
                 TargetAst::Object(filter, None, span),
                 target_count,
@@ -1010,6 +1014,14 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     let reference_span =
         if let Some(surface) = typed_demonstrative_reference_surface(remaining) {
             let words = TokenWordView::new(remaining).to_word_refs();
+            // A bare demonstrative identifies the previous object even when
+            // its characteristics change before this instruction resolves.
+            // Keep qualified descriptions as filters, but do not turn the
+            // noun in "that creature" into a fresh type requirement.
+            if words.len() == 2 && crate::util::parse_card_type(words[1]).is_some() {
+                filter.card_types.clear();
+                filter.zone = None;
+            }
             // A bare reference such as "that creature card" identifies the
             // earlier card in its own zone. The creature noun must not add
             // an implicit battlefield constraint to a hand/graveyard card.

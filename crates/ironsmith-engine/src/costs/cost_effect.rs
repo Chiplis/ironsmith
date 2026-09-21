@@ -412,10 +412,19 @@ impl CostPayer for CostEffect {
             .with_cost_choice_targets(chosen_targets)
             .with_provenance(ctx.provenance);
         exec_ctx.effect_outcomes = ctx.effect_outcomes.clone();
-        exec_ctx.announced_targets = Some(ctx.announced_targets.iter().map(|target| match target {
-            crate::game_state::Target::Object(id) => crate::effects::ResolvedTarget::Object(*id),
-            crate::game_state::Target::Player(player) => crate::effects::ResolvedTarget::Player(*player),
-        }).collect());
+        exec_ctx.announced_targets = Some(
+            ctx.announced_targets
+                .iter()
+                .map(|target| match target {
+                    crate::game_state::Target::Object(id) => {
+                        crate::effects::ResolvedTarget::Object(*id)
+                    }
+                    crate::game_state::Target::Player(player) => {
+                        crate::effects::ResolvedTarget::Player(*player)
+                    }
+                })
+                .collect(),
+        );
         if let Some(x) = ctx.x_value {
             exec_ctx = exec_ctx.with_x(x);
         }
@@ -465,8 +474,13 @@ impl CostPayer for CostEffect {
 
         // Preserve an explicitly completed zero-object choice. Later cost steps
         // must distinguish it from a missing (never paid) selection.
-        if let Some(choose) = transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::ChooseObjectsEffect>() {
-            exec_ctx.tagged_objects.entry(choose.tag.clone()).or_default();
+        if let Some(choose) = transparent_cost_effect(&self.effect)
+            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        {
+            exec_ctx
+                .tagged_objects
+                .entry(choose.tag.clone())
+                .or_default();
         }
 
         // Copy any new tags back to CostContext for subsequent costs
@@ -698,11 +712,7 @@ impl CostPayer for CostEffect {
             }
             return CostProcessingMode::DiscardCards {
                 count: count.max(0) as u32,
-                card_types: effect
-                    .card_filter
-                    .as_ref()
-                    .map(|filter| filter.card_types.clone())
-                    .unwrap_or_default(),
+                filter: effect.card_filter.clone().unwrap_or_default(),
             };
         }
 

@@ -1366,6 +1366,14 @@ mod reveal_hand_count_tests {
     use crate::lexer::lex_line;
 
     #[test]
+    fn hand_reveal_leaf_preserves_random_selection() {
+        let tokens = lex_line("a card at random from your hand", 0).unwrap();
+        let EffectAst::Sequence { effects } = parse_reveal(&tokens, None).unwrap() else { panic!("selection and reveal"); };
+        let EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects { count, .. }) = &effects[0] else { panic!("choice"); };
+        assert_eq!(*count, ChoiceCount::exactly(1).at_random());
+    }
+
+    #[test]
     fn hand_reveal_leaf_preserves_optional_cardinality() {
         for (text, maximum) in [
             ("any number of creature cards with power 5 or greater from your hand", None),

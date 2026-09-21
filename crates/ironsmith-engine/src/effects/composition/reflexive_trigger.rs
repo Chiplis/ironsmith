@@ -108,23 +108,14 @@ fn choose_reflexive_targets(
     for spec in choices {
         let resolved_spec = resolve_reflexive_choice_spec(game, ctx, spec)?;
         let count = resolved_spec.count();
-        let legal_targets = crate::targeting::compute_legal_targets_with_tagged_objects(
-            game,
-            &resolved_spec,
-            ctx.controller,
-            Some(ctx.source),
-            Some(&ctx.tagged_objects),
+        let legal_targets = crate::targeting::compute_legal_targets_with_execution_context(
+            game, &resolved_spec, ctx,
         );
-
         let legal_target_sets =
             crate::targeting::legal_target_sets_for_spec(game, &resolved_spec, &legal_targets);
-        let aggregate_constraint = crate::targeting::resolved_target_aggregate_constraint(
-            game,
-            &resolved_spec,
-            ctx.controller,
-            Some(ctx.source),
-            &legal_targets,
-        );
+        let aggregate_constraint = crate::targeting::resolved_target_aggregate_constraint_with_context(
+            game, &resolved_spec, ctx, &legal_targets,
+        ).ok()?;
         if !crate::targeting::has_enough_legal_targets_for_spec(
             game,
             &resolved_spec,
@@ -310,8 +301,19 @@ impl EffectExecutor for ReflexiveTriggerEffect {
         }
         let fallback_it_snapshots = reflexive_it_snapshots(game, &outcome);
 
-        let (targets, assignments) = choose_reflexive_targets(game, ctx, &self.choices)
-            .ok_or(ExecutionError::InvalidTarget)?;
+        // X chosen while paying for the antecedent belongs to this follow-up,
+        // even when the enclosing spell/ability had no X (or a different X).
+        let parent_x = ctx.x_value;
+        let reflexive_x = outcome.execution_facts().iter().rev().find_map(|fact| {
+            match fact {
+                crate::effect::ExecutionFact::ManaPaid { x_value } => Some(*x_value),
+                _ => None,
+            }
+        }).or(parent_x);
+        ctx.x_value = reflexive_x;
+        let selection = choose_reflexive_targets(game, ctx, &self.choices);
+        ctx.x_value = parent_x;
+        let (targets, assignments) = selection.ok_or(ExecutionError::InvalidTarget)?;
 
         let mut tagged_objects = ctx.tagged_objects.clone();
         let it_tag = TagKey::from("__it__");
@@ -330,7 +332,7 @@ impl EffectExecutor for ReflexiveTriggerEffect {
         entry.triggering_event = ctx.triggering_event.clone();
         entry.event_value_amount = ctx.event_value_amount;
 
-        if let Some(x) = ctx.x_value {
+        if let Some(x) = reflexive_x {
             entry = entry.with_x(x);
         }
         if let Some(defending_player) = ctx.combat.defending_player {

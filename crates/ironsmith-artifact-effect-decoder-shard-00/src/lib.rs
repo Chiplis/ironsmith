@@ -20,6 +20,7 @@ where
 
 pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, String> {
     match kind {
+        "BecomePlottedEffect" => decode_as::<ironsmith_core::BecomePlottedEffect>(payload).map(Some),
         "ClashEffect" => decode_as::<ironsmith_core::ClashEffect>(payload).map(Some),
         "ConniveEffect" => decode_as::<ironsmith_core::ConniveEffect>(payload).map(Some),
         "ConsultTopOfLibraryEffect" => {
