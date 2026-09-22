@@ -33,6 +33,10 @@ fn parses_complete_direct_cant_alternatives() {
             "Damage can't be prevented.",
             DirectCantFact::DamageCantBePrevented,
         ),
+        (
+            "Combat damage can't be prevented.",
+            DirectCantFact::CombatDamageCantBePrevented,
+        ),
         ("You can't lose the game.", DirectCantFact::YouCantLoseGame),
         (
             "Your opponents can't win the game.",

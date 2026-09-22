@@ -28,3 +28,19 @@ test("Pay survives a replacement plan and viewed search cards select legal candi
     assert.deepEqual(errors, []);
   } finally { await browser.close(); await vite.close(); }
 });
+
+
+test("starting payment customization stops optional optimization before submitting edits", async () => {
+  const vite = await createServer({server:{host:"127.0.0.1",port:0},logLevel:"silent"});
+  await vite.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({viewport:{width:1400,height:900}});
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/payment-search-regressions.html`);
+    await page.waitForFunction(() => JSON.parse(document.querySelector('[data-background]').textContent).starts === 1);
+    await page.getByRole('button', { name: 'Change sources', exact: true }).click();
+    await page.waitForFunction(() => JSON.parse(document.querySelector('[data-background]').textContent).stops === 1);
+    assert.deepEqual(JSON.parse(await page.locator('[data-commands]').textContent()), []);
+    assert.equal(JSON.parse(await page.locator('[data-background]').textContent()).starts, 1);
+  } finally { await browser.close(); await vite.close(); }
+});

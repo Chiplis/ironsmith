@@ -532,6 +532,32 @@ mod tests {
     }
 
     #[test]
+    fn generated_damage_token_keeps_amount_and_target_in_display() {
+        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Munitions",
+        )
+        .token()
+        .with_ability(Ability::triggered(
+            crate::triggers::Trigger::this_leaves_battlefield(),
+            vec![Effect::deal_damage(2, crate::target::ChooseSpec::AnyTarget)],
+        ))
+        .build();
+        let object = Object::from_card_definition(
+            ObjectId::from_raw(1),
+            &definition,
+            crate::ids::PlayerId::from_index(0),
+            crate::zone::Zone::Battlefield,
+        );
+        assert!(
+            object.compiled_card_text.contains("2 damage to any target"),
+            "token text lost its damage amount or target: {}",
+            object.compiled_card_text
+        );
+        assert!(object.ability_labels[0].contains("2 damage to any target"));
+    }
+
+    #[test]
     fn runtime_wording_never_prints_structure() {
         let activated = Ability::activated(
             crate::TotalCost::from_cost(crate::costs::Cost::remove_counters(

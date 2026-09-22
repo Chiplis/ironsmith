@@ -165,7 +165,7 @@ fn casting_requires_another_card_and_sorcery_timing() {
             let offered = compute_legal_actions(&game, alice).iter().any(
                 |a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell),
             );
-            assert_eq!(offered, other_card && active == alice);
+            assert_eq!(offered, other_card && active == alice, "other_card={other_card}, active={active:?}");
         }
     }
 }

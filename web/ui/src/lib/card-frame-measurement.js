@@ -1,12 +1,16 @@
 // DOM ranges report transformed pixels, while font metrics and CSS padding
-// use layout pixels. Measure miniatures in their canonical coordinate space;
+// use layout pixels. Measure frames in their canonical coordinate space;
 // restoring the transform synchronously keeps this invisible to the user.
 export function measureCardFrameLayout(node, measure) {
-  const composition = node.closest('.battlefield-prepared-frame__composition');
+  // Enlarged previews also scale during their opening animation. Without
+  // cancelling that scale, a font/resize refit writes a screen-space P/T
+  // baseline correction into a layout-space CSS translate, making it jump.
+  const composition = node.closest('.battlefield-prepared-frame__composition')
+    || node.closest('.interactive-card-frame-stage');
   if (!composition) return measure();
   const transform = composition.style.transform;
   try {
-    // Cancel battlefield tap/hover transforms too, without touching their
+    // Cancel ancestor tap/hover/preview transforms without touching their
     // animations. Translation does not affect local fitting coordinates.
     let ancestors = new DOMMatrix();
     for (let parent = composition.parentElement; parent; parent = parent.parentElement) {

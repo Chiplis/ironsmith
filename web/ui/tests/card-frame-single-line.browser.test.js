@@ -47,6 +47,27 @@ for(const reducedMotion of ['no-preference','reduce'])test(`name and type stay o
       return metrics.lines.map(line => line.size);
     };
     const wide = await measure();
+    // The enlarged preview animates from scale(.975) to scale(1). Font
+    // readiness and ResizeObserver can refit P/T during that animation.
+    const statsAlignment = await page.evaluate(async () => {
+      const host = document.querySelector('#panel-host');
+      const stats = document.querySelector('.interactive-card-frame__stats-text');
+      const samples = [];
+      for (const scale of [1, .975, .985, 1]) {
+        host.style.transform = `scale(${scale})`;
+        document.fonts.dispatchEvent(new Event('loadingdone'));
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const matrix = new DOMMatrix(getComputedStyle(stats).transform);
+        samples.push({x: matrix.e, y: matrix.f});
+      }
+      host.style.removeProperty('transform');
+      return samples;
+    });
+    for (const sample of statsAlignment) {
+      assert.ok(Math.abs(sample.x - statsAlignment[0].x) < .1
+        && Math.abs(sample.y - statsAlignment[0].y) < .1,
+      `P/T alignment must not drift when refitted during preview scaling: ${JSON.stringify(statsAlignment)}`);
+    }
     await page.locator('#panel-host').evaluate(el => { el.style.width = '240px'; });
     const narrow = await measure();
     narrow.forEach((size, i) => assert.ok(size < wide[i], 'both lines shrink at narrow widths'));

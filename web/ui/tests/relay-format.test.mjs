@@ -14,7 +14,7 @@ test('constructed minimum size, four copies across main and sideboard, no comman
   assert.equal(check('modern', deck('Plains'), ['Isamaru, Hound of Konda']).ready, false);
   assert.equal(normalizeMatchFormat('modern'), 'modern');
   assert.equal(evaluateLobbyDeckSubmission('modern', deck('Plains', 61)).ready, true);
-  assert.equal(evaluateLobbyDeckSubmission('normal', deck('Plains', 61)).ready, false);
+  assert.equal(evaluateLobbyDeckSubmission('normal', deck('Plains', 61)).ready, true);
 });
 test('format bans, card pool, and Vintage restriction are distinct', () => {
   assert.equal(check('modern', [...deck('Plains', 59), 'Sol Ring']).ready, false);

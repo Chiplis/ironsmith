@@ -1454,6 +1454,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::MinimumSpellTotalMana(amount) => {
                 StaticAbility::minimum_spell_total_mana(*amount)
             }
+            ironsmith_core::StaticAbilityPayload::ChooseColorAsEnters { excluded, display } => {
+                StaticAbility::choose_color_as_enters(*excluded, display.clone())
+            }
             ironsmith_core::StaticAbilityPayload::ChoosePlayerAsEnters { filter, display } => {
                 StaticAbility::choose_player_as_enters_matching(filter.clone(), display.clone())
             }
@@ -2785,6 +2788,15 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::MinimumSpellTotalMana(amount) => Some(*amount),
             _ => None,
         }
+    }
+
+    fn color_choice_as_enters(&self) -> Option<super::ChooseColorAsEntersSpec> {
+        let ironsmith_core::StaticAbilityPayload::ChooseColorAsEnters { excluded, .. } =
+            self.payload()
+        else {
+            return None;
+        };
+        Some(super::ChooseColorAsEntersSpec { excluded: *excluded })
     }
 
     fn player_choice_as_enters(&self) -> Option<super::ChoosePlayerAsEntersSpec> {

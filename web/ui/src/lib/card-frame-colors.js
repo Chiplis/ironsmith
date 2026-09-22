@@ -191,7 +191,11 @@ function scanRulesLines(ctx, box, rowGap) {
   return {x, y, scan, ink, bands: splitMergedLineBands(bands, counts)};
 }
 
-export function measureRulesFirstLine(ctx, box, text, family, { italic = false, bandIndex = 0, geometryFallback = false, rowGap = 2, source = null } = {}) {
+export function measureRulesFirstLine(ctx, box, text, family, options = {}) {
+  return measureRulesLine(ctx, box, text, family, options);
+}
+
+function measureRulesLine(ctx, box, text, family, { italic = false, bandIndex = 0, geometryFallback = false, rowGap = 2, source = null, minimumConfidence = .4 } = {}) {
   const sampled = source || scanRulesLines(ctx, box, rowGap);
   if (!sampled) return null;
   const {x, y, scan, ink, bands} = sampled;
@@ -224,7 +228,9 @@ export function measureRulesFirstLine(ctx, box, text, family, { italic = false, 
       template.font = `${italic ? "italic " : ""}400 100px ${family}`;
       const m = template.measureText(line), size = width / (m.actualBoundingBoxLeft + m.actualBoundingBoxRight) * 100;
       const expectedHeight = (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent) * size / 100;
-      if (size < 12 || size > 36 || expectedHeight < height * .8 || expectedHeight > height * 1.2) continue;
+      // Thresholding a small scan can lose a row of faint ink. Keep that
+      // quantization allowance separate from the proportional font tolerance.
+      if (size < 12 || size > 36 || expectedHeight < height * .8 - 1 || expectedHeight > height * 1.2 + 1) continue;
       template.clearRect(0, 0, width, height);
       template.save(); template.scale(size / 100, height / (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent));
       template.fillStyle = 'white'; template.fillText(line, m.actualBoundingBoxLeft, m.actualBoundingBoxAscent); template.restore();
@@ -239,7 +245,21 @@ export function measureRulesFirstLine(ctx, box, text, family, { italic = false, 
   }
   candidates.sort((a,b) => b.confidence - a.confidence);
   const best = candidates[0];
-  if(best?.confidence > .4 && (!candidates[1] || best.confidence - (candidates.find(c => c.words !== best.words)?.confidence ?? 0) > .06))return best;
+  const unambiguous = best && best.confidence - (candidates.find(c => c.words !== best.words)?.confidence ?? 0) > .06;
+  if (best?.confidence > minimumConfidence && unambiguous) return best;
+  // Scan/font differences can weaken pixel overlap even at the correct size.
+  // Before falling back to height alone, require two independently matched
+  // consecutive lines to agree on size. Flavor searches still require their
+  // usual strong match, and the confirming line cannot use a geometry fallback.
+  if (geometryFallback && bandIndex === 0 && !italic && best?.confidence > .3 && unambiguous) {
+    const remaining = words.slice(best.words).join(' ');
+    if (remaining) {
+      const following = measureRulesLine(ctx, box, remaining, family, {
+        bandIndex: 1, source: sampled, minimumConfidence: .3,
+      });
+      if (following?.confidence > .3 && Math.abs(following.size / best.size - 1) <= .03) return best;
+    }
+  }
   // Symbols, italic reminder spans and Oracle wording updates can prevent
   // an exact string match. The measured first line still supplies its size
   // and position; flavor searches must keep requiring an exact text match.
@@ -1048,23 +1068,6 @@ export async function sampleCardFramePixels({fullScan, artScan, symbolScan, icon
   style['--type-panel-kind'] = typePanel.kind;
   const measuredBoxes = JSON.parse(style['--printed-layout']);
   const statsBox = printing.power != null && printing.toughness != null ? detectPrintedStats(fullScan) : null;
-  for (const [name, box] of Object.entries({ ...measuredBoxes, stats: statsBox })) {
-    if (name === 'art' || !box) continue;
-    const inset = name === 'stats' ? -6 : 6;
-    const x = Math.max(0, Math.ceil(box.x + inset)), y = Math.max(0, Math.ceil(box.y + inset));
-    const width = Math.min(canvas.width - x, Math.floor(box.width - inset * 2));
-    const height = Math.min(canvas.height - y, Math.floor(box.height - inset * 2));
-    if (width <= 0 || height <= 0) continue;
-    const region = ctx.getImageData(x, y, width, height);
-    // A textless box (basic lands, watermark-only panels) has no glyph cluster
-    // to sample: its texture would pick an arbitrary ink. Type lettering shares
-    // the panel material, so borrow its ink instead.
-    if (name === 'rules' && !printedGlyphHeight(region) && style['--sampled-type-ink']) {
-      style['--sampled-rules-ink'] = style['--sampled-type-ink'];
-      continue;
-    }
-    style[`--sampled-${name}-ink`] = `rgb(${sectionInk(region).join(',')})`;
-  }
   let setSymbol=null;
   if(style['--printed-layout']) {
     const type=JSON.parse(style['--printed-layout']).type;
@@ -1077,6 +1080,35 @@ export async function sampleCardFramePixels({fullScan, artScan, symbolScan, icon
   if(style['--printed-layout']) {
     const box=JSON.parse(style['--printed-layout']).title;
     try {icons=preparedIcons;manaMatch=locateManaSymbols(fullScan,box,icons,future ? {vertical:true,bounds:{x:fullScan.width*.09,y:fullScan.height*.125,width:fullScan.width*.13,height:fullScan.height*.40}} : {});}catch { /* Keep font masks if no reliable SVG registration is available. */ }
+  }
+  for (const [name, box] of Object.entries({ ...measuredBoxes, stats: statsBox })) {
+    if (name === 'art' || !box) continue;
+    const inset = name === 'stats' ? -6 : 6;
+    const x = Math.max(0, Math.ceil(box.x + inset)), y = Math.max(0, Math.ceil(box.y + inset));
+    // Symbols contain pale discs and dark glyphs that can masquerade as
+    // outlined lettering. Sample only the text side of registered symbols.
+    // Vertical costs outside the title do not constrain its text region.
+    const symbols = name === 'title' ? manaMatch?.symbols || []
+      : name === 'type' && setSymbol ? [setSymbol] : [];
+    const stop = Math.min(box.x + box.width - inset, ...symbols
+      .filter(symbol => symbol.x > x && symbol.y < box.y + box.height
+        && symbol.y + symbol.height > box.y)
+      .map(symbol => symbol.x - 1));
+    const width = Math.min(canvas.width - x, Math.floor(stop - x));
+    const height = Math.min(canvas.height - y, Math.floor(box.height - inset * 2));
+    if (width <= 0 || height <= 0) continue;
+    const region = ctx.getImageData(x, y, width, height);
+    // A textless box (basic lands, watermark-only panels) has no glyph cluster
+    // to sample: its texture would pick an arbitrary ink. Type lettering shares
+    // the panel material, so borrow its ink instead.
+    if (name === 'rules' && !printedGlyphHeight(region) && style['--sampled-type-ink']) {
+      style['--sampled-rules-ink'] = style['--sampled-type-ink'];
+      continue;
+    }
+    style[`--sampled-${name}-ink`] = `rgb(${sectionInk(region).join(',')})`;
+  }
+  if(style['--printed-layout']) {
+    const box=measuredBoxes.title;
     // Unregistered mana may live outside the title (for example future frames).
     // Never move it to a conventional title slot or leave a duplicate behind.
     if (printing.mana_cost && !manaMatch) return fallback('mana-registration');

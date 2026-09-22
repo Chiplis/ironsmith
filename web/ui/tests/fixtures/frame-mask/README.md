@@ -31,3 +31,9 @@ mask now removes the complete line.
 The test writes `test-results/frame-mask/corpus.png` for visual inspection.
 These tests cover representative cases, not every possible printing. Add new
 scan crops when a failure reveals a new layout, font, or image-quality condition.
+
+`bounding-krasis-normal.jpg` and `bounding-krasis-art.jpg` are the normal and
+art-crop scans of Scryfall printing `0feca3b2-e822-4772-a644-782789f938cb`
+(Magic Origins 212, English), image version `1782745490`. The ink-symbols browser
+regression checks that pale mana discs cannot turn the black title white.
+Run it with `node --test tests/card-frame-ink-symbols.browser.test.js`.

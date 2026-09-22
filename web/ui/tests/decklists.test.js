@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   MATCH_FORMAT_PLANECHASE,
   evaluateLobbyDeckSubmission,
+  isLobbyDeckReady,
   parseDeckList,
   parseSideboardList,
   readDefaultLobbyDeck,
@@ -12,6 +13,34 @@ import {
   saveDefaultLobbyDeck,
   SAVED_DECK_PRESETS_LIMIT,
 } from "../src/lib/decklists.js";
+
+test("non-Commander lobbies accept at least 60 main-deck cards", () => {
+  const planes = Array.from({ length: 10 }, (_, index) => `Plane ${index}`);
+  for (const count of [0, 59, 60, 61, 80, 250]) {
+    const deck = parseDeckList(`${count} Island\nSideboard\n15 Forest`);
+    assert.equal(deck.length, count);
+    assert.equal(isLobbyDeckReady(deck), count >= 60);
+    for (const format of ["normal", "planechase", "standard", "pioneer", "modern", "legacy", "vintage", "pauper"]) {
+      assert.equal(
+        evaluateLobbyDeckSubmission(format, deck, format === "planechase" ? planes : []).ready,
+        count >= 60,
+        `${format}: ${count} cards`,
+      );
+    }
+  }
+});
+
+test("Commander still requires exactly 100 cards including commanders", () => {
+  for (const commanders of [["Commander"], ["Partner A", "Partner B"]]) {
+    const required = 100 - commanders.length;
+    for (const count of [required - 1, required, required + 1]) {
+      assert.equal(
+        evaluateLobbyDeckSubmission("commander", Array(count).fill("Island"), commanders).ready,
+        count === required,
+      );
+    }
+  }
+});
 
 test("Planechase lobby submissions require a normal deck and ten unique planar cards", () => {
   const mainDeck = Array.from({ length: 60 }, (_, index) => `Main ${index}`);

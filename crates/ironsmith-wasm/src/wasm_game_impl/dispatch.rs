@@ -685,6 +685,7 @@ impl WasmGame {
             runtime_savepoints: HashMap::new(),
             next_runtime_savepoint: 0,
             priority_analysis_job: None,
+            payment_analysis_job: None,
             inspector_analysis_job: None,
             last_analysis_slice_nodes: 0,
             pending_decision: None,

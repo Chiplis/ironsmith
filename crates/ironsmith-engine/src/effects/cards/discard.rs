@@ -413,19 +413,29 @@ impl EffectExecutor for DiscardEffect {
         for (batch_index, (card_id, pre_discard_snapshot, final_zone)) in
             successful_discards.into_iter().enumerate()
         {
+            // Each observation needs its own identity: turn history stages
+            // events by provenance before the trigger queue processes them.
+            let discard_provenance = game.alloc_child_event_provenance(
+                ctx.provenance,
+                crate::events::EventKind::Discard,
+            );
             discard_events.push(crate::triggers::TriggerEvent::new_with_provenance(
                 DiscardEvent::with_cause(card_id, player_id, cause.clone())
                     .with_destination(final_zone),
-                ctx.provenance,
+                discard_provenance,
             ));
             let mut event = CardDiscardedEvent::with_cause(player_id, card_id, cause.clone())
                 .with_batch(batch_cards.clone(), batch_snapshots.clone(), batch_index);
             if let Some(snapshot) = pre_discard_snapshot {
                 event = event.with_snapshot(snapshot);
             }
+            let discarded_provenance = game.alloc_child_event_provenance(
+                ctx.provenance,
+                crate::events::EventKind::CardDiscarded,
+            );
             discard_events.push(crate::triggers::TriggerEvent::new_with_provenance(
                 event,
-                ctx.provenance,
+                discarded_provenance,
             ));
         }
 
@@ -489,6 +499,18 @@ impl CostExecutableEffect for DiscardEffect {
         source: crate::ids::ObjectId,
         controller: crate::ids::PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
+        CostExecutableEffect::can_execute_as_cost_with_reason(
+            self, game, source, controller, crate::costs::PaymentReason::Other,
+        )
+    }
+
+    fn can_execute_as_cost_with_reason(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+        reason: crate::costs::PaymentReason,
+    ) -> Result<(), crate::effects::CostValidationError> {
         use crate::effects::CostValidationError;
 
         if !matches!(self.player, PlayerFilter::You | PlayerFilter::Specific(_)) {
@@ -519,6 +541,13 @@ impl CostExecutableEffect for DiscardEffect {
             .player(player_id)
             .map(|p| p.hand.to_vec())
             .unwrap_or_default();
+
+        // Casting moves the source to the stack before costs are paid. During
+        // action discovery it may still be in hand, but cannot pay for itself.
+        // Other costs (such as cycling) may explicitly discard their source.
+        if reason == crate::costs::PaymentReason::CastSpell {
+            hand_cards.retain(|card_id| *card_id != source);
+        }
 
         if let Some(filter) = &self.card_filter {
             let filter_ctx = crate::filter::FilterContext::new(controller).with_source(source);
@@ -582,6 +611,30 @@ mod tests {
             .build();
         game.add_object(Object::from_card(id, &card, owner, Zone::Hand));
         id
+    }
+
+    #[test]
+    fn wrapped_discard_cost_preserves_payment_reason_and_excludes_cast_source() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = add_card_to_hand(&mut game, "Source", alice);
+        let effect = crate::effect::Effect::new(crate::effects::WithIdEffect::new(
+            crate::effect::EffectId(0),
+            crate::effect::Effect::new(DiscardEffect::you(1)),
+        ));
+        assert!(matches!(
+            effect.0.can_execute_as_cost_with_reason(
+                &game, source, alice, crate::costs::PaymentReason::CastSpell,
+            ),
+            Err(crate::effects::CostValidationError::NotEnoughCards)
+        ));
+        assert!(effect.0.can_execute_as_cost_with_reason(
+            &game, source, alice, crate::costs::PaymentReason::Other,
+        ).is_ok(), "noncasting costs can discard their source");
+        add_card_to_hand(&mut game, "Other card", alice);
+        assert!(effect.0.can_execute_as_cost_with_reason(
+            &game, source, alice, crate::costs::PaymentReason::CastSpell,
+        ).is_ok());
     }
 
     #[test]

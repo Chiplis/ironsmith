@@ -4,6 +4,7 @@ import { GameContext } from "../src/context/GameContext.shared";
 import { HoverProvider } from "../src/context/HoverContext";
 import { I18nProvider } from "../src/i18n/I18nContext";
 import StackTimelineRail from "../src/components/right-rail/StackTimelineRail";
+import MobileStackRail from "../src/components/board/mobile/MobileStackRail";
 import "../src/index.css";
 const spell = {id: 1, name: "Counterspell", controller: 0, ability_kind: null, text: "Counter target spell."};
 const trigger = {id: 2, name: "Ivy, Gleeful Spellthief", controller: 0, ability_kind: "Triggered", text: "Copy that spell."};
@@ -17,7 +18,9 @@ const show = (stack, resolving = null) => {
   root.render(<I18nProvider><GameContext.Provider value={{state}}><HoverProvider>
     <div data-my-zone style={{position: "relative", margin: 30}}>
       <div className="my-zone-board-shell" style={{position: "relative", height: 520, width: 900}}>
-        <div className="my-zone-stack-rail"><StackTimelineRail inlineFlow /></div>
+        <div className="my-zone-stack-rail">{new URLSearchParams(location.search).has("mobile")
+          ? <MobileStackRail objects={stack} />
+          : <StackTimelineRail inlineFlow />}</div>
       </div>
     </div>
   </HoverProvider></GameContext.Provider></I18nProvider>);

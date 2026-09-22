@@ -291,19 +291,78 @@ fn cast_from_selected_hand(
     }))
 }
 
+/// Bind "from it" to the hand established by the preceding look/reveal.
+/// Keep ordinary exile parsing responsible for counts, qualifiers and duration.
+fn exile_from_shown_hand(sentence: &SentenceInput, owner: PlayerFilter) -> Option<EffectAst> {
+    let words = crate::lexer::parser_token_word_refs(sentence.lowered());
+    if !words.windows(2).any(|pair| pair == ["from", "it"]) {
+        return None;
+    }
+    let mut effects = super::parse_effect_sentence_lexed(sentence.lowered()).ok()?;
+    let [effect] = effects.as_mut_slice() else {
+        return None;
+    };
+    fn bind(effect: &mut EffectAst, owner: &PlayerFilter) -> Option<()> {
+        match effect {
+            EffectAst::Permissions(PermissionEffectAst::May { effects })
+            | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => {
+                let [effect] = effects.as_mut_slice() else {
+                    return None;
+                };
+                bind(effect, owner)
+            }
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::ZoneMoves(
+                        crate::cards::builders::ZoneMoveActionAst::Exile { target, .. }
+                        | crate::cards::builders::ZoneMoveActionAst::ExileUntilSourceLeaves {
+                            target,
+                            ..
+                        },
+                    ),
+                ..
+            }) => {
+                fn filter(target: &mut TargetAst) -> Option<&mut ObjectFilter> {
+                    match target {
+                        TargetAst::Object(filter, ..) => Some(filter),
+                        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
+                            filter(inner)
+                        }
+                        _ => None,
+                    }
+                }
+                let filter = filter(target)?;
+                if filter.zone.is_some() || filter.owner.is_some() || filter.controller.is_some() {
+                    return None;
+                }
+                filter.zone = Some(Zone::Hand);
+                filter.owner = Some(owner.clone());
+                Some(())
+            }
+            _ => None,
+        }
+    }
+    bind(effect, &owner)?;
+    Some(effects.remove(0))
+}
+
 /// The statement a sentence makes over the shown hand, if any.
 fn statement(shown: &Shown, sentence: &SentenceInput) -> Option<EffectAst> {
     match shown {
         Shown::Selected(tag) => cast_from_selected_hand(tag, sentence),
-        Shown::Looked(_) => may_cast_spell_from_among(sentence),
+        Shown::Looked(owner) => exile_from_shown_hand(sentence, owner.clone())
+            .or_else(|| may_cast_spell_from_among(sentence)),
         Shown::Revealed(player) => {
             let revealed = match player {
                 PlayerAst::Target => PlayerFilter::Any,
                 _ => PlayerFilter::Opponent,
             };
-            (*player == PlayerAst::TargetOpponent)
-                .then(|| choose_from_it_or_graveyard(sentence))
-                .flatten()
+            exile_from_shown_hand(sentence, PlayerFilter::Target(Box::new(revealed.clone())))
+                .or_else(|| {
+                    (*player == PlayerAst::TargetOpponent)
+                        .then(|| choose_from_it_or_graveyard(sentence))
+                        .flatten()
+                })
                 .or_else(|| {
                     (*player == PlayerAst::TargetOpponent)
                         .then(|| may_cast_instant_or_sorcery_from_among(sentence))

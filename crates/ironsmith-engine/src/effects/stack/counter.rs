@@ -21,6 +21,16 @@ fn counter_one_stack_object(
         return EffectOutcome::protected();
     }
 
+    // Abilities use their source's object ID but are independent stack entries.
+    // A source's spell protection and zone-change replacements do not apply
+    // when removing an ability from the stack.
+    if let Some(index) = game.stack.iter().position(|entry| entry.object_id == target_id)
+        && game.stack[index].is_ability
+    {
+        game.stack.remove(index);
+        return EffectOutcome::resolved();
+    }
+
     // Check if the spell can't be countered
     if let Some(obj) = game.object(target_id) {
         let abilities = game

@@ -7,7 +7,16 @@ import {
   stackEntryTargetObjectIds,
   stackInspectObjectId,
   stackSelectionKeys,
+  stackEntryRenderKeys,
 } from "../src/lib/stack-targets.js";
+
+test("stack render keys distinguish shared ids and survive top pushes and pops", () => {
+  const entries = [{ id: 3 }, { id: 3 }, { id: 1 }];
+  const keys = stackEntryRenderKeys(entries);
+  assert.equal(new Set(keys).size, entries.length);
+  assert.deepEqual(stackEntryRenderKeys(entries.slice(1)), keys.slice(1));
+  assert.deepEqual(stackEntryRenderKeys([{ id: 3 }, ...entries]).slice(1), keys);
+});
 
 test("stack inspector id prefers the linked card object", () => {
   const stackEntry = {

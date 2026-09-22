@@ -2855,6 +2855,26 @@ mod mixed_flashback_cost_tests {
     use super::*;
 
     #[test]
+    fn flashback_keeps_mana_and_filtered_dynamic_exile_payment() {
+        let tokens = lex_line("Flashback—{1}{U}, Exile X blue cards from your graveyard.", 0)
+            .unwrap();
+        let method = parse_flashback_line(&tokens).unwrap().unwrap();
+        let AlternativeCastingMethod::Flashback { total_cost } = method else {
+            panic!("expected flashback");
+        };
+        assert_eq!(total_cost.mana_cost().unwrap().to_oracle(), "{1}{U}");
+        let costs: Vec<_> = total_cost.non_mana_costs().collect();
+        assert_eq!(costs.len(), 1);
+        let crate::model::CompilerCost::ExileChosen { count, filter, .. } = costs[0] else {
+            panic!("expected structured chosen exile: {costs:#?}");
+        };
+        assert!(count.dynamic_x && !count.up_to_x);
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.colors, Some(crate::color::ColorSet::BLUE));
+    }
+
+    #[test]
     fn flashback_keeps_leading_mana_and_dynamic_discard_payment() {
         let tokens = lex_line("Flashback—{R}{R}, Discard X cards.", 0)
             .expect("mixed flashback cost should lex");

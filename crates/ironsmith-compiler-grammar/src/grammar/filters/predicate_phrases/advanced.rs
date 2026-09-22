@@ -3279,7 +3279,10 @@ pub(super) fn parse_additional_cost_object_state_predicate(
         if !surface::exact_any(subject, &[&["discarded", "card"]]) { continue; }
         let Some(descriptor) = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause) else { continue; };
         if descriptor.tokens().is_empty() { continue; }
-        let filter = parse_object_filter(descriptor.tokens(), false)?;
+        let mut filter = parse_object_filter(descriptor.tokens(), false)?;
+        // This describes the paid card's characteristics, not a battlefield
+        // selection. The discard snapshot must remain usable after it moves.
+        filter.zone = None;
         let predicate = PredicateAst::TaggedMatches(crate::tag::CompilerReferenceTag::DiscardedCost.bind(), filter);
         return Ok(Some(if negated { PredicateAst::Not(Box::new(predicate)) } else { predicate }));
     }

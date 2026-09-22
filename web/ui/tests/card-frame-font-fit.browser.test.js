@@ -2,6 +2,54 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 import {createServer} from 'vite';
+
+test('faint printed lines require a second line at the same size before replacing the height fallback', async () => {
+  const vite = await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
+  await vite.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-frame-font-fit.html`);
+    const result = await page.evaluate(async () => {
+      await import('/src/styles/card-typography.css');
+      await document.fonts.load('400 100px MPlantin');
+      await document.fonts.load('italic 400 100px MPlantin');
+      const {detectPanelBounds, measureRulesFirstLine, measureFlavorFirstLine} = await import('/src/lib/card-frame-colors.js');
+      const image = new Image();
+      image.src = '/tests/fixtures/font-fit/weapons-manufacturing-eoe-168.jpg';
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = image.width; canvas.height = image.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(image, 0, 0);
+      const box = detectPanelBounds(ctx.getImageData(0, 0, canvas.width, canvas.height), 'rules');
+      const text = 'Whenever a nontoken artifact you control enters, create a colorless artifact token named Munitions with "When this token leaves the battlefield, it deals 2 damage to any target."';
+      const measure = () => measureRulesFirstLine(ctx, box, text, 'MPlantin', {geometryFallback:true});
+      const rules = measure();
+      const strict = measureRulesFirstLine(ctx, box, text, 'MPlantin');
+      const flavor = measureFlavorFirstLine(ctx, box, '"Soon we\'ll have enough firepower to rid Evendo of its bug infestation."\n—General Tekvu, Kavaron Memorial Navy', 'MPlantin');
+      // Preserve the first line but remove all possible corroborating lines.
+      ctx.fillStyle = 'white';
+      ctx.fillRect(box.x, 453, box.width, box.y + box.height - 453);
+      const isolated = measure();
+      // The same continuation at a different size is not corroboration.
+      ctx.drawImage(image, 43, 455, 342, 14, 43, 455, 280, 14);
+      const mismatched = measure();
+      return {rules, strict, flavor, isolated, mismatched};
+    });
+    assert.equal(result.rules?.line, 'Whenever a nontoken artifact you control');
+    assert.ok(Math.abs(result.rules.size - 20.61) < .2, JSON.stringify(result));
+    assert.ok(result.rules.confidence > .3 && result.rules.confidence < .4,
+      'this printing must exercise corroboration rather than a strong single-line match');
+    assert.equal(result.strict, null, 'uncorroborated searches retain the stronger confidence threshold');
+    assert.ok(Math.abs(result.flavor?.size - 20.77) < .2, JSON.stringify(result));
+    for (const measurement of [result.isolated, result.mismatched]) {
+      assert.equal(measurement?.confidence, undefined, 'unconfirmed candidates must use the geometry fallback');
+      assert.ok(Math.abs(measurement.size - 16.84) < .2, JSON.stringify(measurement));
+    }
+  } finally { await browser.close(); await vite.close(); }
+});
+
 test('short text keeps its size, spacing shrinks first, and long text has a readable floor',async()=>{
   const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
   await vite.listen();const browser=await chromium.launch();

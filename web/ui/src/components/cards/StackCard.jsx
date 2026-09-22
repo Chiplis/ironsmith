@@ -7,7 +7,6 @@ import { resolveStackInspectObjectId } from "@/lib/inspector-selection";
 import { samePlayerId } from "@/lib/player-display";
 import { stackEntryAimedObjectIds, stackEntryIsLegalTarget, stackEntryTargetObjectIds } from "@/lib/stack-targets";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
-import PlayerStackAlert from "@/components/board/PlayerStackAlert";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
 import { getPlayerAccent, playerAccentVars } from "@/lib/player-colors";
@@ -40,7 +39,6 @@ export default function StackCard({
   isNew = false,
   isActive = false,
   isLeaving = false,
-  showStackAlert = false,
   className = "",
   onClick,
   reorderControls = null,
@@ -250,10 +248,6 @@ export default function StackCard({
         )}
         <div className="stack-card-compact-scrim" aria-hidden="true" />
         <span className="stack-card-accent" aria-hidden="true" />
-        <PlayerStackAlert
-          visible={showStackAlert}
-          className="absolute right-1 top-1 z-[3]"
-        />
         <div className="stack-card-compact-name">{name}</div>
       </div>
     );
@@ -313,7 +307,6 @@ export default function StackCard({
               </span>
             )}
             {pt && <span className="stack-card-pt">{pt}</span>}
-            <PlayerStackAlert visible={showStackAlert} className="stack-card-alert" />
           </div>
           <div className="stack-card-sub">
             <span className="stack-card-kind">

@@ -2,6 +2,21 @@ import { getPlayerAccent } from "./player-colors.js";
 
 const PILE_ZONES = ["graveyard", "exile"];
 
+// Ability snapshot ids can be shared by triggers from the same event or by
+// copies. React keys must identify occurrences, not just those snapshot ids.
+// Count from the bottom so pushing/popping the top preserves the keys below it.
+export function stackEntryRenderKeys(entries) {
+  const occurrences = new Map();
+  const keys = new Array(entries.length);
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const id = String(entries[index].id);
+    const occurrence = occurrences.get(id) || 0;
+    keys[index] = `${id}:${occurrence}`;
+    occurrences.set(id, occurrence + 1);
+  }
+  return keys;
+}
+
 export const STACK_TARGET_ZONE_ORDER = [
   "battlefield",
   "hand",

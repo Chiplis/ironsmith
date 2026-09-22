@@ -117,12 +117,16 @@ pub fn plan_first_mana_payment(
     game: &GameState,
     request: &ManaPaymentRequest,
 ) -> Result<ManaPaymentPlan, ManaPaymentFailure> {
-    ManaPaymentPlanner::default().first_plan(game, request)
+    ManaPaymentPlanner {
+        lazy_candidates: true,
+        preview_assignment: true,
+        ..Default::default()
+    }.first_plan(game, request)
 }
 
 /// Check for one valid payment without ranking plans for display or execution.
-/// Lazy activation exploration is confined to existence checks so preview plan
-/// ordering remains compatible with ranked plan validation at commit time.
+/// Unlike previews, existence checks skip assignment setup and follow one
+/// candidate line immediately. Both stop at the first legal completion.
 pub fn check_mana_payment(
     game: &GameState,
     request: &ManaPaymentRequest,
@@ -314,10 +318,16 @@ pub fn execute_mana_payment_plan(
     expected_plan: &ManaPaymentPlan,
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<super::ManaPaymentExecution, ManaPaymentFailure> {
-    let current = plan_mana_payment(game, request)?
-        .into_iter()
-        .find(|plan| plan.id == expected_plan.id && plan.request_hash == expected_plan.request_hash)
-        .ok_or(ManaPaymentFailure::StalePlan)?;
+    let matches = |plan: &ManaPaymentPlan| {
+        plan.id == expected_plan.id && plan.request_hash == expected_plan.request_hash
+    };
+    let current = match plan_first_mana_payment(game, request) {
+        Ok(plan) if matches(&plan) => plan,
+        _ => plan_mana_payment(game, request)?
+            .into_iter()
+            .find(matches)
+            .ok_or(ManaPaymentFailure::StalePlan)?,
+    };
     let checkpoint = game.clone();
     for step in &current.mana_ability_steps {
         if crate::special_actions::perform_activate_mana_ability_restricted_colors(
@@ -484,6 +494,18 @@ fn affordability_rules_out_payment(game: &GameState, request: &ManaPaymentReques
     if !affordability_solver_sees_every_resource(game, request) {
         return false;
     }
+    remaining_mana_is_unpayable(game, request)
+}
+
+// Once keyword resources have been assigned, only the remaining mana cost
+// matters. Ignoring reservations overestimates available mana, so a negative
+// answer is still a sound veto.
+fn remaining_mana_is_unpayable(game: &GameState, request: &ManaPaymentRequest) -> bool {
+    if !request.reserved_graveyard_sources.is_empty()
+        || !request.reserved_permanent_sources.is_empty()
+    {
+        return false;
+    }
     let view = DerivedGameView::new(game);
     if !every_mana_ability_is_single_use(game, request, &view) {
         return false;
@@ -511,6 +533,7 @@ pub struct ManaPaymentPlanner {
     analytic_selections: usize,
     searched_selections: usize,
     lazy_candidates: bool,
+    preview_assignment: bool,
     sliced: bool,
     remaining: usize,
     pending: bool,
@@ -709,6 +732,11 @@ impl ManaPaymentPlanner {
                         .required_sources
                         .retain(|required| *required != source);
                 }
+                if !self.skip_affordability_gate
+                    && remaining_mana_is_unpayable(&staged, &payment_request)
+                {
+                    continue;
+                }
                 let payable = can_pay_request(&staged, &payment_request);
                 let seek_zero_life = payment_request.allow_mana_abilities
                     && payable
@@ -749,7 +777,7 @@ impl ManaPaymentPlanner {
                 // candidate line, while the assignment measures every candidate
                 // before it can solve. Ranking is where the search explodes and
                 // where measuring every candidate pays for itself.
-                if !self.lazy_candidates
+                if (!self.lazy_candidates || self.preview_assignment)
                     && let Some(candidates) =
                         super::analytic::try_candidates(&staged, &payment_request)
                 {
@@ -1113,6 +1141,7 @@ pub struct ManaPaymentAnalysis {
     /// Search units the most recent slice actually consumed, so a scheduler can
     /// tell search cost apart from the fixed cost of setting a slice up.
     last_slice_units: usize,
+    ranked: bool,
 }
 impl ManaPaymentAnalysis {
     pub fn new(game: &GameState, request: ManaPaymentRequest) -> Self {
@@ -1121,10 +1150,13 @@ impl ManaPaymentAnalysis {
             request,
             planner: ManaPaymentPlanner {
                 sliced: true,
+                lazy_candidates: true,
+                preview_assignment: true,
                 ..Default::default()
             },
             result: None,
             last_slice_units: 0,
+            ranked: false,
         }
     }
 
@@ -1146,7 +1178,17 @@ impl ManaPaymentAnalysis {
             },
             result: None,
             last_slice_units: 0,
+            ranked: false,
         }
+    }
+
+    /// Optional ranking work, resumed between foreground commands.
+    pub fn ranked(game: &GameState, request: ManaPaymentRequest) -> Self {
+        let mut analysis = Self::new(game, request);
+        analysis.ranked = true;
+        analysis.planner.lazy_candidates = false;
+        analysis.planner.preview_assignment = false;
+        analysis
     }
 
     /// Units consumed by the last [`Self::step`].
@@ -1164,7 +1206,7 @@ impl ManaPaymentAnalysis {
         self.planner.pending = false;
         let result = self
             .planner
-            .plan_internal(&self.game, &self.request, true)
+            .plan_internal(&self.game, &self.request, !self.ranked)
             .and_then(|plans| {
                 plans
                     .into_iter()
@@ -2716,6 +2758,71 @@ use std::collections::hash_map::DefaultHasher;
             Ok(super::super::ManaPaymentExecution::Paid)
         );
         assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
+    }
+
+    #[test]
+    fn improvise_preview_skips_unfundable_subsets_and_uses_assignment() {
+        let (mut game, alice) = game();
+        let card = CardBuilder::new(CardId::new(), "Improvise probe")
+            .card_types(vec![CardType::Artifact, CardType::Creature])
+            .build();
+        let spell = game.create_object_from_card(&card, alice, Zone::Stack);
+        game.object_mut(spell).unwrap().abilities_mut().push(
+            crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::improvise(),
+            ),
+        );
+        for _ in 0..8 {
+            game.create_object_from_card(&card, alice, Zone::Battlefield);
+        }
+        for _ in 0..2 {
+            let land = CardBuilder::new(CardId::new(), "Blue land")
+                .card_types(vec![CardType::Land])
+                .build();
+            let land = game.create_object_from_card(&land, alice, Zone::Battlefield);
+            game.object_mut(land)
+                .unwrap()
+                .abilities_mut()
+                .push(crate::ability::Ability::mana(
+                    crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
+                    vec![ManaSymbol::Blue],
+                ));
+        }
+        game.refresh_continuous_state();
+        let request = ManaPaymentRequest::new(
+            alice,
+            spell,
+            crate::costs::PaymentReason::CastSpell,
+            ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)], vec![ManaSymbol::Blue]]),
+        );
+        let start = std::time::Instant::now();
+        let plan = plan_first_mana_payment(&game, &request).unwrap();
+        let perf = last_mana_payment_perf();
+        eprintln!("Improvise first plan: {:?}, {perf:?}", start.elapsed());
+        assert!(plan.payable);
+        assert_eq!(plan.mana_ability_steps.len(), 2);
+        assert_eq!(
+            perf.searched_selections, 0,
+            "impossible subsets must not launch state searches"
+        );
+        assert_eq!(perf.analytic_selections, 1);
+        assert!(game.battlefield.iter().all(|id| !game.is_tapped(*id)));
+        let mut ranked = ManaPaymentAnalysis::ranked(&game, request.clone());
+        assert!(ranked.step(1).is_none());
+        let mut slices = 0;
+        let improved = loop {
+            slices += 1;
+            assert!(slices < 1000);
+            if let Some(result) = ranked.step(1) {
+                break result.unwrap();
+            }
+        };
+        assert!(improved.score <= plan.score);
+        assert!(game.battlefield.iter().all(|id| !game.is_tapped(*id)));
+        assert_eq!(
+            execute_mana_payment_plan(&mut game, &request, &plan, &mut SelectFirstDecisionMaker),
+            Ok(super::super::ManaPaymentExecution::Paid)
+        );
     }
 
     #[test]

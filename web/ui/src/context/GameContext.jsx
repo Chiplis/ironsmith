@@ -1,3 +1,4 @@
+import { improvePayment } from "@/lib/payment-analysis.js";
 import {
   beginActionTrace,
   completeActionTrace,
@@ -856,10 +857,10 @@ export function GameProvider({ children }) {
   const stickyViewedCardsRef = useRef(null);
   const stickyGameOverRef = useRef(null);
   const queuedSyncedCancelRef = useRef(false);
-  // Background payment replans are disposable once the player accepts the
-  // currently visible payable plan. Incrementing this generation cancels
-  // refinements that are still waiting on the interaction gate.
+  // User input cancels ranking slices and suggestions waiting to be submitted.
+  // Keep manual ownership across payment component remounts.
   const backgroundDispatchGenerationRef = useRef(0);
+  const manuallyControlledPaymentRef = useRef(null);
   const recentTargetSubmitRef = useRef({
     inFlight: false,
     expiresAt: -Infinity,
@@ -1960,6 +1961,11 @@ export function GameProvider({ children }) {
       backgroundGeneration = null,
     } = {}) => {
       if (!game) return;
+      if (backgroundGeneration == null && stateRef.current?.decision?.kind === "mana_payment") {
+        backgroundDispatchGenerationRef.current += 1;
+        manuallyControlledPaymentRef.current = stateRef.current?.mana_payment?.request_hash;
+        void game.cancelPaymentAnalysis().catch(() => {});
+      }
       const payment = stateRef.current?.mana_payment;
       const backgroundIsCurrent = () => (
         backgroundGeneration == null
@@ -2025,6 +2031,7 @@ export function GameProvider({ children }) {
           if (multiplayer.role !== "client") {
             try {
               const liveState = await game.uiState();
+              if (!backgroundIsCurrent()) return;
               currentState = applyStickyViewedCards(liveState, { clear: true });
               setState(currentState);
               stateRef.current = currentState;
@@ -2054,6 +2061,7 @@ export function GameProvider({ children }) {
             }
             return;
           }
+          if (!backgroundIsCurrent()) return;
           let multiplayerTraceId = null;
           try {
             if (isTargetSubmit) armTargetSubmitDebounce();
@@ -2230,44 +2238,50 @@ export function GameProvider({ children }) {
     ]
   );
 
-  // Background decision refinements run in the existing WASM worker without
-  // occupying the foreground interaction gate. The worker still serializes
-  // game mutations, so a foreground action submitted during refinement is
-  // applied immediately afterward in a deterministic order.
+  useEffect(() => {
+    if (state?.decision?.kind !== "mana_payment") manuallyControlledPaymentRef.current = null;
+  }, [state?.decision?.kind]);
+
+  // Ranking is read-only and sliced. Only a finished, still-current suggestion
+  // becomes an ordinary synchronized command; manual input wins every race.
   const cancelBackgroundDispatch = useCallback(() => {
     backgroundDispatchGenerationRef.current += 1;
-  }, []);
+    const current = stateRef.current;
+    manuallyControlledPaymentRef.current = current?.mana_payment?.request_hash;
+    if (current?.mana_payment) {
+      const next = { ...current, mana_payment: { ...current.mana_payment, planning_complete: true } };
+      stateRef.current = next;
+      setState(next);
+    }
+    void game?.cancelPaymentAnalysis().catch(() => {});
+  }, [game, setState, stateRef]);
 
-  const dispatchInBackground = useCallback(
-    async (command) => {
-      if (!game) return undefined;
-      const backgroundGeneration = backgroundDispatchGenerationRef.current;
-      if (multiplayer.matchStarted) {
-        return dispatch(command, undefined, {
-          waitForPaymentReady: true,
-          backgroundGeneration,
-        });
+  const dispatchInBackground = useCallback(async () => {
+    if (!game) return;
+    const generation = backgroundDispatchGenerationRef.current;
+    const initial = stateRef.current?.mana_payment;
+    if (!initial || manuallyControlledPaymentRef.current === initial.request_hash) return;
+    const isCurrent = () => backgroundDispatchGenerationRef.current === generation
+      && stateRef.current?.decision?.kind === "mana_payment"
+      && stateRef.current?.mana_payment?.request_hash === initial?.request_hash
+      && stateRef.current?.mana_payment?.plan_id === initial?.plan_id;
+    try {
+      const command = await improvePayment({ game, token: String(generation), isCurrent });
+      if (!isCurrent()) return;
+      if (command) {
+        await dispatch(command, undefined, { waitForPaymentReady: true, backgroundGeneration: generation });
       }
-      if (backgroundDispatchGenerationRef.current !== backgroundGeneration) {
-        return undefined;
+      // Also finish the indicator if a suggestion was superseded or the
+      // interaction gate declined it without changing this payment.
+      if (isCurrent()) {
+        const next = { ...stateRef.current, mana_payment: { ...stateRef.current.mana_payment, planning_complete: true } };
+        stateRef.current = next;
+        setState(next);
       }
-      const currentDecision = stateRef.current?.decision || null;
-      if (!isDecisionCommandCompatible(currentDecision, command)) {
-        return undefined;
-      }
-      try {
-        const nextState = await game.dispatch(command);
-        const visibleState = applyStickyViewedCards(nextState);
-        setState(visibleState);
-        stateRef.current = visibleState;
-        return visibleState;
-      } catch (err) {
-        console.warn("Background decision refinement failed:", err);
-        return undefined;
-      }
-    },
-    [setState, stateRef, applyStickyViewedCards, dispatch, game, multiplayer.matchStarted]
-  );
+    } catch (error) {
+      console.warn("Background payment analysis failed:", error);
+    }
+  }, [dispatch, game, setState, stateRef]);
 
   const cancelDecision = useCallback(
     async () => {

@@ -916,6 +916,7 @@ pub enum Restriction {
     /// A color of `None` retains the player's whole mana pool.
     LoseUnspentMana(PlayerFilter, Option<crate::color::Color>),
     PreventDamage,
+    PreventCombatDamage,
     Attack(ObjectFilter),
     AttackPlayerOrPlaneswalkersControlledBy {
         attackers: ObjectFilter,

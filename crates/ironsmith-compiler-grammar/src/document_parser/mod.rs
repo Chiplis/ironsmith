@@ -2409,6 +2409,11 @@ fn try_parse_labeled_line_dispatch(
     if let Some((label, label_tokens, body_tokens)) =
         split_label_prefix_lexed(&line.info.source_tokens)
     {
+        // Cost keywords own their dash and body. Do not reinterpret them as
+        // presentation labels before the structured keyword parser runs.
+        if document_grammar::parse_preserved_keyword_label_tokens(label_tokens).is_some() {
+            return Ok(None);
+        }
         if label == "∞" {
             return Ok(Some(LineDispatchResult::single(RecognizedLine::Static(RecognizedStaticLine {
                 info: line.info.clone(), parse_tokens: line.info.source_tokens.clone(), chosen_option: None, parsed: None,
@@ -5029,6 +5034,22 @@ mod tests {
         let (stripped, max_triggers_per_turn) = strip_trailing_trigger_cap_suffix_tokens(&tokens);
         assert_eq!(max_triggers_per_turn, Some(1));
         assert!(render_token_slice(stripped).contains("as a sorcery"));
+    }
+
+    #[test]
+    fn mixed_flashback_cost_stays_a_structured_keyword() -> Result<(), CardTextError> {
+        let preprocessed = preprocess_document(
+            CardBuilder::new(CardId::new(), "Mixed Cost Probe")
+                .card_types(vec![CardType::Instant]),
+            "Flashback—{1}{U}, Exile X blue cards from your graveyard.",
+        )?;
+        let recognized = super::recognize_document(&preprocessed, false)?;
+        assert!(matches!(
+            recognized.lines.as_slice(),
+            [super::RecognizedLine::Keyword(keyword)]
+                if keyword.kind == KeywordLineKind::Flashback
+        ), "{:#?}", recognized.lines);
+        Ok(())
     }
 
     #[test]

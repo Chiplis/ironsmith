@@ -363,6 +363,24 @@ fn same_word(left: &str, right: &str) -> bool {
 pub(crate) fn effect_phrase(effects: &[Effect]) -> String {
     let mut phrases: Vec<String> = Vec::new();
     for effect in effects {
+        // Generated tokens may have no authored text. Preserve the gameplay
+        // details of simple damage abilities instead of just naming the executor.
+        if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>()
+            && let crate::effect::Value::Fixed(amount) = &damage.amount
+            && matches!(damage.target, crate::target::ChooseSpec::AnyTarget)
+        {
+            let damage_kind = if damage.source_is_combat {
+                "combat damage"
+            } else {
+                "damage"
+            };
+            let mut phrase = format!("it deals {amount} {damage_kind} to any target");
+            if damage.unpreventable {
+                phrase.push_str(". This damage can't be prevented");
+            }
+            phrases.push(phrase);
+            continue;
+        }
         let mut keywords = Vec::new();
         let mut budget = MAX_EFFECT_NODES;
         collect_keywords(std::slice::from_ref(effect), 0, &mut budget, &mut keywords);

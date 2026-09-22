@@ -2823,6 +2823,12 @@ pub(crate) fn can_cast_spell_with_context(
     }
 
     let commander_tax_life = commander_tax_life_payment_amount(game, spell, spell.zone);
+    if !can_pay_non_mana_cost_sequence_for_cast(
+        game, player, spell.id, spell_for_checks.additional_non_mana_costs(),
+    ) {
+        ctx.add_total_ms(total_started_at.elapsed_ms());
+        return false;
+    }
     if commander_tax_life > 0
         && !can_pay_cost_with_spell_exclusion(
             game,
@@ -3116,6 +3122,12 @@ pub(crate) fn can_cast_with_cost_with_context(
     if requirements.discard_from_hand > 0
         && (player_obj.hand.len() as u32) < requirements.discard_from_hand
     {
+        return false;
+    }
+
+    if !can_pay_non_mana_cost_sequence_for_cast(
+        game, player, spell_id, spell_for_checks.additional_non_mana_costs(),
+    ) {
         return false;
     }
 

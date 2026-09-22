@@ -50,6 +50,10 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
         DirectCantFact::PlayersCantGainLife => StaticAbility::players_cant_gain_life(),
         DirectCantFact::PlayersCantSearchLibraries => StaticAbility::players_cant_search(),
         DirectCantFact::DamageCantBePrevented => StaticAbility::damage_cant_be_prevented(),
+        DirectCantFact::CombatDamageCantBePrevented => StaticAbility::restriction(
+            crate::effect::Restriction::PreventCombatDamage,
+            "Combat damage can't be prevented".to_string(),
+        ),
         DirectCantFact::YouCantLoseGame => StaticAbility::you_cant_lose_game(),
         DirectCantFact::OpponentsCantWinGame => StaticAbility::opponents_cant_win_game(),
         DirectCantFact::YourLifeTotalCantChange => StaticAbility::your_life_total_cant_change(),

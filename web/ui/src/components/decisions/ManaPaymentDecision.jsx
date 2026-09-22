@@ -197,6 +197,12 @@ export default function ManaPaymentDecision({
   const [preserved, setPreserved] = useState(() => idSet(payment?.preserved_source_ids));
   const [preferLife, setPreferLife] = useState(() => Boolean(payment?.prefer_life));
   const optimizationKeyRef = useRef("");
+  const userEditingRef = useRef(false);
+  const beginAdjusting = useCallback(() => {
+    userEditingRef.current = true;
+    cancelBackgroundDispatch?.();
+    setAdjusting(true);
+  }, [cancelBackgroundDispatch]);
 
   const plannedIds = useMemo(
     () => (payment?.planned_sources || []).map((source) => source.source_id),
@@ -253,20 +259,11 @@ export default function ManaPaymentDecision({
   }, [payment, sendConfirmation]);
 
   useEffect(() => {
-    if (!canAct || !payment || payment.planning_complete || !dispatchInBackground) return;
+    if (userEditingRef.current || !canAct || !payment || payment.planning_complete || !dispatchInBackground) return;
     const optimizationKey = `${payment.request_hash}:${payment.plan_id}`;
     if (optimizationKeyRef.current === optimizationKey) return;
     optimizationKeyRef.current = optimizationKey;
-    dispatchInBackground({
-      type: "mana_payment",
-      response: {
-        action: "replan",
-        required_source_ids: (payment.required_source_ids || []).map(String),
-        excluded_source_ids: (payment.excluded_source_ids || []).map(String),
-        preserved_source_ids: (payment.preserved_source_ids || []).map(String),
-        prefer_life: Boolean(payment.prefer_life),
-      },
-    });
+    dispatchInBackground();
   }, [canAct, dispatchInBackground, payment]);
 
   const cancel = useCallback(() => {
@@ -317,9 +314,9 @@ export default function ManaPaymentDecision({
       label: adjusting ? "Use these sources" : "Change sources",
       disabled: !canAct || !payment,
       active: adjusting,
-      onSubmit: adjusting ? replan : () => setAdjusting(true),
+      onSubmit: adjusting ? replan : beginAdjusting,
     },
-  }), [adjusting, canAct, confirm, payment, replan]);
+  }), [adjusting, beginAdjusting, canAct, confirm, payment, replan]);
   useEffect(() => {
     if (!onSubmitActionChange) return undefined;
     onSubmitActionChange(submitAction);
@@ -407,7 +404,7 @@ export default function ManaPaymentDecision({
           </div>
         ) : null}
 
-        {!payment.planning_complete ? (
+        {!payment.planning_complete && !userEditingRef.current ? (
           <div className="mana-plan-strip-planning" title={ui("Checking for a better payment plan")}>
             <LoaderCircle size={15} className="animate-spin" />
             <span>{ui("Improving")}</span>
@@ -568,7 +565,7 @@ export default function ManaPaymentDecision({
           </>
         ) : (
           <>
-            <Button type="button" variant="outline" size="sm" disabled={!canAct} onClick={() => setAdjusting(true)}>{ui("Plan")}</Button>
+            <Button type="button" variant="outline" size="sm" disabled={!canAct} onClick={beginAdjusting}>{ui("Plan")}</Button>
             {inlineSubmit ? (
               <Button type="button" size="sm" disabled={!canAct || payment.can_confirm === false} onClick={confirm}>{ui("Pay")}</Button>
             ) : null}

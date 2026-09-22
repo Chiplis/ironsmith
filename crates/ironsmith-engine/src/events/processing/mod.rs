@@ -3382,7 +3382,9 @@ fn collect_simultaneous_prevention_allocations(
             .iter()
             .enumerate()
             .filter_map(|(index, item)| {
-                if item.amount == 0 || item.unpreventable {
+                if item.amount == 0 || item.unpreventable
+                    || !game.can_prevent_damage_of_kind(item.is_combat)
+                {
                     return None;
                 }
                 let damage = crate::events::DamageEvent::with_cause(
@@ -3594,7 +3596,7 @@ fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_a
     game.update_replacement_effects();
 
     // Check if damage can be prevented
-    let can_prevent = !unpreventable && game.can_prevent_damage();
+    let can_prevent = !unpreventable && game.can_prevent_damage_of_kind(is_combat);
 
     // Create the event using the new Event type
     let event = if can_prevent {

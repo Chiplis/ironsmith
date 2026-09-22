@@ -69,6 +69,7 @@ pub enum DirectCantFact {
     PlayersCantGainLife,
     PlayersCantSearchLibraries,
     DamageCantBePrevented,
+    CombatDamageCantBePrevented,
     YouCantLoseGame,
     OpponentsCantWinGame,
     YourLifeTotalCantChange,
@@ -149,6 +150,12 @@ fn parse_player_global_direct_cant_fact<'a>(input: &mut LexStream<'a>) -> WResul
             primitives::phrase(&["be", "prevented"]),
         )
             .value(DirectCantFact::DamageCantBePrevented),
+        (
+            primitives::phrase(&["combat", "damage"]),
+            parse_cant,
+            primitives::phrase(&["be", "prevented"]),
+        )
+            .value(DirectCantFact::CombatDamageCantBePrevented),
         (
             primitives::kw("you"),
             parse_cant,

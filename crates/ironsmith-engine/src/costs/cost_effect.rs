@@ -477,6 +477,27 @@ impl CostPayer for CostEffect {
         if let Some(choose) = transparent_cost_effect(&self.effect)
             .downcast_ref::<crate::effects::ChooseObjectsEffect>()
         {
+            // Resolution choices may do as much as possible, but a cost must
+            // select the full required amount before subsequent steps pay it.
+            let required = if choose.count.up_to_x
+                || (choose.is_search && choose.search_mode == crate::effect::SearchSelectionMode::Optional)
+            {
+                0
+            } else if let Some(value) = choose.count_value.as_ref() {
+                crate::effects::helpers::resolve_value(game, value, &exec_ctx)
+                    .map_err(|error| CostPaymentError::Other(format!("{error:?}")))?
+                    .max(0) as usize
+            } else if choose.count.dynamic_x {
+                ctx.x_value.ok_or_else(|| CostPaymentError::Other("X value not set for cost".into()))? as usize
+            } else {
+                choose.count.min
+            };
+            let selected = exec_ctx.tagged_objects.get(&choose.tag).map_or(0, Vec::len);
+            if selected < required {
+                return Err(CostPaymentError::Other(format!(
+                    "Not enough objects selected to pay cost ({required} needed, {selected} selected)"
+                )));
+            }
             exec_ctx
                 .tagged_objects
                 .entry(choose.tag.clone())

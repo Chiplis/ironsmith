@@ -1,14 +1,14 @@
 import useUiText from "@/i18n/useUiText";
 import RollingPanel from "@/components/board/RollingPanel";
-import { useCallback, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import { useGame } from "@/context/GameContext";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import useNewCards from "@/hooks/useNewCards";
-import useStackStartAlert from "@/hooks/useStackStartAlert";
 import StackCard from "@/components/cards/StackCard";
 import { stagger } from "@/lib/motion/anime";
 import useLayoutReflow from "@/lib/motion/useLayoutReflow";
 import { cn } from "@/lib/utils";
+import { stackEntryRenderKeys } from "@/lib/stack-targets";
 import {
   buildTriggerOrderingEntries,
   buildTriggerOrderingKey,
@@ -57,7 +57,6 @@ export default function InspectorStackTimeline({
 }) {
   const ui = useUiText();
   const {
-    state,
     triggerOrderingState,
     moveTriggerOrderingItem,
   } = useGame();
@@ -66,7 +65,10 @@ export default function InspectorStackTimeline({
   const triggerOrderingActive = isTriggerOrderingDecision(decision);
   const triggerOrderingKey = buildTriggerOrderingKey(decision);
   const hasStackEntries = stackObjects.length > 0 || stackPreview.length > 0;
-  const stackIds = useMemo(() => stackObjects.map((entry) => entry.id), [stackObjects]);
+  const stackIds = useMemo(
+    () => stackEntryRenderKeys(stackObjects).map((key) => `live-${key}`),
+    [stackObjects]
+  );
   const { newIds } = useNewCards(stackIds);
   const activeStackInspectId = useMemo(
     () => resolveActiveStackInspectId(stackObjects, selectedObjectId),
@@ -83,16 +85,12 @@ export default function InspectorStackTimeline({
     }));
   }, [decision, triggerOrderingActive, triggerOrderingKey, triggerOrderingState]);
   const liveTimelineEntries = useMemo(
-    () => stackObjects.map((entry) => ({
+    () => stackObjects.map((entry, index) => ({
       ...entry,
-      __timeline_key: `live-${entry.id}`,
+      __timeline_key: stackIds[index],
       __leaving: false,
     })),
-    [stackObjects]
-  );
-  const { alertEntryId: stackStartAlertId, dismissAlert: dismissStackStartAlert } = useStackStartAlert(
-    stackObjects,
-    state?.perspective
+    [stackObjects, stackIds]
   );
   const timelineEntries = useMemo(
     () => [...pendingTriggerEntries, ...liveTimelineEntries],
@@ -100,11 +98,6 @@ export default function InspectorStackTimeline({
   );
   const itemCount = timelineEntries.length || stackPreview.length;
   const timelineSignature = timelineEntries.map((entry) => entry.__timeline_key).join("|");
-  const handleInspectStackObject = useCallback((objectId, meta) => {
-    dismissStackStartAlert();
-    onInspectObject?.(objectId, meta);
-  }, [dismissStackStartAlert, onInspectObject]);
-
   useLayoutReflow(bodyRef, timelineSignature, {
     children: ".stack-timeline-entry",
     disabled: timelineEntries.length === 0,
@@ -141,21 +134,15 @@ export default function InspectorStackTimeline({
           entry={entry}
           density={compact ? "compact" : "default"}
           positionLabel={positionLabelForIndex(index)}
-          isNew={!entry.__leaving && !isPending && newIds.has(entry.id)}
+          isNew={!entry.__leaving && !isPending && newIds.has(entry.__timeline_key)}
           isLeaving={entry.__leaving}
-          showStackAlert={
-            !entry.__leaving
-            && !isPending
-            && stackStartAlertId != null
-            && String(entry.id) === String(stackStartAlertId)
-          }
           isActive={
             !entry.__leaving
             && !isPending
             && activeStackInspectId != null
             && String(activeStackInspectId) === String(stackInspectObjectId(entry))
           }
-          onClick={canInspect ? handleInspectStackObject : undefined}
+          onClick={canInspect ? onInspectObject : undefined}
           reorderControls={isPending
             ? {
                 canMoveLeft: canAct && index > 0,

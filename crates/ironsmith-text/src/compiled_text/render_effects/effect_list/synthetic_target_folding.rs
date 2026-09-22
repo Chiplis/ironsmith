@@ -305,7 +305,7 @@ fn restriction_references_identity(
         | Restriction::AttackOrBlockAlone(filter) => {
             object_filter_references_identity(filter, identity)
         }
-        Restriction::PreventDamage | Restriction::AttackYouUnlessControllerPaysPerAttacker(..) => {
+        Restriction::PreventDamage | Restriction::PreventCombatDamage | Restriction::AttackYouUnlessControllerPaysPerAttacker(..) => {
             false
         }
     }

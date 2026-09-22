@@ -97,8 +97,8 @@ fn request_shape_is_supported(request: &ManaPaymentRequest) -> bool {
     }
     // Reserved resources belong to an alternative payment (convoke, delve,
     // improvise) that is being solved around this mana cost.
-    request.reserved_tap_sources.is_empty()
-        && request.reserved_graveyard_sources.is_empty()
+    // collect_activation_choices already excludes reserved tap sources.
+    request.reserved_graveyard_sources.is_empty()
         && request.reserved_permanent_sources.is_empty()
 }
 

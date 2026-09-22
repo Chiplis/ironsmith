@@ -4098,6 +4098,7 @@ fn discarded_cost_card_type_predicates_keep_cost_reference_and_negation() -> Res
         let PredicateAst::TaggedMatches(tag, filter) = predicate else { panic!("wrong predicate: {text}"); };
         assert_eq!(tag.as_str(), crate::tag::CompilerReferenceTag::DiscardedCost.as_str());
         assert_eq!(filter.card_types, vec![crate::types::CardType::Land]);
+        assert_eq!(filter.zone, None, "cost characteristics are independent of zone");
     }
     Ok(())
 }

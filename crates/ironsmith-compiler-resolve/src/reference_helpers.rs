@@ -1830,6 +1830,7 @@ pub fn resolve_target_spec_with_choices(
         }
     }
     let spec = resolve_choose_spec_it_tag(&spec, refs)?;
+    crate::selection_scope::validate_card_selection_spec(&spec)?;
     let mut choices = if spec.is_target() {
         vec![spec.clone()]
     } else {

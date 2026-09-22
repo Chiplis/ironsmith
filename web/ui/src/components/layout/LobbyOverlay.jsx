@@ -109,8 +109,8 @@ function formatPlayerStatus(player, localPeerId, format) {
 
   const deckCount = Number(player.deckCount || 0);
   return player.peerId === localPeerId
-    ? `You / ${deckCount}/${LOBBY_DECK_SIZE}`
-    : `${deckCount}/${LOBBY_DECK_SIZE}`;
+    ? `You / ${deckCount}/${LOBBY_DECK_SIZE}+`
+    : `${deckCount}/${LOBBY_DECK_SIZE}+`;
 }
 
 function formatCountdown(ms) {
@@ -135,9 +135,9 @@ function formatDeckRequirement(format) {
     return `Submit a ${COMMANDER_DECK_SIZE}-card main deck plus 1 commander, or a ${PARTNER_DECK_SIZE}-card main deck plus 2 commanders.`;
   }
   if (normalized === MATCH_FORMAT_PLANECHASE) {
-    return `Submit exactly ${LOBBY_DECK_SIZE} main-deck cards plus at least 10 uniquely named Plane or Phenomenon cards.`;
+    return `Submit at least ${LOBBY_DECK_SIZE} main-deck cards plus at least 10 uniquely named Plane or Phenomenon cards.`;
   }
-  return `Submit exactly ${LOBBY_DECK_SIZE} main-deck cards.`;
+  return `Submit at least ${LOBBY_DECK_SIZE} main-deck cards.`;
 }
 
 export default function LobbyOverlay({
@@ -548,7 +548,7 @@ export default function LobbyOverlay({
                         placeholder={
                           ui(createFormat === MATCH_FORMAT_COMMANDER
                             ? `Paste a ${COMMANDER_DECK_SIZE}-card Commander main deck...\n\n1 Sol Ring\n1 Swords to Plowshares\n35 Plains`
-                            : `Paste a ${LOBBY_DECK_SIZE}-card main deck...\n\n4 Lightning Bolt\n4 Counterspell\n24 Island`)
+                            : `Paste a main deck with at least ${LOBBY_DECK_SIZE} cards...\n\n4 Lightning Bolt\n4 Counterspell\n24 Island`)
                         }
                       />
                     </label>
@@ -578,7 +578,7 @@ export default function LobbyOverlay({
                       <span>{ui("Main deck:")}{" "}
                         {createFormat === MATCH_FORMAT_COMMANDER
                           ? `${createDeckCount}/${createCommanderTarget}`
-                          : `${createDeckCount}/${LOBBY_DECK_SIZE}`}
+                          : `${createDeckCount}/${LOBBY_DECK_SIZE}+`}
                       </span>
                       {createFormat === MATCH_FORMAT_COMMANDER ? (
                         <span>{ui("Commander(s):") + " "}{createCommanderCount}/1-2</span>
@@ -629,7 +629,7 @@ export default function LobbyOverlay({
                         className={textareaClass}
                         value={joinDeckText}
                         onChange={(event) => setJoinDeckText(event.target.value)}
-                        placeholder={ui("Paste your main deck now or finish it inside the lobby.\n\nNormal and Planechase lobbies need {0} cards.\nCommander lobbies need {1} or {2} main-deck cards.", { 0: LOBBY_DECK_SIZE, 1: COMMANDER_DECK_SIZE, 2: PARTNER_DECK_SIZE })}
+                        placeholder={ui("Paste your main deck now or finish it inside the lobby.\n\nNormal and Planechase lobbies need at least {0} cards.\nCommander lobbies need {1} or {2} main-deck cards.", { 0: LOBBY_DECK_SIZE, 1: COMMANDER_DECK_SIZE, 2: PARTNER_DECK_SIZE })}
                       />
                     </label>
                     <label className={labelClass}>{ui("Commander(s) / Planar Deck")}<textarea
@@ -715,14 +715,14 @@ export default function LobbyOverlay({
                       placeholder={
                         ui(activeFormat === MATCH_FORMAT_COMMANDER
                           ? `Paste your Commander main deck...\n\n1 Sol Ring\n1 Brainstorm\n33 Island`
-                          : `Paste a ${LOBBY_DECK_SIZE}-card main deck...\n\n4 Swords to Plowshares\n4 Brainstorm\n24 Plains`)
+                          : `Paste a main deck with at least ${LOBBY_DECK_SIZE} cards...\n\n4 Swords to Plowshares\n4 Brainstorm\n24 Plains`)
                       }
                     />
                     <div className={infoTextClass}>
                       <span>{ui("Main deck:")}{" "}
                         {activeFormat === MATCH_FORMAT_COMMANDER
                           ? `${multiplayer.localDeckCount}/${activeCommanderTarget}`
-                          : `${multiplayer.localDeckCount}/${LOBBY_DECK_SIZE}`}
+                          : `${multiplayer.localDeckCount}/${LOBBY_DECK_SIZE}+`}
                       </span>
                       {activeFormat === MATCH_FORMAT_COMMANDER
                       || activeFormat === MATCH_FORMAT_PLANECHASE ? (

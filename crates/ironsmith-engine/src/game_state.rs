@@ -1527,6 +1527,8 @@ pub struct CantEffectTracker {
     /// Whether damage prevention is globally disabled.
     /// Example: Leyline of Punishment, Everlasting Torment
     pub damage_cant_be_prevented: bool,
+    /// Whether prevention is disabled specifically for combat damage.
+    pub combat_damage_cant_be_prevented: bool,
 
     /// Players whose life total can't change.
     /// Example: Platinum Emperion
@@ -1938,6 +1940,7 @@ impl CantEffectTracker {
         self.cant_have_counters_placed
             .extend(other.cant_have_counters_placed);
         self.damage_cant_be_prevented |= other.damage_cant_be_prevented;
+        self.combat_damage_cant_be_prevented |= other.combat_damage_cant_be_prevented;
         self.life_total_cant_change
             .extend(other.life_total_cant_change);
         self.cant_lose_life.extend(other.cant_lose_life);
@@ -2000,6 +2003,7 @@ impl CantEffectTracker {
         self.cant_be_blocked.clear();
         self.cant_have_counters_placed.clear();
         self.damage_cant_be_prevented = false;
+        self.combat_damage_cant_be_prevented = false;
         self.life_total_cant_change.clear();
         self.cant_lose_life.clear();
         self.damage_cant_cause_life_loss.clear();
@@ -2141,6 +2145,10 @@ impl CantEffectTracker {
     /// Check if damage can be prevented.
     pub fn can_prevent_damage(&self) -> bool {
         !self.damage_cant_be_prevented
+    }
+
+    pub fn can_prevent_damage_of_kind(&self, is_combat: bool) -> bool {
+        self.can_prevent_damage() && !(is_combat && self.combat_damage_cant_be_prevented)
     }
 
     /// Check if a permanent can be destroyed.
@@ -6208,6 +6216,10 @@ impl GameState {
     /// Can damage be prevented?
     pub fn can_prevent_damage(&self) -> bool {
         self.effect_store.cant_effects.can_prevent_damage()
+    }
+
+    pub fn can_prevent_damage_of_kind(&self, is_combat: bool) -> bool {
+        self.effect_store.cant_effects.can_prevent_damage_of_kind(is_combat)
     }
 
     /// Can the permanent be destroyed?

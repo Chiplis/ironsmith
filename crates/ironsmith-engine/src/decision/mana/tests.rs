@@ -745,3 +745,34 @@ fn composed_discard_costs_assign_distinct_cards_across_overlapping_filters() {
         vec![crate::costs::Cost::discard(2, None), narrow]
     ));
 }
+
+#[test]
+fn printed_discard_cost_is_required_by_both_cast_legality_paths() {
+    let alice = PlayerId::from_index(0);
+    for spare in [false, true] {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+        game.turn.phase = crate::game_state::Phase::FirstMain;
+        let mut def = CardDefinitionBuilder::new(CardId::new(), "Discard-cost spell")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::new())
+            .build();
+        def.additional_cost = crate::cost::TotalCost::from_cost(crate::costs::Cost::try_effect(
+            crate::effect::Effect::new(crate::effects::WithIdEffect::new(
+                crate::effect::EffectId(0),
+                crate::effect::Effect::new(crate::effects::DiscardEffect::you(1)),
+            )),
+        ).unwrap());
+        let spell_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+        if spare {
+            let card = CardBuilder::new(CardId::new(), "Spare").card_types(vec![CardType::Land]).build();
+            game.create_object_from_card(&card, alice, Zone::Hand);
+        }
+        let spell = game.object(spell_id).unwrap();
+        let view = DerivedGameView::new(&game);
+        assert_eq!(can_cast_spell_with_view(&game, alice, spell, &CastingMethod::Normal, &view), spare);
+        assert_eq!(can_cast_with_cost_with_view(&game, alice, spell, spell_id,
+            Some(&ManaCost::new()), None, &AdditionalCastRequirements::default(), &view), spare);
+    }
+}

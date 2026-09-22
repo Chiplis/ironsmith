@@ -4,6 +4,8 @@ import CardFrameSingleLine from '../src/components/right-rail/CardFrameSingleLin
 import { ManaCostIcons } from '../src/lib/mana-symbols';
 import '../src/index.css';
 import '../src/styles/card-typography.css';
+import '../src/styles/card-frame-colors.css';
+import '../src/components/right-rail/card-frame-stage.css';
 
 function Fixture() {
   const [long, setLong] = useState(true);
@@ -19,6 +21,10 @@ function Fixture() {
         '--card-type-font': 'MPlantin', '--card-type-weight': 400,
         '--sampled-title-font-size': large ? '22px' : '18px',
         '--sampled-type-font-size': large ? '18px' : '14px',
+        '--card-stats-font': '"Beleren Small Caps"', '--card-stats-weight': 700,
+        '--printed-scan-width': 488, '--printed-stats-baseline': 630,
+        '--printed-stats-text-bounds': JSON.stringify({x:400,y:610,width:40,height:20}),
+        '--printed-pt-left': '87.37%', '--printed-pt-drop': '4px', '--printed-pt-font-size': '19.37px',
       }}>
         <article className="interactive-card-frame">
           <div className="interactive-card-frame__inner">
@@ -36,6 +42,11 @@ function Fixture() {
               <CardFrameSingleLine className="interactive-card-frame__type">
                 {long ? 'Legendary Artifact Creature — Phyrexian Human Artificer' : 'Artifact'}
               </CardFrameSingleLine>
+            </div>
+            <div className="interactive-card-frame__rules-section" data-printed-stats="true" data-pt-treatment="text">
+              <div className="interactive-card-frame__art-stats interactive-card-frame__printed-stats">
+                <CardFrameSingleLine className="interactive-card-frame__stats-text">{long ? '123/456' : '2/3'}</CardFrameSingleLine>
+              </div>
             </div>
           </div>
         </article>

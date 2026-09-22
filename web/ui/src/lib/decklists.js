@@ -412,7 +412,7 @@ export function evaluateLobbyDeckSubmission(format, deck, commanders = []) {
       (commanders || []).map((name) => String(name || "").trim().toLowerCase())
     );
     const ready =
-      deckCount === LOBBY_DECK_SIZE
+      deckCount >= LOBBY_DECK_SIZE
       && commanderCount >= 10
       && uniquePlanarCards.size === commanderCount;
     return {
@@ -424,7 +424,7 @@ export function evaluateLobbyDeckSubmission(format, deck, commanders = []) {
   }
 
   return {
-    ready: PUBLIC_FORMATS[normalizedFormat] ? deckCount >= LOBBY_DECK_SIZE && commanderCount === 0 : deckCount === LOBBY_DECK_SIZE,
+    ready: PUBLIC_FORMATS[normalizedFormat] ? deckCount >= LOBBY_DECK_SIZE && commanderCount === 0 : deckCount >= LOBBY_DECK_SIZE,
     deckCount,
     commanderCount,
     requiredDeckCount: LOBBY_DECK_SIZE,
@@ -432,5 +432,5 @@ export function evaluateLobbyDeckSubmission(format, deck, commanders = []) {
 }
 
 export function isLobbyDeckReady(deck) {
-  return Array.isArray(deck) && deck.length === LOBBY_DECK_SIZE;
+  return Array.isArray(deck) && deck.length >= LOBBY_DECK_SIZE;
 }

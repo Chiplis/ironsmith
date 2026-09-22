@@ -1331,6 +1331,9 @@ impl RestrictionExt for Restriction {
             Restriction::PreventDamage => {
                 tracker.damage_cant_be_prevented = true;
             }
+            Restriction::PreventCombatDamage => {
+                tracker.combat_damage_cant_be_prevented = true;
+            }
             Restriction::Attack(filter) => {
                 for &obj_id in &game.battlefield {
                     if let Some(obj) = game.object(obj_id)

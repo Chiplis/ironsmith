@@ -4016,6 +4016,7 @@ pub struct WasmGame {
     runtime_savepoints: HashMap<u32, Box<wasm_game_impl::RuntimeSavepoint>>,
     next_runtime_savepoint: u32,
     priority_analysis_job: Option<Box<PriorityAnalysisJob>>,
+    payment_analysis_job: Option<Box<PaymentAnalysisJob>>,
     inspector_analysis_job: Option<Box<InspectorAnalysisJob>>,
     /// Node pops the last analysis slice consumed. A slice that spends fewer
     /// nodes than its budget was bound by the fixed cost of re-enumerating the

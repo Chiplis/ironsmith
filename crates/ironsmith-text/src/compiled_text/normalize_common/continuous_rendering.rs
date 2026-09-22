@@ -4969,6 +4969,7 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             )
         }
         crate::effect::Restriction::PreventDamage => "damage can't be prevented".to_string(),
+        crate::effect::Restriction::PreventCombatDamage => "combat damage can't be prevented".to_string(),
         crate::effect::Restriction::Attack(filter) => {
             let subject =
                 restriction_backref_subject(filter).unwrap_or_else(|| filter.description());

@@ -2,19 +2,17 @@ import useUiText from "@/i18n/useUiText";
 import useModalFocus from "@/hooks/useModalFocus";
 import { useCallback, useMemo, useState } from "react";
 import { X } from "lucide-react";
-import { useGame } from "@/context/GameContext";
 import StackCard from "@/components/cards/StackCard";
 import useNewCards from "@/hooks/useNewCards";
-import useStackStartAlert from "@/hooks/useStackStartAlert";
 import useMobileLongPress from "@/hooks/useMobileLongPress";
 import { cn } from "@/lib/utils";
+import { stackEntryRenderKeys } from "@/lib/stack-targets";
 
 const RAIL_VISIBLE_LIMIT = 5;
 
 function MobileStackRailEntry({
   entry,
   isNew,
-  showStackAlert,
   isFocused,
   onFocus,
   onLongPressInspect,
@@ -55,7 +53,6 @@ function MobileStackRailEntry({
         entry={entry}
         isNew={isNew}
         isActive={isFocused}
-        showStackAlert={showStackAlert}
         className="mobile-mtga-stack-rail-card"
         entryMotion="mobile-stack"
         variant="compact"
@@ -67,6 +64,7 @@ function MobileStackRailEntry({
 function MobileStackBrowser({ entries, focusedId, onFocus, onClose, onInspect }) {
   const ui = useUiText();
   const dialogRef = useModalFocus(onClose);
+  const entryKeys = stackEntryRenderKeys(entries);
   return (
     <section
       className="mobile-mtga-stack-browser"
@@ -89,9 +87,9 @@ function MobileStackBrowser({ entries, focusedId, onFocus, onClose, onInspect })
         </button>
       </header>
       <div className="mobile-mtga-stack-browser-list">
-        {entries.map((entry) => (
+        {entries.map((entry, index) => (
           <button
-            key={entry.id}
+            key={entryKeys[index]}
             type="button"
             className={cn(
               "mobile-mtga-stack-browser-row",
@@ -132,24 +130,12 @@ export default function MobileStackRail({
   className,
 }) {
   const ui = useUiText();
-  const { state } = useGame();
   const stackIds = useMemo(
-    () => objects.map((entry) => (entry?.id != null ? String(entry.id) : null)).filter(Boolean),
+    () => stackEntryRenderKeys(objects),
     [objects]
   );
   const { newIds } = useNewCards(stackIds);
-  const { alertEntryId, dismissAlert } = useStackStartAlert(objects, state?.perspective);
   const [browserOpen, setBrowserOpen] = useState(false);
-
-  const handleFocus = useCallback((entry) => {
-    dismissAlert();
-    onFocusStackObject?.(entry);
-  }, [dismissAlert, onFocusStackObject]);
-
-  const handleLongPressInspect = useCallback((objectId, meta) => {
-    dismissAlert();
-    onInspect?.(objectId, meta);
-  }, [dismissAlert, onInspect]);
 
   if (!objects.length) return null;
 
@@ -166,15 +152,14 @@ export default function MobileStackRail({
         data-stack-preview-anchor="true"
         aria-label={ui("Stack ({0} item{1})", { 0: objects.length, 1: objects.length === 1 ? "" : "s" })}
       >
-        {visible.map((entry) => (
+        {visible.map((entry, index) => (
           <MobileStackRailEntry
-            key={entry.id}
+            key={stackIds[index]}
             entry={entry}
-            isNew={newIds.has(String(entry.id))}
-            showStackAlert={alertEntryId != null && String(entry.id) === String(alertEntryId)}
+            isNew={newIds.has(stackIds[index])}
             isFocused={focusedStackObjectId != null && String(focusedStackObjectId) === String(entry.id)}
-            onFocus={handleFocus}
-            onLongPressInspect={handleLongPressInspect}
+            onFocus={onFocusStackObject}
+            onLongPressInspect={onInspect}
           />
         ))}
         {overflow > 0 ? (
@@ -193,9 +178,9 @@ export default function MobileStackRail({
         <MobileStackBrowser
           entries={topFirst}
           focusedId={focusedStackObjectId}
-          onFocus={handleFocus}
+          onFocus={onFocusStackObject}
           onClose={() => setBrowserOpen(false)}
-          onInspect={handleLongPressInspect}
+          onInspect={onInspect}
         />
       ) : null}
     </>

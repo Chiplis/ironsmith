@@ -77,6 +77,8 @@ mod effect_flow_search_handlers;
 mod effect_handlers;
 #[path = "compile_support/effect_visibility_object_handlers.rs"]
 mod effect_visibility_object_handlers;
+#[path = "compile_support/card_selection_validation.rs"]
+mod card_selection_validation;
 #[path = "compile_support/iterated_player_validation.rs"]
 mod iterated_player_validation;
 #[path = "compile_support/player_effect_helpers.rs"]
@@ -314,6 +316,7 @@ pub fn compile_annotated_effects_with_context(
     }
 
     let compiled = prepend_missing_target_choice_prelude(compiled, &choices);
+    card_selection_validation::validate_card_selections(&compiled, &choices)?;
     Ok((compiled, choices))
 }
 

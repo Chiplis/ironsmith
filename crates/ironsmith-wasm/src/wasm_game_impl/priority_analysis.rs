@@ -298,3 +298,100 @@ impl WasmGame {
         result
     }
 }
+
+// Optional payment ranking never mutates a game. The result is a constrained
+// replan command, sent through the normal authoritative multiplayer path.
+pub(super) struct PaymentAnalysisJob {
+    token: String,
+    key: SnapshotCacheKey,
+    analysis: ironsmith::mana_payment::ManaPaymentAnalysis,
+    request: ironsmith::mana_payment::ManaPaymentRequest,
+    score: ironsmith::mana_payment::ManaPaymentScore,
+}
+
+#[wasm_bindgen]
+impl WasmGame {
+    #[wasm_bindgen(js_name = beginPaymentAnalysis)]
+    pub fn begin_payment_analysis(&mut self, token: String) -> bool {
+        let Some(DecisionContext::ManaPayment(ctx)) = self.pending_decision.as_ref() else {
+            return false;
+        };
+        self.payment_analysis_job = Some(Box::new(PaymentAnalysisJob {
+            token,
+            key: self.priority_analysis_key(),
+            analysis: ironsmith::mana_payment::ManaPaymentAnalysis::ranked(
+                &self.game,
+                ctx.request.clone(),
+            ),
+            request: ctx.request.clone(),
+            score: ctx.plan.score,
+        }));
+        true
+    }
+
+    #[wasm_bindgen(js_name = cancelPaymentAnalysis)]
+    pub fn cancel_payment_analysis(&mut self) {
+        self.payment_analysis_job = None;
+    }
+
+    #[wasm_bindgen(js_name = stepPaymentAnalysis)]
+    pub fn step_payment_analysis(
+        &mut self,
+        token: String,
+        budget: usize,
+    ) -> Result<JsValue, JsValue> {
+        use ironsmith::mana_payment::{
+            ManaPaymentSourceKind, PlannedPipPayment, RequiredAlternativePayment,
+            RequiredManaActivation,
+        };
+        let Some(mut job) = self.payment_analysis_job.take() else {
+            return Ok(JsValue::FALSE);
+        };
+        if job.token != token || job.key != self.priority_analysis_key() {
+            return Ok(JsValue::FALSE);
+        }
+        let counters = snapshot_id_counters();
+        let result = job.analysis.step(budget.clamp(1, 8));
+        restore_id_counters(counters);
+        let Some(result) = result else {
+            self.payment_analysis_job = Some(job);
+            return Ok(JsValue::NULL);
+        };
+        let Ok(plan) = result else {
+            return Ok(JsValue::FALSE);
+        };
+        if plan.score >= job.score {
+            return Ok(JsValue::FALSE);
+        }
+        let mut preferences = job.request.preferences;
+        preferences.required_activations = plan
+            .mana_ability_steps
+            .iter()
+            .map(|step| RequiredManaActivation {
+                source: step.source,
+                ability_index: step.ability_index,
+                color_restriction: step.color_restriction.clone(),
+            })
+            .collect();
+        preferences.required_alternatives = plan
+            .allocations
+            .iter()
+            .filter_map(|allocation| {
+                let (source, kind) = match allocation.payment {
+                    PlannedPipPayment::Convoke(source) => (source, ManaPaymentSourceKind::Convoke),
+                    PlannedPipPayment::Improvise(source) => {
+                        (source, ManaPaymentSourceKind::Improvise)
+                    }
+                    PlannedPipPayment::Delve(source) => (source, ManaPaymentSourceKind::Delve),
+                    _ => return None,
+                };
+                Some(RequiredAlternativePayment { source, kind })
+            })
+            .collect();
+        let command = UiCommand::ManaPayment {
+            response: manabrew_replan_command(preferences),
+        };
+        serde_wasm_bindgen::to_value(&command)
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+}

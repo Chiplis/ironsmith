@@ -2903,16 +2903,7 @@ pub(super) fn prompt_spell_assist_payment_plan(
     if let Some(existing) = pending.pending_mana_payment.as_ref() {
         request.preferences = existing.request.preferences.clone();
     }
-    let plan_result = if refining_existing_plan {
-        crate::mana_payment::plan_mana_payment(game, &request).and_then(|plans| {
-            plans
-                .into_iter()
-                .next()
-                .ok_or(crate::mana_payment::ManaPaymentFailure::NoLegalPlan)
-        })
-    } else {
-        crate::mana_payment::plan_first_mana_payment(game, &request)
-    };
+    let plan_result = crate::mana_payment::plan_first_mana_payment(game, &request);
     let plan_result = plan_result.or_else(|failure| {
         if refining_existing_plan
             && matches!(
@@ -3103,16 +3094,7 @@ pub(super) fn prompt_spell_mana_ability_window(
 ) -> Result<GameProgress, GameLoopError> {
     let refining_existing_plan = pending.pending_mana_payment.is_some();
     let request = spell_mana_payment_request(game, &pending)?;
-    let plan_result = if refining_existing_plan {
-        crate::mana_payment::plan_mana_payment(game, &request).and_then(|plans| {
-            plans
-                .into_iter()
-                .next()
-                .ok_or(crate::mana_payment::ManaPaymentFailure::NoLegalPlan)
-        })
-    } else {
-        crate::mana_payment::plan_first_mana_payment(game, &request)
-    };
+    let plan_result = crate::mana_payment::plan_first_mana_payment(game, &request);
     let plan_result = plan_result.or_else(|failure| {
         if refining_existing_plan
             && matches!(
@@ -3173,16 +3155,7 @@ pub(super) fn prompt_activation_mana_ability_window(
     let cost = pending.mana_cost_to_pay.as_ref().ok_or_else(|| {
         GameLoopError::InvalidState("activation payment prompt has no mana cost".to_string())
     })?;
-    let plan_result = if refining_existing_plan {
-        crate::mana_payment::plan_mana_payment(game, &request).and_then(|plans| {
-            plans
-                .into_iter()
-                .next()
-                .ok_or(crate::mana_payment::ManaPaymentFailure::NoLegalPlan)
-        })
-    } else {
-        crate::mana_payment::plan_first_mana_payment(game, &request)
-    };
+    let plan_result = crate::mana_payment::plan_first_mana_payment(game, &request);
     let plan_result = plan_result.or_else(|failure| {
         if refining_existing_plan
             && matches!(

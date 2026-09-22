@@ -426,16 +426,7 @@ pub(super) fn prompt_pending_mana_ability_payment(
             Some(pending.source),
             crate::costs::PaymentReason::ActivateManaAbility,
         );
-    let plan_result = if refining_existing_plan {
-        crate::mana_payment::plan_mana_payment(game, &request).and_then(|plans| {
-            plans
-                .into_iter()
-                .next()
-                .ok_or(crate::mana_payment::ManaPaymentFailure::NoLegalPlan)
-        })
-    } else {
-        crate::mana_payment::plan_first_mana_payment(game, &request)
-    };
+    let plan_result = crate::mana_payment::plan_first_mana_payment(game, &request);
     let plan_result = plan_result.or_else(|failure| {
         if refining_existing_plan
             && matches!(
@@ -673,6 +664,14 @@ fn revalidate_authoritative_payment_plan(
     payment: &crate::mana_payment::PendingManaPayment,
     label: &str,
 ) -> Result<crate::mana_payment::ManaPaymentPlan, GameLoopError> {
+    // A displayed first plan is already authoritative. Validate that same
+    // proposal without running the optional ranking pass on confirmation.
+    if let Ok(plan) = crate::mana_payment::plan_first_mana_payment(game, &payment.request)
+        && plan.id == payment.plan.id
+        && plan.request_hash == payment.plan.request_hash
+    {
+        return Ok(plan);
+    }
     crate::mana_payment::plan_mana_payment(game, &payment.request)
         .map_err(|failure| {
             GameLoopError::ActionCancelled(format!(

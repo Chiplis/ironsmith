@@ -19,6 +19,7 @@ macro_rules! runtime_savepoint {
                 ids.card = ids.card.max(snapshot_id_counters().card);
                 restore_id_counters(ids);
                 game.priority_analysis_job = None;
+                game.payment_analysis_job = None;
                 game.inspector_analysis_job = None;
                 game.snapshot_object_view_cache = Box::default();
                 #[cfg(target_arch = "wasm32")]

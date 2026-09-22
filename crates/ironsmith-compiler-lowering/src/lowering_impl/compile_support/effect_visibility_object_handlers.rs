@@ -1,5 +1,6 @@
 use super::*;
 use crate::cards::builders::ObjectChoiceEffectAst;
+use ironsmith_compiler_resolve::selection_scope::validate_card_selection_filter;
 
 fn mark_choose_effects_reveal(mut effects: Vec<Effect>) -> Vec<Effect> {
     for effect in &mut effects {
@@ -99,6 +100,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             if !matches!(chooser, PlayerFilter::ChosenPlayer) {
                 preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);
             }
+            validate_card_selection_filter(&resolved_filter, None)?;
             let mut effects = subject.target_prelude();
             effects.push(Effect::new(
                 crate::effects::ChooseObjectsEffect::new(
@@ -195,6 +197,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     .or_else(|| ctx.last_player_filter.clone())
                     .map(as_followup_player_alias);
             }
+            validate_card_selection_filter(&resolved_filter, None)?;
             let cross_zone_choices = hand_or_graveyard_choice_zones(&resolved_filter);
             if let Some(zones) = &cross_zone_choices {
                 strip_choice_zones_from_filter(&mut resolved_filter, zones);

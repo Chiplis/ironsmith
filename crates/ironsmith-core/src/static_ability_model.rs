@@ -825,6 +825,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         non_mana_only: bool,
         condition: Option<ICond>,
     },
+    ChooseColorAsEnters {
+        excluded: Option<Color>,
+        display: String,
+    },
     ChoosePlayerAsEnters {
         filter: PlayerFilter,
         display: String,
@@ -2170,6 +2174,9 @@ where
                 non_mana_only,
                 condition: condition.map(&mut *map_intervening).transpose()?,
             },
+            StaticAbilityPayload::ChooseColorAsEnters { excluded, display } => {
+                StaticAbilityPayload::ChooseColorAsEnters { excluded, display }
+            }
             StaticAbilityPayload::ChoosePlayerAsEnters { filter, display } => {
                 StaticAbilityPayload::ChoosePlayerAsEnters { filter, display }
             }
@@ -5185,11 +5192,12 @@ impl<
             },
         }
     }
-    pub fn choose_color_as_enters(_excluded: Option<Color>, _display: impl Into<String>) -> Self {
+    pub fn choose_color_as_enters(excluded: Option<Color>, display: impl Into<String>) -> Self {
+        let display = display.into();
         Self {
             id: Some(StaticAbilityId::ChooseColorAsEnters),
-            label: "choose color as enters".into(),
-            payload: StaticAbilityPayload::None,
+            label: display.clone(),
+            payload: StaticAbilityPayload::ChooseColorAsEnters { excluded, display },
         }
     }
     pub fn choose_color_as_becomes_attached(display: impl Into<String>) -> Self {

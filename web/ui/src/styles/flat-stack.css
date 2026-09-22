@@ -286,11 +286,6 @@
   transform-origin: right center;
 }
 
-.stack-card-alert {
-  flex: 0 0 auto;
-  margin-left: 1px;
-}
-
 .stack-card-pt {
   flex: 0 0 auto;
   padding: 0 5px;
@@ -532,11 +527,6 @@
 
 .game-card.stack-card--flat[data-density="compact"] .stack-card-cost {
   transform: scale(0.72);
-}
-
-.game-card.stack-card--flat[data-density="compact"] .stack-card-alert {
-  transform: scale(0.78);
-  transform-origin: center;
 }
 
 .game-card.stack-card--flat[data-density="compact"] .stack-card-pt {
