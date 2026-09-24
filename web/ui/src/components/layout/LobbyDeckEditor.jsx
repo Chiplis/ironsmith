@@ -1,6 +1,7 @@
 import useUiText from "@/i18n/useUiText";
 import { useMemo } from "react";
 import CompetitiveDeckPicker from "./CompetitiveDeckPicker";
+import PreservingTextarea from "@/components/ui/PreservingTextarea";
 import {
   LOBBY_DECK_SIZE,
   MATCH_FORMAT_COMMANDER,
@@ -84,7 +85,7 @@ export default function LobbyDeckEditor({
           </select>
         </label>
       ) : null}
-      <textarea
+      <PreservingTextarea
         aria-label={ui("Your Deck")}
         className={`${lobbyTextareaClass} lobby-sheet-main-deck`}
         disabled={disabled}
@@ -105,7 +106,7 @@ export default function LobbyDeckEditor({
         {activeFormat === MATCH_FORMAT_COMMANDER
         || activeFormat === MATCH_FORMAT_PLANECHASE ? (
           <>
-            <textarea
+            <PreservingTextarea
               className={lobbyCommanderTextareaClass}
               disabled={disabled}
               value={commanderText}

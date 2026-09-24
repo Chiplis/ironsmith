@@ -127,6 +127,7 @@ export function usePeerLobby({
   const hostMessageQueueRef = useRef(Promise.resolve());
   const clientMessageQueueRef = useRef(Promise.resolve());
   const peerMessageQueueRef = useRef(Promise.resolve());
+  const lobbyDeckUpdateVersionRef = useRef(0);
   const resyncingPeerIdsRef = useRef(new Set());
   const resyncWaitersRef = useRef([]);
   const submissionIdleWaitersRef = useRef([]);
@@ -266,6 +267,8 @@ export function usePeerLobby({
         return;
       }
 
+      const updateVersion = ++lobbyDeckUpdateVersionRef.current;
+
       const nextDeckText =
         typeof updates === "string"
           ? String(updates)
@@ -279,19 +282,58 @@ export function usePeerLobby({
             ? String(updates.commanderText || "")
             : currentSession.localCommanderText;
 
+      // Keep the editor controlled by the text the player just entered. Card
+      // validation below is asynchronous, so waiting for it would replace
+      // the value under the caret and let older keystrokes win the race.
+      const optimisticSubmission = parseDeckSubmission(
+        currentSession.format,
+        nextDeckText,
+        nextCommanderText,
+      );
+      updateMultiplayer((prev) => {
+        if (prev.matchStarted || prev.mode === "starting") return prev;
+        return {
+          ...prev,
+          localDeckText: nextDeckText,
+          localCommanderText: nextCommanderText,
+          localDeckCount: optimisticSubmission.deckCount,
+          localCommanderCount: optimisticSubmission.commanderCount,
+        };
+      });
+
+      const isCurrentUpdate = () => {
+        const latest = multiplayerRef.current;
+        const currentIds = [
+          currentSession.lobbyId,
+          currentSession.hostPeerId,
+          currentSession.localPeerId,
+        ].filter(Boolean);
+        const latestIds = [latest.lobbyId, latest.hostPeerId, latest.localPeerId].filter(Boolean);
+        const sameSession = currentIds.length
+          ? currentIds.some((id) => latestIds.includes(id))
+          : latest.mode !== "idle";
+        return updateVersion === lobbyDeckUpdateVersionRef.current
+          && sameSession
+          && !latest.matchStarted
+          && latest.mode !== "starting";
+      };
+
       // A card the engine cannot load used to block the match at start, after
       // every player had committed. Swapping it for a basic land here keeps
       // the deck the size it was submitted at and keeps the audit manifests,
       // which are built from this list, describing what actually gets played.
-	    const deckSubmission = await withSupportedCards(
-	      parseDeckSubmission(currentSession.format, nextDeckText, nextCommanderText),
-	      {
-	        game: gameRef.current,
-	        onSubstitute: (substitutions) => setStatus(
-	          `Unsupported cards replaced with basic lands: ${describeSubstitutions(substitutions)}`
-	        ),
-	      },
-	    );
+      const deckSubmission = await withSupportedCards(
+        parseDeckSubmission(currentSession.format, nextDeckText, nextCommanderText),
+        {
+          game: gameRef.current,
+          onSubstitute: (substitutions) => {
+            if (isCurrentUpdate()) {
+              setStatus(`Unsupported cards replaced with basic lands: ${describeSubstitutions(substitutions)}`);
+            }
+          },
+        },
+      );
+      if (!isCurrentUpdate()) return;
       rememberDefaultLobbyDeck(nextDeckText, nextCommanderText);
 	      if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(currentSession))) {
 	        const nextSession = updateMultiplayer((prev) => ({
@@ -347,10 +389,11 @@ export function usePeerLobby({
 	        }
 	        return;
 	      }
-	      const {
-	        publicKey: auditPublicKey,
+      const {
+        publicKey: auditPublicKey,
         encryptionPublicKey: auditEncryptionPublicKey,
       } = await ensureAuditIdentity();
+      if (!isCurrentUpdate()) return;
       const resolvedLocalPlayerIndex = resolveLocalPlayerIndex(currentSession);
       const localPlayerIndex = resolvedLocalPlayerIndex ?? 0;
       const deckAuditManifest = await buildLocalDeckAuditManifest({
@@ -363,11 +406,13 @@ export function usePeerLobby({
         // shadow the real seat-0 deck in private manifest lookups.
         persist: resolvedLocalPlayerIndex != null,
       });
+      if (!isCurrentUpdate()) return;
       const deckSlotOpenings = deckSlotOpeningsForManifest(deckAuditManifest);
       const ziffleKeyPair = await ensureZiffleIdentity({
         context: currentSession.lobbyId || currentSession.hostPeerId || "pending",
         deckCount: deckSubmission.deckCount || 60,
       });
+      if (!isCurrentUpdate()) return;
       const localZiffleKey = publicZiffleKey(ziffleKeyPair, localPlayerIndex);
       const localGenesisPlayer = {
         peerId: currentSession.localPeerId,
@@ -391,6 +436,7 @@ export function usePeerLobby({
         matchId: currentSession.lobbyId || currentSession.hostPeerId || "pending",
         player: localGenesisPlayer,
       });
+      if (!isCurrentUpdate()) return;
       const nextSession = updateMultiplayer((prev) => ({
         ...prev,
         localDeckText: nextDeckText,

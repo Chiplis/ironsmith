@@ -12,6 +12,7 @@ import {
   SAVED_DECK_PRESETS_LIMIT,
 } from "@/lib/decklists";
 import CompetitiveDeckBrowser from "./CompetitiveDeckBrowser";
+import PreservingTextarea from "@/components/ui/PreservingTextarea";
 
 const fieldClass =
   "w-full bg-[#050607] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none transition-colors placeholder:text-[#6f6759] focus:bg-[#101114] focus-visible:ring-1 focus-visible:ring-[#d8bf7a]/35";
@@ -460,7 +461,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
                 </div>
               </div>
 
-              <textarea
+              <PreservingTextarea
                 aria-label={ui("{0} decklist", { 0: targetPlayer.name })}
                 spellCheck={false}
                 className="min-h-[160px] w-full flex-1 resize-none bg-[#050607] p-2.5 font-mono text-[13px] leading-snug text-[#e7d9bc] outline-none transition-colors placeholder:text-[#6f6759] focus:bg-[#0a0b0d] focus-visible:ring-1 focus-visible:ring-[#d8bf7a]/35"

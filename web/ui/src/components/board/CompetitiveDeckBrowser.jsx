@@ -1,4 +1,4 @@
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import useUiText from "@/i18n/useUiText";
 import { Button } from "@/components/ui/button";
 import { deckCatalogEntryToMtgoText, importDeckCatalogEntry } from "@/lib/deck-catalog-import";
@@ -185,11 +185,15 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
   const busyRef = useRef("");
   const copyingRef = useRef("");
   const listRef = useRef(null);
+  const listScrollTopRef = useRef(0);
+  const explicitScrollResetRef = useRef(false);
   const deferredQuery = useDeferredValue(query);
   // Narrowing the results while scrolled halfway down a long list leaves the
   // reader looking at whatever happens to be under the viewport, so every
   // filter change returns to the top of the list.
   const resetScroll = useCallback(() => {
+    explicitScrollResetRef.current = true;
+    listScrollTopRef.current = 0;
     listRef.current?.scrollTo?.({ top: 0 });
   }, []);
 
@@ -348,6 +352,15 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
   const showingSaved = view === "saved";
   const visibleCount = showingSaved ? savedPresets.length : listedResults.length;
 
+  // Parent updates (for example, assigning a deck to a player) must not move
+  // the catalog list. Filter and sort handlers mark their reset explicitly.
+  useLayoutEffect(() => {
+    if (!explicitScrollResetRef.current) {
+      listRef.current?.scrollTo?.({ top: listScrollTopRef.current });
+    }
+    explicitScrollResetRef.current = false;
+  }, [catalog, listedResults, savedPresets, showingSaved]);
+
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-1.5 bg-transparent" aria-label={ui("Browse decks")} data-deck-catalog="">
       <div className="flex items-center gap-3">
@@ -428,7 +441,7 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
       {!loading && !error && !visibleCount ? (
         <p className="text-[12px] text-[#b8aa8e]">{showingSaved ? ui("You have no saved decks in this session.") : ui("No results for this search.")}</p>
       ) : null}
-      <div ref={listRef} className="grid min-h-0 flex-1 auto-rows-min gap-x-3 overflow-y-auto overflow-x-hidden pr-1 xl:grid-cols-2" data-deck-catalog-list="">
+      <div ref={listRef} onScroll={(event) => { listScrollTopRef.current = event.currentTarget.scrollTop; }} className="grid min-h-0 flex-1 auto-rows-min gap-x-3 overflow-y-auto overflow-x-hidden pr-1 xl:grid-cols-2" data-deck-catalog-list="">
         {showingSaved
           ? savedPresets.map((preset) => (
             <SavedDeckRow key={preset.key} preset={preset} isBusy={Boolean(busyId)} targetName={targetName} onSelect={handleSelectSaved} />
