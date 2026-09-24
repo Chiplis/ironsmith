@@ -71,8 +71,15 @@ jobs:
             web/wasm_demo/pkg
             web/ui/public/cards
             web/ui/public/ironsmith_semantic_scores.json
-            catalog
-          key: ironsmith-pages-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rebuild-wasm.sh', 'scripts/generate_baked_registry.py', 'scripts/stream_scryfall_blocks.py', 'crates/**', 'tools/deck-catalog/**') }}
+          key: ironsmith-pages-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rebuild-wasm.sh', 'scripts/generate_baked_registry.py', 'scripts/stream_scryfall_blocks.py', 'crates/**') }}
+
+      - name: Restore the deck catalog cache
+        uses: actions/cache@v4
+        with:
+          path: catalog
+          key: ironsmith-deck-catalog-${{ runner.os }}-${{ hashFiles('tools/deck-catalog/**') }}
+          restore-keys: |
+            ironsmith-deck-catalog-${{ runner.os }}-
 
       - name: Build the engine and browser card assets
         if: steps.generated-cache.outputs.cache-hit != 'true'
