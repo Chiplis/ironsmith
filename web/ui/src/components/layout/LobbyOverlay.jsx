@@ -15,6 +15,7 @@ import {
 import { useGame } from "@/context/GameContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import PreservingTextarea from "@/components/ui/PreservingTextarea";
 import {
   Sheet,
   SheetContent,
@@ -500,7 +501,7 @@ export default function LobbyOverlay({
                         }}
                       />
                     ) : null}
-                    <label className={labelClass}>{ui("Main Deck")}<textarea
+                    <label className={labelClass}>{ui("Main Deck")}<PreservingTextarea
                         className={textareaClass}
                         value={createDeckText}
                         onChange={(event) => setCreateDeckText(event.target.value)}
@@ -517,7 +518,7 @@ export default function LobbyOverlay({
                         {createFormat === MATCH_FORMAT_PLANECHASE
                           ? ui("Planar Deck")
                           : ui("Commander(s)")}
-                        <textarea
+                        <PreservingTextarea
                           className={commanderTextareaClass}
                           value={createCommanderText}
                           onChange={(event) => setCreateCommanderText(event.target.value)}
@@ -584,14 +585,14 @@ export default function LobbyOverlay({
                         setJoinCommanderText(commanderText);
                       }}
                     />
-                    <label className={labelClass}>{ui("Main Deck")}<textarea
+                    <label className={labelClass}>{ui("Main Deck")}<PreservingTextarea
                         className={textareaClass}
                         value={joinDeckText}
                         onChange={(event) => setJoinDeckText(event.target.value)}
                         placeholder={ui("Paste your main deck now or finish it inside the lobby.\n\nNormal and Planechase lobbies need at least {0} cards.\nCommander lobbies need {1} or {2} main-deck cards.", { 0: LOBBY_DECK_SIZE, 1: COMMANDER_DECK_SIZE, 2: PARTNER_DECK_SIZE })}
                       />
                     </label>
-                    <label className={labelClass}>{ui("Commander(s) / Planar Deck")}<textarea
+                    <label className={labelClass}>{ui("Commander(s) / Planar Deck")}<PreservingTextarea
                         className={commanderTextareaClass}
                         value={joinCommanderText}
                         onChange={(event) => setJoinCommanderText(event.target.value)}
