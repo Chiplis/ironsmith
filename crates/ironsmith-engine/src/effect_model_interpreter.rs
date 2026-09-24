@@ -1731,6 +1731,17 @@ where
             payload.count.clone(),
         )));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::ChooseNumberAtRandomEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::ChooseNumberAtRandomEffect::new(
+            payload.choices.clone(),
+        )));
+    }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::NextAdaptIgnoresCountersEffect>(&effect)
+    {
+        return Ok(Effect::new(crate::effects::NextAdaptIgnoresCountersEffect::new(
+            payload.target.clone(),
+        )));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::DetainEffect>(&effect) {
         return Ok(Effect::new(crate::effects::DetainEffect::new(
             payload.target.clone(),
@@ -2119,6 +2130,8 @@ where
         crate::effects::AmassEffect,
         crate::effects::AmplifyEffect,
         crate::effects::DevourEffect,
+        crate::effects::player::MayCastForMiracleCostEffect,
+        crate::effects::composition::ResolvesDespiteIllegalTargetsEffect,
         crate::effects::AuraSwapEffect,
         crate::effects::IncubateEffect,
         crate::effects::LearnEffect,
@@ -2183,6 +2196,8 @@ where
         crate::effects::UntapEffect,
         crate::effects::VariableCasualtyPlaneswalkerCopyEffect,
         crate::effects::AddManaOfChosenColorEffect,
+        crate::effects::AddManaOfNotedTypeEffect,
+        crate::effects::NoteActivationManaTypeEffect,
         crate::effects::AddManaOfColorsAmongEffect,
         crate::effects::AddOneManaOfAnyColorAmongEffect,
         crate::effects::mana::AddManaOfImprintedColorsEffect,

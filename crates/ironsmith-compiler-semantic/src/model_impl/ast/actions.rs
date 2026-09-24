@@ -413,6 +413,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Random(RandomActionAst::FlipCoin) => f.write_str("FlipCoin"),
             Self::Random(RandomActionAst::FlipCoins { count }) => f.debug_struct("FlipCoins").field("count", count).finish(),
             Self::Random(RandomActionAst::FlipCoinFaceOnly) => f.write_str("FlipCoinFaceOnly"),
+            Self::Random(RandomActionAst::ChooseNumberAtRandom { choices }) => f
+                .debug_struct("ChooseNumberAtRandom")
+                .field("choices", choices)
+                .finish(),
             Self::Random(RandomActionAst::RollDie { sides, surface }) => {
                 if let Some(surface) = surface {
                     f.debug_struct("RollDie")
@@ -519,6 +523,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Mana(ManaActionAst::AddManaAnyOneColor { amount }) => {
                 f.debug_tuple("AddManaAnyOneColor").field(amount).finish()
             }
+            Self::Mana(ManaActionAst::AddManaNotedType { amount }) => f
+                .debug_struct("AddManaNotedType")
+                .field("amount", amount)
+                .finish(),
             Self::Mana(ManaActionAst::AddManaChosenColor {
                 amount,
                 fixed_option,
@@ -995,11 +1003,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 DamagePreventionActionAst::PreventAllDamageFromSourceFilter {
                     duration,
                     source_filter,
+                    of_chosen_color,
                 },
             ) => f
                 .debug_struct("PreventAllDamageFromSourceFilter")
                 .field("duration", duration)
                 .field("source_filter", source_filter)
+                .field("of_chosen_color", of_chosen_color)
                 .finish(),
             Self::DamagePrevention(
                 DamagePreventionActionAst::PreventDamageToTargetPutCounters {
@@ -2140,6 +2150,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("CounterUnlessPays")
                 .field("target", target)
                 .field("cost", cost)
+                .finish(),
+            Self::Counters(CounterActionAst::NextAdaptIgnoresCounters { target }) => f
+                .debug_struct("NextAdaptIgnoresCounters")
+                .field("target", target)
                 .finish(),
             Self::Counters(CounterActionAst::PutCounters {
                 counter_type,

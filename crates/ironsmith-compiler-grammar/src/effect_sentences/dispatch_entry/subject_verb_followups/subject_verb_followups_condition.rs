@@ -242,6 +242,40 @@ pub(in super::super) fn post_rule_future_zone_and_self_replacement(
         .get(sentence_idx)
         .map(SentenceInput::lexed)
         .unwrap_or(lowered_sentence_tokens);
+    // "If you do, put a +1/+1 counter on it. If it's a Unicorn, put two
+    // +1/+1 counters on it instead." The replacement modifies the action
+    // inside the result branch, so apply it there and keep the branch linked
+    // to the optional payment.
+    if matches!(
+        classify_instead_followup_tokens(sentence_tokens),
+        InsteadSemantics::SelfReplacement
+    ) && matches!(
+        state.effects.last(),
+        Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. }))
+            if effects.len() == 1
+    ) {
+        let Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, mut effects })) =
+            state.effects.pop()
+        else {
+            unreachable!("checked above");
+        };
+        state.effects.push(effects.remove(0));
+        let result = post_rule_future_zone_and_self_replacement(
+            state,
+            sentences,
+            sentence_idx,
+            lowered_sentence_tokens,
+            sentence_effects,
+        );
+        let inner = state.effects.pop().expect("the branch action was restored");
+        state
+            .effects
+            .push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate,
+                effects: vec![inner],
+            }));
+        return result;
+    }
     maybe_rewrite_future_zone_replacement_sentence(sentence_effects, sentence_tokens);
     if matches!(
         classify_instead_followup_tokens(sentence_tokens),

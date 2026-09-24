@@ -686,6 +686,11 @@ impl Trigger {
         Self::new(AttacksAndIsntBlockedTrigger::new(filter))
     }
 
+    /// Create a grouped "when one or more [filter] attack and aren't blocked" trigger.
+    pub fn attacks_and_isnt_blocked_one_or_more(filter: ObjectFilter) -> Self {
+        Self::new(AttacksAndIsntBlockedTrigger::one_or_more(filter))
+    }
+
     /// Create a "when [filter] attacks while saddled" trigger.
     pub fn attacks_while_saddled(filter: ObjectFilter) -> Self {
         Self::new(AttacksWhileSaddledTrigger::new(filter))

@@ -36,6 +36,25 @@ fn parse_compound_filter_subtype(words: &[&str], idx: usize) -> Option<Subtype> 
     if words.get(idx..idx + 2) == Some(&["time", "lord"]) {
         return Some(Subtype::TimeLord);
     }
+    let previous = idx.checked_sub(1).and_then(|previous| words.get(previous));
+    // `Plant` after `Power` is the second half of the `Power-Plant` land
+    // type, which the `power` position already recognized as one subtype.
+    if previous.is_some_and(|previous| previous.eq_ignore_ascii_case("power"))
+        && words
+            .get(idx)
+            .is_some_and(|word| word.eq_ignore_ascii_case("plant"))
+    {
+        return None;
+    }
+    // `Mine` and `Tower` are rejected as English nouns by the flexible
+    // subtype parser, but after `Urza's` they are the Tron land types
+    // (`an Urza's Mine` requires both Urza's and Mine).
+    if previous.is_some_and(|previous| parse_subtype_flexible(previous) == Some(Subtype::Urzas))
+        && let Some(land_type @ (Subtype::Mine | Subtype::Tower)) =
+            super::super::leaf::classify_token_definition_subtype(words.get(idx)?)
+    {
+        return Some(land_type);
+    }
     parse_subtype_flexible(words.get(idx)?)
         .or_else(|| {
             let compound = format!("{}-{}", words.get(idx)?, words.get(idx + 1)?);

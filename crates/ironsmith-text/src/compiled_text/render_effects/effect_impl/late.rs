@@ -90,6 +90,9 @@
     if let Some(compact) = describe_compact_destroy_color_choice(effect) {
         return compact;
     }
+    if let Some(compact) = describe_compact_prevent_damage_color_choice(effect) {
+        return compact;
+    }
     if let Some(compact) = describe_compact_return_to_hand_color_choice(effect) {
         return compact;
     }
@@ -4602,6 +4605,34 @@
     }
     if let Some(devour) = effect.downcast_ref::<crate::effects::DevourEffect>() {
         return format!("Devour {}", devour.multiplier);
+    }
+    if effect
+        .downcast_ref::<crate::effects::NoteActivationManaTypeEffect>()
+        .is_some()
+    {
+        return "Note the type of mana spent to pay this activation cost".to_string();
+    }
+    if let Some(add) = effect.downcast_ref::<crate::effects::AddManaOfNotedTypeEffect>() {
+        return format!(
+            "Add {} mana of this source's last noted type",
+            describe_value(&add.amount)
+        );
+    }
+    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseNumberAtRandomEffect>() {
+        let numbers: Vec<String> = choose.choices.iter().map(u32::to_string).collect();
+        return format!("Choose {} at random", join_with_or(&numbers));
+    }
+    if let Some(next_adapt) = effect.downcast_ref::<crate::effects::NextAdaptIgnoresCountersEffect>() {
+        return format!(
+            "The next time {} adapts this turn, it adapts as though it had no +1/+1 counters on it",
+            describe_choose_spec(&next_adapt.target)
+        );
+    }
+    if effect
+        .downcast_ref::<crate::effects::composition::ResolvesDespiteIllegalTargetsEffect>()
+        .is_some()
+    {
+        return "This ability still resolves if its target becomes illegal".to_string();
     }
     if let Some(exchange_life) = effect.downcast_ref::<crate::effects::ExchangeLifeTotalsEffect>() {
         if let (PlayerFilter::Target(first), PlayerFilter::Target(second)) =

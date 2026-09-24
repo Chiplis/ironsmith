@@ -701,6 +701,12 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
             .collect()
     };
 
+    let should_untap = if may_have_untap_static_abilities {
+        apply_untap_step_limits(game, &active_players, &permanents, should_untap, decision_maker)
+    } else {
+        should_untap
+    };
+
     // Second pass: untap eligible permanents. Only the active player's
     // permanents have been under their controller continuously since that
     // player's most recent turn began; off-turn Seedborn-style untaps do not
@@ -735,6 +741,103 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
 
     // No priority during untap step
     game.turn.priority_player = None;
+}
+
+/// "Players can't untap more than N <filter> during their untap steps"
+/// (Winter Orb, Smoke, Stoic Angel). When more matching tapped permanents would
+/// untap than a limit allows, their controller chooses which ones untap.
+fn apply_untap_step_limits(
+    game: &GameState,
+    active_players: &[crate::ids::PlayerId],
+    permanents: &[crate::ids::ObjectId],
+    mut should_untap: std::collections::HashSet<crate::ids::ObjectId>,
+    decision_maker: &mut impl DecisionMaker,
+) -> std::collections::HashSet<crate::ids::ObjectId> {
+    use crate::decisions::context::{SelectObjectsContext, SelectableObject};
+    use crate::filter::ObjectFilterExt as _;
+
+    let mut limits = Vec::new();
+    for &source_id in &game.battlefield {
+        if game.is_phased_out(source_id) {
+            continue;
+        }
+        let Some(chars) = game.current_characteristics(source_id) else {
+            continue;
+        };
+        for static_ability in &chars.static_abilities {
+            let Some((player, filter, max)) = static_ability.untap_step_limit_spec() else {
+                continue;
+            };
+            if !static_ability.is_active(game, source_id) {
+                continue;
+            }
+            limits.push((source_id, player.clone(), filter.clone(), max));
+        }
+    }
+
+    for (source_id, player_filter, filter, max) in limits {
+        let source_controller = game
+            .current_controller(source_id)
+            .unwrap_or(game.turn.active_player);
+        let filter_ctx = game.filter_context_for(source_controller, Some(source_id));
+        for &player in active_players {
+            if !crate::filter::player_filter_matches_game(&player_filter, player, game, &filter_ctx) {
+                continue;
+            }
+            let candidates: Vec<_> = permanents
+                .iter()
+                .copied()
+                .filter(|id| should_untap.contains(id) && game.is_tapped(*id))
+                .filter(|id| game.current_controller(*id) == Some(player))
+                .filter(|id| {
+                    game.object(*id)
+                        .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+                })
+                .collect();
+            let max = max as usize;
+            if candidates.len() <= max {
+                continue;
+            }
+            let selectable = candidates
+                .iter()
+                .map(|id| SelectableObject {
+                    id: *id,
+                    name: game
+                        .object(*id)
+                        .map_or_else(String::new, |object| object.name.to_string()),
+                    legal: true,
+                    selection_identity: None,
+                    reveal_policy: None,
+                })
+                .collect();
+            let ctx = SelectObjectsContext::new(
+                player,
+                Some(source_id),
+                "untap during your untap step",
+                selectable,
+                max,
+                Some(max),
+            );
+            let mut chosen: Vec<_> = decision_maker
+                .decide_objects(game, &ctx)
+                .into_iter()
+                .filter(|id| candidates.contains(id))
+                .collect();
+            chosen.dedup();
+            chosen.truncate(max);
+            for id in &candidates {
+                if chosen.len() < max && !chosen.contains(id) {
+                    chosen.push(*id);
+                }
+            }
+            for id in candidates {
+                if !chosen.contains(&id) {
+                    should_untap.remove(&id);
+                }
+            }
+        }
+    }
+    should_untap
 }
 
 fn game_may_have_untap_static_abilities(game: &GameState) -> bool {
@@ -794,6 +897,7 @@ fn static_ability_may_affect_untap(
     use crate::static_abilities::StaticAbilityId;
 
     static_ability.affects_untap()
+        || static_ability.untap_step_limit_spec().is_some()
         || static_ability.id() == StaticAbilityId::MayChooseNotToUntapDuringUntapStep
         || static_ability
             .untap_during_each_other_players_untap_step_filter()

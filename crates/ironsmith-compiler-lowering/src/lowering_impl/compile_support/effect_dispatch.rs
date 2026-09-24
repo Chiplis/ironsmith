@@ -837,6 +837,30 @@ fn compile_effect_inner(
             Vec::new(),
         ));
     }
+    if let EffectAst::LookAtTopCardsAsViewer {
+        library_owner,
+        viewer,
+        count,
+        tag,
+    } = effect
+    {
+        let mut look = crate::effects::LookAtTopCardsEffect::new(
+            library_owner.clone(),
+            count.clone(),
+            tag.clone(),
+        );
+        look.viewer = viewer.clone();
+        return Ok((vec![Effect::new(look)], Vec::new()));
+    }
+    if let EffectAst::NoteActivationManaType = effect {
+        return Ok((vec![Effect::note_activation_mana_type()], Vec::new()));
+    }
+    if let EffectAst::ResolvesDespiteIllegalTargets = effect {
+        return Ok((
+            vec![crate::effect::Effect::resolves_despite_illegal_targets()],
+            Vec::new(),
+        ));
+    }
     if let EffectAst::RestartGame {
         cards_left_in_exile,
         source_surface,
@@ -1152,14 +1176,20 @@ fn compile_effect_inner(
         // A single semantic action can lower with target/capture preludes
         // before its executable effect. Keep those preludes outside the
         // wrapper and tag only the final action's actual outcome.
-        if lowered.iter().any(|effect| {
+        fn is_target_or_capture_prelude(effect: &Effect) -> bool {
+            if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+                // A tagged target prelude ("destroy target artifact if ...")
+                // still only announces the target.
+                return is_target_or_capture_prelude(&tagged.effect);
+            }
             effect
                 .downcast_ref::<crate::effects::TargetOnlyEffect>()
-                .is_none()
-                && effect
+                .is_some()
+                || effect
                     .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
-                    .is_none()
-        }) {
+                    .is_some()
+        }
+        if !lowered.iter().all(is_target_or_capture_prelude) {
             return Err(CardTextError::ParseError(
                 "tag-affected nested effect may only have target or capture preludes".to_string(),
             ));
@@ -1314,6 +1344,37 @@ fn compile_effect_inner(
     ) {
         return Err(CardTextError::ParseError(
             "unsupported repeat this process effect tail".to_string(),
+        ));
+    }
+    if let EffectAst::SelfReplacement {
+        predicate,
+        if_true,
+        if_false,
+        attach_to_previous_ability: false,
+    } = effect
+    {
+        // Nested inside another branch, "... instead" is an ordinary choice
+        // between the replacement and the default at that point.
+        let (mut effects, choices) = compile_effect(
+            &EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: predicate.clone(),
+                if_true: if_true.clone(),
+                if_false: if_false.clone(),
+            }),
+            ctx,
+        )?;
+        if let [only] = effects.as_mut_slice()
+            && let Some(conditional) = only.downcast_ref::<crate::effects::ConditionalEffect>()
+        {
+            *only = Effect::new(
+                conditional
+                    .clone()
+                    .with_surface(ironsmith_core::ConditionalSurface::Instead),
+            );
+            return Ok((effects, choices));
+        }
+        return Err(CardTextError::ParseError(
+            "unsupported nested self-replacement effect".to_string(),
         ));
     }
     if matches!(effect, EffectAst::SelfReplacement { .. }) {

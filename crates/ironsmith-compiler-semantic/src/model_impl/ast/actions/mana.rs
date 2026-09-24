@@ -23,6 +23,10 @@ pub enum ManaActionAst {
         amount: Value,
         fixed_option: Option<crate::color::Color>,
     },
+    /// "Add one mana of this artifact's last noted type."
+    AddManaNotedType {
+        amount: Value,
+    },
     AddManaFromLandCouldProduce {
         amount: Value,
         land_filter: ObjectFilter,

@@ -603,6 +603,15 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "have"),
         ],
+        "parse_search_limited_to_top_cards_line" => vec![
+            StaticAbilityLineHeadHint::Pair("if", "an"),
+            StaticAbilityLineHeadHint::Pair("if", "a"),
+        ],
+        "parse_untap_step_limit_line" => vec![
+            StaticAbilityLineHeadHint::Single("players"),
+            StaticAbilityLineHeadHint::Pair("each", "player"),
+            StaticAbilityLineHeadHint::Single("you"),
+        ],
         "parse_untap_during_each_other_players_untap_step_line" => vec![
             StaticAbilityLineHeadHint::Single("untap"),
             StaticAbilityLineHeadHint::Pair("untap", "all"),
@@ -951,6 +960,34 @@ mod registry_head_hint_tests {
             .expect("registry parse should not error")
             .expect("the `as` head must reach the copy-ability rule");
         assert!(format!("{parsed:#?}").contains("CopyActivatedAbilities"));
+    }
+
+    #[test]
+    fn untap_step_limit_rule_is_reachable_and_typed() {
+        for (text, head, second, max) in [
+            ("Players can't untap more than one nonbasic land during their untap steps.", "players", "cant", 1),
+            ("You can't untap more than two permanents during your untap step.", "you", "cant", 2),
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).expect("untap limit line should lex");
+            let direct = parse_untap_step_limit_line(&tokens)
+                .expect("direct untap limit parse should not error")
+                .expect("direct untap limit parser should claim the line");
+            assert!(format!("{direct:?}").contains(&format!("max: {max}")), "{direct:?}");
+            let rule_idx = static_ability_ast_line_rules()
+                .iter()
+                .position(|rule| rule.id.as_str() == "parse_untap_step_limit_line")
+                .expect("untap limit rule should be registered");
+            assert!(
+                STATIC_ABILITY_AST_LINE_RULE_INDEX
+                    .candidate_indices(head, Some(second))
+                    .contains(&rule_idx),
+                "untap limit rule should be indexed under `{head}`"
+            );
+            let parsed = registry_result(&tokens)
+                .expect("untap limit registry parse should not error")
+                .expect("untap limit registry should claim the line");
+            assert!(format!("{parsed:?}").contains("UntapStepLimit"), "{parsed:?}");
+        }
     }
 
     #[test]
@@ -1448,6 +1485,8 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_passthrough_rule!(parse_subject_cant_be_blocked_line),
         single_static_ability_ast_rule!(parse_may_choose_not_to_untap_during_untap_step_line),
         single_static_ability_ast_rule!(parse_untap_during_each_other_players_untap_step_line),
+        single_static_ability_ast_rule!(parse_untap_step_limit_line),
+        single_static_ability_ast_rule!(parse_search_limited_to_top_cards_line),
         single_static_ability_ast_passthrough_rule!(parse_doesnt_untap_during_untap_step_line),
         multi_static_ability_ast_rule!(parse_attached_restrictions_with_ignore_special_action_line),
         multi_static_ability_ast_rule!(parse_attached_is_goaded_line),
@@ -4497,6 +4536,7 @@ pub fn parse_enter_as_copy_as_enters_line(
                     name_override: None,
                     added_colors: ColorSet::new(),
                     added_card_types: Vec::new(),
+                    removes_other_card_types: false,
                     added_supertypes: Vec::new(),
                     removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
@@ -4543,6 +4583,7 @@ pub fn parse_enter_as_copy_as_enters_line(
                     name_override: None,
                     added_colors: ColorSet::new(),
                     added_card_types: Vec::new(),
+                    removes_other_card_types: false,
                     added_supertypes: Vec::new(),
                     removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
@@ -4594,6 +4635,7 @@ pub fn parse_enter_as_copy_as_enters_line(
             let mut name_override = None;
             let mut added_colors = ColorSet::new();
             let mut added_card_types = Vec::new();
+            let mut removes_other_card_types = false;
             let mut added_supertypes = Vec::new();
             let mut removed_supertypes = Vec::new();
             let mut added_subtypes = Vec::new();
@@ -4779,6 +4821,17 @@ pub fn parse_enter_as_copy_as_enters_line(
                                 added_abilities =
                                     parse_added_copy_abilities(ability_tokens, &clause_words)?;
                             }
+                            keyword_static_lines::CopyCharacteristicRemainder::WithAbilities {
+                                abilities,
+                                loses_other_card_types,
+                            } => {
+                                added_abilities =
+                                    parse_added_copy_abilities(abilities, &clause_words)?;
+                                removes_other_card_types = loses_other_card_types;
+                            }
+                            keyword_static_lines::CopyCharacteristicRemainder::LosesOtherCardTypes => {
+                                removes_other_card_types = true;
+                            }
                             keyword_static_lines::CopyCharacteristicRemainder::Unsupported => {
                                 return Err(CardTextError::ParseError(format!(
                                     "unsupported enters-as-copy exception clause (clause: '{}')",
@@ -4803,6 +4856,7 @@ pub fn parse_enter_as_copy_as_enters_line(
                     name_override,
                     added_colors,
                     added_card_types,
+                    removes_other_card_types,
                     added_subtypes,
                     added_abilities,
                     set_base_power_toughness,

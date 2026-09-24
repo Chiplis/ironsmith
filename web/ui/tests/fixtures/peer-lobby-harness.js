@@ -40,6 +40,7 @@ function createFakeGame() {
     revealHiddenSlot: 0,
     postPublicOpenRevealSlot: 0,
     latePublicOpenRevealSlot: 0,
+    startMatch: 0,
   };
 
   const fakeHex = (label) => Array.from(String(label || "fixture"))
@@ -393,6 +394,7 @@ function createFakeGame() {
       };
     },
     startMatch: async (config) => {
+      instrumentation.startMatch += 1;
       matchConfig = JSON.parse(JSON.stringify(config || {}));
       actionSequence = 0;
       nextObjectId = 1000;
@@ -562,6 +564,7 @@ function createFakeGame() {
     },
     syncEvents: () => [...syncEvents],
     instrumentation: () => ({ ...instrumentation }),
+    matchConfig: () => JSON.parse(JSON.stringify(matchConfig || {})),
     resetInstrumentation: () => {
       instrumentation.exportPublicAuditCheckpoint = 0;
       instrumentation.exportSyncCheckpoint = 0;
@@ -675,6 +678,11 @@ function Harness() {
       updateLobbyDeck: lobby.updateLobbyDeck,
       leaveLobby: lobby.leaveLobby,
       startHostedMatch: lobby.startHostedMatch,
+      startRematchSideboarding: lobby.startRematchSideboarding,
+      updateRematchDeck: lobby.updateRematchDeck,
+      readyForRematch: lobby.readyForRematch,
+      startRematch: lobby.startRematch,
+      matchConfig: () => game.matchConfig(),
       submitMultiplayerCommand: lobby.submitMultiplayerCommand,
       submitMultiplayerAddCardCheat: lobby.submitMultiplayerAddCardCheat,
       setAutoPass: (enabled) => {

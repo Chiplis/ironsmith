@@ -114,6 +114,8 @@ pub struct CombatDividedTargetShape<'a> {
     pub count: ChoiceCount,
     pub target_tokens: &'a [OwnedLexToken],
     pub any_target: bool,
+    /// "among them": the division repeats the antecedent's own target set.
+    pub repeats_antecedent: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -458,8 +460,22 @@ pub fn parse_combat_divided_target_shape_lexed(
                 count: ChoiceCount::any_number(),
                 target_tokens,
                 any_target: false,
+                repeats_antecedent: false,
             });
         }
+    }
+    // "divided as you choose among them / those permanents and/or players":
+    // the division is over the objects an earlier clause already targeted.
+    if among_tail
+        .first()
+        .is_some_and(|token| matches!(token.as_word(), Some("those" | "them")))
+    {
+        return Ok(CombatDividedTargetShape {
+            count: ChoiceCount::any_number(),
+            target_tokens: among_tail,
+            any_target: false,
+            repeats_antecedent: true,
+        });
     }
     let Some((target_idx, _target_marker, _after_target)) =
         primitives::find_prefix(among_tail, || {
@@ -496,6 +512,7 @@ pub fn parse_combat_divided_target_shape_lexed(
         count,
         target_tokens,
         any_target,
+        repeats_antecedent: false,
     })
 }
 

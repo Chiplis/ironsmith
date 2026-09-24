@@ -4,6 +4,11 @@ use super::*;
 
 #[derive(Clone, PartialEq, TagKeyWalk)]
 pub enum CounterActionAst {
+    /// "The next time target creature adapts this turn, it adapts as though
+    /// it had no +1/+1 counters on it." (Biomancer's Familiar)
+    NextAdaptIgnoresCounters {
+        target: TargetAst,
+    },
     PutCounters {
         counter_type: CounterType,
         count: Value,

@@ -976,6 +976,15 @@ fn describe_linked_action_result_condition(
         };
     }
 
+    // "If you don't or can't make an exchange, ..." (Gilded Drake): an
+    // exchange of control fails when a target is absent or illegal.
+    if effect
+        .downcast_ref::<crate::effects::ExchangeControlEffect>()
+        .is_some()
+        && matches!(predicate, EffectPredicate::DidNotHappen)
+    {
+        return Some("If you don't or can't make an exchange".to_string());
+    }
     let actor = linked_result_actor(effect)?;
     let who = linked_result_player_pronoun(&actor);
     if effect

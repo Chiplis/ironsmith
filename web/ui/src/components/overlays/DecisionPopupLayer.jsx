@@ -14,6 +14,8 @@ import { useTranslatedDecisionText } from "@/i18n/useTranslatedDecisionText";
 import { DECISION_REASON_KEYS } from "@/i18n/decisionPhrases";
 import { useI18n } from "@/i18n/I18nContext";
 import PeerWaitPopover, { PeerWaitButtonContent } from "@/components/decisions/PeerWaitPopover";
+import RematchMainButton from "@/components/decisions/RematchMainButton";
+import useRematchMainAction from "@/hooks/useRematchMainAction";
 import useDeferredPeerWait from "@/hooks/useDeferredPeerWait";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
 import { animate, cancelMotion, snappySpring, stagger } from "@/lib/motion/anime";
@@ -3639,6 +3641,62 @@ function CombatBar({ anchor = null, inline = false, replaceMiddleControls = fals
   );
 }
 
+// After a multiplayer game the main decision button offers the next one.
+function GameOverBar({
+  inline = false,
+  replaceMiddleControls = false,
+  mobileBattle = false,
+  portalTarget = null,
+  dockHidden = false,
+}) {
+  const { state } = useGame();
+  const { t } = useI18n();
+  const action = useRematchMainAction();
+  const gameOver = state?.game_over || null;
+  if (!gameOver || !action.available) return null;
+  const gameOverText = gameOver.kind === "winner"
+    ? t("game.wins", { player: gameOver.name || `Player ${Number(gameOver.player || 0) + 1}` })
+    : gameOver.kind === "draw"
+      ? t("game.draw")
+      : t("game.complete");
+
+  if (mobileBattle) {
+    if (dockHidden) return null;
+    return renderMobileBattlePortal(
+      <div className="mobile-decision-dock mobile-decision-dock--inline">
+        <div className="mobile-decision-dock-actions">
+          <RematchMainButton variant="mobile" subtitle={gameOverText} />
+        </div>
+      </div>,
+      portalTarget
+    );
+  }
+
+  const topbarHost = inline && !replaceMiddleControls && typeof document !== "undefined"
+    ? document.querySelector('[data-topbar-main-decision-host="true"]') : null;
+  return (
+    <>
+      {topbarHost ? createPortal(<RematchMainButton className="h-full w-full" />, topbarHost) : null}
+      <div className={inline
+        ? "pointer-events-none absolute inset-0 z-[120] flex items-stretch"
+        : "pointer-events-none fixed left-2 bottom-[148px] z-[120] w-[min(96vw,740px)]"}>
+        <div className="priority-inline-panel combat-decision-panel pointer-events-auto"
+          data-replaces-middle-controls={replaceMiddleControls ? "true" : "false"}
+          data-game-over-bar="true">
+          <div className="action-strip-decision-toolbar combat-decision-toolbar">
+            {!topbarHost ? <RematchMainButton className="h-10 min-w-[132px] shrink-0" /> : null}
+            <div className="combat-decision-meta">
+              <span className="decision-stage-chip">{t("game.over")}</span>
+              <span className="action-strip-decision-title">{gameOverText}</span>
+              <span className="action-strip-decision-inline-summary">{t("game.startRematch")}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function DecisionPopupLayer({
   anchor = null,
   priorityInline = false,
@@ -3654,7 +3712,17 @@ export default function DecisionPopupLayer({
   const decision = state?.decision || null;
   const canAct = !!decision && samePlayerId(state?.perspective, decision.player);
 
-  if (!decision) return null;
+  if (!decision) {
+    return (
+      <GameOverBar
+        inline={priorityInline}
+        replaceMiddleControls={replaceMiddleControls}
+        mobileBattle={mobileBattle}
+        portalTarget={mobileBattlePortalTarget}
+        dockHidden={mobileBattleDockHidden}
+      />
+    );
+  }
   let content = null;
   if (mobileBattle) {
     content = (

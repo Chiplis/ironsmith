@@ -2153,7 +2153,8 @@ pub(crate) fn condition_could_be_affected_by(
         | C::SourceIsSoulbondPaired
         | C::TurnHistory(_)
         | C::PlayerGraveyardHasCardsAtLeast { .. }
-        | C::XValueAtLeast(_) => false,
+        | C::XValueAtLeast(_)
+        | C::AllTargetsStillLegal => false,
 
         // Opaque conditions may read anything.
         C::Custom(_) => any_characteristic_affected,

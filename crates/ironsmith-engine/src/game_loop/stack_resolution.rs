@@ -799,6 +799,37 @@ pub(crate) fn execute_resolution_program(
 ///
 /// Note: May effects will be auto-declined. Use `resolve_stack_entry_with` to
 /// provide a decision maker for interactive May choices.
+/// CR 608.3: a resolving permanent spell becomes a permanent. Delayed
+/// triggers its own resolution scheduled ("the controller of the permanent it
+/// becomes sacrifices it at the beginning of the next cleanup step") refer to
+/// that permanent, not to the stack object that no longer exists.
+fn inherit_resolving_spell_delayed_triggers(
+    game: &mut GameState,
+    spell: crate::ids::ObjectId,
+    permanent: crate::ids::ObjectId,
+) {
+    let permanent_snapshot = game
+        .object(permanent)
+        .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game));
+    for delayed in &mut game.effect_store.delayed_triggers {
+        if delayed.ability_source == Some(spell) {
+            delayed.ability_source = Some(permanent);
+            if delayed
+                .ability_source_snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.object_id == spell)
+            {
+                delayed.ability_source_snapshot = permanent_snapshot.clone();
+            }
+        }
+        for target in &mut delayed.target_objects {
+            if *target == spell {
+                *target = permanent;
+            }
+        }
+    }
+}
+
 pub fn resolve_stack_entry(game: &mut GameState) -> Result<(), GameLoopError> {
     let mut auto_dm = crate::decision::AutoPassDecisionMaker;
     resolve_stack_entry_full(game, &mut auto_dm, None)
@@ -980,10 +1011,22 @@ pub(super) fn resolve_stack_entry_full(
     // If the spell/ability had targets and ALL are now invalid, it fizzles.
     // Bestow and Mutate are keyword-specific exceptions: each stops using its
     // alternative permanent behavior and continues resolving as a creature.
+    // "This ability still resolves if its target becomes illegal." (Gilded
+    // Drake) suspends CR 608.2b for that ability.
+    let resolves_despite_illegal_targets = entry.ability_effects.as_ref().is_some_and(|program| {
+        program.segments.iter().any(|segment| {
+            segment.default_effects.iter().any(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::composition::ResolvesDespiteIllegalTargetsEffect>()
+                    .is_some()
+            })
+        })
+    });
     if !entry.targets.is_empty()
         && all_targets_invalid
         && !bestow_resolves_as_creature_after_illegal_target
         && !mutate_resolves_as_creature_after_illegal_target
+        && !resolves_despite_illegal_targets
     {
         // Spell fizzles - move to graveyard without executing effects
         if let Some(obj) = &obj
@@ -1041,6 +1084,7 @@ pub(super) fn resolve_stack_entry_full(
     // If no triggering event is set (shouldn't happen for triggered abilities),
     // we allow the ability to proceed rather than creating a fake event
 
+    ctx.all_targets_legal = valid_targets.len() == entry.targets.len();
     ctx = ctx
         .with_targets(valid_targets)
         .with_target_assignments(valid_target_assignments.clone())
@@ -1238,6 +1282,7 @@ pub(super) fn resolve_stack_entry_full(
                 // and move directly to battlefield (avoids double-processing)
                 let new_id = game.move_object_by_effect(entry.object_id, Zone::Battlefield);
                 if let Some(id) = new_id {
+                    inherit_resolving_spell_delayed_triggers(game, entry.object_id, id);
                     if entry.controller != obj.owner {
                         game.set_current_controller(id, entry.controller);
                     }
@@ -1310,6 +1355,7 @@ pub(super) fn resolve_stack_entry_full(
 
             // Note: Use the new ID from ETB result since zone change creates a new object
             if let Some(result) = etb_result {
+                inherit_resolving_spell_delayed_triggers(game, entry.object_id, result.new_id);
                 if entry.controller != obj.owner {
                     game.set_current_controller(result.new_id, entry.controller);
                 }

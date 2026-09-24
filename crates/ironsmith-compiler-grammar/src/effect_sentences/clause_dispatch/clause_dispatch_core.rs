@@ -410,7 +410,21 @@ pub(super) fn parse_effect_clause_unstacked(
         }
         mark_iterated_actor_pronoun(target);
     }
-    if let Some(filter) = for_each_subject_filter {
+    // "Each land of the first chosen type becomes the second chosen type":
+    // a become-with-choice picks once for the whole affected set, so it must
+    // not be repeated (with a fresh choice) for each object.
+    let choice_applies_to_whole_set = matches!(
+        &effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Characteristics(
+                crate::cards::builders::CharacteristicActionAst::BecomeBasicLandTypeChoice { .. }
+            ),
+            ..
+        })
+    );
+    if let Some(filter) = for_each_subject_filter
+        && !choice_applies_to_whole_set
+    {
         effect = EffectAst::ForEach(ForEachEffectAst::ForEachObject {
             filter,
             effects: vec![effect],

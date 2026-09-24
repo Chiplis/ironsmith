@@ -609,6 +609,148 @@ fn pre_rule_library_shuffle_followups(
 /// correlated result. The evidence cards are a real graveyard selection with
 /// an aggregate lower bound, and the `if you do` return is linked to the exact
 /// source object moved to exile by the optional branch.
+/// "The next time target creature adapts this turn, it adapts as though it
+/// had no +1/+1 counters on it." (Biomancer's Familiar)
+/// "Note the type of mana spent to pay this activation cost." (Jeweled Amulet)
+fn pre_rule_note_activation_mana_type(
+    _state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(sentence_tokens);
+    if words.as_slice()
+        != [
+            "note", "the", "type", "of", "mana", "spent", "to", "pay", "this", "activation",
+            "cost",
+        ]
+    {
+        return Ok(None);
+    }
+    Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
+        tokens: sentence_tokens.to_vec(),
+        wrap_if_result: None,
+        direct_effects: Some(vec![EffectAst::NoteActivationManaType]),
+        consumed_sentences: 1,
+    })))
+}
+
+/// "Choose 1, 2, or 3 at random." (Tibalt's Trickery): a random number that a
+/// following "that many" reads.
+fn pre_rule_choose_number_at_random(
+    _state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(sentence_tokens);
+    let Some(list) = words
+        .strip_prefix(&["choose"][..])
+        .and_then(|rest| rest.strip_suffix(&["at", "random"][..]))
+    else {
+        return Ok(None);
+    };
+    let mut choices = Vec::new();
+    for (idx, word) in list.iter().enumerate() {
+        if matches!(*word, "or" | "and") && idx + 2 == list.len() {
+            continue;
+        }
+        let Some(number) = word
+            .parse::<u32>()
+            .ok()
+            .or_else(|| crate::util::parse_number_word_u32(word))
+        else {
+            return Ok(None);
+        };
+        choices.push(number);
+    }
+    if choices.len() < 2 {
+        return Ok(None);
+    }
+    Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
+        tokens: sentence_tokens.to_vec(),
+        wrap_if_result: None,
+        direct_effects: Some(vec![EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Random(
+                crate::cards::builders::RandomActionAst::ChooseNumberAtRandom { choices },
+            ),
+        )]),
+        consumed_sentences: 1,
+    })))
+}
+
+fn pre_rule_next_adapt_ignores_counters(
+    _state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    const TAIL: &[&str] = &[
+        "adapts", "this", "turn", "it", "adapts", "as", "though", "it", "had", "no", "+1/+1",
+        "counters", "on", "it",
+    ];
+    let words = crate::lexer::parser_token_word_refs(sentence_tokens);
+    let Some(rest) = words.strip_prefix(&["the", "next", "time"][..]) else {
+        return Ok(None);
+    };
+    let Some(target_words) = rest.strip_suffix(TAIL) else {
+        return Ok(None);
+    };
+    if target_words.is_empty() {
+        return Ok(None);
+    }
+    let view = crate::lexer::TokenWordView::new(sentence_tokens);
+    let (Some(start), Some(end)) = (
+        view.map_word_to_token_start(3),
+        view.map_word_to_token_start(3 + target_words.len()),
+    ) else {
+        return Ok(None);
+    };
+    let target = crate::util::parse_target_phrase(&sentence_tokens[start..end])?;
+    Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
+        tokens: sentence_tokens.to_vec(),
+        wrap_if_result: None,
+        direct_effects: Some(vec![EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Counters(
+                crate::cards::builders::CounterActionAst::NextAdaptIgnoresCounters { target },
+            ),
+        )]),
+        consumed_sentences: 1,
+    })))
+}
+
+/// "This ability still resolves if its target becomes illegal." (Gilded
+/// Drake): suspends the all-targets-illegal rule (CR 608.2b) for the ability.
+fn pre_rule_resolves_despite_illegal_targets(
+    _state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(sentence_tokens);
+    let matches = crate::word_primitives::strip_any_prefix(
+        &words,
+        &[
+            &["this", "ability", "still", "resolves", "if", "its", "target", "becomes", "illegal"],
+            &["this", "ability", "still", "resolves", "if", "its", "targets", "become", "illegal"],
+        ],
+    )
+    .is_some_and(|(_, rest)| rest.is_empty());
+    if !matches {
+        return Ok(None);
+    }
+    Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
+        tokens: sentence_tokens.to_vec(),
+        wrap_if_result: None,
+        direct_effects: Some(vec![EffectAst::ResolvesDespiteIllegalTargets]),
+        consumed_sentences: 1,
+    })))
+}
+
 fn pre_rule_optional_source_exile_and_collect_evidence(
     _state: &mut SentenceDispatchState<'_>,
     sentences: &[SentenceInput],
@@ -1452,6 +1594,26 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         "prepare-each-player-coin-face-followup",
         &["each"],
         pre_rule_each_player_coin_face_followup
+    ),
+    pre_followup_rule!(
+        "note-activation-mana-type",
+        &["note"],
+        pre_rule_note_activation_mana_type
+    ),
+    pre_followup_rule!(
+        "choose-number-at-random",
+        &["choose"],
+        pre_rule_choose_number_at_random
+    ),
+    pre_followup_rule!(
+        "next-adapt-ignores-counters",
+        &["the"],
+        pre_rule_next_adapt_ignores_counters
+    ),
+    pre_followup_rule!(
+        "resolves-despite-illegal-targets",
+        &["this"],
+        pre_rule_resolves_despite_illegal_targets
     ),
     pre_followup_rule!(
         "optional-source-exile-and-collect-evidence",

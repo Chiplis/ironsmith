@@ -130,6 +130,20 @@ pub(super) fn parse_divided_damage_target(
             CardTextError::ParseError(message)
         },
     )?;
+    if shape.repeats_antecedent
+        && shape
+            .target_tokens
+            .first()
+            .is_some_and(|token| token.as_word() == Some("them"))
+    {
+        // A bare anaphor: the self-replacement rewrite substitutes the
+        // antecedent's whole target spec, so the same announced targets are
+        // divided again.
+        return Ok(TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            span_from_tokens(shape.target_tokens),
+        ));
+    }
     let base_target = if shape.any_target {
         TargetAst::AnyTarget(span_from_tokens(shape.target_tokens))
     } else if shape
@@ -146,6 +160,16 @@ pub(super) fn parse_divided_damage_target(
         .first()
         .is_some_and(|token| token.as_word() == Some("those"))
     {
+        if shape.target_tokens[1..]
+            .iter()
+            .any(|token| matches!(token.as_word(), Some("player" | "players")))
+        {
+            // "those permanents and/or players": an object filter would drop
+            // the player half of the antecedent target set.
+            return Err(CardTextError::ParseError(format!(
+                "unsupported divided-damage player antecedent (clause: '{clause}')"
+            )));
+        }
         let mut filter = parse_object_filter(&shape.target_tokens[1..], false)?;
         if filter.zone.is_none() {
             filter.zone = Some(Zone::Battlefield);

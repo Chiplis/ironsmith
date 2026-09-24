@@ -193,7 +193,7 @@ pub fn parse_token_definition_shape_tokens(
     let subtype_fallback = (!subtypes.is_empty()).then(|| {
         subtypes
             .iter()
-            .map(|subtype| format!("{subtype:?}"))
+            .map(|subtype| subtype.display_name())
             .collect::<Vec<_>>()
             .join(" ")
     });

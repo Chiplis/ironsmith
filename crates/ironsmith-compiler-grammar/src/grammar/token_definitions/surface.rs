@@ -104,7 +104,25 @@ fn creature_subtypes(words: &[&str]) -> Vec<Subtype> {
     }
 
     let mut subtypes = Vec::new();
-    for word in &words[..scan_end] {
+    let scanned = &words[..scan_end];
+    let mut idx = 0usize;
+    while idx < scanned.len() {
+        let word = &scanned[idx];
+        idx += 1;
+        // Normalized tokens split a hyphenated creature type into two words
+        // ("Assembly-Worker"). Rejoin the pair only when the vocabulary names
+        // the whole hyphenated subtype, so neither half is misread alone.
+        if let Some(next) = scanned.get(idx)
+            && let Some(subtype) =
+                leaf::classify_token_definition_subtype(&format!("{word}-{next}"))
+            && subtype.display_name().contains('-')
+        {
+            idx += 1;
+            if !subtypes.contains(&subtype) {
+                subtypes.push(subtype);
+            }
+            continue;
+        }
         if leaf::parse_leaf_card_type_complete(word).is_ok() {
             continue;
         }

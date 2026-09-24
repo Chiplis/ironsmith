@@ -6442,6 +6442,27 @@
             }
             return finish_condition(format!("{effect_text} if {}", describe_condition(&conditional.condition)));
         }
+        if conditional.surface == ironsmith_core::ConditionalSurface::Instead {
+            let segment = crate::resolution::ResolutionSegment {
+                default_effects: conditional.if_false.clone(),
+                self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
+                    conditional.condition.clone(),
+                    conditional.if_true.clone(),
+                )],
+                starts_new_source_line: false,
+            };
+            if let Some(text) =
+                crate::compiled_text::ast_render::describe_single_self_replacement_segment(&segment)
+            {
+                return text.trim_end_matches('.').to_string();
+            }
+            return format!(
+                "{}. If {}, {} instead",
+                describe_effect_list(&conditional.if_false).trim_end_matches('.'),
+                describe_condition(&conditional.condition),
+                lowercase_first(describe_effect_list(&conditional.if_true).trim_end_matches('.'))
+            );
+        }
         if conditional.surface == ironsmith_core::ConditionalSurface::TrailingUnless {
             let effect_text = describe_effect_clause_list(&conditional.if_true)
                 .unwrap_or_else(|| describe_effect_list(&conditional.if_true));

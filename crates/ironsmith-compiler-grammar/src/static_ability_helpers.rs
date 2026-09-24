@@ -175,13 +175,21 @@ pub fn compiler_granted_ability_ast_to_object_ability(
 
     let static_ability = |ability| Ok(CompilerAbilityCore::static_ability(ability));
     match ability {
-        GrantedAbilityAst::KeywordAction(action) => static_ability(
-            static_ability_for_keyword_action((**action).clone()).ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "keyword grant requires executable lowering: {action:?}"
-                ))
-            })?,
-        ),
+        GrantedAbilityAst::KeywordAction(action) => {
+            if let Some(ability) = static_ability_for_keyword_action((**action).clone()) {
+                return static_ability(ability);
+            }
+            // Activated keywords such as Crew grant a real activated ability
+            // ("except it's a Vehicle artifact with crew 3", Imposter Mech).
+            if let Some(parsed) = crate::keyword_static::parse_nonstatic_keyword_action_as_object_ability(
+                (**action).clone(),
+            ) {
+                return Ok(*parsed.ability);
+            }
+            Err(CardTextError::ParseError(format!(
+                "keyword grant requires executable lowering: {action:?}"
+            )))
+        }
         GrantedAbilityAst::StaticAbility(ability) => match ability.as_ref() {
             crate::cards::builders::StaticAbilityAst::Static(ability) => {
                 static_ability(ability.clone())

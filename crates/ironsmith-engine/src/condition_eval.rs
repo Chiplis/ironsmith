@@ -101,6 +101,25 @@ fn source_was_cast(
         .is_some()
 }
 
+/// Whether `source` was cast and its most recent cast this turn was from `zone`.
+fn source_was_cast_from_zone(
+    game: &GameState,
+    source: ObjectId,
+    triggering_event: Option<&TriggerEvent>,
+    zone: Zone,
+) -> bool {
+    if !source_was_cast(game, source, triggering_event) {
+        return false;
+    }
+    let stable_id = game.object(source).map(|obj| obj.stable_id).or_else(|| {
+        triggering_event
+            .and_then(TriggerEvent::snapshot)
+            .map(|snapshot| snapshot.stable_id)
+    });
+    stable_id.and_then(|stable_id| game.turn_store.turn_history.latest_cast_zone(stable_id))
+        == Some(zone)
+}
+
 fn tagged_object_was_cast(game: &GameState, tag: &crate::TagKey, ctx: &ExecutionContext) -> bool {
     let Some(tagged) = ctx.get_tagged_all(tag.as_str()) else {
         return false;
@@ -468,6 +487,62 @@ mod tests {
         assert!(
             evaluate_condition(&game, &condition, &ctx).unwrap(),
             "another Aura on the source's enchanted creature should count"
+        );
+    }
+
+    #[test]
+    fn cast_from_hand_intervening_if_uses_recorded_cast_zone() {
+        // Wakening Sun's Avatar: "When this creature enters, if you cast it
+        // from your hand, destroy all non-Dinosaur creatures." The intervening
+        // if is evaluated without an execution context.
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = game.players[0].id;
+        let avatar = add_battlefield_permanent(
+            &mut game,
+            120,
+            "Wakening Sun's Avatar",
+            0,
+            CardType::Creature,
+            Some(Subtype::Dinosaur),
+        );
+        let spell_id = game.new_object_id();
+        let mut snapshot =
+            crate::snapshot::ObjectSnapshot::for_testing(spell_id, alice, "Wakening Sun's Avatar");
+        snapshot.stable_id = game.object(avatar).unwrap().stable_id;
+        let cast = RawEvent::new(
+            crate::events::spells::SpellCastEvent::new_with_snapshot(
+                spell_id,
+                alice,
+                Zone::Hand,
+                snapshot,
+            ),
+            ProvNodeId::default(),
+        );
+        game.turn_store.turn_history.record_event(&cast, None, None);
+
+        let from_hand = Condition::ThisSpellWasCastFromZone(Zone::Hand);
+        let from_graveyard = Condition::ThisSpellWasCastFromZone(Zone::Graveyard);
+        let verify = |condition: &Condition, entered_from: Zone| {
+            let etb = RawEvent::new(
+                crate::events::EnterBattlefieldEvent::new(avatar, entered_from),
+                ProvNodeId::default(),
+            );
+            crate::triggers::verify_intervening_if(
+                &game, condition, alice, &etb, avatar, None, None,
+            )
+        };
+
+        assert!(
+            verify(&from_hand, Zone::Stack),
+            "resolving a spell cast from hand must satisfy the intervening if"
+        );
+        assert!(
+            !verify(&from_graveyard, Zone::Stack),
+            "a hand cast must not satisfy a graveyard-cast condition"
+        );
+        assert!(
+            !verify(&from_hand, Zone::Graveyard),
+            "entering without resolving from the stack is not casting it"
         );
     }
 
@@ -3599,11 +3674,21 @@ fn evaluate_condition_in_context(
         }
         Condition::ThisSpellEscaped => Ok(source_escaped(game, shared.source)),
         Condition::ThisSpellWasCastFromZone(zone) => {
-            let Some(ctx) = ctx.execution() else {
-                return Ok(false);
-            };
-
-            Ok(this_spell_was_cast_from_zone(game, ctx.source, ctx, *zone))
+            if let Some(ctx) = ctx.execution()
+                && this_spell_was_cast_from_zone(game, ctx.source, ctx, *zone)
+            {
+                return Ok(true);
+            }
+            // Intervening-if checks ("When this creature enters, if you cast it
+            // from your hand, ...") run without an execution context, and a
+            // normal cast carries no zone in its casting method, so fall back
+            // to the recorded cast event.
+            Ok(source_was_cast_from_zone(
+                game,
+                shared.source,
+                shared.triggering_event,
+                *zone,
+            ))
         }
         Condition::ThisSpellWasCastFromNonHand => {
             let Some(ctx) = ctx.execution() else {
@@ -4641,9 +4726,14 @@ fn evaluate_condition_in_context(
         Condition::TurnHistory(condition) => {
             Ok(evaluate_turn_history_condition(game, condition, shared))
         }
+        Condition::AllTargetsStillLegal => {
+            Ok(ctx.execution().is_none_or(|exec| exec.all_targets_legal))
+        }
         Condition::XValueAtLeast(min) => Ok(if let Some(exec) = ctx.execution() {
             exec.x_value.unwrap_or(0) >= *min
-        } else if ctx.external().is_some() {
+        } else if ctx.external().is_some() || ctx.is_cast_time() {
+            // X is announced (CR 601.2b) before targets and divisions
+            // (CR 601.2c-d), so cast-time choices can already read it.
             game.object(ctx.source)
                 .and_then(|object| object.x_value)
                 .unwrap_or(0)

@@ -1208,6 +1208,51 @@ fn parse_prevention_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst,
     parse_target_phrase(tokens)
 }
 
+/// "sources", "red sources", "black sources and red sources", "sources of
+/// the color of your choice": returns the source filter and whether the color
+/// is chosen on resolution.
+fn parse_damage_sources_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<(ObjectFilter, bool), CardTextError> {
+    let (tokens, of_chosen_color) = match crate::grammar::primitives::split_lexed_once_before_suffix(
+        tokens,
+        0,
+        || crate::grammar::primitives::phrase(&["of", "the", "color", "of", "your", "choice"]),
+    ) {
+        Some((base, ())) => (base, true),
+        None => (tokens, false),
+    };
+    let is_source_noun = |token: &OwnedLexToken| token.is_word("sources") || token.is_word("source");
+    let parts: Vec<&[OwnedLexToken]> = tokens
+        .split(|token| token.is_word("and"))
+        .collect();
+    let parse_part = |part: &[OwnedLexToken]| -> Result<ObjectFilter, CardTextError> {
+        let Some((last, descriptor)) = part.split_last() else {
+            return Err(CardTextError::ParseError("missing damage source".to_string()));
+        };
+        if !is_source_noun(last) {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported damage source phrase '{}'",
+                LexedClause::new(part).text()
+            )));
+        }
+        if descriptor.is_empty() {
+            return Ok(ObjectFilter::default());
+        }
+        parse_object_filter(descriptor, false)
+    };
+    // "black sources and red sources": two independently described sets.
+    if parts.len() > 1 && parts.iter().all(|part| part.last().is_some_and(is_source_noun)) {
+        let mut filter = ObjectFilter::default();
+        filter.any_of = parts
+            .into_iter()
+            .map(parse_part)
+            .collect::<Result<Vec<_>, _>>()?;
+        return Ok((filter, of_chosen_color));
+    }
+    Ok((parse_part(tokens)?, of_chosen_color))
+}
+
 pub fn parse_prevent_all_damage_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -1230,6 +1275,40 @@ pub fn parse_prevent_all_damage_clause(
                     Until::EndOfTurn,
                 ),
             ))
+        }
+        clause_shapes::PreventAllDamageShape::SourceWouldDeal {
+            source_tokens,
+            target_tokens,
+        } => {
+            let (source_filter, of_chosen_color) = parse_damage_sources_filter(source_tokens)?;
+            match target_tokens {
+                None if of_chosen_color => Ok(Some(
+                    EffectAst::subject_verb_prevent_all_damage_from_source_filter_of_chosen_color(
+                        source_filter,
+                        Until::EndOfTurn,
+                    ),
+                )),
+                None => Ok(Some(
+                    EffectAst::subject_verb_prevent_all_damage_from_source_filter(
+                        source_filter,
+                        Until::EndOfTurn,
+                    ),
+                )),
+                Some(_) if of_chosen_color => Err(CardTextError::ParseError(format!(
+                    "unsupported chosen-color prevention with a protected target (clause: '{}')",
+                    clause_text
+                ))),
+                Some(target_tokens) => {
+                    let target = parse_prevention_target_phrase(target_tokens)?;
+                    Ok(Some(
+                        EffectAst::subject_verb_prevent_all_damage_to_target_from_source_filter(
+                            target,
+                            source_filter,
+                            Until::EndOfTurn,
+                        ),
+                    ))
+                }
+            }
         }
         clause_shapes::PreventAllDamageShape::ToTarget { target_tokens } => {
             let target = parse_prevention_target_phrase(target_tokens)?;

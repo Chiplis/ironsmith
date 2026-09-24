@@ -2344,8 +2344,20 @@ fn specialize_target_requirement_for_chooser(
 ) {
     requirement.spec =
         super::targeting::specialize_iterated_player_choose_spec(&requirement.spec, chooser);
+    // A player relation to an earlier target is enforced by the shared-player
+    // group, not by the candidate filter.
+    let candidate_spec = if requirement.shared_player_group.is_some() {
+        super::targeting::relax_target_player_relation(&requirement.spec)
+    } else {
+        requirement.spec.clone()
+    };
     requirement.legal_targets =
-        compute_legal_targets(game, &requirement.spec, controller, Some(source));
+        compute_legal_targets(game, &candidate_spec, controller, Some(source));
+    if let Some(group) = requirement.shared_player_group.as_mut() {
+        group
+            .target_players
+            .retain(|(target, _)| requirement.legal_targets.contains(target));
+    }
     requirement.legal_target_sets = crate::targeting::legal_target_sets_for_spec(
         game,
         &requirement.spec,
@@ -3318,12 +3330,18 @@ pub(super) fn continue_spell_cost_payment(
             cost_ctx.x_value = pending.x_value;
             cost_ctx.announced_targets = pending.chosen_targets.clone();
 
-            let payment = cost.pay(game, &mut cost_ctx).map_err(|err| {
-                GameLoopError::InvalidState(format!(
-                    "Failed to pay deferred spell cost {}: {err:?}",
-                    describe_cost_component(&cost)
-                ))
-            })?;
+            let payment = match cost.pay(game, &mut cost_ctx) {
+                Ok(payment) => payment,
+                Err(err) => {
+                    // CR 601.2h: a cost that cannot be paid makes the cast
+                    // illegal, so the whole proposal is reversed.
+                    state.rollback_action(game);
+                    return Err(GameLoopError::InvalidState(format!(
+                        "Failed to pay deferred spell cost {}: {err:?}",
+                        describe_cost_component(&cost)
+                    )));
+                }
+            };
             if cost_ctx.decision_maker.awaiting_choice() {
                 state.pending_cast = Some(pending);
                 return Ok(GameProgress::Continue);
@@ -5276,12 +5294,17 @@ pub(super) fn continue_activation_cost_payment(
                 )
             });
 
-            let payment = cost.pay(game, &mut cost_ctx).map_err(|err| {
-                GameLoopError::InvalidState(format!(
-                    "Failed to pay deferred activation cost {}: {err:?}",
-                    cost.display()
-                ))
-            })?;
+            let payment = match cost.pay(game, &mut cost_ctx) {
+                Ok(payment) => payment,
+                Err(err) => {
+                    // CR 602.2b: an unpayable cost reverses the activation.
+                    state.rollback_action(game);
+                    return Err(GameLoopError::InvalidState(format!(
+                        "Failed to pay deferred activation cost {}: {err:?}",
+                        cost.display()
+                    )));
+                }
+            };
             if cost_ctx.decision_maker.awaiting_choice() {
                 state.pending_activation = Some(pending);
                 return Ok(GameProgress::Continue);

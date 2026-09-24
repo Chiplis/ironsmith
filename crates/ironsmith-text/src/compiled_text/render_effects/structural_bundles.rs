@@ -6266,6 +6266,12 @@ pub(super) fn describe_distributed_damage_target(target: &ChooseSpec) -> String 
             let noun = strip_indefinite_article(&bare.description()).to_string();
             format!("any number of those {}", pluralize_noun_phrase(&noun))
         }
+        // Re-dividing among an earlier effect's targets ("among them").
+        ChooseSpec::WithCount(inner, count)
+            if count.is_any_number() && matches!(inner.base(), ChooseSpec::Tagged(_)) =>
+        {
+            "them".to_string()
+        }
         ChooseSpec::WithCount(inner, count) if !inner.is_target() => {
             describe_choose_spec(&ChooseSpec::target(inner.as_ref().clone()).with_count(*count))
         }

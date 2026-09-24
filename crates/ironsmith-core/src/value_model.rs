@@ -1937,6 +1937,8 @@ pub enum Condition {
         count: usize,
     },
     XValueAtLeast(u32),
+    /// "If both targets are still legal as this ability resolves".
+    AllTargetsStillLegal,
     Custom(crate::InternedStr),
     Not(Box<Condition>),
     And(Box<Condition>, Box<Condition>),

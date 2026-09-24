@@ -12833,6 +12833,11 @@ fn describe_complementary_subtype_returns(effects: &[Effect]) -> Option<String> 
 }
 
 pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(text) =
+        describe_cross_zone_target_swap_bundle(&effects.iter().collect::<Vec<_>>())
+    {
+        return text;
+    }
     if let Some(text) = describe_restricted_player_target_life_loss(effects) { return text; }
     if let Some(text) = describe_target_combat_and_activation_restrictions(effects) { return text; }
     if let Some(compact) = describe_chosen_object_type_qualified_counters(effects) {

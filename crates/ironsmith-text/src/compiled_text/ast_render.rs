@@ -22377,6 +22377,11 @@ fn collect_self_replacement_action_targets<'a>(
         })
         .or_else(|| {
             effect
+                .downcast_ref::<crate::effects::DealDistributedDamageEffect>()
+                .map(|damage| &damage.target)
+        })
+        .or_else(|| {
+            effect
                 .downcast_ref::<crate::effects::CounterEffect>()
                 .map(|counter| &counter.target)
         })
@@ -22607,10 +22612,12 @@ fn describe_shared_target_self_replacement(
 ) -> Option<String> {
     let default_target = shared_self_replacement_action_target(default_effects)?;
     let replacement_target = shared_self_replacement_action_target(replacement_effects)?;
+    // A multi-target action repeated over the same announced targets
+    // ("... among them instead") refers back to the whole set.
+    let plural = !default_target.is_single();
     if !default_target.is_target()
-        || !default_target.is_single()
         || !replacement_target.is_target()
-        || !replacement_target.is_single()
+        || replacement_target.is_single() == plural
         || !target_specs_select_same_objects(default_target, replacement_target)
     {
         return None;
@@ -22644,9 +22651,15 @@ fn describe_shared_target_self_replacement(
     let repeated_target = target_starts.len() > 1;
     let moves_target_to_card_zone =
         first_self_replacement_action_moves_target_to_card_zone(replacement_effects);
-    let referent = self_replacement_target_referent(default_target)?;
+    let referent = if plural {
+        "them"
+    } else {
+        self_replacement_target_referent(default_target)?
+    };
     let before_target = &replacement[..target_start];
-    let first_referent = if before_target.ends_with(" on ")
+    let first_referent = if plural {
+        referent
+    } else if before_target.ends_with(" on ")
         || condition_refers_to_self_replacement_target(&condition_text, referent)
     {
         "it"
@@ -22659,7 +22672,9 @@ fn describe_shared_target_self_replacement(
             first_referent,
         );
     } else {
-        let later_referent = if moves_target_to_card_zone {
+        let later_referent = if plural {
+            "them"
+        } else if moves_target_to_card_zone {
             "that card"
         } else {
             "it"
@@ -24006,7 +24021,7 @@ mod named_artifacts_damage_replacement_tests {
     }
 }
 
-fn describe_single_self_replacement_segment(
+pub(crate) fn describe_single_self_replacement_segment(
     segment: &crate::resolution::ResolutionSegment,
 ) -> Option<String> {
     if segment.self_replacements.len() != 1 || segment.default_effects.is_empty() {
@@ -32269,6 +32284,32 @@ fn describe_structural_conditional_additional_land_play(ability: &Ability) -> Op
     })
 }
 
+/// CR 702.94a: Miracle is the alternative cost plus the linked trigger "When
+/// you draw this card, if it's the first card you've drawn this turn, you may
+/// cast it by paying its miracle cost."
+fn is_miracle_linked_trigger(def: &CardDefinition, ability: &Ability) -> bool {
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        return false;
+    };
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return false;
+    };
+    let [effect] = segment.default_effects.as_slice() else {
+        return false;
+    };
+    ability.functional_zones.as_slice() == [Zone::Hand]
+        && segment.self_replacements.is_empty()
+        && triggered.intervening_if.is_none()
+        && triggered
+            .trigger
+            .downcast_ref::<crate::triggers::KeywordAbilityTrigger>()
+            .is_some_and(|trigger| trigger.kind == crate::triggers::KeywordAbilityTriggerKind::Miracle)
+        && effect
+            .downcast_ref::<crate::effects::player::MayCastForMiracleCostEffect>()
+            .is_some()
+        && def.alternative_casts.iter().any(|method| method.is_miracle())
+}
+
 fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     let mut out = Vec::new();
     let mut leading_alternative_cast_lines = Vec::new();
@@ -32450,6 +32491,12 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         while ability_idx < def.abilities.len() {
             let ability = &def.abilities[ability_idx];
             if kicker_x_minimum_ability == Some(ability_idx) {
+                ability_idx += 1;
+                continue;
+            }
+            // Miracle's linked hand trigger is part of the "Miracle {cost}"
+            // keyword line rendered from the alternative casting method.
+            if is_miracle_linked_trigger(def, ability) {
                 ability_idx += 1;
                 continue;
             }

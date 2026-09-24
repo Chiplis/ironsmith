@@ -937,6 +937,10 @@ pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond, ICond = Condition> {
     pub name_override: Option<String>,
     pub added_colors: ColorSet,
     pub added_card_types: Vec<CardType>,
+    /// "except it's a Vehicle artifact ... and it loses all other card types"
+    /// (Imposter Mech): the copy's card types are exactly `added_card_types`.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub removes_other_card_types: bool,
     #[cfg_attr(feature = "serde", serde(default))]
     pub added_supertypes: Vec<Supertype>,
     pub removed_supertypes: Vec<Supertype>,

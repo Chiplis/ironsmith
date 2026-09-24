@@ -502,6 +502,113 @@ pub(crate) fn describe_exile_split_pile_opponent_choice_bundle(
     ))
 }
 
+/// Two target declarations — a permanent and a card in its controller's
+/// graveyard — followed by a swap that happens only while both stay legal.
+pub(crate) fn describe_cross_zone_target_swap_bundle(filtered: &[&Effect]) -> Option<String> {
+    let [first, second, conditional] = filtered else {
+        return None;
+    };
+    let declared = |effect: &Effect| {
+        let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+        let target_only = tagged
+            .effect
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+        let ChooseSpec::Object(filter) = target_only.target.base() else {
+            return None;
+        };
+        Some((tagged.tag.clone(), filter.clone()))
+    };
+    let (first_tag, first_filter) = declared(first)?;
+    let (second_tag, second_filter) = declared(second)?;
+    let conditional = conditional.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if conditional.condition != crate::effect::Condition::AllTargetsStillLegal
+        || !conditional.if_false.is_empty()
+        || second_filter.zone != Some(Zone::Graveyard)
+        || second_filter.owner != Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
+        || first_filter.controller.is_some()
+    {
+        return None;
+    }
+    let [sacrifice, returned] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let sacrifice = unwrap_basic_tag_wrappers(sacrifice)
+        .downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
+    let returned = unwrap_basic_tag_wrappers(returned)
+        .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()?;
+    let uses = |spec: &ChooseSpec, tag: &crate::tag::TagKey| match spec.base() {
+        ChooseSpec::Tagged(used) => used == tag,
+        ChooseSpec::Object(filter) => filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| &constraint.tag == tag),
+        _ => false,
+    };
+    if !uses(&sacrifice.target, &first_tag) || !uses(&returned.target, &second_tag) || returned.tapped
+    {
+        return None;
+    }
+    let mut first_noun = first_filter.clone();
+    first_noun.zone = None;
+    let mut second_noun = second_filter.clone();
+    second_noun.zone = None;
+    second_noun.owner = None;
+    let first_noun = strip_leading_article(&first_noun.description()).to_string();
+    let second_noun = strip_leading_article(&second_noun.description()).to_string();
+    Some(format!(
+        "Choose target {first_noun} a player controls and target {second_noun} in that player's graveyard. If both targets are still legal as this ability resolves, that player simultaneously sacrifices the {first_noun} and returns the {second_noun} to the battlefield."
+    ))
+}
+
+/// A chosen opponent privately looks at your top cards and divides them into
+/// a face-down pile (their choice) and a face-up pile (the rest, revealed);
+/// you then choose which pile goes to your hand and which to your graveyard.
+pub(crate) fn describe_chosen_opponent_face_down_piles_bundle(
+    filtered: &[&Effect],
+) -> Option<String> {
+    let [choose_player, look, choose, tag_rest, reveal, pick, rest @ ..] = filtered else {
+        return None;
+    };
+    let choose_player = choose_player.downcast_ref::<crate::effects::ChoosePlayerEffect>()?;
+    let look = look.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let choose = choose.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let tag_rest = tag_rest.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let reveal = reveal.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+    let pick = pick.downcast_ref::<crate::effects::ChooseModeEffect>()?;
+    let opponent = PlayerFilter::TaggedPlayer(choose_player.tag.clone());
+    if choose_player.chooser != PlayerFilter::You
+        || choose_player.filter != PlayerFilter::Opponent
+        || choose_player.random
+        || look.reveal
+        || look.player != PlayerFilter::You
+        || look.viewer != opponent
+        || choose.chooser != opponent
+        || !choose.count.is_any_number()
+        || !choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag == look.tag
+        })
+        || reveal.tag != tag_rest.tag
+        || pick.modes.len() != 2
+    {
+        return None;
+    }
+    let count = match look.count {
+        Value::Fixed(count) => number_word(count).unwrap_or_else(|| count.to_string()),
+        _ => return None,
+    };
+    let mut text = format!(
+        "Choose an opponent. They look at the top {count} cards of your library and separate them into a face-down pile and a face-up pile. Put one pile into your hand and the other into your graveyard."
+    );
+    for effect in rest {
+        let sentence = describe_effect(effect);
+        text.push(' ');
+        text.push_str(sentence.trim_end_matches('.'));
+        text.push('.');
+    }
+    Some(text)
+}
+
 pub(crate) fn describe_reveal_top_opponent_split_you_choose_pile_bundle(
     filtered: &[&Effect],
 ) -> Option<String> {

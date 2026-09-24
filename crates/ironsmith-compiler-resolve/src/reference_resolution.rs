@@ -575,6 +575,25 @@ fn remember_explicit_object_target_binding(target: &TargetAst, frame: &mut Refer
     bindings.push(binding);
 }
 
+/// A "target spell" slot, recorded so a later "that spell" can find it even
+/// after other clauses have introduced newer object antecedents.
+fn remember_explicit_spell_target_binding(target: &TargetAst, frame: &mut ReferenceFrame) {
+    let (TargetAst::Spell(Some(_)), Some(tag)) = (target, frame.last_object_tag.as_ref()) else {
+        return;
+    };
+    let binding = ObjectTargetBinding::new(tag.clone(), &spell_target_reference_filter());
+    let bindings = std::sync::Arc::make_mut(&mut frame.recent_object_target_bindings);
+    bindings.retain(|existing| existing.tag != binding.tag);
+    bindings.push(binding);
+}
+
+fn spell_target_reference_filter() -> ObjectFilter {
+    ObjectFilter {
+        zone: Some(crate::zone::Zone::Stack),
+        ..ObjectFilter::default()
+    }
+}
+
 fn object_reference_matches_binding(
     reference: &ObjectFilter,
     binding: &ObjectTargetBinding,
@@ -611,6 +630,37 @@ fn resolve_definite_object_target_from_bindings(
     }
 }
 
+/// "with a different name than that spell": the demonstrative names a spell,
+/// so it binds to the unique earlier spell target rather than to whatever
+/// object the preceding clause affected (for example, milled cards).
+fn resolve_spell_demonstrative_name_reference(
+    filter: &mut ObjectFilter,
+    bindings: &[ObjectTargetBinding],
+) {
+    if filter.same_name_antecedent_surface() != Some(ironsmith_core::SameNameAntecedentSurface::Spell)
+    {
+        return;
+    }
+    let spell_reference = spell_target_reference_filter();
+    let mut matching = bindings
+        .iter()
+        .filter(|binding| object_reference_matches_binding(&spell_reference, binding));
+    let (Some(binding), None) = (matching.next(), matching.next()) else {
+        return;
+    };
+    for constraint in &mut filter.tagged_constraints {
+        if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            && matches!(
+                constraint.relation,
+                TaggedOpbjectRelation::SameNameAsTagged
+                    | TaggedOpbjectRelation::DifferentNameFromTagged
+            )
+        {
+            constraint.tag = binding.tag.clone();
+        }
+    }
+}
+
 fn resolve_definite_object_references_in_effect(
     effect: &mut EffectAst,
     bindings: &[ObjectTargetBinding],
@@ -620,6 +670,11 @@ fn resolve_definite_object_references_in_effect(
     }
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &mut subject_verb.action {
+            SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
+                filter, ..
+            }) => {
+                resolve_spell_demonstrative_name_reference(filter, bindings);
+            }
             SubjectVerbActionAst::Control(ControlActionAst::Attach { object, target }) => {
                 resolve_definite_object_target_from_bindings(object, bindings);
                 resolve_definite_object_target_from_bindings(target, bindings);
@@ -1129,6 +1184,7 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Stack(StackActionAst::Counter { target })
                 | SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays { target, .. }) => {
                     maybe_tag_target(target, frame, id_gen, "countered")?;
+                    remember_explicit_spell_target_binding(target, frame);
                     if let Some(tag) = frame.last_object_tag.as_ref() {
                         frame.last_player_filter = Some(PlayerFilter::AliasedControllerOf(
                             ObjectRef::tagged(tag.clone()),
@@ -2180,6 +2236,9 @@ fn advance_reference_frame_for_effect(
         }
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
         | EffectAst::SolveCase
+        | EffectAst::ResolvesDespiteIllegalTargets
+        | EffectAst::NoteActivationManaType
+        | EffectAst::LookAtTopCardsAsViewer { .. }
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)
         | EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { .. })
@@ -3573,6 +3632,7 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount: count, .. })
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount: count })
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount: count, .. })
+        | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount: count, .. })
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
             amount: count,
             ..
@@ -4344,6 +4404,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount, .. })
             | SubjectVerbActionAst::DamagePrevention(
                 DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget { amount, .. },
             )
@@ -4427,6 +4488,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
+            | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
             | SubjectVerbActionAst::Library(
@@ -4567,6 +4629,7 @@ fn resolve_effect_result_values_in_fields(
                 ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { .. })
             | SubjectVerbActionAst::Game(GameActionAst::ExtraTurnAfterTurn { .. })
@@ -5355,6 +5418,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
+            | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
             | SubjectVerbActionAst::Library(
@@ -5646,7 +5710,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_target(from, seed_tag)
                     + bind_unresolved_it_in_target(to, seed_tag)
             }
-            SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target }) => {
+            SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target })
+            | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { target }) => {
                 bind_unresolved_it_in_target(target, seed_tag)
             }
             SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
@@ -5672,6 +5737,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount })
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays {
                 count: amount,

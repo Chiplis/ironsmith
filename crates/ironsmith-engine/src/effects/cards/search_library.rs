@@ -41,10 +41,11 @@ impl EffectExecutor for SearchLibraryEffect {
         let search_control =
             begin_opposition_agent_search_control(game, chooser_id, search_override);
         let result = (|| -> Result<EffectOutcome, ExecutionError> {
-            let library_cards = game
+            let mut library_cards: Vec<ObjectId> = game
                 .player(player_id)
-                .map(|player| player.library.clone())
+                .map(|player| player.library.iter().copied().collect())
                 .unwrap_or_default();
+            game.restrict_library_search_candidates(chooser_id, &mut library_cards);
             let search_viewer = chooser_id;
             view_hidden_candidate_objects(
                 game,
@@ -72,7 +73,7 @@ impl EffectExecutor for SearchLibraryEffect {
             let filter_ctx = ctx.filter_context(game);
 
             // Get all cards in the player's library that match the filter
-            let matching_cards: Vec<ObjectId> = game
+            let mut matching_cards: Vec<ObjectId> = game
                 .player(player_id)
                 .map(|p| {
                     p.library
@@ -83,6 +84,7 @@ impl EffectExecutor for SearchLibraryEffect {
                         .collect()
                 })
                 .unwrap_or_default();
+            game.restrict_library_search_candidates(chooser_id, &mut matching_cards);
             let unknown_hidden_cards: Vec<ObjectId> = if matching_cards.is_empty() {
                 library_cards
                     .iter()

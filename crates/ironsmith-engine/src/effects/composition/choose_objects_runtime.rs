@@ -523,6 +523,7 @@ fn collect_candidates_in_zone(
             }
         }
         Zone::Library => {
+            let mut library_ids: Vec<ObjectId> = {
             let owner_ids = library_candidate_players(effect, game, ctx, &filter_ctx, chooser_id)?
                 .into_iter().filter(|owner| !effect.is_search || game.can_search_library_from_effect(chooser_id, *owner, ctx.controller)).collect::<Vec<_>>();
             if effect.top_only {
@@ -579,6 +580,13 @@ fn collect_candidates_in_zone(
                     })
                     .collect()
             }
+            };
+            if effect.is_search {
+                // "that player searches the top four cards of that library
+                // instead" (Aven Mindcensor).
+                game.restrict_library_search_candidates(chooser_id, &mut library_ids);
+            }
+            library_ids
         }
         Zone::OutsideGame => {
             let owner_ids = library_candidate_players(effect, game, ctx, &filter_ctx, chooser_id)?;

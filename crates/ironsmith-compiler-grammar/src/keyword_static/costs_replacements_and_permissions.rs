@@ -3199,6 +3199,113 @@ pub fn parse_untap_during_each_other_players_untap_step_line(
     ))
 }
 
+/// "If an opponent would search a library, that player searches the top four
+/// cards of that library instead." (Aven Mindcensor)
+pub fn parse_search_limited_to_top_cards_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    let Some((subject, rest)) = crate::word_primitives::strip_any_prefix(
+        &words,
+        &[&["if", "an", "opponent"], &["if", "a", "player"]],
+    ) else {
+        return Ok(None);
+    };
+    let Some(rest) = rest.strip_prefix(&["would", "search", "a", "library", "that", "player", "searches", "the", "top"][..])
+    else {
+        return Ok(None);
+    };
+    let Some((count_word, rest)) = rest.split_first() else {
+        return Ok(None);
+    };
+    let Some(count) = crate::util::parse_number_word_u32(count_word) else {
+        return Ok(None);
+    };
+    if rest != ["cards", "of", "that", "library", "instead"] {
+        return Ok(None);
+    }
+    let (searcher, subject_text) = if subject == ["if", "an", "opponent"] {
+        (PlayerFilter::Opponent, "an opponent")
+    } else {
+        (PlayerFilter::Any, "a player")
+    };
+    Ok(Some(StaticAbility::search_limited_to_top_cards(
+        searcher,
+        count,
+        format!(
+            "If {subject_text} would search a library, that player searches the top {count_word} cards of that library instead"
+        ),
+    )))
+}
+
+/// "Players can't untap more than one land during their untap steps."
+/// (Winter Orb), "... more than one nonbasic land ..." (Winter Moon), "You
+/// can't untap more than two permanents during your untap step."
+pub fn parse_untap_step_limit_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    let Some((subject, rest)) = crate::word_primitives::strip_any_prefix(
+        &words,
+        &[&["players"], &["each", "player"], &["you"]],
+    ) else {
+        return Ok(None);
+    };
+    let player = if subject == ["you"] {
+        PlayerFilter::You
+    } else {
+        PlayerFilter::Any
+    };
+    let Some(rest) = crate::word_primitives::strip_any_prefix(rest, &[&["cant"], &["can't"], &["cannot"]])
+        .map(|(_, rest)| rest)
+    else {
+        return Ok(None);
+    };
+    let Some(rest) = rest.strip_prefix(&["untap", "more", "than"][..]) else {
+        return Ok(None);
+    };
+    let Some((count_word, rest)) = rest.split_first() else {
+        return Ok(None);
+    };
+    let Some(max) = crate::util::parse_number_word_u32(count_word) else {
+        return Ok(None);
+    };
+    let suffixes: &[&[&str]] = if player == PlayerFilter::You {
+        &[&["during", "your", "untap", "step"]]
+    } else {
+        &[&["during", "their", "untap", "steps"], &["during", "their", "untap", "step"]]
+    };
+    let Some((suffix, filter_words)) = crate::word_primitives::strip_any_suffix(rest, suffixes)
+    else {
+        return Ok(None);
+    };
+    if filter_words.is_empty() {
+        return Ok(None);
+    }
+    let view = TokenWordView::new(tokens);
+    let filter_start_word = words.len() - rest.len();
+    let filter_end_word = filter_start_word + filter_words.len();
+    let (Some(filter_start), Some(filter_end)) = (
+        view.map_word_to_token_start(filter_start_word),
+        view.map_word_to_token_start(filter_end_word),
+    ) else {
+        return Ok(None);
+    };
+    let filter_tokens = trim_commas(&tokens[filter_start..filter_end]);
+    let filter = parse_object_filter(&filter_tokens, false)?;
+    let subject_text = if player == PlayerFilter::You { "You" } else { "Players" };
+    Ok(Some(StaticAbility::untap_step_limit(
+        player,
+        filter,
+        max,
+        format!(
+            "{subject_text} can't untap more than {count_word} {} {}",
+            render_token_slice(&filter_tokens),
+            suffix.join(" ")
+        ),
+    )))
+}
+
 fn parse_attacked_during_controllers_last_turn(
     tokens: &[OwnedLexToken],
     filter: ObjectFilter,
@@ -4363,21 +4470,35 @@ pub fn parse_if_you_would_draw_instead_effects_line(
     let Some((_, rest)) = crate::word_primitives::strip_any_prefix(
         &words,
         &[
-            &["if", "you", "would", "draw", "a", "card", "instead"],
-            &["if", "an", "opponent", "would", "draw", "a", "card", "instead"],
-            &["if", "a", "player", "would", "draw", "a", "card", "instead"],
+            &["if", "you", "would", "draw", "a", "card"],
+            &["if", "an", "opponent", "would", "draw", "a", "card"],
+            &["if", "a", "player", "would", "draw", "a", "card"],
         ],
     ) else {
         return Ok(None);
     };
-    if rest.is_empty() {
-        return Ok(None);
-    }
     let drawer = match words[1] {
         "you" => PlayerFilter::You,
         "an" => PlayerFilter::Opponent,
         _ => PlayerFilter::Any,
     };
+    // "except the first one you draw in each of your draw steps" /
+    // "... they draw in each of their draw steps" (Hullbreacher).
+    let except_first: &[&str] = if drawer == PlayerFilter::You {
+        &["except", "the", "first", "one", "you", "draw", "in", "each", "of", "your", "draw", "steps"]
+    } else {
+        &["except", "the", "first", "one", "they", "draw", "in", "each", "of", "their", "draw", "steps"]
+    };
+    let (except_first_of_draw_step, rest) = match rest.strip_prefix(except_first) {
+        Some(rest) => (true, rest),
+        None => (false, rest),
+    };
+    let Some(rest) = rest.strip_prefix(&["instead"][..]) else {
+        return Ok(None);
+    };
+    if rest.is_empty() {
+        return Ok(None);
+    }
     let effect_start_word = words.len() - rest.len();
     let view = TokenWordView::new(tokens);
     let Some(effect_start) = view.map_word_to_token_start(effect_start_word) else {
@@ -4390,6 +4511,7 @@ pub fn parse_if_you_would_draw_instead_effects_line(
     }
     Ok(Some(StaticAbility::draw_replacement_with_effects(
         drawer,
+        except_first_of_draw_step,
         effects,
         render_token_slice(tokens),
     )))

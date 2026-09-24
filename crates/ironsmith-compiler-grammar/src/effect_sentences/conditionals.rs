@@ -47,8 +47,17 @@ pub fn parse_type_line(
         raw,
         parse_supertype_word,
         |word| parse_card_type(&word.to_ascii_lowercase()),
-        parse_subtype_word,
+        parse_type_line_subtype_word,
     )
+}
+
+/// A printed type line is an unambiguous subtype context, so it reads the full
+/// subtype vocabulary. The rules-text classifier behind `parse_subtype_word`
+/// rejects subtypes that double as English nouns (`Mine`, `Tower`, `Sphere`,
+/// `Omen`, ...), which would silently drop them from the card's own type line
+/// and break every "if you control an Urza's Mine" check against it.
+fn parse_type_line_subtype_word(word: &str) -> Option<Subtype> {
+    super::super::grammar::leaf::classify_token_definition_subtype(word)
 }
 
 pub fn parse_supertype_word(word: &str) -> Option<Supertype> {

@@ -428,6 +428,7 @@ impl StaticAbilityModelInterpreter {
                     name_override: spec.name_override.clone(),
                     added_colors: spec.added_colors,
                     added_card_types: spec.added_card_types.clone(),
+                    removes_other_card_types: spec.removes_other_card_types,
                     added_supertypes: spec.added_supertypes.clone(),
                     removed_supertypes: spec.removed_supertypes.clone(),
                     added_subtypes: spec.added_subtypes.clone(),
@@ -1195,6 +1196,26 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::MayChooseNotToUntapDuringUntapStep(subject) => {
                 StaticAbility::may_choose_not_to_untap_during_untap_step(subject.clone())
             }
+            ironsmith_core::StaticAbilityPayload::UntapStepLimit {
+                player,
+                filter,
+                max,
+                display,
+            } => StaticAbility::untap_step_limit(
+                player.clone(),
+                filter.clone(),
+                *max,
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::SearchLimitedToTopCards {
+                searcher,
+                count,
+                display,
+            } => StaticAbility::search_limited_to_top_cards(
+                searcher.clone(),
+                *count,
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep {
                 filter,
                 display,
@@ -1534,6 +1555,7 @@ impl StaticAbilityModelInterpreter {
                         name_override: spec.name_override.clone(),
                         added_colors: spec.added_colors,
                         added_card_types: spec.added_card_types.clone(),
+                    removes_other_card_types: spec.removes_other_card_types,
                         added_supertypes: spec.added_supertypes.clone(),
                         removed_supertypes: spec.removed_supertypes.clone(),
                         added_subtypes: spec.added_subtypes.clone(),
@@ -1675,10 +1697,12 @@ impl StaticAbilityModelInterpreter {
             }
             ironsmith_core::StaticAbilityPayload::DrawReplacementWithEffects {
                 drawer,
+                except_first_of_draw_step,
                 replacement_effects,
                 display,
             } => StaticAbility::draw_replacement_with_effects(
                 drawer.clone(),
+                *except_first_of_draw_step,
                 replacement_effects.clone(),
                 display.clone(),
             ),
@@ -2388,6 +2412,16 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     ) -> Option<&crate::target::ObjectFilter> {
         self.leaf_static_ability()?
             .untap_during_each_other_players_untap_step_filter()
+    }
+
+    fn untap_step_limit(
+        &self,
+    ) -> Option<(&crate::target::PlayerFilter, &crate::target::ObjectFilter, u32)> {
+        self.leaf_static_ability()?.untap_step_limit_spec()
+    }
+
+    fn search_top_card_limit(&self) -> Option<(&crate::target::PlayerFilter, u32)> {
+        self.leaf_static_ability()?.search_top_card_limit_spec()
     }
 
     fn generate_replacement_effect(

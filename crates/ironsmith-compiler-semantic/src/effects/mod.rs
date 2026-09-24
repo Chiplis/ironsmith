@@ -19,6 +19,8 @@ pub use ironsmith_core::{
     CumulativeUpkeepEffect as CoreCumulativeUpkeepEffect, DealDamageEffect,
     DealDistributedDamageEffect, DelayedTriggerSpec, DestroyEffect, DestroyNoRegenerationEffect,
     DetainEffect, DevourEffect, DirectionalAdjacentPlayerControlEffect, DiscardEffect,
+    MayCastForMiracleCostEffect, NextAdaptIgnoresCountersEffect, ResolvesDespiteIllegalTargetsEffect,
+    ChooseNumberAtRandomEffect, NoteActivationManaTypeEffect, AddManaOfNotedTypeEffect,
     DiscardHandEffect, DiscoverEffect, DoubleCountersEffect, DoubleManaPoolEffect, DrawCardsEffect,
     DrawForEachTaggedMatchingEffect, EachPlayerScryEffect, EarthbendEffect, EmitGiftGivenEffect,
     EmitKeywordActionEffect, EmptyManaPoolEffect, EndCombatPhaseEffect, EndTurnEffect,

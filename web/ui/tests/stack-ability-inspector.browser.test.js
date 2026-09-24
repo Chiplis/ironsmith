@@ -17,6 +17,14 @@ test('stack clicks select the precise source ability and share the enabled-hover
     await page.route('**/cards.scryfall.io/**',route=>route.fulfill({contentType:'image/svg+xml',headers:{'access-control-allow-origin':'*'},body:'<svg xmlns="http://www.w3.org/2000/svg" width="488" height="680"><rect width="488" height="680" fill="#dac9a8"/></svg>'}));
     await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/stack-ability-inspector.html`);
     const preview=page.locator('[data-card-hover-preview][data-visible="true"]');
+    // Hover alone, before anything is pinned: the anchored preview carries the
+    // entry's id, which here is also the id of a battlefield card. The frame
+    // must still show the entry's source, not that card (an Island's text over
+    // Wheel of Torture's art).
+    await page.locator('.stack-card[data-object-id="103"]').hover();
+    await page.waitForFunction(()=>document.querySelector('[data-card-hover-preview][data-visible="true"]')?.dataset.previewObjectId==='103');
+    assert.equal(await preview.locator('.interactive-card-frame-stage').getAttribute('data-inspected-object-id'),'10','hovered stack ID collision must not inspect another card');
+    assert.equal(await preview.locator('.inspector-ability-section').count(),3,'hover preview shows the source card');
     for(const [id,index] of [[103,1],[101,0],[105,2]]) {
       await page.locator(`.stack-card[data-object-id="${id}"]`).click();
       await preview.waitFor();

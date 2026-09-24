@@ -62,6 +62,9 @@ pub enum DamagePreventionActionAst {
     PreventAllDamageFromSourceFilter {
         duration: Until,
         source_filter: ObjectFilter,
+        /// "sources of the color of your choice": the color is chosen as the
+        /// effect resolves and narrows `source_filter`.
+        of_chosen_color: bool,
     },
     PreventDamageToTargetPutCounters {
         amount: Option<Value>,

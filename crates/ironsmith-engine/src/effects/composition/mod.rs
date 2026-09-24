@@ -91,7 +91,7 @@ pub use mechanic_actions::{
     AdaptEffect, AmplifyEffect, BackupEffect, BolsterEffect, CastEncodedCardCopyEffect,
     CipherEffect, CounterAbilityEffect, DevourEffect, ExploreEffect, ManifestCardFromHandEffect,
     ManifestDreadEffect, ManifestObjectsEffect, ManifestTopCardOfLibraryEffect,
-    OpenAttractionEffect, PopulateEffect, SupportEffect,
+    OpenAttractionEffect, PopulateEffect, ResolvesDespiteIllegalTargetsEffect, SupportEffect,
 };
 pub use reflexive_trigger::ReflexiveTriggerEffect;
 pub use repeat_effects::RepeatEffectsEffect;

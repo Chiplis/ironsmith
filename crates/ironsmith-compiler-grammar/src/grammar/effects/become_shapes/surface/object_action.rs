@@ -345,7 +345,11 @@ pub fn parse_become_body_surface_shape(tokens: &[OwnedLexToken]) -> BecomeBodySu
     } else if permission_shapes::exact_words(
         &words,
         &["basic", "land", "type", "of", "your", "choice"],
-    ) {
+    ) || permission_shapes::exact_words(&words, &["second", "chosen", "type"])
+    {
+        // "Choose a land type and a basic land type. Each land of the first
+        // chosen type becomes the second chosen type" (Vision Charm): the
+        // second choice is the basic land type chosen as this resolves.
         Some(BecomeExactKind::BasicLandTypeChoice)
     } else if let Some(subtype) = basic_land_type(&words) {
         Some(BecomeExactKind::BasicLandType(subtype))
@@ -386,19 +390,36 @@ pub fn parse_become_body_surface_shape(tokens: &[OwnedLexToken]) -> BecomeBodySu
         BecomeCopySourceShape::NotCopy
     };
 
+    // "an Aura [enchantment] with enchant creature ..." or, with the enchant
+    // ability quoted, 'an Aura with "enchant creature put onto the
+    // battlefield with Necromancy"'.
     let aura_tail = primitives::parse_prefix(
         body_tokens,
-        primitives::phrase(&["aura", "enchantment", "with", "enchant", "creature"]).void(),
+        primitives::phrase(&["aura", "enchantment", "with"]).void(),
     )
-    .or_else(|| {
-        primitives::parse_prefix(
-            body_tokens,
-            primitives::phrase(&["aura", "with", "enchant", "creature"]).void(),
-        )
+    .or_else(|| primitives::parse_prefix(body_tokens, primitives::phrase(&["aura", "with"]).void()))
+    .map(|(_, tail)| tail)
+    .map(|tail| match tail.first() {
+        Some(token) if token.kind == crate::TokenKind::Quote => &tail[1..],
+        _ => tail,
     })
-    .map(|(_, tail)| tail);
-    let aura = aura_tail.map(|tail_tokens| BecomeAuraShape {
-        attachment_you_control: permission_shapes::prefix_tokens(tail_tokens, &["you", "control"]),
+    .and_then(|tail| {
+        primitives::parse_prefix(tail, primitives::phrase(&["enchant", "creature"]).void())
+            .map(|_| &tail[1..])
+    });
+    let aura = aura_tail.map(|enchant_tokens| {
+        let filter_end = enchant_tokens
+            .iter()
+            .position(|token| token.kind == crate::TokenKind::Quote)
+            .unwrap_or(enchant_tokens.len());
+        let enchant_filter_tokens = &enchant_tokens[..filter_end];
+        BecomeAuraShape {
+            attachment_you_control: permission_shapes::prefix_tokens(
+                &enchant_filter_tokens[1..],
+                &["you", "control"],
+            ),
+            enchant_filter_tokens,
+        }
     });
     let equal_to_source_power_toughness =
         primitives::parse_prefix(body_tokens, primitives::phrase(&["equal", "to"]).void())

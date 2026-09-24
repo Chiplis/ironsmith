@@ -927,6 +927,8 @@ pub enum OptionalCostKind {
     Surge,
     Spectacle,
     Additional,
+    /// "you may collect evidence N" (CR 701.59); "if evidence was collected".
+    CollectEvidence,
     /// A later condition referring to a verified alternative casting method.
     AlternativeCast(AlternativeCostReference),
     CustomUnsupported(String),
@@ -963,6 +965,7 @@ impl OptionalCostKind {
             "surge" => Self::Surge,
             "spectacle" => Self::Spectacle,
             "additional" | "additional cost" => Self::Additional,
+            "evidence" | "collect evidence" => Self::CollectEvidence,
             _ if lower.starts_with("kicker ") => Self::Kicker,
             _ if lower.starts_with("gift ") => Self::Gift,
             _ if lower.starts_with("conspire") => Self::Conspire,
@@ -1006,6 +1009,7 @@ impl OptionalCostKind {
             Self::Surge => "Surge",
             Self::Spectacle => "Spectacle",
             Self::Additional => "Additional",
+            Self::CollectEvidence => "Evidence",
             Self::AlternativeCast(reference) => reference.method_name(),
             Self::CustomUnsupported(label) => label.as_str(),
         }

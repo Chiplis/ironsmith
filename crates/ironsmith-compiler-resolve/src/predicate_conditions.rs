@@ -744,6 +744,7 @@ pub fn resolve_condition_from_predicate(
             Condition::SourceDevouredCreaturesOrMore(*count)
         }
         PredicateAst::XValueAtLeast(value) => Condition::XValueAtLeast(*value),
+        PredicateAst::AllTargetsStillLegal => Condition::AllTargetsStillLegal,
         PredicateAst::ColorsOfManaSpentToCastThisSpellOrMore(count) => {
             Condition::ColorsOfManaSpentToCastThisSpellOrMore(*count)
         }

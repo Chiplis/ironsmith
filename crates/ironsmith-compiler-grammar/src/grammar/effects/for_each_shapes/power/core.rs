@@ -148,7 +148,16 @@ pub fn parse_base_power_toughness_clause_shape(
             return Ok(None);
         }
         leading_duration.unwrap_or(Until::Forever)
-    } else if has_shared_gain_tail(tail) {
+    } else if has_shared_gain_tail(tail)
+        || primitives::parse_prefix(
+            tail,
+            alt((primitives::phrase(&["and", "becomes"]), primitives::phrase(&["and", "become"]))),
+        )
+        .is_some()
+    {
+        // "... has base power and toughness 5/5 and becomes a Dinosaur in
+        // addition to its other creature types" (Allosaurus Shepherd) is a
+        // shared-subject coordination owned by the gain/become chain.
         return Ok(None);
     } else if primitives::parse_prefix(tail, primitives::phrase(&["where", "x", "is"])).is_some() {
         if !permits_unqualified_duration(subject, tokens) {

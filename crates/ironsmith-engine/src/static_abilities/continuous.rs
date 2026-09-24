@@ -97,6 +97,11 @@ fn is_all_colors(colors: crate::color::ColorSet) -> bool {
     colors == all_colors
 }
 
+fn is_exactly_nonbasic_land_types(subtypes: &[Subtype]) -> bool {
+    let nonbasic = Subtype::nonbasic_land_types();
+    subtypes.len() == nonbasic.len() && nonbasic.iter().all(|subtype| subtypes.contains(subtype))
+}
+
 fn is_exactly_basic_land_types(subtypes: &[Subtype]) -> bool {
     subtypes.len() == 5
         && [
@@ -5184,6 +5189,14 @@ impl StaticAbilityKind for AddSubtypesForFilter {
             pluralized_subject_text(&self.filter)
         };
         let (verb, possessive) = subject_verb_and_possessive(&subject);
+        if is_exactly_nonbasic_land_types(&self.subtypes) && self.condition.is_none() {
+            // "This land is every nonbasic land type." (Planar Nexus). The
+            // card renderer maps a neutral self-reference to its type noun.
+            if self.filter == ObjectFilter::source() {
+                return "this source is every nonbasic land type".to_string();
+            }
+            return format!("{subject} {verb} every nonbasic land type");
+        }
         if is_exactly_basic_land_types(&self.subtypes) {
             let mut text = format!(
                 "{subject} {verb} every basic land type in addition to {possessive} other types"

@@ -160,6 +160,7 @@ pub use life::{
 pub use mana::{
     AddColorlessManaEffect, AddManaEffect, AddManaFromCommanderColorIdentityEffect,
     AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect, AddManaOfChosenColorEffect,
+    AddManaOfNotedTypeEffect, NoteActivationManaTypeEffect,
     AddManaOfColorsAmongEffect, AddManaOfLandProducedTypesEffect, AddOneManaOfAnyColorAmongEffect,
     AddScaledManaEffect, DoubleManaPoolEffect, EmptyManaPoolEffect, GrantManaAbilityUntilEotEffect,
     ManaTypeSource, PayManaEffect, RetainManaUntilEndOfTurnEffect,
@@ -168,6 +169,7 @@ pub use permanents::{
     AttachObjectsEffect, AttachToEffect, BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect,
     BecomeCreatureTypeChoiceEffect, BecomeSaddledUntilEotEffect, ClearSuspectedEffect,
     ConspireCostEffect, ConvertEffect, CrewCostEffect, DetainEffect, EarthbendEffect, EvolveEffect,
+    NextAdaptIgnoresCountersEffect,
     ExertCostEffect, FlipEffect, GrantObjectAbilityEffect, MeldEffect, MonstrosityEffect,
     NinjutsuCostEffect, NinjutsuEffect, PhaseInEffect, PhaseOutDuration, PhaseOutEffect,
     PrepareEffect, PutStickerEffect, ReconfigureEffect, RegenerateEffect, RenownEffect,
@@ -178,6 +180,7 @@ pub use permanents::{
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AscendEffect,
     BecomeMonarchEffect, CascadeEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect,
+    ChooseNumberAtRandomEffect,
     ChooseCardTypeEffect, ChooseColorEffect, ChooseCreatureTypeEffect, RevealChosenSubtypeEffect, ChooseLandTypeEffect,
     ChooseNamedOptionEffect, ChoosePlayerEffect, ControlCombatChoicesThisTurnEffect,
     ControlPlayerEffect, CreateEmblemEffect, DiscoverEffect, DrawTheGameEffect,

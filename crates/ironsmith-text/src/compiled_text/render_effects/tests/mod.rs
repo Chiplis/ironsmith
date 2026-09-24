@@ -156,6 +156,7 @@ mod relative_opponent_choice;
 
 mod conditional_copy_vanishing;
 
+mod urza_land_surfaces;
 mod vote_outcome_pairs;
 
 mod exiled_card_token_watcher;

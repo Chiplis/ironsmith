@@ -340,6 +340,14 @@ fn read_activate_only_if_predicate(input: &ActivationCondition<'_>) -> Option<Pr
                     crate::cards::builders::SourcePredicateAst::SourceMatches(filter),
                 ));
             }
+            // "Activate only if there are no charge counters on this artifact."
+            crate::cards::builders::PredicateAst::Source(
+                crate::cards::builders::SourcePredicateAst::SourceHasNoCounter(counter_type),
+            ) => {
+                return Some(PredicateAst::Source(
+                    crate::cards::builders::SourcePredicateAst::SourceHasNoCounter(counter_type),
+                ));
+            }
             _ => {}
         }
     }

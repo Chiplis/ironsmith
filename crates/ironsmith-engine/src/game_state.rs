@@ -468,6 +468,9 @@ struct CastPermissionFlags {
 struct ObjectAnnotationStore {
     /// Last life total noted for a battlefield source object.
     noted_life_totals: HashMap<ObjectId, i32>,
+    /// Last type of mana noted for a battlefield source object
+    /// ("Note the type of mana spent to pay this activation cost").
+    noted_mana_types: HashMap<ObjectId, crate::mana::ManaSymbol>,
     /// Stickers attached to an object, keyed by stable object identity.
     object_stickers: HashMap<StableId, Vec<StickerMarker>>,
     /// Names from the player's accessible sticker sheets, keyed by physical sticker identity.
@@ -784,6 +787,9 @@ pub struct TurnStore {
     /// The resolving effect performs CR 724.2a-b synchronously, then the turn
     /// runner performs the no-priority SBA pass and skips to the next phase.
     pub end_combat_phase_procedure_pending: bool,
+    /// Objects whose next adapt during the recorded turn ignores their +1/+1
+    /// counters (Biomancer's Familiar), keyed by stable identity.
+    pub adapt_ignores_counters: Vec<(StableId, u32)>,
 }
 
 /// Runtime effect managers, queued trigger state, and temporary effect registries.
@@ -3762,6 +3768,19 @@ impl GameState {
         Some(life_total)
     }
 
+    pub fn note_mana_type_for_source(&mut self, source: ObjectId, symbol: crate::mana::ManaSymbol) {
+        self.object_annotations_mut()
+            .noted_mana_types
+            .insert(source, symbol);
+    }
+
+    pub fn noted_mana_type_for_source(&self, source: ObjectId) -> Option<crate::mana::ManaSymbol> {
+        self.object_annotations
+            .noted_mana_types
+            .get(&source)
+            .copied()
+    }
+
     pub fn noted_life_total_for_source(&self, source: ObjectId) -> Option<i32> {
         self.object_annotations
             .noted_life_totals
@@ -6045,6 +6064,55 @@ impl GameState {
             }
         }
         true
+    }
+
+    /// The smallest "searches the top N cards of that library instead" limit
+    /// that applies to `searcher` (CR 701.23a), if any.
+    pub fn library_search_top_limit(&self, searcher: PlayerId) -> Option<usize> {
+        let mut limit: Option<usize> = None;
+        for &source_id in &self.battlefield {
+            if self.is_phased_out(source_id) {
+                continue;
+            }
+            let Some(chars) = self.current_characteristics(source_id) else {
+                continue;
+            };
+            for static_ability in &chars.static_abilities {
+                let Some((player_filter, count)) = static_ability.search_top_card_limit_spec()
+                else {
+                    continue;
+                };
+                if !static_ability.is_active(self, source_id) {
+                    continue;
+                }
+                let controller = self.current_controller(source_id).unwrap_or(searcher);
+                let filter_ctx = self.filter_context_for(controller, Some(source_id));
+                if crate::filter::player_filter_matches_game(player_filter, searcher, self, &filter_ctx) {
+                    let count = count as usize;
+                    limit = Some(limit.map_or(count, |current| current.min(count)));
+                }
+            }
+        }
+        limit
+    }
+
+    /// Restrict library-search candidates to the top cards of each searched
+    /// library when a search limit applies to `searcher`.
+    pub fn restrict_library_search_candidates(&self, searcher: PlayerId, candidates: &mut Vec<ObjectId>) {
+        let Some(limit) = self.library_search_top_limit(searcher) else {
+            return;
+        };
+        candidates.retain(|id| {
+            let Some(object) = self.object(*id) else {
+                return false;
+            };
+            if object.zone != Zone::Library {
+                return true;
+            }
+            self.player(object.owner).is_some_and(|owner| {
+                owner.library.iter().rev().take(limit).any(|top| top == id)
+            })
+        });
     }
 
     /// Can the player search their library?

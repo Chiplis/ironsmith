@@ -24,6 +24,11 @@ pub enum DivvyRestDestinationShape {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DivvySequenceShape {
     FixedExilePiles { first_count: i32, second_count: i32, first_face_down: bool, second_face_down: bool },
+    /// "Choose an opponent. They look at the top N cards of your library and
+    /// separate them into a face-down pile and a face-up pile. Put one pile
+    /// into your hand and the other into your graveyard." Any following
+    /// sentences are independent.
+    ChosenOpponentFaceDownPiles { count: i32, consumed_sentences: usize },
     SearchFourCreatureCards,
     SearchLibraryGraveyardExileRemainderToTop,
     ExchangeCreatureControl,
@@ -54,6 +59,9 @@ pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<Divv
     let first = sentence_words.first().map(Vec::as_slice).unwrap_or(&[]);
 
     if let Some(shape) = parse_fixed_exile_piles(&sentence_words) {
+        return Some(shape);
+    }
+    if let Some(shape) = parse_chosen_opponent_face_down_piles(&sentence_words) {
         return Some(shape);
     }
 
@@ -650,6 +658,37 @@ pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<Divv
 #[cfg(test)]
 #[path = "divvy_shapes_inline_tests.rs"]
 mod tests;
+
+fn parse_chosen_opponent_face_down_piles(sentences: &[Vec<&str>]) -> Option<DivvySequenceShape> {
+    let [choose, look, put, ..] = sentences else {
+        return None;
+    };
+    if choose.as_slice() != ["choose", "an", "opponent"]
+        || put.as_slice()
+            != [
+                "put", "one", "pile", "into", "your", "hand", "and", "the", "other", "into",
+                "your", "graveyard",
+            ]
+    {
+        return None;
+    }
+    let words = look.strip_prefix(&["they", "look", "at", "the", "top"])?;
+    let (count, used) =
+        crate::grammar::leaf::parse_leaf_number_prefix_words(words)?.into_fixed()?;
+    let rest = words.get(used..)?;
+    if rest
+        != [
+            "cards", "of", "your", "library", "and", "separate", "them", "into", "a", "face",
+            "down", "pile", "and", "a", "face", "up", "pile",
+        ]
+    {
+        return None;
+    }
+    Some(DivvySequenceShape::ChosenOpponentFaceDownPiles {
+        count: i32::try_from(count).ok()?,
+        consumed_sentences: 3,
+    })
+}
 
 // A pair of fixed, sequential library groups followed by a choice of group.
 // Counts and visibility belong to the two producers, never a partition prompt.

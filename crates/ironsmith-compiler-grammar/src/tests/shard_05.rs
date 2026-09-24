@@ -988,6 +988,21 @@ pub(super) fn rewrite_type_line_parser_recognizes_spacecraft_as_an_artifact_subt
 }
 
 #[test]
+pub(super) fn card_type_line_keeps_subtypes_that_double_as_english_nouns() {
+    for (type_line, expected) in [
+        ("Land — Urza's Mine", vec![Subtype::Urzas, Subtype::Mine]),
+        ("Land — Urza's Tower", vec![Subtype::Urzas, Subtype::Tower]),
+        ("Land — Urza's Power-Plant", vec![Subtype::Urzas, Subtype::PowerPlant]),
+        ("Land — Sphere", vec![Subtype::Sphere]),
+    ] {
+        let (_, card_types, subtypes) =
+            crate::effect_sentences::parse_type_line(type_line).expect("type line should parse");
+        assert_eq!(card_types, vec![CardType::Land], "{type_line}");
+        assert_eq!(subtypes, expected, "{type_line}");
+    }
+}
+
+#[test]
 pub(super) fn rewrite_values_type_line_parser_keeps_front_face_only() {
     let parsed = super::super::grammar::values::parse_type_line_with(
         "Legendary Creature — Elf Druid // Sorcery",

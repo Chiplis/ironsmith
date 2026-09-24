@@ -242,6 +242,8 @@ pub enum StaticAbilityId {
     PreventAllNoncombatDamageToOtherCreaturesYouControl,
     DoesntUntap,
     UntapDuringEachOtherPlayersUntapStep,
+    UntapStepLimit,
+    SearchLimitedToTopCards,
     MayChooseNotToUntapDuringUntapStep,
     ChooseCreatureTypeAsEnters,
     EntersTapped,
@@ -579,6 +581,8 @@ impl StaticAbilityId {
             | PreventAllNoncombatDamageToOtherCreaturesYouControl
             | DoesntUntap
             | UntapDuringEachOtherPlayersUntapStep
+            | UntapStepLimit
+            | SearchLimitedToTopCards
             | MayChooseNotToUntapDuringUntapStep
             | ChooseCreatureTypeAsEnters
             | EntersTapped

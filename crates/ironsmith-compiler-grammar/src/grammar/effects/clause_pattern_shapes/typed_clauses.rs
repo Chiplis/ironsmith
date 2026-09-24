@@ -32,6 +32,11 @@ pub enum PreventAllDamageShape<'a> {
         target_tokens: &'a [OwnedLexToken],
         source: PreventAllDamageSourceShape<'a>,
     },
+    /// "Prevent all damage that <sources> would deal [to <target>] this turn."
+    SourceWouldDeal {
+        source_tokens: &'a [OwnedLexToken],
+        target_tokens: Option<&'a [OwnedLexToken]>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -249,6 +254,33 @@ fn parse_duration_first_source<'a>(
     })
 }
 
+fn parse_source_would_deal<'a>(input: &mut LexStream<'a>) -> WResult<PreventAllDamageShape<'a>> {
+    primitives::phrase(&["prevent", "all", "damage", "that"]).parse_next(input)?;
+    let source_tokens = repeat_till(
+        1..,
+        any.void(),
+        peek(primitives::phrase(&["would", "deal"])),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    primitives::phrase(&["would", "deal"]).parse_next(input)?;
+    let target_tokens = opt((
+        primitives::kw("to"),
+        repeat_till(1.., any.void(), peek(primitives::phrase(&["this", "turn"])))
+            .map(|((), _)| ())
+            .take(),
+    ))
+    .parse_next(input)?
+    .map(|(_, tokens)| trim_lexed_commas(tokens));
+    primitives::phrase(&["this", "turn"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(PreventAllDamageShape::SourceWouldDeal {
+        source_tokens: trim_lexed_commas(source_tokens),
+        target_tokens,
+    })
+}
+
 fn parse_duration_first_target<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<PreventAllDamageShape<'a>> {
@@ -349,6 +381,7 @@ pub fn parse_prevent_all_damage_shape_tokens(
             parse_target_source_duration,
             parse_target_first_source,
             parse_target_first,
+            parse_source_would_deal,
         )),
         "prevent all damage",
     )

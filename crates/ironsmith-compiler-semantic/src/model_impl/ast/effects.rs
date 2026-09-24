@@ -59,6 +59,18 @@ pub enum EffectAst {
     DocumentProgram(Box<CompilerDocumentProgramAst>),
     SubjectVerb(SubjectVerbEffectAst),
     SolveCase,
+    /// "This ability still resolves if its target becomes illegal."
+    ResolvesDespiteIllegalTargets,
+    /// "Note the type of mana spent to pay this activation cost."
+    NoteActivationManaType,
+    /// A player other than the library's owner privately looks at its top
+    /// cards ("They look at the top four cards of your library").
+    LookAtTopCardsAsViewer {
+        library_owner: PlayerFilter,
+        viewer: PlayerFilter,
+        count: Value,
+        tag: TagRef,
+    },
     RestartGame {
         cards_left_in_exile: Option<ChooseSpec>,
         source_surface: Option<SourceReferenceSurface>,
@@ -661,6 +673,24 @@ impl EffectAst {
                 DamagePreventionActionAst::PreventAllDamageFromSourceFilter {
                     duration,
                     source_filter,
+                    of_chosen_color: false,
+                },
+            ),
+        )
+    }
+
+    pub fn subject_verb_prevent_all_damage_from_source_filter_of_chosen_color(
+        source_filter: ObjectFilter,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageFromSourceFilter {
+                    duration,
+                    source_filter,
+                    of_chosen_color: true,
                 },
             ),
         )
@@ -3890,6 +3920,14 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount }),
+        )
+    }
+
+    pub fn subject_verb_add_mana_noted_type(player: PlayerAst, amount: Value) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount }),
         )
     }
 

@@ -88,10 +88,12 @@ import {
   verifySignedResyncEnvelope,
   waitForCryptoSeatBindingsFromSession,
   withDeckState,
+  withRematchDeckText,
   writeStoredPlayerIndex,
 } from "./shared.js";
 import { approximateMessageBytes, recordDiagnosticEvent, recordPeerMessage, recordPeerState } from "../../lib/action-diagnostics.js";
 import { describeSubstitutions, withSupportedCards } from "../../lib/unsupported-card-substitution.js";
+import { formatDeckRequirement } from "../../lib/lobby-deck.js";
 
 function normalizeLobbyDeckOptions(value) {
   if (!Array.isArray(value)) return [];
@@ -107,6 +109,7 @@ function normalizeLobbyDeckOptions(value) {
 
 export function usePeerLobbyMessaging(base, servicesRef) {
   const { actionCryptoRequirementsRef, actionHistoryRef, applySyncedCommand, applyingSequencedActionsRef, auditEncryptionPublicKeyRef, auditKeyPairRef, auditPublicKeyRef, auditStateHashRef, awaitingStateResyncRef, clientConnectionsRef, clientMessageQueueRef, drainingPendingSequencedActionsRef, ensureDirectPeerConnectionsRef, gameRef, hostConnectionRef, hostMessageQueueRef, ignoredActionIntentKeysRef, initialPublicCheckpointHashRef, liveAuditTranscriptRef, localZiffleRevealInFlightRef, matchClockConfigRef, matchClockObservationExemptSequenceRef, matchStartPayloadRef, multiplayerRef, peerConnectionsRef, peerMessageQueueRef, peerOptionsRef, peerRef, peerServerLabelRef, pendingSequencedActionsRef, reconnectChallengesRef, relayedActionIdsRef, resyncingPeerIdsRef, setState, setStatus, stateRef } = base;
+  const rematchStartInFlightRef = useRef(false);
   const reportCardSubstitutions = useCallback((substitutions) => {
     setStatus(`Unsupported cards replaced with basic lands: ${describeSubstitutions(substitutions)}`);
   }, [setStatus]);
@@ -1341,10 +1344,17 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         return {
           ...player,
           deckAuditManifest: publicDeckManifest(manifest),
+          // The local manifest can be rebuilt here with fresh salts: until the
+          // next game starts, the lookup checks cached manifests against the
+          // last game's published commitments, and a deck changed for this
+          // game never matches them. Its openings must come from the manifest
+          // this payload commits to, not the one built when the player readied.
           deckSlotOpenings: sanitizeDeckSlotOpenings(
-            player.deckSlotOpenings?.length
-              ? player.deckSlotOpenings
-              : deckSlotOpeningsForManifest(manifest)
+            hasLocalDeck
+              ? deckSlotOpeningsForManifest(manifest)
+              : player.deckSlotOpenings?.length
+                ? player.deckSlotOpenings
+                : deckSlotOpeningsForManifest(manifest)
           ),
         };
       })
@@ -1515,11 +1525,17 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         type: "rematch_request",
         protocolVersion: PROTOCOL_VERSION,
       });
-      setStatus("Waiting for host to open sideboarding");
+      setStatus("Waiting for host to open deck selection");
       return;
     }
 
-    const rematch = buildRematchStateFromPayload(payload, session.localPeerId);
+    // A second request (another player pressing Play again) must not wipe
+    // the decks and ready marks already chosen for the next game.
+    if (session.rematch?.phase === "sideboarding") {
+      broadcastRematchState(session.rematch);
+      return;
+    }
+    const rematch = withRematchDeckText(buildRematchStateFromPayload(payload, session.localPeerId), session);
     updateMultiplayer((prev) => ({
       ...prev,
       mode: "in_match",
@@ -1530,29 +1546,74 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       protocolVersion: PROTOCOL_VERSION,
       match: payload,
     });
-    setStatus(source === "remote" ? "Sideboarding opened for rematch" : "Sideboard for the next game");
-  }, [broadcastToClients, setStatus, updateMultiplayer]);
+    setStatus(source === "remote" ? "Deck selection opened for the next game" : "Choose a deck for the next game");
+  }, [broadcastRematchState, broadcastToClients, setStatus, updateMultiplayer]);
 
-  const updateRematchDecks = useCallback(({ deck, sideboard }) => {
-    updateMultiplayer((prev) => {
+  // Editing the deck after marking ready withdraws the ready mark, on the host
+  // too: the host starts the game from the decks players last submitted.
+  const updateRematchDeck = useCallback((updates) => {
+    const session = multiplayerRef.current;
+    if (session.rematch?.phase !== "sideboarding") return;
+    const wasReady = Boolean(session.rematch.localReady);
+    const has = (key) => Object.prototype.hasOwnProperty.call(updates || {}, key);
+    const nextSession = updateMultiplayer((prev) => {
       if (!prev.rematch || prev.rematch.phase !== "sideboarding") return prev;
       return {
         ...prev,
         rematch: {
           ...prev.rematch,
-          localDeck: sanitizeCardList(deck ?? prev.rematch.localDeck),
-          localSideboard: sanitizeCardList(sideboard ?? prev.rematch.localSideboard),
+          players: wasReady && prev.role === "host"
+            ? (prev.rematch.players || []).map((player) => (
+              player.peerId === prev.localPeerId ? { ...player, ready: false } : player
+            ))
+            : prev.rematch.players,
+          localDeckText: has("deckText") ? String(updates.deckText || "") : prev.rematch.localDeckText,
+          localCommanderText: has("commanderText") ? String(updates.commanderText || "") : prev.rematch.localCommanderText,
           localReady: false,
         },
       };
     });
-  }, [updateMultiplayer]);
+    if (!wasReady) return;
+    if (nextSession.role === "host") {
+      broadcastRematchState(nextSession.rematch);
+      return;
+    }
+    const conn = hostConnectionRef.current;
+    if (conn && conn.open !== false) {
+      safeSend(conn, { type: "rematch_unready", protocolVersion: PROTOCOL_VERSION });
+    }
+  }, [broadcastRematchState, updateMultiplayer]);
+
+  // The host alone starts the next game, once every seat has a ready deck.
+  const startRematch = useCallback(async () => {
+    const session = multiplayerRef.current;
+    if (session.role !== "host") {
+      setStatus("Only the host can start the next game", true);
+      return;
+    }
+    const rematch = session.rematch;
+    if (!rematch || rematch.phase !== "sideboarding") {
+      setStatus("Deck selection is not active", true);
+      return;
+    }
+    if (!rematchPlayersReady(rematch.players)) {
+      setStatus("Every player must be ready before the next game starts", true);
+      return;
+    }
+    if (rematchStartInFlightRef.current) return;
+    rematchStartInFlightRef.current = true;
+    try {
+      await startRematchFromState(rematch);
+    } finally {
+      rematchStartInFlightRef.current = false;
+    }
+  }, [setStatus, startRematchFromState]);
 
   const readyForRematch = useCallback(async () => {
     const session = multiplayerRef.current;
     const rematch = session.rematch;
     if (!rematch || rematch.phase !== "sideboarding") {
-      setStatus("Sideboarding is not active", true);
+      setStatus("Deck selection is not active", true);
       return;
     }
     const localIndex = resolveLocalPlayerIndex(session);
@@ -1561,12 +1622,46 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       return;
     }
 
-    const localDeck = sanitizeCardList(rematch.localDeck);
-    const localSideboard = sanitizeCardList(rematch.localSideboard);
+    // The same submission rules the lobby applies to a joining player, and the
+    // same swap of unloadable cards for basic lands.
+    const deckText = String(rematch.localDeckText ?? "");
+    const commanderText = String(rematch.localCommanderText ?? "");
+    const submission = await withSupportedCards(
+      parseDeckSubmission(session.format, deckText, commanderText),
+      { game: gameRef.current, onSubstitute: reportCardSubstitutions },
+    );
+    const formatStatus = isRelayId(session.lobbyId)
+      ? validateFormatDeck(session.format, submission.deck, submission.commanders, submission.sideboard)
+      : null;
+    if (!submission.ready || (formatStatus && !formatStatus.ready)) {
+      setStatus(
+        formatStatus && !formatStatus.ready
+          ? formatStatus.errors.slice(0, 5).join(" ")
+          : formatDeckRequirement(session.format),
+        true
+      );
+      return;
+    }
+    if (multiplayerRef.current.rematch?.localDeckText !== rematch.localDeckText
+      || multiplayerRef.current.rematch?.localCommanderText !== rematch.localCommanderText) {
+      // Edited while the substitution check ran; the player readies again.
+      return;
+    }
+    rememberDefaultLobbyDeck(deckText, commanderText);
+    // A reconnect re-derives the committed deck from this text.
+    updateMultiplayer((prev) => ({
+      ...prev,
+      localDeckText: deckText,
+      localCommanderText: commanderText,
+      localDeckCount: submission.deckCount,
+      localCommanderCount: submission.commanderCount,
+    }));
+    const localDeck = submission.deck;
+    const localSideboard = submission.sideboard;
     const localPlayer = reindexPlayers(rematch.players || []).find(
       (player) => Number(player.index) === Number(localIndex)
     );
-    const localCommanders = sanitizeCardList(localPlayer?.commanders);
+    const localCommanders = submission.commanders;
     if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(session))) {
       if (session.role !== "host") {
         const conn = hostConnectionRef.current;
@@ -1595,7 +1690,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           sideboardCount: localSideboard.length,
           commanderCount: localCommanders.length,
         });
-        setStatus("Ready for trusted rematch");
+        setStatus("Ready; waiting for the host to start");
         return;
       }
 
@@ -1632,11 +1727,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       });
 
       broadcastRematchState(nextSession.rematch);
-      if (rematchPlayersReady(nextSession.rematch?.players)) {
-        await startRematchFromState(nextSession.rematch);
-      } else {
-        setStatus("Ready for trusted rematch; waiting for other players");
-      }
+      setStatus(rematchPlayersReady(nextSession.rematch?.players)
+        ? "Every player is ready; start the next game"
+        : "Ready; waiting for other players");
       return;
     }
     const deckAuditManifest = await buildLocalDeckAuditManifest({
@@ -1701,7 +1794,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         sideboardCount: localSideboard.length,
         commanderCount: localCommanders.length,
       });
-      setStatus("Ready for rematch");
+      setStatus("Ready; waiting for the host to start");
       return;
     }
 
@@ -1739,18 +1832,16 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     });
 
     broadcastRematchState(nextSession.rematch);
-    if (rematchPlayersReady(nextSession.rematch?.players)) {
-      await startRematchFromState(nextSession.rematch);
-    } else {
-      setStatus("Ready for rematch; waiting for other players");
-    }
+    setStatus(rematchPlayersReady(nextSession.rematch?.players)
+      ? "Every player is ready; start the next game"
+      : "Ready; waiting for other players");
 	  }, [
 	    broadcastRematchState,
 	    buildLocalDeckAuditManifest,
 	    ensureAuditIdentity,
+	    reportCardSubstitutions,
 	    setStatus,
 	    signPlayerGenesis,
-	    startRematchFromState,
 	    updateMultiplayer,
 	  ]);
 
@@ -2150,16 +2241,16 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           setStatus(`Already synced with host at action ${Number(message.lastSequence ?? 0)}`);
           return;
         case "rematch_start": {
-          const rematch = buildRematchStateFromPayload(
+          const rematch = withRematchDeckText(buildRematchStateFromPayload(
             message.match,
             multiplayerRef.current.localPeerId
-          );
+          ), multiplayerRef.current);
           updateMultiplayer((prev) => ({
             ...prev,
             mode: "in_match",
             rematch,
           }));
-          setStatus("Sideboard for the next game");
+          setStatus("Choose a deck for the next game");
           return;
         }
         case "rematch_state": {
@@ -3224,7 +3315,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             safeSend(conn, {
               type: "action_error",
               protocolVersion: PROTOCOL_VERSION,
-              reason: "Sideboarding is not active",
+              reason: "Deck selection is not active",
             });
             return;
           }
@@ -3283,11 +3374,25 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             };
           });
           broadcastRematchState(nextSession.rematch);
-          if (rematchPlayersReady(nextSession.rematch?.players)) {
-            await startRematchFromState(nextSession.rematch);
-          } else {
-            setStatus(`${actor.name} is ready for rematch`);
-          }
+          setStatus(rematchPlayersReady(nextSession.rematch?.players)
+            ? "Every player is ready; start the next game"
+            : `${actor.name} is ready for the next game`);
+          return;
+        }
+        case "rematch_unready": {
+          const session = multiplayerRef.current;
+          if (session.rematch?.phase !== "sideboarding") return;
+          if (!session.rematch.players.some((player) => player.peerId === conn.peer)) return;
+          const nextSession = updateMultiplayer((prev) => (prev.rematch ? {
+            ...prev,
+            rematch: {
+              ...prev.rematch,
+              players: prev.rematch.players.map((player) => (
+                player.peerId === conn.peer ? { ...player, ready: false } : player
+              )),
+            },
+          } : prev));
+          broadcastRematchState(nextSession.rematch);
           return;
         }
         default:
@@ -4440,5 +4545,5 @@ export function usePeerLobbyMessaging(base, servicesRef) {
   );
 
 
-  return { sendLobbyChat, applyStateResync, broadcastLobbyState, broadcastRematchState, clearReconnectChallenge, configureHostConnection, configureIncomingConnection, configurePeerConnection, connectDirectPeer, createLobby, handleClientDisconnect, handleClientMessage, handleHostMessage, handlePeerDisconnect, handlePeerMessage, issueReconnectChallenge, joinLobby, promoteLocalPlayerToHost, publishLocalDeckUpdateForAssignedSeat, readyForRematch, reconnectChallengeMapKey, reportSyncFailure, requestResync, sendDirectPeerMessage, startHostedMatch, startRematchFromState, startRematchSideboarding, startTrustedMatchFromPlayers, updateRematchDecks };
+  return { sendLobbyChat, applyStateResync, broadcastLobbyState, broadcastRematchState, clearReconnectChallenge, configureHostConnection, configureIncomingConnection, configurePeerConnection, connectDirectPeer, createLobby, handleClientDisconnect, handleClientMessage, handleHostMessage, handlePeerDisconnect, handlePeerMessage, issueReconnectChallenge, joinLobby, promoteLocalPlayerToHost, publishLocalDeckUpdateForAssignedSeat, readyForRematch, reconnectChallengeMapKey, reportSyncFailure, requestResync, sendDirectPeerMessage, startHostedMatch, startRematch, startRematchFromState, startRematchSideboarding, startTrustedMatchFromPlayers, updateRematchDeck };
 }

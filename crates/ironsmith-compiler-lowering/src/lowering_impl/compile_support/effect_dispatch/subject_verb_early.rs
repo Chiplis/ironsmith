@@ -23,6 +23,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaColorsAmong { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { .. })
@@ -200,6 +201,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop)
             | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
+            | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeSourceWhenLeaves { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleGraveyardIntoLibrary { .. })
@@ -1058,6 +1060,11 @@ pub(super) fn compile_subject_verb_early(
                 Effect::flip_coin_for_face(subject.into_player_filter())
             })
         }
+        SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { choices }) => {
+            compile_player_role_effect(role, player, ctx, false, false, true, |_| {
+                Effect::choose_number_at_random(choices.clone())
+            })
+        }
         SubjectVerbActionAst::Random(RandomActionAst::RollDie { sides, surface }) => {
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
                 Effect::roll_die_with_surface(*sides, subject.into_player_filter(), *surface)
@@ -1296,6 +1303,16 @@ pub(super) fn compile_subject_verb_early(
                 choices,
                 || Effect::add_mana_of_any_one_color(amount.clone()),
                 |filter| Effect::add_mana_of_any_one_color_player(amount.clone(), filter),
+            )
+        }
+        SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount }) => {
+            let (amount, player_filter, choices) =
+                resolve_player_scoped_value(amount, player, ctx, true, true, true)?;
+            compile_player_effect_from_resolved_filter(
+                player_filter,
+                choices,
+                || Effect::add_mana_of_noted_type(amount.clone(), PlayerFilter::You),
+                |filter| Effect::add_mana_of_noted_type(amount.clone(), filter),
             )
         }
         SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor {
@@ -2724,9 +2741,32 @@ pub(super) fn compile_subject_verb_early(
             DamagePreventionActionAst::PreventAllDamageFromSourceFilter {
                 duration,
                 source_filter,
+                of_chosen_color,
             },
         ) => {
             let source_filter = resolve_it_tag(source_filter, &current_reference_env(ctx))?;
+            if *of_chosen_color {
+                // The color is chosen on resolution: one mode per color, each
+                // shielding against sources of exactly that color.
+                let modes = crate::color::Color::ALL
+                    .iter()
+                    .map(|color| {
+                        let mut filter = source_filter.clone();
+                        filter.colors = Some(ColorSet::from(*color));
+                        EffectMode {
+                            source_text: format!(
+                                "Prevent all damage that {} sources would deal this turn.",
+                                color.name()
+                            ),
+                            effects: vec![Effect::prevent_all_damage_from_filter(
+                                filter,
+                                duration.clone(),
+                            )],
+                        }
+                    })
+                    .collect();
+                return Ok(Some((vec![Effect::choose_one(modes)], Vec::new())));
+            }
             Ok((
                 vec![Effect::prevent_all_damage_from_filter(
                     source_filter,

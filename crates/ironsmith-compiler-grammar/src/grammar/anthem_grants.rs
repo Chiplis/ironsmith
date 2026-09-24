@@ -338,6 +338,8 @@ pub struct SubjectEverySubtypeShape<'a> {
     pub family: crate::types::SubtypeFamily,
     /// "every basic land type": only the five basic land types.
     pub basic_land_types: bool,
+    /// "every nonbasic land type" (Planar Nexus).
+    pub nonbasic_land_types: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1447,7 +1449,8 @@ pub fn parse_subject_every_subtype_shape(
     let subject_tokens = trim_lexed_commas(&clause_tokens[..be_token]);
     let family_tokens = trim_lexed_commas(&clause_tokens[be_token + 1..]);
     let basic_land_types = parse_every_basic_land_type_tokens(family_tokens);
-    let family = if basic_land_types {
+    let nonbasic_land_types = super::anthem_grants::static_grant_facts::parse_every_nonbasic_land_type_tokens(family_tokens);
+    let family = if basic_land_types || nonbasic_land_types {
         crate::types::SubtypeFamily::Land
     } else {
         parse_every_subtype_family_tokens(family_tokens)?
@@ -1457,6 +1460,7 @@ pub fn parse_subject_every_subtype_shape(
         subject_tokens,
         family,
         basic_land_types,
+        nonbasic_land_types,
     })
 }
 

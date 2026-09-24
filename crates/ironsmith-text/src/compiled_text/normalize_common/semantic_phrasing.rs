@@ -1440,7 +1440,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "another creature you control enters and whenever you activate a power up ability",
             "another creature you control enters or you activate a power up ability",
         )
-        .replace("an Urza's Power-Plant Plant", "an Urza's Plant")
         .replace("each of another other target creature", "another target creature")
         .replace(
             "For each creature, sacrifice it unless that player pays ",

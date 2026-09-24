@@ -71,6 +71,20 @@ pub fn parse_if_result_predicate_lexed_tokens(
         .map(OwnedLexToken::parser_text)
         .collect::<Vec<_>>();
 
+    // "If you don't or can't make an exchange, ..." (Gilded Drake): the
+    // restated action did not happen, whether declined or impossible.
+    const DONT_OR_CANT: &[&[&str]] = &[
+        &["you", "dont", "or", "cant"],
+        &["you", "don't", "or", "can't"],
+        &["you", "dont", "or", "can't"],
+        &["you", "don't", "or", "cant"],
+    ];
+    if DONT_OR_CANT
+        .iter()
+        .any(|phrase| starts_with_phrase(&normalized, phrase))
+    {
+        return Some(IfResultPredicate::DidNot);
+    }
     if matches_phrase(&normalized, &["you", "do"])
         || matches_phrase(&normalized, &["they", "do"])
         || matches_phrase(&normalized, &["player", "do"])

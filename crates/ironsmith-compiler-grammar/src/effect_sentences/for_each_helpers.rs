@@ -249,6 +249,25 @@ pub fn parse_has_base_power_toughness_clause(
     {
         return Ok(None);
     }
+    // "Until end of turn, each Elf creature you control has base power and
+    // toughness 5/5 and becomes a Dinosaur in addition to its other creature
+    // types" (Allosaurus Shepherd): both halves apply to the same subject for
+    // the same duration.
+    if let Some(and_idx) = tokens.windows(2).position(|pair| {
+        pair[0].is_word("and") && (pair[1].is_word("becomes") || pair[1].is_word("become"))
+    }) && let Some(has_idx) = tokens[..and_idx]
+        .iter()
+        .position(|token| token.is_word("has") || token.is_word("have"))
+        && let Some(set_pt) = parse_has_base_power_toughness_clause(&tokens[..and_idx])?
+    {
+        let become_effect = super::clause_dispatch::parse_become_clause(
+            &tokens[..has_idx],
+            &tokens[and_idx + 2..],
+        )?;
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![set_pt, become_effect],
+        }));
+    }
     let Some(shape) = for_each_shapes::parse_base_power_toughness_clause_shape(tokens)? else {
         return Ok(None);
     };

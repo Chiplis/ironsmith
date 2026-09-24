@@ -1177,28 +1177,31 @@ impl Subtype {
         )
     }
 
+    /// The nonbasic land types (CR 205.3i) this engine models.
+    pub const fn nonbasic_land_types() -> &'static [Subtype] {
+        &[
+            Subtype::Cave,
+            Subtype::Desert,
+            Subtype::Gate,
+            Subtype::Lair,
+            Subtype::Locus,
+            Subtype::Mine,
+            Subtype::Planet,
+            Subtype::PowerPlant,
+            Subtype::Sphere,
+            Subtype::Tower,
+            Subtype::Town,
+            Subtype::Urzas,
+        ]
+    }
+
     /// Returns true if this is a land subtype (basic or non-basic).
     ///
     /// Used by Blood Moon and similar effects to determine which subtypes
     /// to replace. Non-land subtypes (Saga, Aura, creature types, etc.)
     /// are preserved.
     pub fn is_land_subtype(&self) -> bool {
-        matches!(
-            self,
-            // Basic land types
-            Subtype::Plains
-                | Subtype::Island
-                | Subtype::Swamp
-                | Subtype::Mountain
-                | Subtype::Forest
-                // Non-basic land types
-                | Subtype::Desert
-                | Subtype::Urzas
-                | Subtype::Cave
-                | Subtype::Gate
-                | Subtype::Locus
-                | Subtype::Town
-        )
+        self.is_basic_land_type() || Self::nonbasic_land_types().contains(self)
     }
 
     /// Returns true if this is a creature type.

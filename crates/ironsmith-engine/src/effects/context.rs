@@ -224,6 +224,9 @@ pub struct ExecutionContext<'a> {
     pub target_distributions: Vec<TargetDistribution>,
     /// X value (for spells with X in cost).
     pub x_value: Option<u32>,
+    /// False when some announced target became illegal before resolution
+    /// ("if both targets are still legal as this ability resolves").
+    pub all_targets_legal: bool,
     /// Outcomes of previously executed effects (for WithId/If).
     pub effect_outcomes: HashMap<EffectId, EffectOutcome>,
     /// The most recent vote result(s) available to this resolution path.
@@ -364,6 +367,7 @@ impl<'a> ExecutionContext<'a> {
             target_assignments: Vec::new(),
             target_distributions: Vec::new(),
             x_value: None,
+            all_targets_legal: true,
             effect_outcomes: HashMap::new(),
             vote_results: HashMap::new(),
             secret_choice_results: HashMap::new(),
@@ -414,6 +418,7 @@ impl<'a> ExecutionContext<'a> {
             target_assignments: Vec::new(),
             target_distributions: Vec::new(),
             x_value: None,
+            all_targets_legal: true,
             effect_outcomes: HashMap::new(),
             vote_results: HashMap::new(),
             secret_choice_results: HashMap::new(),
@@ -454,6 +459,7 @@ impl<'a> ExecutionContext<'a> {
             target_assignments: self.target_assignments,
             target_distributions: self.target_distributions,
             x_value: self.x_value,
+            all_targets_legal: self.all_targets_legal,
             effect_outcomes: self.effect_outcomes,
             vote_results: self.vote_results,
             secret_choice_results: self.secret_choice_results,

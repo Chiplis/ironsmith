@@ -877,6 +877,54 @@ impl StaticAbilityKind for UntapDuringEachOtherPlayersUntapStep {
     }
 }
 
+/// "Players can't untap more than one land during their untap steps."
+/// (Winter Orb): each affected player untaps at most `max` permanents matching
+/// `filter` during their untap step and chooses which ones.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UntapStepLimit {
+    pub player: PlayerFilter,
+    pub filter: ObjectFilter,
+    pub max: u32,
+    pub display: String,
+}
+
+impl StaticAbilityKind for UntapStepLimit {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::UntapStepLimit
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn untap_step_limit(&self) -> Option<(&PlayerFilter, &ObjectFilter, u32)> {
+        Some((&self.player, &self.filter, self.max))
+    }
+}
+
+/// "If an opponent would search a library, that player searches the top four
+/// cards of that library instead." (Aven Mindcensor)
+#[derive(Debug, Clone, PartialEq)]
+pub struct SearchLimitedToTopCards {
+    pub searcher: PlayerFilter,
+    pub count: u32,
+    pub display: String,
+}
+
+impl StaticAbilityKind for SearchLimitedToTopCards {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::SearchLimitedToTopCards
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn search_top_card_limit(&self) -> Option<(&PlayerFilter, u32)> {
+        Some((&self.searcher, self.count))
+    }
+}
+
 /// "Creatures you control can boast twice during each of your turns rather than once."
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BoastTwiceEachTurn;

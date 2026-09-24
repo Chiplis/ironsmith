@@ -194,6 +194,7 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
     match core_semantics(trigger) {
         TriggerSpec::Attacks(filter)
         | TriggerSpec::AttacksAndIsntBlocked(filter)
+        | TriggerSpec::AttacksAndIsntBlockedOneOrMore(filter)
         | TriggerSpec::AttacksWhileSaddled(filter)
         | TriggerSpec::AttacksOneOrMore(filter)
         | TriggerSpec::AttacksAlone(filter)

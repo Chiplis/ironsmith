@@ -6967,6 +6967,7 @@ fn effect_ast_can_produce_mana(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaColorsAmong { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddOneManaAnyColorAmong { .. })
@@ -11147,6 +11148,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
                 amount,
                 ..
@@ -11363,6 +11365,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
+            | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
             | SubjectVerbActionAst::Library(
@@ -11473,6 +11476,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop)
@@ -11969,6 +11973,10 @@ pub fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                     ..
                 })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                    target: effect_target,
+                    ..
+                })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
                     target: effect_target,
                     ..
                 })

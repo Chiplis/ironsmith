@@ -1096,6 +1096,22 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// "Players can't untap more than N <filter> during their untap steps":
+    /// the affected players (relative to the source controller), the limited
+    /// permanents, and the maximum that may untap.
+    fn untap_step_limit(
+        &self,
+    ) -> Option<(&crate::target::PlayerFilter, &crate::target::ObjectFilter, u32)> {
+        None
+    }
+
+    /// "If an opponent would search a library, that player searches the top N
+    /// cards of that library instead": the affected searchers (relative to the
+    /// source controller) and N.
+    fn search_top_card_limit(&self) -> Option<(&crate::target::PlayerFilter, u32)> {
+        None
+    }
+
     /// Returns true if this causes entering tapped.
     fn enters_tapped(&self) -> bool {
         false
@@ -1323,6 +1339,8 @@ pub struct EnterAsCopyAsEntersSpec {
     pub name_override: Option<String>,
     pub added_colors: crate::color::ColorSet,
     pub added_card_types: Vec<crate::types::CardType>,
+    /// The copy's card types are exactly `added_card_types` (Imposter Mech).
+    pub removes_other_card_types: bool,
     pub added_supertypes: Vec<crate::types::Supertype>,
     pub removed_supertypes: Vec<crate::types::Supertype>,
     pub added_subtypes: Vec<crate::types::Subtype>,
@@ -2180,6 +2198,16 @@ impl StaticAbility {
         &self,
     ) -> Option<&crate::target::ObjectFilter> {
         self.0.untap_during_each_other_players_untap_step_filter()
+    }
+
+    pub fn untap_step_limit_spec(
+        &self,
+    ) -> Option<(&crate::target::PlayerFilter, &crate::target::ObjectFilter, u32)> {
+        self.0.untap_step_limit()
+    }
+
+    pub fn search_top_card_limit_spec(&self) -> Option<(&crate::target::PlayerFilter, u32)> {
+        self.0.search_top_card_limit()
     }
 
     pub fn enters_tapped(&self) -> bool {
@@ -3868,11 +3896,13 @@ impl StaticAbility {
 
     pub fn draw_replacement_with_effects(
         drawer: crate::target::PlayerFilter,
+        except_first_of_draw_step: bool,
         replacement_effects: Vec<crate::effect::Effect>,
         display: String,
     ) -> Self {
         Self::new(DrawReplacementWithEffects::new(
             drawer,
+            except_first_of_draw_step,
             replacement_effects,
             display,
         ))
@@ -4299,6 +4329,32 @@ impl StaticAbility {
 
     pub fn restrictions(restrictions: Vec<crate::effect::Restriction>, display: String) -> Self {
         Self::new(RuleRestriction::new_many(restrictions, display))
+    }
+
+    pub fn untap_step_limit(
+        player: crate::target::PlayerFilter,
+        filter: crate::target::ObjectFilter,
+        max: u32,
+        display: String,
+    ) -> Self {
+        Self::new(misc::UntapStepLimit {
+            player,
+            filter,
+            max,
+            display,
+        })
+    }
+
+    pub fn search_limited_to_top_cards(
+        searcher: crate::target::PlayerFilter,
+        count: u32,
+        display: String,
+    ) -> Self {
+        Self::new(misc::SearchLimitedToTopCards {
+            searcher,
+            count,
+            display,
+        })
     }
 
     pub fn untap_during_each_other_players_untap_step(

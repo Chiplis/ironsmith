@@ -2001,6 +2001,30 @@ impl Effect {
         Self::new(crate::effects::DevourEffect::new(multiplier))
     }
 
+    pub fn note_activation_mana_type() -> Self {
+        Self::new(crate::effects::NoteActivationManaTypeEffect::new())
+    }
+
+    pub fn add_mana_of_noted_type(amount: Value, player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::AddManaOfNotedTypeEffect::new(amount, player))
+    }
+
+    pub fn choose_number_at_random(choices: Vec<u32>) -> Self {
+        Self::new(crate::effects::ChooseNumberAtRandomEffect::new(choices))
+    }
+
+    pub fn next_adapt_ignores_counters(target: crate::target::ChooseSpec) -> Self {
+        Self::new(crate::effects::NextAdaptIgnoresCountersEffect::new(target))
+    }
+
+    pub fn resolves_despite_illegal_targets() -> Self {
+        Self::new(crate::effects::ResolvesDespiteIllegalTargetsEffect::new())
+    }
+
+    pub fn may_cast_for_miracle_cost() -> Self {
+        Self::new(crate::effects::MayCastForMiracleCostEffect::new())
+    }
+
     pub fn reveal_top(
         player: crate::target::PlayerFilter,
         tag: impl Into<crate::tag::TagKey>,

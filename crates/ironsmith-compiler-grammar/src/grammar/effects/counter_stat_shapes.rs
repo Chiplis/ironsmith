@@ -281,6 +281,8 @@ pub fn parse_reveal_reference(tokens: &[OwnedLexToken]) -> Option<RevealReferenc
         &["those"],
         &["this", "card"],
         &["this"],
+        &["the", "chosen", "card"],
+        &["the", "chosen", "cards"],
     ];
     if parse_exact(&words, TAGGED).is_some() {
         return Some(RevealReferenceShape::Tagged);

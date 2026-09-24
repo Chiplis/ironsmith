@@ -987,11 +987,57 @@ fn parse_terminal_same_name_filter(
     Ok(Some(filter))
 }
 
+/// "<filter> with a different name than that spell": the trailing noun
+/// names the comparison object, so the operands are parsed independently.
+fn parse_terminal_different_name_filter(
+    tokens: &[OwnedLexToken],
+    other: bool,
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
+    let Some((base_end, (), reference)) = crate::grammar::primitives::find_prefix(trimmed, || {
+        winnow::combinator::alt((
+            crate::grammar::primitives::phrase(&["with", "a", "different", "name", "than"]),
+            crate::grammar::primitives::phrase(&["with", "a", "different", "name", "from"]),
+        ))
+    }) else {
+        return Ok(None);
+    };
+    let (surface, tag) = match parser_token_word_refs(reference).as_slice() {
+        ["that", noun] => (
+            ironsmith_core::SameNameAntecedentSurface::from_noun(noun),
+            crate::tag::CompilerReferenceTag::It.bind().into(),
+        ),
+        ["this", noun] => (
+            ironsmith_core::SameNameAntecedentSurface::from_noun(noun),
+            crate::tag::CompilerReferenceTag::SourceObject.bind().into(),
+        ),
+        _ => return Ok(None),
+    };
+    let Some(surface) = surface else {
+        return Ok(None);
+    };
+    if base_end == 0 {
+        return Ok(None);
+    }
+    let mut filter = parse_object_filter(&trimmed[..base_end], other)?;
+    filter.set_same_name_antecedent_surface(Some(surface));
+    filter
+        .tagged_constraints
+        .push(crate::target::TaggedObjectConstraint {
+            tag,
+            relation: TaggedOpbjectRelation::DifferentNameFromTagged,
+        });
+    Ok(Some(filter))
+}
+
 pub fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
     if let Some(filter) = parse_terminal_same_name_filter(tokens, other)? {
+        return Ok(filter);
+    }
+    if let Some(filter) = parse_terminal_different_name_filter(tokens, other)? {
         return Ok(filter);
     }
     if let Some((base_tokens, card_name)) = split_drafted_color_qualifier_tokens(tokens) {

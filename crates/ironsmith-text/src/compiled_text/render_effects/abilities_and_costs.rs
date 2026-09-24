@@ -1559,22 +1559,37 @@ pub(crate) fn describe_ability(
                 }
                 line.push_str(&effects);
             }
+            // The typed activation condition and its authored restriction
+            // string describe one restriction ("Activate only if you control
+            // three or more artifacts"), so it renders once. The typed
+            // description keeps proper-noun casing ("a Swamp"), so it wins
+            // when the two agree; when they differ, the authored clause is the
+            // printed wording ("an artifact", not "one or more artifacts").
+            let authored_clauses = collect_activation_restriction_clauses(
+                &activated.timing,
+                &activated.additional_restrictions,
+                &activated.activation_restrictions,
+            );
+            let mut restriction_clauses = Vec::new();
             if let Some(prefix) = station_threshold_prefix(activated) {
                 line = prefix_rendered_ability_body(line, &format!("{prefix} | "));
             } else if let Some(condition) =
                 activation_condition_without_presentation_label(activated)
             {
-                let clause = describe_mana_activation_condition(&condition);
-                if !clause.is_empty() {
-                    line.push_str(". ");
-                    line.push_str(&clause);
+                let typed = describe_mana_activation_condition(&condition);
+                let authored_differs = authored_clauses.iter().any(|clause| {
+                    clause
+                        .to_ascii_lowercase()
+                        .starts_with("activate only if ")
+                        && !clause.eq_ignore_ascii_case(&typed)
+                });
+                if !authored_differs {
+                    push_activation_restriction_clause(&mut restriction_clauses, typed);
                 }
             }
-            let restriction_clauses = collect_activation_restriction_clauses(
-                &activated.timing,
-                &activated.additional_restrictions,
-                &activated.activation_restrictions,
-            );
+            for clause in authored_clauses {
+                push_activation_restriction_clause(&mut restriction_clauses, clause);
+            }
             if !restriction_clauses.is_empty() {
                 append_activation_clause(
                     &mut line,
@@ -3010,7 +3025,7 @@ pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
     }
     if matches!(
         cost.kind,
-        OptionalCostKind::Additional | OptionalCostKind::Behold
+        OptionalCostKind::Additional | OptionalCostKind::Behold | OptionalCostKind::CollectEvidence
     ) {
         let action = cost_text.trim().trim_end_matches('.');
         if action.is_empty() {
@@ -3018,6 +3033,12 @@ pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
                 .to_string();
         }
         let action = normalize_you_verb_phrase(action.strip_prefix("You ").unwrap_or(action));
+        let action = match action.strip_prefix("Collect evidence") {
+            Some(rest) if cost.kind == OptionalCostKind::CollectEvidence => {
+                format!("collect evidence{rest}")
+            }
+            _ => action,
+        };
         let action = if cost.repeatable {
             repeatable_optional_cost_action(&action)
         } else {

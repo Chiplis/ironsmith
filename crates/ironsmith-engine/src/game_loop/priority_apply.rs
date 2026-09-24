@@ -1500,6 +1500,31 @@ pub(super) fn apply_x_value_response(
         obj.x_value = Some(x_value);
     }
 
+    // A self-replacement conditioned on X ("If X is 6 or more, ... instead")
+    // can change what is targeted or divided; X is announced before targets
+    // (CR 601.2b-d), so re-read the requirements now that it is known.
+    if let Some(requirements) = game
+        .object(pending.spell_id)
+        .and_then(|spell| spell.spell_effect.as_ref())
+        .filter(|program| {
+            program
+                .segments
+                .iter()
+                .any(|segment| !segment.self_replacements.is_empty())
+        })
+        .map(|program| {
+            extract_target_requirements_from_program_with_modes(
+                game,
+                program,
+                pending.caster,
+                Some(pending.spell_id),
+                pending.chosen_modes.as_deref(),
+            )
+        })
+    {
+        pending.remaining_requirements = requirements;
+    }
+
     // Modes and alternative/additional costs were announced before X.
     continue_to_targeting_or_finalize(game, trigger_queue, state, pending, decision_maker)
 }

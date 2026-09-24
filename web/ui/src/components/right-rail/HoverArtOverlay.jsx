@@ -713,7 +713,7 @@ export default function HoverArtOverlay({
   const [translatedCardText, setTranslatedCardText] = useState(null);
   const detailsObjectIdNum = useMemo(
     () => selectedStackEntry
-      ? (selectedStackEntry.inspect_object_id != null ? Number(selectedStackEntry.inspect_object_id) : null)
+      ? Number(resolveStackInspectObjectId(state, selectedStackEntry) ?? NaN)
       : resolveObjectDetailsId(state, objectIdNum),
     [objectIdNum, selectedStackEntry, state]
   );

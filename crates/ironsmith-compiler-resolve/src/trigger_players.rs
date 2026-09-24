@@ -98,6 +98,17 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         | TriggerSpec::BecomesBlockedByObjectWithLesserPower { .. } => {
             Some(PlayerFilter::Defending)
         }
+        // "... attack you ..., that player": you are the defender, so the
+        // only player antecedent is the attacking player.
+        TriggerSpec::Attacks(filter)
+        | TriggerSpec::AttacksOneOrMore(filter)
+        | TriggerSpec::AttacksAndIsntBlockedOneOrMore(filter)
+            if filter.targets_only_player == Some(PlayerFilter::You) =>
+        {
+            Some(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::Triggering.bind(),
+            )))
+        }
         TriggerSpec::Attacks(filter) | TriggerSpec::AttacksOneOrMore(filter)
             if filter
                 .attacking_player_or_planeswalker_controlled_by

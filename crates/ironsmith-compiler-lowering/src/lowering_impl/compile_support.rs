@@ -282,7 +282,12 @@ pub fn compile_annotated_effects_with_context(
         }
 
         ctx.reserve_object_result_tag(current.out_env.known_last_object_tag().cloned());
-        let (mut effect_list, effect_choices) = compile_effect(&current.effect, ctx)?;
+        ctx.set_annotated_result_prediction(Some(
+            current.out_env.known_last_object_tag().cloned(),
+        ));
+        let compiled_effect = compile_effect(&current.effect, ctx);
+        ctx.set_annotated_result_prediction(None);
+        let (mut effect_list, effect_choices) = compiled_effect?;
         ctx.reserve_object_result_tag(None);
         if let Some(id) = current.assigned_effect_id
             && !effect_list.is_empty()
@@ -1714,7 +1719,14 @@ pub fn tag_object_target_effect(
     // can't phase in") points at a tag that no runtime effect ever fills.
     let produces_object_results =
         choose_spec_targets_object(spec) || matches!(spec.base(), ChooseSpec::All(_));
-    if ctx.auto_tag_object_targets && produces_object_results {
+    // A self-reference ("it becomes an Aura") keeps the source's identity, so
+    // its result is the source itself. When reference annotation also
+    // predicted no new object result, allocating a fresh tag here would shift
+    // every later predicted result name ("Put target creature card ... When
+    // this leaves, that creature ...").
+    let redundant_source_result = matches!(spec.base(), ChooseSpec::Source)
+        && ctx.annotation_predicts_no_new_object_result();
+    if ctx.auto_tag_object_targets && produces_object_results && !redundant_source_result {
         let tag = ctx.next_tag(prefix);
         ctx.last_object_tag = Some(tag.clone());
         effect.tag(tag)

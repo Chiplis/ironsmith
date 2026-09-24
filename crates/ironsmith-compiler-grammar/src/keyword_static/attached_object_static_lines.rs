@@ -895,7 +895,7 @@ pub fn parse_attached_land_ability_reset_line(
     Ok(Some(abilities))
 }
 
-fn parse_nonstatic_keyword_action_as_object_ability(
+pub(crate) fn parse_nonstatic_keyword_action_as_object_ability(
     action: KeywordAction,
 ) -> Option<ParsedAbility> {
     match action {

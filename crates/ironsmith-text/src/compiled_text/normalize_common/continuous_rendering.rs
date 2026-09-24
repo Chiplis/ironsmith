@@ -1605,6 +1605,10 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
         let verb = if plural_target { "become" } else { "becomes" };
         return vec![format!("{verb} an Aura with enchant {enchant_target}")];
     }
+    if let Some(enchant_target) = describe_becomes_aura_with_granted_enchant_clause(effect) {
+        let verb = if plural_target { "become" } else { "becomes" };
+        return vec![format!("{verb} an Aura with \"enchant {enchant_target}.\"")];
+    }
 
     let mut push_modification = |modification: &crate::continuous::Modification| match modification
     {
@@ -2155,6 +2159,36 @@ pub(crate) fn describe_becomes_aura_enchantment_clause(
         return None;
     };
     Some(describe_aura_attachment_filter_inline(filter))
+}
+
+/// 'becomes an Aura with "enchant creature put onto the battlefield with
+/// Necromancy."': the Aura conversion additionally grants the Enchant ability
+/// whose restriction the runtime attachment filter enforces.
+fn describe_becomes_aura_with_granted_enchant_clause(
+    effect: &crate::effects::ApplyContinuousEffect,
+) -> Option<String> {
+    let mut granted_enchant = None;
+    let mut others = effect.clone();
+    others.additional_modifications.retain(|modification| {
+        if let crate::continuous::Modification::AddAbility(static_ability) = modification
+            && static_ability.id() == crate::static_abilities::StaticAbilityId::Enchant
+            && granted_enchant.is_none()
+        {
+            granted_enchant = Some(static_ability.clone());
+            return false;
+        }
+        true
+    });
+    let granted_filter = granted_enchant?.enchant_filter()?.clone();
+    let [crate::effects::continuous::RuntimeModification::SetAuraAttachmentFilter(filter)] =
+        others.runtime_modifications.as_slice()
+    else {
+        return None;
+    };
+    if *filter != granted_filter {
+        return None;
+    }
+    describe_becomes_aura_enchantment_clause(&others)
 }
 
 pub(crate) fn describe_aura_attachment_filter_inline(

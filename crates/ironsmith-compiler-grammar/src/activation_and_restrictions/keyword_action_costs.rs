@@ -1154,6 +1154,11 @@ const COST_KEYWORDS: &[(&str, KeywordCostFallback, fn(ManaCost) -> KeywordAction
         KeywordAction::Spectacle,
     ),
     (
+        "miracle",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Miracle,
+    ),
+    (
         "overload",
         KeywordCostFallback::MarkerOrText,
         KeywordAction::Overload,

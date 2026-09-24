@@ -232,6 +232,43 @@ pub(super) fn read_library_placement_destination(
     }
     Ok(None)
 }
+/// "<all ...> from <zone A> and from <zone B>" -> a zone union whose branches
+/// share the leading description.
+fn parse_two_source_zone_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let Some(from_idx) = tokens.iter().position(|token| token.is_word("from")) else {
+        return Ok(None);
+    };
+    let Some(and_idx) = tokens
+        .windows(2)
+        .position(|pair| pair[0].is_word("and") && pair[1].is_word("from"))
+        .filter(|idx| *idx > from_idx + 1)
+    else {
+        return Ok(None);
+    };
+    let base = parse_target_phrase(&tokens[..from_idx])?;
+    let mut branches = Vec::new();
+    for zone_tokens in [&tokens[from_idx..and_idx], &tokens[and_idx + 1..]] {
+        let mut branch = base.clone();
+        super::apply_explicit_source_location(&mut branch, zone_tokens);
+        let TargetAst::Object(filter, _, _) = branch else {
+            return Ok(None);
+        };
+        if filter.zone.is_none() {
+            return Ok(None);
+        }
+        branches.push(filter);
+    }
+    if branches[0].zone == branches[1].zone {
+        return Ok(None);
+    }
+    let mut filter = ObjectFilter::default();
+    filter.any_of = branches;
+    filter.set_conjunctive_set_surface(true);
+    Ok(Some(filter))
+}
+
 pub(super) fn read_into_destination(
     input: &PutClause<'_>,
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -342,6 +379,40 @@ pub(super) fn read_into_destination(
 
             let (target_tokens, source_top_only) =
                 strip_source_top_only_prefix(shape.target_tokens);
+            // "all commanders you own from the command zone and from your
+            // graveyard": one set drawn from two zones.
+            if cca_shapes::starts_with_all_or_each(target_tokens)
+                && let Some(filter) = parse_two_source_zone_filter(target_tokens)?
+            {
+                if zone == Zone::Hand {
+                    // One bulk hand move per source zone, kept as one
+                    // coordinated clause.
+                    return Ok(Some(EffectAst::Coordinated {
+                        effects: filter
+                            .any_of
+                            .into_iter()
+                            .map(EffectAst::subject_verb_return_all_to_hand)
+                            .collect(),
+                        leading_duration: false,
+                        result_conjunction: false,
+                    }));
+                }
+                return Ok(Some(
+                    EffectAst::subject_verb_move_all_to_zone(
+                        TargetAst::Object(filter, None, span_from_tokens(target_tokens)),
+                        zone,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    )
+                    .with_destination_player_surface(destination_player_surface)
+                    .with_destination_player_reference_surface(
+                        destination_player_reference_surface,
+                    )
+                    .with_move_to_zone_actor_surface(player),
+                ));
+            }
             let mut target = preserve_exiled_with_source_subject_cardinality(
                 parse_target_phrase(target_tokens)?,
                 exiled_with_source_surface.as_ref(),

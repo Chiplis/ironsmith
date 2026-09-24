@@ -111,6 +111,11 @@ pub fn parse_add_mana(
     if facts.imprinted_colors {
         return Ok(EffectAst::subject_verb_add_mana_imprinted_colors());
     }
+    // "Add one mana of this artifact's last noted type."
+    if clause_words.ends_with(&["last", "noted", "type"]) && clause_words.contains(&"mana") {
+        let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
+        return Ok(EffectAst::subject_verb_add_mana_noted_type(player, amount));
+    }
 
     if facts.commander_identity {
         let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));

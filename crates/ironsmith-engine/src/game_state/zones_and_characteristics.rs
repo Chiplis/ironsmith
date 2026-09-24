@@ -1193,6 +1193,9 @@ impl GameState {
                 prospective_card_types.push(*card_type);
             }
         }
+        if result.removes_other_card_types {
+            prospective_card_types.retain(|card_type| result.added_card_types.contains(card_type));
+        }
         let mut prospective_subtypes = prospective_source
             .map(|object| object.subtypes.clone())
             .unwrap_or_default();
@@ -1940,6 +1943,11 @@ impl GameState {
                             copiable_values.card_types.push(*card_type);
                         }
                     }
+                    if result.removes_other_card_types {
+                        copiable_values
+                            .card_types
+                            .retain(|card_type| result.added_card_types.contains(card_type));
+                    }
                     copiable_values
                         .supertypes
                         .retain(|supertype| !result.removed_supertypes.contains(supertype));
@@ -2032,6 +2040,11 @@ impl GameState {
                     if !new_obj.card_types.contains(card_type) {
                         new_obj.card_types.push(*card_type);
                     }
+                }
+                if result.removes_other_card_types {
+                    new_obj
+                        .card_types
+                        .retain(|card_type| result.added_card_types.contains(card_type));
                 }
             }
             if !result.added_supertypes.is_empty()

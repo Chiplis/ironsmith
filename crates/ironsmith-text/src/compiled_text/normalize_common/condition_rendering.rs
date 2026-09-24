@@ -2216,6 +2216,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 };
             }
             let display_label = label.display_label();
+            if label.kind == crate::cost::OptionalCostKind::CollectEvidence {
+                return "evidence was collected".to_string();
+            }
             if label.kind == crate::cost::OptionalCostKind::Behold {
                 return label.discriminator.as_deref().map_or_else(
                     || "this spell's behold cost was paid".to_string(),
@@ -4006,6 +4009,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             format!("{player:?}'s graveyard has {count} or more cards")
         }
         Condition::XValueAtLeast(min) => format!("X is {min} or more"),
+        Condition::AllTargetsStillLegal => {
+            "both targets are still legal as this ability resolves".to_string()
+        }
         Condition::Custom(id) => match id.as_str() {
             "you_would_proliferate" => "you would proliferate".to_string(),
             "opponent_would_proliferate" => "an opponent would proliferate".to_string(),
@@ -4206,6 +4212,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 "you didn't attack with a creature this turn".to_string()
             } else if let Condition::CardsInHandOrMore(1) = inner.as_ref() {
                 "you have no cards in hand".to_string()
+            } else if let Condition::ThisSpellPaidLabel(label) = inner.as_ref()
+                && label.kind == crate::cost::OptionalCostKind::CollectEvidence
+            {
+                "evidence wasn't collected".to_string()
             } else if let Condition::ThisSpellPaidLabel(label) = inner.as_ref()
                 && label.display_label().eq_ignore_ascii_case("tribute")
             {

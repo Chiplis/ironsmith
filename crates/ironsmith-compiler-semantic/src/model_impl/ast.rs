@@ -196,6 +196,7 @@ pub enum TriggerSpec {
     ThisAttacksWhileSaddled,
     Attacks(ObjectFilter),
     AttacksAndIsntBlocked(ObjectFilter),
+    AttacksAndIsntBlockedOneOrMore(ObjectFilter),
     AttacksWhileSaddled(ObjectFilter),
     AttacksOneOrMore(ObjectFilter),
     PlayersAttackedOneOrMore(PlayerFilter),

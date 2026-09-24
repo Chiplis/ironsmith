@@ -733,6 +733,16 @@ fn exchange_control_target_specs(effect: &Effect) -> Option<(ChooseSpec, ChooseS
     found
 }
 
+/// Target-count bounds an exchange target declares itself ("exchange control
+/// of this creature and up to one target creature", Gilded Drake).
+fn exchange_target_bounds(spec: &ChooseSpec) -> (usize, Option<usize>) {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. } => exchange_target_bounds(spec),
+        ChooseSpec::WithCount(_, count) => (count.min, count.max),
+        _ => (1, Some(1)),
+    }
+}
+
 fn relaxed_exchange_later_target_spec(spec: &ChooseSpec) -> ChooseSpec {
     match spec {
         ChooseSpec::SurfaceHinted { spec, hints } => ChooseSpec::SurfaceHinted {
@@ -1530,9 +1540,12 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
                 spec: &spec,
                 ..extracted
             };
+            // A player relation to an earlier target is checked when the
+            // targets are chosen together; here any candidate suffices.
+            let candidate_spec = relax_target_player_relation(&spec);
             let mut legal_targets =
                 crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
-                    game, &spec, caster, source_id, None, view,
+                    game, &candidate_spec, caster, source_id, None, view,
                 );
             retain_targets_satisfying_announcement_condition(
                 game,
@@ -1737,12 +1750,13 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             if !requires_target_selection(&spec) {
                 continue;
             }
+            let (min_targets, max_targets) = exchange_target_bounds(&spec);
             let profile = crate::effects::TargetSelectionProfile {
                 spec: &spec,
                 chooser: None,
                 description: "target",
-                min_targets: 1,
-                max_targets: Some(1),
+                min_targets,
+                max_targets,
                 count_value: None,
                 distribution_value: None,
                 distribution_min_per_target: 1,
@@ -1760,8 +1774,8 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                     legal_target_sets,
                     aggregate_constraint: None,
                     description: "target".to_string(),
-                    min_targets: 1,
-                    max_targets: Some(1),
+                    min_targets,
+                    max_targets,
                     distinct_player_group: None,
                     shared_player_group: None,
                     distribution_value: None,
@@ -1783,6 +1797,11 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             && prior_relative_target_requirement(extracted.spec, requirements).is_some()
         {
             Some(relax_relative_object_target_source_exclusion(extracted.spec))
+        } else if prior_shared_player_requirement(extracted.spec, requirements).is_some() {
+            // "target artifact card in that player's graveyard": which player
+            // is fixed by the earlier target; the shared-player group below
+            // enforces the link, so candidates are computed without it.
+            Some(relax_target_player_relation(extracted.spec))
         } else {
             None
         };
@@ -1839,6 +1858,38 @@ pub(super) fn extract_target_requirements_from_effect_internal(
     }
 }
 
+/// The earlier requirement whose player a `TargetPlayerOrControllerOfTarget`
+/// relation refers to: a player target, else (for an owner relation such as
+/// "a card in that player's graveyard") an earlier object target's controller.
+fn prior_shared_player_requirement(spec: &ChooseSpec, requirements: &[TargetRequirement]) -> Option<usize> {
+    let ChooseSpec::Object(filter) = spec.base() else { return None; };
+    let relation = Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
+    if filter.controller != relation && filter.owner != relation { return None; }
+    requirements.iter().rposition(|r| matches!(r.spec.base(),
+        ChooseSpec::Player(_) | ChooseSpec::PlayerOrPlaneswalker(_)))
+        .or_else(|| (filter.owner == relation)
+            .then(|| requirements.iter().rposition(|r| matches!(r.spec.base(), ChooseSpec::Object(_))))
+            .flatten())
+}
+
+pub(super) fn relax_target_player_relation(spec: &ChooseSpec) -> ChooseSpec {
+    match spec {
+        ChooseSpec::Target(inner) => ChooseSpec::Target(Box::new(relax_target_player_relation(inner))),
+        ChooseSpec::WithCount(inner, count) => ChooseSpec::WithCount(Box::new(relax_target_player_relation(inner)), *count),
+        ChooseSpec::SurfaceHinted { spec, hints } => ChooseSpec::SurfaceHinted {
+            spec: Box::new(relax_target_player_relation(spec)), hints: hints.clone(),
+        },
+        ChooseSpec::Object(filter) => {
+            let mut filter = filter.clone();
+            let relation = Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
+            if filter.controller == relation { filter.controller = None; }
+            if filter.owner == relation { filter.owner = None; }
+            ChooseSpec::Object(filter)
+        }
+        _ => spec.clone(),
+    }
+}
+
 fn link_target_controller_requirement(
     game: &GameState,
     spec: &ChooseSpec,
@@ -1846,13 +1897,13 @@ fn link_target_controller_requirement(
     requirements: &mut [TargetRequirement],
 ) -> Option<crate::decisions::context::SharedTargetPlayerGroup> {
     let ChooseSpec::Object(filter) = spec.base() else { return None; };
-    if filter.controller != Some(PlayerFilter::TargetPlayerOrControllerOfTarget) { return None; }
-    let prior_index = requirements.iter().rposition(|r| matches!(r.spec.base(),
-        ChooseSpec::Player(_) | ChooseSpec::PlayerOrPlaneswalker(_)))?;
+    let prior_index = prior_shared_player_requirement(spec, requirements)?;
+    let by_owner = filter.controller != Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
     let group = requirements.iter().filter_map(|r| r.shared_player_group.as_ref().map(|g| g.group)).max().map_or(0, |g| g + 1);
-    let map_players = |targets: &[Target]| targets.iter().filter_map(|target| {
+    let map_players = |targets: &[Target], by_owner: bool| targets.iter().filter_map(|target| {
         let player = match target {
             Target::Player(player) => *player,
+            Target::Object(id) if by_owner => game.object(*id)?.owner,
             Target::Object(id) => game.current_controller(*id)?,
         };
         Some((*target, player))
@@ -1860,9 +1911,9 @@ fn link_target_controller_requirement(
     let prior = &mut requirements[prior_index];
     let group = prior.shared_player_group.as_ref().map_or(group, |g| g.group);
     prior.shared_player_group = Some(crate::decisions::context::SharedTargetPlayerGroup {
-        group, target_players: map_players(&prior.legal_targets),
+        group, target_players: map_players(&prior.legal_targets, false),
     });
-    Some(crate::decisions::context::SharedTargetPlayerGroup { group, target_players: map_players(candidates) })
+    Some(crate::decisions::context::SharedTargetPlayerGroup { group, target_players: map_players(candidates, by_owner) })
 }
 
 fn relative_target_player_exclusion_base(filter: &PlayerFilter) -> Option<&PlayerFilter> {
@@ -2354,12 +2405,13 @@ fn count_target_selection_slots_from_effect_internal(
             if !requires_target_selection(&spec) {
                 continue;
             }
+            let (min_targets, max_targets) = exchange_target_bounds(&spec);
             let profile = crate::effects::TargetSelectionProfile {
                 spec: &spec,
                 chooser: None,
                 description: "target",
-                min_targets: 1,
-                max_targets: Some(1),
+                min_targets,
+                max_targets,
                 count_value: None,
                 distribution_value: None,
                 distribution_min_per_target: 1,
@@ -3726,6 +3778,13 @@ pub(super) fn validate_stack_entry_targets_with_view(
             if let Some(player) =
                 prior_player_or_planeswalker_target(game, entry, assignment_index, view)
             {
+                specialize_target_player_relation_in_choose_spec(&mut resolved_spec, player);
+            } else if let Some(player) = prior_object_targets.first().and_then(|target| match target {
+                // "a card in that player's graveyard" after an object target:
+                // that player is the earlier target's current controller.
+                Target::Object(id) => view.current_controller(*id),
+                Target::Player(_) => None,
+            }) {
                 specialize_target_player_relation_in_choose_spec(&mut resolved_spec, player);
             }
             // Reflexive entries retain the resolving parent's results. Use

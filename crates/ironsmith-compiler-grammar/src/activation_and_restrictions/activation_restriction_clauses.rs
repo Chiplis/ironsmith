@@ -1031,6 +1031,11 @@ pub fn parse_negated_object_restriction_clause(
         if is_mana_retention_tail(&remainder_words) {
             return Ok(None);
         }
+        // "can't untap more than N <permanents> during their untap steps" is
+        // an untap-step limit, owned by the static untap-limit rule.
+        if remainder_words.starts_with(&["untap", "more", "than"]) {
+            return Ok(None);
+        }
         let Some(restriction) = player_negated_restriction_from_tail(&remainder_words, player)
         else {
             return Err(CardTextError::ParseError(format!(

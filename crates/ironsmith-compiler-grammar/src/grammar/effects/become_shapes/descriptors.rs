@@ -14,6 +14,9 @@ const ADDITION_TAILS: &[&[&str]] = &[
     &["in", "addition", "to", "their", "other", "types"],
     &["in", "addition", "to", "its", "other", "type"],
     &["in", "addition", "to", "their", "other", "type"],
+    // "becomes a Dinosaur in addition to its other creature types"
+    &["in", "addition", "to", "its", "other", "creature", "types"],
+    &["in", "addition", "to", "their", "other", "creature", "types"],
 ];
 
 #[derive(Debug, Clone)]

@@ -185,9 +185,16 @@ fn source_x_and_target_facts_use_their_original_phase() {
     let (mut game, alice, _, source, target) = fixture();
     game.object_mut(source).unwrap().x_value = Some(4);
     let condition = Condition::XValueAtLeast(3);
+    // X is announced (CR 601.2b) before targets and divisions, so cast-time
+    // choices read the spell's announced X.
+    assert!(evaluate_condition_cast_time(
+        &game, &condition, alice, source
+    ));
+    game.object_mut(source).unwrap().x_value = Some(2);
     assert!(!evaluate_condition_cast_time(
         &game, &condition, alice, source
     ));
+    game.object_mut(source).unwrap().x_value = Some(4);
     let external = ExternalEvaluationContext {
         controller: alice,
         source,

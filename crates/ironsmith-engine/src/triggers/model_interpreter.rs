@@ -193,6 +193,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::AttacksAndIsntBlocked { filter } => {
             crate::triggers::Trigger::attacks_and_isnt_blocked(filter)
         }
+        TriggerKind::AttacksAndIsntBlockedOneOrMore { filter } => {
+            crate::triggers::Trigger::attacks_and_isnt_blocked_one_or_more(filter)
+        }
         TriggerKind::AttacksWhileSaddled { filter } => {
             crate::triggers::Trigger::attacks_while_saddled(filter)
         }
@@ -509,6 +512,7 @@ pub(crate) fn interpret_trigger_model(
             crate::triggers::Trigger::spell_countered(filter, controller)
         }
         TriggerKind::YouDrawCard => crate::triggers::Trigger::you_draw_card(),
+        TriggerKind::Miracle => crate::triggers::Trigger::miracle(),
         TriggerKind::PlayerDrawsCard { player } => {
             crate::triggers::Trigger::player_draws_card(player)
         }

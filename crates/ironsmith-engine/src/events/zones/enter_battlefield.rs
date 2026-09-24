@@ -38,6 +38,8 @@ pub struct EnterBattlefieldEvent {
     pub added_colors: ColorSet,
     /// Additional card types granted by the copy-as-enters replacement.
     pub added_card_types: Vec<CardType>,
+    /// The copy's card types are exactly `added_card_types` (Imposter Mech).
+    pub removes_other_card_types: bool,
     /// Supertypes removed by the copy-as-enters replacement.
     pub added_supertypes: Vec<Supertype>,
     pub removed_supertypes: Vec<Supertype>,
@@ -71,6 +73,7 @@ impl EnterBattlefieldEvent {
             copy_name_override: None,
             added_colors: ColorSet::new(),
             added_card_types: Vec::new(),
+            removes_other_card_types: false,
             added_supertypes: Vec::new(),
             removed_supertypes: Vec::new(),
             added_subtypes: Vec::new(),
@@ -96,6 +99,7 @@ impl EnterBattlefieldEvent {
             copy_name_override: None,
             added_colors: ColorSet::new(),
             added_card_types: Vec::new(),
+            removes_other_card_types: false,
             added_supertypes: Vec::new(),
             removed_supertypes: Vec::new(),
             added_subtypes: Vec::new(),
@@ -177,6 +181,13 @@ impl EnterBattlefieldEvent {
     }
 
     /// Return a new event with additional card types granted as it enters.
+    pub fn with_removes_other_card_types(&self, removes: bool) -> Self {
+        Self {
+            removes_other_card_types: removes,
+            ..self.clone()
+        }
+    }
+
     pub fn with_added_card_types(&self, card_types: &[CardType]) -> Self {
         let mut added_card_types = self.added_card_types.clone();
         for card_type in card_types {

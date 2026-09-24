@@ -17,4 +17,6 @@ pub enum RandomActionAst {
         sides: u32,
         surface: Option<DieSurface>,
     },
+    /// "Choose 1, 2, or 3 at random": the result is the chosen number.
+    ChooseNumberAtRandom { choices: Vec<u32> },
 }

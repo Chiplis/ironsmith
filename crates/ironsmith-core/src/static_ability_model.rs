@@ -628,6 +628,22 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         filter: ObjectFilter,
         display: String,
     },
+    /// "Players can't untap more than one land during their untap steps."
+    /// (Winter Orb): each affected player untaps at most `max` matching
+    /// permanents during their untap step, choosing which.
+    UntapStepLimit {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        max: u32,
+        display: String,
+    },
+    /// "If an opponent would search a library, that player searches the top
+    /// four cards of that library instead." (Aven Mindcensor)
+    SearchLimitedToTopCards {
+        searcher: PlayerFilter,
+        count: u32,
+        display: String,
+    },
     FirstEquipCostAlternative(String),
     ControlAttachedPermanent(String),
     SetColors {
@@ -1048,6 +1064,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     /// "If you would draw a card, instead <effects>." (Underrealm Lich)
     DrawReplacementWithEffects {
         drawer: PlayerFilter,
+        /// "except the first one they draw in each of their draw steps"
+        except_first_of_draw_step: bool,
         replacement_effects: Vec<E>,
         display: String,
     },
@@ -1876,6 +1894,26 @@ where
             StaticAbilityPayload::MayChooseNotToUntapDuringUntapStep(subject) => {
                 StaticAbilityPayload::MayChooseNotToUntapDuringUntapStep(subject)
             }
+            StaticAbilityPayload::UntapStepLimit {
+                player,
+                filter,
+                max,
+                display,
+            } => StaticAbilityPayload::UntapStepLimit {
+                player,
+                filter,
+                max,
+                display,
+            },
+            StaticAbilityPayload::SearchLimitedToTopCards {
+                searcher,
+                count,
+                display,
+            } => StaticAbilityPayload::SearchLimitedToTopCards {
+                searcher,
+                count,
+                display,
+            },
             StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep { filter, display } => {
                 StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep { filter, display }
             }
@@ -2264,6 +2302,7 @@ where
                         name_override: spec.name_override,
                         added_colors: spec.added_colors,
                         added_card_types: spec.added_card_types,
+                        removes_other_card_types: spec.removes_other_card_types,
                         added_supertypes: spec.added_supertypes,
                         removed_supertypes: spec.removed_supertypes,
                         added_subtypes: spec.added_subtypes,
@@ -2540,10 +2579,12 @@ where
             }
             StaticAbilityPayload::DrawReplacementWithEffects {
                 drawer,
+                except_first_of_draw_step,
                 replacement_effects,
                 display,
             } => StaticAbilityPayload::DrawReplacementWithEffects {
                 drawer,
+                except_first_of_draw_step,
                 replacement_effects: replacement_effects
                     .into_iter()
                     .map(map_effect)
@@ -4365,6 +4406,40 @@ impl<
             },
         }
     }
+    pub fn search_limited_to_top_cards(
+        searcher: PlayerFilter,
+        count: u32,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::SearchLimitedToTopCards),
+            label: display.clone(),
+            payload: StaticAbilityPayload::SearchLimitedToTopCards {
+                searcher,
+                count,
+                display,
+            },
+        }
+    }
+    pub fn untap_step_limit(
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        max: u32,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::UntapStepLimit),
+            label: display.clone(),
+            payload: StaticAbilityPayload::UntapStepLimit {
+                player,
+                filter,
+                max,
+                display,
+            },
+        }
+    }
     pub fn untap_during_each_other_players_untap_step(
         filter: ObjectFilter,
         display: impl Into<String>,
@@ -6105,6 +6180,7 @@ impl<
     /// "If you would draw a card, instead <effects>." (Underrealm Lich)
     pub fn draw_replacement_with_effects(
         drawer: PlayerFilter,
+        except_first_of_draw_step: bool,
         replacement_effects: Vec<E>,
         display: impl Into<String>,
     ) -> Self {
@@ -6114,6 +6190,7 @@ impl<
             label: display.clone(),
             payload: StaticAbilityPayload::DrawReplacementWithEffects {
                 drawer,
+                except_first_of_draw_step,
                 replacement_effects,
                 display,
             },

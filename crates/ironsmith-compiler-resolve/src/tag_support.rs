@@ -360,6 +360,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target })
+            | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { target })
             | SubjectVerbActionAst::PutSticker { target, .. }
             | SubjectVerbActionAst::PermanentState(
                 PermanentStateActionAst::SwitchPowerToughness { target, .. },
@@ -1352,6 +1353,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
+        | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount, .. })
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
             amount, ..
         })
@@ -1415,6 +1417,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
+        | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
         | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
         | SubjectVerbActionAst::Library(
@@ -1525,6 +1528,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
             ..
         })
         | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
+        | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { .. })
         | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget { .. })
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. })
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { .. })

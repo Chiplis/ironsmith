@@ -1531,6 +1531,9 @@ pub enum ConditionalSurface {
     LeadingIf,
     TrailingIf,
     TrailingUnless,
+    /// "[if_false]. If [condition], [if_true] instead." — a self-replacement
+    /// nested inside another branch (for example, an "If you do" result).
+    Instead,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -3953,6 +3956,31 @@ impl DevourEffect {
     }
 }
 
+/// "This ability still resolves if its target becomes illegal." (Gilded
+/// Drake): a marker that suspends the CR 608.2b all-targets-illegal check
+/// for the ability it appears in. It has no effect when executed.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
+pub struct ResolvesDespiteIllegalTargetsEffect;
+
+impl ResolvesDespiteIllegalTargetsEffect {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+/// Miracle's linked trigger resolution: the drawn card's owner may cast it by
+/// paying its miracle cost (CR 702.94a).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
+pub struct MayCastForMiracleCostEffect;
+
+impl MayCastForMiracleCostEffect {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ConniveEffect {
@@ -3980,6 +4008,63 @@ pub struct DetainEffect {
 }
 
 impl DetainEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self { target }
+    }
+}
+
+/// "The next time target creature adapts this turn, it adapts as though it
+/// had no +1/+1 counters on it." (Biomancer's Familiar)
+/// "Note the type of mana spent to pay this activation cost": records, on the
+/// ability's source, the one type of mana in the activation payment.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
+pub struct NoteActivationManaTypeEffect;
+
+impl NoteActivationManaTypeEffect {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+/// "Add one mana of this artifact's last noted type".
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct AddManaOfNotedTypeEffect {
+    pub amount: Value,
+    pub player: PlayerFilter,
+}
+
+impl AddManaOfNotedTypeEffect {
+    pub fn new(amount: impl Into<Value>, player: PlayerFilter) -> Self {
+        Self {
+            amount: amount.into(),
+            player,
+        }
+    }
+}
+
+/// "Choose 1, 2, or 3 at random": picks one of `choices` uniformly; the
+/// outcome count is the chosen number ("that many").
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct ChooseNumberAtRandomEffect {
+    pub choices: Vec<u32>,
+}
+
+impl ChooseNumberAtRandomEffect {
+    pub fn new(choices: Vec<u32>) -> Self {
+        Self { choices }
+    }
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct NextAdaptIgnoresCountersEffect {
+    pub target: ChooseSpec,
+}
+
+impl NextAdaptIgnoresCountersEffect {
     pub fn new(target: ChooseSpec) -> Self {
         Self { target }
     }

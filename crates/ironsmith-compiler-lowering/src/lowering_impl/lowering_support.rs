@@ -89,6 +89,7 @@ pub fn replace_pending_removed_counter_metrics_with_x(effects: &mut [EffectAst])
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor {
                     amount, ..
                 })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
                     amount,
                     ..
@@ -298,6 +299,7 @@ fn replace_creature_death_event_amounts(effects: &mut [EffectAst]) {
                     amount: count,
                     ..
                 })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount: count })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
                     amount: count,
                     ..
@@ -1036,7 +1038,9 @@ fn preserve_blocker_regeneration_followup_as_restriction(
 fn trigger_is_attacks_and_isnt_blocked(trigger: &TriggerSpec) -> bool {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => trigger_is_attacks_and_isnt_blocked(trigger),
-        TriggerSpec::ThisAttacksAndIsntBlocked | TriggerSpec::AttacksAndIsntBlocked(_) => true,
+        TriggerSpec::ThisAttacksAndIsntBlocked
+        | TriggerSpec::AttacksAndIsntBlocked(_)
+        | TriggerSpec::AttacksAndIsntBlockedOneOrMore(_) => true,
         _ => false,
     }
 }
@@ -4487,6 +4491,7 @@ pub(crate) fn lower_compiler_static_ability_core(
                         name_override: spec.name_override,
                         added_colors: spec.added_colors,
                         added_card_types: spec.added_card_types,
+                        removes_other_card_types: spec.removes_other_card_types,
                         added_supertypes: spec.added_supertypes,
                         removed_supertypes: spec.removed_supertypes,
                         added_subtypes: spec.added_subtypes,

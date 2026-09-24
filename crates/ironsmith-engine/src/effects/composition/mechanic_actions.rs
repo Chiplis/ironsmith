@@ -35,7 +35,23 @@ use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 use std::collections::HashMap;
 pub type AmplifyEffect = ironsmith_core::AmplifyEffect;
-pub use ironsmith_core::{BolsterEffect, CipherEffect, DevourEffect};
+pub use ironsmith_core::{
+    BolsterEffect, CipherEffect, DevourEffect, ResolvesDespiteIllegalTargetsEffect,
+};
+
+impl EffectExecutor for ResolvesDespiteIllegalTargetsEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
+    fn execute(
+        &self,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        Ok(EffectOutcome::resolved())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BackupEffect {
@@ -1822,7 +1838,18 @@ impl EffectExecutor for AdaptEffect {
         if game.object(source_id).is_none() {
             return Ok(EffectOutcome::target_invalid());
         }
-        if game.counter_count(source_id, CounterType::PlusOnePlusOne) > 0 {
+        // "The next time target creature adapts this turn, it adapts as though
+        // it had no +1/+1 counters on it" is consumed by this adapt.
+        let turn = game.turn.turn_number;
+        let ignores_counters = game.object(source_id).map(|o| o.stable_id).is_some_and(|stable| {
+            let store = &mut game.turn_store.adapt_ignores_counters;
+            let found = store.iter().position(|(id, t)| *id == stable && *t == turn);
+            if let Some(index) = found {
+                store.remove(index);
+            }
+            found.is_some()
+        });
+        if !ignores_counters && game.counter_count(source_id, CounterType::PlusOnePlusOne) > 0 {
             return Ok(EffectOutcome::count(0));
         }
 

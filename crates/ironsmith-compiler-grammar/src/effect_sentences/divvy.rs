@@ -35,6 +35,91 @@ fn parse_effect_sentence_sequence(
     }
 }
 
+/// "Choose target <permanent> a player controls and target <card> in that
+/// player's graveyard. If both targets are still legal as this ability
+/// resolves, that player simultaneously sacrifices the <permanent> and
+/// returns the <card> to the battlefield." (Goblin Welder)
+///
+/// The second target's owner is the first target's controller, so the two
+/// declarations share one player; the swap happens only while both targets
+/// remain legal.
+fn parse_cross_zone_target_swap(
+    sentences: &[&[OwnedLexToken]],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let [declare, swap] = sentences else {
+        return Ok(None);
+    };
+    let declare_words = crate::lexer::parser_token_word_refs(declare);
+    let swap_words = crate::lexer::parser_token_word_refs(swap);
+    const SWAP_HEAD: &[&str] = &[
+        "if", "both", "targets", "are", "still", "legal", "as", "this", "ability", "resolves",
+        "that", "player", "simultaneously", "sacrifices", "the",
+    ];
+    if declare_words.first() != Some(&"choose")
+        || !declare_words.ends_with(&["in", "that", "players", "graveyard"])
+        || !swap_words.starts_with(SWAP_HEAD)
+        || !swap_words.ends_with(&["to", "the", "battlefield"])
+        || !swap_words.contains(&"returns")
+    {
+        return Ok(None);
+    }
+    let Some(and_idx) = declare
+        .windows(2)
+        .position(|pair| pair[0].is_word("and") && pair[1].is_word("target"))
+    else {
+        return Ok(None);
+    };
+    let first = crate::util::parse_target_phrase(&declare[1..and_idx])?;
+    let second = crate::util::parse_target_phrase(&declare[and_idx + 1..])?;
+    let (
+        TargetAst::Object(first_filter, first_span, first_ref),
+        TargetAst::Object(mut second_filter, second_span, second_ref),
+    ) = (first, second)
+    else {
+        return Ok(None);
+    };
+    if second_filter.zone != Some(Zone::Graveyard) {
+        return Ok(None);
+    }
+    second_filter.owner = Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
+    let first_tag = crate::util::helper_tag_for_tokens(declare, "swap_permanent_target");
+    let second_tag = crate::util::helper_tag_for_tokens(declare, "swap_card_target");
+    let declare_target = |target: TargetAst, tag: &TagKey| EffectAst::TagAffected {
+        effect: Box::new(EffectAst::subject_verb_explicit_target_only(target)),
+        tag: crate::tag::TagRef::of(tag.clone()),
+    };
+    Ok(Some(vec![
+        declare_target(
+            TargetAst::Object(first_filter, first_span, first_ref),
+            &first_tag.key,
+        ),
+        declare_target(
+            TargetAst::Object(second_filter, second_span, second_ref),
+            &second_tag.key,
+        ),
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::AllTargetsStillLegal,
+            if_true: vec![
+                EffectAst::subject_verb_sacrifice(
+                    PlayerAst::Implicit,
+                    ObjectFilter::default(),
+                    1,
+                    Some(TargetAst::Tagged(crate::tag::TagRef::of(first_tag.key.clone()), None)),
+                ),
+                EffectAst::subject_verb_return_to_battlefield(
+                    TargetAst::Tagged(crate::tag::TagRef::of(second_tag.key.clone()), None),
+                    false,
+                    false,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    None,
+                ),
+            ],
+            if_false: Vec::new(),
+        }),
+    ]))
+}
+
 pub(super) fn try_parse_divvy_sentence_sequence(
     sentences: &[SentenceInput],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -42,9 +127,90 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         .iter()
         .map(SentenceInput::lexed)
         .collect::<Vec<_>>();
+    if let Some(effects) = parse_cross_zone_target_swap(&sentence_tokens)? {
+        return Ok(Some(effects));
+    }
     let Some(shape) = divvy_shapes::parse_divvy_sequence_shape(&sentence_tokens) else {
         return Ok(None);
     };
+
+    if let DivvySequenceShape::ChosenOpponentFaceDownPiles {
+        count,
+        consumed_sentences,
+    } = shape
+    {
+        use crate::tag::CompilerReferenceTag;
+        let opponent = CompilerReferenceTag::DivvyOpponent.bind();
+        let pool = CompilerReferenceTag::DivvySource.bind();
+        let face_down = CompilerReferenceTag::DivvyPile.bind();
+        let face_up = CompilerReferenceTag::DivvyChosen.bind();
+        let opponent_filter = PlayerFilter::TaggedPlayer(opponent.clone().into());
+        let move_tagged = |tag: &crate::tag::TagRef, zone: Zone| {
+            EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(tag.clone(), None),
+                zone,
+                false,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            )
+        };
+        let mut effects = vec![
+            EffectAst::subject_verb_choose_player(
+                PlayerAst::You,
+                PlayerFilter::Opponent,
+                opponent.clone(),
+                false,
+                0,
+            ),
+            // Only the chosen opponent sees the cards while dividing them.
+            EffectAst::LookAtTopCardsAsViewer {
+                library_owner: PlayerFilter::You,
+                viewer: opponent_filter.clone(),
+                count: Value::Fixed(count),
+                tag: pool.clone(),
+            },
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                filter: ObjectFilter::tagged(pool.clone()),
+                count: ChoiceCount::any_number(),
+                count_value: None,
+                player: PlayerAst::That,
+                tag: face_down.clone(),
+                zones: vec![Zone::Library],
+                search_mode: None,
+            }),
+            EffectAst::subject_verb_tag_matching_objects(
+                ObjectFilter::tagged(pool).not_tagged(face_down.clone()),
+                vec![Zone::Library],
+                face_up.clone(),
+            ),
+            // The face-up pile is public.
+            EffectAst::subject_verb_reveal_tagged(face_up.clone()),
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
+                chooser: PlayerFilter::You,
+                modes: vec![
+                    crate::cards::builders::ChooseOneModeAst {
+                        description: "Put the face-down pile into your hand".to_string(),
+                        effects: vec![
+                            move_tagged(&face_down, Zone::Hand),
+                            move_tagged(&face_up, Zone::Graveyard),
+                        ],
+                    },
+                    crate::cards::builders::ChooseOneModeAst {
+                        description: "Put the face-up pile into your hand".to_string(),
+                        effects: vec![
+                            move_tagged(&face_up, Zone::Hand),
+                            move_tagged(&face_down, Zone::Graveyard),
+                        ],
+                    },
+                ],
+            }),
+        ];
+        for sentence in &sentences[consumed_sentences..] {
+            effects.extend(parse_effect_sentence_sequence(sentence.lowered())?);
+        }
+        return Ok(Some(effects));
+    }
 
     if let DivvySequenceShape::FixedExilePiles { first_count, second_count, first_face_down, second_face_down } = shape {
         use crate::tag::CompilerReferenceTag;

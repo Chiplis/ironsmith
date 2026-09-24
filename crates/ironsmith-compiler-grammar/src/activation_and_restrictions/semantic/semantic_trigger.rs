@@ -3901,6 +3901,29 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 return Ok(TriggerSpec::ThisAttacksWhileYouControl(filter));
             }
         }
+        // "one or more creatures an opponent controls attack you and aren't
+        // blocked" (Coveted Jewel): one grouped event per attacking player.
+        let (attacks_you, unblocked_tail) = match tail_words.split_first() {
+            Some((&"you", rest)) => (true, rest),
+            _ => (false, tail_words),
+        };
+        if matches!(
+            unblocked_tail,
+            ["and", "arent" | "aren't", "blocked"] | ["and", "are", "not", "blocked"]
+        ) {
+            let attacks_token_idx =
+                trigger_word_token_start(tokens, attacks_word_idx).unwrap_or(tokens.len());
+            if let Some((1, subject_tokens)) =
+                parse_leading_or_more_quantifier(&tokens[..attacks_token_idx])
+                && let Some(mut filter) = parse_attack_trigger_subject_filter_lexed(subject_tokens)?
+            {
+                if attacks_you {
+                    filter.attacking_player_or_planeswalker_controlled_by = Some(PlayerFilter::You);
+                    filter.targets_only_player = Some(PlayerFilter::You);
+                }
+                return Ok(TriggerSpec::AttacksAndIsntBlockedOneOrMore(filter));
+            }
+        }
         if trigger_pattern_accepts(tail_words, ATTACKS_AND_IS_NOT_BLOCKED_TAIL_PATTERN) {
             let attacks_token_idx =
                 trigger_word_token_start(tokens, attacks_word_idx).unwrap_or(tokens.len());

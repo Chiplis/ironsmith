@@ -247,6 +247,9 @@ pub struct EffectLoweringContext {
     ids: CompileContext,
     frame: LoweringFrame,
     reserved_object_result_tag: Option<TagKey>,
+    /// While compiling one annotated effect: the object-result tag reference
+    /// annotation predicted it leaves behind (`Some(None)` = no object).
+    annotated_result_prediction: Option<Option<TagKey>>,
 }
 
 impl Default for EffectLoweringContext {
@@ -275,6 +278,7 @@ impl EffectLoweringContext {
             ids: CompileContext::new(),
             frame: LoweringFrame::default(),
             reserved_object_result_tag: None,
+            annotated_result_prediction: None,
         }
     }
 
@@ -283,6 +287,7 @@ impl EffectLoweringContext {
             ids: CompileContext::from_id_gen(id_gen),
             frame,
             reserved_object_result_tag: None,
+            annotated_result_prediction: None,
         }
     }
 
@@ -337,6 +342,19 @@ impl EffectLoweringContext {
 
     pub fn reserve_object_result_tag(&mut self, tag: Option<TagKey>) {
         self.reserved_object_result_tag = tag;
+    }
+
+    pub fn set_annotated_result_prediction(&mut self, prediction: Option<Option<TagKey>>) {
+        self.annotated_result_prediction = prediction;
+    }
+
+    /// Whether reference annotation predicted that the effect being compiled
+    /// exposes no new object result: either no object reference at all, or
+    /// the incoming one unchanged.
+    pub fn annotation_predicts_no_new_object_result(&self) -> bool {
+        self.annotated_result_prediction.as_ref().is_some_and(|predicted| {
+            predicted.is_none() || predicted.as_ref() == self.frame.last_object_tag.as_ref()
+        })
     }
 
     pub fn take_reserved_object_result_tag(&mut self, prefix: &str) -> Option<TagKey> {

@@ -1307,6 +1307,25 @@ impl CardDefinitionBuilder {
         self
     }
 
+    /// Miracle (CR 702.94): an alternative cost plus the linked hand-zone
+    /// trigger "When you draw this card, if it's the first card you've drawn
+    /// this turn, you may reveal it. If you do, you may cast it by paying its
+    /// miracle cost."
+    pub fn miracle(mut self, cost: ManaCost) -> Self {
+        self.alternative_casts
+            .push(crate::alternative_cast::AlternativeCastingMethod::Miracle { cost });
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::miracle(),
+                effects: vec![crate::effect::Effect::may_cast_for_miracle_cost()].into(),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: None,
+            }),
+            functional_zones: vec![crate::zone::Zone::Hand],
+        })
+    }
+
     pub fn echo(self, total_cost: TotalCost) -> Self {
         let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
 

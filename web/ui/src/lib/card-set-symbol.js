@@ -27,7 +27,17 @@ export function locateSetSymbol(scan, type, template) {
         if(expected||actual)union++;if(expected&&actual)intersection++;
       }
       const score=union?intersection/union:0;
-      if(foreground>30&&score>.42&&(!best||score>best.confidence))best={x,y,width:w,height:h,confidence:score};
+      if(foreground<=30||score<=.42||best&&score<=best.confidence)continue;
+      // The symbol stands apart from the type line. A long line reaches into
+      // this search band, and a few of its letters can outscore the symbol
+      // (Finneas, Ace Archer matched the "her" of "Archer"), which then cut
+      // the mask short and left those letters printed beside the live text.
+      // Lettering runs on into the gutter left of such a match; the symbol's
+      // gutter is paper.
+      let gutter=0,gutterInk=0;
+      for(let gx=x-9;gx<=x-2;gx++)for(let gy=y;gy<y+h;gy++){gutter++;if(Math.hypot(...paper.map((v,c)=>v-rgba(gx,gy)[c]))>45)gutterInk++;}
+      if(gutterInk>gutter*.1)continue;
+      best={x,y,width:w,height:h,confidence:score};
     }
   }
   if(!best)return null;

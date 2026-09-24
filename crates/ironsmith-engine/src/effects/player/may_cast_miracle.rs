@@ -24,15 +24,7 @@ use super::runtime_helpers::with_spell_cast_event;
 ///
 /// This effect gets the card and owner from the triggering CardsDrawnEvent.
 /// The miracle card must be the first card in the event (is_miracle_eligible).
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct MayCastForMiracleCostEffect;
-
-impl MayCastForMiracleCostEffect {
-    /// Create a new may cast for miracle cost effect.
-    pub fn new() -> Self {
-        Self
-    }
-}
+pub use ironsmith_core::MayCastForMiracleCostEffect;
 
 impl EffectExecutor for MayCastForMiracleCostEffect {
     fn execute(

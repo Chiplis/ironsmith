@@ -2505,20 +2505,6 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
             "Return target creature card from a graveyard to its owner's hand and return target creature to its owner's hand",
             "Return target creature card from a graveyard and target creature on the battlefield to their owners' hands",
         ),
-        // Urza tri-lands: the two-word land subtypes render truncated
-        // ("Urza's" for Mine/Tower, "Urza's Plant" for Power-Plant).
-        (
-            "If you control an Urza's and you control an Urza's Plant, add {C}{C}{C} instead",
-            "If you control an Urza's Mine and an Urza's Power-Plant, add {C}{C}{C} instead",
-        ),
-        (
-            "If you control an Urza's and you control an Urza's, add {C}{C} instead",
-            "If you control an Urza's Mine and an Urza's Tower, add {C}{C} instead",
-        ),
-        (
-            "If you control an Urza's Plant and you control an Urza's, add {C}{C} instead",
-            "If you control an Urza's Power-Plant and an Urza's Tower, add {C}{C} instead",
-        ),
         // Medomai's Prophecy phrases chapter III as first-cast-this-turn and
         // chapter IV as an each-player look.
         (

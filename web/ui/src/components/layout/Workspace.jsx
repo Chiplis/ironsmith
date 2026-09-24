@@ -11,7 +11,7 @@ import useViewportLayout from "@/hooks/useViewportLayout";
 import useManabrewHandScale from "@/hooks/useManabrewHandScale";
 import TableCore from "@/components/board/TableCore";
 import HandZone from "@/components/board/HandZone";
-import RematchSideboardingView from "@/components/board/RematchSideboardingView";
+import RematchDeckView from "@/components/board/RematchDeckView";
 import RightRail from "@/components/right-rail/RightRail";
 import FloatingCardPreview from "@/components/right-rail/FloatingCardPreview";
 import DragOverlay from "@/components/overlays/DragOverlay";
@@ -2000,7 +2000,7 @@ export default function Workspace({
       )}
       <div className="workspace-table-stage min-h-0 h-full overflow-visible">
         {showRematchSideboarding ? (
-          <RematchSideboardingView />
+          <RematchDeckView />
         ) : (
           <TableCore
             selectedObjectId={selectedObjectId}

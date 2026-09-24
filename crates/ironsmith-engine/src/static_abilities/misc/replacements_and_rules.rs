@@ -2285,10 +2285,12 @@ impl RedirectDrawReplacement {
     }
 }
 
-/// "If you would draw a card, instead <effects>." (Underrealm Lich)
+/// "If you would draw a card, instead <effects>." (Underrealm Lich), optionally
+/// sparing the first draw of each draw step (Hullbreacher).
 #[derive(Debug, Clone, PartialEq)]
 pub struct DrawReplacementWithEffects {
     pub drawer: PlayerFilter,
+    pub except_first_of_draw_step: bool,
     pub replacement_effects: Vec<Effect>,
     pub display: String,
 }
@@ -2296,11 +2298,13 @@ pub struct DrawReplacementWithEffects {
 impl DrawReplacementWithEffects {
     pub fn new(
         drawer: PlayerFilter,
+        except_first_of_draw_step: bool,
         replacement_effects: Vec<Effect>,
         display: impl Into<String>,
     ) -> Self {
         Self {
             drawer,
+            except_first_of_draw_step,
             replacement_effects,
             display: display.into(),
         }
@@ -2326,7 +2330,7 @@ impl StaticAbilityKind for DrawReplacementWithEffects {
             controller,
             WouldDrawByPlayerMatcher {
                 drawer: self.drawer.clone(),
-                except_first_of_draw_step: false,
+                except_first_of_draw_step: self.except_first_of_draw_step,
                 display: self.display.clone(),
             },
             ReplacementAction::Instead(self.replacement_effects.clone()),

@@ -51,6 +51,13 @@ pub enum CopyCharacteristicRemainder<'a> {
     None,
     PowerToughnessFromSource,
     Abilities(&'a [OwnedLexToken]),
+    /// "with crew 3 [and it loses all other card types]" (Imposter Mech).
+    WithAbilities {
+        abilities: &'a [OwnedLexToken],
+        loses_other_card_types: bool,
+    },
+    /// "and it loses all other card types".
+    LosesOtherCardTypes,
     ConditionalEntry(&'a [OwnedLexToken]),
     Unsupported,
 }
@@ -489,9 +496,20 @@ fn parse_copy_characteristic_remainder_start<'a>(input: &mut LexStream<'a>) -> W
         primitives::phrase(&["its", "power", "and", "toughness"]),
         primitives::phrase(&["and", "it", "has"]),
         primitives::phrase(&["and", "has"]),
+        primitives::kw("with").void(),
+        primitives::phrase(&["and", "it", "loses", "all", "other", "card", "types"]),
     ))
     .void()
     .parse_next(input)
+}
+
+fn loses_other_card_types_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    (
+        primitives::phrase(&["and", "it", "loses", "all", "other", "card", "types"]),
+        primitives::sentence_end(),
+    )
+        .void()
+        .parse_next(input)
 }
 
 fn parse_copy_characteristic_remainder<'a>(
@@ -511,6 +529,22 @@ fn parse_copy_characteristic_remainder<'a>(
         return Ok(CopyCharacteristicRemainder::None);
     }
     alt((
+        (
+            primitives::kw("with"),
+            repeat_till::<_, _, (), _, _, _, _>(
+                1..,
+                any.void(),
+                peek(alt((loses_other_card_types_tail, primitives::sentence_end().void()))),
+            )
+            .take(),
+            opt(loses_other_card_types_tail),
+            opt(primitives::sentence_end()),
+        )
+            .map(|(_, abilities, loses, _)| CopyCharacteristicRemainder::WithAbilities {
+                abilities: trim_lexed_commas(abilities),
+                loses_other_card_types: loses.is_some(),
+            }),
+        loses_other_card_types_tail.value(CopyCharacteristicRemainder::LosesOtherCardTypes),
         (
             primitives::kw("and"),
             opt(primitives::comma()),

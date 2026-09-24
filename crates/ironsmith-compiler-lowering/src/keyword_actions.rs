@@ -83,6 +83,7 @@ pub fn apply_keyword_action(
         KeywordAction::Plot(cost) => builder.plot(cost),
         KeywordAction::Disturb(cost) => builder.disturb(cost),
         KeywordAction::Spectacle(cost) => builder.spectacle(cost),
+        KeywordAction::Miracle(cost) => builder.miracle(cost),
         KeywordAction::Foretell(cost) => builder.foretell(cost),
         KeywordAction::Unleash => builder.unleash(),
         KeywordAction::Ward(amount) => builder.ward_generic(amount),

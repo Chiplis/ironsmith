@@ -101,6 +101,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Counters(CounterActionAst::PoisonCounters { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersAll { .. })
             | SubjectVerbActionAst::PutSticker { .. }
@@ -1486,6 +1487,11 @@ pub(super) fn compile_subject_verb_late(
                 crate::effects::ForEachCounterKindPutOrRemoveEffect::one_kind(spec)
             };
             Ok((vec![Effect::new(effect)], choices))
+        }
+        SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { target }) => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            Ok((vec![Effect::next_adapt_ignores_counters(spec)], choices))
         }
         SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target }) => {
             let (spec, choices) =

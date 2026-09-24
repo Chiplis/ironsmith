@@ -113,8 +113,11 @@ pub enum BecomeCopySourceShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct BecomeAuraShape {
+pub struct BecomeAuraShape<'a> {
     pub attachment_you_control: bool,
+    /// The complete enchant filter after "enchant" ("creature put onto the
+    /// battlefield with Necromancy"), without an enclosing quote.
+    pub enchant_filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -122,7 +125,7 @@ pub struct BecomeBodySurfaceShape<'a> {
     pub body_tokens: &'a [OwnedLexToken],
     pub exact_kind: Option<BecomeExactKind>,
     pub copy_source: BecomeCopySourceShape<'a>,
-    pub aura: Option<BecomeAuraShape>,
+    pub aura: Option<BecomeAuraShape<'a>>,
     pub equal_to_source_power_toughness: bool,
 }
 

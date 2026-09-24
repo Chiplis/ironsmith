@@ -71,6 +71,7 @@ import {
   MATCH_FORMAT_COMMANDER,
   MATCH_FORMAT_NORMAL,
   MATCH_FORMAT_PLANECHASE,
+  deckListText,
   evaluateLobbyDeckSubmission,
   normalizeMatchFormat,
   parseCommanderList,
@@ -2181,6 +2182,21 @@ export function buildRematchStateFromPayload(payload, localPeerId, readyOverride
     localDeck: sanitizeCardList(localPlayer?.deck),
     localSideboard: sanitizeCardList(localPlayer?.sideboard),
     localReady: Boolean(localPlayer?.ready),
+  };
+}
+
+// The rematch screen edits a deck the way the lobby does, as text. It opens on
+// the list the player brought to the last game: the text they typed or picked
+// when there is one (it keeps print preferences), else the committed cards.
+export function withRematchDeckText(rematch, session) {
+  if (!rematch) return rematch;
+  const localPlayer = (rematch.players || []).find((player) => player.peerId === session?.localPeerId);
+  const typedDeck = String(session?.localDeckText || "");
+  const typedCommanders = String(session?.localCommanderText || "");
+  return {
+    ...rematch,
+    localDeckText: typedDeck.trim() ? typedDeck : deckListText(rematch.localDeck, rematch.localSideboard),
+    localCommanderText: typedCommanders.trim() ? typedCommanders : deckListText(localPlayer?.commanders),
   };
 }
 

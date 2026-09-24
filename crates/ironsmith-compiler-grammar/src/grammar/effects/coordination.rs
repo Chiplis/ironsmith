@@ -637,7 +637,11 @@ fn classify_boundary<'a>(
         && (find_chain_verb_tokens(before).is_some_and(|verb| {
             matches!(
                 verb.kind,
-                ChainVerbKind::Destroy | ChainVerbKind::Exile | ChainVerbKind::Sacrifice
+                ChainVerbKind::Destroy
+                    | ChainVerbKind::Exile
+                    | ChainVerbKind::Sacrifice
+                    | ChainVerbKind::Tap
+                    | ChainVerbKind::Untap
             )
         }) || before
             .iter()

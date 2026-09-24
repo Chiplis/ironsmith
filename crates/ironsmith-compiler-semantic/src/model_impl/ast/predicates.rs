@@ -122,6 +122,8 @@ pub enum PredicateAst {
     },
     /// "if X is 5 or greater"
     XValueAtLeast(u32),
+    /// "if both targets are still legal as this ability resolves"
+    AllTargetsStillLegal,
     /// "if two or more colors of mana were spent to cast it"
     ColorsOfManaSpentToCastThisSpellOrMore(u32),
     /// "if you have a card in hand matching this"

@@ -307,6 +307,21 @@ impl TurnHistory {
             .any(|record| record.event.downcast::<SpellCastEvent>().is_some())
     }
 
+    /// The zone the object with this stable identity was most recently cast
+    /// from this turn, if it was cast this turn.
+    pub fn latest_cast_zone(&self, stable_id: StableId) -> Option<Zone> {
+        self.projected_records()
+            .filter_map(|record| {
+                let cast = record.event.downcast::<SpellCastEvent>()?;
+                cast.snapshot
+                    .as_ref()
+                    .or(record.object_snapshot.as_ref())
+                    .is_some_and(|snapshot| snapshot.stable_id == stable_id)
+                    .then_some(cast.from_zone)
+            })
+            .last()
+    }
+
     /// Whether the object with this stable identity was cast from `zone` this turn.
     pub fn object_was_cast_from_zone(&self, stable_id: StableId, zone: Zone) -> bool {
         self.object_was_cast_from_zone_by(stable_id, zone, None)

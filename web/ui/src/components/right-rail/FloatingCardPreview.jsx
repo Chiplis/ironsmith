@@ -17,7 +17,7 @@ import { resolveScryfallImageUrl } from "@/lib/scryfall";
 import { playerAccentVars } from "@/lib/player-colors";
 import { samePlayerId } from "@/lib/player-display";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
-import { canHoverInspectorObject, objectExistsInState } from "@/lib/inspector-selection";
+import { canHoverInspectorObject, objectExistsInState, resolveStackInspectObjectId } from "@/lib/inspector-selection";
 
 const PREVIEW_OPEN_DELAY_MS = 500;
 const PREVIEW_CLOSE_DELAY_MS = 240;
@@ -396,9 +396,25 @@ export default function FloatingCardPreview({
     // hover. Do not let entering the enlarged frame keep it alive after the
     // source card has been left; the target highlight remains on the card.
     || (!targetingMode && previewHovered && !disabled && !manaPaymentActions.has(Number(renderedObjectId)) && canHoverInspectorObject(state, renderedObjectId) ? renderedObjectId : null);
+  // A stack entry's id is minted from its source's object id (x2, +1 for an
+  // ability), so it is routinely the id of some unrelated card as well: the
+  // Wheel of Torture trigger can carry the number an Island has. A preview a
+  // stack tile asked for (anchored or pinned) therefore resolves to the stack
+  // entry before any zone is searched.
+  const lockedStackEntry = useMemo(() => (
+    lockedObjectId == null
+      ? null
+      : getVisibleStackObjects(state).find(entry => String(entry.id) === lockedObjectId) || null
+  ), [lockedObjectId, state]);
+  const isStackSource = id => id != null && lockedStackEntry != null && id === lockedObjectId;
   const preparationCard = useMemo(() => {
-    const matches = card => card && [card.id, card.inspect_object_id, ...(card.member_ids || [])]
-      .some(id => id != null && String(id) === requestedObjectId);
+    const stackEntry = lockedStackEntry && requestedObjectId === lockedObjectId ? lockedStackEntry : null;
+    // A stack entry prepares its source card's frame (the entry carries no
+    // type line), found by the entry's own inspect id, never by its number.
+    const needle = stackEntry ? resolveStackInspectObjectId(state, stackEntry) : requestedObjectId;
+    const matches = card => card && [card.id, ...(stackEntry ? [] : [card.inspect_object_id]), ...(card.member_ids || [])]
+      .some(id => id != null && String(id) === needle);
+    if (stackEntry && needle == null) return stackEntry;
     for (const player of state?.players || []) {
       for (const zone of ['battlefield', 'hand_cards', 'graveyard_cards', 'exile_cards', 'command_cards', 'ante_cards']) {
         const card = (player[zone] || []).find(matches);
@@ -410,8 +426,8 @@ export default function FloatingCardPreview({
       ...(state?.players || []).flatMap((player) => player?.persistent_look_cards || []),
     ].find(matches);
     if (viewedCard) return viewedCard;
-    return getVisibleStackObjects(state).find(matches);
-  }, [requestedObjectId, state]);
+    return stackEntry || getVisibleStackObjects(state).find(matches);
+  }, [lockedObjectId, lockedStackEntry, requestedObjectId, state]);
   const preparationName = preparationCard?.name;
   const preparationType = preparationCard?.type_line;
   // Every card this surface shows is presented as a frame, whatever zone it
@@ -419,8 +435,6 @@ export default function FloatingCardPreview({
   // rendering a battlefield card does, rather than a printing with a separate
   // details panel over it.
   const shouldPrepareFrame = Boolean(preparationCard);
-  const isStackSource = id => id != null && id === lockedObjectId
-    && getVisibleStackObjects(state).some(entry => String(entry.id) === id);
   const requestedImageUrl = useDisplayedCardImage(requestedObjectId, isStackSource(requestedObjectId));
   const renderedImageUrl = useDisplayedCardImage(renderedObjectId, isStackSource(renderedObjectId));
   useEffect(() => {
@@ -613,9 +627,7 @@ export default function FloatingCardPreview({
         <HoverArtOverlay
           key={renderedObjectId}
           objectId={renderedObjectId}
-          selectedStackEntry={String(pinnedObjectId) === String(renderedObjectId)
-            ? getVisibleStackObjects(state).find(entry => String(entry.id) === String(pinnedObjectId))
-            : null}
+          selectedStackEntry={isStackSource(renderedObjectId) ? lockedStackEntry : null}
           displayMode="card-frame"
           enableFramePreparation
           sourceImageUrl={renderedImageUrl}

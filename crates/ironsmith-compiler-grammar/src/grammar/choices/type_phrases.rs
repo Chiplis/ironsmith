@@ -202,6 +202,13 @@ pub fn parse_choice_land_type_phrase_words(words: &[&str]) -> Option<ChoiceLandT
     crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
         parse_word_phrase(input, &["land", "type"])
     })?;
+    // "choose a land type and a basic land type": the basic land type is the
+    // second choice, made by the following "becomes the second chosen type".
+    if !exclude_basic {
+        let _ = crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+            parse_word_phrase(input, &["and", "a", "basic", "land", "type"])
+        });
+    }
     Some(ChoiceLandTypePhrase {
         consumed: words.len().saturating_sub(input.len()),
         exclude_basic,

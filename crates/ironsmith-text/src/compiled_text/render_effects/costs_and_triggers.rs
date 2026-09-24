@@ -1434,6 +1434,36 @@ fn describe_behold_then_exile_cost(
     ))
 }
 
+/// CR 701.59a: "collect evidence N" is exiling any number of cards from your
+/// graveyard with total mana value N or greater. The payment lowers to that
+/// choose-then-exile pair; render the keyword action it proves.
+fn describe_collect_evidence_cost(
+    choose_cost: &crate::costs::Cost,
+    exile_cost: &crate::costs::Cost,
+) -> Option<String> {
+    let choose = unwrap_basic_tag_wrappers(choose_cost.effect_ref()?)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let constraint = choose.aggregate_constraint.as_ref()?;
+    let minimum = constraint.minimum.as_ref()?;
+    let mut expected_filter = ObjectFilter::default()
+        .in_zone(Zone::Graveyard)
+        .owned_by(PlayerFilter::You);
+    expected_filter.other = choose.filter.other;
+    if constraint.metric != crate::effect::ChoiceAggregateMetric::ManaValue
+        || !matches!(constraint.maximum.unhinted(), Value::Fixed(i32::MAX))
+        || choose.filter != expected_filter
+        || !choose.count.is_any_number()
+        || choose.count_value.is_some()
+        || choose.chooser != PlayerFilter::You
+        || choose.is_search
+        || choose.reveal
+        || !exile_cost_uses_tag(exile_cost.effect_ref()?, &choose.tag)
+    {
+        return None;
+    }
+    Some(format!("Collect evidence {}", describe_value(minimum)))
+}
+
 fn describe_cost_component_parts_with_target(
     costs: &[crate::costs::Cost],
     enclosing_target: Option<&ChooseSpec>,
@@ -1441,6 +1471,13 @@ fn describe_cost_component_parts_with_target(
     let mut parts = Vec::new();
     let mut idx = 0usize;
     while idx < costs.len() {
+        if idx + 1 < costs.len()
+            && let Some(evidence) = describe_collect_evidence_cost(&costs[idx], &costs[idx + 1])
+        {
+            parts.push(evidence);
+            idx += 2;
+            continue;
+        }
         if idx + 2 < costs.len()
             && costs[idx].is_sacrifice_self()
             && let Some(choose) = costs[idx + 1]

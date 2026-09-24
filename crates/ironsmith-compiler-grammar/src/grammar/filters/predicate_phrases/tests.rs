@@ -4102,3 +4102,44 @@ fn discarded_cost_card_type_predicates_keep_cost_reference_and_negation() -> Res
     }
     Ok(())
 }
+
+#[test]
+fn parse_predicate_tron_control_conjunction_keeps_compound_urzas_subtypes()
+-> Result<(), CardTextError> {
+    for (text, left_subtype, right_subtype) in [
+        (
+            "If you control an Urza's Mine and an Urza's Power-Plant",
+            Subtype::Mine,
+            Subtype::PowerPlant,
+        ),
+        (
+            "If you control an Urza's Power-Plant and an Urza's Tower",
+            Subtype::PowerPlant,
+            Subtype::Tower,
+        ),
+        (
+            "If you control an Urza's Mine and an Urza's Tower",
+            Subtype::Mine,
+            Subtype::Tower,
+        ),
+    ] {
+        let tokens = lex_line(text, 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        let PredicateAst::And(left, right) = parsed else {
+            panic!("expected conjoined control predicate for {text}: {parsed:#?}");
+        };
+        for (side, subtype) in [(left, left_subtype), (right, right_subtype)] {
+            let PredicateAst::Player(PlayerPredicateAst::PlayerControls { filter, .. }) = *side
+            else {
+                panic!("expected control predicate for {text}");
+            };
+            assert!(filter.subtypes.is_empty(), "{text}: {filter:#?}");
+            assert_eq!(
+                filter.all_subtypes,
+                vec![Subtype::Urzas, subtype],
+                "{text}: {filter:#?}"
+            );
+        }
+    }
+    Ok(())
+}

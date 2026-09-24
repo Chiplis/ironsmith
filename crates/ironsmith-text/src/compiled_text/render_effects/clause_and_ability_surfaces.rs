@@ -9896,7 +9896,16 @@ pub(crate) fn describe_static_ability_with_subject(
             format!("{capitalized_subject} {rest}")
         }
     } else if let Some(rest) = trimmed.strip_prefix("this ") {
-        format!("{subject} {rest}")
+        // A generic self-reference noun ("this source is ...") names the
+        // same object as the card's own subject; don't stack both nouns.
+        if let Some(tail) = ["creature", "permanent", "source"].into_iter().find_map(|generic| {
+            rest.strip_prefix(generic)
+                .filter(|tail| tail.starts_with(' ') || tail.starts_with("'s"))
+        }) {
+            format!("{subject}{tail}")
+        } else {
+            format!("{subject} {rest}")
+        }
     } else if let Some(rest) = trimmed.strip_prefix("Attacks ") {
         format!("{capitalized_subject} attacks {rest}")
     } else if let Some(rest) = trimmed.strip_prefix("attacks ") {

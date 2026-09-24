@@ -211,8 +211,16 @@ function measureRulesLine(ctx, box, text, family, { italic = false, bandIndex = 
     .sort((a, b) => a - b);
   const nextLine = textBands.find(b => b.top > bottom);
   const nextAdvance = nextLine ? nextLine.top - top : null;
-  const lineHeight = !italic && nextAdvance && nextAdvance <= (bottom - top + 1) * 1.6
-    ? nextAdvance : advances.length ? advances[Math.floor((advances.length - 1) * .25)] : null;
+  // A one-line paragraph ("Flying", "Vigilance, reach") is followed by the
+  // paragraph gap, which passes the 1.6x test on loosely leaded printings and
+  // set every line a third further apart than printed, running the last line
+  // onto the P/T plaque. That gap lengthens the advance by a quarter or more;
+  // a first advance within a pixel or two of the repeated one (which also
+  // counts the flavor's tighter lines) is the leading itself.
+  const repeatedAdvance = advances.length ? advances[Math.floor((advances.length - 1) * .25)] : null;
+  const firstAdvance = !italic && nextAdvance && nextAdvance <= (bottom - top + 1) * 1.6 ? nextAdvance : null;
+  const lineHeight = firstAdvance && repeatedAdvance && firstAdvance > repeatedAdvance * 1.12 ? repeatedAdvance
+    : firstAdvance || repeatedAdvance;
   let left = scan.width, right = 0;
   for (let py = top; py <= bottom; py++) for (let px = 0; px < scan.width; px++) if (ink[py * scan.width + px]) {
     left = Math.min(left, px); right = Math.max(right, px);
@@ -516,14 +524,14 @@ export function rulesBottomEdge({ data, width, height }) {
   return { x: left.x - 3, y: best.y - 5, width: right.x - left.x + 7, height: 10, corner: 12 };
 }
 
-export function detectPanelBounds({data, width, height}, section) {
+export function detectPanelBounds({data, width, height}, section, {typePanel = null} = {}) {
   const regions = {
     title: {top: [.043, .06], bottom: [.095, .118], sides: [.063, .085]},
     type: {top: [.56, .58], bottom: [.598, .628], sides: [.578, .60]},
     rules: {top: [.593, .65], bottom: [.855, .935], sides: [.66, .84]},
   };
   const ranges = regions[section];
-  if (section === 'rules' && classifyTypePanel({data,width,height}).kind === 'panel') ranges.top = [.615, .65];
+  if (section === 'rules' && (typePanel ?? classifyTypePanel({data,width,height}).kind) === 'panel') ranges.top = [.615, .65];
   if (!ranges) return null;
   const difference = (x1,y1,x2,y2) => {
     const a = (y1 * width + x1) * 4, b = (y2 * width + x2) * 4;
@@ -544,6 +552,7 @@ export function detectPanelBounds({data, width, height}, section) {
   };
   const vertical = (right, matchingLeft = null) => {
     let best = null;
+    const candidates = [];
     for (let offset = Math.floor(width * .057); offset <= width * .125; offset++) {
       if (matchingLeft && Math.abs(offset - matchingLeft.position) > 10) continue;
       const x = right ? width - 1 - offset : offset;
@@ -553,9 +562,25 @@ export function detectPanelBounds({data, width, height}, section) {
       });
       const support = changes.filter(v => v > 24).length / changes.length;
       const score = changes.reduce((n,v) => n + Math.min(v,120),0) / changes.length;
+      if (support >= .65) candidates.push({offset, position:x, score});
       if (support >= .65 && (!best || score > best.score)) best = {position:x,score};
     }
-    return best;
+    if (section !== 'rules' || !best) return best;
+    // Retro frames draw the rules box inside a second, equally strong rail:
+    // the card's outer border (Jolting Merfolk: offsets 28 and 51 both score
+    // the maximum). The text panel is the enclosure nearest the text, so take
+    // the innermost run of adjacent edges that is as strong as the best one,
+    // and the first maximum inside that run (a bevel is several columns wide).
+    const runs = [];
+    for (const candidate of candidates) {
+      const run = runs.at(-1);
+      if (run && candidate.offset - run.at(-1).offset <= 2) run.push(candidate);
+      else runs.push([candidate]);
+    }
+    const strong = runs.filter(run => Math.max(...run.map(c => c.score)) >= best.score * .9).at(-1);
+    const peak = Math.max(...strong.map(c => c.score));
+    const inner = strong.find(c => c.score === peak);
+    return {position:inner.position, score:inner.score};
   };
   const top=horizontal(ranges.top), bottom=horizontal(ranges.bottom), left=vertical(false), right=vertical(true, left);
   if (!top || !bottom || !left || !right) return null;
@@ -808,9 +833,20 @@ export function detectStatsPanelBounds(scan, stats) {
   return {x:left-bevel,y:top-bevel,width:right-left+bevel*2+1,height:bottom-top+bevel*2+1};
 }
 
-export function measureFrameGeometry(scan,art,conventional=true) {
+// Pre-2003 (retro) frames never enclose the title or type line: both are
+// lettered straight onto the frame. Their dark inner border and swirl texture
+// can still read as panel rails, which misplaced every box on those cards
+// (Jolting Merfolk: rules top found on the first text line, type box on the
+// rules rim), so a known retro printing skips the panel classification.
+function framePanelKinds(scan, retro) {
+  return retro ? {title:'integrated', type:'integrated'}
+    : {title:classifyTitlePanel(scan).kind, type:classifyTypePanel(scan).kind};
+}
+
+export function measureFrameGeometry(scan,art,conventional=true,{retro=false}={}) {
   const stats=detectPrintedStats(scan);
-  let rules=detectPanelBounds(scan,'rules');
+  const panels=framePanelKinds(scan,retro);
+  let rules=detectPanelBounds(scan,'rules',{typePanel:panels.type});
   const style={'--printed-scan-width':scan.width, '--printed-scan-height':scan.height};
   if(stats) {
     // Place the center relative to the rules box, retaining the original
@@ -827,7 +863,7 @@ export function measureFrameGeometry(scan,art,conventional=true) {
   if(!conventional) return style;
   let artBox=matchArtBounds(scan,art);
   if(!artBox) return style;
-  if(classifyTitlePanel(scan).kind==='panel') {
+  if(panels.title==='panel') {
     // Crop matching can stop inside the illustration. Sustained straight dark
     // rails are stronger evidence for its actual left/right opening.
     const rail=(edge,right)=>{
@@ -869,12 +905,17 @@ export function measureFrameGeometry(scan,art,conventional=true) {
   };
   // Integrated bars use the printed glyph block plus breathing room when
   // there is no enclosing stroke to measure.
-  const titleEnclosure=classifyTitlePanel(scan).kind==='panel' ? (detectEnclosedPanelBounds(scan,'title') || detectPanelBounds(scan,'title')) : null;
+  const titleEnclosure=panels.title==='panel' ? (detectEnclosedPanelBounds(scan,'title') || detectPanelBounds(scan,'title')) : null;
   let title=titleEnclosure || glyphBox('title');
   style['--title-panel-kind']=titleEnclosure?'panel':'integrated';
+  style['--type-panel-kind']=panels.type;
   if(title && title.y+title.height>artBox.y && title.y+title.height-artBox.y<=8)
     title={...title,height:artBox.y-title.y};
-  const type=detectEnclosedPanelBounds(scan,'type') || detectPanelBounds(scan,'type') || glyphBox('type');
+  // A retro type line is lettering on the frame with no bar around it, so its
+  // box is the lettering itself; frame rails there sit wherever the swirl
+  // texture happens to contrast and can cut the capitals off.
+  const type=retro ? (glyphBox('type') || detectPanelBounds(scan,'type'))
+    : detectEnclosedPanelBounds(scan,'type') || detectPanelBounds(scan,'type') || glyphBox('type');
   // A shared type/rules edge can be detected on both sides of its bevel.
   // Allocate that overlap to the type bar instead of rejecting both boxes.
   if (rules && type && rules.y < type.y + type.height
@@ -895,7 +936,7 @@ export function measureFrameGeometry(scan,art,conventional=true) {
     const titleLeft=Math.min(artBox.x,title.x-4);
     const titleBox = titleEnclosure ? title : {...title, x:titleLeft, width:artBox.x+artBox.width-titleLeft};
     const typeLeft=Math.min(rules.x,type.x-4);
-    const typeBox = classifyTypePanel(scan).kind === 'panel' ? type : {...type, x:typeLeft, width:rules.x+rules.width-typeLeft};
+    const typeBox = panels.type === 'panel' ? type : {...type, x:typeLeft, width:rules.x+rules.width-typeLeft};
     const boxes = {title:titleBox, type:typeBox, rules, art:artBox};
     style['--printed-box-sizing'] = 'measured';
     style['--printed-layout'] = JSON.stringify(boxes);
@@ -1058,12 +1099,12 @@ export async function sampleCardFramePixels({fullScan, artScan, symbolScan, icon
   // replacement frame. Whatever it finds is kept: a failed mask still places
   // its containers over the printing from these regions.
   const future = printing?.frame === 'future';
-  const style = future ? futureFrameGeometry(fullScan) : measureFrameGeometry(fullScan, artScan, true);
+  const style = future ? futureFrameGeometry(fullScan) : measureFrameGeometry(fullScan, artScan, true, {retro: typography?.era === 'retro'});
   const fallback = reason => placedFrameStyle(style, fullScan, printing, reason);
   if (layoutGap) return fallback(layoutGap);
   if (!typography || !printing) return fallback('printing-metadata');
   if (!style['--printed-layout']) return fallback(!matchArtBounds(fullScan,artScan) ? 'art-registration' : 'text-regions');
-  const titlePanel = future ? {kind:'integrated'} : {kind:style['--title-panel-kind'] || classifyTitlePanel(fullScan).kind}, typePanel = future ? {kind:'integrated'} : classifyTypePanel(fullScan);
+  const titlePanel = future ? {kind:'integrated'} : {kind:style['--title-panel-kind'] || classifyTitlePanel(fullScan).kind}, typePanel = future ? {kind:'integrated'} : {kind:style['--type-panel-kind'] || classifyTypePanel(fullScan).kind};
   style['--title-panel-kind'] = titlePanel.kind;
   style['--type-panel-kind'] = typePanel.kind;
   const measuredBoxes = JSON.parse(style['--printed-layout']);
@@ -1173,7 +1214,15 @@ export async function sampleCardFramePixels({fullScan, artScan, symbolScan, icon
         const metrics = ctx.measureText(content);
         const inkWidth = metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight;
         const inkHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
-        const size = Math.min(bounds.width / inkWidth, bounds.height / inkHeight) * 100;
+        // Width is the sharper measure, but only of the words the printing
+        // actually shows. Oracle updates rewrite type lines (Bola Warrior
+        // prints "Creature — Spellshaper", its Oracle line adds Human and
+        // Warrior), and fitting the longer line's width into the printed one
+        // shrank the type to half its printed size. When the two readings
+        // disagree that much the text differs, so the glyph height gives the
+        // printed size and the single-line fitter narrows the longer line.
+        const widthSize = bounds.width / inkWidth, heightSize = bounds.height / inkHeight;
+        const size = (section === 'type' && widthSize < heightSize * .8 ? heightSize : Math.min(widthSize, heightSize)) * 100;
         if (!Number.isFinite(size) || size < 10 || size > 40) continue;
         style[`--printed-${section}-font-size`] = `${size / fullScan.width * 100}cqw`;
         style[`--printed-${section}-text-bounds`] = JSON.stringify(bounds);

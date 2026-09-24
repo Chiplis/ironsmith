@@ -256,7 +256,7 @@ export function usePeerLobby({
   Object.assign(servicesRef.current, trustedSequencer);
 
   const messaging = usePeerLobbyMessaging(peerLobbyBase, servicesRef);
-  const { sendLobbyChat, broadcastLobbyState, createLobby, joinLobby, readyForRematch, startHostedMatch, startRematchSideboarding, updateRematchDecks } = messaging;
+  const { sendLobbyChat, broadcastLobbyState, createLobby, joinLobby, readyForRematch, startHostedMatch, startRematch, startRematchSideboarding, updateRematchDeck } = messaging;
   Object.assign(servicesRef.current, messaging);
 
   const updateLobbyDeck = useCallback(
@@ -2059,8 +2059,9 @@ export function usePeerLobby({
     startHostedMatch,
     updateLobbyDeck,
     startRematchSideboarding,
-    updateRematchDecks,
+    updateRematchDeck,
     readyForRematch,
+    startRematch,
     submitMultiplayerCommand,
     submitMultiplayerAddCardCheat,
     exportAuditTranscript,

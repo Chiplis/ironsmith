@@ -348,10 +348,14 @@ pub fn parse_become_clause(
         {
             target = TargetAst::Source(span_from_tokens(subject_tokens));
         }
-        let attachment_filter = if aura.attachment_you_control {
+        let enchant_words = crate::lexer::parser_token_word_refs(aura.enchant_filter_tokens);
+        let attachment_filter = if enchant_words == ["creature"] {
+            ObjectFilter::creature()
+        } else if aura.attachment_you_control && enchant_words == ["creature", "you", "control"] {
             ObjectFilter::creature().you_control()
         } else {
-            ObjectFilter::creature()
+            // "enchant creature put onto the battlefield with Necromancy"
+            crate::object_filters::parse_object_filter(aura.enchant_filter_tokens, false)?
         };
         let quote_indices = become_body_tokens
             .iter()

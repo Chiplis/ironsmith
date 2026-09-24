@@ -17,6 +17,10 @@ fn chosen_type_reference<'a>(input: &mut LexStream<'a>) -> WResult<ChosenTypeRef
         alt((
             primitives::phrase(&["of", "the", "chosen", "type"])
                 .value(ChosenTypeReferenceSurface::ChosenType),
+            // "each land of the first chosen type" (Vision Charm) refers to the
+            // land type chosen before the second (basic land type) choice.
+            primitives::phrase(&["of", "the", "first", "chosen", "type"])
+                .value(ChosenTypeReferenceSurface::ChosenType),
             primitives::phrase(&["of", "chosen", "type"])
                 .value(ChosenTypeReferenceSurface::ChosenType),
             primitives::phrase(&["of", "that", "type"]).value(ChosenTypeReferenceSurface::ThatType),

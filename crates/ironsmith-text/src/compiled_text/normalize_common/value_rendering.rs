@@ -3842,6 +3842,58 @@ pub(crate) fn describe_compact_destroy_color_choice(effect: &Effect) -> Option<S
     ))
 }
 
+/// Five single-color prevention shields chosen on resolution:
+/// "Prevent all damage that sources of the color of your choice would deal
+/// this turn."
+pub(crate) fn describe_compact_prevent_damage_color_choice(effect: &Effect) -> Option<String> {
+    let choose_mode = effect.downcast_ref::<crate::effects::ChooseModeEffect>()?;
+    if choose_mode.min_choose_count != choose_mode.choose_count
+        || !matches!(choose_mode.choose_count, Value::Fixed(1))
+        || choose_mode.modes.len() != 5
+    {
+        return None;
+    }
+    let mut seen_colors = Vec::new();
+    for mode in &choose_mode.modes {
+        let [effect] = mode.effects.as_slice() else {
+            return None;
+        };
+        let prevent = effect.downcast_ref::<crate::effects::PreventAllDamageEffect>()?;
+        if !matches!(prevent.target, crate::prevention::PreventionTarget::All)
+            || !matches!(prevent.until, crate::effect::Until::EndOfTurn)
+            || prevent.source_of_your_choice
+            || prevent.source_target.is_some()
+            || prevent.excluded_source_target.is_some()
+            || prevent.protect_source
+        {
+            return None;
+        }
+        let mut damage_filter = prevent.damage_filter.clone();
+        let source = damage_filter.from_source.take()?;
+        if damage_filter != crate::prevention::DamageFilter::all() {
+            return None;
+        }
+        let colors = source.colors?;
+        let color = crate::color::Color::ALL
+            .iter()
+            .copied()
+            .find(|candidate| colors.contains(*candidate))?;
+        let mut residual = source.clone();
+        residual.colors = None;
+        if colors.count() != 1 || residual != crate::target::ObjectFilter::default() {
+            return None;
+        }
+        if seen_colors.contains(&color) {
+            return None;
+        }
+        seen_colors.push(color);
+    }
+    Some(
+        "Prevent all damage that sources of the color of your choice would deal this turn."
+            .to_string(),
+    )
+}
+
 pub(crate) fn describe_compact_return_to_hand_color_choice(effect: &Effect) -> Option<String> {
     let choose_mode = effect.downcast_ref::<crate::effects::ChooseModeEffect>()?;
     if choose_mode.min_choose_count != choose_mode.choose_count

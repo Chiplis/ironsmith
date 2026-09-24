@@ -214,7 +214,15 @@ impl EffectExecutor for TaggedEffect {
     }
 
     fn target_reuse_policy(&self) -> TargetReusePolicy {
-        if self.effect.0.get_target_spec().is_some() {
+        // A tagged action declares its own target slot. A composite (such as
+        // a trailing-if conditional) only forwards a nested action's target,
+        // so it keeps that composite's policy and can consume the target its
+        // prelude already declared.
+        let mut forwards_child_target = false;
+        self.effect
+            .0
+            .visit_child_effects(&mut |_| forwards_child_target = true);
+        if self.effect.0.get_target_spec().is_some() && !forwards_child_target {
             TargetReusePolicy::AlwaysDeclareNew
         } else {
             self.effect.0.target_reuse_policy()

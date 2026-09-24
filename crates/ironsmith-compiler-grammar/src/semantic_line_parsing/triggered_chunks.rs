@@ -62,6 +62,7 @@ pub(crate) fn apply_trigger_intro_surface(
         | TriggerSpec::ThisAttacksWhileSaddled
         | TriggerSpec::Attacks(_)
         | TriggerSpec::AttacksAndIsntBlocked(_)
+        | TriggerSpec::AttacksAndIsntBlockedOneOrMore(_)
         | TriggerSpec::AttacksWhileSaddled(_)
         | TriggerSpec::AttacksOneOrMore(_)
         | TriggerSpec::PlayersAttackedOneOrMore(_)

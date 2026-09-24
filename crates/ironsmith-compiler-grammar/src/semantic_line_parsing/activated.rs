@@ -211,6 +211,7 @@ fn bind_event_amounts_to_cost_x_in_effect(effect: &mut EffectAst) {
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
                 amount,
                 ..
@@ -243,6 +244,7 @@ fn effect_ast_is_mana_effect(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaColorsAmong { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddOneManaAnyColorAmong { .. })

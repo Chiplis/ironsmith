@@ -59,6 +59,12 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "AddManaOfAnyOneColorEffect" => {
             decode_as::<T, ironsmith_core::AddManaOfAnyOneColorEffect>(effect)
         }
+        "AddManaOfNotedTypeEffect" => {
+            decode_as::<T, ironsmith_core::AddManaOfNotedTypeEffect>(effect)
+        }
+        "NoteActivationManaTypeEffect" => {
+            decode_as::<T, ironsmith_core::NoteActivationManaTypeEffect>(effect)
+        }
         "AddManaOfChosenColorEffect" => {
             decode_as::<T, ironsmith_core::AddManaOfChosenColorEffect>(effect)
         }
@@ -180,7 +186,19 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
             decode_as::<T, ironsmith_core::DestroyNoRegenerationEffect>(effect)
         }
         "DetainEffect" => decode_as::<T, ironsmith_core::DetainEffect>(effect),
+        "ChooseNumberAtRandomEffect" => {
+            decode_as::<T, ironsmith_core::ChooseNumberAtRandomEffect>(effect)
+        }
+        "NextAdaptIgnoresCountersEffect" => {
+            decode_as::<T, ironsmith_core::NextAdaptIgnoresCountersEffect>(effect)
+        }
         "DevourEffect" => decode_as::<T, ironsmith_core::DevourEffect>(effect),
+        "ResolvesDespiteIllegalTargetsEffect" => {
+            decode_as::<T, ironsmith_core::ResolvesDespiteIllegalTargetsEffect>(effect)
+        }
+        "MayCastForMiracleCostEffect" => {
+            decode_as::<T, ironsmith_core::MayCastForMiracleCostEffect>(effect)
+        }
         "DirectionalAdjacentPlayerControlEffect" => {
             decode_as::<T, ironsmith_core::DirectionalAdjacentPlayerControlEffect>(effect)
         }

@@ -161,6 +161,11 @@ pub enum TriggerKind {
     AttacksAndIsntBlocked {
         filter: ObjectFilter,
     },
+    /// "one or more [filter] attack ... and aren't blocked": fires once per
+    /// attacking player when blockers are declared.
+    AttacksAndIsntBlockedOneOrMore {
+        filter: ObjectFilter,
+    },
     AttacksWhileSaddled {
         filter: ObjectFilter,
     },
@@ -432,6 +437,9 @@ pub enum TriggerKind {
         controller: PlayerFilter,
     },
     YouDrawCard,
+    /// Miracle's linked trigger: this card is drawn as its owner's first
+    /// card of the turn (CR 702.94a).
+    Miracle,
     PlayerDrawsCard {
         player: PlayerFilter,
     },
@@ -832,6 +840,12 @@ impl Trigger {
         Self::typed(
             "attacks_and_isnt_blocked",
             TriggerKind::AttacksAndIsntBlocked { filter },
+        )
+    }
+    pub fn attacks_and_isnt_blocked_one_or_more(filter: ObjectFilter) -> Self {
+        Self::typed(
+            "attacks_and_isnt_blocked_one_or_more",
+            TriggerKind::AttacksAndIsntBlockedOneOrMore { filter },
         )
     }
     pub fn attacks_while_saddled(filter: ObjectFilter) -> Self {
@@ -1541,6 +1555,9 @@ impl Trigger {
     }
     pub fn you_draw_card() -> Self {
         Self::typed("you_draw_card", TriggerKind::YouDrawCard)
+    }
+    pub fn miracle() -> Self {
+        Self::typed("miracle", TriggerKind::Miracle)
     }
     pub fn player_draws_card(player: PlayerFilter) -> Self {
         Self::typed("player_draws_card", TriggerKind::PlayerDrawsCard { player })

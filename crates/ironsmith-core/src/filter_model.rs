@@ -4235,8 +4235,18 @@ impl ObjectFilter {
                     }
                 }
                 TaggedOpbjectRelation::DifferentNameFromTagged => {
-                    post_noun_qualifiers
-                        .push("with a different name from those objects".to_string());
+                    if let Some(surface) = self.same_name_antecedent_surface() {
+                        let antecedent = if constraint.tag.as_str() == crate::SOURCE_OBJECT_TAG {
+                            surface.source_phrase()
+                        } else {
+                            surface.phrase()
+                        };
+                        post_noun_qualifiers
+                            .push(format!("with a different name than {antecedent}"));
+                    } else {
+                        post_noun_qualifiers
+                            .push("with a different name from those objects".to_string());
+                    }
                 }
                 TaggedOpbjectRelation::SameControllerAsTagged => {
                     post_noun_qualifiers.push("controlled by its controller".to_string());
@@ -4715,6 +4725,17 @@ impl ObjectFilter {
                         } else {
                             describe_stack_object_kind(kind)
                         }
+                    }
+                    Some(Zone::Graveyard)
+                    | Some(Zone::Hand)
+                    | Some(Zone::Library)
+                    | Some(Zone::Exile)
+                    | Some(Zone::Command)
+                    | Some(Zone::Ante)
+                    | Some(Zone::OutsideGame)
+                        if self.is_commander =>
+                    {
+                        "commander"
                     }
                     Some(Zone::Graveyard)
                     | Some(Zone::Hand)

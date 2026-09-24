@@ -230,6 +230,7 @@ pub enum ReplacementAction {
         name_override: Option<String>,
         added_colors: crate::color::ColorSet,
         added_card_types: Vec<CardType>,
+        removes_other_card_types: bool,
         added_supertypes: Vec<Supertype>,
         removed_supertypes: Vec<Supertype>,
         added_subtypes: Vec<Subtype>,

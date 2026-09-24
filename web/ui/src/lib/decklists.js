@@ -302,6 +302,22 @@ export function parseCommanderList(text) {
   return cards;
 }
 
+// The inverse of parseDeckList / parseSideboardList: "N Name" lines, first
+// seen order, with the sideboard under its header.
+export function deckListText(deck = [], sideboard = []) {
+  const lines = (cards) => {
+    const counts = new Map();
+    for (const card of cards || []) {
+      const name = String(card || "").trim();
+      if (name) counts.set(name, (counts.get(name) || 0) + 1);
+    }
+    return [...counts].map(([name, count]) => `${count} ${name}`);
+  };
+  const main = lines(deck);
+  const side = lines(sideboard);
+  return side.length ? [...main, "", "Sideboard", ...side].join("\n") : main.join("\n");
+}
+
 export function listSavedDeckPresets() {
   return readSavedDeckPresets();
 }

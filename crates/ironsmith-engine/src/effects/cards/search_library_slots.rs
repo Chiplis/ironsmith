@@ -44,10 +44,11 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
             begin_opposition_agent_search_control(game, chooser_id, search_override);
         let result = (|| -> Result<EffectOutcome, ExecutionError> {
             let search_viewer = chooser_id;
-            let library_cards = game
+            let mut library_cards = game
                 .player(player_id)
                 .map(|player| player.library.to_vec())
                 .unwrap_or_default();
+            game.restrict_library_search_candidates(chooser_id, &mut library_cards);
             view_hidden_candidate_objects(
                 game,
                 ctx,
@@ -98,6 +99,8 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                                 .collect(),
                             _ => player.library.to_vec(),
                         };
+                        let mut candidates = candidates;
+                        game.restrict_library_search_candidates(chooser_id, &mut candidates);
                         candidates
                             .into_iter()
                             .filter(|id| !already_chosen.contains(id))
