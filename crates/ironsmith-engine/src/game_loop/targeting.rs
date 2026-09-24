@@ -3224,6 +3224,11 @@ pub fn player_matches_filter_with_combat(
             player_matches_filter_with_combat(player_id, base, game, controller, combat)
                 && game.has_max_speed(player_id) == *has_max_speed
         }
+        PlayerFilter::OpponentOf(base) => game.players.iter().any(|other| {
+            other.is_in_game()
+                && game.are_opponents(other.id, player_id)
+                && player_matches_filter_with_combat(other.id, base, game, controller, combat)
+        }),
         PlayerFilter::ChosenPlayer => false,
         PlayerFilter::TaggedPlayer(_) => false,
         PlayerFilter::IteratedPlayer => {
@@ -3624,6 +3629,7 @@ fn specialize_target_player_relation(filter: &mut crate::target::PlayerFilter, p
         | PlayerFilter::LostLifeThisTurn { base: inner }
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { base: inner, .. }
         | PlayerFilter::HasMoreLifeThanYou { base: inner }
+        | PlayerFilter::OpponentOf(inner)
         | PlayerFilter::MaxSpeed { base: inner, .. } => {
             specialize_target_player_relation(inner, player);
         }

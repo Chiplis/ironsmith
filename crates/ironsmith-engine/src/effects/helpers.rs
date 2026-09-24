@@ -1299,6 +1299,7 @@ pub fn resolve_player_filter(
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
+        | PlayerFilter::OpponentOf(_)
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::MostCardsInHand => {
             let filter_ctx = ctx.filter_context(game);
@@ -2954,7 +2955,8 @@ pub(crate) fn resolve_player_filter_to_list(
             .filter(|player| player_filter_matches_game(filter, player.id, game, _filter_ctx))
             .map(|player| player.id)
             .collect()),
-        PlayerFilter::MaxSpeed { .. } => Ok(game
+        PlayerFilter::OpponentOf(_)
+        | PlayerFilter::MaxSpeed { .. } => Ok(game
             .players
             .iter()
             .filter(|player| player.is_in_game())

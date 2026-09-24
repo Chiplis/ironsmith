@@ -1005,7 +1005,8 @@ where
                     "That player may".to_string()
                 }
                 PlayerFilter::ControlsMost { .. } => "That player may".to_string(),
-                PlayerFilter::MaxSpeed { .. } => "That player may".to_string(),
+                PlayerFilter::OpponentOf(_)
+                | PlayerFilter::MaxSpeed { .. } => "That player may".to_string(),
                 PlayerFilter::ChosenPlayer => "The chosen player may".to_string(),
                 PlayerFilter::TaggedPlayer(_)
                 | PlayerFilter::IteratedPlayer

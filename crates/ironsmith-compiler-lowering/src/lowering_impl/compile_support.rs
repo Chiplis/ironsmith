@@ -710,6 +710,7 @@ fn bind_relative_iterated_player_filter_to_player_filter(
         }
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
+        | PlayerFilter::OpponentOf(base)
         | PlayerFilter::MaxSpeed { base, .. }
         | PlayerFilter::WasDealtDamageBySourceThisGame { base }
         | PlayerFilter::LostLifeThisTurn { base } => {

@@ -87,6 +87,7 @@ fn player_filter_references_target_player(filter: &crate::target::PlayerFilter) 
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
         | PlayerFilter::LostLifeThisTurn { base }
+        | PlayerFilter::OpponentOf(base)
         | PlayerFilter::MaxSpeed { base, .. } => player_filter_references_target_player(base),
         _ => false,
     }

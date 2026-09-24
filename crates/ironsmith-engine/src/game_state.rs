@@ -4634,6 +4634,7 @@ impl GameState {
             } => true,
             crate::target::PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
             | crate::target::PlayerFilter::HasMoreLifeThanYou { base }
+            | crate::target::PlayerFilter::OpponentOf(base)
             | crate::target::PlayerFilter::MaxSpeed { base, .. }
             | crate::target::PlayerFilter::Target(base) => {
                 Self::player_filter_is_turn_context_sensitive(base)

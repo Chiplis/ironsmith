@@ -1156,6 +1156,7 @@ pub fn player_filter_references_tag(filter: &PlayerFilter, tag: &str) -> bool {
         | PlayerFilter::AliasedTarget(inner)
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { base: inner, .. }
         | PlayerFilter::HasMoreLifeThanYou { base: inner }
+        | PlayerFilter::OpponentOf(inner)
         | PlayerFilter::MaxSpeed { base: inner, .. }
         | PlayerFilter::WasDealtDamageBySourceThisGame { base: inner }
         | PlayerFilter::LostLifeThisTurn { base: inner } => {

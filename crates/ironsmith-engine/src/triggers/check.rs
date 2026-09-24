@@ -3418,6 +3418,11 @@ pub fn player_filter_matches_with_context(
             player_filter_matches_with_context(base, player, controller, game, defending_player)
                 && game.has_max_speed(player) == *has_max_speed
         }
+        PlayerFilter::OpponentOf(base) => game.players.iter().any(|other| {
+            other.is_in_game()
+                && game.are_opponents(other.id, player)
+                && player_filter_matches_with_context(base, other.id, controller, game, defending_player)
+        }),
         PlayerFilter::CastCardTypeThisTurn(card_type) => game
             .turn_store
             .turn_history

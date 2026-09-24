@@ -134,6 +134,7 @@ fn lock_target_player_filter(filter: &mut crate::target::PlayerFilter, player: P
         crate::target::PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | crate::target::PlayerFilter::HasMoreLifeThanYou { base }
         | crate::target::PlayerFilter::LostLifeThisTurn { base }
+        | crate::target::PlayerFilter::OpponentOf(base)
         | crate::target::PlayerFilter::MaxSpeed { base, .. } => {
             lock_target_player_filter(base, player);
         }
