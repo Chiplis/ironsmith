@@ -902,6 +902,35 @@ impl StaticAbilityKind for UntapStepLimit {
     }
 }
 
+/// "Prevent all damage that would be dealt to you."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PreventAllDamageToYou;
+
+impl StaticAbilityKind for PreventAllDamageToYou {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventAllDamageToYou
+    }
+
+    fn display(&self) -> String {
+        "Prevent all damage that would be dealt to you".to_string()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            crate::events::damage::matchers::PreventableDamageToPlayerMatcher {
+                player_filter: PlayerFilter::You,
+            },
+            ReplacementAction::PreventDamage,
+        ))
+    }
+}
+
 /// "If an opponent would search a library, that player searches the top four
 /// cards of that library instead." (Aven Mindcensor)
 #[derive(Debug, Clone, PartialEq)]

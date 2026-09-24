@@ -644,6 +644,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         count: u32,
         display: String,
     },
+    /// "Prevent all damage that would be dealt to you."
+    PreventAllDamageToYou,
     FirstEquipCostAlternative(String),
     ControlAttachedPermanent(String),
     SetColors {
@@ -1914,6 +1916,7 @@ where
                 count,
                 display,
             },
+            StaticAbilityPayload::PreventAllDamageToYou => StaticAbilityPayload::PreventAllDamageToYou,
             StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep { filter, display } => {
                 StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep { filter, display }
             }
@@ -4404,6 +4407,13 @@ impl<
                 source_filter,
                 display,
             },
+        }
+    }
+    pub fn prevent_all_damage_to_you() -> Self {
+        Self {
+            id: Some(StaticAbilityId::PreventAllDamageToYou),
+            label: "Prevent all damage that would be dealt to you".to_string(),
+            payload: StaticAbilityPayload::PreventAllDamageToYou,
         }
     }
     pub fn search_limited_to_top_cards(

@@ -3199,6 +3199,17 @@ pub fn parse_untap_during_each_other_players_untap_step_line(
     ))
 }
 
+/// "Prevent all damage that would be dealt to you." (Solitary Confinement)
+pub fn parse_prevent_all_damage_to_you_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    if words.as_slice() != ["prevent", "all", "damage", "that", "would", "be", "dealt", "to", "you"] {
+        return Ok(None);
+    }
+    Ok(Some(StaticAbility::prevent_all_damage_to_you()))
+}
+
 /// "If an opponent would search a library, that player searches the top four
 /// cards of that library instead." (Aven Mindcensor)
 pub fn parse_search_limited_to_top_cards_line(

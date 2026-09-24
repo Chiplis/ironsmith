@@ -603,6 +603,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "have"),
         ],
+        "parse_prevent_all_damage_to_you_line" => vec![
+            StaticAbilityLineHeadHint::Pair("prevent", "all"),
+        ],
         "parse_search_limited_to_top_cards_line" => vec![
             StaticAbilityLineHeadHint::Pair("if", "an"),
             StaticAbilityLineHeadHint::Pair("if", "a"),
@@ -1487,6 +1490,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_untap_during_each_other_players_untap_step_line),
         single_static_ability_ast_rule!(parse_untap_step_limit_line),
         single_static_ability_ast_rule!(parse_search_limited_to_top_cards_line),
+        single_static_ability_ast_rule!(parse_prevent_all_damage_to_you_line),
         single_static_ability_ast_passthrough_rule!(parse_doesnt_untap_during_untap_step_line),
         multi_static_ability_ast_rule!(parse_attached_restrictions_with_ignore_special_action_line),
         multi_static_ability_ast_rule!(parse_attached_is_goaded_line),
