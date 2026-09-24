@@ -58,6 +58,7 @@ fn grant_usage_limit_allows(
                     .grant_cast_uses_this_turn
                     .contains(&(player, source_id))
         }
+        Some(crate::grant::GrantUsageLimit::DuringYourTurns) => game.is_active_player(player),
         None => true,
     }
 }

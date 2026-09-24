@@ -129,6 +129,9 @@ impl<C> DerivedAlternativeCast<C> {
 pub enum GrantUsageLimit {
     OnceEachTurn,
     OnceDuringEachOfYourTurns,
+    /// Any number of times, but only during the beneficiary's own turns
+    /// ("During your turn, you may play ...").
+    DuringYourTurns,
 }
 
 /// Oracle-facing surface for a persistent permission tied to cards exiled by
@@ -443,6 +446,20 @@ pub struct GrantSpec<SA, E, C, Cond> {
     pub cast_this_way_filter: Option<ObjectFilter>,
     /// Presentation metadata for a persistent source-linked exile grant.
     pub source_exiled_surface: Option<SourceExiledGrantSurface>,
+}
+
+/// A filter naming exactly the cards exiled with the granting source (any
+/// card type), as opposed to a narrower spell subset of that pool.
+fn is_source_exiled_card_pool(filter: &ObjectFilter) -> bool {
+    let mut normalized = filter.clone();
+    normalized.zone = None;
+    let Some(index) = normalized.tagged_constraints.iter().position(|constraint| {
+        constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+    }) else {
+        return false;
+    };
+    normalized.tagged_constraints.remove(index);
+    normalized == ObjectFilter::default()
 }
 
 impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
@@ -1283,6 +1300,10 @@ where
         ) && let Some(rest) = may_prefix.strip_prefix("You may")
         {
             may_prefix = format!("Once during each of your turns, you may{rest}");
+        } else if matches!(self.usage_limit, Some(GrantUsageLimit::DuringYourTurns))
+            && let Some(rest) = may_prefix.strip_prefix("You may")
+        {
+            may_prefix = format!("During your turn, you may{rest}");
         }
         if matches!(self.grantable, Grantable::PlayFrom) && self.zone == Zone::OutsideGame
             && self.filter == ObjectFilter::default().owned_by(PlayerFilter::You)
@@ -1380,6 +1401,19 @@ where
         {
             return format!(
                 "{may_prefix} cast this card from exile{}",
+                cast_this_way_suffix()
+            );
+        }
+        // "You may play cards exiled with <source>": the pool admits lands,
+        // so the permission is to play, not only to cast.
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Exile
+            && let Some(surface) = self.source_exiled_surface.as_ref()
+            && is_source_exiled_card_pool(&self.filter)
+        {
+            return format!(
+                "{may_prefix} play cards exiled with {}{}",
+                surface.source.display_text(),
                 cast_this_way_suffix()
             );
         }
@@ -1682,6 +1716,11 @@ where
                 return format!(
                     "{prefix}If you cast a spell this way, you pay life equal to its mana value rather than paying its mana cost"
                 );
+            }
+            // The rider of a source-exiled play permission; its availability
+            // already follows that permission.
+            if *zone == Zone::Exile && self.source_exiled_surface.is_some() {
+                return "If you cast a spell this way, pay life equal to its mana value rather than pay its mana cost".to_string();
             }
             let filter_desc = castable_filter_description(&self.filter);
             return format!(

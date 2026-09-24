@@ -216,7 +216,10 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                     condition.clone().or_else(|| {
                         matches!(
                             usage_limit,
-                            Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns)
+                            Some(
+                                crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns
+                                    | crate::grant::GrantUsageLimit::DuringYourTurns
+                            )
                         )
                         .then_some(crate::static_abilities::ThisSpellCostCondition::YourTurn)
                     }),

@@ -2694,6 +2694,17 @@ impl ExileToExileInsteadOfGraveyard {
 
     fn replacement_subject_phrase(&self) -> String {
         if self.filter.has_explicit_card_noun()
+            && self.filter.controller == Some(PlayerFilter::NotYou)
+        {
+            let mut normalized = self.filter.clone();
+            normalized.controller = None;
+            let mut bare_card = ObjectFilter::default();
+            bare_card.set_explicit_card_noun(true);
+            if normalized == bare_card {
+                return "a card you didn't control".to_string();
+            }
+        }
+        if self.filter.has_explicit_card_noun()
             && let [marker] = self.filter.ability_markers.as_slice()
         {
             let mut normalized = self.filter.clone();
@@ -2741,11 +2752,13 @@ impl StaticAbilityKind for ExileToExileInsteadOfGraveyard {
         if filter.owner.is_none() {
             filter.owner = Some(self.graveyard_owner.clone());
         }
+        // The card is exiled by this source, so linked abilities can find
+        // it as "exiled with" it (CR 607.2a).
         Some(ReplacementEffect::with_matcher(
             source,
             controller,
             WouldGoToGraveyardFromAnywhereMatcher::new(filter, self.exclude_cycled),
-            ReplacementAction::ChangeDestination(Zone::Exile),
+            ReplacementAction::ExileWithSourceLink,
         ))
     }
 }
