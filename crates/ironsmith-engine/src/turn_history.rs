@@ -832,6 +832,38 @@ impl TurnHistory {
         })
     }
 
+    /// Prowl's check (CR 702.76a): combat damage to a player this turn from a
+    /// source `dealer` controlled that, at the time, had any of `subtypes`.
+    pub fn player_dealt_combat_damage_to_player_with_any_subtype_this_turn(
+        &self,
+        dealer: PlayerId,
+        subtypes: &[Subtype],
+    ) -> bool {
+        self.projected_records().any(|record| {
+            let Some(event) = record.event.downcast::<DamageEvent>() else {
+                return false;
+            };
+            if !event.is_combat || event.amount == 0 {
+                return false;
+            }
+            if !matches!(event.target, crate::events::DamageTarget::Player(_)) {
+                return false;
+            }
+
+            record
+                .source_snapshot
+                .as_ref()
+                .or(record.object_snapshot.as_ref())
+                .is_some_and(|snapshot| {
+                    snapshot.controller == dealer
+                        && snapshot
+                            .subtypes
+                            .iter()
+                            .any(|subtype| subtypes.contains(subtype))
+                })
+        })
+    }
+
     pub fn player_dealt_combat_damage_to_player_with_subtype_or_commander_this_turn(
         &self,
         dealer: PlayerId,
@@ -1105,6 +1137,28 @@ impl TurnHistory {
             order = order.saturating_add(1);
             if event.spell == spell {
                 return Some(order);
+            }
+        }
+        None
+    }
+
+    /// Spells cast this turn by any of `players` strictly before `spell` was
+    /// cast (CR 702.40a storm count). `None` when `spell` wasn't cast this turn.
+    pub fn spells_cast_before_spell_for_players(
+        &self,
+        spell: ObjectId,
+        players: &[PlayerId],
+    ) -> Option<u32> {
+        let mut count = 0u32;
+        for record in self.projected_records() {
+            let Some(event) = record.event.downcast::<SpellCastEvent>() else {
+                continue;
+            };
+            if event.spell == spell {
+                return Some(count);
+            }
+            if players.contains(&event.caster) {
+                count = count.saturating_add(1);
             }
         }
         None

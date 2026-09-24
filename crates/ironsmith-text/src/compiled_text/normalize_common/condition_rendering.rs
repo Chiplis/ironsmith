@@ -3303,6 +3303,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::TriggeringObjectHadToAttackThisCombat => {
             "that creature had to attack this combat".to_string()
         }
+        Condition::SourceClassLevelAtLeast(level) => format!("this Class is level {level} or higher"),
+        Condition::SoulbondPairingPossible => "you control both this creature and that creature and both are unpaired".to_string(),
+        Condition::EvolveEnteringCreatureIsLarger => "that creature's power is greater than this creature's power and/or that creature's toughness is greater than this creature's toughness".to_string(),
         Condition::TriggeringObjectHadCounters {
             counter_type,
             min_count,
@@ -4000,6 +4003,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::SourceCameUnderYourControlThisTurn => {
             "this creature came under your control this turn".to_string()
+        }
+        Condition::SourceCameUnderYourControlSinceYourLastUpkeep => {
+            "this permanent came under your control since the beginning of your last upkeep"
+                .to_string()
         }
         Condition::SourceAttackedOrBlockedThisTurn => {
             "this creature attacked or blocked this turn".to_string()

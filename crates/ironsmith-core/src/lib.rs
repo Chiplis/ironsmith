@@ -175,6 +175,7 @@ pub use effect::{
     ShuffleLibraryEffect, ShuffleObjectsIntoLibraryEffect, SkipCombatPhasesEffect,
     SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipMainPhasesThisTurnEffect,
     SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SneakCostEffect, SolveCaseEffect,
+    SetClassLevelEffect,
     SoulbondPairEffect, SupportEffect, SurveilEffect, SuspectEffect, TagAttachedToSourceEffect,
     TagMatchingObjectsEffect, TagOtherBlockParticipantEffect, TagTriggeringAttackerEffect,
     TagTriggeringBlockersEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,

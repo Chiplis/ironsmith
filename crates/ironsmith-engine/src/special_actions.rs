@@ -144,12 +144,36 @@ pub fn turn_face_up_cost_display(
     Some(adjusted_turn_face_up_cost(game, controller, permanent_id, &spec).display())
 }
 
-pub fn room_unlock_cost_display(game: &GameState, room_id: ObjectId) -> Option<String> {
+pub fn room_unlock_cost_display(
+    game: &GameState,
+    room_id: ObjectId,
+    door: RoomDoor,
+) -> Option<String> {
     let room = game.object(room_id)?;
     let controller = game.controller_of(room);
-    adjusted_room_unlock_cost(game, controller, room_id)
+    adjusted_room_unlock_cost(game, controller, room_id, door)
         .ok()
         .map(|cost| cost.display())
+}
+
+/// Name of the half a door unlock applies to, for action labels.
+pub fn room_door_name(game: &GameState, room_id: ObjectId, door: RoomDoor) -> Option<String> {
+    match door {
+        RoomDoor::Current => game.object(room_id).map(|room| room.name.to_string()),
+        RoomDoor::Linked => room_locked_door_definition(game, room_id).map(|def| def.card.name),
+    }
+}
+
+/// The doors of a Room that are currently locked.
+pub fn locked_room_doors(game: &GameState, room_id: ObjectId) -> Vec<RoomDoor> {
+    if !game.room_has_locked_door(room_id) {
+        return Vec::new();
+    }
+    if game.room_has_no_unlocked_door(room_id) {
+        vec![RoomDoor::Current, RoomDoor::Linked]
+    } else {
+        vec![RoomDoor::Linked]
+    }
 }
 
 /// Oracle rendering of the mana cost paid to ignore a source-wide static
@@ -180,7 +204,23 @@ fn room_locked_door_definition(
     game.linked_face_definition_by_name_or_id(room.other_face_name.as_deref(), room.other_face)
 }
 
-fn room_unlock_cost(game: &GameState, room_id: ObjectId) -> Option<crate::cost::TotalCost> {
+fn room_unlock_cost(
+    game: &GameState,
+    room_id: ObjectId,
+    door: RoomDoor,
+) -> Option<crate::cost::TotalCost> {
+    if !locked_room_doors(game, room_id).contains(&door) {
+        return None;
+    }
+    // CR 709.5e: the unlock cost is the mana cost of the locked half.
+    if door == RoomDoor::Current {
+        return game
+            .object(room_id)?
+            .mana_cost
+            .as_deref()
+            .cloned()
+            .map(crate::cost::TotalCost::mana);
+    }
     let locked_door = room_locked_door_definition(game, room_id)?;
     locked_door.card.mana_cost.map(crate::cost::TotalCost::mana)
 }
@@ -405,6 +445,18 @@ fn has_sorcery_speed_special_action_timing(
     Ok(())
 }
 
+/// Which door of a Room an unlock applies to. A Room is represented as its
+/// current half plus a linked other half.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum RoomDoor {
+    /// The linked other half (the only locked door once one is unlocked).
+    #[default]
+    Linked,
+    /// The permanent's current half; locked only when the Room entered with
+    /// neither door unlocked (CR 709.5d).
+    Current,
+}
+
 /// A special action that can be performed without using the stack.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SpecialAction {
@@ -432,8 +484,8 @@ pub enum SpecialAction {
         ability_index: usize,
     },
 
-    /// Unlock the locked linked face of a split Room permanent.
-    UnlockRoomDoor { room_id: ObjectId },
+    /// Unlock a locked door of a split Room permanent (CR 709.5e).
+    UnlockRoomDoor { room_id: ObjectId, door: RoomDoor },
 
     /// Roll the planar die during the Planechase variant (CR 901.9).
     RollPlanarDie,
@@ -611,7 +663,9 @@ pub fn can_perform_check(
             permanent_id,
             ability_index,
         } => can_activate_mana_ability_check(game, player, *permanent_id, *ability_index),
-        SpecialAction::UnlockRoomDoor { room_id } => can_unlock_room_door(game, player, *room_id),
+        SpecialAction::UnlockRoomDoor { room_id, door } => {
+            can_unlock_room_door(game, player, *room_id, *door)
+        }
         SpecialAction::RollPlanarDie => can_roll_planar_die(game, player),
         SpecialAction::TurnConspiracyFaceUp { conspiracy_id } => {
             can_turn_conspiracy_face_up(game, player, *conspiracy_id)
@@ -692,8 +746,8 @@ fn finish_special_action(
             ability_index,
             &mut *decision_maker,
         ),
-        SpecialAction::UnlockRoomDoor { room_id } => {
-            perform_unlock_room_door(game, player, room_id, &mut *decision_maker)
+        SpecialAction::UnlockRoomDoor { room_id, door } => {
+            perform_unlock_room_door(game, player, room_id, door, &mut *decision_maker)
         }
         SpecialAction::RollPlanarDie => perform_roll_planar_die(game, player),
         SpecialAction::TurnConspiracyFaceUp { conspiracy_id } => game
@@ -1328,10 +1382,28 @@ fn finish_turn_face_up(
         decision_maker,
     );
 
-    if spec.megamorph
-        && let Some(object) = game.object_mut(permanent_id)
-    {
-        object.add_counters(crate::object::CounterType::PlusOnePlusOne, 1);
+    // CR 702.37b: megamorph puts a +1/+1 counter on the permanent; that is an
+    // ordinary counter placement, so counter replacements apply and a
+    // counter-placed event fires (CR 122.6, 614.1).
+    if spec.megamorph && game.object(permanent_id).is_some() {
+        let count = crate::events::processing::process_put_counters_with_event(
+            game,
+            permanent_id,
+            crate::object::CounterType::PlusOnePlusOne,
+            1,
+            crate::events::cause::EventCause::from_special_action(Some(permanent_id), player),
+        );
+        if count > 0
+            && let Some(event) = game.add_counters_with_source(
+                permanent_id,
+                crate::object::CounterType::PlusOnePlusOne,
+                count,
+                Some(permanent_id),
+                Some(player),
+            )
+        {
+            game.queue_trigger_event(event.provenance(), event);
+        }
     }
 
     if let Some(stable_id) = game.object(permanent_id).map(|o| o.stable_id) {
@@ -1387,8 +1459,9 @@ fn adjusted_room_unlock_cost(
     game: &GameState,
     player: PlayerId,
     room_id: ObjectId,
+    door: RoomDoor,
 ) -> Result<crate::cost::TotalCost, ActionError> {
-    let cost = room_unlock_cost(game, room_id).ok_or(ActionError::NoSuchAbility)?;
+    let cost = room_unlock_cost(game, room_id, door).ok_or(ActionError::NoSuchAbility)?;
     Ok(adjust_total_cost_mana_components_for_reason(
         game,
         player,
@@ -1402,15 +1475,32 @@ fn can_unlock_room_door(
     game: &GameState,
     player: PlayerId,
     room_id: ObjectId,
+    door: RoomDoor,
 ) -> Result<(), ActionError> {
     validate_unlock_room_door_common(game, player, room_id)?;
-    adjusted_room_unlock_cost(game, player, room_id)?;
+    adjusted_room_unlock_cost(game, player, room_id, door)?;
     Ok(())
 }
 
 /// Apply the Room state transition shared by the paid special action and
 /// resolution-time effects that instruct a player to unlock a door.
-pub(crate) fn apply_room_door_unlock(game: &mut GameState, room_id: ObjectId) -> bool {
+pub(crate) fn apply_room_door_unlock(
+    game: &mut GameState,
+    room_id: ObjectId,
+    door: RoomDoor,
+) -> bool {
+    if !locked_room_doors(game, room_id).contains(&door) {
+        return false;
+    }
+    // CR 709.5d-e: with neither door unlocked, unlocking one gives only that
+    // half its designation. The Room's current half becomes the unlocked one
+    // (switching to the linked half first if that door was chosen).
+    if game.room_has_no_unlocked_door(room_id) {
+        if door == RoomDoor::Linked && !game.switch_room_to_linked_half(room_id) {
+            return false;
+        }
+        return game.unlock_room_first_door(room_id);
+    }
     let Some(locked_door) = room_locked_door_definition(game, room_id) else {
         return false;
     };
@@ -1426,6 +1516,7 @@ fn perform_unlock_room_door(
     game: &mut GameState,
     player: PlayerId,
     room_id: ObjectId,
+    door: RoomDoor,
     _decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
     validate_unlock_room_door_common(game, player, room_id)?;
@@ -1437,7 +1528,7 @@ fn perform_unlock_room_door(
         },
     );
 
-    if !apply_room_door_unlock(game, room_id) {
+    if !apply_room_door_unlock(game, room_id, door) {
         return Err(ActionError::NoSuchAbility);
     }
 
@@ -1545,10 +1636,7 @@ fn can_foretell(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result
         return Err(ActionError::NoSuchAbility);
     }
 
-    if game.has_foretold_this_turn(player) {
-        return Err(ActionError::InvalidTiming);
-    }
-
+    // CR 702.143a: a player may foretell any number of cards during their turn.
     Ok(())
 }
 

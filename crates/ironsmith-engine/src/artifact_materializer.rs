@@ -565,6 +565,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "SkipTurnEffect" => decode_as::<T, ironsmith_core::SkipTurnEffect>(effect),
         "SneakCostEffect" => decode_as::<T, ironsmith_core::SneakCostEffect>(effect),
         "SolveCaseEffect" => decode_as::<T, ironsmith_core::SolveCaseEffect>(effect),
+        "SetClassLevelEffect" => decode_as::<T, ironsmith_core::SetClassLevelEffect>(effect),
         "SoulbondPairEffect" => decode_as::<T, ironsmith_core::SoulbondPairEffect>(effect),
         "SupportEffect" => decode_as::<T, ironsmith_core::SupportEffect>(effect),
         "SurveilEffect" => decode_as::<T, ironsmith_core::SurveilEffect>(effect),
@@ -1057,22 +1058,13 @@ fn class_level_marker(ability: &crate::ability::ActivatedAbility) -> Option<u32>
 }
 
 fn class_level_activation_condition(level: u32) -> crate::ConditionExpr {
-    let required_counters = level.saturating_sub(2);
-    if required_counters == 0 {
-        return crate::ConditionExpr::SourceHasNoCounter(crate::CounterType::Level);
-    }
+    // CR 716.2a: "Level N" can be activated only while the Class is level
+    // N-1. Levels are a designation, not level counters (CR 716.4).
+    let previous = level.saturating_sub(1).max(1);
     crate::ConditionExpr::And(
-        Box::new(crate::ConditionExpr::SourceHasCounterAtLeast {
-            counter_type: crate::CounterType::Level,
-            count: required_counters,
-            surface: crate::SourceCounterThresholdSurface::SourceHas,
-        }),
+        Box::new(crate::ConditionExpr::SourceClassLevelAtLeast(previous)),
         Box::new(crate::ConditionExpr::Not(Box::new(
-            crate::ConditionExpr::SourceHasCounterAtLeast {
-                counter_type: crate::CounterType::Level,
-                count: required_counters + 1,
-                surface: crate::SourceCounterThresholdSurface::SourceHas,
-            },
+            crate::ConditionExpr::SourceClassLevelAtLeast(previous + 1),
         ))),
     )
 }
@@ -1099,6 +1091,12 @@ fn apply_class_level_runtime_gates(definition: &mut crate::cards::CardDefinition
                 activated.activation_condition.take(),
                 class_level_activation_condition(level),
             ));
+            // The level ability sets the Class's level designation instead of
+            // putting a level counter on it (CR 716.2b).
+            activated.effects = vec![crate::effect::Effect::new(
+                crate::effects::SetClassLevelEffect::new(level),
+            )]
+            .into();
             current_level = Some(level);
             continue;
         }
@@ -1107,15 +1105,11 @@ fn apply_class_level_runtime_gates(definition: &mut crate::cards::CardDefinition
             continue;
         };
         if let crate::ability::AbilityKind::Static(static_ability) = &mut ability.kind {
-            // Classes start at level 1 with zero level counters. Grant the
-            // entire static ability so its existing conditions stay intact.
+            // Classes start at level 1. Grant the entire static ability so its
+            // existing conditions stay intact.
             *static_ability = crate::static_abilities::StaticAbility::new(
                 crate::static_abilities::GrantAbility::source(static_ability.clone())
-                    .with_condition(crate::ConditionExpr::SourceHasCounterAtLeast {
-                        counter_type: crate::CounterType::Level,
-                        count: level.saturating_sub(1),
-                        surface: crate::SourceCounterThresholdSurface::SourceHas,
-                    }),
+                    .with_condition(crate::ConditionExpr::SourceClassLevelAtLeast(level)),
             );
         }
         if let crate::ability::AbilityKind::Triggered(triggered) = &mut ability.kind

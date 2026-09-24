@@ -20,6 +20,10 @@ pub struct CombatDamageEvent {
     pub life_lost: u32,
     /// The damage result with lifelink/infect info.
     pub result: DamageResult,
+    /// Life gained by the source's controller because the source has lifelink
+    /// (CR 702.15b). A source dealing damage to several recipients at once
+    /// produces one life-gain event, carried on its first damage event.
+    pub lifelink_gain: Option<(PlayerId, u32)>,
 }
 
 /// Why a proposed combat-damage assignment is illegal.
@@ -413,6 +417,7 @@ fn execute_legacy_general_combat_damage_step(
             amount: applied.damage_dealt,
             life_lost: 0,
             result: damage_result,
+            lifelink_gain: None,
         });
     }
 
@@ -482,27 +487,33 @@ fn plan_general_combat_damage(
         let controller = game.controller_of(&attacker);
         let cause = combat_damage_cause(game, attacker_id);
 
-        if !is_blocked(combat, attacker_id) {
-            if let AttackTarget::Player(player) = attacker_info.target
-                && !game
-                    .player(player)
-                    .is_some_and(|candidate| candidate.is_in_game())
-            {
-                // CR 800.4e: combat damage is not assigned to a player who
-                // has left the game.
+        let has_trample = game.object_has_static_ability_id(
+            attacker_id,
+            crate::static_abilities::StaticAbilityId::Trample,
+        );
+        let live_blocker_ids = combat
+            .blockers
+            .get(&attacker_id)
+            .map(|blockers| {
+                blockers
+                    .iter()
+                    .copied()
+                    .filter(|id| game.object(*id).is_some())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        // CR 702.19d: a blocked trampler with no creatures blocking it when
+        // damage is assigned assigns all its damage to what it's attacking,
+        // as though every blocker had been assigned lethal damage.
+        let blocked_with_live_blockers = is_blocked(combat, attacker_id)
+            && !(has_trample && live_blocker_ids.is_empty());
+        if !blocked_with_live_blockers {
+            // CR 510.1b / 800.4e: nothing is assigned to a player who has left
+            // the game.
+            let Some((target, rules_target)) =
+                attack_target_damage_recipient(game, &attacker_info.target)
+            else {
                 continue;
-            }
-            let (target, rules_target) = match attacker_info.target {
-                AttackTarget::Player(player) => (
-                    EventDamageTarget::Player(player),
-                    DamageTarget::Player(player),
-                ),
-                AttackTarget::Planeswalker(object) => {
-                    (EventDamageTarget::Object(object), DamageTarget::Permanent)
-                }
-                AttackTarget::Battle(object) => {
-                    (EventDamageTarget::Object(object), DamageTarget::Permanent)
-                }
             };
             let amount = combat_stat as u32;
             let result = calculate_damage_with_game(game, &attacker, rules_target, amount, true);
@@ -517,32 +528,23 @@ fn plan_general_combat_damage(
             continue;
         }
 
-        let blocker_ids = combat
-            .blockers
-            .get(&attacker_id)
-            .cloned()
-            .unwrap_or_default();
-        if blocker_ids.is_empty() {
+        // CR 510.1c: a blocked creature with no creatures currently blocking
+        // it assigns no combat damage (trample is handled above).
+        if live_blocker_ids.is_empty() {
             continue;
         }
         let explicit_assignments = game.take_combat_damage_assignments(attacker_id);
-        let blocker_pairs = blocker_ids
+        let blocker_pairs = live_blocker_ids
             .iter()
             .filter_map(|id| game.object(*id).map(|object| (*id, object)))
             .collect::<Vec<_>>();
-        if blocker_pairs.is_empty() {
-            continue;
-        }
         let aligned_ids = blocker_pairs.iter().map(|(id, _)| *id).collect::<Vec<_>>();
         let blockers = blocker_pairs
             .iter()
             .map(|(_, object)| *object)
             .collect::<Vec<_>>();
         let (distribution, excess) = if explicit_assignments.is_empty() {
-            if game.object_has_static_ability_id(
-                attacker_id,
-                crate::static_abilities::StaticAbilityId::Trample,
-            ) {
+            if has_trample {
                 distribute_trample_damage(&attacker, &blockers, combat_stat as u32, game)
             } else {
                 (
@@ -580,21 +582,21 @@ fn plan_general_combat_damage(
                 cause: cause.clone(),
             });
         }
+        // CR 702.19b: trample excess goes to the player, planeswalker, or
+        // battle the creature is attacking.
         if excess > 0
-            && let AttackTarget::Player(player) = attacker_info.target
-            && game
-                .player(player)
-                .is_some_and(|candidate| candidate.is_in_game())
+            && let Some((target, rules_target)) =
+                attack_target_damage_recipient(game, &attacker_info.target)
         {
             planned.push(PlannedCombatDamage {
                 source: attacker_id,
-                target: EventDamageTarget::Player(player),
+                target,
                 controller,
                 amount: excess,
                 result: calculate_damage_with_game(
                     game,
                     &attacker,
-                    DamageTarget::Player(player),
+                    rules_target,
                     excess,
                     true,
                 ),
@@ -690,6 +692,26 @@ fn plan_general_combat_damage(
     Ok(planned)
 }
 
+/// The damage recipient for an attacker's damage to what it is attacking, or
+/// `None` when nothing can be assigned (CR 510.1b, 800.4e).
+fn attack_target_damage_recipient(
+    game: &GameState,
+    target: &AttackTarget,
+) -> Option<(EventDamageTarget, DamageTarget)> {
+    match *target {
+        AttackTarget::Player(player) => game
+            .player(player)
+            .is_some_and(|candidate| candidate.is_in_game())
+            .then_some((
+                EventDamageTarget::Player(player),
+                DamageTarget::Player(player),
+            )),
+        AttackTarget::Planeswalker(object) | AttackTarget::Battle(object) => {
+            Some((EventDamageTarget::Object(object), DamageTarget::Permanent))
+        }
+    }
+}
+
 fn execute_general_combat_damage_batch_path(
     game: &mut GameState,
     combat: &CombatState,
@@ -726,6 +748,7 @@ fn execute_general_combat_damage_batch_path(
         );
 
     let mut events = Vec::with_capacity(planned.len());
+    let mut lifelink_totals = CombatLifelinkTotals::default();
     for (planned, processed) in planned.into_iter().zip(processed) {
         let keywords = crate::rules::damage::SourceDamageKeywords {
             has_deathtouch: planned.result.has_deathtouch,
@@ -752,6 +775,7 @@ fn execute_general_combat_damage_batch_path(
                 total_damage_dealt = total_damage_dealt.saturating_add(assignment.amount);
                 if let EventDamageTarget::Player(player) = assignment.target {
                     game.record_commander_damage(player, planned.source, assignment.amount);
+                    apply_combat_toxic(game, planned.source, planned.controller, player);
                 }
                 if assignment.target == planned.target {
                     damage_to_original = damage_to_original.saturating_add(assignment.amount);
@@ -759,11 +783,12 @@ fn execute_general_combat_damage_batch_path(
                 }
             }
         }
-        apply_combat_lifelink(
-            game,
+        lifelink_totals.record(
+            planned.source,
             planned.controller,
-            &planned.result,
+            planned.result.has_lifelink,
             total_damage_dealt,
+            events.len(),
         );
         let event_target = match planned.target {
             EventDamageTarget::Player(player) => DamageEventTarget::Player(player),
@@ -777,8 +802,10 @@ fn execute_general_combat_damage_batch_path(
             amount: damage_to_original,
             life_lost: life_lost_to_original,
             result: planned.result,
+            lifelink_gain: None,
         });
     }
+    lifelink_totals.apply(game, &mut events);
     Ok(events)
 }
 
@@ -843,11 +870,13 @@ fn can_use_unblocked_player_damage_fast_path(game: &GameState, combat: &CombatSt
 }
 
 fn is_unblocked_player_damage_batch(combat: &CombatState) -> bool {
+    // CR 509.1h / 506.4: an attacker stays blocked after its blockers are
+    // removed, so remembered blocks must take the general path.
     combat.blockers.values().all(Vec::is_empty)
-        && combat
-            .attackers
-            .iter()
-            .all(|attacker| matches!(attacker.target, AttackTarget::Player(_)))
+        && combat.attackers.iter().all(|attacker| {
+            matches!(attacker.target, AttackTarget::Player(_))
+                && !is_blocked(combat, attacker.creature)
+        })
 }
 
 fn plan_unblocked_player_damage(
@@ -1010,6 +1039,7 @@ fn execute_unblocked_player_damage_batch_path(
     // Replacement/prevention is collected for the entire batch first. Only
     // after every source has a final assignment do we commit actual damage.
     let mut events = Vec::with_capacity(planned.len());
+    let mut lifelink_totals = CombatLifelinkTotals::default();
     for (planned, processed) in planned.into_iter().zip(processed) {
         let keywords = crate::rules::damage::SourceDamageKeywords {
             has_deathtouch: planned.result.has_deathtouch,
@@ -1036,6 +1066,7 @@ fn execute_unblocked_player_damage_batch_path(
                 total_damage_dealt = total_damage_dealt.saturating_add(assignment.amount);
                 if let crate::events::DamageTarget::Player(player) = assignment.target {
                     game.record_commander_damage(player, planned.source, assignment.amount);
+                    apply_combat_toxic(game, planned.source, planned.controller, player);
                     if player == planned.target {
                         damage_to_original = damage_to_original.saturating_add(assignment.amount);
                         life_lost_to_original =
@@ -1044,11 +1075,12 @@ fn execute_unblocked_player_damage_batch_path(
                 }
             }
         }
-        apply_combat_lifelink(
-            game,
+        lifelink_totals.record(
+            planned.source,
             planned.controller,
-            &planned.result,
+            planned.result.has_lifelink,
             total_damage_dealt,
+            events.len(),
         );
         events.push(CombatDamageEvent {
             source_snapshot: None,
@@ -1058,8 +1090,10 @@ fn execute_unblocked_player_damage_batch_path(
             amount: damage_to_original,
             life_lost: life_lost_to_original,
             result: planned.result,
+            lifelink_gain: None,
         });
     }
+    lifelink_totals.apply(game, &mut events);
 
     game.refresh_continuous_state();
     let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
@@ -1094,13 +1128,15 @@ fn apply_planned_unblocked_player_damage(
     let total_damage_dealt = if applied.applied { planned.amount } else { 0 };
     if applied.applied {
         game.record_commander_damage(planned.target, planned.source, planned.amount);
+        apply_combat_toxic(game, planned.source, planned.controller, planned.target);
     }
-    apply_combat_lifelink(
+    let lifelink_gain = apply_combat_lifelink(
         game,
         planned.controller,
         &planned.result,
         total_damage_dealt,
-    );
+    )
+    .map(|gained| (planned.controller, gained));
 
     CombatDamageEvent {
         source_snapshot: None,
@@ -1110,6 +1146,7 @@ fn apply_planned_unblocked_player_damage(
         amount: total_damage_dealt,
         life_lost: applied.life_lost,
         result: planned.result,
+        lifelink_gain,
     }
 }
 
@@ -1174,14 +1211,16 @@ pub(super) fn combat_damage_stat_for_creature(
     }
 }
 
+/// Returns the life actually gained, if any, so the caller can emit the
+/// life-gain event that "whenever you gain life" abilities watch for.
 pub(super) fn apply_combat_lifelink(
     game: &mut GameState,
     controller: PlayerId,
     damage_result: &DamageResult,
     total_damage_dealt: u32,
-) {
+) -> Option<u32> {
     if !damage_result.has_lifelink || total_damage_dealt == 0 {
-        return;
+        return None;
     }
 
     let life_to_gain = crate::events::processing::process_life_gain_with_event(
@@ -1189,8 +1228,85 @@ pub(super) fn apply_combat_lifelink(
         controller,
         total_damage_dealt,
     );
-    if life_to_gain > 0 {
-        game.gain_life(controller, life_to_gain);
+    if life_to_gain == 0 {
+        return None;
+    }
+    let gained = game.gain_life(controller, life_to_gain);
+    (gained > 0).then_some(gained)
+}
+
+/// CR 702.164c: combat damage dealt to a player by a creature with toxic
+/// causes that creature's controller to give the player poison counters equal
+/// to its total toxic value, in addition to the damage's other results.
+fn apply_combat_toxic(
+    game: &mut GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    player: PlayerId,
+) {
+    let Some(source_object) = game.object(source) else {
+        return;
+    };
+    let toxic: u32 = static_abilities_for_object(game, source_object)
+        .iter()
+        .filter_map(crate::static_abilities::StaticAbility::toxic_amount)
+        .fold(0u32, u32::saturating_add);
+    if toxic == 0 {
+        return;
+    }
+    if let Some(event) = game.add_player_counters_with_source(
+        player,
+        crate::object::CounterType::Poison,
+        toxic,
+        Some(source),
+        Some(controller),
+    ) {
+        game.queue_trigger_event(event.provenance(), event);
+    }
+}
+
+/// Per-source lifelink totals for one simultaneous combat-damage batch.
+///
+/// CR 702.15b / 120.3f: a lifelink source that deals damage to several
+/// recipients at once causes a single life gain equal to the total.
+#[derive(Default)]
+struct CombatLifelinkTotals {
+    /// (source, controller, total damage dealt, index of the source's first event)
+    sources: Vec<(ObjectId, PlayerId, u32, usize)>,
+}
+
+impl CombatLifelinkTotals {
+    fn record(
+        &mut self,
+        source: ObjectId,
+        controller: PlayerId,
+        has_lifelink: bool,
+        damage_dealt: u32,
+        event_index: usize,
+    ) {
+        if !has_lifelink {
+            return;
+        }
+        if let Some(entry) = self.sources.iter_mut().find(|entry| entry.0 == source) {
+            entry.2 = entry.2.saturating_add(damage_dealt);
+        } else {
+            self.sources
+                .push((source, controller, damage_dealt, event_index));
+        }
+    }
+
+    fn apply(self, game: &mut GameState, events: &mut [CombatDamageEvent]) {
+        for (_source, controller, total, event_index) in self.sources {
+            let Some(event) = events.get_mut(event_index) else {
+                continue;
+            };
+            let result = DamageResult {
+                has_lifelink: true,
+                ..DamageResult::default()
+            };
+            event.lifelink_gain = apply_combat_lifelink(game, controller, &result, total)
+                .map(|gained| (controller, gained));
+        }
     }
 }
 
@@ -1547,6 +1663,7 @@ pub(super) fn deal_damage_to_blockers(
             amount: applied.damage_dealt,
             life_lost: 0,
             result: damage_result,
+            lifelink_gain: None,
         });
     }
 
@@ -1565,6 +1682,7 @@ pub(super) fn deal_damage_to_blockers(
             amount: applied.damage_dealt,
             life_lost: applied.life_lost,
             result: damage_result,
+            lifelink_gain: None,
         });
     }
 
@@ -1610,6 +1728,7 @@ pub(super) fn deal_damage_to_defender(
                 amount: applied.damage_dealt,
                 life_lost: applied.life_lost,
                 result: damage_result,
+                lifelink_gain: None,
             })
         }
         AttackTarget::Planeswalker(pw_id) | AttackTarget::Battle(pw_id) => {
@@ -1685,6 +1804,7 @@ pub(super) fn deal_damage_to_defender(
                 amount: final_damage,
                 life_lost: 0,
                 result: damage_result,
+                lifelink_gain: None,
             })
         }
     }
@@ -1832,6 +1952,345 @@ pub(super) fn apply_damage_to_player(
         life_lost: life_lost_to_original,
         total_damage_dealt,
     }
+}
+
+// ============================================================================
+// Combat damage assignment choices (CR 510.1c-e)
+// ============================================================================
+
+/// A combat-damage division that the assigning player chooses before a
+/// combat-damage step (CR 510.1c-d, 702.19b).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CombatDamageAssignmentPrompt {
+    /// The attacking or blocking creature assigning its damage.
+    pub source: ObjectId,
+    /// The player who divides the damage (usually the source's controller).
+    pub player: PlayerId,
+    /// The combat damage the source assigns.
+    pub total: u32,
+    /// Creatures among which the damage is divided, in assignment order.
+    pub recipients: Vec<ObjectId>,
+    /// For an attacking trampler, the player, planeswalker, or battle it's
+    /// attacking, which may receive damage once every blocker has been
+    /// assigned lethal damage.
+    pub trample_target: Option<Target>,
+    /// Whether the source has deathtouch (1 damage counts as lethal, 702.2c).
+    pub deathtouch: bool,
+}
+
+impl CombatDamageAssignmentPrompt {
+    fn targets(&self) -> Vec<Target> {
+        self.recipients
+            .iter()
+            .map(|recipient| Target::Object(*recipient))
+            .chain(self.trample_target)
+            .collect()
+    }
+
+    /// Build the decision context shown to the assigning player.
+    pub fn decision_context(&self, game: &GameState) -> crate::decisions::context::DistributeContext {
+        let object_name = |id: ObjectId| {
+            game.object(id)
+                .map(|object| object.name.to_string())
+                .unwrap_or_else(|| format!("#{}", id.0))
+        };
+        let targets = self
+            .targets()
+            .into_iter()
+            .map(|target| crate::decisions::context::DistributeTarget {
+                name: match target {
+                    Target::Object(id) => object_name(id),
+                    Target::Player(player) => game
+                        .player(player)
+                        .map(|candidate| candidate.name.clone())
+                        .unwrap_or_else(|| format!("Player {}", player.0)),
+                },
+                target,
+            })
+            .collect();
+        crate::decisions::context::DistributeContext::new(
+            self.player,
+            Some(self.source),
+            format!(
+                "Assign {} combat damage from {}",
+                self.total,
+                object_name(self.source)
+            ),
+            self.total,
+            targets,
+            0,
+        )
+    }
+
+    /// Lethal damage for each recipient, taking marked damage into account
+    /// (CR 702.19b) and deathtouch (CR 702.2c).
+    fn lethal_amounts(&self, game: &GameState) -> Vec<u32> {
+        self.recipients
+            .iter()
+            .map(|recipient| {
+                // Mirrors `validate_attacker_damage_assignment`, which checks
+                // the recorded division again when damage is dealt.
+                if self.deathtouch {
+                    return 1;
+                }
+                let Some(object) = game.object(*recipient) else {
+                    return 0;
+                };
+                let existing = game.damage_on(*recipient) as i32;
+                crate::rules::damage::lethal_damage_threshold_for_creature(game, object)
+                    .map_or(0, |threshold| (threshold - existing).max(0) as u32)
+            })
+            .collect()
+    }
+
+    /// The division used when the assigning player makes no (legal) choice:
+    /// lethal damage to each recipient in order, then the rest to what a
+    /// trampler is attacking, or else onto the first recipient.
+    pub fn default_assignment(&self, game: &GameState) -> Vec<(Target, u32)> {
+        let mut remaining = self.total;
+        let mut assignment = self
+            .recipients
+            .iter()
+            .zip(self.lethal_amounts(game))
+            .map(|(recipient, lethal)| {
+                let amount = remaining.min(lethal);
+                remaining -= amount;
+                (Target::Object(*recipient), amount)
+            })
+            .collect::<Vec<_>>();
+        if remaining > 0 {
+            if let Some(target) = self.trample_target {
+                assignment.push((target, remaining));
+            } else if let Some(first) = assignment.first_mut() {
+                first.1 += remaining;
+            }
+        }
+        assignment.retain(|(_, amount)| *amount > 0);
+        assignment
+    }
+
+    /// Check a proposed division against CR 510.1c-d and 702.19b, returning
+    /// the per-creature assignment to record. Damage not assigned to a
+    /// creature is the trampler's excess to the target it's attacking.
+    pub fn validate(
+        &self,
+        game: &GameState,
+        allocations: &[(Target, u32)],
+    ) -> Result<std::collections::HashMap<ObjectId, u32>, String> {
+        let targets = self.targets();
+        let mut per_creature = self
+            .recipients
+            .iter()
+            .map(|recipient| (*recipient, 0u32))
+            .collect::<std::collections::HashMap<_, _>>();
+        let mut total = 0u32;
+        for (target, amount) in allocations {
+            if !targets.contains(target) {
+                return Err(format!(
+                    "{target:?} can't be assigned combat damage from #{}",
+                    self.source.0
+                ));
+            }
+            total = total.saturating_add(*amount);
+            if let Target::Object(id) = target
+                && let Some(entry) = per_creature.get_mut(id)
+            {
+                *entry = entry.saturating_add(*amount);
+            }
+        }
+        if total != self.total {
+            return Err(format!(
+                "combat damage from #{} must assign exactly {} damage (got {total})",
+                self.source.0, self.total
+            ));
+        }
+        let assigned_to_creatures = per_creature.values().copied().sum::<u32>();
+        if assigned_to_creatures < self.total {
+            if self.trample_target.is_none() {
+                return Err(format!(
+                    "combat damage from #{} can only be assigned to the creatures it's in combat with",
+                    self.source.0
+                ));
+            }
+            // CR 702.19b: the defender gets damage only once every blocker
+            // has been assigned lethal damage.
+            let lethal = self.lethal_amounts(game);
+            if self
+                .recipients
+                .iter()
+                .zip(lethal)
+                .any(|(recipient, lethal)| per_creature[recipient] < lethal)
+            {
+                return Err(format!(
+                    "combat damage from #{} can't trample over before each blocker is assigned lethal damage",
+                    self.source.0
+                ));
+            }
+        }
+        Ok(per_creature)
+    }
+
+    /// Record the assigning player's division, falling back to the default
+    /// division when the proposal is illegal or empty.
+    pub fn record(&self, game: &mut GameState, allocations: &[(Target, u32)]) {
+        let per_creature = self
+            .validate(game, allocations)
+            .or_else(|_| self.validate(game, &self.default_assignment(game)))
+            .unwrap_or_else(|_| {
+                self.recipients
+                    .iter()
+                    .enumerate()
+                    .map(|(index, recipient)| {
+                        (*recipient, if index == 0 { self.total } else { 0 })
+                    })
+                    .collect()
+            });
+        game.turn_store
+            .combat_damage_assignments
+            .insert(self.source, per_creature);
+    }
+}
+
+/// Return the next combat-damage division the players must choose before the
+/// given damage step, or `None` once every choice has been recorded.
+///
+/// CR 510.1: the active player announces attacking creatures' assignments,
+/// then the defending players announce blocking creatures' assignments. Only
+/// sources with a real choice are asked: an attacker blocked by two or more
+/// creatures, a blocked trampler, or a blocker blocking two or more attackers.
+pub fn next_combat_damage_assignment_prompt(
+    game: &GameState,
+    combat: &CombatState,
+    first_strike: bool,
+    first_step_strikers: Option<&std::collections::HashSet<ObjectId>>,
+) -> Option<CombatDamageAssignmentPrompt> {
+    let already_assigned = |source: ObjectId| {
+        game.turn_store
+            .combat_damage_assignments
+            .contains_key(&source)
+    };
+    let assigning_stat = |creature: &crate::object::Object| -> Option<u32> {
+        if game.combat_damage_assignment_is_suppressed(creature.id)
+            || !combatant_participates_in_damage_step(
+                game,
+                creature,
+                first_strike,
+                first_step_strikers,
+            )
+        {
+            return None;
+        }
+        combat_damage_stat_for_creature(game, creature)
+            .filter(|stat| *stat > 0)
+            .map(|stat| stat as u32)
+    };
+
+    for attacker_info in &combat.attackers {
+        let attacker_id = attacker_info.creature;
+        if already_assigned(attacker_id) || !is_blocked(combat, attacker_id) {
+            continue;
+        }
+        let Some(attacker) = game.object(attacker_id) else {
+            continue;
+        };
+        let Some(total) = assigning_stat(attacker) else {
+            continue;
+        };
+        let recipients = combat
+            .blockers
+            .get(&attacker_id)
+            .map(|blockers| {
+                blockers
+                    .iter()
+                    .copied()
+                    .filter(|id| game.object(*id).is_some())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if recipients.is_empty() {
+            continue;
+        }
+        let trample = game.object_has_static_ability_id(
+            attacker_id,
+            crate::static_abilities::StaticAbilityId::Trample,
+        );
+        let trample_target = trample
+            .then(|| match attacker_info.target {
+                AttackTarget::Player(player) => game
+                    .player(player)
+                    .is_some_and(|candidate| candidate.is_in_game())
+                    .then_some(Target::Player(player)),
+                AttackTarget::Planeswalker(object) | AttackTarget::Battle(object) => {
+                    game.object(object).is_some().then_some(Target::Object(object))
+                }
+            })
+            .flatten();
+        if recipients.len() < 2 && trample_target.is_none() {
+            continue;
+        }
+        let player = if defender_assigns_combat_damage_for_attacker(game, combat, attacker_id)
+            && let AttackTarget::Player(defender) = attacker_info.target
+        {
+            defender
+        } else {
+            crate::combat_state::combat_damage_assignment_player(game, combat, attacker_id)
+                .unwrap_or_else(|| game.controller_of(attacker))
+        };
+        return Some(CombatDamageAssignmentPrompt {
+            source: attacker_id,
+            player,
+            total,
+            recipients,
+            trample_target,
+            deathtouch: game.object_has_static_ability_id(
+                attacker_id,
+                crate::static_abilities::StaticAbilityId::Deathtouch,
+            ),
+        });
+    }
+
+    let mut attackers_by_blocker: std::collections::HashMap<ObjectId, Vec<ObjectId>> =
+        std::collections::HashMap::new();
+    for (attacker, blockers) in &combat.blockers {
+        for blocker in blockers {
+            attackers_by_blocker
+                .entry(*blocker)
+                .or_default()
+                .push(*attacker);
+        }
+    }
+    let mut blocker_groups = attackers_by_blocker.into_iter().collect::<Vec<_>>();
+    blocker_groups.sort_by_key(|(blocker, _)| blocker.0);
+    for (blocker_id, mut attacker_ids) in blocker_groups {
+        if already_assigned(blocker_id) {
+            continue;
+        }
+        let Some(blocker) = game.object(blocker_id) else {
+            continue;
+        };
+        let Some(total) = assigning_stat(blocker) else {
+            continue;
+        };
+        attacker_ids.sort_by_key(|id| id.0);
+        attacker_ids.retain(|id| game.object(*id).is_some());
+        if attacker_ids.len() < 2 {
+            continue;
+        }
+        let player = crate::combat_state::combat_damage_assignment_player(game, combat, blocker_id)
+            .unwrap_or_else(|| game.controller_of(blocker));
+        return Some(CombatDamageAssignmentPrompt {
+            source: blocker_id,
+            player,
+            total,
+            recipients: attacker_ids,
+            trample_target: None,
+            deathtouch: game.object_has_static_ability_id(
+                blocker_id,
+                crate::static_abilities::StaticAbilityId::Deathtouch,
+            ),
+        });
+    }
+    None
 }
 
 #[cfg(test)]

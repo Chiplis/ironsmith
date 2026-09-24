@@ -122,11 +122,9 @@ pub(crate) fn can_block_with_view(
     if attacker_has(StaticAbilityId::Flying) {
         let blocker_has_flying = blocker_has(StaticAbilityId::Flying);
         let blocker_has_reach = blocker_has_reach_for_attacker;
+        // "Can block only creatures with flying" restricts blocks; it never
+        // grants the ability to block a flyer (CR 509.1b, 702.9b).
         let blocker_can_block_flying = blocker_abilities.iter().any(|ability| {
-            if ability.id() == StaticAbilityId::CanBlockOnlyFlying {
-                return true;
-            }
-
             if ability.id() != StaticAbilityId::CanBlockFlying {
                 return false;
             }
@@ -458,9 +456,16 @@ fn protection_prevents_blocking_with_view(
         ProtectionFrom::ChosenPlayer => game
             .chosen_player(attacker.id)
             .is_some_and(|chosen| game.controller_of(blocker) == chosen),
-        ProtectionFrom::ChosenColor => game
-            .chosen_color(attacker.id)
-            .is_some_and(|chosen| blocker_colors.contains(chosen)),
+        // Auras such as Cho-Manno's Blessing store the choice on the Aura.
+        ProtectionFrom::ChosenColor => {
+            game.chosen_color(attacker.id)
+                .is_some_and(|chosen| blocker_colors.contains(chosen))
+                || crate::targeting::attached_grant_protects_from_chosen_color(
+                    game,
+                    attacker,
+                    blocker_colors,
+                )
+        }
     }
 }
 
@@ -782,6 +787,7 @@ mod tests {
             other_face: None,
             other_face_name: None,
             linked_face_layout: crate::card::LinkedFaceLayout::None,
+            linked_face_mana_cost: None,
             base_power: Some(PtValue::Fixed(power)),
             base_toughness: Some(PtValue::Fixed(toughness)),
             base_loyalty: None,

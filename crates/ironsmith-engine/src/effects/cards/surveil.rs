@@ -123,7 +123,12 @@ impl EffectExecutor for SurveilEffect {
             .unwrap_or_default();
 
         if top_cards_top_to_bottom.is_empty() {
-            return Ok(EffectOutcome::count(0));
+            // CR 701.25d: surveilling with an empty library is still a
+            // surveil for "whenever you surveil" triggers.
+            return Ok(EffectOutcome::count(0).with_event(TriggerEvent::new_with_provenance(
+                KeywordActionEvent::new(KeywordActionKind::Surveil, player_id, ctx.source, 0),
+                ctx.provenance,
+            )));
         }
 
         let surveil_count = top_cards_top_to_bottom.len();

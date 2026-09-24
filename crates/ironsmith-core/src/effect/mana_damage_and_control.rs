@@ -1571,6 +1571,20 @@ impl SolveCaseEffect {
     }
 }
 
+/// "[Cost]: Level N" — the source Class gains level N (CR 716.2a). Class
+/// levels are a designation, not counters (CR 716.2b, 716.4).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct SetClassLevelEffect {
+    pub level: u32,
+}
+
+impl SetClassLevelEffect {
+    pub const fn new(level: u32) -> Self {
+        Self { level }
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct BolsterEffect {

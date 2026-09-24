@@ -904,6 +904,15 @@ impl EffectExecutor for SacrificeTargetEffect {
             Err(err) => return Err(err),
         };
 
+        // CR 701.21a: a player can't sacrifice a permanent they don't control.
+        if let Some(player) = &self.player
+            && let Ok(sacrificing_player) = resolve_player_filter(game, player, ctx)
+            && game
+                .object(object_id)
+                .is_some_and(|object| game.controller_of(object) != sacrificing_player)
+        {
+            return Ok(EffectOutcome::count(0));
+        }
         let object_memory = OutcomeObjectMemory::from_object_id(game, object_id);
         let (sacrificed, event) = sacrifice_target_object(game, ctx, object_id)?;
         let mut outcome = EffectOutcome::count(if sacrificed { 1 } else { 0 });

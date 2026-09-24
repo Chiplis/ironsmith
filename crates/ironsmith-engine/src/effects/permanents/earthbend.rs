@@ -61,6 +61,18 @@ impl EffectExecutor for EarthbendEffect {
         });
 
         let _ = execute_effect(game, &Effect::new(base_effect), ctx)?;
+        if self.awaken {
+            // CR 702.113a: "That land becomes a 0/0 Elemental creature".
+            let elemental_effect = ApplyContinuousEffect::new(
+                EffectTarget::Specific(target_id),
+                Modification::AddSubtypes(vec![crate::types::Subtype::Elemental]),
+                Until::Forever,
+            )
+            .with_source_type(EffectSourceType::Resolution {
+                locked_targets: locked_targets.clone(),
+            });
+            let _ = execute_effect(game, &Effect::new(elemental_effect), ctx)?;
+        }
         let _ = execute_effect(game, &Effect::new(pt_effect), ctx)?;
         let _ = execute_effect(game, &Effect::new(haste_effect), ctx)?;
 
@@ -75,6 +87,11 @@ impl EffectExecutor for EarthbendEffect {
                 execute_effect(game, &Effect::new(counters_effect), ctx)
             })?;
         events.extend(counters_outcome.events);
+
+        // Awaken has no return clause and isn't the earthbend keyword action.
+        if self.awaken {
+            return Ok(EffectOutcome::resolved().with_events(events));
+        }
 
         let schedule = ScheduleDelayedTriggerEffect::new(
             Trigger::this_dies_or_is_exiled(),

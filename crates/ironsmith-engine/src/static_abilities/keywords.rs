@@ -210,6 +210,38 @@ impl StaticAbilityKind for PartnerWith {
     }
 }
 
+/// Toxic N (CR 702.164a): a static ability. Combat damage dealt to a player
+/// by a creature with toxic also gives that player poison counters equal to
+/// the creature's total toxic value (CR 702.164c).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Toxic {
+    amount: u32,
+}
+
+impl Toxic {
+    pub fn new(amount: u32) -> Self {
+        Self { amount }
+    }
+
+    pub fn amount(&self) -> u32 {
+        self.amount
+    }
+}
+
+impl StaticAbilityKind for Toxic {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Toxic
+    }
+
+    fn display(&self) -> String {
+        format!("Toxic {}", self.amount)
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+}
+
 define_keyword!(StartYourEngines, StartYourEngines, "Start your engines!");
 define_keyword!(SpaceSculptor, SpaceSculptor, "Space sculptor");
 define_keyword!(DoctorsCompanion, DoctorsCompanion, "Doctor's companion");

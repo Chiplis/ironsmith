@@ -48,7 +48,8 @@ impl EffectExecutor for DiscoverEffect {
                 if card.is_land() {
                     return false;
                 }
-                card.mana_cost.as_ref().map_or(0, |cost| cost.mana_value()) <= count
+                // CR 709.4: a split card's mana value is both halves' total.
+                (crate::filter::object_mana_value_for_filter(card).max(0) as u32) <= count
             },
         )?;
 
@@ -98,6 +99,7 @@ impl EffectExecutor for DiscoverEffect {
                 return Ok(EffectOutcome::count(0));
             }
 
+            let mut put_in_hand = !should_cast;
             if should_cast {
                 let from_zone = candidate_obj.zone;
                 let option = EffectDrivenCastOption {
@@ -117,13 +119,29 @@ impl EffectExecutor for DiscoverEffect {
                     casted_spell = Some((result.new_id, result.from_zone));
                 } else if ctx.decision_maker.awaiting_choice() {
                     return Ok(EffectOutcome::count(0));
+                } else {
+                    // CR 701.57a: "If you don't cast it, put that card into
+                    // your hand" — including when the cast attempt fails.
+                    put_in_hand = true;
                 }
-            } else if let Some((new_id, final_zone)) = game.move_object_with_commander_options(
-                candidate_id,
-                Zone::Hand,
-                ctx.cause.clone(),
-                &mut *ctx.decision_maker,
-            ) && final_zone == Zone::Hand
+            }
+            let candidate_id = if game.object(candidate_id).is_some() {
+                candidate_id
+            } else {
+                game.find_object_by_stable_id(candidate_snapshot.stable_id)
+                    .unwrap_or(candidate_id)
+            };
+            if put_in_hand
+                && game
+                    .object(candidate_id)
+                    .is_some_and(|object| object.zone == Zone::Exile)
+                && let Some((new_id, final_zone)) = game.move_object_with_commander_options(
+                    candidate_id,
+                    Zone::Hand,
+                    ctx.cause.clone(),
+                    &mut *ctx.decision_maker,
+                )
+                && final_zone == Zone::Hand
             {
                 selected_object = Some(new_id);
             }

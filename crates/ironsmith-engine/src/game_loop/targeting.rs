@@ -204,7 +204,10 @@ pub(super) fn is_crime_target(game: &GameState, committer: PlayerId, target: &Ta
         Target::Player(player) => *player != committer,
         Target::Object(object_id) => {
             let Some(obj) = game.object(*object_id) else {
-                return false;
+                // A spell or ability an opponent controls (CR 700.13).
+                return game
+                    .stack_ability_entry(*object_id)
+                    .is_some_and(|entry| entry.controller != committer);
             };
             if obj.zone == Zone::Graveyard {
                 obj.owner != committer
@@ -3365,7 +3368,9 @@ fn effect_contains_exchange_control(effect: &Effect) -> bool {
     found
 }
 
-fn stack_entry_contains_exchange_control(game: &GameState, entry: &StackEntry) -> bool {
+/// The target specs of every exchange-control effect in this stack entry,
+/// with each later target relaxed exactly as it was when targets were chosen.
+fn stack_entry_exchange_control_specs(game: &GameState, entry: &StackEntry) -> Vec<ChooseSpec> {
     let effects = if let Some(effects) = &entry.ability_effects {
         effects.clone()
     } else if let Some(obj) = game.object(entry.object_id) {
@@ -3377,12 +3382,22 @@ fn stack_entry_contains_exchange_control(game: &GameState, entry: &StackEntry) -
     effects
         .all_effects()
         .iter()
-        .any(|effect| effect_contains_exchange_control(effect))
+        .filter(|effect| effect_contains_exchange_control(effect))
+        .filter_map(|effect| exchange_control_target_specs(effect))
+        .flat_map(|(first, second)| [first, relaxed_exchange_later_target_spec(&second)])
+        .filter(requires_target_selection)
+        .collect()
 }
 
+/// An exchange-control target whose recorded assignment spec went stale is
+/// still checked against the exchange's own printed target restrictions
+/// (CR 608.2b): a target that stopped being a creature, or changed
+/// controller in response, is illegal and the exchange doesn't happen
+/// (CR 701.12a).
 fn exchange_control_target_still_targetable(
     game: &GameState,
     entry: &StackEntry,
+    exchange_specs: &[ChooseSpec],
     target: &Target,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
@@ -3396,21 +3411,22 @@ fn exchange_control_target_still_targetable(
         return false;
     }
 
-    let spec = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::permanent()));
-    compute_legal_targets_with_source_snapshot_and_view(
-        game,
-        &spec,
-        entry.controller,
-        Some(entry.object_id),
-        entry.source_snapshot.as_ref(),
-        if entry.tagged_objects.is_empty() {
-            None
-        } else {
-            Some(&entry.tagged_objects)
-        },
-        view,
-    )
-    .contains(target)
+    exchange_specs.iter().any(|spec| {
+        compute_legal_targets_with_source_snapshot_and_view(
+            game,
+            spec,
+            entry.controller,
+            Some(entry.object_id),
+            entry.source_snapshot.as_ref(),
+            if entry.tagged_objects.is_empty() {
+                None
+            } else {
+                Some(&entry.tagged_objects)
+            },
+            view,
+        )
+        .contains(target)
+    })
 }
 
 pub(super) fn stack_entry_validation_target_specs(
@@ -3760,7 +3776,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
         let mut valid_targets = Vec::new();
         let mut valid_assignments = Vec::with_capacity(entry.target_assignments.len());
         let mut invalid_count = 0usize;
-        let contains_exchange_control = stack_entry_contains_exchange_control(game, entry);
+        let exchange_specs = stack_entry_exchange_control_specs(game, entry);
 
         for (assignment_index, assignment) in entry.target_assignments.iter().enumerate() {
             let resolved_spec = choose_spec_with_damaged_player_from_event(
@@ -3834,8 +3850,14 @@ pub(super) fn validate_stack_entry_targets_with_view(
             for target in &entry.targets[assignment.range.clone()] {
                 if (legal_targets.contains(target)
                     && (!relative_object_target || !prior_object_targets.contains(target)))
-                    || (contains_exchange_control
-                        && exchange_control_target_still_targetable(game, entry, target, view))
+                    || (!exchange_specs.is_empty()
+                        && exchange_control_target_still_targetable(
+                            game,
+                            entry,
+                            &exchange_specs,
+                            target,
+                            view,
+                        ))
                 {
                     valid_targets.push(match target {
                         Target::Object(id) => ResolvedTarget::Object(*id),

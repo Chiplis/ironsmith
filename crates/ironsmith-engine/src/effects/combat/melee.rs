@@ -38,20 +38,10 @@ impl EffectExecutor for MeleeEffect {
             if game.controller_of(attacking_creature) != game.controller_of(source) {
                 continue;
             }
-            match attacker.target {
-                AttackTarget::Player(player) => {
-                    attacked_opponents.insert(player);
-                }
-                AttackTarget::Planeswalker(planeswalker_id) => {
-                    if let Some(planeswalker) = game.object(planeswalker_id) {
-                        attacked_opponents.insert(game.controller_of(planeswalker));
-                    }
-                }
-                AttackTarget::Battle(battle_id) => {
-                    if let Some(protector) = game.battle_protector(battle_id) {
-                        attacked_opponents.insert(protector);
-                    }
-                }
+            // Attacking a planeswalker or battle doesn't attack its
+            // controller or protector (CR 702.121a counts opponents attacked).
+            if let AttackTarget::Player(player) = attacker.target {
+                attacked_opponents.insert(player);
             }
         }
 

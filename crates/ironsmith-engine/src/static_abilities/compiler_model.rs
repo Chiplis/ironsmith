@@ -81,6 +81,17 @@ impl StaticAbility {
                 }
             }
             Some(StaticAbilityId::PartnerWith) => Self::partner_with(label),
+            Some(StaticAbilityId::Toxic) => {
+                let amount = label
+                    .trim()
+                    .to_ascii_lowercase()
+                    .strip_prefix("toxic ")
+                    .and_then(|amount| amount.trim().parse::<u32>().ok())
+                    .ok_or_else(|| StaticAbilityModelConversionError {
+                        detail: format!("toxic ability label has no amount: {label}"),
+                    })?;
+                Self::toxic(amount)
+            }
             Some(StaticAbilityId::StartYourEngines) => Self::start_your_engines(),
             Some(StaticAbilityId::SpaceSculptor) => Self::space_sculptor(),
             Some(StaticAbilityId::DoctorsCompanion) => Self::doctors_companion(),

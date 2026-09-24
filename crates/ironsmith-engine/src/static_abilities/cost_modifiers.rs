@@ -2291,6 +2291,12 @@ pub fn describe_this_spell_cost_condition(condition: &ThisSpellCostCondition) ->
                 subtype.to_string().to_ascii_lowercase()
             ))
         }
+        ThisSpellCostCondition::YouDealtCombatDamageToPlayerSharingCreatureTypeThisTurn => {
+            Some(
+                "you dealt combat damage to a player this turn with a source that shares a creature type with this spell"
+                    .to_string(),
+            )
+        }
         ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(
             subtype,
         ) => Some(format!(
@@ -2727,6 +2733,18 @@ pub fn this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
             .turn_store
             .turn_history
             .player_dealt_combat_damage_to_player_with_subtype_this_turn(controller, *subtype),
+        ThisSpellCostCondition::YouDealtCombatDamageToPlayerSharingCreatureTypeThisTurn => {
+            // The spell's current creature types (changeling counts, CR 702.73a).
+            let creature_types = crate::filter::object_creature_subtypes_for_cost(source_obj, game);
+            !creature_types.is_empty()
+                && game
+                    .turn_store
+                    .turn_history
+                    .player_dealt_combat_damage_to_player_with_any_subtype_this_turn(
+                        controller,
+                        &creature_types,
+                    )
+        }
         ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(
             subtype,
         ) => game

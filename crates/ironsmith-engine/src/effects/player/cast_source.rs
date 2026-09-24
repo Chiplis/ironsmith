@@ -109,10 +109,12 @@ impl EffectExecutor for CastSourceEffect {
         } else {
             None
         };
+        let mut pushed_synthetic_suspend = false;
         if self.cast_as_suspend
             && suspend_alternative_index.is_none()
             && let Some(obj) = game.object_mut(source_id)
         {
+            pushed_synthetic_suspend = true;
             suspend_alternative_index = Some(obj.alternative_casts.len());
             obj.alternative_casts.push(
                 crate::alternative_cast::AlternativeCastingMethod::Suspend {
@@ -151,6 +153,17 @@ impl EffectExecutor for CastSourceEffect {
             }
         };
         let Some(new_id) = result else {
+            // The synthetic suspend permission exists only for this cast.
+            if pushed_synthetic_suspend
+                && !ctx.decision_maker.awaiting_choice()
+                && let Some(obj) = game.object_mut(source_id)
+                && let Some(index) = suspend_alternative_index
+                && index + 1 == obj.alternative_casts.len()
+            {
+                let mut methods = obj.alternative_casts.to_vec();
+                methods.pop();
+                obj.alternative_casts = methods.into();
+            }
             if self.cast_other_face && !ctx.decision_maker.awaiting_choice() {
                 restore_other_face_after_failed_cast(
                     game,

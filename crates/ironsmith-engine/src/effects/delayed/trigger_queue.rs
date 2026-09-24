@@ -309,6 +309,23 @@ pub fn queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig)
         .map(|(stable_id, name, snapshot)| (Some(stable_id), Some(name), Some(snapshot)))
         .unwrap_or((None, None, None));
 
+    // Pin every tagged object to the incarnation it has as the delayed
+    // trigger is created. "Sacrifice it at the beginning of the next end
+    // step" affects that permanent only; if it later leaves and returns it's
+    // a new object the delayed trigger can't find (CR 603.7c, 400.7).
+    let mut tagged_objects = config.tagged_objects;
+    for snapshots in tagged_objects.values_mut() {
+        for snapshot in snapshots.iter_mut() {
+            if let Some(current) = game.find_object_by_stable_id(snapshot.stable_id)
+                && current != snapshot.object_id
+                && let Some(object) = game.object(current)
+            {
+                snapshot.object_id = current;
+                snapshot.zone = object.zone;
+            }
+        }
+    }
+
     game.effect_store.delayed_triggers.push(DelayedTrigger {
         trigger: config.trigger,
         effects: config.effects,
@@ -326,7 +343,7 @@ pub fn queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig)
         ability_source_snapshot,
         controller: config.controller,
         choices: config.choices,
-        tagged_objects: config.tagged_objects,
+        tagged_objects,
         tagged_players: config.tagged_players,
         prepayment: config.prepayment,
         prevention_shield: config.prevention_shield,

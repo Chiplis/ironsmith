@@ -158,6 +158,9 @@ pub struct ObjectSnapshot {
     pub other_face_name: Option<String>,
     /// Layout semantics for linked-face cards.
     pub linked_face_layout: LinkedFaceLayout,
+    /// Mana value from the linked face when it differs from `mana_cost`'s
+    /// (split cards outside the stack, back-face-up transforming DFCs).
+    pub linked_face_mana_value: Option<u32>,
     /// Base power (if creature).
     pub power: Option<i32>,
     /// Base toughness (if creature).
@@ -271,6 +274,7 @@ impl ObjectSnapshot {
                 .as_ref()
                 .map(|name| name.to_owned_string()),
             linked_face_layout: obj.linked_face_layout,
+            linked_face_mana_value: obj.linked_face_mana_value(),
             power: obj.power(),
             toughness: obj.toughness(),
             base_power: obj.base_power.as_ref().map(|p| p.base_value()),
@@ -628,6 +632,9 @@ impl ObjectSnapshot {
 
     /// Get the mana value (converted mana cost) of this object.
     pub fn mana_value(&self) -> u32 {
+        if let Some(mana_value) = self.linked_face_mana_value {
+            return mana_value;
+        }
         self.mana_cost
             .as_ref()
             .map(|mc| mc.mana_value())
@@ -662,6 +669,7 @@ impl ObjectSnapshot {
             other_face: None,
             other_face_name: None,
             linked_face_layout: LinkedFaceLayout::None,
+            linked_face_mana_value: None,
             power: None,
             toughness: None,
             base_power: None,

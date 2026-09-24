@@ -1734,6 +1734,26 @@ fn apply_face_down_layer(object: &Object, chars: &mut CalculatedCharacteristics)
     copy_characteristics_from_copiable_values(&values, chars, false, &None, &None, &[], None);
 }
 
+/// CR 709.5: "As long as this permanent doesn't have the 'left/right half
+/// unlocked' designation, it doesn't have the name, mana cost, or rules text
+/// of that half." A Room that entered with neither door unlocked (CR 709.5d)
+/// has neither half's name, mana cost or rules text.
+fn apply_room_no_unlocked_door_layer(
+    object: &Object,
+    chars: &mut CalculatedCharacteristics,
+    game: &crate::game_state::GameState,
+) {
+    if object.zone != Zone::Battlefield || !game.room_has_no_unlocked_door(object.id) {
+        return;
+    }
+    chars.name = "".into();
+    chars.mana_cost = None;
+    chars.abilities.clear();
+    chars.static_abilities = SharedVec::default();
+    chars.ability_labels = SharedVec::default();
+    chars.compiled_card_text = Arc::from("");
+}
+
 pub(crate) fn update_world_supertype_since(
     chars: &mut CalculatedCharacteristics,
     had_world: bool,
@@ -1772,6 +1792,30 @@ fn apply_reconfigure_attached_type_rule(object: &Object, chars: &mut CalculatedC
         chars
             .card_types
             .retain(|card_type| *card_type != CardType::Creature);
+    }
+}
+
+/// CR 701.54c: the Ring emblem's "Your Ring-bearer is legendary" is a
+/// layer-4 effect that applies only while the creature is its controller's
+/// Ring-bearer. Being a Ring-bearer is not a copiable value (CR 701.54b), so
+/// the supertype is derived here instead of written into the object.
+fn apply_ring_bearer_legendary_rule(
+    object: &Object,
+    chars: &mut CalculatedCharacteristics,
+    game: &crate::game_state::GameState,
+) {
+    if object.zone != Zone::Battlefield
+        || !chars.card_types.contains(&CardType::Creature)
+        || chars.supertypes.contains(&Supertype::Legendary)
+    {
+        return;
+    }
+    let is_ring_bearer = game
+        .players
+        .iter()
+        .any(|player| player.ring_bearer == Some(object.id) && player.id == chars.controller);
+    if is_ring_bearer {
+        chars.supertypes.push(Supertype::Legendary);
     }
 }
 

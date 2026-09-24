@@ -1883,6 +1883,17 @@ pub enum Condition {
     /// per triggered ability.
     TriggeringObjectHadCountersPutFirstTimeThisTurn,
     TriggeringObjectHadToAttackThisCombat,
+    /// Evolve's intervening-if (CR 702.100a): the creature that entered has
+    /// greater power and/or greater toughness than this creature. The entered
+    /// creature's last-known information is used if it has left.
+    EvolveEnteringCreatureIsLarger,
+    /// Soulbond's intervening-if (CR 702.95a): you control both this creature
+    /// and the other creature (the one that entered, or any other creature
+    /// when this one entered) and both are unpaired.
+    SoulbondPairingPossible,
+    /// The source Class is at least this level (CR 716.2). Class levels are a
+    /// designation, not level counters (CR 716.4).
+    SourceClassLevelAtLeast(u32),
     TriggeringObjectHadCounters {
         counter_type: CounterType,
         min_count: u32,
@@ -1933,6 +1944,10 @@ pub enum Condition {
     /// "this creature is suspected"
     SourceSuspected,
     SourceCameUnderYourControlThisTurn,
+    /// Echo's intervening-if (CR 702.30a): this permanent came under your
+    /// control since the beginning of your last upkeep. Tracked as a game
+    /// fact rather than a counter so counter effects can't change it.
+    SourceCameUnderYourControlSinceYourLastUpkeep,
     SourceAttackedOrBlockedThisTurn,
     SourceIsUntapped,
     SourceIsAttacking,

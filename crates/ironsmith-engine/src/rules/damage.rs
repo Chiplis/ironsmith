@@ -613,6 +613,7 @@ mod tests {
             other_face: None,
             other_face_name: None,
             linked_face_layout: crate::card::LinkedFaceLayout::None,
+            linked_face_mana_cost: None,
             base_power: Some(PtValue::Fixed(power)),
             base_toughness: Some(PtValue::Fixed(toughness)),
             base_loyalty: None,

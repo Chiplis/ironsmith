@@ -3669,9 +3669,9 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
         | KeywordAction::Prowess
         | KeywordAction::Exalted => None,
         KeywordAction::Cascade => Some(StaticAbility::cascade()),
+        KeywordAction::Toxic(amount) => Some(StaticAbility::toxic(amount)),
         KeywordAction::Storm
         | KeywordAction::Gravestorm
-        | KeywordAction::Toxic(_)
         | KeywordAction::Poisonous(_)
         | KeywordAction::BattleCry
         | KeywordAction::Dethrone

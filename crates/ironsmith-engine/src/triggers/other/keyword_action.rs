@@ -473,7 +473,9 @@ impl TriggerMatcher for KeywordActionTrigger {
     fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
         matches!(
             self.action,
-            KeywordActionKind::Planeswalk | KeywordActionKind::CumulativeUpkeepNotPaid
+            KeywordActionKind::Planeswalk
+                | KeywordActionKind::CumulativeUpkeepNotPaid
+                | KeywordActionKind::Exploit
         ) && event
             .downcast::<KeywordActionEvent>()
             .is_some_and(|event| event.action == self.action)

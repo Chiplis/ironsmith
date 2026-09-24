@@ -95,6 +95,45 @@ pub fn validate_target(
 }
 
 /// Execute an effect and return the outcome (result + events).
+/// Whether `effect` chooses new targets for a copy just made. Choosing new
+/// targets is part of creating the copy (CR 707.10c), so the copy's events
+/// are matched once its targets are final.
+pub(crate) fn effect_chooses_new_targets_for_copy(effect: &Effect) -> bool {
+    effect
+        .downcast_ref::<crate::effects::ChooseNewTargetsEffect>()
+        .is_some()
+        || effect
+            .transparent_child_effect()
+            .is_some_and(effect_chooses_new_targets_for_copy)
+}
+
+/// A boundary between two instructions of a resolving spell or ability.
+///
+/// Abilities trigger the moment their event happens, against the game state
+/// right after it (CR 603.2, 603.6a): match the events queued so far now, so a
+/// later instruction can't change what an "enters" filter sees, a permanent
+/// arriving later doesn't trigger on an earlier event, and a watcher leaving
+/// later still sees it. Matched abilities wait to be put on the stack the next
+/// time a player would receive priority (CR 603.3). `next` is the instruction
+/// about to run.
+pub(crate) fn match_triggers_at_instruction_boundary(
+    game: &mut GameState,
+    ctx: &ExecutionContext,
+    next: Option<&Effect>,
+) {
+    if !game.effect_store.per_event_trigger_matching
+        || game.effect_store.trigger_matching_holds > 0
+        || game.effect_store.pending_trigger_events.is_empty()
+        || ctx.decision_maker.awaiting_choice()
+        || next.is_some_and(effect_chooses_new_targets_for_copy)
+    {
+        return;
+    }
+    let mut matched = crate::triggers::TriggerQueue::new();
+    crate::game_loop::drain_pending_trigger_events(game, &mut matched);
+    game.defer_trigger_entries(matched.take_all());
+}
+
 pub fn execute_effect(
     game: &mut GameState,
     effect: &Effect,

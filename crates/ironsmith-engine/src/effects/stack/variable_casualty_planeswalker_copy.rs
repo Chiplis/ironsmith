@@ -1,17 +1,47 @@
 //! Variable casualty support for planeswalker spells such as "Casualty X".
 
-use crate::effect::{EffectOutcome, OutcomeObjectMemory};
-use crate::effects::stack::copy_spell::{create_stack_copy, resolving_source_stack_entry};
-use crate::effects::zones::SacrificeEffect;
+use crate::effect::EffectOutcome;
+use crate::effects::stack::copy_spell::{
+    create_stack_copy_from_object, departed_source_spell_lki, resolving_source_stack_entry,
+};
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
-use crate::filter::Comparison;
 use crate::game_state::GameState;
 use crate::object::CounterType;
-use crate::target::ObjectFilter;
-use crate::types::Supertype;
+use crate::snapshot::ObjectSnapshot;
+use crate::types::{CardType, Supertype};
 
 pub type VariableCasualtyPlaneswalkerCopyEffect =
     ironsmith_core::VariableCasualtyPlaneswalkerCopyEffect;
+
+/// The creature sacrificed for the casualty cost while the spell was cast
+/// (CR 702.153a: the sacrifice is an additional cost, 601.2f-h). Spell-cost
+/// sacrifices are recorded under `sacrifice_cost_N` tags on the spell.
+fn casualty_sacrificed_creature<'a>(
+    game: &'a GameState,
+    ctx: &'a ExecutionContext,
+) -> Option<&'a ObjectSnapshot> {
+    let from_tags = |tags: &'a std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>| {
+        let mut keys: Vec<_> = tags
+            .keys()
+            .filter(|tag| tag.as_str().starts_with("sacrifice_cost_"))
+            .collect();
+        keys.sort_by_key(|tag| tag.as_str().to_string());
+        keys.into_iter()
+            .filter_map(|tag| tags.get(tag))
+            .flatten()
+            .find(|snapshot| snapshot.card_types.contains(&CardType::Creature))
+    };
+    from_tags(&ctx.tagged_objects).or_else(|| {
+        game.object(ctx.source)
+            .and_then(|spell| from_tags(&spell.cast_tagged_objects))
+            .or_else(|| {
+                game.turn_store
+                    .cast_spell_lki
+                    .get(&ctx.source)
+                    .and_then(|lki| from_tags(&lki.0.cast_tagged_objects))
+            })
+    })
+}
 
 impl EffectExecutor for VariableCasualtyPlaneswalkerCopyEffect {
     fn execute(
@@ -19,41 +49,36 @@ impl EffectExecutor for VariableCasualtyPlaneswalkerCopyEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let mut filter = ObjectFilter::creature();
-        filter.power = Some(Comparison::GreaterThanOrEqual(0));
-
-        let sacrifice = SacrificeEffect::you(filter, 1);
-        let sacrifice_outcome = sacrifice.execute(game, ctx)?;
-        let Some(sacrificed) = sacrifice_outcome
-            .affected_object_memory()
-            .and_then(|memory| memory.first())
-        else {
-            return Ok(sacrifice_outcome);
+        // The copy's starting loyalty is the sacrificed creature's power as it
+        // last existed on the battlefield.
+        let Some(sacrificed) = casualty_sacrificed_creature(game, ctx) else {
+            return Ok(EffectOutcome::impossible());
         };
-        let loyalty = sacrificed_power(sacrificed);
+        let loyalty = sacrificed.power.unwrap_or(0).max(0) as u32;
 
-        let original_entry = resolving_source_stack_entry(ctx);
-        let copy_id = create_stack_copy(
+        let (source, original_entry) = match departed_source_spell_lki(game, ctx, ctx.source) {
+            Some(lki) => lki,
+            None => {
+                let Some(source) = game.object(ctx.source).cloned() else {
+                    return Ok(EffectOutcome::target_invalid());
+                };
+                (source, resolving_source_stack_entry(ctx))
+            }
+        };
+        let copy_id = create_stack_copy_from_object(
             game,
+            &source,
             ctx.source,
             &original_entry,
             ctx.controller,
             &[Supertype::Legendary],
+            |copy| {
+                copy.base_loyalty = Some(loyalty);
+                copy.counters.remove(&CounterType::Loyalty);
+            },
             None,
         )?;
 
-        if let Some(copy) = game.object_mut(copy_id) {
-            copy.base_loyalty = Some(loyalty);
-            copy.counters.remove(&CounterType::Loyalty);
-        }
-
-        Ok(EffectOutcome::aggregate_summing_counts([
-            sacrifice_outcome,
-            EffectOutcome::with_objects(vec![copy_id]),
-        ]))
+        Ok(EffectOutcome::with_objects(vec![copy_id]))
     }
-}
-
-fn sacrificed_power(memory: &OutcomeObjectMemory) -> u32 {
-    memory.power.unwrap_or(0).max(0) as u32
 }

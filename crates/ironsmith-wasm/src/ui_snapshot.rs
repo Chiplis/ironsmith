@@ -3027,6 +3027,7 @@ impl GameSnapshot {
                 super::StackObjectSnapshot {
                     id: stack_id.0,
                     inspect_object_id: Some(stack_id.0),
+                    target_object_id: Some(stack_id.0),
                     stable_id: Some(obj.stable_id.0.0),
                     source_stable_id: None,
                     controller: game.current_controller(stack_id).unwrap_or(obj.owner).0,

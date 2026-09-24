@@ -1515,7 +1515,12 @@ fn nonstatic_keyword_action_as_granted_object_ability(
                         ),
                     ]),
                     choices: Vec::new(),
-                    intervening_if: None,
+                    // CR 702.153a: the sacrifice is an optional cost paid while
+                    // casting; the engine offers it under this label and the
+                    // trigger copies only when it was paid.
+                    intervening_if: Some(crate::cards::builders::PredicateAst::ThisSpellPaidLabel(
+                        format!("Granted Casualty {power}").into(),
+                    )),
                     presentation_label: Some(PresentationLabel::Keyword(
                         PresentationKeyword::Casualty(power),
                     )),

@@ -36,6 +36,67 @@ fn entered_object_from_trigger_event(event: &TriggerEvent) -> Option<ObjectId> {
         .flatten()
 }
 
+/// Power and toughness of the creature that entered. If it has since left
+/// the battlefield, its last-known information from the zone change that
+/// removed it is used (Gatecrash evolve rulings, CR 608.2h).
+fn entered_creature_power_toughness(game: &GameState, entered_id: ObjectId) -> Option<(i32, i32)> {
+    if let Some(object) = game.object(entered_id)
+        && object.zone == Zone::Battlefield
+    {
+        if !game.object_has_card_type(entered_id, CardType::Creature) {
+            return None;
+        }
+        return Some((
+            effective_power(game, entered_id)?,
+            effective_toughness(game, entered_id)?,
+        ));
+    }
+    let history = &game.turn_store.turn_history;
+    let snapshot = history
+        .event_records
+        .iter()
+        .chain(history.staged_event_records.iter())
+        .rev()
+        .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
+        .flat_map(|event| event.snapshot.iter().chain(event.snapshots.iter()))
+        .find(|snapshot| snapshot.object_id == entered_id && snapshot.zone == Zone::Battlefield)?;
+    if !snapshot.card_types.contains(&CardType::Creature) {
+        return None;
+    }
+    Some((snapshot.power?, snapshot.toughness?))
+}
+
+/// CR 702.100a evolve comparison, used both as the trigger's intervening-if
+/// and again on resolution (CR 603.4).
+pub(crate) fn evolve_entering_creature_is_larger(
+    game: &GameState,
+    source_id: ObjectId,
+    event: &TriggerEvent,
+) -> bool {
+    let Some(entered_id) = entered_object_from_trigger_event(event) else {
+        return false;
+    };
+    let source_id = game
+        .object(source_id)
+        .map(|object| object.id)
+        .unwrap_or(source_id);
+    if source_id == entered_id {
+        return false;
+    }
+    let (Some(source_power), Some(source_toughness)) = (
+        effective_power(game, source_id),
+        effective_toughness(game, source_id),
+    ) else {
+        return false;
+    };
+    let Some((entered_power, entered_toughness)) =
+        entered_creature_power_toughness(game, entered_id)
+    else {
+        return false;
+    };
+    entered_power > source_power || entered_toughness > source_toughness
+}
+
 impl EffectExecutor for EvolveEffect {
     fn execute(
         &self,
@@ -45,45 +106,28 @@ impl EffectExecutor for EvolveEffect {
         let Some(triggering_event) = &ctx.triggering_event else {
             return Ok(EffectOutcome::count(0));
         };
-        let Some(entered_id) = entered_object_from_trigger_event(triggering_event) else {
-            return Ok(EffectOutcome::count(0));
-        };
 
         let source_id = ctx.source;
-        if source_id == entered_id {
-            return Ok(EffectOutcome::count(0));
-        }
-
-        let Some(source_obj) = game.object(source_id) else {
-            return Ok(EffectOutcome::count(0));
-        };
-        let Some(entered_obj) = game.object(entered_id) else {
-            return Ok(EffectOutcome::count(0));
-        };
-
-        if !entered_obj.has_card_type(CardType::Creature)
-            || game.controller_of(entered_obj) != game.controller_of(source_obj)
+        if !game
+            .object(source_id)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
         {
             return Ok(EffectOutcome::count(0));
         }
-
-        let Some(source_power) = effective_power(game, source_id) else {
-            return Ok(EffectOutcome::count(0));
-        };
-        let Some(source_toughness) = effective_toughness(game, source_id) else {
-            return Ok(EffectOutcome::count(0));
-        };
-        let Some(entered_power) = effective_power(game, entered_id) else {
-            return Ok(EffectOutcome::count(0));
-        };
-        let Some(entered_toughness) = effective_toughness(game, entered_id) else {
-            return Ok(EffectOutcome::count(0));
-        };
-
-        if entered_power <= source_power && entered_toughness <= source_toughness {
+        // CR 702.100a: the comparison is rechecked on resolution; the entered
+        // creature's controller no longer matters, and its LKI is used if it
+        // left the battlefield.
+        if !evolve_entering_creature_is_larger(game, source_id, triggering_event) {
             return Ok(EffectOutcome::count(0));
         }
 
+        let placed = crate::events::processing::process_put_counters_with_event(
+            game,
+            source_id,
+            CounterType::PlusOnePlusOne,
+            1,
+            ctx.cause.clone(),
+        );
         let mut outcome = EffectOutcome::count(1);
         if let Some(stable_id) = game.object(source_id).map(|o| o.stable_id) {
             game.record_ui_effect_event(
@@ -95,13 +139,15 @@ impl EffectExecutor for EvolveEffect {
                 Some("evolve".to_string()),
             );
         }
-        if let Some(counter_event) = game.add_counters_with_source(
-            source_id,
-            CounterType::PlusOnePlusOne,
-            1,
-            Some(source_id),
-            Some(ctx.controller),
-        ) {
+        if placed > 0
+            && let Some(counter_event) = game.add_counters_with_source(
+                source_id,
+                CounterType::PlusOnePlusOne,
+                placed,
+                Some(source_id),
+                Some(ctx.controller),
+            )
+        {
             outcome = outcome.with_event(counter_event);
         }
         outcome = outcome.with_event(TriggerEvent::new_with_provenance(

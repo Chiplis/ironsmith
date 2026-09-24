@@ -697,11 +697,18 @@ fn declare_blockers_internal(
     let mut blocker_counts: HashMap<ObjectId, usize> = HashMap::new();
 
     // First pass: validate all blockers
+    let mut declared_pairs: HashSet<(ObjectId, ObjectId)> = HashSet::new();
     for (blocker_id, attacker_id) in &declarations {
         // Validate blocker exists and is on battlefield
         let blocker = game
             .object(*blocker_id)
             .ok_or(CombatError::NotOnBattlefield(*blocker_id))?;
+
+        // A creature blocks a given attacker at most once; repeating the pair
+        // must not count as a second blocker for menace (CR 509.1b, 702.111b).
+        if !declared_pairs.insert((*blocker_id, *attacker_id)) {
+            return Err(CombatError::DuplicateBlocker(*blocker_id));
+        }
 
         // Check for blockers declared against too many attackers.
         let max_attackers = max_attackers_this_blocker_can_block(game, *blocker_id, &all_effects);

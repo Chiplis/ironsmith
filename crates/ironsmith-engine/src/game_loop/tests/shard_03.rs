@@ -842,6 +842,7 @@ pub(super) fn test_monarch_changes_when_creature_deals_combat_damage_to_monarch(
             damage_dealt: 3,
             ..DamageResult::default()
         },
+        lifelink_gain: None,
     }];
 
     generate_damage_triggers(&mut game, &events, &mut trigger_queue);

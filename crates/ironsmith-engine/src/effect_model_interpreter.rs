@@ -252,6 +252,7 @@ where
         converted.distinct_player_targets_per_mode = payload.distinct_player_targets_per_mode;
         converted.conditional_mode_range = payload.conditional_mode_range.clone();
         converted.presentation_label = payload.presentation_label.clone();
+        converted.endure = payload.endure;
         return Ok(Effect::new(converted));
     }
     if let Some(payload) =
@@ -705,6 +706,10 @@ where
         return Ok(converted);
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::SolveCaseEffect>(&effect) {
+        return Ok(converted);
+    }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::SetClassLevelEffect>(&effect)
+    {
         return Ok(converted);
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::RestartGameEffect>(&effect) {

@@ -186,6 +186,21 @@ pub(crate) fn resolve_source_object_id(
             })
         });
     }
+    // For moves that don't start on the battlefield ("When this enters",
+    // "when this is put into a graveyard from your library") the event
+    // records the destination object itself. If that object is gone it has
+    // changed zones again, and the card in its new zone is a new object
+    // (CR 400.7): Jadelight Ranger flickered in response to its ETB trigger
+    // explores with last-known information, not as the new permanent.
+    if let Some(event) = ctx
+        .triggering_event
+        .as_ref()
+        .and_then(|event| event.downcast::<crate::events::ZoneChangeEvent>())
+        && event.result_objects.is_empty()
+        && event.objects.contains(&ctx.source)
+    {
+        return None;
+    }
     // Non-zone-change triggers retain the object that owned the ability.
     // A later independent zone change does not authorize following the same
     // physical card. Explicit moves within a resolution update ctx.source;
@@ -1666,6 +1681,29 @@ pub fn validate_target(
     spec: &ChooseSpec,
     ctx: &ExecutionContext,
 ) -> bool {
+    // An ability on the stack is named by its own id; match the filter on
+    // its source's characteristics for that particular stack object.
+    if let ResolvedTarget::Object(id) = target
+        && let Some(entry) = game.stack_ability_entry(*id)
+    {
+        let mut spec = spec;
+        while let ChooseSpec::Target(inner)
+        | ChooseSpec::SurfaceHinted { spec: inner, .. }
+        | ChooseSpec::WithCount(inner, _)
+        | ChooseSpec::WithCountValue(inner, _, _) = spec
+        {
+            spec = inner;
+        }
+        let ChooseSpec::Object(filter) = spec else {
+            return false;
+        };
+        let Some(source) = game.object(entry.object_id) else {
+            return false;
+        };
+        let mut filter_ctx = ctx.filter_context(game);
+        filter_ctx.stack_entry = Some(*id);
+        return filter.matches(source, &filter_ctx, game);
+    }
     let filter_ctx = ctx.filter_context(game);
     let range_exempt =
         game.source_snapshot_is_exempt_from_range(Some(ctx.source), ctx.source_snapshot.as_ref());

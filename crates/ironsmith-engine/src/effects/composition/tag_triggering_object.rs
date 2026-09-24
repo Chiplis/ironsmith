@@ -561,6 +561,7 @@ mod tests {
                     other_face: None,
                     other_face_name: None,
                     linked_face_layout: crate::card::LinkedFaceLayout::TransformLike,
+                    linked_face_mana_value: None,
                     power: Some(5),
                     toughness: Some(6),
                     base_power: Some(5),

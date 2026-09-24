@@ -1301,6 +1301,16 @@ pub(super) fn apply_optional_costs_response(
 
     if let Some(spell) = game.object_mut(pending.spell_id) {
         spell.optional_costs_paid = pending.optional_costs_paid.clone();
+        // CR 718.3b: a spell cast prototyped has its prototype mana cost,
+        // colors, and power/toughness, whatever cost is paid for it.
+        if pending
+            .optional_costs_paid
+            .was_paid_label(super::priority_cast::PROTOTYPE_CHOICE_LABEL)
+            && let Some((cost, power_toughness)) =
+                super::priority_cast::spell_prototype_characteristics(spell)
+        {
+            spell.apply_prototype_cast_overlay(cost, power_toughness);
+        }
     }
     // Optional-cost announcements mutate the stack object. Target legality
     // and requirement extraction below must observe one refreshed derived
@@ -1342,7 +1352,10 @@ pub(super) fn apply_optional_costs_response(
         });
 
     if !has_legal_targets {
-        return Err(GameLoopError::InvalidState(
+        // Reject the announcement cleanly (e.g. entwine with a mode that has
+        // no legal target) instead of leaving the spell half-cast.
+        state.rollback_action(game);
+        return Err(GameLoopError::ActionCancelled(
             "Selected optional costs leave the spell with no legal targets".to_string(),
         ));
     }
@@ -3328,6 +3341,11 @@ pub(super) fn finalize_spell_cast(
         entry = entry.with_x(x);
     }
     game.refresh_continuous_state();
+    if let Some(spell_obj) = game.object(new_id).cloned() {
+        game.turn_store
+            .cast_spell_lki
+            .insert(new_id, std::sync::Arc::new((spell_obj, entry.clone())));
+    }
     game.push_to_stack(entry);
 
     if let Some(spell_obj) = game.object(new_id).cloned() {

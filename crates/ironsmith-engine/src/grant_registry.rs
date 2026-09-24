@@ -1306,7 +1306,36 @@ impl GrantRegistry {
 
             let controller = game.controller_of(source);
 
-            for ability in source.abilities.iter() {
+            // A split card outside the battlefield and stack also carries the
+            // other half's self-grants, such as aftermath's "you may cast this
+            // half from your graveyard" (CR 702.127a, 709.3). Those grants are
+            // restricted to that half by name.
+            let linked_half = (!source_is_battlefield
+                && source.zone != Zone::Stack
+                && source.linked_face_layout == crate::card::LinkedFaceLayout::Split)
+                .then(|| {
+                    game.linked_face_definition_by_name_or_id(
+                        source.other_face_name.as_deref(),
+                        source.other_face,
+                    )
+                })
+                .flatten();
+            let linked_half_abilities = linked_half
+                .as_ref()
+                .map(|def| {
+                    def.abilities
+                        .iter()
+                        .map(|ability| (ability, Some(def.card.name.to_string())))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+
+            for (ability, half_name) in source
+                .abilities
+                .iter()
+                .map(|ability| (ability, None))
+                .chain(linked_half_abilities)
+            {
                 let AbilityKind::Static(s) = &ability.kind else {
                     continue;
                 };
@@ -1316,6 +1345,9 @@ impl GrantRegistry {
                 let Some(spec) = s.grant_spec() else {
                     continue;
                 };
+                if half_name.is_some() && !(spec.filter.source && spec.zone == source.zone) {
+                    continue;
+                }
 
                 let is_source_self_grant = spec.filter.source;
                 if !source_is_battlefield
@@ -1339,8 +1371,11 @@ impl GrantRegistry {
                     grants.push(Grant {
                         target_id: is_source_self_grant.then_some(source_id),
                         target_stable_id: None,
-                        filter: (spec.filter != ObjectFilter::source())
-                            .then(|| normalize_grant_filter(spec.filter.clone())),
+                        filter: match &half_name {
+                            Some(name) => Some(ObjectFilter::default().named(name.clone())),
+                            None => (spec.filter != ObjectFilter::source())
+                                .then(|| normalize_grant_filter(spec.filter.clone())),
+                        },
                         zone: spec.zone,
                         player: player.id,
                         grantable: spec.grantable.clone(),

@@ -32,20 +32,28 @@ pub fn check_and_apply_sbas_with(
 ) -> Result<(), GameLoopError> {
     use crate::decisions::make_decision;
     use crate::rules::state_based::{
-        StateBasedAction, StateBasedActionContext, apply_legend_rule_choice_from_group,
-        apply_sector_designation_choices_from_group, apply_state_based_actions_from_actions_with,
-        check_state_based_actions_with_context, legend_rule_specs_from_actions,
+        StateBasedAction, StateBasedActionContext, apply_sector_designation_choices_from_group,
+        apply_state_based_actions_with_legend_choices, check_state_based_actions_with_context,
+        legend_rule_specs_from_actions,
     };
 
     // Refresh continuous state (static ability effects and "can't" effect tracking)
     // before checking SBAs. This ensures the layer system is up to date.
     game.refresh_continuous_state();
+    // Day/night transformations happen outside any resolution; finish their
+    // "As this transforms" choices before anyone receives priority.
+    game.apply_pending_day_night_as_transforms(decision_maker)?;
+    if decision_maker.awaiting_choice() {
+        return Ok(());
+    }
     let mut seen_mandatory_states = std::collections::HashSet::new();
 
     loop {
         if restore_unattached_bestow_creatures(game) {
             game.refresh_continuous_state();
         }
+        // CR 704.5t: remove dungeons whose last room ability has left the stack.
+        crate::effects::player::complete_finished_dungeons(game, trigger_queue);
         game.refresh_continuous_state();
         let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
         let context = StateBasedActionContext::from_trigger_queue(trigger_queue);
@@ -139,6 +147,9 @@ pub fn check_and_apply_sbas_with(
                 return Err(GameLoopError::MandatoryLoopDraw);
             }
         }
+        // CR 704.3: collect every legend-rule choice first, then perform the
+        // chosen removals together with the rest of this check's actions.
+        let mut legend_keeps = Vec::new();
         for (player, spec) in legend_specs {
             let legend_group = spec.legends.clone();
             let keep_id: ObjectId = make_decision(game, decision_maker, player, None, spec);
@@ -147,36 +158,17 @@ pub fn check_and_apply_sbas_with(
                 // advance local state past a choice the replay log doesn't contain yet.
                 return Ok(());
             }
-            apply_legend_rule_choice_from_group(game, keep_id, &legend_group);
+            legend_keeps.push((keep_id, legend_group));
         }
 
-        // Apply the SBAs (legend rule already handled above)
         // Use the decision maker version to allow interactive replacement effect choices
-        let applied = if had_legend_decisions {
-            game.refresh_continuous_state();
-            let post_legend_view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
-            let post_legend_context = StateBasedActionContext::from_trigger_queue(trigger_queue);
-            let post_legend_actions = check_state_based_actions_with_context(
-                game,
-                &post_legend_view,
-                &post_legend_context,
-            );
-            let post_legend_effects = post_legend_view.effects_arc();
-            drop(post_legend_view);
-            apply_state_based_actions_from_actions_with(
-                game,
-                post_legend_actions,
-                post_legend_effects.as_slice(),
-                decision_maker,
-            )
-        } else {
-            apply_state_based_actions_from_actions_with(
-                game,
-                actions,
-                all_effects.as_slice(),
-                decision_maker,
-            )
-        };
+        let applied = apply_state_based_actions_with_legend_choices(
+            game,
+            actions,
+            &legend_keeps,
+            all_effects.as_slice(),
+            decision_maker,
+        );
         if decision_maker.awaiting_choice() {
             return Ok(());
         }
@@ -188,7 +180,8 @@ pub fn check_and_apply_sbas_with(
         }
     }
 
-    let (state_triggers, active_state_triggers) = crate::triggers::check_state_triggers(game);
+    let (state_triggers, active_state_triggers) =
+        crate::triggers::check_state_triggers(game, &trigger_queue.entries);
     game.effect_store.active_state_trigger_conditions = active_state_triggers;
     for trigger in state_triggers {
         trigger_queue.add(trigger);
@@ -1036,15 +1029,35 @@ pub(super) fn can_stack_trigger_this_turn(
         return true;
     };
 
-    verify_intervening_if(
-        game,
-        condition,
-        trigger.controller,
-        &trigger.triggering_event,
-        trigger.source,
-        Some(trigger.trigger_identity),
-        None,
-    )
+    // CR 603.4: an intervening-if condition is checked when the event occurs
+    // and again on resolution, not when the ability is put on the stack. Only
+    // the once-per-turn trigger limits are enforced here, since several
+    // triggers of the same ability can wait in the queue together.
+    fn once_per_turn_limits(condition: &crate::ConditionExpr, out: &mut Vec<crate::ConditionExpr>) {
+        match condition {
+            crate::ConditionExpr::FirstTimeThisTurn
+            | crate::ConditionExpr::MaxTimesEachTurn(_) => out.push(condition.clone()),
+            crate::ConditionExpr::And(first, second) => {
+                once_per_turn_limits(first, out);
+                once_per_turn_limits(second, out);
+            }
+            _ => {}
+        }
+    }
+    let mut limits = Vec::new();
+    once_per_turn_limits(condition, &mut limits);
+
+    limits.iter().all(|limit| {
+        verify_intervening_if(
+            game,
+            limit,
+            trigger.controller,
+            &trigger.triggering_event,
+            trigger.source,
+            Some(trigger.trigger_identity),
+            None,
+        )
+    })
 }
 
 fn resolve_trigger_modal_count(
@@ -1646,6 +1659,13 @@ pub(super) fn create_triggered_stack_entry_with_targets(
     decision_maker: &mut dyn DecisionMaker,
     _trigger_queue: &mut TriggerQueue,
 ) -> Option<StackEntry> {
+    // A reflexive triggered ability chooses its targets as it is put on the
+    // stack, against the context of the resolution that triggered it.
+    if let Some(entry) =
+        crate::effects::composition::reflexive_trigger_stack_entry(game, trigger, decision_maker)
+    {
+        return entry;
+    }
     let effects = game.cached_continuous_effects_snapshot();
     let mut entry = triggered_to_stack_entry_with_effects(game, trigger, &effects);
     if let Some(triggering_event) = entry.triggering_event.take() {

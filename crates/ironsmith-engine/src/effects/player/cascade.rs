@@ -184,7 +184,8 @@ impl EffectExecutor for CascadeEffect {
                 if card.is_land() {
                     return false;
                 }
-                card.mana_cost.as_ref().map_or(0, |cost| cost.mana_value()) < source_mana_value
+                // CR 709.4: a split card's mana value is both halves' total.
+                (crate::filter::object_mana_value_for_filter(card).max(0) as u32) < source_mana_value
             },
         )?;
 

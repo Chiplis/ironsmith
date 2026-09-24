@@ -222,6 +222,7 @@ impl OutcomeObjectMemory {
                 other_face: None,
                 other_face_name: None,
                 linked_face_layout: crate::card::LinkedFaceLayout::None,
+                linked_face_mana_value: None,
                 power: self.power,
                 toughness: self.toughness,
                 base_power: self.power,

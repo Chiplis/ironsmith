@@ -772,14 +772,12 @@ pub(super) fn parse_oracle_knowledge_exploitation_supports_prowl_keyword_line() 
     let has_prowl = def.alternative_casts.iter().any(|method| {
         matches!(
             method.cast_condition(),
-            Some(crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(
-                Subtype::Rogue
-            ))
+            Some(crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerSharingCreatureTypeThisTurn)
         )
     });
     assert!(
         has_prowl,
-        "Knowledge Exploitation should encode Prowl with Rogue-combat-damage condition"
+        "Knowledge Exploitation should encode Prowl with a shared-creature-type combat-damage condition"
     );
 }
 

@@ -16,7 +16,6 @@
 mod application;
 
 use crate::DecisionMaker;
-use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::decisions::replacement_option_description;
 use crate::events::DamageTarget;
 use crate::events::{Event, EventContext, ReplacementMatcher as _};
@@ -1284,11 +1283,7 @@ pub fn execute_discard(
                     && let Some(id) = new_id
                 {
                     game.set_madness_exiled(id);
-                    if let Some(result) =
-                        resolve_madness_discard(game, id, player, provenance, decision_maker)
-                    {
-                        return result;
-                    }
+                    queue_madness_trigger(game, id, player, &discard.cause, provenance);
                 }
 
                 DiscardResult {
@@ -1369,140 +1364,57 @@ pub fn execute_discard(
     }
 }
 
-fn resolve_madness_discard(
+/// Madness's triggered ability (CR 702.35a): "When this card is exiled this
+/// way, its owner may cast it by paying [cost] rather than paying its mana
+/// cost. If that player doesn't, they put this card into their graveyard."
+/// It's a real trigger that goes on the stack; the spell is cast while it
+/// resolves (`MayCastForMadnessCostEffect`).
+fn queue_madness_trigger(
     game: &mut GameState,
     exiled_id: crate::ids::ObjectId,
     player: crate::ids::PlayerId,
+    cause: &crate::events::cause::EventCause,
     provenance: crate::provenance::ProvNodeId,
-    decision_maker: &mut dyn DecisionMaker,
-) -> Option<DiscardResult> {
-    let madness_cost = game.object(exiled_id).and_then(|obj| {
-        obj.alternative_casts
-            .iter()
-            .find_map(|method| match method {
-                crate::alternative_cast::AlternativeCastingMethod::Madness { total_cost } => {
-                    Some(total_cost.clone())
-                }
-                _ => None,
-            })
-    })?;
-
-    let cast_with_madness = crate::decisions::make_decision(
-        game,
-        decision_maker,
-        player,
-        Some(exiled_id),
-        crate::decisions::specs::MadnessSpec::new(exiled_id, madness_cost.clone()),
+) {
+    let Some(card) = game.object(exiled_id) else {
+        return;
+    };
+    let owner = card.owner;
+    let source_stable_id = card.stable_id;
+    let source_name = card.name.to_string();
+    let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(card, game);
+    let ability = crate::ability::TriggeredAbility {
+        trigger: crate::triggers::Trigger::custom(
+            "madness",
+            "When this card is exiled this way".to_string(),
+        ),
+        effects: crate::resolution::ResolutionProgram::from_effects(vec![
+            crate::effect::Effect::new(crate::effects::MayCastForMadnessCostEffect::new()),
+        ]),
+        choices: vec![],
+        intervening_if: None,
+        presentation_label: None,
+    };
+    let trigger_identity = crate::triggers::compute_trigger_identity(&ability);
+    let triggering_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::cards::DiscardEvent::with_cause(exiled_id, player, cause.clone())
+            .with_destination(Zone::Exile),
+        provenance,
     );
-
-    if !cast_with_madness {
-        game.clear_madness_exiled(exiled_id);
-        let new_id = game.move_object(
-            exiled_id,
-            Zone::Graveyard,
-            crate::events::cause::EventCause::from_game_rule(),
-        );
-        return Some(DiscardResult {
-            new_id,
-            final_zone: Zone::Graveyard,
-            type_verifiable: true,
-            prevented: false,
-        });
-    }
-
-    if !pay_madness_cost(game, player, exiled_id, &madness_cost, decision_maker) {
-        game.clear_madness_exiled(exiled_id);
-        let new_id = game.move_object(
-            exiled_id,
-            Zone::Graveyard,
-            crate::events::cause::EventCause::from_game_rule(),
-        );
-        return Some(DiscardResult {
-            new_id,
-            final_zone: Zone::Graveyard,
-            type_verifiable: true,
-            prevented: false,
-        });
-    }
-
-    let stack_id = game.move_object(
-        exiled_id,
-        Zone::Stack,
-        crate::events::cause::EventCause::from_effect(exiled_id, player),
-    )?;
-    game.clear_madness_exiled(stack_id);
-
-    let mut entry =
-        crate::game_state::StackEntry::new(stack_id, player).with_provenance(provenance);
-    if let Some(program) = game
-        .object(stack_id)
-        .and_then(|obj| obj.spell_effect_owned())
-    {
-        let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
-            game,
-            &program,
-            player,
-            Some(stack_id),
-            None,
-        );
-        if !requirements.is_empty() {
-            let context = game
-                .object(stack_id)
-                .map(|obj| obj.name.to_string())
-                .unwrap_or_else(|| "madness spell".to_string());
-            let target_ctx = crate::decisions::context::TargetsContext::new(
-                player,
-                stack_id,
-                context,
-                requirements
-                    .iter()
-                    .map(
-                        |requirement| crate::decisions::context::TargetRequirementContext {
-                            description: requirement.description.clone(),
-                            legal_targets: requirement.legal_targets.clone(),
-                            legal_target_sets: requirement.legal_target_sets.clone(),
-                            aggregate_constraint: requirement.aggregate_constraint.clone(),
-                            min_targets: requirement.min_targets,
-                            max_targets: requirement.max_targets,
-                            distinct_player_group: requirement.distinct_player_group,
-                            shared_player_group: requirement.shared_player_group.clone(),
-                        },
-                    )
-                    .collect(),
-            );
-            let proposed = decision_maker.decide_targets(game, &target_ctx);
-            let targets = crate::targeting::normalize_targets_for_requirements(
-                &target_ctx.requirements,
-                proposed,
-            )
-            .unwrap_or_default();
-            let target_assignments =
-                crate::targeting::assigned_target_ranges(&target_ctx.requirements, &targets)
-                    .map(|ranges| {
-                        requirements
-                            .iter()
-                            .zip(ranges)
-                            .map(|(requirement, range)| crate::game_state::TargetAssignment {
-                                spec: requirement.spec.clone(),
-                                range,
-                            })
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default();
-            entry = entry
-                .with_targets(targets)
-                .with_target_assignments(target_assignments);
-        }
-    }
-
-    game.push_to_stack(entry);
-    let _ = crate::game_loop::resolve_stack_entry_with(game, decision_maker);
-    Some(DiscardResult {
-        new_id: None,
-        final_zone: Zone::Graveyard,
-        type_verifiable: true,
-        prevented: false,
-    })
+    game.defer_trigger_entries([crate::triggers::TriggeredAbilityEntry {
+        source: exiled_id,
+        controller: owner,
+        x_value: None,
+        event_value_amount: None,
+        ability,
+        triggering_event,
+        source_stable_id,
+        source_name,
+        source_snapshot: Some(source_snapshot),
+        tagged_objects: std::collections::HashMap::new(),
+        source_kind: crate::triggers::TriggeredAbilitySourceKind::Object,
+        trigger_identity,
+    }]);
 }
 
 /// Move a card to the top of the owner's library.
@@ -1971,8 +1883,14 @@ fn process_destroy_inner(
     // Create the destroy event using the trait-based system
     let event = game.ensure_event_provenance(Event::destroy(permanent, source));
 
+    // CR 122.1c: shield counters create "If this permanent would be destroyed
+    // as the result of an effect, instead remove a shield counter from it."
+    // It competes with other replacements under CR 616.1; SBA destruction
+    // (no source) is not an effect.
+    let shield_effects = shield_counter_destroy_replacements(game, permanent, source);
+
     // Process through replacement effects with NeedsChoice handling
-    let result = process_with_dm(game, event.clone(), dm);
+    let result = process_with_dm_and_additional_effects(game, event.clone(), dm, &shield_effects);
 
     match result {
         TraitEventResult::Prevented => EventOutcome::Prevented,
@@ -2087,6 +2005,12 @@ fn process_destroy_inner(
                     .replacement_effects
                     .get_effect(effect_id)
                     .cloned()
+                    .or_else(|| {
+                        shield_effects
+                            .iter()
+                            .find(|effect| effect.id == effect_id)
+                            .cloned()
+                    })
                     .map(|effect| (effect_id, effect))
             });
             let Some((effect_id, chosen_effect)) = chosen else {
@@ -2129,6 +2053,177 @@ fn process_destroy_inner(
                 "interactive replacement unexpectedly matched destroy event"
             );
             EventOutcome::Prevented
+        }
+    }
+}
+
+fn shield_counter_count(game: &GameState, permanent: ObjectId) -> u32 {
+    game.object(permanent)
+        .filter(|object| object.zone == Zone::Battlefield)
+        .and_then(|object| object.counters.get(&CounterType::Shield).copied())
+        .unwrap_or(0)
+}
+
+/// The built-in destroy replacement created by shield counters (CR 122.1c).
+fn shield_counter_destroy_replacements(
+    game: &GameState,
+    permanent: ObjectId,
+    source: Option<ObjectId>,
+) -> Vec<ReplacementEffect> {
+    if source.is_none() || shield_counter_count(game, permanent) == 0 {
+        return Vec::new();
+    }
+    let Some(controller) = game.object(permanent).map(|object| game.controller_of(object)) else {
+        return Vec::new();
+    };
+    let mut effects = vec![ReplacementEffect::with_matcher(
+        permanent,
+        controller,
+        crate::events::permanents::matchers::ThisWouldBeDestroyedMatcher,
+        ReplacementAction::Instead(vec![crate::effect::Effect::remove_counters(
+            CounterType::Shield,
+            1,
+            crate::target::ChooseSpec::SpecificObject(permanent),
+        )]),
+    )];
+    assign_ephemeral_effect_ids(&mut effects, u64::MAX / 8);
+    effects
+}
+
+/// The built-in damage prevention created by shield counters (CR 122.1c):
+/// "If damage would be dealt to this permanent, prevent that damage and
+/// remove a shield counter from it." The additional part still happens for
+/// unpreventable damage (CR 615.12).
+fn shield_counter_damage_replacements(game: &GameState, target: DamageTarget) -> Vec<ReplacementEffect> {
+    let DamageTarget::Object(permanent) = target else {
+        return Vec::new();
+    };
+    if shield_counter_count(game, permanent) == 0 {
+        return Vec::new();
+    }
+    let Some(controller) = game.object(permanent).map(|object| game.controller_of(object)) else {
+        return Vec::new();
+    };
+    vec![ReplacementEffect::with_matcher(
+        permanent,
+        controller,
+        crate::events::damage::matchers::DamageToSelfMatcher,
+        ReplacementAction::PreventDamageThen(vec![crate::effect::Effect::remove_counters(
+            CounterType::Shield,
+            1,
+            crate::target::ChooseSpec::SpecificObject(permanent),
+        )]),
+    )]
+}
+
+/// The built-in untap replacement created by stun counters (CR 122.1d): "If
+/// a permanent with a stun counter on it would become untapped, instead
+/// remove a stun counter from it."
+fn stun_counter_untap_replacements(game: &GameState, permanent: ObjectId) -> Vec<ReplacementEffect> {
+    let stunned = game
+        .object(permanent)
+        .and_then(|object| object.counters.get(&CounterType::Stun).copied())
+        .unwrap_or(0)
+        > 0;
+    let Some(controller) = game.object(permanent).map(|object| game.controller_of(object)) else {
+        return Vec::new();
+    };
+    if !stunned {
+        return Vec::new();
+    }
+    let mut effects = vec![ReplacementEffect::with_matcher(
+        permanent,
+        controller,
+        crate::events::permanents::matchers::WouldBecomeUntappedMatcher::new(
+            crate::target::ObjectFilter::specific(permanent),
+        ),
+        ReplacementAction::Instead(vec![crate::effect::Effect::remove_counters(
+            CounterType::Stun,
+            1,
+            crate::target::ChooseSpec::SpecificObject(permanent),
+        )]),
+    )];
+    assign_ephemeral_effect_ids(&mut effects, u64::MAX / 8 + 1);
+    effects
+}
+
+fn run_untap_replacement_effects(
+    game: &mut GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    effects: Vec<crate::effect::Effect>,
+    dm: &mut dyn DecisionMaker,
+) {
+    let mut ctx = crate::effects::ExecutionContext::new(source, controller, dm);
+    for effect in effects {
+        if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut ctx) {
+            for trigger_event in outcome.events {
+                game.queue_trigger_event(trigger_event.provenance(), trigger_event);
+            }
+        }
+    }
+}
+
+/// Untap a permanent through replacement processing (CR 614), including
+/// "if it would become untapped" replacements and the stun-counter rule
+/// (CR 122.1d). Returns whether the permanent became untapped.
+pub fn process_untap(
+    game: &mut GameState,
+    permanent: ObjectId,
+    dm: &mut dyn DecisionMaker,
+) -> bool {
+    if !game.is_tapped(permanent) {
+        return false;
+    }
+    let stun_effects = stun_counter_untap_replacements(game, permanent);
+    let event = game.ensure_event_provenance(Event::untap(permanent));
+    match process_with_dm_and_additional_effects(game, event, dm, &stun_effects) {
+        TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {
+            game.untap(permanent);
+            true
+        }
+        TraitEventResult::Prevented | TraitEventResult::NeedsInteraction { .. } => false,
+        TraitEventResult::Replaced {
+            effects,
+            effect_id,
+            source,
+            controller,
+            ..
+        } => {
+            game.effect_store
+                .replacement_effects
+                .mark_effect_used(effect_id);
+            run_untap_replacement_effects(game, source, controller, effects, dm);
+            false
+        }
+        TraitEventResult::NeedsChoice {
+            applicable_effects,
+            event,
+            ..
+        } => {
+            let Some(effect) = applicable_effects.first().copied().and_then(|effect_id| {
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(effect_id)
+                    .cloned()
+                    .or_else(|| stun_effects.iter().find(|e| e.id == effect_id).cloned())
+            }) else {
+                return false;
+            };
+            let effect_id = effect.id;
+            let applied = apply_trait_replacement(game, *event, &effect);
+            consume_one_shot_if_applied(game, effect_id, &applied);
+            match applied {
+                TraitApplyResult::Replaced(effects) => {
+                    run_untap_replacement_effects(game, effect.source, effect.controller, effects, dm);
+                    false
+                }
+                TraitApplyResult::Modified(_) | TraitApplyResult::Unchanged(_) => {
+                    game.untap(permanent);
+                    true
+                }
+                TraitApplyResult::Prevented | TraitApplyResult::NeedsInteraction { .. } => false,
+            }
         }
     }
 }
@@ -3487,6 +3582,8 @@ pub fn process_simultaneous_damage_assignments_with_event_with_dm(
     game.update_cant_effects();
     game.update_replacement_effects();
     let pending_event_start = game.effect_store.pending_trigger_events.len();
+    // The prevention events of this batch are coalesced below.
+    game.effect_store.trigger_matching_holds += 1;
     let allocations = collect_simultaneous_prevention_allocations(game, events, dm);
     let mut results = Vec::with_capacity(events.len());
     for (index, item) in events.iter().enumerate() {
@@ -3505,6 +3602,7 @@ pub fn process_simultaneous_damage_assignments_with_event_with_dm(
             ),
         );
     }
+    game.effect_store.trigger_matching_holds -= 1;
     coalesce_simultaneous_shield_prevention_events(game, pending_event_start);
     results
 }
@@ -3617,6 +3715,9 @@ fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_a
     // prevent zero, retain their shield capacity, and perform additional parts.
     let mut prevention_effects =
         prevention_shield_replacement_effects(game, source_snapshot, batch_allocation);
+    // CR 122.1c shield counters are prevention effects ordered with the
+    // others by the affected player (CR 616.1).
+    prevention_effects.extend(shield_counter_damage_replacements(game, target));
     assign_ephemeral_effect_ids(&mut prevention_effects, u64::MAX / 4);
     let result = process_with_dm_and_additional_effects_and_snapshot(
         game,
@@ -4919,108 +5020,6 @@ fn object_has_compleated_marker(obj: &crate::object::Object) -> bool {
     })
 }
 
-fn pay_madness_cost(
-    game: &mut GameState,
-    player: crate::ids::PlayerId,
-    source: crate::ids::ObjectId,
-    cost: &crate::cost::TotalCost,
-    decision_maker: &mut dyn DecisionMaker,
-) -> bool {
-    const MAX_MANA_ACTIVATIONS: usize = 32;
-
-    let non_mana = crate::cost::TotalCost::from_costs(cost.non_mana_costs().cloned().collect());
-    if crate::cost::can_pay_cost_with_reason(
-        game,
-        source,
-        player,
-        &non_mana,
-        crate::costs::PaymentReason::CastSpell,
-    )
-    .is_err()
-    {
-        return false;
-    }
-    for _ in 0..MAX_MANA_ACTIVATIONS {
-        if crate::special_actions::pay_total_cost_with_choice(
-            game,
-            player,
-            source,
-            cost,
-            crate::costs::PaymentReason::CastSpell,
-            decision_maker,
-        )
-        .is_ok()
-        {
-            return true;
-        }
-
-        let view = crate::derived_view::DerivedGameView::new(game);
-        let next_mana_ability = game
-            .objects_in_deterministic_order()
-            .into_iter()
-            .filter(|object| {
-                object.zone == Zone::Battlefield && game.controller_of(object) == player
-            })
-            .find_map(|object| {
-                let abilities = game.current_abilities(object.id)?;
-                abilities
-                    .into_iter()
-                    .enumerate()
-                    .find_map(|(ability_index, ability)| {
-                        let crate::ability::AbilityKind::Activated(activated) = &ability.kind
-                        else {
-                            return None;
-                        };
-                        if !activated.is_runtime_mana_ability(game, object.id, player) {
-                            return None;
-                        }
-                        if crate::special_actions::can_activate_mana_ability_check_with_view(
-                            game,
-                            player,
-                            object.id,
-                            ability_index,
-                            &ability,
-                            &view,
-                            None,
-                        )
-                        .is_ok()
-                        {
-                            Some((object.id, ability_index))
-                        } else {
-                            None
-                        }
-                    })
-            });
-
-        let Some((permanent_id, ability_index)) = next_mana_ability else {
-            return false;
-        };
-        if crate::special_actions::perform_activate_mana_ability(
-            game,
-            player,
-            permanent_id,
-            ability_index,
-            decision_maker,
-        )
-        .is_err()
-        {
-            return false;
-        }
-        if decision_maker.awaiting_choice() {
-            return false;
-        }
-    }
-
-    crate::special_actions::pay_total_cost_with_choice(
-        game,
-        player,
-        source,
-        cost,
-        crate::costs::PaymentReason::CastSpell,
-        decision_maker,
-    )
-    .is_ok()
-}
 
 /// Result of processing a zone change event with full replacement effect handling.
 ///

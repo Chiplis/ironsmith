@@ -79,7 +79,7 @@ impl DestroyNoRegenerationEffect {
         // - older shield counters (older implementation)
         game.effect_store
             .replacement_effects
-            .remove_one_shot_effects_from_source(object_id);
+            .remove_regeneration_shields_from_source(object_id);
         game.clear_regeneration_shields(object_id);
 
         let result = process_destroy(game, object_id, Some(ctx.source), &mut *ctx.decision_maker);
@@ -117,7 +117,7 @@ impl EffectExecutor for DestroyNoRegenerationEffect {
             |game, ctx, object_id| {
                 game.effect_store
                     .replacement_effects
-                    .remove_one_shot_effects_from_source(object_id);
+                    .remove_regeneration_shields_from_source(object_id);
                 game.clear_regeneration_shields(object_id);
                 let pre_snapshot = game.object(object_id).map(|obj| {
                     ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)

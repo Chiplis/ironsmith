@@ -8619,9 +8619,15 @@ pub(crate) fn describe_inline_ability_with_self_subject(
             {
                 let effects = activated.effects.flattened_default_effects();
                 if let [effect] = effects
-                    && let Some(put) = effect.downcast_ref::<crate::effects::PutCountersEffect>()
-                    && put.counter_type == crate::CounterType::Level
-                    && matches!(put.target, ChooseSpec::Source)
+                    && (effect
+                        .downcast_ref::<crate::effects::SetClassLevelEffect>()
+                        .is_some()
+                        || effect
+                            .downcast_ref::<crate::effects::PutCountersEffect>()
+                            .is_some_and(|put| {
+                                put.counter_type == crate::CounterType::Level
+                                    && matches!(put.target, ChooseSpec::Source)
+                            }))
                 {
                     return format!(
                         "{}: Level {level}",
@@ -9671,6 +9677,14 @@ pub(crate) fn describe_static_ability_with_subject(
             && let Some(riot) = describe_structural_riot_program(program)
         {
             return riot;
+        }
+        if !also_turns_face_up && !turns_face_up_only && transforms_into.is_none()
+            && let Some(keyword) = describe_structural_as_enters_keyword_program(
+                program,
+                presentation_label.as_ref(),
+            )
+        {
+            return keyword;
         }
         let timing = if let Some(destination) = transforms_into {
             format!("As {authored_subject} transforms into {destination}")

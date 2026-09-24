@@ -2131,7 +2131,7 @@
         if matches!(copy_spell.target, ChooseSpec::Source) {
             if matches!(
                 copy_spell.count,
-                Value::SpellsCastBeforeThisTurn(PlayerFilter::You)
+                Value::SpellsCastBeforeThisTurn(PlayerFilter::Any)
             ) {
                 return "Copy this spell for each spell cast before it this turn".to_string();
             }
@@ -5626,6 +5626,9 @@
         .is_some()
     {
         return "Pair this creature with another unpaired creature you control".to_string();
+    }
+    if let Some(level) = effect.downcast_ref::<crate::effects::SetClassLevelEffect>() {
+        return format!("This Class becomes level {}", level.level);
     }
     if effect
         .downcast_ref::<crate::effects::UnearthEffect>()

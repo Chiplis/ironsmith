@@ -3,7 +3,25 @@ use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::zone::Zone;
 
+pub use ironsmith_core::SetClassLevelEffect;
 pub use ironsmith_core::SolveCaseEffect;
+
+impl EffectExecutor for SetClassLevelEffect {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let Some(source) = game.object(ctx.source) else {
+            return Ok(EffectOutcome::target_invalid());
+        };
+        if source.zone != Zone::Battlefield {
+            return Ok(EffectOutcome::target_invalid());
+        }
+        let changed = game.set_class_level(ctx.source, self.level);
+        Ok(EffectOutcome::count(i32::from(changed)))
+    }
+}
 
 impl EffectExecutor for SolveCaseEffect {
     fn execute(

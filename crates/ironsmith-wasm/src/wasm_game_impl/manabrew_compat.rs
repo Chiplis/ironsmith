@@ -1297,7 +1297,7 @@ impl WasmGame {
                 | SpecialAction::Companion { card_id } => Some(*card_id),
                 SpecialAction::TurnFaceUp { permanent_id, .. }
                 | SpecialAction::ActivateManaAbility { permanent_id, .. } => Some(*permanent_id),
-                SpecialAction::UnlockRoomDoor { room_id } => Some(*room_id),
+                SpecialAction::UnlockRoomDoor { room_id, .. } => Some(*room_id),
                 SpecialAction::TurnConspiracyFaceUp { conspiracy_id } => Some(*conspiracy_id),
                 SpecialAction::IgnoreAttachedRestriction { source_id, .. }
                 | SpecialAction::IgnoreSourceEffect { source_id, .. } => Some(*source_id),

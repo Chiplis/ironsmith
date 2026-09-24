@@ -390,9 +390,15 @@ impl EffectExecutor for IfEffect {
         }
 
         let mut outcomes = Vec::new();
-        for _ in 0..repetitions {
-            for eff in branch {
+        for repetition in 0..repetitions {
+            for (index, eff) in branch.iter().enumerate() {
                 outcomes.push(execute_effect(game, eff, ctx)?);
+                let next = branch
+                    .get(index + 1)
+                    .or_else(|| (repetition + 1 < repetitions).then(|| &branch[0]));
+                if let Some(next) = next {
+                    crate::effects::match_triggers_at_instruction_boundary(game, ctx, Some(next));
+                }
             }
         }
         Ok(EffectOutcome::aggregate(outcomes))

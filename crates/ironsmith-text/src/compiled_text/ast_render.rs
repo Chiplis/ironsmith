@@ -28412,6 +28412,40 @@ fn describe_structural_partner_with_pair(first: &Ability, second: &Ability) -> O
     ))
 }
 
+/// Echo lowered as a single upkeep trigger gated by the CR 702.30a
+/// "came under your control since the beginning of your last upkeep" check.
+fn describe_structural_echo_keyword(ability: &Ability) -> Option<String> {
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        return None;
+    };
+    if triggered.intervening_if
+        != Some(crate::effect::Condition::SourceCameUnderYourControlSinceYourLastUpkeep)
+        || !triggered.choices.is_empty()
+        || triggered
+            .trigger
+            .downcast_ref::<crate::triggers::BeginningOfUpkeepTrigger>()
+            .is_none_or(|trigger| trigger.player != PlayerFilter::You)
+    {
+        return None;
+    }
+    let [unless] = triggered.effects.flattened_default_effects() else {
+        return None;
+    };
+    let unless = unless.downcast_ref::<crate::effects::UnlessActionEffect>()?;
+    if unless.player != PlayerFilter::You {
+        return None;
+    }
+    let [sacrifice] = unless.effects.as_slice() else {
+        return None;
+    };
+    let sacrifice = sacrifice.downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
+    if !matches!(sacrifice.target, ChooseSpec::Source) {
+        return None;
+    }
+    let cost = describe_echo_alternative_cost(&unless.alternative)?;
+    Some(format!("Echo{cost}"))
+}
+
 fn describe_structural_echo_pair(first: &Ability, second: &Ability) -> Option<String> {
     let AbilityKind::Static(static_ability) = &first.kind else {
         return None;
@@ -28817,7 +28851,11 @@ fn describe_structural_evolve_keyword(ability: &Ability) -> Option<String> {
     let AbilityKind::Triggered(triggered) = &ability.kind else {
         return None;
     };
-    if triggered.intervening_if.is_some() || !triggered.choices.is_empty() {
+    if !matches!(
+        triggered.intervening_if,
+        None | Some(crate::ConditionExpr::EvolveEnteringCreatureIsLarger)
+    ) || !triggered.choices.is_empty()
+    {
         return None;
     }
     let zone_change = triggered
@@ -28881,7 +28919,14 @@ fn describe_structural_renown_keyword(ability: &Ability) -> Option<String> {
     let AbilityKind::Triggered(triggered) = &ability.kind else {
         return None;
     };
-    if triggered.intervening_if.is_some()
+    let renown_intervening_if = match &triggered.intervening_if {
+        None => true,
+        Some(crate::ConditionExpr::Not(inner)) => {
+            matches!(inner.as_ref(), crate::ConditionExpr::SourceIsRenowned)
+        }
+        Some(_) => false,
+    };
+    if !renown_intervening_if
         || !triggered.choices.is_empty()
         || triggered.presentation_label.is_some()
         || triggered.trigger.intro_surface().is_some()
@@ -29240,6 +29285,53 @@ fn is_fading_sacrifice_trigger(
         .is_some_and(|trigger| trigger.filter.source)
 }
 
+/// Fading's upkeep trigger (CR 702.32a): remove a fade counter; if you
+/// can't, sacrifice the permanent.
+fn is_fading_upkeep_remove_or_sacrifice_trigger(triggered: &crate::ability::TriggeredAbility) -> bool {
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || triggered
+            .trigger
+            .downcast_ref::<crate::triggers::BeginningOfUpkeepTrigger>()
+            .is_none_or(|trigger| trigger.player != PlayerFilter::You)
+    {
+        return false;
+    }
+    let [remove_effect, if_effect] = triggered.effects.flattened_default_effects() else {
+        return false;
+    };
+    let Some(remove_with_id) = remove_effect.downcast_ref::<crate::effects::WithIdEffect>() else {
+        return false;
+    };
+    let Some(remove) = remove_with_id
+        .effect
+        .downcast_ref::<crate::effects::RemoveCountersEffect>()
+    else {
+        return false;
+    };
+    if remove.counter_type != CounterType::Fade
+        || remove.count != Value::Fixed(1)
+        || !matches!(remove.target, ChooseSpec::Source)
+    {
+        return false;
+    }
+    let Some(if_effect) = if_effect.downcast_ref::<crate::effects::IfEffect>() else {
+        return false;
+    };
+    if if_effect.condition != remove_with_id.id
+        || if_effect.predicate != crate::effect::EffectPredicate::DidNotHappen
+        || !if_effect.else_.is_empty()
+    {
+        return false;
+    }
+    let [sacrifice] = if_effect.then.as_slice() else {
+        return false;
+    };
+    sacrifice
+        .downcast_ref::<crate::effects::SacrificeTargetEffect>()
+        .is_some_and(|sacrifice| matches!(sacrifice.target, ChooseSpec::Source))
+}
+
 fn is_vanishing_sacrifice_trigger(triggered: &crate::ability::TriggeredAbility) -> bool {
     if triggered.intervening_if.is_some()
         || !triggered.choices.is_empty()
@@ -29272,7 +29364,16 @@ fn is_vanishing_sacrifice_trigger(triggered: &crate::ability::TriggeredAbility) 
 }
 
 fn is_graft_trigger(triggered: &crate::ability::TriggeredAbility) -> bool {
-    if triggered.intervening_if.is_some() || !triggered.choices.is_empty() {
+    // CR 702.58a: "if this permanent has a +1/+1 counter on it" intervening-if.
+    if !matches!(
+        triggered.intervening_if,
+        None | Some(Condition::SourceHasCounterAtLeast {
+            counter_type: CounterType::PlusOnePlusOne,
+            count: 1,
+            ..
+        })
+    ) || !triggered.choices.is_empty()
+    {
         return false;
     }
     let Some(zone_change) = triggered
@@ -29801,6 +29902,16 @@ fn describe_structural_counter_keyword_bundle(abilities: &[Ability]) -> Option<(
         if matches!(amount, CounterKeywordAmount::Fixed(_)) && is_graft_trigger(triggered) {
             return Some((format!("Graft {}", amount.render()), 2));
         }
+    }
+
+    if counter == CounterType::Fade
+        && let Some(Ability {
+            kind: AbilityKind::Triggered(triggered),
+            ..
+        }) = abilities.get(1)
+        && is_fading_upkeep_remove_or_sacrifice_trigger(triggered)
+    {
+        return Some((format!("Fading {}", amount.render()), 2));
     }
 
     if (counter == CounterType::Fade || counter == CounterType::Time)
@@ -33099,6 +33210,11 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 continue;
             }
             if let Some(keyword) = describe_structural_evolve_keyword(ability) {
+                output.push(format!("Keyword ability {}: {keyword}", ability_idx + 1));
+                ability_idx += 1;
+                continue;
+            }
+            if let Some(keyword) = describe_structural_echo_keyword(ability) {
                 output.push(format!("Keyword ability {}: {keyword}", ability_idx + 1));
                 ability_idx += 1;
                 continue;

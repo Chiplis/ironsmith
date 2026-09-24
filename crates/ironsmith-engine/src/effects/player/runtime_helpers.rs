@@ -49,10 +49,12 @@ pub(super) fn queue_effect_driven_land_play(
         ),
     );
 
-    if game
-        .object(land_id)
-        .is_some_and(|obj| obj.subtypes.contains(&Subtype::Saga))
-        && let Some(event) = game.add_counters(land_id, CounterType::Lore, 1)
+    // A Saga land gets its lore counter as it enters (CR 714.3a), on the
+    // central battlefield-entry path; only add one if that didn't happen.
+    if game.object(land_id).is_some_and(|obj| {
+        obj.subtypes.contains(&Subtype::Saga)
+            && obj.counters.get(&CounterType::Lore).copied().unwrap_or(0) == 0
+    }) && let Some(event) = game.add_counters(land_id, CounterType::Lore, 1)
     {
         game.queue_trigger_event(ctx.provenance, event);
     }

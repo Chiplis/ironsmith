@@ -2723,10 +2723,9 @@ pub fn parse_prowl_line_lexed(
     Ok(Some(AlternativeCastingMethod::Composed {
         name: "Prowl".into(),
         total_cost,
+        // CR 702.76a: any of *this spell's* creature types, not only Rogue.
         condition: Some(
-            crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(
-                Subtype::Rogue,
-            ),
+            crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerSharingCreatureTypeThisTurn,
         ),
         prototype_power_toughness: None,
     }))

@@ -346,6 +346,8 @@ pub enum StaticAbilityId {
     Grants,
     NativeAlternativeCastFromZone,
     EntersUnderChosenControl,
+    /// Toxic N (CR 702.164). The amount is carried in the ability's label.
+    Toxic,
 }
 
 impl StaticAbilityId {
@@ -686,6 +688,7 @@ impl StaticAbilityId {
             | UnsupportedParserLine
             | Grants
             | EntersUnderChosenControl
+            | Toxic
             | NativeAlternativeCastFromZone => {}
         }
     }
@@ -749,6 +752,7 @@ impl StaticAbilityId {
                 | EnlistAttack
                 | ReadAhead
                 | Unleash
+                | Toxic
                 | KeywordText
                 | KeywordMarker
                 | KeywordFallbackText
@@ -842,6 +846,7 @@ impl StaticAbilityId {
                 | CreaturesAssignCombatDamageUsingToughness
                 | CreaturesYouControlAssignCombatDamageUsingToughness
                 | LethalDamageToCreaturesYouControlUsesPower
+                | Toxic
         )
     }
 

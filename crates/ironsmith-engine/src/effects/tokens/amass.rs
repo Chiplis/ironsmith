@@ -107,14 +107,18 @@ impl EffectExecutor for AmassEffect {
         };
 
         // "Amass <Subtype>" causes the chosen Army creature to become that subtype
-        // in addition to its other types if it doesn't already have it.
+        // in addition to its other types if it doesn't already have it. That is
+        // a type-changing (layer 4) effect, not a copiable value (CR 701.47a).
         if !game
             .calculated_subtypes(chosen_army)
             .contains(&amass_subtype)
-            && let Some(obj) = game.object_mut(chosen_army)
-            && !obj.subtypes.contains(&amass_subtype)
         {
-            obj.subtypes.push(amass_subtype);
+            let become_subtype = crate::effects::ApplyContinuousEffect::with_spec(
+                ChooseSpec::SpecificObject(chosen_army),
+                crate::continuous::Modification::AddSubtypes(vec![amass_subtype]),
+                crate::effect::Until::Forever,
+            );
+            let _ = become_subtype.execute(game, ctx)?;
         }
 
         let counters_outcome = PutCountersEffect::new(

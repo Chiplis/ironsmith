@@ -130,7 +130,7 @@ impl EffectExecutor for SequenceEffect {
         let mut assignment_cursor = 0usize;
         let mut active_scope = None;
 
-        for effect in &self.effects {
+        for (index, effect) in self.effects.iter().enumerate() {
             let assignment_count = if child_assignments.is_some() {
                 if self.surface.is_coordinated() {
                     crate::game_loop::count_target_selection_slots_for_coordinated_child(
@@ -199,6 +199,9 @@ impl EffectExecutor for SequenceEffect {
                     events,
                     execution_facts,
                 ));
+            }
+            if let Some(next) = self.effects.get(index + 1) {
+                crate::effects::match_triggers_at_instruction_boundary(game, ctx, Some(next));
             }
         }
 

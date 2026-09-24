@@ -64,7 +64,42 @@ impl EffectExecutor for UnlockRoomDoorEffect {
         else {
             return Ok(EffectOutcome::count(0));
         };
-        if !crate::special_actions::apply_room_door_unlock(game, room_id) {
+        // CR 709.5f: the player chooses a locked door to unlock.
+        let doors = crate::special_actions::locked_room_doors(game, room_id);
+        let door = if doors.len() > 1 {
+            let door_options = doors
+                .iter()
+                .enumerate()
+                .map(|(index, door)| {
+                    let name = crate::special_actions::room_door_name(game, room_id, *door)
+                        .unwrap_or_else(|| "Door".to_string());
+                    SelectableOption::new(index, name)
+                })
+                .collect();
+            let door_ctx = SelectOptionsContext::new(
+                chooser,
+                Some(ctx.source),
+                "Choose a door to unlock",
+                door_options,
+                1,
+                1,
+            );
+            let selected = ctx.decision_maker.decide_options(game, &door_ctx);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            selected
+                .into_iter()
+                .next()
+                .and_then(|index| doors.get(index).copied())
+                .unwrap_or(doors[0])
+        } else {
+            doors
+                .first()
+                .copied()
+                .unwrap_or(crate::special_actions::RoomDoor::Linked)
+        };
+        if !crate::special_actions::apply_room_door_unlock(game, room_id, door) {
             return Ok(EffectOutcome::count(0));
         }
 

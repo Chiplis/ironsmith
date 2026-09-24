@@ -47,6 +47,46 @@ mod unearth;
 mod unlock_room_door;
 mod untap;
 
+/// Whether `player` currently has protection from everything (The One Ring,
+/// Teferi's Protection).
+///
+/// Player protection lowers to its two observable halves from one source:
+/// "can't be the target of spells or abilities" plus "prevent all damage that
+/// would be dealt to you". Recognize that pair so the enchant half of
+/// CR 702.16c applies to players too.
+pub(crate) fn player_has_protection_from_everything(
+    game: &GameState,
+    player: crate::ids::PlayerId,
+) -> bool {
+    if game.effect_store.cant_effects.can_target_player(player) {
+        return false;
+    }
+    let shields = game.effect_store.prevention_effects.shields();
+    game.effect_store
+        .restriction_effects
+        .iter()
+        .filter(|restriction| {
+            !restriction.is_pending()
+                && matches!(
+                    restriction.restriction,
+                    crate::effect::Restriction::BeTargetedPlayer(_)
+                )
+        })
+        .any(|restriction| {
+            shields.iter().any(|shield| {
+                shield.source == restriction.source
+                    && shield.damage_filter == crate::prevention::DamageFilter::all()
+                    && match shield.protected {
+                        crate::prevention::PreventionTarget::Player(protected) => {
+                            protected == player
+                        }
+                        crate::prevention::PreventionTarget::You => shield.controller == player,
+                        _ => false,
+                    }
+            })
+        })
+}
+
 pub(crate) fn attachment_can_attach_to_target(
     game: &GameState,
     attachment_id: ObjectId,
@@ -70,6 +110,13 @@ pub(crate) fn attachment_can_attach_to_target(
 
     let subtypes = game.calculated_subtypes(attachment_id);
     if subtypes.contains(&Subtype::Aura) {
+        // CR 702.16c/702.16j: a player with protection from everything can't
+        // be enchanted; attached Auras fall off as a state-based action.
+        if let AttachmentTarget::Player(player) = target
+            && player_has_protection_from_everything(game, player)
+        {
+            return false;
+        }
         let filter_ctx = game.filter_context_for(attachment_controller, Some(attachment_id));
         if let Some(chars) = game.current_characteristics(attachment_id) {
             let filters = chars.static_abilities.iter()
@@ -85,8 +132,11 @@ pub(crate) fn attachment_can_attach_to_target(
         return false;
     }
 
+    // CR 301.5c / 301.6: an Equipment or Fortification that's currently a
+    // creature (e.g. animated by March of the Machines) can't be attached.
+    let attachment_is_creature = game.object_has_card_type(attachment_id, CardType::Creature);
     if subtypes.contains(&Subtype::Equipment) {
-        if attachment.card_types.contains(&CardType::Creature)
+        if attachment_is_creature
             && !attachment_has_reconfigure_ability(attachment)
         {
             return false;
@@ -105,7 +155,7 @@ pub(crate) fn attachment_can_attach_to_target(
     }
 
     if subtypes.contains(&Subtype::Fortification) {
-        if attachment.card_types.contains(&CardType::Creature) {
+        if attachment_is_creature {
             return false;
         }
         return matches!(target, AttachmentTarget::Object(target_id) if game.object_has_card_type(target_id, CardType::Land));
@@ -225,6 +275,7 @@ pub use detain::DetainEffect;
 pub use next_adapt_ignores_counters::NextAdaptIgnoresCountersEffect;
 pub use earthbend::EarthbendEffect;
 pub use evolve::EvolveEffect;
+pub(crate) use evolve::evolve_entering_creature_is_larger;
 pub use exert::ExertCostEffect;
 pub use flip::FlipEffect;
 pub use grant_object_ability::GrantObjectAbilityEffect;
@@ -239,8 +290,9 @@ pub use reconfigure::ReconfigureEffect;
 pub use regenerate::RegenerateEffect;
 pub use renown::RenownEffect;
 pub use saddle::{BecomeSaddledUntilEotEffect, SaddleCostEffect};
-pub use solve_case::SolveCaseEffect;
+pub use solve_case::{SetClassLevelEffect, SolveCaseEffect};
 pub use soulbond_pair::SoulbondPairEffect;
+pub(crate) use soulbond_pair::soulbond_pairing_possible;
 pub use suspect::{ClearSuspectedEffect, SuspectEffect};
 pub use tap::TapEffect;
 pub use transform::{ConvertEffect, TransformEffect};

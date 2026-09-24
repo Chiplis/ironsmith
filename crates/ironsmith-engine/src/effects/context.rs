@@ -637,13 +637,29 @@ impl<'a> ExecutionContext<'a> {
     /// Call this before executing effects that may exile/destroy targets.
     pub fn snapshot_targets(&mut self, game: &GameState) {
         for target in &self.targets {
-            if let ResolvedTarget::Object(obj_id) = target
-                && let Some(obj) = game.object(*obj_id)
-            {
+            let ResolvedTarget::Object(obj_id) = target else {
+                continue;
+            };
+            if let Some(obj) = game.object(*obj_id) {
                 self.target_snapshots.insert(
                     *obj_id,
                     ObjectSnapshot::from_object_with_calculated_characteristics(obj, game),
                 );
+            } else if let Some(entry) = game.stack_ability_entry(*obj_id) {
+                // An ability on the stack, named by its own stack id: its
+                // last known information is its source's, controlled by the
+                // ability's controller ("its controller", CR 113.8).
+                let snapshot = game
+                    .object(entry.object_id)
+                    .map(|source| {
+                        ObjectSnapshot::from_object_with_calculated_characteristics(source, game)
+                    })
+                    .or_else(|| entry.source_snapshot.clone());
+                if let Some(mut snapshot) = snapshot {
+                    snapshot.controller = entry.controller;
+                    snapshot.zone = crate::zone::Zone::Stack;
+                    self.target_snapshots.insert(*obj_id, snapshot);
+                }
             }
         }
     }

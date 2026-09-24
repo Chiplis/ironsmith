@@ -101,12 +101,74 @@ pub fn add_saga_lore_counters(game: &mut GameState, trigger_queue: &mut TriggerQ
     }
 }
 
+/// Lore counters a Saga gets as it enters the battlefield (CR 714.3a), or
+/// the chosen chapter for read ahead (CR 702.155b). Zero if not a Saga.
+fn entry_lore_counter_amount(
+    game: &mut GameState,
+    saga_id: ObjectId,
+    decision_maker: &mut dyn DecisionMaker,
+) -> u32 {
+    let Some(profile) = ({
+        let view = crate::derived_view::DerivedGameView::new(game);
+        saga_profile_with_view(game, &view, saga_id)
+    }) else {
+        return 0;
+    };
+    if profile.has_read_ahead {
+        choose_read_ahead_chapter(
+            game,
+            saga_id,
+            profile.controller,
+            profile.final_chapter,
+            decision_maker,
+        )
+    } else {
+        1
+    }
+}
+
+/// CR 714.3a: "As a Saga without read ahead enters the battlefield, its
+/// controller puts a lore counter on it." This applies to every entry
+/// (cast, played, put onto the battlefield, token copies), so the central
+/// battlefield-entry path calls it. The counter-placed event drives chapter
+/// triggers once pending events are drained.
+pub(crate) fn add_entry_lore_counters(
+    game: &mut GameState,
+    saga_id: ObjectId,
+    decision_maker: &mut dyn DecisionMaker,
+) {
+    // Cheap printed-type pre-check: most entering objects aren't Sagas, and
+    // the profile needs calculated characteristics.
+    if !game
+        .object(saga_id)
+        .is_some_and(|object| object.subtypes.contains(&Subtype::Saga))
+    {
+        return;
+    }
+    let amount = entry_lore_counter_amount(game, saga_id, decision_maker);
+    if amount == 0 {
+        return;
+    }
+    if let Some(event) = game.add_counters(saga_id, CounterType::Lore, amount) {
+        game.queue_trigger_event(event.provenance(), event);
+    }
+}
+
+/// Legacy entry hook for callers that put a Saga onto the battlefield
+/// without the central entry path. A Saga that already got its entry lore
+/// counters there is left alone.
 pub fn handle_saga_enters_battlefield(
     game: &mut GameState,
     saga_id: ObjectId,
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,
 ) {
+    if game
+        .object(saga_id)
+        .is_some_and(|object| object.counters.get(&CounterType::Lore).copied().unwrap_or(0) > 0)
+    {
+        return;
+    }
     let Some(profile) = ({
         let view = crate::derived_view::DerivedGameView::new(game);
         saga_profile_with_view(game, &view, saga_id)

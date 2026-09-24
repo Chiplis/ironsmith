@@ -17,6 +17,11 @@ use crate::tag::TagKey;
 use crate::target::FilterContext;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
+
+/// Display label for a face-down permanent or spell, which has no name
+/// (CR 708.2a). Name comparisons treat it as nameless.
+pub const FACE_DOWN_DISPLAY_NAME: &str = "Face-down creature";
+
 pub use ironsmith_core::CounterType;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -475,6 +480,11 @@ pub struct Object {
     pub other_face_name: Option<SharedStr>,
     /// Layout semantics for linked-face cards.
     pub linked_face_layout: LinkedFaceLayout,
+    /// Mana cost of the linked face that isn't currently shown: the other half
+    /// of a split card, or the front face of a transforming double-faced card
+    /// whose back face is up. Only mana value reads it (CR 709.4, 712.8c/e);
+    /// it's not a copiable value, so a copy of a back face has mana value 0.
+    pub linked_face_mana_cost: Option<SharedValue<ManaCost>>,
     pub base_power: Option<PtValue>,
     pub base_toughness: Option<PtValue>,
     pub base_loyalty: Option<u32>,
@@ -645,6 +655,26 @@ impl Object {
         owned_optional_value(&self.mana_cost)
     }
 
+    /// Mana value contributed by the linked face, when it replaces the value
+    /// computed from `mana_cost` alone:
+    /// - a split card outside the stack has the combined mana value of both
+    ///   halves (CR 709.4);
+    /// - a transforming double-faced card with its back face up has the mana
+    ///   value of its front face (CR 712.8c, 712.8e).
+    pub fn linked_face_mana_value(&self) -> Option<u32> {
+        let linked = self.linked_face_mana_cost.as_deref()?;
+        match self.linked_face_layout {
+            LinkedFaceLayout::Split if !matches!(self.zone, Zone::Stack | Zone::Battlefield) => {
+                let own = self.mana_cost.as_deref().map_or(0, ManaCost::mana_value);
+                Some(own + linked.mana_value())
+            }
+            LinkedFaceLayout::TransformLike if self.mana_cost.is_none() => {
+                Some(linked.mana_value())
+            }
+            _ => None,
+        }
+    }
+
     pub fn spell_effect_owned(&self) -> Option<crate::resolution::ResolutionProgram> {
         owned_optional_value(&self.spell_effect)
     }
@@ -698,6 +728,7 @@ impl Object {
             other_face: card.other_face,
             other_face_name: card.other_face_name.clone().map(Into::into),
             linked_face_layout: card.linked_face_layout,
+            linked_face_mana_cost: None,
             base_power,
             base_toughness,
             base_loyalty: card.loyalty,
@@ -780,6 +811,7 @@ impl Object {
             other_face: None,
             other_face_name: None,
             linked_face_layout: LinkedFaceLayout::None,
+            linked_face_mana_cost: None,
             base_power: None,
             base_toughness: None,
             base_loyalty: None,
@@ -870,6 +902,16 @@ impl Object {
             .map(|pt| (Some(pt.power), Some(pt.toughness)))
             .unwrap_or((None, None));
 
+        // Turning to the linked face keeps the face being hidden as the linked
+        // face's mana cost, which mana value reads (CR 709.4, 712.8c).
+        let turning_to_linked_face = self.other_face.is_some_and(|id| id == def.card.id)
+            || self
+                .other_face_name
+                .as_deref()
+                .is_some_and(|name| name == def.card.name.as_str());
+        if turning_to_linked_face {
+            self.linked_face_mana_cost = self.mana_cost.take();
+        }
         self.name = handles.name.clone();
         self.first_printed_set_name = handles.first_printed_set_name.clone();
         self.mana_cost = handles.mana_cost.clone();
@@ -1036,6 +1078,7 @@ impl Object {
             other_face: None,
             other_face_name: None,
             linked_face_layout: LinkedFaceLayout::None,
+            linked_face_mana_cost: None,
             base_power: power.map(PtValue::Fixed),
             base_toughness: toughness.map(PtValue::Fixed),
             base_loyalty: None,
@@ -1107,6 +1150,7 @@ impl Object {
             other_face: source.other_face,
             other_face_name: source.other_face_name.clone(),
             linked_face_layout: source.linked_face_layout,
+            linked_face_mana_cost: None,
             base_power: source.base_power,
             base_toughness: source.base_toughness,
             base_loyalty: source.base_loyalty,
@@ -1179,6 +1223,7 @@ impl Object {
             other_face: source.other_face,
             other_face_name: source.other_face_name.clone(),
             linked_face_layout: source.linked_face_layout,
+            linked_face_mana_cost: None,
             base_power: source.base_power,
             base_toughness: source.base_toughness,
             base_loyalty: source.base_loyalty,
@@ -1248,6 +1293,7 @@ impl Object {
             other_face: snapshot.other_face,
             other_face_name: snapshot.other_face_name.clone().map(Into::into),
             linked_face_layout: snapshot.linked_face_layout,
+            linked_face_mana_cost: None,
             base_power: copiable.power.map(PtValue::Fixed),
             base_toughness: copiable.toughness.map(PtValue::Fixed),
             base_loyalty: copiable.loyalty,
@@ -1316,6 +1362,7 @@ impl Object {
             other_face: None,
             other_face_name: None,
             linked_face_layout: LinkedFaceLayout::None,
+            linked_face_mana_cost: None,
             base_power: None,
             base_toughness: None,
             base_loyalty: None,
@@ -1567,7 +1614,7 @@ impl Object {
             aura_attach_filter: self.aura_attach_filter.clone(),
         }));
 
-        self.name = "Face-down creature".into();
+        self.name = FACE_DOWN_DISPLAY_NAME.into();
         self.first_printed_set_name = None;
         self.mana_cost = None;
         self.color_override = Some(ColorSet::COLORLESS);
@@ -1989,6 +2036,7 @@ impl Object {
             other_face: def.card.other_face,
             other_face_name: handles.other_face_name.clone(),
             linked_face_layout: def.card.linked_face_layout,
+            linked_face_mana_cost: None,
             base_power: def.card.power_toughness.map(|pt| pt.power),
             base_toughness: def.card.power_toughness.map(|pt| pt.toughness),
             base_loyalty: def.card.loyalty,

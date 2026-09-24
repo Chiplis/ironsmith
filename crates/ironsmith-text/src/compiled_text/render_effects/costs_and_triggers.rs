@@ -175,6 +175,8 @@ pub(super) fn apply_triggered_presentation_label(
         PresentationLabel::Keyword(PresentationKeyword::Firebending(amount)) => {
             format!("Firebending {amount}")
         }
+        PresentationLabel::Keyword(PresentationKeyword::Melee) => "Melee".to_string(),
+        PresentationLabel::Keyword(PresentationKeyword::Provoke) => "Provoke".to_string(),
         PresentationLabel::AbilityWord(label)
             if label
                 .trim()

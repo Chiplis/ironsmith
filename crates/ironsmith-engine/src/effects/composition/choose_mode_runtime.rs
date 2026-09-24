@@ -141,6 +141,38 @@ fn active_target_assignments_for_inner_effect(
     assignments[start..end].to_vec()
 }
 
+/// For the endure keyword action (CR 701.63a, `ChooseModeEffect::endure`):
+/// mode 0 puts +1/+1 counters on the enduring permanent and mode 1 creates the
+/// Spirit token. Returns the token mode when that permanent is no longer on
+/// the battlefield, so the counters can't be put on it.
+fn endure_token_mode_when_permanent_is_gone(
+    effect: &ChooseModeEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Option<usize> {
+    if !effect.endure || effect.modes.len() != 2 {
+        return None;
+    }
+    let put = effect.modes[0]
+        .effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::PutCountersEffect>())?;
+    let on_battlefield = |id: crate::ids::ObjectId| {
+        game.object(id)
+            .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+    };
+    let gone = if matches!(put.target.base(), crate::target::ChooseSpec::Source) {
+        !on_battlefield(ctx.source)
+    } else {
+        match crate::effects::helpers::resolve_objects_from_spec(game, &put.target, ctx) {
+            Ok(objects) => !objects.into_iter().any(on_battlefield),
+            Err(ExecutionError::InvalidTarget | ExecutionError::TagNotFound(_)) => true,
+            Err(_) => false,
+        }
+    };
+    gone.then_some(1)
+}
+
 pub(crate) fn run_choose_mode(
     effect: &ChooseModeEffect,
     game: &mut GameState,
@@ -174,6 +206,18 @@ pub(crate) fn run_choose_mode(
         {
             return Ok(EffectOutcome::resolved());
         }
+    }
+    // CR 701.63a endure: "create an N/N Spirit token unless they put N +1/+1
+    // counters on that permanent." Once the permanent has left the battlefield
+    // the counters can't be put on it, so the token is created regardless of
+    // the choice.
+    if let Some(token_mode) = endure_token_mode_when_permanent_is_gone(effect, game, ctx) {
+        let mut outcomes = Vec::new();
+        for token_effect in &effect.modes[token_mode].effects {
+            outcomes.push(execute_effect(game, token_effect, ctx)?);
+        }
+        return Ok(EffectOutcome::aggregate(outcomes)
+            .with_execution_fact(ExecutionFact::ChosenOptions(vec![token_mode])));
     }
     let chooser = effect
         .chooser

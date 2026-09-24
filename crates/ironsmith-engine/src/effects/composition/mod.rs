@@ -94,6 +94,7 @@ pub use mechanic_actions::{
     OpenAttractionEffect, PopulateEffect, ResolvesDespiteIllegalTargetsEffect, SupportEffect,
 };
 pub use reflexive_trigger::ReflexiveTriggerEffect;
+pub(crate) use reflexive_trigger::{PendingReflexiveTrigger, reflexive_trigger_stack_entry};
 pub use repeat_effects::RepeatEffectsEffect;
 pub use repeat_process::RepeatProcessEffect;
 pub use repeat_process_prompt::RepeatProcessPromptEffect;

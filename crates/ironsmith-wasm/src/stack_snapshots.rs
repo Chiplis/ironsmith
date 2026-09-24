@@ -90,6 +90,9 @@ pub(super) fn deterministic_match_seed(
 pub(super) struct StackObjectSnapshot {
     pub(super) id: u64,
     pub(super) inspect_object_id: Option<u64>,
+    /// The id a targeting decision names for this stack object. An ability
+    /// has its own stack id, distinct from its source's object id.
+    pub(super) target_object_id: Option<u64>,
     pub(super) stable_id: Option<u64>,
     pub(super) source_stable_id: Option<u64>,
     pub(super) controller: u8,
@@ -209,6 +212,7 @@ pub(super) fn build_stack_object_snapshot(
         StackObjectSnapshot {
             id,
             inspect_object_id,
+            target_object_id: Some(entry.target_id().0),
             stable_id,
             source_stable_id,
             controller: entry.controller.0,
@@ -239,6 +243,7 @@ pub(super) fn build_stack_object_snapshot(
         StackObjectSnapshot {
             id,
             inspect_object_id,
+            target_object_id: Some(entry.target_id().0),
             stable_id,
             source_stable_id,
             controller: entry.controller.0,

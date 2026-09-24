@@ -931,9 +931,16 @@ fn add_battlefield_actions(
                 }
             }
         }
-        let unlock_action = SpecialAction::UnlockRoomDoor { room_id: perm_id };
-        if can_perform_check(&unlock_action, game, player).is_ok() {
-            actions.push(LegalAction::SpecialAction(unlock_action));
+        // CR 709.5e: each locked door is its own unlock option (both doors
+        // are locked when the Room entered with neither unlocked).
+        for door in crate::special_actions::locked_room_doors(game, perm_id) {
+            let unlock_action = SpecialAction::UnlockRoomDoor {
+                room_id: perm_id,
+                door,
+            };
+            if can_perform_check(&unlock_action, game, player).is_ok() {
+                actions.push(LegalAction::SpecialAction(unlock_action));
+            }
         }
     }
 

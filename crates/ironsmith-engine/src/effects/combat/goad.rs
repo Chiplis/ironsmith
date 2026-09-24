@@ -203,6 +203,7 @@ mod tests {
                 other_face: None,
                 other_face_name: None,
                 linked_face_layout: crate::card::LinkedFaceLayout::None,
+                linked_face_mana_value: None,
                 power: None,
                 toughness: None,
                 base_power: None,

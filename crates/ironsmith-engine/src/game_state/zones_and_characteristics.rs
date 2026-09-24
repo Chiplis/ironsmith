@@ -726,8 +726,12 @@ impl GameState {
         }
         if !preserve_face_down_overlay && !preserve_bestow_overlay {
             new_object.keyword_payment_contributions_to_cast.clear();
-            new_object.bestow_cast_state = None;
-            new_object.face_down_cast_state = None;
+            // The face-down and bestow overlays overwrote the object's
+            // copiable fields; restore the printed card as it leaves (CR 708.9,
+            // 400.7, 702.103). Merely dropping the saved state would leave the
+            // card in its new zone as a "Face-down creature" / Aura.
+            new_object.end_bestow_cast_overlay();
+            new_object.end_face_down_cast_overlay();
         }
         if !preserve_x_value {
             new_object.x_value = None;
@@ -762,6 +766,21 @@ impl GameState {
         }
         new_object.cast_alternative_method = None;
         new_object.cast_play_from_constraints = None;
+        // A card cast through a granted "it gains suspend" trigger carries a
+        // synthetic "Suspend 0—{0}" permission only for that cast; it isn't a
+        // printed ability and must not follow the card (CR 400.7, 702.62a).
+        if old_zone == Zone::Stack
+            && new_zone != Zone::Stack
+            && new_object.alternative_casts.iter().any(is_synthetic_granted_suspend)
+        {
+            new_object.alternative_casts = new_object
+                .alternative_casts
+                .iter()
+                .filter(|method| !is_synthetic_granted_suspend(method))
+                .cloned()
+                .collect::<Vec<_>>()
+                .into();
+        }
 
         if old_zone == Zone::Stack
             && new_zone != Zone::Stack
@@ -774,8 +793,13 @@ impl GameState {
             let handles = self.object_store.shared_handles_for_definition(&front_def);
             new_object.apply_definition_face_with_shared(&front_def, &handles);
         }
-        if old_zone == Zone::Exile
-            && new_zone == Zone::Battlefield
+        // CR 712.8a / 712.14: outside the battlefield and the stack a
+        // transforming double-faced card has only its front face, and it
+        // enters the battlefield front face up unless an effect says otherwise.
+        let leaves_battlefield_or_stack = matches!(old_zone, Zone::Battlefield | Zone::Stack)
+            && !matches!(new_zone, Zone::Battlefield | Zone::Stack);
+        if (leaves_battlefield_or_stack
+            || (old_zone == Zone::Exile && new_zone == Zone::Battlefield))
             && new_object.linked_face_layout == LinkedFaceLayout::TransformLike
             && let Some(front_def) =
                 self.default_face_definition_for_transform_like_return(&new_object)
@@ -1903,6 +1927,13 @@ impl GameState {
             if let Some(names) = choice_store.chosen_named_options.remove(&old_id) {
                 choice_store.chosen_named_options.insert(new_id, names);
             }
+            // Devour runs as the permanent enters (CR 702.82a) and records the
+            // devoured count on the pre-move id.
+            let devoured = self.devoured_count(old_id);
+            if devoured > 0 {
+                self.set_devoured_count(old_id, 0);
+                self.set_devoured_count(new_id, devoured);
+            }
         }
         if choices.transfer_as_enters_source_links {
             self.transfer_exiled_with_source_links(old_id, new_id);
@@ -2190,7 +2221,12 @@ impl GameState {
                         if *id == new_id || candidate.zone != Zone::Battlefield {
                             continue;
                         }
-                        if filter.matches(candidate, &filter_ctx, self) {
+                        // CR 303.4f: the object must be legal to enchant under
+                        // "any other applicable effects", which includes
+                        // protection (702.16c) but not hexproof or shroud.
+                        if filter.matches(candidate, &filter_ctx, self)
+                            && !crate::targeting::has_protection_from_source(self, *id, new_id)
+                        {
                             candidates.push(crate::decisions::context::SelectableObject::new(
                                 *id,
                                 candidate.name.to_string(),
@@ -2223,7 +2259,11 @@ impl GameState {
                         .players
                         .iter()
                         .filter(|player| {
-                            player.is_in_game() && filter.matches_player(player.id, &filter_ctx)
+                            player.is_in_game()
+                                && filter.matches_player(player.id, &filter_ctx)
+                                && !crate::effects::permanents::player_has_protection_from_everything(
+                                    self, player.id,
+                                )
                         })
                         .map(|player| (player.id, player.name.to_string()))
                         .collect::<Vec<_>>();
@@ -2296,6 +2336,45 @@ impl GameState {
             crate::static_abilities::StaticAbilityId::EntersPrepared,
         ) {
             self.set_prepared(new_id);
+        }
+
+        // CR 714.3a / 702.155b: a Saga gets its lore counter(s) as it enters,
+        // however it enters.
+        crate::game_loop::add_entry_lore_counters(self, new_id, decision_maker);
+
+        // CR 709.5d: a Room gets the unlocked designation for the half that was
+        // cast; one entering any other way has neither door unlocked. CR
+        // 709.5h: "when you unlock this door" also triggers for a door that
+        // entered unlocked.
+        if let Some(room_controller) = self
+            .object(new_id)
+            .filter(|object| {
+                object.linked_face_layout == LinkedFaceLayout::Split
+                    && object.subtypes.contains(&Subtype::Room)
+            })
+            .map(|object| self.controller_of(object))
+        {
+            let cast_as_spell = old_zone == Zone::Stack
+                && self
+                    .object(new_id)
+                    .is_some_and(|object| object.kind == crate::object::ObjectKind::Card);
+            if cast_as_spell {
+                let provenance = self
+                    .provenance_graph_mut()
+                    .alloc_root_event(crate::events::EventKind::KeywordAction);
+                let event = crate::triggers::TriggerEvent::new_with_provenance(
+                    crate::events::KeywordActionEvent::new(
+                        crate::events::KeywordActionKind::UnlockDoor,
+                        room_controller,
+                        new_id,
+                        1,
+                    ),
+                    provenance,
+                );
+                self.queue_trigger_event(provenance, event);
+            } else {
+                self.mark_room_entered_with_no_unlocked_door(new_id);
+            }
         }
 
         Some(EntersResult {
@@ -3419,7 +3498,11 @@ impl GameState {
         id: ObjectId,
         skipped_effect: Option<ContinuousEffectId>,
     ) -> Option<PlayerId> {
-        let object = self.object(id)?;
+        let Some(object) = self.object(id) else {
+            // An ability on the stack is controlled by the player who put it
+            // there (CR 113.8), whatever now controls its source.
+            return self.stack_ability_entry(id).map(|entry| entry.controller);
+        };
         if self.is_face_up_planar_object(id) {
             return if self.grand_melee().is_some() {
                 self.planar_controller_of_face(id)
@@ -3596,7 +3679,9 @@ impl GameState {
 
     /// Return the object's current controller by object id.
     pub fn controller_of_id(&self, id: ObjectId) -> Option<PlayerId> {
-        let object = self.object(id)?;
+        let Some(object) = self.object(id) else {
+            return self.stack_ability_entry(id).map(|entry| entry.controller);
+        };
         Some(self.controller_of(object))
     }
 
@@ -4115,7 +4200,7 @@ impl GameState {
         for object_id in cant_be_regenerated {
             self.effect_store
                 .replacement_effects
-                .remove_one_shot_effects_from_source(object_id);
+                .remove_regeneration_shields_from_source(object_id);
             self.clear_regeneration_shields(object_id);
         }
     }
@@ -4280,6 +4365,7 @@ impl GameState {
                 | StaticAbilityId::Changeling
                 | StaticAbilityId::Partner
                 | StaticAbilityId::PartnerWith
+                | StaticAbilityId::Toxic
                 | StaticAbilityId::DoctorsCompanion
                 | StaticAbilityId::Assist
                 | StaticAbilityId::ReadAhead
@@ -4490,4 +4576,14 @@ mod chosen_option_tests {
             .expect("ordinary creature should move");
         assert_eq!(counter_count(&game, moved), 0);
     }
+}
+
+/// The zero-time, zero-cost suspend entry `CastSourceEffect` adds for a card
+/// cast via granted suspend (no printed card has "Suspend 0—{0}").
+fn is_synthetic_granted_suspend(method: &crate::alternative_cast::AlternativeCastingMethod) -> bool {
+    matches!(
+        method,
+        crate::alternative_cast::AlternativeCastingMethod::Suspend { cost, time: 0 }
+            if cost.is_empty()
+    )
 }

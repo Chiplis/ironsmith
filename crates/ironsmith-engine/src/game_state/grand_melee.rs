@@ -614,7 +614,9 @@ impl GameState {
     }
 
     pub fn object_is_on_current_stack(&self, object: crate::ids::ObjectId) -> bool {
-        self.stack.iter().any(|entry| entry.object_id == object)
+        self.stack
+            .iter()
+            .any(|entry| entry.object_id == object || entry.ability_id == Some(object))
     }
 
     pub fn priority_players_for_current_turn(&self) -> Vec<PlayerId> {

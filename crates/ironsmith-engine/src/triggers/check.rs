@@ -1013,6 +1013,31 @@ fn add_initiative_designation_triggers(
         return;
     };
 
+    // CR 725.2: "Whenever a player takes the initiative, that player
+    // ventures into Undercity."
+    if let Some(action) = trigger_event.downcast::<crate::events::KeywordActionEvent>()
+        && action.action == crate::events::KeywordActionKind::TakeInitiative
+    {
+        let player = action.player;
+        push_initiative_trigger(
+            triggered,
+            player,
+            TriggeredAbility {
+                trigger: Trigger::custom(
+                    "initiative_taken",
+                    "Whenever a player takes the initiative".to_string(),
+                ),
+                effects: ResolutionProgram::from_effects(vec![
+                    Effect::venture_into_undercity_player(PlayerFilter::Specific(player)),
+                ]),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: None,
+            },
+            trigger_event,
+        );
+    }
+
     if trigger_event.kind() == crate::events::traits::EventKind::BeginningOfUpkeep
         && let Some(upkeep) =
             trigger_event.downcast::<crate::events::phase::BeginningOfUpkeepEvent>()
@@ -1387,7 +1412,10 @@ fn trigger_event_can_have_synthetic_triggers(trigger_event: &TriggerEvent) -> bo
             | crate::events::traits::EventKind::CreatureAttacked
             | crate::events::traits::EventKind::CreatureBlocked
             | crate::events::traits::EventKind::MarkersChanged
-    )
+            | crate::events::traits::EventKind::BecomesTargeted
+    ) || trigger_event
+        .downcast::<crate::events::KeywordActionEvent>()
+        .is_some_and(|action| action.action == crate::events::KeywordActionKind::TakeInitiative)
 }
 
 fn add_flanking_triggers(
@@ -1510,6 +1538,82 @@ fn add_flanking_triggers(
             source_stable_id,
             source_name: source_name.clone(),
             source_snapshot: source_snapshot.clone(),
+            tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
+            source_kind: TriggeredAbilitySourceKind::Object,
+            trigger_identity: TriggerIdentity(hasher.finish()),
+        });
+    }
+}
+
+/// Ward (CR 702.21a): "Whenever this permanent becomes the target of a spell
+/// or ability an opponent controls, counter that spell or ability unless that
+/// player pays [cost]." Each ward instance is a separate triggered ability,
+/// and it looks only at the permanent as it became the target.
+fn add_ward_triggers(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    triggered: &mut Vec<TriggeredAbilityEntry>,
+) {
+    let Some(targeted) = trigger_event.downcast::<crate::events::spells::BecomesTargetedEvent>()
+    else {
+        return;
+    };
+    let crate::game_state::Target::Object(target) = targeted.target else {
+        return;
+    };
+    // Only a spell or ability that still targets the permanent triggers ward.
+    // A copy whose new targets were chosen as it was created reports its
+    // original targets too; those it no longer has never became targeted.
+    let Some(targeting_entry) = game.stack.iter().rev().find(|entry| {
+        entry.object_id == targeted.source
+            && entry.is_ability == targeted.by_ability
+            && entry.targets.contains(&targeted.target)
+    }) else {
+        return;
+    };
+    let targeting_stack_id = targeting_entry.ability_id;
+    let wards = crate::targeting::get_ward_costs(game, target, targeted.source_controller);
+    if wards.is_empty() {
+        return;
+    }
+    let Some(object) = game.object(target) else {
+        return;
+    };
+    let source_snapshot =
+        ObjectSnapshot::from_object_with_calculated_characteristics(object, game);
+    for (instance, ward) in wards.into_iter().enumerate() {
+        let ability = TriggeredAbility {
+            trigger: Trigger::custom(
+                crate::targeting::WARD_TRIGGER_ID,
+                "Whenever this permanent becomes the target of a spell or ability an opponent controls".to_string(),
+            ),
+            effects: ResolutionProgram::from_effects(vec![Effect::new(
+                crate::targeting::WardCounterEffect {
+                    targeting_source: targeted.source,
+                    targeting_ability_id: targeting_stack_id,
+                    by_ability: targeted.by_ability,
+                    ward_target: target,
+                    cost: ward.cost.clone(),
+                },
+            )]),
+            choices: Vec::new(),
+            intervening_if: None,
+            presentation_label: None,
+        };
+        let mut hasher = DefaultHasher::new();
+        crate::targeting::WARD_TRIGGER_ID.hash(&mut hasher);
+        instance.hash(&mut hasher);
+        ward.cost.display().hash(&mut hasher);
+        triggered.push(TriggeredAbilityEntry {
+            source: target,
+            controller: ward.ward_controller,
+            x_value: None,
+            event_value_amount: None,
+            ability,
+            triggering_event: trigger_event.clone(),
+            source_stable_id: object.stable_id,
+            source_name: object.name.to_string(),
+            source_snapshot: Some(source_snapshot.clone()),
             tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
             source_kind: TriggeredAbilitySourceKind::Object,
             trigger_identity: TriggerIdentity(hasher.finish()),
@@ -2140,12 +2244,8 @@ fn presentation_labeled_snapshot_trigger_is_active(
         return true;
     };
 
-    source
-        .counters
-        .get(&crate::CounterType::Level)
-        .copied()
-        .unwrap_or(0)
-        >= level.saturating_sub(1)
+    // CR 716.2: class levels are a designation, not level counters.
+    game.class_level(source.object_id) >= level
 }
 
 fn skip_post_event_source_discovery(
@@ -2682,6 +2782,7 @@ fn check_triggers_with_view_and_registry(
     }
 
     add_intrinsic_siege_defeat_trigger(game, trigger_event, view, &mut triggered);
+    add_ward_triggers(game, trigger_event, &mut triggered);
     add_monarch_designation_triggers(game, trigger_event, &mut triggered);
     add_initiative_designation_triggers(game, trigger_event, &mut triggered);
     add_ring_designation_triggers(game, trigger_event, &mut triggered);
@@ -2714,12 +2815,8 @@ fn presentation_labeled_trigger_is_active(
         return true;
     };
 
-    source
-        .counters
-        .get(&crate::CounterType::Level)
-        .copied()
-        .unwrap_or(0)
-        >= level.saturating_sub(1)
+    // CR 716.2: class levels are a designation, not level counters.
+    game.class_level(source.id) >= level
 }
 
 fn add_speed_increase_triggers(
@@ -2792,6 +2889,7 @@ fn collect_state_triggers_for_object(
     abilities: &[crate::ability::Ability],
     triggered: &mut Vec<TriggeredAbilityEntry>,
     active: &mut HashSet<ActiveStateTriggerKey>,
+    pending: &[TriggeredAbilityEntry],
 ) {
     for ability in abilities {
         let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
@@ -2830,11 +2928,11 @@ fn collect_state_triggers_for_object(
         }
 
         active.insert(key);
-        if game
-            .effect_store
-            .active_state_trigger_conditions
-            .contains(&key)
-        {
+        // CR 603.8: a state trigger doesn't trigger again until the ability
+        // has resolved, been countered, or otherwise left the stack; then, if
+        // the condition still holds, it triggers again. So suppress it only
+        // while an instance is waiting to be stacked or is on the stack.
+        if state_trigger_instance_pending(game, pending, key) {
             continue;
         }
 
@@ -2862,10 +2960,33 @@ fn collect_state_triggers_for_object(
     }
 }
 
+fn state_trigger_instance_pending(
+    game: &GameState,
+    pending: &[TriggeredAbilityEntry],
+    key: ActiveStateTriggerKey,
+) -> bool {
+    let matches = |stable_id: StableId, identity: TriggerIdentity| {
+        stable_id == key.source_stable_id && identity == key.trigger_identity
+    };
+    pending
+        .iter()
+        .chain(game.effect_store.pending_trigger_entries.iter())
+        .any(|entry| matches(entry.source_stable_id, entry.trigger_identity))
+        || game.stack.iter().any(|entry| {
+            entry.is_ability
+                && entry.source_stable_id.zip(entry.trigger_identity).is_some_and(
+                    |(stable_id, identity)| matches(stable_id, identity),
+                )
+        })
+}
+
 /// Check all current state-triggered abilities and return newly-triggered entries plus
 /// the set of state-trigger conditions that are currently true.
+///
+/// `pending` holds triggered abilities waiting to be put on the stack.
 pub fn check_state_triggers(
     game: &GameState,
+    pending: &[TriggeredAbilityEntry],
 ) -> (Vec<TriggeredAbilityEntry>, HashSet<ActiveStateTriggerKey>) {
     let view = crate::derived_view::DerivedGameView::new(game);
     let mut triggered = Vec::new();
@@ -2889,6 +3010,7 @@ pub fn check_state_triggers(
             calculated_abilities.as_ref(),
             &mut triggered,
             &mut active,
+            pending,
         );
     }
 
@@ -2901,6 +3023,7 @@ pub fn check_state_triggers(
                 &obj.abilities,
                 &mut triggered,
                 &mut active,
+                pending,
             );
         }
     });
@@ -2914,6 +3037,7 @@ pub fn check_state_triggers(
                 &obj.abilities,
                 &mut triggered,
                 &mut active,
+                pending,
             );
         }
     });
@@ -3202,6 +3326,22 @@ pub fn check_delayed_triggers(
                 source_snapshot: delayed.ability_source_snapshot.clone(),
                 tagged_objects: {
                     let mut tagged = delayed.tagged_objects.clone();
+                    // CR 603.7c / 400.7: an object that left the zone it was
+                    // in when the delayed trigger was created and came back
+                    // is a new object the delayed trigger won't affect. A
+                    // trigger on that object's own zone change still finds
+                    // it through the triggering event.
+                    if trigger_event
+                        .downcast::<crate::events::ZoneChangeEvent>()
+                        .is_none()
+                    {
+                        for snapshots in tagged.values_mut() {
+                            snapshots.retain(|snapshot| {
+                                game.find_object_by_stable_id(snapshot.stable_id)
+                                    == Some(snapshot.object_id)
+                            });
+                        }
+                    }
                     for (tag, snapshots) in tagged_objects_for_trigger_event(game, trigger_event) {
                         tagged.entry(tag).or_default().extend(snapshots);
                     }

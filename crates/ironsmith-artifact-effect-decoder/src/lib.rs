@@ -274,6 +274,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "SkipTurnEffect" => Some(EffectFamily::Player),
         "SneakCostEffect" => Some(EffectFamily::Permanent),
         "SolveCaseEffect" => Some(EffectFamily::Permanent),
+        "SetClassLevelEffect" => Some(EffectFamily::Permanent),
         "SoulbondPairEffect" => Some(EffectFamily::Permanent),
         "SupportEffect" => Some(EffectFamily::CompositionMZ),
         "SurveilEffect" => Some(EffectFamily::ZoneLibrary),

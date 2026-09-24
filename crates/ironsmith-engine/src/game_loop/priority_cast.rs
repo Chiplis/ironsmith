@@ -157,6 +157,116 @@ fn ensure_granted_conspire_optional_costs(game: &mut GameState, pending: &mut Pe
     true
 }
 
+/// Granted casualty ("The first instant or sorcery spell you cast each turn
+/// has casualty 2") is a cast-time optional cost like printed casualty
+/// (CR 702.153a, 601.2b/f-h): offer the sacrifice while casting under the
+/// label the granted copy trigger checks.
+fn ensure_granted_casualty_optional_costs(game: &mut GameState, pending: &mut PendingCast) -> bool {
+    use crate::ability::{AbilityKind, PresentationKeyword, PresentationLabel};
+    let abilities = game.current_abilities(pending.spell_id).unwrap_or_else(|| {
+        game.object(pending.spell_id)
+            .map(|spell| spell.abilities.to_vec())
+            .unwrap_or_default()
+    });
+    let mut powers: Vec<u32> = abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => match triggered.presentation_label {
+                Some(PresentationLabel::Keyword(PresentationKeyword::Casualty(power))) => {
+                    Some(power)
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    powers.sort_unstable();
+    powers.dedup();
+    let Some(spell) = game.object(pending.spell_id) else {
+        return false;
+    };
+    powers.retain(|power| {
+        let label = format!("Granted Casualty {power}");
+        !spell
+            .optional_costs
+            .iter()
+            .any(|existing| existing.source_label == label)
+    });
+    if powers.is_empty() {
+        return false;
+    }
+    let Some(spell) = game.object_mut(pending.spell_id) else {
+        return false;
+    };
+    for power in powers {
+        let mut creature_filter = crate::target::ObjectFilter::creature().you_control();
+        creature_filter.power = Some(crate::filter::Comparison::GreaterThanOrEqual(power as i32));
+        spell.optional_costs.push(crate::cost::OptionalCost::custom(
+            format!("Granted Casualty {power}"),
+            crate::cost::TotalCost::from_cost(crate::costs::Cost::sacrifice(creature_filter)),
+        ));
+    }
+    pending.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&spell.optional_costs);
+    true
+}
+
+/// Label of the cast-time "cast it prototyped" announcement.
+pub(crate) const PROTOTYPE_CHOICE_LABEL: &str = "Prototype";
+
+/// The spell's prototype characteristics, if it has a prototype ability.
+pub(crate) fn spell_prototype_characteristics(
+    spell: &crate::object::Object,
+) -> Option<(crate::mana::ManaCost, crate::card::PowerToughness)> {
+    spell.alternative_casts.iter().find_map(|method| {
+        Some((method.mana_cost()?.clone(), method.prototype_power_toughness()?))
+    })
+}
+
+/// CR 718.3 / 702.160a: casting a prototype card prototyped is a choice of
+/// alternative characteristics, not an alternative cost, so it combines with
+/// any way of casting the card: a granted alternative cost (Omniscience), a
+/// "without paying its mana cost" effect (cascade, discover), casting it from
+/// another zone, and so on. A normal cast from hand already offers prototype
+/// as its own cast action, so the announcement is added only for other casts.
+/// Choosing it is carried on the cast as the paid "Prototype" label.
+fn ensure_prototype_choice_optional_cost(game: &mut GameState, pending: &mut PendingCast) -> bool {
+    let Some(spell) = game.object(pending.spell_id) else {
+        return false;
+    };
+    if spell.prototype_cast_state.is_some()
+        || spell_prototype_characteristics(spell).is_none()
+        || spell
+            .optional_costs
+            .iter()
+            .any(|cost| cost.source_label == PROTOTYPE_CHOICE_LABEL)
+    {
+        return false;
+    }
+    let normal_cast_from_hand = matches!(pending.casting_method, CastingMethod::Normal)
+        && pending.from_zone == Zone::Hand
+        && !pending.base_mana_cost_waived;
+    let already_prototyped =
+        crate::decision::alternative_method_for_casting_method(
+            game,
+            pending.caster,
+            spell,
+            &pending.casting_method,
+        )
+        .is_some_and(|method| method.prototype_power_toughness().is_some());
+    if normal_cast_from_hand || already_prototyped {
+        return false;
+    }
+    let Some(spell) = game.object_mut(pending.spell_id) else {
+        return false;
+    };
+    spell.optional_costs.push(crate::cost::OptionalCost::custom(
+        PROTOTYPE_CHOICE_LABEL,
+        crate::cost::TotalCost::free(),
+    ));
+    pending.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&spell.optional_costs);
+    true
+}
+
 fn ensure_optional_life_cost_reduction_costs(
     game: &mut GameState,
     pending: &mut PendingCast,
@@ -1584,7 +1694,11 @@ fn optional_mana_cost_is_affordable_with_spell_modifiers(
             pending.from_zone,
         );
     if let Some(reduction) = pending.effect_mana_cost_reduction.as_ref() {
-        effective_cost = crate::decision::reduce_mana_cost(&effective_cost, reduction);
+        // CR 601.2f: reductions come before any minimum-total floor.
+        effective_cost = crate::decision::apply_minimum_spell_total_mana_with_view(
+            &crate::derived_view::DerivedGameView::new(game),
+            &crate::decision::reduce_mana_cost(&effective_cost, reduction),
+        );
     }
 
     Some(crate::decision::can_potentially_pay(
@@ -1606,6 +1720,29 @@ fn optional_cost_is_affordable_for_pending(
     else {
         return false;
     };
+    // CR 702.42b / 601.2c: entwining chooses every mode, so each mode needs a
+    // legal target before entwine can be announced.
+    if optional_cost.cost_ref().matches_query(&"Entwine".into())
+        && let Some(modal_spec) =
+            extract_modal_spec_from_spell(game, pending.spell_id, pending.caster)
+    {
+        let all_modes: Vec<usize> = (0..modal_spec.mode_descriptions.len()).collect();
+        let all_modes_have_targets = game
+            .object(pending.spell_id)
+            .and_then(|spell| spell.spell_effect.as_ref())
+            .is_none_or(|program| {
+                spell_program_has_legal_targets_with_modes(
+                    game,
+                    program,
+                    pending.caster,
+                    Some(pending.spell_id),
+                    Some(&all_modes),
+                )
+            });
+        if !all_modes_have_targets {
+            return false;
+        }
+    }
     if let Some(mana_cost) = optional_cost.cost.mana_cost() {
         optional_mana_cost_is_affordable_with_spell_modifiers(game, pending, optional_cost_index)
             .unwrap_or_else(|| {
@@ -1724,6 +1861,12 @@ pub(super) fn check_optional_costs_or_continue(
     if ensure_granted_conspire_optional_costs(game, &mut pending) {
         // Conspire discovery mutates the stack object; optional-life discovery
         // immediately performs another derived-characteristics query.
+        game.refresh_continuous_state();
+    }
+    if ensure_granted_casualty_optional_costs(game, &mut pending) {
+        game.refresh_continuous_state();
+    }
+    if ensure_prototype_choice_optional_cost(game, &mut pending) {
         game.refresh_continuous_state();
     }
     if ensure_optional_life_cost_reduction_costs(game, &mut pending) {
@@ -1949,10 +2092,8 @@ fn offering_resource_choices(
         candidates
             .into_iter()
             .flat_map(|id| {
-                let cost = game
-                    .object(id)
-                    .and_then(|object| object.mana_cost_owned())
-                    .unwrap_or_default();
+                // CR 702.48a: the sacrificed permanent's current mana cost.
+                let cost = crate::filter::object_current_mana_cost(game, id).unwrap_or_default();
                 crate::decision::offering_mana_reduction_choices(&cost)
                     .into_iter()
                     .map(move |reduction| (id, reduction))
@@ -2001,11 +2142,8 @@ pub(super) fn apply_cost_resource_response(
         if is_tap {
             game.current_power(id).unwrap_or(0).max(0) as u32
         } else {
-            game.object(id)
-                .unwrap()
-                .mana_cost
-                .as_ref()
-                .map_or(0, |cost| cost.mana_value())
+            // CR 702.119a: the sacrificed creature's mana value.
+            crate::filter::object_current_mana_value(game, id)
         }
     });
     if let Some((_, reduction)) = offered {
@@ -2041,11 +2179,7 @@ pub(super) fn check_x_or_continue(
                         if is_tap {
                             game.current_power(*id).unwrap_or(0).max(0) as u32
                         } else {
-                            game.object(*id)
-                                .unwrap()
-                                .mana_cost
-                                .as_ref()
-                                .map_or(0, |cost| cost.mana_value())
+                            crate::filter::object_current_mana_value(game, *id)
                         }
                     ),
                 )
@@ -3727,16 +3861,24 @@ pub(super) fn continue_to_mana_payment(
             );
             let effective = pending.cost_resource_mana_reduction.as_ref().map_or(effective.clone(),
                 |reduction| crate::decision::reduce_offering_mana_cost(&effective, reduction));
-            let effective = crate::decision::apply_minimum_spell_total_mana_with_view(
-                &crate::derived_view::DerivedGameView::new(game),
-                &crate::decision::mana_cost_with_locked_x_and_generic_reduction(&effective,
-                    pending.x_value.unwrap_or(0), pending.cost_resource_reduction));
-            pending
+            let effective = crate::decision::mana_cost_with_locked_x_and_generic_reduction(
+                &effective,
+                pending.x_value.unwrap_or(0),
+                pending.cost_resource_reduction,
+            );
+            // CR 601.2f: the resolving effect's own reduction is a cost
+            // reduction like any other, so it applies before a Trinisphere-style
+            // minimum rather than after it.
+            let effective = pending
                 .effect_mana_cost_reduction
                 .as_ref()
                 .map_or(effective.clone(), |reduction| {
                     crate::decision::reduce_mana_cost(&effective, reduction)
-                })
+                });
+            crate::decision::apply_minimum_spell_total_mana_with_view(
+                &crate::derived_view::DerivedGameView::new(game),
+                &effective,
+            )
         })
     } else {
         None

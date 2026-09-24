@@ -116,6 +116,14 @@ impl EffectExecutor for ConniveEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let (target_ids, from_tagged_lki) = match connive_tagged_object_ids(ctx, &self.target) {
             Some(ids) => (ids, true),
+            // CR 701.50c: a source that changed zones still connives, using
+            // its last known information.
+            None if matches!(self.target.base(), ChooseSpec::Source)
+                && ctx.source_snapshot.is_some()
+                && resolve_objects_for_effect(game, ctx, &self.target).is_err() =>
+            {
+                (vec![ctx.source], true)
+            }
             None => (resolve_objects_for_effect(game, ctx, &self.target)?, false),
         };
         if target_ids.is_empty() {
@@ -325,11 +333,23 @@ impl EffectExecutor for ConniveEffect {
                         }
                     }
 
-                    if discarded_nonlands > 0
-                        && let Some(event) = game.add_counters_with_source(
+                    // Route through counter replacements (CR 614.1, 122.6).
+                    let placed = if discarded_nonlands > 0 {
+                        crate::events::processing::process_put_counters_with_event(
+                            game,
                             target_id,
                             crate::object::CounterType::PlusOnePlusOne,
                             discarded_nonlands,
+                            ctx.cause.clone(),
+                        )
+                    } else {
+                        0
+                    };
+                    if placed > 0
+                        && let Some(event) = game.add_counters_with_source(
+                            target_id,
+                            crate::object::CounterType::PlusOnePlusOne,
+                            placed,
                             Some(ctx.source),
                             Some(ctx.controller),
                         )

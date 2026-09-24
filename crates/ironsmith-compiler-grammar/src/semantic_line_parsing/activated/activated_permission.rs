@@ -221,6 +221,16 @@ pub(super) fn parse_activated_line_impl(
     if line.presentation_kind == Some(crate::ir::ActivatedPresentationKind::PowerUp) {
         activation_restrictions.push(PredicateAst::MaxActivationsPerObject(1));
     }
+    // CR 702.142a: "Activate only if this creature attacked this turn and only
+    // once each turn." The restriction lives in reminder text, which is
+    // stripped before parsing, so synthesize it from the Boast label. (Birgi's
+    // "boast twice" raises the per-turn cap at activation time.)
+    if line.presentation_kind == Some(crate::ir::ActivatedPresentationKind::Boast) {
+        activation_restrictions.push(PredicateAst::Source(
+            crate::model::ast::SourcePredicateAst::SourceAttackedThisTurn,
+        ));
+        activation_restrictions.push(PredicateAst::MaxActivationsPerTurn(1));
+    }
     let mut additional_activation_restrictions =
         if line.presentation_kind == Some(crate::ir::ActivatedPresentationKind::Exhaust) {
             vec!["Activate each exhaust ability only once.".to_string()]

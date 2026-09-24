@@ -76,6 +76,7 @@ pub fn try_merge_modal_into_remove_mode(
             distinct_player_targets_per_mode: choose_mode.distinct_player_targets_per_mode,
             conditional_mode_range: choose_mode.conditional_mode_range.clone(),
             presentation_label: choose_mode.presentation_label.clone(),
+            endure: choose_mode.endure,
         },
     ));
     true

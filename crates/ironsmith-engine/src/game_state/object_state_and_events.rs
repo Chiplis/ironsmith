@@ -493,6 +493,31 @@ impl GameState {
         self.battlefield_flags.solved_cases.contains(&id)
     }
 
+    /// A Class permanent's level (CR 716.2). Classes are level 1 unless they
+    /// gained a level; this is a designation, not level counters (716.4).
+    pub fn class_level(&self, id: ObjectId) -> u32 {
+        self.battlefield_flags
+            .class_levels
+            .get(&id)
+            .copied()
+            .unwrap_or(1)
+    }
+
+    /// Set a Class permanent's level. Returns true if this changed game state.
+    pub fn set_class_level(&mut self, id: ObjectId, level: u32) -> bool {
+        let previous = self.class_level(id);
+        if previous == level {
+            return false;
+        }
+        if level <= 1 {
+            self.battlefield_flags_mut().class_levels.remove(&id);
+        } else {
+            self.battlefield_flags_mut().class_levels.insert(id, level);
+        }
+        self.mark_source_designation_changed(id, Self::condition_reads_class_level);
+        true
+    }
+
     /// Mark a Case permanent solved. Returns true if this changed game state.
     pub fn solve_case(&mut self, id: ObjectId) -> bool {
         let changed = self.battlefield_flags_mut().solved_cases.insert(id);
@@ -954,11 +979,46 @@ impl GameState {
                     && ((self.is_night && Self::object_has_daybound_keyword(object))
                         || (!self.is_night && Self::object_has_nightbound_keyword(object)))
             });
-            if should_transform {
-                transformed |= self.transform_permanent_with_current_restrictions(id);
+            if should_transform && self.transform_permanent_with_current_restrictions(id) {
+                transformed = true;
+                // CR 702.145b/e, 701.27e: the permanent transforms, so
+                // "transforms into" triggers see it and "As this transforms"
+                // programs (CR 712.20) run; those need a decision maker and are
+                // applied before the next priority (see check_and_apply_sbas_with).
+                let provenance = self
+                    .provenance_graph_mut()
+                    .alloc_root_event(crate::events::EventKind::Transformed);
+                let event = crate::triggers::TriggerEvent::new_with_provenance(
+                    crate::events::other::TransformedEvent::new(id),
+                    provenance,
+                );
+                self.queue_trigger_event(provenance, event);
+                self.turn_store.pending_day_night_as_transforms.push(id);
             }
         }
         transformed
+    }
+
+    /// Run "As this transforms" programs (CR 712.20) for permanents that
+    /// transformed because day became night or night became day.
+    pub(crate) fn apply_pending_day_night_as_transforms(
+        &mut self,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Result<(), crate::game_loop::GameLoopError> {
+        while let Some(id) = self.turn_store.pending_day_night_as_transforms.first().copied() {
+            if let Some(controller) = self
+                .object(id)
+                .filter(|object| object.zone == Zone::Battlefield)
+                .and_then(|_| self.current_controller(id))
+            {
+                self.execute_as_transforms_effect_programs(id, controller, decision_maker)?;
+                if decision_maker.awaiting_choice() {
+                    return Ok(());
+                }
+            }
+            self.turn_store.pending_day_night_as_transforms.remove(0);
+        }
+        Ok(())
     }
 
     /// Apply day/night setup rules for a permanent that just entered the battlefield.
@@ -1122,7 +1182,7 @@ impl GameState {
                     .indirectly_phased_out
                     .remove(&id);
             }
-            self.remove_object_from_combat_for_phasing(id);
+            self.remove_object_from_combat(id);
             if let Some(snapshot) = permanent_snapshot {
                 self.record_ui_effect_event(
                     "phase_out",
@@ -1187,7 +1247,9 @@ impl GameState {
         }
     }
 
-    fn remove_object_from_combat_for_phasing(&mut self, id: ObjectId) {
+    /// Remove an attacking or blocking permanent from combat (CR 506.4).
+    /// Creatures it blocked stay blocked (CR 509.1h).
+    pub(crate) fn remove_object_from_combat(&mut self, id: ObjectId) {
         let Some(combat) = self.combat.as_mut() else {
             return;
         };
@@ -1226,21 +1288,73 @@ impl GameState {
         self.cast_permission_flags_mut().madness_exiled.remove(&id);
     }
 
-    /// Check if a card is exiled via foretell.
-    pub fn is_foretold(&self, id: ObjectId) -> bool {
-        self.cast_permission_flags.foretold_cards.contains(&id)
+    /// Open the madness cast window while the card's madness trigger casts it.
+    pub(crate) fn authorize_madness_cast(&mut self, id: ObjectId) {
+        self.cast_permission_flags_mut()
+            .madness_cast_authorized
+            .insert(id);
     }
 
-    /// Mark a card as exiled via foretell.
+    /// Close the madness cast window.
+    pub(crate) fn revoke_madness_cast(&mut self, id: ObjectId) {
+        self.cast_permission_flags_mut()
+            .madness_cast_authorized
+            .remove(&id);
+    }
+
+    /// Whether `player` may cast this exiled card for its madness cost now:
+    /// only its owner, only while its madness trigger resolves (CR 702.35a).
+    pub fn madness_cast_is_authorized(&self, id: ObjectId, player: PlayerId) -> bool {
+        self.cast_permission_flags.madness_exiled.contains(&id)
+            && self
+                .cast_permission_flags
+                .madness_cast_authorized
+                .contains(&id)
+            && self.object(id).is_some_and(|object| object.owner == player)
+    }
+
+    /// Check if a card is exiled via foretell.
+    pub fn is_foretold(&self, id: ObjectId) -> bool {
+        self.cast_permission_flags.foretold_cards.contains_key(&id)
+    }
+
+    /// The turn on which a card became foretold.
+    pub fn foretold_turn(&self, id: ObjectId) -> Option<u32> {
+        self.cast_permission_flags.foretold_cards.get(&id).copied()
+    }
+
+    /// Whether a foretold card may be cast for a foretell cost now: only after
+    /// the turn it became foretold has ended (CR 702.143a, 702.143d).
+    pub fn foretold_card_is_castable(&self, id: ObjectId) -> bool {
+        self.foretold_turn(id)
+            .is_some_and(|turn| turn < self.turn.turn_number)
+    }
+
+    /// Mark a card as exiled via foretell on the current turn.
     pub fn set_foretold(&mut self, id: ObjectId) {
-        if self.cast_permission_flags_mut().foretold_cards.insert(id) {
+        self.set_foretold_on_turn(id, self.turn.turn_number);
+    }
+
+    /// Mark a card as foretold on a specific turn (checkpoint restore).
+    pub fn set_foretold_on_turn(&mut self, id: ObjectId, turn: u32) {
+        if self
+            .cast_permission_flags_mut()
+            .foretold_cards
+            .insert(id, turn)
+            .is_none()
+        {
             self.mark_continuous_state_dirty();
         }
     }
 
     /// Clear foretell exiled status.
     pub fn clear_foretold(&mut self, id: ObjectId) {
-        if self.cast_permission_flags_mut().foretold_cards.remove(&id) {
+        if self
+            .cast_permission_flags_mut()
+            .foretold_cards
+            .remove(&id)
+            .is_some()
+        {
             self.mark_continuous_state_dirty();
         }
     }
@@ -1369,12 +1483,14 @@ impl GameState {
             flags.regeneration_shields.remove(&id);
             flags.devoured_counts.remove(&id);
             flags.solved_cases.remove(&id);
+            flags.class_levels.remove(&id);
             flags.harnessed.remove(&id);
             flags.renowned.remove(&id);
             flags.flipped.remove(&id);
             flags.face_down.remove(&id);
             flags.manifested.remove(&id);
             flags.fully_unlocked_rooms.remove(&id);
+            flags.rooms_with_no_unlocked_door.remove(&id);
             flags.transform_count.remove(&id);
             flags.mutation_count.remove(&id);
             flags.phased_out.remove(&id);

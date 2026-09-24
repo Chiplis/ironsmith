@@ -323,6 +323,8 @@ pub enum PresentationKeyword {
     Recover(String),
     Casualty(u32),
     Soulshift(String),
+    Melee,
+    Provoke,
 }
 
 impl PresentationKeyword {
@@ -334,6 +336,12 @@ impl PresentationKeyword {
         }
         if lower == "suspend" {
             return Some(Self::Suspend);
+        }
+        if lower == "melee" {
+            return Some(Self::Melee);
+        }
+        if lower == "provoke" {
+            return Some(Self::Provoke);
         }
         if let Some(rest) = lower.strip_prefix("firebending ") {
             return Some(Self::Firebending(rest.trim().to_string()));
@@ -378,6 +386,8 @@ impl PresentationKeyword {
             Self::Recover(cost) => format!("Recover {cost}"),
             Self::Casualty(power) => format!("Casualty {power}"),
             Self::Soulshift(amount) => format!("Soulshift {amount}"),
+            Self::Melee => "Melee".to_string(),
+            Self::Provoke => "Provoke".to_string(),
         }
     }
 
@@ -396,6 +406,8 @@ impl PresentationKeyword {
                 | (Self::Recover(_), "recover")
                 | (Self::Casualty(_), "casualty")
                 | (Self::Soulshift(_), "soulshift")
+                | (Self::Melee, "melee")
+                | (Self::Provoke, "provoke")
         )
     }
 }

@@ -2993,6 +2993,7 @@ pub(super) fn test_generate_damage_triggers_emits_life_loss_for_player_damage() 
         amount: 3,
         life_lost: 3,
         result: DamageResult::default(),
+        lifelink_gain: None,
     }];
 
     generate_damage_triggers(&mut game, &events, &mut trigger_queue);

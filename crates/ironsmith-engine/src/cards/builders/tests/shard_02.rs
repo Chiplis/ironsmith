@@ -1395,21 +1395,24 @@ pub(super) fn test_builder_fading_creates_counter_upkeep_and_sacrifice_triggers(
         .fading(2)
         .build();
 
-    assert_eq!(def.abilities.len(), 3);
+    // CR 702.32a: one upkeep trigger that removes a fade counter and, only
+    // if it can't, sacrifices the permanent.
+    assert_eq!(def.abilities.len(), 2);
     let debug = format!("{:?}", def.abilities);
     assert!(
         debug.contains("EntersWithCounters") && debug.contains("Fade"),
         "expected fading ETB fade counters, got {debug}"
     );
     assert!(
-        debug.contains("BeginningOfUpkeepTrigger") && debug.contains("RemoveCountersEffect"),
-        "expected fading upkeep counter removal trigger, got {debug}"
+        debug.contains("BeginningOfUpkeepTrigger")
+            && debug.contains("RemoveCountersEffect")
+            && debug.contains("DidNotHappen")
+            && debug.contains("SacrificeTargetEffect"),
+        "expected fading remove-or-sacrifice upkeep trigger, got {debug}"
     );
     assert!(
-        debug.contains("CounterRemovedFromTrigger")
-            && debug.contains("SourceHasNoCounter(Fade)")
-            && debug.contains("SacrificeTargetEffect"),
-        "expected fading last-counter sacrifice trigger, got {debug}"
+        !debug.contains("CounterRemovedFromTrigger"),
+        "removing the last fade counter must not sacrifice, got {debug}"
     );
 }
 
@@ -1479,6 +1482,7 @@ pub(super) fn test_builder_vanishing_creates_counter_upkeep_and_sacrifice_trigge
 
 #[test]
 pub(super) fn test_builder_devour_creates_etb_triggered_effect_without_marker_fallback() {
+    // CR 702.82a: devour is an "as this enters" replacement, not a trigger.
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Devour Test")
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(1, 1))
@@ -1488,19 +1492,18 @@ pub(super) fn test_builder_devour_creates_etb_triggered_effect_without_marker_fa
     assert_eq!(def.abilities.len(), 1);
     let ability = &def.abilities[0];
     match &ability.kind {
-        AbilityKind::Triggered(triggered) => {
-            assert!(triggered.trigger.display().contains("enters"));
-            let debug = format!("{:?}", triggered.effects);
+        AbilityKind::Static(_) => {
+            let debug = format!("{:?}", ability);
             assert!(
-                debug.contains("DevourEffect"),
-                "expected explicit devour runtime effect, got {debug}"
+                debug.contains("AsEntersEffectProgram") && debug.contains("DevourEffect"),
+                "expected as-enters devour program, got {debug}"
             );
             assert!(
                 !debug.contains("KeywordMarker"),
                 "devour should not lower to a keyword marker, got {debug}"
             );
         }
-        _ => panic!("expected triggered devour ability"),
+        _ => panic!("expected static as-enters devour ability"),
     }
 }
 

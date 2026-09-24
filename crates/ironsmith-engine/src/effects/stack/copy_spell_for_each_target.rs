@@ -154,7 +154,13 @@ impl crate::effects::EffectExecutor for CopySpellForEachTargetEffect {
         let target_id = *resolve_objects_for_effect(game, ctx, &self.target)?
             .first()
             .ok_or(ExecutionError::InvalidTarget)?;
-        let Some(original_entry) = stack_entry_for_copy_target(game, target_id, ctx)? else {
+        let Some(original_entry) = stack_entry_for_copy_target(
+            game,
+            target_id,
+            ctx,
+            super::counter::counter_target_stack_kind(&self.target),
+        )?
+        else {
             return Ok(EffectOutcome::target_invalid());
         };
         let Some(requirements) = extract_requirements(game, &original_entry) else {
@@ -167,6 +173,12 @@ impl crate::effects::EffectExecutor for CopySpellForEachTargetEffect {
             return Ok(EffectOutcome::resolved());
         };
 
+        // An ability named by its own stack id is copied from its source.
+        let target_id = if game.object(target_id).is_none() && original_entry.is_ability {
+            original_entry.object_id
+        } else {
+            target_id
+        };
         let copier = resolve_player_filter(game, &self.copier, ctx)?;
         let mut created_ids = Vec::new();
         let mut events = Vec::new();

@@ -243,6 +243,33 @@ pub(crate) fn execute_keyword_action_replacement_effects(
     execution_result
 }
 
+/// Put the explore +1/+1 counter through the normal counter-placement
+/// pipeline so replacements such as Hardened Scales and "can't have counters"
+/// effects apply (CR 614.1, 122.6, 701.44a).
+fn put_explore_counter(
+    game: &mut GameState,
+    ctx: &ExecutionContext,
+    object_id: crate::ids::ObjectId,
+) -> Option<TriggerEvent> {
+    let count = crate::events::processing::process_put_counters_with_event(
+        game,
+        object_id,
+        CounterType::PlusOnePlusOne,
+        1,
+        ctx.cause.clone(),
+    );
+    if count == 0 {
+        return None;
+    }
+    game.add_counters_with_source(
+        object_id,
+        CounterType::PlusOnePlusOne,
+        count,
+        Some(ctx.source),
+        Some(ctx.controller),
+    )
+}
+
 impl EffectExecutor for ExploreEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
@@ -265,6 +292,14 @@ impl EffectExecutor for ExploreEffect {
         } else {
             match crate::effects::helpers::resolve_objects_for_effect(game, ctx, &self.target) {
                 Ok(ids) => ids,
+                // CR 701.44c: a source that changed zones still explores,
+                // using its last known information.
+                Err(ExecutionError::InvalidTarget)
+                    if matches!(self.target.base(), ChooseSpec::Source)
+                        && ctx.source_snapshot.is_some() =>
+                {
+                    vec![ctx.source]
+                }
                 Err(ExecutionError::InvalidTarget) if self.target.is_target() => {
                     return Ok(EffectOutcome::target_invalid());
                 }
@@ -460,13 +495,7 @@ impl EffectExecutor for ExploreEffect {
                         );
                     } else {
                         if game.object(instruction.object_id).is_some()
-                            && let Some(event) = game.add_counters_with_source(
-                                instruction.object_id,
-                                CounterType::PlusOnePlusOne,
-                                1,
-                                Some(ctx.source),
-                                Some(ctx.controller),
-                            )
+                            && let Some(event) = put_explore_counter(game, ctx, instruction.object_id)
                         {
                             events.push(event);
                         }
@@ -493,13 +522,7 @@ impl EffectExecutor for ExploreEffect {
                         }
                     }
                 } else if game.object(instruction.object_id).is_some()
-                    && let Some(event) = game.add_counters_with_source(
-                        instruction.object_id,
-                        CounterType::PlusOnePlusOne,
-                        1,
-                        Some(ctx.source),
-                        Some(ctx.controller),
-                    )
+                    && let Some(event) = put_explore_counter(game, ctx, instruction.object_id)
                 {
                     events.push(event);
                 }
@@ -1359,9 +1382,19 @@ impl EffectExecutor for CipherEffect {
                 exiled_stable_id,
             )],
         );
-        if let Some(creature) = game.object_mut(chosen_creature) {
-            creature.abilities_mut().push(ability);
-        }
+        // CR 702.99a: the encoded card's static ability grants the trigger to
+        // the creature (layer 6). It's a continuous effect, not part of the
+        // creature's copiable values (CR 707.2), and it outlasts earlier
+        // ability-removing effects by timestamp.
+        let grant = crate::effects::ApplyContinuousEffect::new(
+            crate::continuous::EffectTarget::Specific(chosen_creature),
+            crate::continuous::Modification::AddAbilityGeneric(ability),
+            crate::effect::Until::Forever,
+        )
+        .with_source_type(crate::continuous::EffectSourceType::Resolution {
+            locked_targets: vec![chosen_creature],
+        });
+        crate::effects::execute_effect(game, &crate::effect::Effect::new(grant), ctx)?;
 
         Ok(
             EffectOutcome::with_objects(vec![exiled_id, chosen_creature])
@@ -1434,6 +1467,16 @@ impl EffectExecutor for CastEncodedCardCopyEffect {
     }
 }
 
+/// Whether an "as this enters" keyword program (devour, amplify) can act:
+/// either the source is being prepared to enter the battlefield, or it is
+/// already there (a legacy trigger-shaped program).
+fn source_is_entering_or_on_battlefield(game: &GameState, ctx: &ExecutionContext) -> bool {
+    ctx.replacement.entry_counter_source == Some(ctx.source)
+        || game
+            .object(ctx.source)
+            .is_some_and(|obj| obj.zone == Zone::Battlefield)
+}
+
 impl EffectExecutor for DevourEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
@@ -1444,10 +1487,9 @@ impl EffectExecutor for DevourEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if !game
-            .object(ctx.source)
-            .is_some_and(|obj| obj.zone == Zone::Battlefield)
-        {
+        // Devour applies as the permanent enters (CR 702.82a); the entry
+        // program runs against the object before it reaches the battlefield.
+        if !source_is_entering_or_on_battlefield(game, ctx) {
             return Ok(EffectOutcome::resolved());
         }
 
@@ -1619,10 +1661,8 @@ impl EffectExecutor for AmplifyEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if !game
-            .object(ctx.source)
-            .is_some_and(|obj| obj.zone == Zone::Battlefield)
-        {
+        // Amplify applies as the permanent enters (CR 702.38a).
+        if !source_is_entering_or_on_battlefield(game, ctx) {
             return Ok(EffectOutcome::resolved());
         }
 

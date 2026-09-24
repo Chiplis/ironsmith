@@ -2535,24 +2535,10 @@ impl CardDefinitionBuilder {
 
     /// Add toxic N.
     ///
-    /// Toxic N means "Players dealt combat damage by this creature also get N poison counters."
+    /// Toxic is a static ability: combat damage dealt to a player by this
+    /// creature also gives that player N poison counters (CR 702.164).
     pub fn toxic(self, amount: u32) -> Self {
-        self.with_ability(Ability {
-            kind: AbilityKind::Triggered(TriggeredAbility {
-                trigger: Trigger::this_deals_combat_damage_to_player(PlayerFilter::Any),
-                effects: vec![Effect::poison_counters_player(
-                    amount as i32,
-                    PlayerFilter::DamagedPlayer,
-                )]
-                .into(),
-                choices: vec![],
-                intervening_if: None,
-                presentation_label: Some(ability::PresentationLabel::Keyword(
-                    ability::PresentationKeyword::Toxic(amount),
-                )),
-            }),
-            functional_zones: vec![Zone::Battlefield],
-        })
+        self.with_ability(Ability::static_ability(StaticAbility::toxic(amount)))
     }
 
     /// Add poisonous N.
@@ -2641,10 +2627,15 @@ impl CardDefinitionBuilder {
     /// Evolve means "Whenever a creature enters under your control, if that creature has
     /// greater power or toughness than this creature, put a +1/+1 counter on this creature."
     pub fn evolve(self) -> Self {
-        self.with_ability(Ability::triggered(
+        // CR 702.100a: the P/T comparison is an intervening-if (CR 603.4).
+        let mut ability = Ability::triggered(
             Trigger::enters_battlefield(ObjectFilter::creature().you_control(), None),
             vec![Effect::evolve_source()],
-        ))
+        );
+        if let AbilityKind::Triggered(triggered) = &mut ability.kind {
+            triggered.intervening_if = Some(Condition::EvolveEnteringCreatureIsLarger);
+        }
+        self.with_ability(ability)
     }
 
     /// Add mentor.
@@ -2700,10 +2691,16 @@ impl CardDefinitionBuilder {
     /// Soulbond means "You may pair this creature with another unpaired creature
     /// when either enters. They remain paired while you control both."
     pub fn soulbond(self) -> Self {
-        self.with_ability(Ability::triggered(
+        // CR 702.95a: "if you control both ... and both are unpaired" is an
+        // intervening-if (CR 603.4).
+        let mut ability = Ability::triggered(
             Trigger::enters_battlefield(ObjectFilter::creature().you_control(), None),
             vec![Effect::new(crate::effects::SoulbondPairEffect::new())],
-        ))
+        );
+        if let AbilityKind::Triggered(triggered) = &mut ability.kind {
+            triggered.intervening_if = Some(Condition::SoulbondPairingPossible);
+        }
+        self.with_ability(ability)
     }
 
     /// Add soulshift N.
@@ -3016,41 +3013,24 @@ impl CardDefinitionBuilder {
     /// Echo means "At the beginning of your upkeep, if this came under your control
     /// since the beginning of your last upkeep, sacrifice it unless you pay its echo cost."
     ///
-    /// Runtime model:
-    /// - This permanent enters with an internal Echo counter.
-    /// - At the beginning of each upkeep, remove one Echo counter from this permanent.
-    /// - If a counter was removed this way, pay the echo cost or sacrifice this permanent.
+    /// The "came under your control since the beginning of your last upkeep"
+    /// check is a tracked game fact, not a counter (CR 702.30a), so counter
+    /// replacements, proliferate and counter removal can't affect it.
     pub fn echo(self, total_cost: TotalCost) -> Self {
         let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
 
-        self.with_ability(Ability::static_ability(
-            StaticAbility::enters_with_counters(CounterType::Echo, 1),
-        ))
-        .with_ability(Ability {
+        self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::beginning_of_upkeep(PlayerFilter::You),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    Effect::conditional_only(
-                        Condition::SourceIsInZone(Zone::Battlefield),
-                        vec![
-                            Effect::with_id(
-                                0,
-                                Effect::remove_counters(CounterType::Echo, 1, ChooseSpec::Source),
-                            ),
-                            Effect::if_then(
-                                EffectId(0),
-                                EffectPredicate::Happened,
-                                vec![Effect::unless_action(
-                                    vec![Effect::sacrifice_source()],
-                                    payment_effects,
-                                    PlayerFilter::You,
-                                )],
-                            ),
-                        ],
+                    Effect::unless_action(
+                        vec![Effect::sacrifice_source()],
+                        payment_effects,
+                        PlayerFilter::You,
                     ),
                 ]),
                 choices: vec![],
-                intervening_if: None,
+                intervening_if: Some(Condition::SourceCameUnderYourControlSinceYourLastUpkeep),
                 presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
@@ -3174,31 +3154,43 @@ impl CardDefinitionBuilder {
     ///
     /// Casualty means "As you cast this spell, you may sacrifice a creature with power N
     /// or greater. When you do, copy this spell and you may choose new targets for the copy."
-    pub fn casualty(self, power: u32) -> Self {
+    pub fn casualty(mut self, power: u32) -> Self {
         use crate::effect::EffectId;
         use crate::filter::Comparison;
         let mut creature_filter = ObjectFilter::creature().you_control();
         creature_filter.power = Some(Comparison::GreaterThanOrEqual(power as i32));
 
+        // CR 702.153a: the sacrifice is an optional additional cost paid while
+        // casting (601.2b/f-h); the cast trigger copies only if it was paid.
+        self.optional_costs.push(OptionalCost::custom(
+            "Casualty",
+            TotalCost::from_cost(crate::costs::Cost::sacrifice(creature_filter)),
+        ));
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::you_cast_this_spell(),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::may(
-                    vec![
-                        Effect::sacrifice(creature_filter, 1),
-                        Effect::with_id(0, Effect::copy_spell(ChooseSpec::Source)),
-                        Effect::may_choose_new_targets(EffectId(0)),
-                    ],
-                )]),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    Effect::with_id(0, Effect::copy_spell(ChooseSpec::Source)),
+                    Effect::may_choose_new_targets(EffectId(0)),
+                ]),
                 choices: vec![],
-                intervening_if: None,
+                intervening_if: Some(Condition::ThisSpellPaidLabel("Casualty".into())),
                 presentation_label: None,
             }),
             functional_zones: vec![Zone::Stack],
         })
     }
 
-    pub fn variable_casualty_planeswalker_copy(self) -> Self {
+    /// Casualty X on a planeswalker spell (Ob Nixilis, the Adversary): an
+    /// optional sacrifice paid while casting; the copy's starting loyalty is
+    /// the sacrificed creature's power (CR 702.153a).
+    pub fn variable_casualty_planeswalker_copy(mut self) -> Self {
+        self.optional_costs.push(OptionalCost::custom(
+            "Casualty",
+            TotalCost::from_cost(crate::costs::Cost::sacrifice(
+                ObjectFilter::creature().you_control(),
+            )),
+        ));
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::you_cast_this_spell(),
@@ -3206,7 +3198,7 @@ impl CardDefinitionBuilder {
                     crate::effects::VariableCasualtyPlaneswalkerCopyEffect::new(),
                 )]),
                 choices: vec![],
-                intervening_if: None,
+                intervening_if: Some(Condition::ThisSpellPaidLabel("Casualty".into())),
                 presentation_label: None,
             }),
             functional_zones: vec![Zone::Stack],
@@ -3301,18 +3293,18 @@ impl CardDefinitionBuilder {
     /// Devour means "As this creature enters, you may sacrifice any number of creatures.
     /// This creature enters with N times that many +1/+1 counters on it."
     pub fn devour(self, multiplier: u32) -> Self {
-        self.with_ability(Ability {
-            kind: AbilityKind::Triggered(TriggeredAbility {
-                trigger: Trigger::this_enters_battlefield(),
-                effects: vec![Effect::devour(multiplier)].into(),
-                choices: vec![],
-                intervening_if: None,
-                presentation_label: Some(ability::PresentationLabel::Keyword(
+        // CR 702.82a: devour is an "as this enters" replacement.
+        self.with_ability(Ability::static_ability(StaticAbility::from_model(
+            crate::static_abilities::CompiledStaticAbility::as_enters_effect_program(
+                vec![Effect::devour(multiplier)].into(),
+                "this creature",
+                false,
+                false,
+                Some(ability::PresentationLabel::Keyword(
                     ability::PresentationKeyword::Devour(multiplier),
                 )),
-            }),
-            functional_zones: vec![Zone::Battlefield],
-        })
+            ),
+        )))
     }
 
     /// Add amplify N.
@@ -3321,18 +3313,18 @@ impl CardDefinitionBuilder {
     /// that share a creature type with it. This creature enters with N times that many
     /// +1/+1 counters on it."
     pub fn amplify(self, amount: u32) -> Self {
-        self.with_ability(Ability {
-            kind: AbilityKind::Triggered(TriggeredAbility {
-                trigger: Trigger::this_enters_battlefield(),
-                effects: vec![Effect::amplify(amount)].into(),
-                choices: vec![],
-                intervening_if: None,
-                presentation_label: Some(ability::PresentationLabel::Keyword(
+        // CR 702.38a: amplify is an "as this enters" replacement.
+        self.with_ability(Ability::static_ability(StaticAbility::from_model(
+            crate::static_abilities::CompiledStaticAbility::as_enters_effect_program(
+                vec![Effect::amplify(amount)].into(),
+                "this creature",
+                false,
+                false,
+                Some(ability::PresentationLabel::Keyword(
                     ability::PresentationKeyword::Amplify(amount),
                 )),
-            }),
-            functional_zones: vec![Zone::Battlefield],
-        })
+            ),
+        )))
     }
 
     /// Add ravenous.
@@ -3488,13 +3480,20 @@ impl CardDefinitionBuilder {
     /// Unleash means "You may have this creature enter with a +1/+1 counter on it.
     /// It can't block as long as it has a +1/+1 counter on it."
     pub fn unleash(self) -> Self {
-        self.with_ability(Ability::triggered(
-            Trigger::this_enters_battlefield(),
-            vec![Effect::may_single(Effect::plus_one_counters(
-                1,
-                ChooseSpec::Source,
-            ))],
-        ))
+        // CR 702.98a / 614.1c: the optional counter is an entry replacement.
+        self.with_ability(Ability::static_ability(StaticAbility::from_model(
+            crate::static_abilities::CompiledStaticAbility::as_enters_effect_program(
+                vec![Effect::may_single(Effect::plus_one_counters(
+                    1,
+                    ChooseSpec::Source,
+                ))]
+                .into(),
+                "this creature",
+                false,
+                false,
+                None,
+            ),
+        )))
         .with_ability(Ability::static_ability(StaticAbility::unleash()))
     }
 
@@ -3584,29 +3583,24 @@ impl CardDefinitionBuilder {
     /// At the beginning of your upkeep, remove a fade counter from it.
     /// If you can't, sacrifice it."
     pub fn fading(self, amount: u32) -> Self {
+        // CR 702.32a: remove a fade counter at upkeep; if you can't, sacrifice.
         self.with_ability(Ability::static_ability(
             StaticAbility::enters_with_counters(CounterType::Fade, amount),
         ))
         .with_ability(Ability::triggered(
             Trigger::beginning_of_upkeep(PlayerFilter::You),
-            vec![Effect::remove_counters(
-                CounterType::Fade,
-                1,
-                ChooseSpec::Source,
-            )],
+            vec![
+                Effect::with_id(
+                    0,
+                    Effect::remove_counters(CounterType::Fade, 1, ChooseSpec::Source),
+                ),
+                Effect::if_then(
+                    crate::effect::EffectId(0),
+                    crate::effect::EffectPredicate::DidNotHappen,
+                    vec![Effect::sacrifice_source()],
+                ),
+            ],
         ))
-        .with_ability(Ability {
-            kind: AbilityKind::Triggered(TriggeredAbility {
-                trigger: Trigger::counter_removed_from(ObjectFilter::source()),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    Effect::sacrifice_source(),
-                ]),
-                choices: vec![],
-                intervening_if: Some(Condition::SourceHasNoCounter(CounterType::Fade)),
-                presentation_label: None,
-            }),
-            functional_zones: vec![Zone::Battlefield],
-        })
     }
 
     /// Add vanishing N.
@@ -3690,11 +3684,9 @@ impl CardDefinitionBuilder {
                 .with_all_type(CardType::Creature),
         ));
         let trigger_tag = "modular_triggering_object";
-        let dead_source_filter = ObjectFilter::default()
-            .in_zone(Zone::Graveyard)
-            .same_stable_id_as_tagged(trigger_tag);
+        // CR 702.43a: count counters from the dies-event LKI snapshot.
         let transfer_count = Value::CountersOn(
-            Box::new(ChooseSpec::All(dead_source_filter)),
+            Box::new(ChooseSpec::Tagged(trigger_tag.into())),
             Some(CounterType::PlusOnePlusOne),
         );
 
@@ -3733,11 +3725,9 @@ impl CardDefinitionBuilder {
                 .with_all_type(CardType::Creature),
         ));
         let trigger_tag = "modular_triggering_object";
-        let dead_source_filter = ObjectFilter::default()
-            .in_zone(Zone::Graveyard)
-            .same_stable_id_as_tagged(trigger_tag);
+        // CR 702.43a: count counters from the dies-event LKI snapshot.
         let transfer_count = Value::CountersOn(
-            Box::new(ChooseSpec::All(dead_source_filter)),
+            Box::new(ChooseSpec::Tagged(trigger_tag.into())),
             Some(CounterType::PlusOnePlusOne),
         );
 
@@ -3789,7 +3779,11 @@ impl CardDefinitionBuilder {
                     )),
                 ]),
                 choices: vec![],
-                intervening_if: None,
+                intervening_if: Some(Condition::SourceHasCounterAtLeast {
+                    counter_type: CounterType::PlusOnePlusOne,
+                    count: 1,
+                    surface: Default::default(),
+                }),
                 presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
@@ -3822,7 +3816,8 @@ impl CardDefinitionBuilder {
                         0,
                         Effect::copy_spell_n(
                             ChooseSpec::Source,
-                            Value::SpellsCastBeforeThisTurn(PlayerFilter::You),
+                            // CR 702.40a: every player's spells count toward storm.
+                            Value::SpellsCastBeforeThisTurn(PlayerFilter::Any),
                         ),
                     ),
                     Effect::may_choose_new_targets(EffectId(0)),
@@ -4438,7 +4433,7 @@ impl CardDefinitionBuilder {
             .map(|program| program.all_effects_owned())
             .unwrap_or_default();
         let spec = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::land().you_control()));
-        effects.push(Effect::new(crate::effects::EarthbendEffect::new(
+        effects.push(Effect::new(crate::effects::EarthbendEffect::awaken(
             spec, amount,
         )));
         self.alternative_casts

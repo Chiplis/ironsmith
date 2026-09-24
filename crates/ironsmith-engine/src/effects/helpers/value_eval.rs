@@ -594,10 +594,22 @@ pub(crate) fn resolve(
         }
         Value::SpellsCastBeforeThisTurn(player_spec) => {
             let player_ids = context.player_ids(value, player_spec)?;
-            let count = game
-                .turn_store
-                .turn_history
-                .total_spells_cast_for_players(&player_ids) as i32;
+            // CR 702.40a: count only spells cast *before* this spell, so spells
+            // cast in response to the storm trigger don't add copies. The
+            // boundary is the triggering cast when there is one, else the source.
+            let boundary_spell = context
+                .execution()
+                .and_then(|ctx| ctx.triggering_event.as_ref())
+                .and_then(|event| event.downcast::<crate::events::SpellCastEvent>())
+                .map(|cast| cast.spell)
+                .unwrap_or(context.source);
+            let history = &game.turn_store.turn_history;
+            if let Some(count) =
+                history.spells_cast_before_spell_for_players(boundary_spell, &player_ids)
+            {
+                return Ok(count as i32);
+            }
+            let count = history.total_spells_cast_for_players(&player_ids) as i32;
             Ok((count - 1).max(0))
         }
         Value::SpellsCastThisTurnMatching {
@@ -886,9 +898,10 @@ pub(crate) fn resolve(
         }
         Value::HalfRoundedDown(inner) => Ok(resolve(inner, context)?.div_euclid(2)),
         Value::EventValue(spec) => {
-            resolve_event_value(context.require_execution(value, RESOLUTION_ONLY), spec)
+            resolve_event_value(game, context.require_execution(value, RESOLUTION_ONLY), spec)
         }
         Value::EventValueOffset(spec, offset) => Ok(resolve_event_value(
+            game,
             context.require_execution(value, RESOLUTION_ONLY),
             spec,
         )? + *offset),
@@ -1079,6 +1092,7 @@ pub(crate) fn resolve(
 const RESOLUTION_ONLY: &str =
     "value requires resolution, trigger, loop, or out-of-game context that layers do not retain";
 fn resolve_event_value(
+    game: &GameState,
     ctx: &ExecutionContext,
     spec: &EventValueSpec,
 ) -> Result<i32, ExecutionError> {
@@ -1140,7 +1154,25 @@ fn resolve_event_value(
                 ));
             };
             if let Some(event) = triggering_event.downcast::<CreatureBecameBlockedEvent>() {
-                let beyond_first = event.blocker_count.saturating_sub(1) as i32;
+                // CR 702.23b: the rampage bonus is calculated when the ability
+                // resolves, from the creatures blocking it at that time.
+                let blocker_count = game
+                    .combat
+                    .as_ref()
+                    .filter(|combat| crate::combat_state::is_attacking(combat, event.attacker))
+                    .map(|combat| {
+                        combat
+                            .blockers
+                            .get(&event.attacker)
+                            .map_or(0, |blockers| {
+                                blockers
+                                    .iter()
+                                    .filter(|blocker| game.object(**blocker).is_some())
+                                    .count() as u32
+                            })
+                    })
+                    .unwrap_or(event.blocker_count);
+                let beyond_first = blocker_count.saturating_sub(1) as i32;
                 return Ok(beyond_first * *multiplier);
             }
             Err(ExecutionError::UnresolvableValue(

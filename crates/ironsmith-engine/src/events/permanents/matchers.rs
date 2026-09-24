@@ -275,17 +275,19 @@ impl ReplacementMatcher for RegenerationShieldMatcher {
             return false;
         }
 
-        // Verify the creature is still on the battlefield and is still a creature
-        if let Some(obj) = ctx.game.object(destroy.permanent) {
-            obj.zone == crate::zone::Zone::Battlefield
-                && ctx.game.current_is_creature(destroy.permanent)
-        } else {
-            false
-        }
+        // The shield applies to the permanent while it remains on the
+        // battlefield, whether or not it is still a creature (CR 701.19a).
+        ctx.game
+            .object(destroy.permanent)
+            .is_some_and(|obj| obj.zone == crate::zone::Zone::Battlefield)
     }
 
     fn priority(&self) -> ReplacementPriority {
         ReplacementPriority::Other
+    }
+
+    fn is_regeneration_shield(&self) -> bool {
+        true
     }
 
     fn display(&self) -> String {

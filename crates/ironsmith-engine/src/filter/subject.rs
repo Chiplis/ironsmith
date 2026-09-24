@@ -373,9 +373,31 @@ impl<'a> ObjectSubject<'a> {
             || filter.targets_object.is_some()
             || (filter.zone.is_some_and(|zone| zone != Zone::Stack) && self.zone() == Zone::Stack);
         let entry = if self.is_live() && wants_stack {
-            game.stack
-                .iter()
-                .find(|entry| entry.object_id == self.object_id())
+            // Abilities share their source's object ID (a storm trigger has
+            // its spell's ID), so a kind-restricted filter looks at the entry
+            // of that kind, the most recent first (CR 701.6a, 113.1a).
+            let object_id = self.object_id();
+            if let Some(target_id) = ctx.stack_entry {
+                // Evaluating one specific stack object: only its entry counts.
+                let entry = game
+                    .stack
+                    .iter()
+                    .find(|entry| entry.object_id == object_id && entry.target_id() == target_id);
+                if entry.is_none() {
+                    return None;
+                }
+                entry
+            } else {
+                filter
+                    .stack_kind
+                    .and_then(|kind| {
+                        game.stack.iter().rev().find(|entry| {
+                            entry.object_id == object_id
+                                && ObjectFilter::stack_entry_matches_kind(entry, kind)
+                        })
+                    })
+                    .or_else(|| game.stack.iter().find(|entry| entry.object_id == object_id))
+            }
         } else {
             None
         };

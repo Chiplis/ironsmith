@@ -41,6 +41,37 @@ fn triggering_entered_object(ctx: &ExecutionContext<'_>) -> Option<ObjectId> {
         .or_else(|| event.object_id())
 }
 
+/// CR 702.95a intervening-if: this creature and the other creature (the one
+/// that entered, or some other creature when this one entered) are both
+/// controlled by `controller` and unpaired.
+pub(crate) fn soulbond_pairing_possible(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    triggering_event: Option<&crate::triggers::TriggerEvent>,
+) -> bool {
+    if !source_is_valid(game, source, controller) || game.is_soulbond_paired(source) {
+        return false;
+    }
+    let entered = triggering_event.and_then(|event| {
+        event
+            .downcast::<crate::events::EnterBattlefieldEvent>()
+            .map(|event| event.object)
+            .or_else(|| {
+                event
+                    .downcast::<crate::events::ZoneChangeEvent>()
+                    .filter(|zone_change| zone_change.to == Zone::Battlefield)
+                    .and_then(|zone_change| zone_change.destination_objects().first().copied())
+            })
+            .or_else(|| event.object_id())
+    });
+    let candidates = candidate_creatures(game, source, controller);
+    match entered {
+        Some(entered) if entered != source => candidates.contains(&entered),
+        _ => !candidates.is_empty(),
+    }
+}
+
 impl EffectExecutor for SoulbondPairEffect {
     fn execute(
         &self,

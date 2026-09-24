@@ -1614,7 +1614,7 @@ export function actionRefObjectId(actionRef) {
       return actionRef.creature_id;
     case "special_action": {
       const action = actionRef.action || {};
-      return action.card_id ?? action.permanent_id;
+      return action.card_id ?? action.permanent_id ?? action.room_id;
     }
     default:
       return null;
@@ -1646,6 +1646,8 @@ export function actionRefWithObjectId(actionRef, objectId) {
         next.action.card_id = Number(objectId);
       } else if (next.action?.permanent_id != null) {
         next.action.permanent_id = Number(objectId);
+      } else if (next.action?.room_id != null) {
+        next.action.room_id = Number(objectId);
       }
       break;
   }

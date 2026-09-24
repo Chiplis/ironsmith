@@ -1912,7 +1912,23 @@ pub(crate) fn collect_activation_restriction_clauses(
         push_activation_restriction_clause(&mut clauses, normalized);
     }
 
+    // Boast's "attacked this turn" and "once each turn" restrictions are the
+    // keyword's reminder text (CR 702.142a); the label already implies them.
+    let is_boast = additional_restrictions.iter().any(|restriction| {
+        restriction
+            .strip_prefix("__ironsmith_activation_label:")
+            .is_some_and(|label| label.eq_ignore_ascii_case("Boast"))
+    });
     for condition in activation_restrictions {
+        if is_boast
+            && matches!(
+                condition,
+                crate::ConditionExpr::SourceAttackedThisTurn
+                    | crate::ConditionExpr::MaxActivationsPerTurn(1)
+            )
+        {
+            continue;
+        }
         let described = super::abilities_and_costs::describe_mana_activation_condition(condition);
         push_activation_restriction_clause(&mut clauses, described);
     }
@@ -2271,6 +2287,16 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         && let Some(riot) = describe_structural_riot_program(program)
     {
         return Some(riot);
+    }
+    if let AbilityKind::Static(static_ability) = &ability.kind
+        && let Some(ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram {
+            program, also_turns_face_up: false, turns_face_up_only: false,
+            transforms_into: None, presentation_label, ..
+        }) = static_ability.compiled_model().map(|model| &model.payload)
+        && let Some(keyword) =
+            describe_structural_as_enters_keyword_program(program, presentation_label.as_ref())
+    {
+        return Some(keyword);
     }
     if let AbilityKind::Triggered(triggered) = &ability.kind
         && let Some(mentor) = describe_structural_mentor_keyword(triggered)
@@ -3860,6 +3886,28 @@ pub(super) fn describe_structural_afflict_keyword(
     (amount > 0).then(|| format!("Afflict {amount}"))
 }
 
+/// Devour and amplify are "as this enters" replacements (CR 702.82a,
+/// 702.38a) lowered to an as-enters program carrying the keyword label.
+pub(super) fn describe_structural_as_enters_keyword_program(
+    program: &crate::resolution::ResolutionProgram,
+    presentation_label: Option<&PresentationLabel>,
+) -> Option<String> {
+    let [effect] = program.flattened_default_effects() else {
+        return None;
+    };
+    match presentation_label? {
+        PresentationLabel::Keyword(PresentationKeyword::Devour(_)) => {
+            let devour = effect.downcast_ref::<crate::effects::DevourEffect>()?;
+            Some(format!("Devour {}", devour.multiplier))
+        }
+        PresentationLabel::Keyword(PresentationKeyword::Amplify(_)) => {
+            let amplify = effect.downcast_ref::<crate::effects::AmplifyEffect>()?;
+            Some(format!("Amplify {}", amplify.amount))
+        }
+        _ => None,
+    }
+}
+
 pub(super) fn describe_structural_devour_keyword(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
@@ -3962,7 +4010,7 @@ pub(super) fn describe_structural_battle_cry_keyword(
     };
     let each = effect.downcast_ref::<crate::effects::ForEachObject>()?;
     if each.filter.zone != Some(Zone::Battlefield)
-        || each.filter.controller != Some(PlayerFilter::You)
+        || !matches!(each.filter.controller, None | Some(PlayerFilter::You))
         || each.filter.card_types != [CardType::Creature]
         || !each.filter.other
         || !each.filter.attacking
@@ -4630,7 +4678,7 @@ pub(super) fn describe_structural_storm_keyword(
         .effect
         .downcast_ref::<crate::effects::CopySpellEffect>()?;
     if !matches!(copy_spell.target, ChooseSpec::Source)
-        || copy_spell.count != Value::SpellsCastBeforeThisTurn(PlayerFilter::You)
+        || copy_spell.count != Value::SpellsCastBeforeThisTurn(PlayerFilter::Any)
         || copy_spell.copier != PlayerFilter::You
         || !copy_spell.removed_supertypes.is_empty()
         || copy_spell.has_characteristic_modifiers()
@@ -4774,7 +4822,11 @@ pub(super) fn describe_structural_demonstrate_keyword(
 pub(super) fn describe_structural_soulbond_keyword(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
-    if triggered.intervening_if.is_some() || !triggered.choices.is_empty() {
+    if !matches!(
+        triggered.intervening_if,
+        None | Some(crate::ConditionExpr::SoulbondPairingPossible)
+    ) || !triggered.choices.is_empty()
+    {
         return None;
     }
     let zone_change = triggered

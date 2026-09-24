@@ -594,11 +594,64 @@ fn bind_singular_combat_player_choice(
 pub(crate) fn execute_resolution_program(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
+    controller: PlayerId,
+    source_id: ObjectId,
+    program: &crate::resolution::ResolutionProgram,
+    chosen_modes: Option<&[usize]>,
+    valid_target_assignments: &[crate::game_state::TargetAssignment],
+) -> Result<Vec<crate::triggers::TriggerEvent>, GameLoopError> {
+    execute_resolution_program_with_trigger_matching(
+        game,
+        ctx,
+        controller,
+        source_id,
+        program,
+        chosen_modes,
+        valid_target_assignments,
+        false,
+    )
+}
+
+/// Execute a resolution program. With `match_triggers_per_instruction`, the
+/// events each instruction produces are matched against triggered abilities
+/// as soon as that instruction finishes (CR 603.2, 603.6a): trigger
+/// conditions and "enters" filters see the game as it was right after the
+/// event, a permanent put onto the battlefield by a later instruction doesn't
+/// trigger on an earlier one's event, and a watcher that leaves later in the
+/// resolution still sees it. The matched abilities wait, as always, to be put
+/// on the stack the next time a player would receive priority (CR 603.3).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn execute_resolution_program_with_trigger_matching(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
     _controller: PlayerId,
     _source_id: ObjectId,
     program: &crate::resolution::ResolutionProgram,
     chosen_modes: Option<&[usize]>,
     valid_target_assignments: &[crate::game_state::TargetAssignment],
+    match_triggers_per_instruction: bool,
+) -> Result<Vec<crate::triggers::TriggerEvent>, GameLoopError> {
+    let previous_matching = game.effect_store.per_event_trigger_matching;
+    game.effect_store.per_event_trigger_matching = match_triggers_per_instruction;
+    let result = execute_resolution_program_inner(
+        game,
+        ctx,
+        program,
+        chosen_modes,
+        valid_target_assignments,
+        match_triggers_per_instruction,
+    );
+    game.effect_store.per_event_trigger_matching = previous_matching;
+    result
+}
+
+fn execute_resolution_program_inner(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    program: &crate::resolution::ResolutionProgram,
+    chosen_modes: Option<&[usize]>,
+    valid_target_assignments: &[crate::game_state::TargetAssignment],
+    match_triggers_per_instruction: bool,
 ) -> Result<Vec<crate::triggers::TriggerEvent>, GameLoopError> {
     // CR 805.9: a singular "active player" in an ability is selected by that
     // ability's controller when its effect is applied. Bind the selection once
@@ -628,6 +681,7 @@ pub(crate) fn execute_resolution_program(
 
     let initial_subgame_depth = game.subgame_depth();
     let mut all_events = Vec::new();
+    let mut unmatched_outcome_events = Vec::new();
     let mut consumed_modal_selection = false;
     let mut assignment_cursor = 0usize;
     let mut declared_targets = Vec::new();
@@ -704,7 +758,7 @@ pub(crate) fn execute_resolution_program(
             Vec<crate::effects::ResolvedTarget>,
             Vec<crate::game_state::TargetAssignment>,
         )> = None;
-        for effect in &selected_effects {
+        for (effect_index, effect) in selected_effects.iter().enumerate() {
             let is_modal_effect = effect.modal_effect_spec().is_some();
             let assignment_start = assignment_cursor;
             let effect_target_assignments = active_target_assignments_for_effect(
@@ -762,6 +816,11 @@ pub(crate) fn execute_resolution_program(
                 execute_effect(game, effect, ctx)
             };
             match outcome {
+                // Per-event matching: the events an instruction reports are
+                // matched with the ones it queued, at its end (CR 603.2).
+                Ok(outcome) if match_triggers_per_instruction => {
+                    unmatched_outcome_events.extend(outcome.events);
+                }
                 Ok(outcome) => {
                     all_events.extend(outcome.events);
                 }
@@ -776,13 +835,29 @@ pub(crate) fn execute_resolution_program(
                 return Ok(Vec::new());
             }
             if game.subgame_depth() > initial_subgame_depth {
+                all_events.append(&mut unmatched_outcome_events);
                 return Ok(all_events);
             }
             if ctx.decision_maker.awaiting_choice() {
+                all_events.append(&mut unmatched_outcome_events);
                 return Ok(all_events);
+            }
+            let next = selected_effects.get(effect_index + 1);
+            if match_triggers_per_instruction
+                && !next.is_some_and(crate::effects::effect_chooses_new_targets_for_copy)
+            {
+                if !unmatched_outcome_events.is_empty() {
+                    let mut matched = TriggerQueue::new();
+                    for event in std::mem::take(&mut unmatched_outcome_events) {
+                        queue_triggers_from_event(game, &mut matched, event, false);
+                    }
+                    game.defer_trigger_entries(matched.take_all());
+                }
+                crate::effects::match_triggers_at_instruction_boundary(game, ctx, None);
             }
         }
     }
+    all_events.append(&mut unmatched_outcome_events);
     Ok(all_events)
 }
 
@@ -874,10 +949,6 @@ pub(super) fn resolve_stack_entry_full(
 
     // Get the object for this stack entry
     let mut obj = game.object(entry.object_id).cloned();
-
-    if stack_entry_is_countered_by_unpaid_ward(game, &entry, decision_maker) {
-        return Ok(());
-    }
 
     // Create execution context
     // Resolution effects use EventCause::from_effect to distinguish from cost effects
@@ -1120,7 +1191,7 @@ pub(super) fn resolve_stack_entry_full(
         .flatten();
 
     let initial_subgame_depth = game.subgame_depth();
-    let all_events = execute_resolution_program(
+    let all_events = execute_resolution_program_with_trigger_matching(
         game,
         &mut ctx,
         entry.controller,
@@ -1128,6 +1199,7 @@ pub(super) fn resolve_stack_entry_full(
         &program,
         entry.chosen_modes.as_deref(),
         &valid_target_assignments,
+        true,
     )?;
     if game.subgame_depth() > initial_subgame_depth {
         return Ok(());
@@ -1692,8 +1764,10 @@ pub(super) fn resolve_stack_entry_full(
             }
 
             // It's an instant/sorcery
+            // CR 702.88a with CR 613 layer 6: rebound granted by a static
+            // ability (Cast Through Time) counts as much as printed rebound.
             let has_rebound = matches!(entry.casting_method, CastingMethod::Normal)
-                && obj.abilities.iter().any(|ability| {
+                && (obj.abilities.iter().any(|ability| {
                     ability.functions_in(&Zone::Stack)
                         && matches!(
                             &ability.kind,
@@ -1701,7 +1775,10 @@ pub(super) fn resolve_stack_entry_full(
                                 if static_ability.id()
                                     == crate::static_abilities::StaticAbilityId::Rebound
                         )
-                });
+                }) || game.current_has_static_ability_id(
+                    entry.object_id,
+                    crate::static_abilities::StaticAbilityId::Rebound,
+                ));
 
             // Only methods which explicitly replace leaving the stack exile the spell.
             let should_exile = match &entry.casting_method {
@@ -1889,54 +1966,6 @@ fn resolved_chapter_ability_event(
         controller: source_snapshot.controller,
         source_snapshot,
     })
-}
-
-fn stack_entry_is_countered_by_unpaid_ward(
-    game: &mut GameState,
-    entry: &StackEntry,
-    decision_maker: &mut dyn DecisionMaker,
-) -> bool {
-    let target_ids = entry
-        .targets
-        .iter()
-        .filter_map(|target| match target {
-            Target::Object(id) => Some(*id),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    if target_ids.is_empty() {
-        return false;
-    }
-
-    for ward_cost in crate::targeting::collect_ward_costs(game, &target_ids, entry.controller) {
-        if crate::targeting::handle_ward_payment(
-            game,
-            &ward_cost,
-            entry.controller,
-            entry.object_id,
-            decision_maker,
-        ) == crate::targeting::WardPaymentResult::Paid
-        {
-            continue;
-        }
-
-        if !entry.is_ability
-            && let Some(obj) = game.object(entry.object_id)
-            && obj.zone == Zone::Stack
-        {
-            let _ = crate::effects::zones::apply_zone_change(
-                game,
-                entry.object_id,
-                Zone::Stack,
-                Zone::Graveyard,
-                crate::events::cause::EventCause::from_game_rule(),
-                decision_maker,
-            );
-        }
-        return true;
-    }
-
-    false
 }
 
 /// Get effects for a stack entry.

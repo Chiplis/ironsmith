@@ -139,11 +139,25 @@ fn counters_put_on_exact_object_this_turn(
         .fold(0u32, |total, event| total.saturating_add(event.amount))
 }
 
+/// Face-down permanents and spells have no name (CR 708.2a); the engine
+/// labels them "Face-down creature" for display only.
+pub(crate) fn name_is_nameless(name: &str) -> bool {
+    name.trim().is_empty() || name == crate::object::FACE_DOWN_DISPLAY_NAME
+}
+
+/// CR 201.2a: an object with no name doesn't have the same name as any other
+/// object, including another object with no name.
 pub(crate) fn names_match(lhs: &str, rhs: &str) -> bool {
+    if name_is_nameless(lhs) || name_is_nameless(rhs) {
+        return false;
+    }
     lhs.eq_ignore_ascii_case(rhs) || normalize_name_for_match(lhs) == normalize_name_for_match(rhs)
 }
 
 pub(crate) fn object_mana_value_for_filter(object: &Object) -> i32 {
+    if let Some(mana_value) = object.linked_face_mana_value() {
+        return mana_value as i32;
+    }
     object.mana_cost.as_ref().map_or(0, |mana_cost| {
         if object.zone == Zone::Stack {
             mana_cost.mana_value_with_x(object.x_value.unwrap_or(0)) as i32
@@ -154,6 +168,9 @@ pub(crate) fn object_mana_value_for_filter(object: &Object) -> i32 {
 }
 
 pub(crate) fn snapshot_mana_value_for_filter(snapshot: &ObjectSnapshot) -> i32 {
+    if let Some(mana_value) = snapshot.linked_face_mana_value {
+        return mana_value as i32;
+    }
     snapshot.mana_cost.as_ref().map_or(0, |mana_cost| {
         if snapshot.zone == Zone::Stack {
             mana_cost.mana_value_with_x(snapshot.x_value.unwrap_or(0)) as i32
@@ -825,6 +842,18 @@ fn subject_creature_subtypes(
         .collect()
 }
 
+/// A spell's creature types for cost conditions such as prowl, including
+/// every creature type for changeling (CR 702.73a applies in all zones).
+pub(crate) fn object_creature_subtypes_for_cost(object: &Object, game: &GameState) -> Vec<Subtype> {
+    let can_have_creature_types = object.card_types.iter().any(|card_type| {
+        matches!(card_type, CardType::Creature | CardType::Kindred)
+    });
+    if can_have_creature_types && object.has_changeling() {
+        return Subtype::all_creature_types().to_vec();
+    }
+    object_creature_subtypes(object, game)
+}
+
 fn object_creature_subtypes(object: &Object, game: &GameState) -> Vec<Subtype> {
     game.current_subtypes(object.id)
         .unwrap_or_else(|| object.subtypes.to_vec())
@@ -887,11 +916,35 @@ fn object_subtypes_in_family(
         .collect()
 }
 
+/// An object's current mana value, reading layer-1 copy effects (CR 202.3,
+/// 707.2): emerge and offering reduce by this, not by the raw printed cost.
+pub(crate) fn object_current_mana_value(game: &GameState, id: ObjectId) -> u32 {
+    game.object(id)
+        .map_or(0, |object| object_current_mana_value_for_relation(object, game).max(0) as u32)
+}
+
+/// An object's current mana cost, reading layer-1 copy effects.
+pub(crate) fn object_current_mana_cost(
+    game: &GameState,
+    id: ObjectId,
+) -> Option<crate::mana::ManaCost> {
+    game.current_characteristics(id)
+        .and_then(|characteristics| characteristics.mana_cost.clone())
+        .or_else(|| game.object(id).and_then(|object| object.mana_cost.as_deref().cloned()))
+}
+
 fn object_current_mana_value_for_relation(object: &Object, game: &GameState) -> i32 {
     let mana_cost = game
         .current_characteristics(object.id)
         .and_then(|characteristics| characteristics.mana_cost.clone())
         .or_else(|| object.mana_cost.as_deref().cloned());
+    // A layer-1 copy effect replaces the mana cost; otherwise the linked face
+    // decides split and back-face mana values (CR 709.4, 712.8c).
+    if mana_cost.as_ref() == object.mana_cost.as_deref()
+        && let Some(mana_value) = object.linked_face_mana_value()
+    {
+        return mana_value as i32;
+    }
     mana_cost.map_or(0, |mana_cost| {
         if object.zone == Zone::Stack {
             mana_cost.mana_value_with_x(object.x_value.unwrap_or(0)) as i32
@@ -1069,9 +1122,13 @@ fn tagged_constraint_matches_subject(
         TaggedOpbjectRelation::SameNameAsTagged => tagged_snapshots
             .iter()
             .any(|snapshot| names_match(&snapshot.name, subject.subject_name())),
-        TaggedOpbjectRelation::DifferentNameFromTagged => tagged_snapshots
-            .iter()
-            .all(|snapshot| !names_match(&snapshot.name, subject.subject_name())),
+        // CR 201.2c: a nameless object never has a different name.
+        TaggedOpbjectRelation::DifferentNameFromTagged => {
+            !name_is_nameless(subject.subject_name())
+                && tagged_snapshots
+                    .iter()
+                    .all(|snapshot| !names_match(&snapshot.name, subject.subject_name()))
+        }
         TaggedOpbjectRelation::SameControllerAsTagged => tagged_snapshots
             .iter()
             .any(|snapshot| snapshot.controller == subject.subject_controller()),
@@ -1226,6 +1283,12 @@ pub struct FilterContext {
     /// Outcomes from prior effects in the same spell/ability.
     pub effect_outcomes:
         std::collections::HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
+
+    /// The stack object (by [`crate::game_state::StackEntry::target_id`]) a
+    /// stack-qualified filter is being evaluated for. Abilities share their
+    /// source's object id, so this picks which stack object the source's
+    /// characteristics are matched on behalf of.
+    pub stack_entry: Option<ObjectId>,
 }
 
 impl FilterContext {

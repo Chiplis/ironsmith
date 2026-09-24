@@ -81,6 +81,11 @@ impl FightEffect {
         {
             return Ok(fighters);
         }
+        // CR 701.14b: if a targeted fighter is an illegal (or unchosen)
+        // target, neither creature fights. Never substitute another creature.
+        if self.creature1.is_target() || self.creature2.is_target() {
+            return Err(ExecutionError::InvalidTarget);
+        }
 
         let creature1 =
             crate::effects::helpers::resolve_single_object_for_effect(game, ctx, &self.creature1)?;
@@ -110,6 +115,10 @@ impl FightEffect {
                 .collect::<Vec<_>>();
             if !scoped.is_empty() {
                 return Ok(scoped);
+            }
+            // A targeted fighter is only ever one of the chosen targets.
+            if spec.is_target() {
+                return Err(ExecutionError::InvalidTarget);
             }
 
             let zone = filter.zone.unwrap_or(crate::zone::Zone::Battlefield);

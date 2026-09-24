@@ -2472,7 +2472,12 @@ pub(super) fn compile_subject_verb_late(
                 }
                 let (effects, mut choices) =
                     compile_tagged_effect_for_target(&target, ctx, "sacrificed", |spec| {
-                        Effect::new(crate::effects::SacrificeTargetEffect::new(sacrifice_incarnation_reference(spec)))
+                        Effect::new(
+                            crate::effects::SacrificeTargetEffect::new(
+                                sacrifice_incarnation_reference(spec),
+                            )
+                            .with_player(chooser.clone()),
+                        )
                     })?;
                 ctx.last_player_filter = Some(chooser);
                 for choice in subject.into_choices() {
@@ -2537,9 +2542,14 @@ pub(super) fn compile_subject_verb_late(
                 && let Some(tag) = object_filter_as_tagged_reference(&resolved_filter)
             {
                 let mut effects = target_prelude;
-                effects.push(Effect::new(crate::effects::SacrificeTargetEffect::new(
-                    ChooseSpec::Object(ObjectFilter::exact_tagged(tag)),
-                )));
+                // CR 701.21a: the named player sacrifices the referenced
+                // permanent only while controlling it.
+                effects.push(Effect::new(
+                    crate::effects::SacrificeTargetEffect::new(ChooseSpec::Object(
+                        ObjectFilter::exact_tagged(tag),
+                    ))
+                    .with_player(chooser.clone()),
+                ));
                 return Ok(Some((effects, subject.into_choices())));
             }
 

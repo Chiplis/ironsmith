@@ -2245,6 +2245,11 @@ enum SpecialActionRef {
     },
     UnlockRoomDoor {
         room_id: u64,
+        /// "current" when unlocking the Room's own half while both doors are
+        /// locked (CR 709.5d); absent for the linked (other) door, which keeps
+        /// older action refs valid.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        door: Option<String>,
     },
     RollPlanarDie,
     TurnConspiracyFaceUp {

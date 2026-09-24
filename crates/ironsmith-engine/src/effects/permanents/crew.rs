@@ -30,11 +30,15 @@ const CREW_ACTIVATION_TAG: &str = "__crew_activation";
 const CREWERS_TAG: &str = "crewed_it_this_turn";
 const FIRST_CREWED_THIS_TURN_TAG: &str = "__first_crewed_this_turn";
 
-fn crew_candidates(game: &GameState, controller: PlayerId) -> Vec<ObjectId> {
+/// CR 702.122a: crew taps any number of *other* untapped creatures.
+fn crew_candidates(game: &GameState, source: ObjectId, controller: PlayerId) -> Vec<ObjectId> {
     game.battlefield
         .iter()
         .copied()
         .filter(|&id| {
+            if id == source {
+                return false;
+            }
             let Some(obj) = game.object(id) else {
                 return false;
             };
@@ -241,7 +245,7 @@ impl EffectExecutor for CrewCostEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let controller = ctx.controller;
-        let mut candidates = crew_candidates(game, controller);
+        let mut candidates = crew_candidates(game, ctx.source, controller);
         if candidates.is_empty() && self.required_power > 0 {
             if can_pay_loyalty_crew_alternative(game, ctx.source, controller) {
                 let event = pay_loyalty_crew_alternative(game, ctx.source, controller)?;
@@ -373,16 +377,16 @@ impl CostExecutableEffect for CrewCostEffect {
     fn can_execute_as_cost(
         &self,
         game: &GameState,
-        _source: ObjectId,
+        source: ObjectId,
         controller: PlayerId,
     ) -> Result<(), CostValidationError> {
         if self.required_power == 0 {
             return Ok(());
         }
-        let candidates = crew_candidates(game, controller);
+        let candidates = crew_candidates(game, source, controller);
         let total: i32 = candidates.iter().map(|id| crew_value(game, *id)).sum();
         if total >= self.required_power as i32
-            || can_pay_loyalty_crew_alternative(game, _source, controller)
+            || can_pay_loyalty_crew_alternative(game, source, controller)
         {
             Ok(())
         } else {

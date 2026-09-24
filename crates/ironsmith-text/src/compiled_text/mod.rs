@@ -1944,12 +1944,24 @@ fn merge_specific_adjacent_surface_lines(lines: Vec<String>) -> Vec<String> {
                 idx += 2;
                 continue;
             }
+            // Champion's linked return trigger is part of the keyword
+            // (CR 702.72a); the ETB half already renders as "Champion a X".
+            if left_lower.starts_with("champion ")
+                && right_lower.starts_with("when this ")
+                && right_lower.contains(
+                    "leaves the battlefield, return the exiled card to the battlefield under its owner's control",
+                )
+            {
+                merged.push(lines[idx].clone());
+                idx += 2;
+                continue;
+            }
             // The unleash scaffold: an optional entry counter plus the
             // can't-block rider it gates. Both lines vary in how they name the
             // source (repeated noun, pronoun, or the doubled "this creature
             // creature" the restriction subject can produce), so match the
             // invariant parts of the pair rather than two exact strings.
-            if left_lower.starts_with("when this ")
+            if (left_lower.starts_with("when this ") || left_lower.starts_with("as this "))
                 && left_lower.contains("enters, you may put a +1/+1 counter on")
                 && right_lower.contains("can't block as long as it has a +1/+1 counter on it")
                 && right_lower.starts_with("this ")

@@ -66,13 +66,21 @@ export function stackInspectObjectId(entry) {
  * The engine ids a targeting decision can name for a stack entry.
  *
  * A stack tile is drawn under its own presentation id, which is not the id a
- * spell like Counterspell targets: a spell on the stack is targeted by the
- * object it inspects to, and an ability on the stack is not a targetable
- * object at all (its inspect id is the permanent that produced it, and a
- * Bolt aimed at that permanent must not light the ability up).
+ * spell like Counterspell targets. The engine reports that id as
+ * `target_object_id`: a spell is targeted by its object, and an ability by
+ * its own stack id (never its source permanent's id, so a Bolt aimed at the
+ * permanent does not light the ability up, and two abilities from one
+ * permanent are separate choices). Older snapshots without the field fall
+ * back to the spell's inspect id; their abilities are not targetable.
  */
 export function stackEntryTargetObjectIds(entry) {
-  if (!entry || entry.ability_kind) return [];
+  if (!entry) return [];
+  const reported = entry.target_object_id;
+  if (reported != null) {
+    const objectId = Number(reported);
+    return Number.isFinite(objectId) ? [objectId] : [];
+  }
+  if (entry.ability_kind) return [];
   const objectId = Number(entry.inspect_object_id);
   return Number.isFinite(objectId) ? [objectId] : [];
 }

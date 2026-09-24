@@ -141,9 +141,9 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
         | KeywordAction::Prowess
         | KeywordAction::Exalted => None,
         KeywordAction::Cascade => Some(CompilerStaticAbility::cascade()),
+        KeywordAction::Toxic(amount) => Some(CompilerStaticAbility::toxic(amount)),
         KeywordAction::Storm
         | KeywordAction::Gravestorm
-        | KeywordAction::Toxic(_)
         | KeywordAction::Poisonous(_)
         | KeywordAction::BattleCry
         | KeywordAction::Dethrone

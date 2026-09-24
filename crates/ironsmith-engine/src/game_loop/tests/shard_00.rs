@@ -2235,6 +2235,7 @@ pub(super) fn deal_test_combat_damage_to_player(
             damage_dealt,
             ..DamageResult::default()
         },
+        lifelink_gain: None,
     }
 }
 

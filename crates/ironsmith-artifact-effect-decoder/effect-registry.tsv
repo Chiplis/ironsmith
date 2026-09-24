@@ -252,6 +252,7 @@ SkipNextCombatPhaseThisTurnEffect	ironsmith_core::SkipNextCombatPhaseThisTurnEff
 SkipTurnEffect	ironsmith_core::SkipTurnEffect
 SneakCostEffect	ironsmith_core::SneakCostEffect
 SolveCaseEffect	ironsmith_core::SolveCaseEffect
+SetClassLevelEffect	ironsmith_core::SetClassLevelEffect
 SoulbondPairEffect	ironsmith_core::SoulbondPairEffect
 SupportEffect	ironsmith_core::SupportEffect
 SurveilEffect	ironsmith_core::SurveilEffect

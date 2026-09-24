@@ -354,6 +354,12 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> TargetingResult {
     let Some(target) = game.object(target_id) else {
+        // An ability on the stack has no hexproof, shroud or protection.
+        if game.stack_ability_entry(target_id).is_some()
+            && (game.grand_melee().is_none() || game.object_is_on_current_stack(target_id))
+        {
+            return TargetingResult::legal();
+        }
         return TargetingResult::Invalid(TargetingInvalidReason::DoesntExist);
     };
     if game.grand_melee().is_some()
@@ -383,10 +389,34 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
         return TargetingResult::legal();
     }
 
-    // Get calculated abilities for the target (to account for effects like Humility)
-    let target_abilities = view
-        .static_abilities_rc(target_id)
-        .unwrap_or_else(|| std::sync::Arc::new(extract_static_abilities(&target.abilities)));
+    // Get calculated abilities for the target (to account for effects like Humility).
+    // A spell's printed permanent abilities (hexproof, shroud, "hexproof from")
+    // don't function on the stack (CR 113.6, 702.11b, 702.18a): a creature
+    // spell with hexproof can be targeted by Counterspell. The calculated
+    // characteristics carry every printed static, so keep only those that
+    // function in the target's current zone, as the protection check does.
+    let target_abilities = if target.zone == Zone::Battlefield {
+        view.static_abilities_rc(target_id)
+            .unwrap_or_else(|| std::sync::Arc::new(extract_static_abilities(&target.abilities)))
+    } else {
+        let abilities = view.abilities_rc(target_id);
+        let abilities = abilities
+            .as_deref()
+            .map(Vec::as_slice)
+            .unwrap_or(&target.abilities);
+        std::sync::Arc::new(
+            abilities
+                .iter()
+                .filter(|ability| ability.functions_in(&target.zone))
+                .filter_map(|ability| match &ability.kind {
+                    crate::ability::AbilityKind::Static(static_ability) => {
+                        Some(static_ability.clone())
+                    }
+                    _ => None,
+                })
+                .collect(),
+        )
+    };
     let ignores_shroud = game
         .effect_store
         .cant_effects
@@ -419,8 +449,9 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
         return TargetingResult::Invalid(TargetingInvalidReason::HasHexproof);
     }
 
-    // Check for HexproofFrom
-    if game.controller_of(target) != source.protection_controller(game) {
+    // Check for HexproofFrom. A permission to target "as though it didn't
+    // have hexproof" also covers "hexproof from [quality]" (CR 702.11e).
+    if game.controller_of(target) != source.protection_controller(game) && !ignores_hexproof {
         for ability in target_abilities.iter() {
             if let Some(filter) = ability.hexproof_from_filter()
                 && source.matches(
@@ -486,7 +517,7 @@ pub fn has_protection_from_source(
 /// choice from that object. Auras such as Benevolent Blessing make the choice
 /// on the Aura, so retain that source relationship structurally through the
 /// typed `AttachedAbilityGrant` payload.
-fn attached_grant_protects_from_chosen_color(
+pub(crate) fn attached_grant_protects_from_chosen_color(
     game: &GameState,
     target: &Object,
     source_colors: crate::color::ColorSet,
@@ -1348,17 +1379,55 @@ fn compute_object_targets_with_filter_context(
     view.prewarm_characteristics(&prewarm_ids);
 
     let candidate_ids = view.candidate_ids_for_filter_with_context(filter, &filter_ctx);
+    let stack_filter = filter.zone == Some(Zone::Stack) || filter.stack_kind.is_some();
+    let mut seen_candidates = std::collections::HashSet::new();
     for object_id in candidate_ids {
+        if stack_filter && !seen_candidates.insert(object_id) {
+            continue;
+        }
         let Some(object) = game.object(object_id) else {
             continue;
         };
+        if stack_filter {
+            // Each ability on the stack is its own target, named by its
+            // `ability_id`, even when several share one source (two
+            // activations of one permanent, a storm trigger and its spell).
+            for entry in game.stack.iter().filter(|entry| entry.object_id == object_id) {
+                let Some(ability_id) = entry.ability_id else {
+                    continue;
+                };
+                if game.grand_melee().is_some() && !game.object_is_on_current_stack(ability_id) {
+                    continue;
+                }
+                let mut entry_ctx = filter_ctx.clone();
+                entry_ctx.stack_entry = Some(ability_id);
+                if filter.matches_with_view(object, &entry_ctx, game, view) {
+                    targets.push(Target::Object(ability_id));
+                }
+            }
+            // The object itself is a target only as its own stack object (a
+            // spell, or an ability copy that has its own object).
+            if !game
+                .stack
+                .iter()
+                .any(|entry| entry.object_id == object_id && entry.ability_id.is_none())
+            {
+                continue;
+            }
+        }
+        let stack_object_ctx = stack_filter.then(|| {
+            let mut own_ctx = filter_ctx.clone();
+            own_ctx.stack_entry = Some(object_id);
+            own_ctx
+        });
+        let candidate_filter_ctx = stack_object_ctx.as_ref().unwrap_or(&filter_ctx);
         if game.grand_melee().is_some()
             && object.zone == Zone::Stack
             && !game.object_is_on_current_stack(object_id)
         {
             continue;
         }
-        if !filter.matches_with_view(object, &filter_ctx, game, view) {
+        if !filter.matches_with_view(object, candidate_filter_ctx, game, view) {
             continue;
         }
 

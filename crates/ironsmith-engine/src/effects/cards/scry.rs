@@ -249,9 +249,8 @@ impl EffectExecutor for ScryEffect {
             return Ok(EffectOutcome::count(0));
         }
         let arrangement = choose_scry_arrangement(game, ctx, player_id, player_id, count, "Scry");
-        if arrangement.total_looked == 0 {
-            return Ok(EffectOutcome::count(0));
-        }
+        // CR 701.22d: the player still scries (and "whenever you scry"
+        // triggers) even if the library is empty; only scry 0 is no event.
         apply_scry_arrangement(game, &arrangement);
 
         Ok(
@@ -319,9 +318,6 @@ impl EffectExecutor for FatesealEffect {
 
         let arrangement =
             choose_scry_arrangement(game, ctx, fatesealer, opponent, count, "Fateseal");
-        if arrangement.total_looked == 0 {
-            return Ok(EffectOutcome::count(0));
-        }
         apply_scry_arrangement(game, &arrangement);
 
         Ok(
@@ -369,14 +365,10 @@ impl EffectExecutor for EachPlayerScryEffect {
 
         let mut arrangements = Vec::new();
         for player_id in players {
-            let arrangement =
-                choose_scry_arrangement(game, ctx, player_id, player_id, count, "Scry");
-            if arrangement.total_looked > 0 {
-                arrangements.push(arrangement);
-            }
-        }
-        if arrangements.is_empty() {
-            return Ok(EffectOutcome::count(0));
+            // CR 701.22d: each player scries even with an empty library.
+            arrangements.push(choose_scry_arrangement(
+                game, ctx, player_id, player_id, count, "Scry",
+            ));
         }
 
         for arrangement in &arrangements {

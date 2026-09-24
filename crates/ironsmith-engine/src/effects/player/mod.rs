@@ -44,6 +44,7 @@ mod grant_tagged_spell_free_cast_until_end_of_turn;
 mod grant_tagged_spell_life_cost_by_mana_value;
 mod lose_the_game;
 mod may_cast_matching_spell;
+mod may_cast_madness;
 mod may_cast_miracle;
 mod pay_energy;
 mod play_subgame;
@@ -109,6 +110,7 @@ pub use grant_tagged_spell_free_cast_until_end_of_turn::GrantTaggedSpellFreeCast
 pub use grant_tagged_spell_life_cost_by_mana_value::GrantTaggedSpellLifeCostByManaValueEffect;
 pub use lose_the_game::LoseTheGameEffect;
 pub use may_cast_matching_spell::MayCastMatchingSpellWithoutPayingManaCostEffect;
+pub use may_cast_madness::MayCastForMadnessCostEffect;
 pub use may_cast_miracle::MayCastForMiracleCostEffect;
 pub use pay_energy::{PayAnyEnergyEffect, PayAnyLifeEffect, PayEnergyEffect};
 pub use play_subgame::PlaySubgameEffect;
@@ -130,7 +132,10 @@ pub use skip_turn::SkipTurnEffect;
 pub use speed::{IncreaseSpeedEffect, ReduceSpeedEffect};
 pub use take_initiative::TakeInitiativeEffect;
 pub use ticket_counters::TicketCountersEffect;
-pub use venture_into_dungeon::VentureIntoDungeonEffect;
+pub use venture_into_dungeon::{
+    MadWizardsLairEffect, ThroneOfTheDeadThreeEffect, VentureIntoDungeonEffect,
+};
+pub(crate) use venture_into_dungeon::complete_finished_dungeons;
 pub use win_the_game::WinTheGameEffect;
 
 mod reveal_chosen_subtype;

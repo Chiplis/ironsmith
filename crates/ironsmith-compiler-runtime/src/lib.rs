@@ -494,22 +494,13 @@ fn class_level_marker(ability: &ironsmith::ability::ActivatedAbility) -> Option<
 }
 
 fn class_level_activation_condition(level: u32) -> ironsmith::ConditionExpr {
-    let required_counters = level.saturating_sub(2);
-    if required_counters == 0 {
-        return ironsmith::ConditionExpr::SourceHasNoCounter(ironsmith::CounterType::Level);
-    }
+    // CR 716.2a: "Level N" can be activated only while the Class is level
+    // N-1. Levels are a designation, not level counters (CR 716.4).
+    let previous = level.saturating_sub(1).max(1);
     ironsmith::ConditionExpr::And(
-        Box::new(ironsmith::ConditionExpr::SourceHasCounterAtLeast {
-            counter_type: ironsmith::CounterType::Level,
-            count: required_counters,
-            surface: ironsmith::SourceCounterThresholdSurface::SourceHas,
-        }),
+        Box::new(ironsmith::ConditionExpr::SourceClassLevelAtLeast(previous)),
         Box::new(ironsmith::ConditionExpr::Not(Box::new(
-            ironsmith::ConditionExpr::SourceHasCounterAtLeast {
-                counter_type: ironsmith::CounterType::Level,
-                count: required_counters + 1,
-                surface: ironsmith::SourceCounterThresholdSurface::SourceHas,
-            },
+            ironsmith::ConditionExpr::SourceClassLevelAtLeast(previous + 1),
         ))),
     )
 }
@@ -540,6 +531,12 @@ fn apply_class_level_runtime_gates(definition: &mut ironsmith::cards::CardDefini
                 activated.activation_condition.take(),
                 class_level_activation_condition(level),
             ));
+            // The level ability sets the Class's level designation instead of
+            // putting a level counter on it (CR 716.2b).
+            activated.effects = vec![ironsmith::effect::Effect::new(
+                ironsmith::effects::SetClassLevelEffect::new(level),
+            )]
+            .into();
             current_level = Some(level);
             continue;
         }
@@ -548,15 +545,11 @@ fn apply_class_level_runtime_gates(definition: &mut ironsmith::cards::CardDefini
             continue;
         };
         if let ironsmith::ability::AbilityKind::Static(static_ability) = &mut ability.kind {
-            // Classes start at level 1 with zero level counters. Grant the
-            // entire static ability so its existing conditions stay intact.
+            // Classes start at level 1. Grant the entire static ability so its
+            // existing conditions stay intact.
             *static_ability = ironsmith::static_abilities::StaticAbility::new(
                 ironsmith::static_abilities::GrantAbility::source(static_ability.clone())
-                    .with_condition(ironsmith::ConditionExpr::SourceHasCounterAtLeast {
-                        counter_type: ironsmith::CounterType::Level,
-                        count: level.saturating_sub(1),
-                        surface: ironsmith::SourceCounterThresholdSurface::SourceHas,
-                    }),
+                    .with_condition(ironsmith::ConditionExpr::SourceClassLevelAtLeast(level)),
             );
         }
         if let ironsmith::ability::AbilityKind::Triggered(triggered) = &mut ability.kind

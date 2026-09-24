@@ -418,6 +418,8 @@ struct BattlefieldFlags {
     devoured_counts: HashMap<ObjectId, u32>,
     /// Cases that have become solved.
     solved_cases: HashSet<ObjectId>,
+    /// Class levels above 1 (CR 716.2); absent means level 1.
+    class_levels: HashMap<ObjectId, u32>,
     harnessed: HashSet<ObjectId>,
     /// Creatures that are renowned.
     renowned: HashSet<ObjectId>,
@@ -429,6 +431,9 @@ struct BattlefieldFlags {
     manifested: HashSet<ObjectId>,
     /// Split Room permanents whose linked locked door has been unlocked.
     fully_unlocked_rooms: HashSet<ObjectId>,
+    /// Rooms that entered without either half cast, so neither door has an
+    /// unlocked designation yet (CR 709.5d).
+    rooms_with_no_unlocked_door: HashSet<ObjectId>,
     /// Number of times each battlefield permanent has transformed.
     transform_count: HashMap<ObjectId, u64>,
     /// Number of times each battlefield permanent has mutated.
@@ -450,8 +455,12 @@ struct BattlefieldFlags {
 struct CastPermissionFlags {
     /// Cards exiled via Madness.
     madness_exiled: HashSet<ObjectId>,
-    /// Cards exiled via Foretell.
-    foretold_cards: HashSet<ObjectId>,
+    /// Madness cards whose trigger is resolving and casting them right now:
+    /// the only window in which the madness cost may be paid (CR 702.35a).
+    madness_cast_authorized: HashSet<ObjectId>,
+    /// Cards exiled via Foretell, with the turn they became foretold
+    /// (CR 702.143a/d: castable only after that turn has ended).
+    foretold_cards: HashMap<ObjectId, u32>,
     /// Cards exiled after resolving as Adventure spells.
     adventure_exiled: HashSet<ObjectId>,
     /// Prepare spell copies in exile, keyed by the prepared permanent that
@@ -588,6 +597,9 @@ struct AuxiliaryTrackingState {
     sector_designations: HashMap<ObjectId, crate::marker::SectorDesignation>,
     /// Partially collected asynchronous CR 704.5u choices for the priority driver.
     pending_sector_designations: Option<PendingSectorDesignationState>,
+    /// Trigger-source look-back shared by every event of one simultaneous
+    /// state-based-action batch (CR 704.3, 603.10a).
+    simultaneous_event_lookback: Option<Vec<ObjectSnapshot>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -763,6 +775,11 @@ pub struct TurnStore {
     pub entered_battlefield_last_turn: Vec<ObjectSnapshot>,
     /// Static or temporary grant sources whose once-per-turn cast permission was used.
     pub grant_cast_uses_this_turn: HashSet<(PlayerId, ObjectId)>,
+    /// Last known information of each spell cast this turn, as it was put on
+    /// the stack: its object and stack entry. Self-copy cast triggers (storm,
+    /// casualty, replicate, conspire, demonstrate) still copy a spell that
+    /// left the stack before they resolved, using this information.
+    pub cast_spell_lki: HashMap<ObjectId, Arc<(Object, StackEntry)>>,
     /// Exhaust activated abilities that have been activated by this object instance.
     pub exhaust_abilities_activated: HashSet<(ObjectId, usize)>,
     /// Activation totals that survive turns and control changes, but not object identity changes.
@@ -776,6 +793,14 @@ pub struct TurnStore {
     /// Hand cards revealed by Forecast through the end of the current upkeep.
     /// A zone change removes the old object ID immediately.
     pub forecast_revealed_hand_cards: HashSet<ObjectId>,
+    /// Permanents that were still summoning sick when their controller's
+    /// current turn began, recorded during that untap step. They came under
+    /// that player's control after the player's previous turn began, i.e.
+    /// since the beginning of the player's last upkeep (echo, CR 702.30a).
+    pub came_under_control_since_last_upkeep: HashSet<ObjectId>,
+    /// Permanents transformed by a day/night change whose "As this
+    /// transforms" programs (CR 712.20) still need a decision maker.
+    pub pending_day_night_as_transforms: Vec<ObjectId>,
     /// CR 724 requested an immediate scheduler transition to the cleanup step.
     ///
     /// The resolving effect performs CR 724.1a-b synchronously, then the turn
@@ -809,6 +834,22 @@ pub struct EffectStore {
     /// spell cast while another spell or ability is resolving. They wait here
     /// until the outer resolution boundary can put them into its trigger queue.
     pub pending_trigger_entries: Vec<crate::triggers::TriggeredAbilityEntry>,
+    /// Reflexive triggered abilities ("when you do, ...") that have triggered
+    /// and wait to be put on the stack; their targets are chosen then.
+    pub(crate) pending_reflexive_triggers:
+        Vec<crate::effects::composition::PendingReflexiveTrigger>,
+    /// Allocator for the identities of reflexive triggered abilities.
+    pub(crate) next_reflexive_trigger_id: u64,
+    /// Allocator for [`StackEntry::ability_id`] target identities.
+    pub(crate) next_stack_ability_id: u64,
+    /// While a spell or ability resolves, triggered abilities are matched
+    /// right after each instruction's events (CR 603.2) instead of once the
+    /// whole resolution is over.
+    pub(crate) per_event_trigger_matching: bool,
+    /// Effects that post-process the events their own nested instructions
+    /// queued (coalescing token or damage-prevention events, tagging a zone
+    /// change) hold matching off until they are done.
+    pub(crate) trigger_matching_holds: u32,
     pub active_state_trigger_conditions: HashSet<crate::triggers::ActiveStateTriggerKey>,
     /// Pending replacement effect choice when multiple effects could apply.
     /// When set, advance_priority returns a ChooseReplacementEffect decision
@@ -848,6 +889,11 @@ impl Default for EffectStore {
             delayed_triggers: Vec::new(),
             pending_trigger_events: Vec::new(),
             pending_trigger_entries: Vec::new(),
+            pending_reflexive_triggers: Vec::new(),
+            next_reflexive_trigger_id: 0,
+            next_stack_ability_id: STACK_ABILITY_ID_BASE,
+            per_event_trigger_matching: false,
+            trigger_matching_holds: 0,
             active_state_trigger_conditions: HashSet::new(),
             pending_replacement_choice: None,
             grant_registry: crate::grant_registry::GrantRegistry::new(),
@@ -2896,10 +2942,23 @@ pub struct TargetDistribution {
     pub allocations: Vec<(Target, u32)>,
 }
 
+/// First reserved [`StackEntry::ability_id`]. Far above any real object id
+/// and below JavaScript's safe-integer limit, since ids cross the wasm
+/// boundary as numbers.
+pub const STACK_ABILITY_ID_BASE: u64 = 1 << 52;
+
 /// An entry on the stack.
 #[derive(Debug, Clone)]
 pub struct StackEntry {
     pub object_id: ObjectId,
+    /// The identity a spell or ability names to target this ability.
+    ///
+    /// An ability on the stack uses its source's `object_id`, so two
+    /// abilities from one permanent (or a storm trigger and its spell) would
+    /// otherwise be the same target. Each ability put on the stack is given
+    /// its own reserved id (never a real object) so a player can choose
+    /// exactly which one to counter, copy or redirect (CR 113.1a, 701.6a).
+    pub ability_id: Option<ObjectId>,
     pub controller: PlayerId,
     pub provenance: ProvNodeId,
     pub targets: Vec<Target>,
@@ -2999,9 +3058,15 @@ pub struct GrantedManaAbility {
 }
 
 impl StackEntry {
+    /// The id spells and abilities use to target this stack object.
+    pub fn target_id(&self) -> ObjectId {
+        self.ability_id.unwrap_or(self.object_id)
+    }
+
     pub fn new(object_id: ObjectId, controller: PlayerId) -> Self {
         Self {
             object_id,
+            ability_id: None,
             controller,
             provenance: ProvNodeId::default(),
             targets: Vec::new(),
@@ -3047,6 +3112,7 @@ impl StackEntry {
     ) -> Self {
         Self {
             object_id: source_id,
+            ability_id: None,
             controller,
             provenance: ProvNodeId::default(),
             targets: Vec::new(),
@@ -3544,6 +3610,23 @@ impl GameState {
 
     pub(crate) fn clear_pending_sector_designations(&mut self) {
         self.auxiliary_tracking_mut().pending_sector_designations = None;
+    }
+
+    /// Pin the trigger-source look-back for a batch of simultaneous events:
+    /// every event of the batch looks back at the same pre-batch sources, so a
+    /// permanent leaving in the batch still sees the others leave (CR 704.3,
+    /// 603.10a). `None` restores per-event look-back.
+    pub(crate) fn set_simultaneous_event_lookback(&mut self, lookback: Option<Vec<ObjectSnapshot>>) {
+        if lookback.is_none() && self.auxiliary_tracking.simultaneous_event_lookback.is_none() {
+            return;
+        }
+        self.auxiliary_tracking_mut().simultaneous_event_lookback = lookback;
+    }
+
+    pub(crate) fn simultaneous_event_lookback(&self) -> Option<&[ObjectSnapshot]> {
+        self.auxiliary_tracking
+            .simultaneous_event_lookback
+            .as_deref()
     }
 
     /// Two permanents are in the same sector only if both have the same designation.
@@ -6595,6 +6678,17 @@ impl GameState {
         let id = self.new_object_id();
         let handles = self.object_store.shared_handles_for_definition(def);
         let mut object = Object::from_card_definition_with_shared(id, def, owner, zone, &handles);
+        // CR 709.4: outside the stack a split card's mana value is the total
+        // of both halves, so remember the other half's cost.
+        if object.linked_face_layout == crate::card::LinkedFaceLayout::Split
+            && let Some(other_half) = self.linked_face_definition_by_name_or_id(
+                object.other_face_name.as_deref(),
+                object.other_face,
+            )
+        {
+            object.linked_face_mana_cost =
+                other_half.card.mana_cost.clone().map(crate::object::SharedValue::from);
+        }
         if zone == Zone::Battlefield
             && let Some(loyalty) = object.base_loyalty
             && loyalty > 0

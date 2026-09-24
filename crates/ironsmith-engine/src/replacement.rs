@@ -623,6 +623,27 @@ impl ReplacementEffectManager {
     ///
     /// Primarily used to ignore regeneration shields for "can't be regenerated"
     /// destroy effects.
+    /// Remove the regeneration shields protecting `source` (CR 701.19c).
+    /// Other one-shot replacements sourced from the object are unaffected.
+    pub fn remove_regeneration_shields_from_source(&mut self, source: ObjectId) {
+        let ids: Vec<_> = self
+            .effects
+            .iter()
+            .filter(|e| {
+                e.source == source
+                    && e.matcher
+                        .as_ref()
+                        .is_some_and(|matcher| matcher.is_regeneration_shield())
+                    && (self.one_shot_effects.contains(&e.id)
+                        || self.batch_one_shot_effects.contains(&e.id))
+            })
+            .map(|e| e.id)
+            .collect();
+        for id in ids {
+            self.remove_effect(id);
+        }
+    }
+
     pub fn remove_one_shot_effects_from_source(&mut self, source: ObjectId) {
         let ids: Vec<_> = self
             .effects

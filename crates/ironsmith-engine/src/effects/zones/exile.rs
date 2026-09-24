@@ -409,6 +409,8 @@ impl EffectExecutor for ExileEffect {
                 .map(|memory| memory.object_id).collect();
             if selected.len() > 1 {
                 let batch = game.provenance_graph_mut().alloc_root_event(crate::events::EventKind::ZoneChange);
+                let pending_start =
+                    pending_start.min(game.effect_store.pending_trigger_events.len());
                 for event in &mut game.effect_store.pending_trigger_events[pending_start..] {
                     if event.downcast::<crate::events::ZoneChangeEvent>().is_some_and(|change| {
                         if change.snapshots().is_empty() {

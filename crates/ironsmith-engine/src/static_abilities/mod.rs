@@ -1469,7 +1469,9 @@ impl PartialEq for StaticAbility {
             }
             StaticAbilityId::Ward => self.0.ward_cost() == other.0.ward_cost(),
             StaticAbilityId::Landwalk => self.0.landwalk_kind() == other.0.landwalk_kind(),
-            StaticAbilityId::PartnerWith => self.0.display() == other.0.display(),
+            StaticAbilityId::PartnerWith | StaticAbilityId::Toxic => {
+                self.0.display() == other.0.display()
+            }
             _ if self.0.is_keyword() && other.0.is_keyword() => true,
             _ => self.0.display() == other.0.display(),
         }
@@ -2384,6 +2386,23 @@ impl StaticAbility {
 
     pub fn partner_with(partner_name: impl AsRef<str>) -> Self {
         Self::new(PartnerWith::new(partner_name))
+    }
+
+    pub fn toxic(amount: u32) -> Self {
+        Self::new(Toxic::new(amount))
+    }
+
+    /// The toxic value of a Toxic N ability (CR 702.164b).
+    pub fn toxic_amount(&self) -> Option<u32> {
+        if self.id() != StaticAbilityId::Toxic {
+            return None;
+        }
+        let display = self.display();
+        display
+            .trim()
+            .to_ascii_lowercase()
+            .strip_prefix("toxic ")
+            .and_then(|amount| amount.trim().parse::<u32>().ok())
     }
 
     pub fn start_your_engines() -> Self {

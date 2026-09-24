@@ -1060,6 +1060,25 @@ impl GameState {
             let successor =
                 active_player_still_in_game.or_else(|| self.next_player_in_game_after(player));
             self.set_initiative(successor);
+            // CR 725.4: the successor takes the initiative, which triggers
+            // its venture into Undercity (CR 725.2).
+            if let Some(successor) = successor {
+                let provenance = self
+                    .provenance_graph_mut()
+                    .alloc_root_event(crate::events::EventKind::KeywordAction);
+                self.queue_trigger_event(
+                    provenance,
+                    crate::triggers::TriggerEvent::new_with_provenance(
+                        crate::events::KeywordActionEvent::new(
+                            crate::events::KeywordActionKind::TakeInitiative,
+                            successor,
+                            crate::ids::ObjectId::from_raw(u64::MAX - 1),
+                            1,
+                        ),
+                        provenance,
+                    ),
+                );
+            }
         }
 
         self.mark_continuous_state_dirty();
@@ -1218,15 +1237,17 @@ impl GameState {
                 .insert(player, completed_turn_history.clone());
         }
         self.turn_store.previous_turn_history = completed_turn_history;
-        let spells_cast_last_turn = self.turn_store.spells_cast_last_turn_total;
+        // CR 730.2a-b: both transitions look only at the previous turn's
+        // active player (or team, for shared turns), not every player.
         if self.has_day_night && self.is_night {
             if max_spells_cast_by_completed_teammate >= 2 {
                 self.set_daytime(true);
             }
-        } else if self.has_day_night && spells_cast_last_turn == 0 {
+        } else if self.has_day_night && max_spells_cast_by_completed_teammate == 0 {
             self.set_daytime(false);
         }
         self.turn_store.grant_cast_uses_this_turn.clear();
+        self.turn_store.cast_spell_lki.clear();
         self.battlefield_flags_mut()
             .saddled_until_end_of_turn
             .clear();
@@ -2361,9 +2382,57 @@ impl GameState {
                 .get_or_insert_with(|| snapshot.name.to_string());
             entry.source_snapshot = Some(snapshot);
         }
+        if entry.is_ability && entry.ability_id.is_none() {
+            entry.ability_id = Some(self.allocate_stack_ability_id());
+        }
         self.record_grand_melee_stack_provenance(entry.provenance);
         self.stack.push(entry);
         self.update_replacement_effects();
+    }
+
+    /// Reserve a fresh [`StackEntry::ability_id`].
+    pub(crate) fn allocate_stack_ability_id(&mut self) -> ObjectId {
+        let next = self
+            .stack
+            .iter()
+            .filter_map(|entry| entry.ability_id)
+            .map(|id| id.0 + 1)
+            .max()
+            .unwrap_or(0)
+            .max(self.effect_store.next_stack_ability_id)
+            .max(crate::game_state::STACK_ABILITY_ID_BASE);
+        self.effect_store.next_stack_ability_id = next + 1;
+        ObjectId::from_raw(next)
+    }
+
+    pub fn next_stack_ability_id_counter(&self) -> u64 {
+        self.effect_store.next_stack_ability_id
+    }
+
+    pub fn set_next_stack_ability_id_counter(&mut self, next: u64) {
+        self.effect_store.next_stack_ability_id = next.max(crate::game_state::STACK_ABILITY_ID_BASE);
+    }
+
+    /// The ability on the stack a target id names, if it names one by its
+    /// [`StackEntry::ability_id`].
+    pub fn stack_ability_entry(&self, id: ObjectId) -> Option<&StackEntry> {
+        if id.0 < crate::game_state::STACK_ABILITY_ID_BASE {
+            return None;
+        }
+        self.stack.iter().find(|entry| entry.ability_id == Some(id))
+    }
+
+    /// Stack index of the spell or ability a target id names: an ability by
+    /// its own [`StackEntry::ability_id`], a spell by its object id.
+    pub fn stack_entry_index_for_target(&self, id: ObjectId) -> Option<usize> {
+        if id.0 >= crate::game_state::STACK_ABILITY_ID_BASE
+            && let Some(index) = self.stack.iter().position(|entry| entry.ability_id == Some(id))
+        {
+            return Some(index);
+        }
+        self.stack
+            .iter()
+            .position(|entry| entry.object_id == id && !entry.is_ability)
     }
 
     /// Pops and returns the top item from the stack.
@@ -2389,6 +2458,9 @@ impl GameState {
     }
 
     /// Returns true if this player's turn-one draw-step draw should be skipped.
+    ///
+    /// CR 103.8a applies to every two-player game, including two-player
+    /// Commander; only other multiplayer games are exempt (CR 103.8c).
     pub fn should_skip_first_turn_draw(&self, player_id: PlayerId) -> bool {
         if self.turn.turn_number == 1
             && let Some(profile) = self.two_headed_giant()
@@ -2400,7 +2472,6 @@ impl GameState {
             && self.turn.active_player == player_id
             && self.turn_store.turn_order.first().copied() == Some(player_id)
             && self.players.len() == 2
-            && !self.is_commander_game()
     }
 
     // =========================================================================
@@ -2641,6 +2712,7 @@ impl GameState {
             tagged_objects,
             tagged_players,
             effect_outcomes: std::collections::HashMap::new(),
+            stack_entry: None,
         }
     }
 
@@ -3167,6 +3239,12 @@ impl GameState {
     ) -> bool {
         self.characteristic_extension_change_can_stay_local(id, |effect, _| {
             effect.condition.as_ref().is_some_and(condition_reads_state)
+        })
+    }
+
+    pub(super) fn condition_reads_class_level(condition: &crate::ConditionExpr) -> bool {
+        Self::condition_matches_or_nested(condition, |condition| {
+            matches!(condition, crate::ConditionExpr::SourceClassLevelAtLeast(_))
         })
     }
 

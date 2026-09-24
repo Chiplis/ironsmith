@@ -45,6 +45,7 @@ pub fn apply_keyword_action(
         KeywordAction::Storm => builder.storm(),
         KeywordAction::Gravestorm => builder.gravestorm(),
         KeywordAction::BattleCry => builder.battle_cry(),
+        KeywordAction::Melee => builder.melee(),
         KeywordAction::Dethrone => builder.dethrone(),
         KeywordAction::Evolve => builder.evolve(),
         KeywordAction::Ingest => builder.ingest(),

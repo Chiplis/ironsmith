@@ -91,6 +91,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "RenownEffect" => decode_as::<ironsmith_core::RenownEffect>(payload).map(Some),
         "SneakCostEffect" => decode_as::<ironsmith_core::SneakCostEffect>(payload).map(Some),
         "SolveCaseEffect" => decode_as::<ironsmith_core::SolveCaseEffect>(payload).map(Some),
+        "SetClassLevelEffect" => {
+            decode_as::<ironsmith_core::SetClassLevelEffect>(payload).map(Some)
+        }
         "SoulbondPairEffect" => decode_as::<ironsmith_core::SoulbondPairEffect>(payload).map(Some),
         "SuspectEffect" => decode_as::<ironsmith_core::SuspectEffect>(payload).map(Some),
         "TapEffect" => decode_as::<ironsmith_core::TapEffect>(payload).map(Some),

@@ -172,8 +172,42 @@ impl GameState {
             .collect::<Vec<_>>();
 
         self.battlefield_flags_mut().controller_at_last_refresh = controllers;
-        for id in changed {
+        for &id in &changed {
             self.set_summoning_sick(id);
+        }
+        self.reconcile_combat_membership(&changed);
+    }
+
+    /// CR 506.4: a permanent is removed from combat if its controller changes,
+    /// or if it's an attacking or blocking creature that stops being a
+    /// creature or becomes a battle.
+    fn reconcile_combat_membership(&mut self, controller_changed: &[ObjectId]) {
+        let Some(combat) = self.combat.as_ref() else {
+            return;
+        };
+        let mut combatants = combat
+            .attackers
+            .iter()
+            .map(|attacker| attacker.creature)
+            .collect::<Vec<_>>();
+        for blockers in combat.blockers.values() {
+            for blocker in blockers {
+                if !combatants.contains(blocker) {
+                    combatants.push(*blocker);
+                }
+            }
+        }
+        let removed = combatants
+            .into_iter()
+            .filter(|&id| {
+                self.object(id).is_some()
+                    && (controller_changed.contains(&id)
+                        || !self.object_has_card_type(id, crate::types::CardType::Creature)
+                        || self.object_has_card_type(id, crate::types::CardType::Battle))
+            })
+            .collect::<Vec<_>>();
+        for id in removed {
+            self.remove_object_from_combat(id);
         }
     }
 
@@ -856,6 +890,58 @@ impl GameState {
                 )
                 .is_some_and(|def| def.card.subtypes.contains(&crate::types::Subtype::Room))
             && self.current_has_subtype(object_id, crate::types::Subtype::Room)
+    }
+
+    /// CR 709.5d: a Room entering without either half cast has neither
+    /// unlocked designation; until a door unlocks it has no name, mana cost or
+    /// rules text from either half (CR 709.5).
+    pub(crate) fn room_has_no_unlocked_door(&self, object_id: ObjectId) -> bool {
+        self.battlefield_flags
+            .rooms_with_no_unlocked_door
+            .contains(&object_id)
+    }
+
+    pub(crate) fn mark_room_entered_with_no_unlocked_door(&mut self, object_id: ObjectId) {
+        if self
+            .battlefield_flags_mut()
+            .rooms_with_no_unlocked_door
+            .insert(object_id)
+        {
+            self.mark_continuous_state_dirty();
+        }
+    }
+
+    /// Make the Room's linked other half its current half (used when the
+    /// linked door is the first one unlocked, CR 709.5d-e).
+    pub(crate) fn switch_room_to_linked_half(&mut self, object_id: ObjectId) -> bool {
+        let Some(linked) = self.object(object_id).and_then(|object| {
+            self.linked_face_definition_by_name_or_id(
+                object.other_face_name.as_deref(),
+                object.other_face,
+            )
+        }) else {
+            return false;
+        };
+        let handles = self.object_store.shared_handles_for_definition(&linked);
+        let Some(object) = self.object_mut(object_id) else {
+            return false;
+        };
+        object.apply_definition_face_with_shared(&linked, &handles);
+        self.mark_continuous_state_dirty();
+        true
+    }
+
+    /// Give the Room's current half its unlocked designation. Returns false
+    /// if some half was already unlocked.
+    pub(crate) fn unlock_room_first_door(&mut self, object_id: ObjectId) -> bool {
+        let changed = self
+            .battlefield_flags_mut()
+            .rooms_with_no_unlocked_door
+            .remove(&object_id);
+        if changed {
+            self.mark_continuous_state_dirty();
+        }
+        changed
     }
 
     pub(crate) fn mark_room_fully_unlocked(&mut self, object_id: ObjectId) {
@@ -2741,39 +2827,31 @@ impl GameState {
 
     /// Clear the player's current Ring-bearer designation.
     pub fn clear_ring_bearer(&mut self, player: PlayerId) {
-        let previous_legendary_added = self
+        let previous = self
             .player(player)
-            .and_then(|player_state| player_state.ring_legendary_added);
-        if let Some(object_id) = previous_legendary_added
-            && let Some(object) = self.object_mut(object_id)
-        {
-            object
-                .supertypes
-                .retain(|supertype| *supertype != crate::types::Supertype::Legendary);
-        }
-
+            .and_then(|player_state| player_state.ring_bearer);
         if let Some(player_state) = self.player_mut(player) {
             player_state.ring_bearer = None;
             player_state.ring_legendary_added = None;
         }
+        if previous.is_some() {
+            self.mark_continuous_state_dirty();
+        }
     }
 
     /// Set the player's Ring-bearer designation to the given creature.
+    ///
+    /// "Your Ring-bearer is legendary" is derived in layer 4 from this
+    /// designation (CR 701.54c); it is not written into the copiable
+    /// supertypes (CR 701.54b).
     pub fn set_ring_bearer(&mut self, player: PlayerId, bearer: ObjectId) {
         self.clear_ring_bearer(player);
 
-        let mut legendary_added = None;
-        if let Some(object) = self.object_mut(bearer)
-            && !object.has_supertype(crate::types::Supertype::Legendary)
-        {
-            object.supertypes.push(crate::types::Supertype::Legendary);
-            legendary_added = Some(bearer);
-        }
-
         if let Some(player_state) = self.player_mut(player) {
             player_state.ring_bearer = Some(bearer);
-            player_state.ring_legendary_added = legendary_added;
+            player_state.ring_legendary_added = None;
         }
+        self.mark_continuous_state_dirty();
     }
 
     /// Returns true if the given player is currently the monarch.
@@ -2968,6 +3046,9 @@ impl GameState {
     }
 
     pub(crate) fn trigger_source_lookback_snapshots(&self) -> Vec<ObjectSnapshot> {
+        if let Some(lookback) = self.simultaneous_event_lookback() {
+            return lookback.to_vec();
+        }
         let all_effects = self.all_continuous_effects();
         let ability_effects_can_add_triggers = all_effects
             .iter()

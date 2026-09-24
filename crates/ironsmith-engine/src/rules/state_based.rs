@@ -2094,6 +2094,36 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
     any_applied
 }
 
+/// Apply one state-based-action check as a single simultaneous event
+/// (CR 704.3): the chosen legend-rule removals and every other action found
+/// by the same check are performed together, all looking back at the same
+/// pre-batch trigger sources (CR 603.10a). A legend put into the graveyard by
+/// the legend rule still sees a creature dying from lethal damage in that
+/// batch, and a creature kept alive only by a leaving legend's anthem isn't
+/// killed until the next check.
+pub(crate) fn apply_state_based_actions_with_legend_choices(
+    game: &mut GameState,
+    actions: Vec<StateBasedAction>,
+    legend_keeps: &[(ObjectId, Vec<ObjectId>)],
+    all_effects: &[crate::continuous::ContinuousEffect],
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
+) -> bool {
+    let lookback =
+        if game.may_have_triggered_abilities_for_event_kind(crate::events::EventKind::ZoneChange) {
+            game.trigger_source_lookback_snapshots()
+        } else {
+            Vec::new()
+        };
+    game.set_simultaneous_event_lookback(Some(lookback));
+    for (keep, group) in legend_keeps {
+        apply_legend_rule_choice_from_group(game, *keep, group);
+    }
+    let applied =
+        apply_state_based_actions_from_actions_with(game, actions, all_effects, decision_maker);
+    game.set_simultaneous_event_lookback(None);
+    applied || !legend_keeps.is_empty()
+}
+
 /// Get legend rule violations that require player decisions.
 ///
 /// Returns a list of (player, spec) tuples for legend rule violations.

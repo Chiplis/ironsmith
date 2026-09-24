@@ -270,6 +270,10 @@ impl EffectExecutor for DiscardEffect {
             return Ok(EffectOutcome::count(0));
         }
 
+        // Only object targets that are actually cards in this hand select the
+        // discard. Unrelated object targets kept in scope from an earlier
+        // effect (e.g. Recoil's bounced permanent) must not take away the
+        // discarding player's choice (CR 701.9b).
         let explicit_cards: Vec<_> = ctx
             .targets
             .iter()
@@ -277,6 +281,7 @@ impl EffectExecutor for DiscardEffect {
                 crate::effects::ResolvedTarget::Object(id) => Some(*id),
                 crate::effects::ResolvedTarget::Player(_) => None,
             })
+            .filter(|id| hand_cards.contains(id))
             .collect();
 
         let cards_to_discard = if !self.random

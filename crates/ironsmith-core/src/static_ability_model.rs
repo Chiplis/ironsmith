@@ -3841,8 +3841,8 @@ impl<
         None
     }
 
-    pub fn toxic(_amount: u32) -> Self {
-        Self::new("toxic")
+    pub fn toxic(amount: u32) -> Self {
+        Self::identified(StaticAbilityId::Toxic, format!("toxic {amount}"))
     }
 
     pub fn unleash() -> Self {

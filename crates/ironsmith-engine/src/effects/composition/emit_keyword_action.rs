@@ -53,6 +53,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             other_face: None,
             other_face_name: None,
             linked_face_layout: LinkedFaceLayout::None,
+            linked_face_mana_value: None,
             power: memory.power,
             toughness: memory.toughness,
             base_power: memory.power,
@@ -273,6 +274,30 @@ impl EffectExecutor for EmitKeywordActionEffect {
             return Ok(EffectOutcome::count(0));
         }
         let object_tags = object_tags_from_config(self, game, ctx)?;
+        if self.action == KeywordActionKind::Exploit {
+            // CR 702.110b: "when this exploits a creature" looks back in time.
+            // A creature that exploited itself is gone by now, so carry its
+            // last-known information for the source filter and its own trigger.
+            let on_battlefield = game
+                .object(ctx.source)
+                .filter(|object| object.zone == crate::zone::Zone::Battlefield);
+            let source_snapshot = on_battlefield
+                .map(|object| game.cached_object_snapshot_with_calculated_characteristics(object))
+                .or_else(|| ctx.source_snapshot.clone());
+            let lookback = if on_battlefield.is_none() {
+                source_snapshot.iter().cloned().collect()
+            } else {
+                Vec::new()
+            };
+            let event = TriggerEvent::new_with_provenance(
+                KeywordActionEvent::new(self.action, ctx.controller, ctx.source, self.amount)
+                    .with_object_tags(object_tags)
+                    .with_snapshot(source_snapshot),
+                ctx.provenance,
+            )
+            .with_lookback_source_snapshots(lookback);
+            return Ok(EffectOutcome::resolved().with_event(event));
+        }
         let event = TriggerEvent::new_with_provenance(
             KeywordActionEvent::new(self.action, ctx.controller, ctx.source, self.amount)
                 .with_object_tags(object_tags),

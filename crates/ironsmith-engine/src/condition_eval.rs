@@ -3580,6 +3580,12 @@ fn evaluate_condition_in_context(
                     .iter()
                     .filter_map(|p| (p.id != ctx.controller).then_some(p.id))
                     .collect(),
+                // Surge (CR 702.117a): "you or one of your teammates".
+                PlayerFilter::Teammate => game
+                    .players
+                    .iter()
+                    .filter_map(|p| game.are_teammates(ctx.controller, p.id).then_some(p.id))
+                    .collect(),
                 _ => Vec::new(),
             };
             let cast_count: u32 = player_ids
@@ -4317,6 +4323,26 @@ fn evaluate_condition_in_context(
         Condition::TriggeringObjectHadToAttackThisCombat => Ok(
             triggering_object_had_to_attack_this_combat(game, shared.triggering_event),
         ),
+        Condition::SourceClassLevelAtLeast(level) => {
+            Ok(game.class_level(shared.source) >= *level)
+        }
+        Condition::SoulbondPairingPossible => Ok(
+            crate::effects::permanents::soulbond_pairing_possible(
+                game,
+                shared.source,
+                shared.controller,
+                shared.triggering_event,
+            ),
+        ),
+        Condition::EvolveEnteringCreatureIsLarger => Ok(shared.triggering_event.is_some_and(
+            |event| {
+                crate::effects::permanents::evolve_entering_creature_is_larger(
+                    game,
+                    shared.source,
+                    event,
+                )
+            },
+        )),
         Condition::TriggeringObjectHadCounters {
             counter_type,
             min_count,
@@ -4426,7 +4452,16 @@ fn evaluate_condition_in_context(
                 let Some(ability_index) = ctx.ability_index else {
                     return Ok(false);
                 };
-                game.ability_activation_count_this_turn(ctx.source, ability_index) < *limit
+                let limit = if boast_may_be_activated_an_additional_time(
+                    game,
+                    ctx.source,
+                    ability_index,
+                ) {
+                    limit.saturating_add(1)
+                } else {
+                    *limit
+                };
+                game.ability_activation_count_this_turn(ctx.source, ability_index) < limit
             })
         }
         Condition::MaxActivationsPerObject(limit) => {
@@ -4679,6 +4714,16 @@ fn evaluate_condition_in_context(
         }
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {
             Ok(game.source_dealt_combat_damage_to_player_this_turn(shared.source))
+        }
+        Condition::SourceCameUnderYourControlSinceYourLastUpkeep => {
+            Ok(game.object(shared.source).is_some_and(|obj| {
+                obj.zone == crate::zone::Zone::Battlefield
+                    && game.controller_of(obj) == shared.controller
+                    && game
+                        .turn_store
+                        .came_under_control_since_last_upkeep
+                        .contains(&obj.id)
+            }))
         }
         Condition::SourceCameUnderYourControlThisTurn => {
             Ok(game.object(shared.source).is_some_and(|obj| {
@@ -5041,3 +5086,43 @@ Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast => {
 }
 #[cfg(test)]
 mod context_tests;
+
+/// Birgi, God of Storytelling: "Creatures you control can boast twice during
+/// each of your turns rather than once." Raises the CR 702.142a once-per-turn
+/// cap for a boast ability whose controller is the active player and controls
+/// such a permanent.
+fn boast_may_be_activated_an_additional_time(
+    game: &GameState,
+    source: crate::ids::ObjectId,
+    ability_index: usize,
+) -> bool {
+    let Some(chars) = game.current_characteristics(source) else {
+        return false;
+    };
+    let is_boast = chars.abilities.as_slice().get(ability_index).is_some_and(|ability| {
+        matches!(
+            &ability.kind,
+            crate::ability::AbilityKind::Activated(activated)
+                if activated.additional_restrictions.iter().any(|restriction| {
+                    restriction
+                        .strip_prefix("__ironsmith_activation_label:")
+                        .is_some_and(|label| label.eq_ignore_ascii_case("Boast"))
+                })
+        )
+    });
+    if !is_boast || !chars.card_types.contains(&crate::types::CardType::Creature) {
+        return false;
+    }
+    let Some(controller) = game.object(source).map(|object| game.controller_of(object)) else {
+        return false;
+    };
+    game.is_active_player(controller)
+        && game.battlefield.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|object| game.controller_of(object) == controller)
+                && game.current_has_static_ability_id(
+                    id,
+                    crate::static_abilities::StaticAbilityId::BoastTwiceEachTurn,
+                )
+        })
+}

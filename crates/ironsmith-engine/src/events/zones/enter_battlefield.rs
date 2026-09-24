@@ -412,6 +412,12 @@ impl GameEventType for EnterBattlefieldEvent {
     }
 
     fn affected_player(&self, game: &GameState) -> PlayerId {
+        // CR 616.1 / 110.2a: the permanent's controller chooses the order of
+        // its entry replacements, and a permanent entering under a player's
+        // control is controlled by that player.
+        if let Some(controller) = self.controller_override {
+            return controller;
+        }
         game.object(self.object)
             .map(|o| game.controller_of(o))
             .unwrap_or(game.turn.active_player)

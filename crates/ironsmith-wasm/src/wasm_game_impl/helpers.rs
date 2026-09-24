@@ -340,7 +340,7 @@ pub(super) fn action_drag_metadata(
                 Some(zone_name(Zone::Battlefield)),
                 None,
             ),
-            ironsmith::special_actions::SpecialAction::UnlockRoomDoor { room_id } => (
+            ironsmith::special_actions::SpecialAction::UnlockRoomDoor { room_id, .. } => (
                 "special_action",
                 Some(room_id.0),
                 None,
@@ -643,8 +643,10 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
                     object_name(game, *permanent_id)
                 )
             }
-            ironsmith::special_actions::SpecialAction::UnlockRoomDoor { room_id } => {
-                format!("Unlock {}", object_name(game, *room_id))
+            ironsmith::special_actions::SpecialAction::UnlockRoomDoor { room_id, door } => {
+                let door_name = ironsmith::special_actions::room_door_name(game, *room_id, *door)
+                    .unwrap_or_else(|| object_name(game, *room_id));
+                format!("Unlock {door_name}")
             }
             ironsmith::special_actions::SpecialAction::RollPlanarDie => game
                 .planar_die_roll_cost(game.turn.priority_player.unwrap_or(game.turn.active_player))
@@ -996,8 +998,14 @@ pub(super) fn special_action_ref(
             permanent_id: permanent_id.0,
             ability_index: *ability_index,
         },
-        ironsmith::special_actions::SpecialAction::UnlockRoomDoor { room_id } => {
-            SpecialActionRef::UnlockRoomDoor { room_id: room_id.0 }
+        ironsmith::special_actions::SpecialAction::UnlockRoomDoor { room_id, door } => {
+            SpecialActionRef::UnlockRoomDoor {
+                room_id: room_id.0,
+                door: match door {
+                    ironsmith::special_actions::RoomDoor::Linked => None,
+                    ironsmith::special_actions::RoomDoor::Current => Some("current".to_string()),
+                },
+            }
         }
         ironsmith::special_actions::SpecialAction::RollPlanarDie => SpecialActionRef::RollPlanarDie,
         ironsmith::special_actions::SpecialAction::TurnConspiracyFaceUp { conspiracy_id } => {
@@ -1219,6 +1227,20 @@ pub(super) fn target_choice_view(
                 .map(|p| p.name.clone())
                 .unwrap_or_else(|| format!("Player {}", pid.0 + 1)),
         },
+        Target::Object(id) if game.object(*id).is_none() && game.stack_ability_entry(*id).is_some() => {
+            // An ability on the stack, named by its own stack id. Stack
+            // objects are public.
+            let entry = game.stack_ability_entry(*id).expect("checked above");
+            let source_name = game
+                .object(entry.object_id)
+                .map(|object| object.name.to_string())
+                .or_else(|| entry.source_name.clone())
+                .unwrap_or_else(|| "Ability".to_string());
+            TargetChoiceView::Object {
+                object: id.0,
+                name: format!("{source_name} ability"),
+            }
+        }
         Target::Object(id) => {
             let visible = object_visible_to_perspective(game, perspective, viewed_cards, *id)
                 || decision_exposes_object_to_perspective(game, decision, perspective, *id);

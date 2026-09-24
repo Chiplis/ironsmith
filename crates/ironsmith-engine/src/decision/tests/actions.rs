@@ -2816,6 +2816,17 @@ fn test_foretell_special_action_enables_cast_from_exile() {
     assert!(game.is_face_down(foretold_id));
     assert!(game.is_foretold(foretold_id));
 
+    // CR 702.143a: castable only after the turn it was foretold has ended.
+    let same_turn = compute_legal_actions(&game, alice);
+    assert!(
+        !same_turn.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell { spell_id, .. } if *spell_id == foretold_id
+        )),
+        "a foretold card is not castable the turn it was foretold, got {same_turn:?}"
+    );
+    game.turn.turn_number += 1;
+
     let actions = compute_legal_actions(&game, alice);
     assert!(
         actions.iter().any(|action| matches!(

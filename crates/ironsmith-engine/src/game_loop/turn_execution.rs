@@ -62,6 +62,12 @@ pub fn execute_turn_with(
                     crate::decisions::context::DecisionContext::SelectOptions(ref options_ctx) => {
                         runner.respond_options(decision_maker.decide_options(game, options_ctx));
                     }
+                    crate::decisions::context::DecisionContext::Distribute(ref distribute_ctx) => {
+                        // CR 510.1c-d combat-damage division.
+                        runner.respond_distribute(
+                            decision_maker.decide_distribute(game, distribute_ctx),
+                        );
+                    }
                     _ => {
                         // Other decision types shouldn't appear during turn execution
                     }
@@ -169,6 +175,7 @@ pub(super) fn generate_damage_triggers(
             let (damage_event, life_loss_event) = combat_damage_trigger_events(game, event);
             trigger_events.push(damage_event);
             trigger_events.extend(life_loss_event);
+            trigger_events.extend(combat_lifelink_trigger_event(game, event));
         }
         // Delayed triggers ("whenever that creature deals combat damage to a
         // player this turn") watch these events too; the simultaneous path
@@ -195,6 +202,9 @@ pub(super) fn generate_damage_triggers(
         );
         if let Some(life_loss_event) = life_loss_event {
             queue_triggers_from_event(game, trigger_queue, life_loss_event, true);
+        }
+        if let Some(life_gain_event) = combat_lifelink_trigger_event(game, event) {
+            queue_triggers_from_event(game, trigger_queue, life_gain_event, true);
         }
 
         if let DamageEventTarget::Player(player_id) = event.target
@@ -339,6 +349,25 @@ fn combat_damage_trigger_events(
     (damage_event, life_loss_event)
 }
 
+/// CR 702.15b: combat damage from a lifelink source causes a life-gain event.
+fn combat_lifelink_trigger_event(
+    game: &mut GameState,
+    event: &CombatDamageEvent,
+) -> Option<TriggerEvent> {
+    let (player, amount) = event.lifelink_gain?;
+    let provenance = game
+        .provenance_graph_mut()
+        .alloc_root_event(crate::events::EventKind::LifeGain);
+    let mut life_gain = TriggerEvent::new_with_provenance(
+        crate::events::LifeGainEvent::new(player, amount).with_source(event.source),
+        provenance,
+    );
+    if let Some(snapshot) = &event.source_snapshot {
+        life_gain = life_gain.with_source_snapshot(snapshot.clone());
+    }
+    Some(life_gain)
+}
+
 /// Queue combat-damage and life-loss triggers for a batch of combat damage events.
 ///
 /// This is shared by different runtime frontends (CLI/WASM) so they can execute
@@ -386,6 +415,7 @@ mod tests {
                 amount: 3,
                 life_lost: 3,
                 result: DamageResult::default(),
+                lifelink_gain: None,
             },
             CombatDamageEvent {
                 source_snapshot: None,
@@ -395,6 +425,7 @@ mod tests {
                 amount: 4,
                 life_lost: 4,
                 result: DamageResult::default(),
+                lifelink_gain: None,
             },
         ];
         let before = game.work_counters();
@@ -471,6 +502,7 @@ mod tests {
                 amount: 2,
                 life_lost: 2,
                 result: DamageResult::default(),
+                lifelink_gain: None,
             },
             CombatDamageEvent {
                 source_snapshot: None,
@@ -480,6 +512,7 @@ mod tests {
                 amount: 2,
                 life_lost: 2,
                 result: DamageResult::default(),
+                lifelink_gain: None,
             },
         ];
         let mut trigger_queue = TriggerQueue::new();

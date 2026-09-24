@@ -248,13 +248,30 @@ impl EffectExecutor for RetargetStackObjectEffect {
         let mut events = Vec::new();
 
         for object_id in object_ids {
-            let Some(stack_idx) = game.stack.iter().position(|e| e.object_id == object_id) else {
+            // Abilities share their source's object ID: prefer the most
+            // recent entry of the targeted kind (CR 113.1a).
+            let kind = super::counter::counter_target_stack_kind(&self.target);
+            let Some(stack_idx) = game
+                .stack
+                .iter()
+                .position(|e| e.ability_id == Some(object_id))
+                .or_else(|| {
+                    kind.and_then(|kind| {
+                        game.stack.iter().rposition(|e| {
+                            e.object_id == object_id
+                                && <crate::filter::ObjectFilter as crate::filter::ObjectFilterExt>::stack_entry_matches_kind(e, kind)
+                        })
+                    })
+                })
+                .or_else(|| game.stack.iter().position(|e| e.object_id == object_id))
+            else {
                 continue;
             };
 
-            if game
-                .object(object_id)
-                .is_none_or(|obj| obj.zone != Zone::Stack && !game.stack[stack_idx].is_ability)
+            if !game.stack[stack_idx].is_ability
+                && game
+                    .object(object_id)
+                    .is_none_or(|obj| obj.zone != Zone::Stack)
             {
                 continue;
             }

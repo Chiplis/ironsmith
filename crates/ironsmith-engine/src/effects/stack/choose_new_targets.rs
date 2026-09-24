@@ -203,7 +203,12 @@ impl EffectExecutor for ChooseNewTargetsEffect {
                 }
                 game.stack[stack_idx] = updated_entry;
                 changed += 1;
+                // Only targets that are new become the target (CR 115.7);
+                // unchanged ones were targeted when the object was created.
                 for target in &game.stack[stack_idx].targets {
+                    if old_targets.contains(target) {
+                        continue;
+                    }
                     if let Target::Object(target_id) = target {
                         events.push(TriggerEvent::new_with_provenance(
                             BecomesTargetedEvent::new(

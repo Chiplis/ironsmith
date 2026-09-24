@@ -16,7 +16,12 @@ pub fn derive_triggered_ability_functional_zones_from_facts(
         TriggerSpec::KeywordActionFromSource {
             action: crate::events::KeywordActionKind::Cycle,
             ..
-        } => vec![Zone::Graveyard],
+        } => {
+            // CR 702.29c: "when you cycle this card" triggers from whatever
+            // zone the card winds up in after it's cycled (the graveyard, or
+            // exile under Rest in Peace / madness).
+            vec![Zone::Graveyard, Zone::Exile]
+        }
         _ => vec![Zone::Battlefield],
     };
 

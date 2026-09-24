@@ -1122,26 +1122,65 @@ impl OrTrigger {
     }
 }
 
+impl OrTrigger {
+    /// CR 702.29d: "whenever you cycle or discard a card" triggers only once
+    /// when a card is cycled. Cycling always discards the card as part of its
+    /// cost, so the cycle branch is subsumed by an unrestricted sibling
+    /// "you discard a card" branch for the same player.
+    fn branch_is_subsumed(&self, index: usize) -> bool {
+        use crate::triggers::{KeywordActionTrigger, YouDiscardCardTrigger};
+        let Some(cycle) = self.triggers[index].downcast_ref::<KeywordActionTrigger>() else {
+            return false;
+        };
+        if cycle.action != crate::events::KeywordActionKind::Cycle
+            || cycle.source_must_match
+            || cycle.source_filter.is_some()
+            || cycle.tagged_object_filter.is_some()
+            || cycle.during_your_turn
+            || cycle.during_your_main_phase
+        {
+            return false;
+        }
+        self.triggers.iter().enumerate().any(|(other, trigger)| {
+            other != index
+                && trigger
+                    .downcast_ref::<YouDiscardCardTrigger>()
+                    .is_some_and(|discard| {
+                        discard.player == cycle.player
+                            && discard.filter.is_none()
+                            && discard.cause_controller.is_none()
+                            && !discard.effect_like_only
+                    })
+        })
+    }
+
+    fn active_branches(&self) -> impl Iterator<Item = &Trigger> {
+        self.triggers
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| !self.branch_is_subsumed(*index))
+            .map(|(_, trigger)| trigger)
+    }
+}
+
 impl TriggerMatcher for OrTrigger {
     fn clone_box(&self) -> Box<dyn TriggerMatcher> {
         Box::new(self.clone())
     }
 
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
-        self.triggers.iter().any(|t| t.matches(event, ctx))
+        self.active_branches().any(|t| t.matches(event, ctx))
     }
 
     fn trigger_count(&self, event: &TriggerEvent) -> u32 {
-        self.triggers
-            .iter()
+        self.active_branches()
             .map(|trigger| trigger.trigger_count(event))
             .max()
             .unwrap_or(0)
     }
 
     fn trigger_count_with_context(&self, event: &TriggerEvent, ctx: &TriggerContext) -> u32 {
-        self.triggers
-            .iter()
+        self.active_branches()
             .filter(|trigger| trigger.matches(event, ctx))
             .map(|trigger| trigger.trigger_count_with_context(event, ctx))
             .max()

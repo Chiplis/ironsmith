@@ -33,11 +33,24 @@ impl EffectExecutor for RenownEffect {
         }
 
         let mut outcome = EffectOutcome::count(1);
-        if self.amount > 0
-            && let Some(counter_event) = game.add_counters_with_source(
+        // Putting the counters is an event that counter replacement effects
+        // (Hardened Scales, Doubling Season) modify (CR 614.1).
+        let final_count = if self.amount > 0 {
+            crate::events::processing::process_put_counters_with_event(
+                game,
                 ctx.source,
                 CounterType::PlusOnePlusOne,
                 self.amount,
+                ctx.cause.clone(),
+            )
+        } else {
+            0
+        };
+        if final_count > 0
+            && let Some(counter_event) = game.add_counters_with_source(
+                ctx.source,
+                CounterType::PlusOnePlusOne,
+                final_count,
                 Some(ctx.source),
                 Some(ctx.controller),
             )

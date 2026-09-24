@@ -73,8 +73,11 @@ impl EffectExecutor for ConditionalEffect {
         };
 
         let mut outcomes = Vec::new();
-        for effect in effects_to_execute {
+        for (index, effect) in effects_to_execute.iter().enumerate() {
             outcomes.push(execute_effect(game, effect, ctx)?);
+            if let Some(next) = effects_to_execute.get(index + 1) {
+                crate::effects::match_triggers_at_instruction_boundary(game, ctx, Some(next));
+            }
         }
 
         if outcomes.is_empty() {

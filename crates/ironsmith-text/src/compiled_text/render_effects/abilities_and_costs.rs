@@ -352,15 +352,26 @@ pub(super) fn describe_champion_keyword(
     let [alternative_effect] = unless.alternative.as_slice() else {
         return None;
     };
-    let exile_until = alternative_effect.downcast_ref::<crate::effects::ExileUntilEffect>()?;
-    if exile_until.duration != crate::effects::ExileUntilDuration::SourceLeavesBattlefield
-        || exile_until.leave_watcher.is_some()
-        || exile_until.return_zone != Zone::Battlefield
-        || exile_until.face_down
+    // Champion's ETB half exiles the championed permanent; its linked
+    // leaves-the-battlefield trigger returns it (CR 702.72a). Older lowering
+    // used an "until this leaves" exile.
+    let exile_spec = if let Some(exile_until) =
+        alternative_effect.downcast_ref::<crate::effects::ExileUntilEffect>()
     {
-        return None;
-    }
-    let ChooseSpec::Object(filter) = &exile_until.spec else {
+        if exile_until.duration != crate::effects::ExileUntilDuration::SourceLeavesBattlefield
+            || exile_until.leave_watcher.is_some()
+            || exile_until.return_zone != Zone::Battlefield
+            || exile_until.face_down
+        {
+            return None;
+        }
+        &exile_until.spec
+    } else {
+        &alternative_effect
+            .downcast_ref::<crate::effects::ExileEffect>()?
+            .spec
+    };
+    let ChooseSpec::Object(filter) = exile_spec else {
         return None;
     };
     if filter.zone != Some(Zone::Battlefield)
@@ -370,7 +381,7 @@ pub(super) fn describe_champion_keyword(
         return None;
     }
 
-    let target = describe_choose_spec(&exile_until.spec);
+    let target = describe_choose_spec(exile_spec);
     let championed = target
         .strip_prefix("another ")
         .and_then(|text| text.strip_suffix(" you control"))?
@@ -436,9 +447,18 @@ pub(super) fn describe_class_level_activation(
     let [effect] = activated.effects.flattened_default_effects() else {
         return None;
     };
-    let put = effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
-    if put.counter_type != crate::CounterType::Level || !matches!(put.target, ChooseSpec::Source) {
-        return None;
+    // The runtime gate replaces the parsed level-counter placement with the
+    // class-level designation (CR 716.2b); both render as "Level N".
+    if effect
+        .downcast_ref::<crate::effects::SetClassLevelEffect>()
+        .is_none()
+    {
+        let put = effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+        if put.counter_type != crate::CounterType::Level
+            || !matches!(put.target, ChooseSpec::Source)
+        {
+            return None;
+        }
     }
     Some(format!(
         "{}: Level {level}",

@@ -26,13 +26,23 @@ impl TriggerMatcher for ThisAttacksPlayerWithMostLifeTrigger {
             return false;
         };
 
-        let defending_life = ctx
+        let Some(defending_life) = ctx
             .game
             .player(defending_player)
+            .filter(|player| player.is_in_game())
             .map(|p| p.life)
-            .unwrap_or(i32::MIN);
+        else {
+            return false;
+        };
 
-        let max_life = ctx.game.players.iter().map(|player| player.life).max();
+        // CR 800.4a: players who have left the game aren't compared.
+        let max_life = ctx
+            .game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .map(|player| player.life)
+            .max();
         max_life.is_some_and(|max_life| defending_life == max_life)
     }
 

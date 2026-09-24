@@ -659,13 +659,12 @@ pub(super) fn compile_subject_verb_early(
                 Vec::new(),
             ))
         }
-        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Casualty { power }) => {
-            let mut creature_filter = ObjectFilter::creature().you_control();
-            creature_filter.power =
-                Some(crate::filter::Comparison::GreaterThanOrEqual(*power as i32));
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Casualty { .. }) => {
+            // Granted casualty (CR 702.153a): the sacrifice was paid as an
+            // optional cost while casting (the engine offers it as "Granted
+            // Casualty N"), so the trigger only copies the spell.
             Ok((
-                vec![Effect::may(vec![
-                    Effect::sacrifice(creature_filter, 1),
+                vec![
                     Effect::with_id(
                         0,
                         Effect::new(crate::effects::CopySpellEffect::single(ChooseSpec::Source)),
@@ -674,7 +673,7 @@ pub(super) fn compile_subject_verb_early(
                         crate::effect::EffectId(0),
                         PlayerFilter::You,
                     ),
-                ])],
+                ],
                 Vec::new(),
             ))
         }
@@ -864,7 +863,7 @@ pub(super) fn compile_subject_verb_early(
                     vec![Effect::create_tokens(token, Value::Fixed(1))],
                 ),
             ];
-            Ok((vec![Effect::choose_one(modes)], choices))
+            Ok((vec![Effect::choose_one_endure(modes)], choices))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Exploit) => {
             let id = ctx.next_effect_id();

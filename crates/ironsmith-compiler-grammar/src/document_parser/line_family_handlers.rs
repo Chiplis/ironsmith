@@ -774,25 +774,43 @@ pub(super) fn run_champion_line_family(
         &["sacrifice", "it", "unless", "you", "exile", "another"],
     );
     triggered_tokens.extend_from_slice(filter_tokens);
-    push_synthetic_words(
-        &mut triggered_tokens,
-        &[
-            "you",
-            "control",
-            "until",
-            "this",
-            "permanent",
-            "leaves",
-            "the",
-            "battlefield",
-        ],
-    );
+    push_synthetic_words(&mut triggered_tokens, &["you", "control"]);
     triggered_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
     let triggered_line = rewrite_line_tokens(ctx.line, &triggered_tokens);
     let triggered = line_family_try!(ctx, rule, recognize_triggered_line(&triggered_line));
+
+    // CR 702.72a: champion is two linked triggered abilities (CR 702.72b),
+    // not an "until" duration: the championed card returns through a
+    // leaves-the-battlefield trigger that can be responded to, and if the
+    // champion left before its ETB trigger resolved the card stays exiled.
+    let mut return_tokens = synthetic_word_tokens(&[
+        "When",
+        "this",
+        "permanent",
+        "leaves",
+        "the",
+        "battlefield",
+    ]);
+    return_tokens.push(OwnedLexToken::comma(TextSpan::synthetic()));
+    push_synthetic_words(
+        &mut return_tokens,
+        &[
+            "return", "the", "exiled", "card", "to", "the", "battlefield", "under", "its",
+            "owner's", "control",
+        ],
+    );
+    return_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
+    let return_line = rewrite_line_tokens(ctx.line, &return_tokens);
+    let returned = line_family_try!(ctx, rule, recognize_triggered_line(&return_line));
     line_family_match(
         ctx,
-        LineDispatchResult::single(RecognizedLine::Triggered(triggered), ctx.idx + 1),
+        LineDispatchResult {
+            lines: vec![
+                RecognizedLine::Triggered(triggered),
+                RecognizedLine::Triggered(returned),
+            ],
+            next_idx: ctx.idx + 1,
+        },
     )
 }
 

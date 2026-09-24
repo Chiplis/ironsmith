@@ -543,6 +543,33 @@ impl WasmGame {
                     .unwrap()
                     .respond_options(option_indices);
             }
+            (
+                DecisionContext::Distribute(_),
+                command @ UiCommand::SelectOptions { .. },
+            ) => {
+                // CR 510.1c-d: a combat-damage division chosen before damage.
+                let answer = self
+                    .command_to_replay_answer(&pending_ctx, command)
+                    .map_err(|e| restore_on_err(self, pending_ctx.clone(), e))?;
+                let ReplayDecisionAnswer::Distribute(distribution) = answer else {
+                    return Err(restore_on_err(
+                        self,
+                        pending_ctx.clone(),
+                        JsValue::from_str("expected a combat-damage division"),
+                    ));
+                };
+                self.runner
+                    .as_ref()
+                    .unwrap()
+                    .validate_combat_damage_distribution(&self.game, &distribution)
+                    .map_err(|e| {
+                        restore_on_err(self, pending_ctx.clone(), JsValue::from_str(&e))
+                    })?;
+                self.runner
+                    .as_mut()
+                    .unwrap()
+                    .respond_distribute(distribution);
+            }
             _ => {
                 self.pending_decision = Some(pending_ctx);
                 self.runner_pending_decision = true;

@@ -17,6 +17,9 @@ struct SyncIdCounters {
     player: u8,
     object: u64,
     card: u32,
+    /// Next reserved stack-ability target id; absent in older checkpoints.
+    #[serde(default)]
+    stack_ability: u64,
 }
 
 impl From<IdCountersSnapshot> for SyncIdCounters {
@@ -25,6 +28,7 @@ impl From<IdCountersSnapshot> for SyncIdCounters {
             player: value.player,
             object: value.object,
             card: value.card,
+            stack_ability: 0,
         }
     }
 }
@@ -33,6 +37,7 @@ impl SyncIdCounters {
     fn from_game(game: &ironsmith::game_state::GameState) -> Self {
         let mut counters = Self::from(ironsmith::ids::snapshot_id_counters());
         counters.object = game.next_object_id_counter();
+        counters.stack_ability = game.next_stack_ability_id_counter();
         counters
     }
 }
@@ -172,6 +177,9 @@ struct SyncObject {
     phased_out: bool,
     madness_exiled: bool,
     foretold: bool,
+    /// Turn the card became foretold (CR 702.143a: castable only on a later turn).
+    #[serde(default)]
+    foretold_turn: Option<u32>,
     #[serde(default)]
     suspected: bool,
     #[serde(default)]
@@ -263,6 +271,9 @@ struct PublicAuditObject {
     phased_out: bool,
     madness_exiled: bool,
     foretold: bool,
+    /// Turn the card became foretold (CR 702.143a: castable only on a later turn).
+    #[serde(default)]
+    foretold_turn: Option<u32>,
     #[serde(default)]
     suspected: bool,
     #[serde(default)]
@@ -355,6 +366,9 @@ struct PublicAuditConspiracy {
 #[serde(rename_all = "camelCase")]
 struct SyncStackEntry {
     object_id: u64,
+    /// The ability's own target id; absent in older checkpoints.
+    #[serde(default)]
+    ability_id: Option<u64>,
     controller: u8,
     targets: Vec<SyncTarget>,
     is_ability: bool,
@@ -933,6 +947,7 @@ fn target_from_sync_input(input: SyncTarget) -> Target {
 fn sync_stack_entry(entry: &StackEntry) -> SyncStackEntry {
     SyncStackEntry {
         object_id: entry.object_id.0,
+        ability_id: entry.ability_id.map(|id| id.0),
         controller: entry.controller.0,
         targets: entry
             .targets
@@ -959,6 +974,7 @@ fn stack_entry_from_sync(entry: &SyncStackEntry) -> StackEntry {
         .map(target_from_sync_input)
         .collect();
     restored.is_ability = entry.is_ability;
+    restored.ability_id = entry.ability_id.map(ObjectId::from_raw);
     restored.x_value = entry.x_value;
     restored.source_stable_id = entry.source_stable_id.map(StableId::from_raw);
     restored.source_name = entry.source_name.clone();
@@ -1691,6 +1707,7 @@ impl WasmGame {
             "faceDown": self.game.is_face_down(id),
             "manifested": self.game.is_manifested(id),
             "foretold": self.game.is_foretold(id),
+            "foretoldTurn": self.game.foretold_turn(id),
             "suspected": self.game.is_suspected(id),
             "plottedBy": self.game.plotted_by(id).map(|player| player.0),
             "plottedTurn": self.game.plotted_turn(id),
@@ -1824,6 +1841,7 @@ impl WasmGame {
                     phased_out: self.game.is_phased_out(id),
                     madness_exiled: self.game.is_madness_exiled(id),
                     foretold: self.game.is_foretold(id),
+                    foretold_turn: self.game.foretold_turn(id),
                     suspected: self.game.is_suspected(id),
                     prepared: self.game.is_prepared(id),
                     prepared_spell_source: self
@@ -2016,6 +2034,7 @@ impl WasmGame {
                 .iter()
                 .map(|entry| SyncStackEntry {
                     object_id: entry.object_id.0,
+                    ability_id: entry.ability_id.map(|id| id.0),
                     controller: entry.controller.0,
                     targets: entry
                         .targets
@@ -2176,6 +2195,7 @@ impl WasmGame {
                     phased_out: self.game.is_phased_out(id),
                     madness_exiled: self.game.is_madness_exiled(id),
                     foretold: self.game.is_foretold(id),
+                    foretold_turn: self.game.foretold_turn(id),
                     suspected: self.game.is_suspected(id),
                     prepared: self.game.is_prepared(id),
                     plotted_by: self.game.plotted_by(id).map(|player| player.0),
@@ -2393,6 +2413,7 @@ impl WasmGame {
                 .iter()
                 .map(|entry| SyncStackEntry {
                     object_id: entry.object_id.0,
+                    ability_id: entry.ability_id.map(|id| id.0),
                     controller: entry.controller.0,
                     targets: entry
                         .targets
@@ -2697,6 +2718,7 @@ impl WasmGame {
                     .map(target_from_sync_input)
                     .collect();
                 stack_entry.is_ability = entry.is_ability;
+                stack_entry.ability_id = entry.ability_id.map(ObjectId::from_raw);
                 stack_entry.x_value = entry.x_value;
                 stack_entry.source_stable_id = entry.source_stable_id.map(StableId::from_raw);
                 stack_entry.source_name = entry.source_name.clone();
@@ -3011,7 +3033,8 @@ impl WasmGame {
                 self.game.set_madness_exiled(id);
             }
             if object.foretold {
-                self.game.set_foretold(id);
+                self.game
+                    .set_foretold_on_turn(id, object.foretold_turn.unwrap_or(0));
             }
             if object.suspected {
                 self.game.set_suspected(id);
@@ -3038,6 +3061,8 @@ impl WasmGame {
         let id_counters = IdCountersSnapshot::from(checkpoint.id_counters.clone());
         restore_id_counters(id_counters);
         self.game.set_next_object_id_counter(id_counters.object);
+        self.game
+            .set_next_stack_ability_id_counter(checkpoint.id_counters.stack_ability);
         self.pending_decision = self.game.turn.priority_player.map(|player| {
             DecisionContext::Priority(ironsmith::game_loop::priority_context(&self.game, player))
         });

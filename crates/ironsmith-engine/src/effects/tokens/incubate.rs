@@ -12,7 +12,10 @@ use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
-use super::lifecycle::{TokenEntryOptions, apply_token_battlefield_entry};
+use super::lifecycle::{
+    TokenEntryOptions, apply_token_battlefield_entry, create_replacement_additional_tokens,
+    remaining_token_slots,
+};
 
 pub type IncubateEffect = ironsmith_core::IncubateEffect;
 
@@ -35,51 +38,98 @@ impl EffectExecutor for IncubateEffect {
             game.register_linked_face_definition(&front);
             game.register_linked_face_definition(&back);
 
-            let id = game.new_object_id();
-            let mut token_obj = game.object_from_token_definition(id, &front, controller_id);
-            token_obj.zone = Zone::Command;
-            let token_is_creature = token_obj.is_creature();
-
-            game.add_object(token_obj);
-
-            let initial_counters = if amount > 0 {
-                vec![(CounterType::PlusOnePlusOne, amount)]
-            } else {
-                Vec::new()
-            };
-            let Some(entry_result) = game
-                .move_object_with_etb_processing_with_initial_counters_with_dm(
-                    id,
-                    Zone::Battlefield,
-                    initial_counters,
-                    &mut ctx.decision_maker,
-                )
-            else {
-                game.remove_object(id);
-                continue;
-            };
-
-            let entered_id = entry_result.new_id;
-            created_ids.push(entered_id);
-
-            let entered_battlefield = game
-                .object(entered_id)
-                .is_some_and(|obj| obj.zone == Zone::Battlefield);
-            if entered_battlefield {
-                let entered_is_creature = game.current_is_creature(entered_id);
-                let tracks_creature_etb = entered_is_creature || token_is_creature;
-                apply_token_battlefield_entry(
+            // CR 701.53a: incubating creates an Incubator token, so token
+            // creation replacements (Doubling Season, Parallel Lives, ...)
+            // and token limits apply (CR 111.1, 614.1).
+            let token_preview = game.object_from_token_definition(
+                crate::ids::ObjectId::from_raw(0),
+                &front,
+                controller_id,
+            );
+            let replacement =
+                crate::events::processing::process_token_creation_for_token_with_event(
                     game,
-                    ctx,
-                    entered_id,
                     controller_id,
-                    tracks_creature_etb,
-                    entry_options,
-                    Zone::Command,
-                    entry_result.enters_tapped,
-                    &mut events,
-                )?;
+                    1,
+                    Some(token_preview.clone()),
+                    ctx.cause.clone(),
+                    &mut ctx.decision_maker,
+                );
+            let token_count =
+                (replacement.count as usize).min(remaining_token_slots(game, controller_id));
+
+            let mut incubated_ids = Vec::with_capacity(token_count);
+            for _ in 0..token_count {
+                let id = game.new_object_id();
+                let mut token_obj = game.object_from_token_definition(id, &front, controller_id);
+                token_obj.zone = Zone::Command;
+                let token_is_creature = token_obj.is_creature();
+
+                game.add_object(token_obj);
+
+                let initial_counters = if amount > 0 {
+                    vec![(CounterType::PlusOnePlusOne, amount)]
+                } else {
+                    Vec::new()
+                };
+                let Some(entry_result) = game
+                    .move_object_with_etb_processing_with_initial_counters_with_dm(
+                        id,
+                        Zone::Battlefield,
+                        initial_counters,
+                        &mut ctx.decision_maker,
+                    )
+                else {
+                    game.remove_object(id);
+                    continue;
+                };
+
+                let entered_id = entry_result.new_id;
+                incubated_ids.push(entered_id);
+
+                let entered_battlefield = game
+                    .object(entered_id)
+                    .is_some_and(|obj| obj.zone == Zone::Battlefield);
+                if entered_battlefield {
+                    let entered_is_creature = game.current_is_creature(entered_id);
+                    let tracks_creature_etb = entered_is_creature || token_is_creature;
+                    apply_token_battlefield_entry(
+                        game,
+                        ctx,
+                        entered_id,
+                        controller_id,
+                        tracks_creature_etb,
+                        entry_options,
+                        Zone::Command,
+                        entry_result.enters_tapped,
+                        &mut events,
+                    )?;
+                }
             }
+
+            if !incubated_ids.is_empty() {
+                game.queue_trigger_event(
+                    ctx.provenance,
+                    TriggerEvent::new_with_provenance(
+                        crate::events::CreateTokensEvent::with_token_cause(
+                            controller_id,
+                            incubated_ids.len() as u32,
+                            token_preview,
+                            ctx.cause.clone(),
+                        ),
+                        ctx.provenance,
+                    ),
+                );
+            }
+            created_ids.extend(incubated_ids);
+            let additional_ids = create_replacement_additional_tokens(
+                game,
+                ctx,
+                controller_id,
+                &replacement.additional_tokens,
+                &mut events,
+            )?;
+            created_ids.extend(additional_ids);
 
             events.push(TriggerEvent::new_with_provenance(
                 KeywordActionEvent::new(

@@ -73,9 +73,13 @@ pub enum TurnState {
     DeclareBlockersApply,
     DeclareBlockersPriority,
     CombatDamageFirstStrike,
+    /// Collecting CR 510.1c-d damage divisions before first-strike damage.
+    CombatDamageFirstStrikeAssign,
     CombatDamageFirstStrikeSbas,
     CombatDamageFirstStrikePriority,
     CombatDamageRegular,
+    /// Collecting CR 510.1c-d damage divisions before regular damage.
+    CombatDamageRegularAssign,
     CombatDamageRegularSbas,
     CombatDamageRegularPriority,
     EndCombat,
@@ -121,9 +125,11 @@ impl TurnState {
             Self::DeclareBlockersApply => "declare_blockers_apply",
             Self::DeclareBlockersPriority => "declare_blockers_priority",
             Self::CombatDamageFirstStrike => "combat_damage_first_strike",
+            Self::CombatDamageFirstStrikeAssign => "combat_damage_first_strike_assign",
             Self::CombatDamageFirstStrikeSbas => "combat_damage_first_strike_sbas",
             Self::CombatDamageFirstStrikePriority => "combat_damage_first_strike_priority",
             Self::CombatDamageRegular => "combat_damage_regular",
+            Self::CombatDamageRegularAssign => "combat_damage_regular_assign",
             Self::CombatDamageRegularSbas => "combat_damage_regular_sbas",
             Self::CombatDamageRegularPriority => "combat_damage_regular_priority",
             Self::EndCombat => "end_combat",
@@ -163,9 +169,11 @@ impl TurnState {
             "declare_blockers_apply" => Self::DeclareBlockersApply,
             "declare_blockers_priority" => Self::DeclareBlockersPriority,
             "combat_damage_first_strike" => Self::CombatDamageFirstStrike,
+            "combat_damage_first_strike_assign" => Self::CombatDamageFirstStrikeAssign,
             "combat_damage_first_strike_sbas" => Self::CombatDamageFirstStrikeSbas,
             "combat_damage_first_strike_priority" => Self::CombatDamageFirstStrikePriority,
             "combat_damage_regular" => Self::CombatDamageRegular,
+            "combat_damage_regular_assign" => Self::CombatDamageRegularAssign,
             "combat_damage_regular_sbas" => Self::CombatDamageRegularSbas,
             "combat_damage_regular_priority" => Self::CombatDamageRegularPriority,
             "end_combat" => Self::EndCombat,
@@ -491,6 +499,8 @@ pub struct TurnRunner {
     pending_blockers: Option<(Vec<BlockerDeclaration>, PlayerId)>,
     /// Pending discard selection from the caller.
     pending_discard: Option<Vec<ObjectId>>,
+    /// Pending combat-damage division for the current assignment prompt.
+    pending_distribution: Option<Vec<(crate::game_state::Target, u32)>>,
     /// Pending yes/no response for runner-driven boolean decisions.
     pending_boolean: Option<bool>,
     /// Pending CR 616 choice among draw replacement effects.
@@ -505,6 +515,9 @@ pub struct TurnRunner {
     pending_commander_choice: Option<PendingCommanderChoice>,
     /// Legend-rule keep choice that paused the runner.
     pending_legend_choice: Option<PendingLegendRuleChoice>,
+    /// Legend-rule keep choices already answered for the current SBA check,
+    /// applied together with that check's other actions (CR 704.3).
+    resolved_legend_keeps: Vec<(ObjectId, Vec<ObjectId>)>,
     /// Space-sculptor sector choices collected without partial state writes.
     pending_sector_designations: Option<PendingSectorDesignationChoices>,
     /// Defending player for the current combat.
@@ -531,6 +544,7 @@ impl TurnRunner {
             pending_option: None,
             pending_blockers: None,
             pending_discard: None,
+            pending_distribution: None,
             pending_boolean: None,
             pending_draw_replacement: None,
             pending_draw_reveal: None,
@@ -538,6 +552,7 @@ impl TurnRunner {
             shared_draw_events: Vec::new(),
             pending_commander_choice: None,
             pending_legend_choice: None,
+            resolved_legend_keeps: Vec::new(),
             pending_sector_designations: None,
             defending_player: None,
             remaining_defending_players: Vec::new(),
@@ -1350,7 +1365,15 @@ impl TurnRunner {
 
             TurnState::CombatDamageFirstStrike => {
                 game.turn.step = Some(Step::CombatDamage);
+                self.pending_distribution = None;
+                self.state = TurnState::CombatDamageFirstStrikeAssign;
+                Ok(TurnAction::Continue)
+            }
 
+            TurnState::CombatDamageFirstStrikeAssign => {
+                if let Some(ctx) = self.next_combat_damage_assignment_decision(game, true, false) {
+                    return Ok(TurnAction::Decision(ctx));
+                }
                 let events = try_execute_combat_damage_step(game, &self.combat, true)
                     .map_err(|error| GameLoopError::InvalidState(error.to_string()))?;
                 queue_combat_damage_triggers(game, &events, tq);
@@ -1381,7 +1404,15 @@ impl TurnRunner {
 
             TurnState::CombatDamageRegular => {
                 game.turn.step = Some(Step::CombatDamage);
+                self.pending_distribution = None;
+                self.state = TurnState::CombatDamageRegularAssign;
+                Ok(TurnAction::Continue)
+            }
 
+            TurnState::CombatDamageRegularAssign => {
+                if let Some(ctx) = self.next_combat_damage_assignment_decision(game, false, true) {
+                    return Ok(TurnAction::Decision(ctx));
+                }
                 let events = try_execute_combat_damage_step_with_first_step_snapshot(
                     game,
                     &self.combat,
@@ -1649,6 +1680,74 @@ impl TurnRunner {
             return;
         }
         self.pending_option = option_indices.first().copied();
+    }
+
+    /// Provide a combat-damage division in response to a
+    /// `Decision(Distribute(...))` raised before a combat-damage step.
+    /// An empty or illegal division falls back to the default division.
+    pub fn respond_distribute(&mut self, distribution: Vec<(crate::game_state::Target, u32)>) {
+        self.pending_distribution = Some(distribution);
+    }
+
+    /// Check a proposed division for the combat-damage prompt the runner is
+    /// currently waiting on, without recording it (CR 510.1e).
+    pub fn validate_combat_damage_distribution(
+        &self,
+        game: &GameState,
+        distribution: &[(crate::game_state::Target, u32)],
+    ) -> Result<(), String> {
+        let prompt = self
+            .current_combat_damage_assignment_prompt(game)
+            .ok_or_else(|| "no combat-damage assignment is pending".to_string())?;
+        prompt.validate(game, distribution).map(|_| ())
+    }
+
+    fn current_combat_damage_assignment_prompt(
+        &self,
+        game: &GameState,
+    ) -> Option<crate::game_loop::CombatDamageAssignmentPrompt> {
+        let (first_strike, use_snapshot) = match self.state {
+            TurnState::CombatDamageFirstStrikeAssign => (true, false),
+            TurnState::CombatDamageRegularAssign => (false, true),
+            _ => return None,
+        };
+        crate::game_loop::next_combat_damage_assignment_prompt(
+            game,
+            &self.combat,
+            first_strike,
+            use_snapshot.then_some(&self.first_step_strikers),
+        )
+    }
+
+    /// Record a pending division (if any), then return the next division
+    /// decision the players must make before this damage step (CR 510.1).
+    fn next_combat_damage_assignment_decision(
+        &mut self,
+        game: &mut GameState,
+        first_strike: bool,
+        use_snapshot: bool,
+    ) -> Option<DecisionContext> {
+        if !game.continuous_state_is_clean() {
+            game.refresh_continuous_state();
+        }
+        let first_step_strikers = use_snapshot.then_some(&self.first_step_strikers);
+        if let Some(distribution) = self.pending_distribution.take()
+            && let Some(prompt) = crate::game_loop::next_combat_damage_assignment_prompt(
+                game,
+                &self.combat,
+                first_strike,
+                first_step_strikers,
+            )
+        {
+            prompt.record(game, &distribution);
+        }
+        crate::game_loop::next_combat_damage_assignment_prompt(
+            game,
+            &self.combat,
+            first_strike,
+            first_step_strikers,
+        )
+        .map(|prompt| DecisionContext::Distribute(prompt.decision_context(game)))
     }
 
     /// Signal that the priority loop has completed.
@@ -2090,7 +2189,7 @@ impl TurnRunner {
     ) -> Result<RunnerProgress<()>, GameLoopError> {
         use crate::rules::state_based::{
             StateBasedAction, StateBasedActionContext, apply_sector_designation_choices_from_group,
-            apply_state_based_actions_from_actions_with, check_state_based_actions_with_context,
+            apply_state_based_actions_with_legend_choices, check_state_based_actions_with_context,
             legend_rule_specs_from_actions,
         };
 
@@ -2185,11 +2284,20 @@ impl TurnRunner {
                 self.pending_option = None;
             }
 
-            // Handle one legend-rule violation per pass: applying a keep choice
-            // can change which violations remain, so re-check SBAs before
-            // prompting for the next one. Violations arrive in APNAP order.
+            // Collect legend-rule keep choices one prompt at a time, without
+            // applying them: CR 704.3 performs every action found by this
+            // check, including the legend-rule removals, simultaneously.
+            // Violations arrive in APNAP order.
             let legend_specs = legend_rule_specs_from_actions(&actions);
-            if let Some((player, spec)) = legend_specs.into_iter().next() {
+            self.resolved_legend_keeps.retain(|(_, group)| {
+                legend_specs.iter().any(|(_, spec)| spec.legends == *group)
+            });
+            if let Some((player, spec)) = legend_specs.into_iter().find(|(_, spec)| {
+                !self
+                    .resolved_legend_keeps
+                    .iter()
+                    .any(|(_, group)| *group == spec.legends)
+            }) {
                 use crate::decisions::DecisionSpec;
                 if let Some(pending) = self.pending_legend_choice.take() {
                     // Any queued object selection belongs to the legend prompt
@@ -2204,12 +2312,7 @@ impl TurnRunner {
                             .unwrap_or_else(|| {
                                 spec.default_response(crate::decision::FallbackStrategy::Decline)
                             });
-                        crate::rules::state_based::apply_legend_rule_choice_from_group(
-                            game,
-                            keep_id,
-                            &spec.legends,
-                        );
-                        crate::game_loop::drain_pending_trigger_events(game, tq);
+                        self.resolved_legend_keeps.push((keep_id, spec.legends));
                         continue;
                     }
                 }
@@ -2222,6 +2325,7 @@ impl TurnRunner {
                 });
                 return Ok(RunnerProgress::NeedsDecision(ctx));
             }
+            let legend_keeps = std::mem::take(&mut self.resolved_legend_keeps);
 
             let mut commander_returns = Vec::new();
             let mut other_actions = Vec::new();
@@ -2234,11 +2338,12 @@ impl TurnRunner {
                 }
             }
 
-            if !other_actions.is_empty() {
+            if !other_actions.is_empty() || !legend_keeps.is_empty() {
                 let mut auto_dm = crate::decision::AutoPassDecisionMaker;
-                let applied = apply_state_based_actions_from_actions_with(
+                let applied = apply_state_based_actions_with_legend_choices(
                     game,
                     other_actions,
+                    &legend_keeps,
                     all_effects.as_slice(),
                     &mut auto_dm,
                 );

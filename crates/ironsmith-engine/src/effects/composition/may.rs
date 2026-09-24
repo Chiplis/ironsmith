@@ -26,12 +26,15 @@ fn execute_optional_effects(
 ) -> Result<EffectOutcome, ExecutionError> {
     let has_action = effects.iter().any(|effect| !is_object_selection(effect));
     let mut outcomes = Vec::new();
-    for effect in effects {
+    for (index, effect) in effects.iter().enumerate() {
         let mut outcome = execute_effect(game, effect, ctx)?;
         if has_action && is_object_selection(effect) {
             outcome.set_value(OutcomeValue::None);
         }
         outcomes.push(outcome);
+        if let Some(next) = effects.get(index + 1) {
+            crate::effects::match_triggers_at_instruction_boundary(game, ctx, Some(next));
+        }
     }
     Ok(EffectOutcome::aggregate(outcomes).with_execution_fact(ExecutionFact::Accepted))
 }

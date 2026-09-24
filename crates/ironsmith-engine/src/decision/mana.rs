@@ -225,7 +225,7 @@ fn maximum_emerge_reduction(
             {
                 return None;
             }
-            Some(obj.mana_cost.as_ref().map_or(0, |cost| cost.mana_value()))
+            Some(crate::filter::object_current_mana_value(game, id))
         })
         .max()
         .unwrap_or(0)
@@ -1337,6 +1337,8 @@ pub(crate) fn is_sorcery_speed_spell(spell: &crate::object::Object) -> bool {
         || spell.has_card_type(CardType::Artifact)
         || spell.has_card_type(CardType::Enchantment)
         || spell.has_card_type(CardType::Planeswalker)
+        // CR 310.1 / 307.1: battles are permanent spells cast at sorcery speed.
+        || spell.has_card_type(CardType::Battle)
 }
 
 pub(crate) fn spell_has_active_flash_with_view(
@@ -2038,6 +2040,29 @@ fn plotted_cast_method_allows(
                 .is_some_and(|turn| turn < game.turn.turn_number))
 }
 
+/// CR 702.143a/d: a foretell cost may be paid only by the card's owner and
+/// only after the turn the card became foretold has ended.
+fn foretold_cast_method_allows(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> bool {
+    if !matches!(
+        alternative_method_for_casting_method(game, player, spell, casting_method),
+        Some(crate::alternative_cast::AlternativeCastingMethod::Foretell { .. })
+    ) {
+        return true;
+    }
+    if spell.owner != player {
+        return false;
+    }
+    // As with Plot, zone-change cleanup has removed the exile designation
+    // once the accepted proposal is on the stack.
+    spell.zone == Zone::Stack
+        || (spell.zone == Zone::Exile && game.foretold_card_is_castable(spell.id))
+}
+
 pub(crate) fn alternative_method_uses_printed_mana_cost(
     method: &crate::alternative_cast::AlternativeCastingMethod,
 ) -> bool {
@@ -2144,7 +2169,9 @@ fn completed_cast_proposal_is_legal_with_timing_permission(
     timing_permission_from_effect: bool,
     targets: &[crate::Target],
 ) -> bool {
-    if !plotted_cast_method_allows(game, player, spell, casting_method) {
+    if !plotted_cast_method_allows(game, player, spell, casting_method)
+        || !foretold_cast_method_allows(game, player, spell, casting_method)
+    {
         return false;
     }
     if violates_any_cant_cast_restriction_from_other_sources(game, player, spell, Some(spell.id))
@@ -2997,7 +3024,9 @@ pub(crate) fn can_cast_with_cost_with_context(
     let game = ctx.game;
     let player = ctx.player;
     let view = ctx.view;
-    if !plotted_cast_method_allows(game, player, spell, casting_method) {
+    if !plotted_cast_method_allows(game, player, spell, casting_method)
+        || !foretold_cast_method_allows(game, player, spell, casting_method)
+    {
         return false;
     }
     if game.is_planar_card(spell_id) {
@@ -3408,10 +3437,29 @@ pub(crate) fn spell_view_for_split_other_half_cast(
         return None;
     }
     let other_def = linked_face_definition(game, spell)?;
+    // CR 702.127a: an aftermath half "can't be cast from any zone other than a
+    // graveyard" (a cast in progress has already moved to the stack).
+    if definition_has_aftermath(&other_def) && !matches!(spell.zone, Zone::Graveyard | Zone::Stack)
+    {
+        return None;
+    }
     let mut view = spell.clone();
     view.apply_definition_face(&other_def);
     view.ensure_aura_cast_spell_effect();
     Some(view)
+}
+
+/// Whether a split-card half carries aftermath (CR 702.127a).
+pub(crate) fn definition_has_aftermath(def: &crate::cards::CardDefinition) -> bool {
+    def.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            crate::ability::AbilityKind::Static(static_ability)
+                if static_ability
+                    .compiled_model()
+                    .is_some_and(|model| model.label == "Aftermath")
+        )
+    })
 }
 
 pub(crate) fn spell_view_for_fused_split_cast(
@@ -3490,7 +3538,12 @@ pub(crate) fn can_cast_with_alternative_with_context(
     }
     let mana_cost = match method {
         AlternativeCastingMethod::Foretell { .. } => {
-            if !game.is_foretold(spell.id) {
+            // CR 702.143a/d: only the card's owner, and only after the turn it
+            // became foretold has ended (the stack shortcut covers a cast in
+            // progress, as for Plot).
+            if spell.zone != Zone::Stack
+                && (!game.foretold_card_is_castable(spell.id) || spell.owner != player)
+            {
                 return false;
             }
             get_mana_cost_for_method(method, spell_for_checks)
@@ -3511,6 +3564,14 @@ pub(crate) fn can_cast_with_alternative_with_context(
             Some(&free_plot_cost)
         }
         AlternativeCastingMethod::Suspend { .. } => return false,
+        // CR 702.35a: only the madness trigger grants permission, only to the
+        // card's owner, and only while that trigger resolves.
+        AlternativeCastingMethod::Madness { .. } => {
+            if spell.zone != Zone::Stack && !game.madness_cast_is_authorized(spell.id, player) {
+                return false;
+            }
+            get_mana_cost_for_method(method, spell_for_checks)
+        }
         _ => get_mana_cost_for_method(method, spell_for_checks),
     };
     if mana_cost.is_none() && alternative_method_uses_printed_mana_cost(method) {
@@ -4175,39 +4236,33 @@ pub(crate) fn calculate_effective_mana_cost_with_targets_internal(
     cast_from_zone: Option<Zone>,
     view: &DerivedGameView<'_>,
 ) -> crate::mana::ManaCost {
-    let mut current_cost = base_cost.clone();
-
-    // Check for Affinity for artifacts
-    if has_affinity_for_artifacts(spell) {
-        // Count artifacts controlled by the player
-        let artifact_count = count_artifacts_controlled_with_view(game, player, view);
-        current_cost = current_cost.reduce_generic(artifact_count);
-    }
-
-    // Apply explicit cost reductions/increases on the spell itself.
-    current_cost = apply_spell_cost_modifiers(
+    // CR 601.2f: gather every increase and reduction first (affinity, the
+    // spell's own modifiers, and battlefield modifiers such as Sphere of
+    // Resistance), then add all increases before subtracting reductions, so
+    // surplus reductions absorb taxes and the {0} floor applies only once.
+    let mut totals = collect_spell_cost_modifiers(
         game,
         player,
         spell,
-        &current_cost,
         chosen_target_count,
         chosen_targets,
         casting_method,
         cast_from_zone,
     );
-
-    // Apply global cost modifiers from battlefield permanents (Sphere of Resistance, leeches, etc.).
-    current_cost = apply_battlefield_spell_cost_modifiers(
+    totals.add_generic_reduction(affinity_for_artifacts_reduction_with_view(
+        game, player, spell, view,
+    ));
+    totals.merge(collect_battlefield_spell_cost_modifiers(
         game,
         player,
         spell,
-        &current_cost,
         chosen_target_count,
         chosen_targets,
         casting_method,
         cast_from_zone,
         view,
-    );
+    ));
+    let mut current_cost = totals.apply(base_cost);
 
     if preview_resource_reductions {
         if spell.zone != Zone::Stack {
@@ -4248,8 +4303,8 @@ pub(crate) fn calculate_effective_mana_cost_with_targets_internal(
                     .filter(|object| {
                         filter.matches(object, &ctx, game) && game.can_be_sacrificed(object.id)
                     })
-                    .filter_map(|object| object.mana_cost.as_ref())
-                    .flat_map(|cost| offering_mana_reduction_choices(cost))
+                    .filter_map(|object| crate::filter::object_current_mana_cost(game, object.id))
+                    .flat_map(|cost| offering_mana_reduction_choices(&cost))
                     .map(|reduction| reduce_offering_mana_cost(&current_cost, &reduction))
                     .min_by_key(|cost| {
                         (
@@ -4368,6 +4423,66 @@ fn cost_modifier_target_repetitions(per_target: bool, chosen_target_count: usize
     if per_target { chosen_target_count } else { 1 }
 }
 
+/// Cost increases and reductions gathered from every source before any of
+/// them is applied. CR 601.2f nets all increases and reductions against the
+/// whole total and floors it at {0} once, so reductions from one source must
+/// be able to absorb increases from another (affinity vs. Thalia).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SpellCostModifierTotals {
+    pub(crate) total_increase: i32,
+    pub(crate) total_reduction: i32,
+    pub(crate) increase_pips: Vec<Vec<crate::mana::ManaSymbol>>,
+    pub(crate) reduction_pips: Vec<Vec<crate::mana::ManaSymbol>>,
+}
+
+impl SpellCostModifierTotals {
+    pub(crate) fn merge(&mut self, other: SpellCostModifierTotals) {
+        self.total_increase = self.total_increase.saturating_add(other.total_increase);
+        self.total_reduction = self.total_reduction.saturating_add(other.total_reduction);
+        self.increase_pips.extend(other.increase_pips);
+        self.reduction_pips.extend(other.reduction_pips);
+    }
+
+    pub(crate) fn add_generic_reduction(&mut self, amount: u32) {
+        self.total_reduction = self
+            .total_reduction
+            .saturating_add(i32::try_from(amount).unwrap_or(i32::MAX));
+    }
+
+    /// Adds every increase first, then subtracts every reduction.
+    pub(crate) fn apply(self, cost: &crate::mana::ManaCost) -> crate::mana::ManaCost {
+        use crate::mana::ManaCost;
+        let mut adjusted = cost.clone();
+        if !self.increase_pips.is_empty() {
+            adjusted = add_mana_cost(&adjusted, &ManaCost::from_pips(self.increase_pips));
+        }
+        if self.total_increase > 0 {
+            adjusted = add_generic_mana_cost(&adjusted, self.total_increase as u32);
+        }
+        if self.total_reduction > 0 {
+            adjusted = adjusted.reduce_generic(self.total_reduction as u32);
+        }
+        if !self.reduction_pips.is_empty() {
+            adjusted = reduce_mana_cost(&adjusted, &ManaCost::from_pips(self.reduction_pips));
+        }
+        adjusted
+    }
+}
+
+/// Affinity for artifacts as a generic reduction to fold into the totals.
+pub(crate) fn affinity_for_artifacts_reduction_with_view(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    view: &DerivedGameView<'_>,
+) -> u32 {
+    if has_affinity_for_artifacts(spell) {
+        count_artifacts_controlled_with_view(game, player, view)
+    } else {
+        0
+    }
+}
+
 pub(crate) fn apply_spell_cost_modifiers(
     game: &GameState,
     player: PlayerId,
@@ -4378,9 +4493,30 @@ pub(crate) fn apply_spell_cost_modifiers(
     casting_method: &CastingMethod,
     cast_from_zone: Option<Zone>,
 ) -> crate::mana::ManaCost {
+    collect_spell_cost_modifiers(
+        game,
+        player,
+        spell,
+        chosen_target_count,
+        chosen_targets,
+        casting_method,
+        cast_from_zone,
+    )
+    .apply(cost)
+}
+
+pub(crate) fn collect_spell_cost_modifiers(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    chosen_target_count: usize,
+    chosen_targets: &[Target],
+    casting_method: &CastingMethod,
+    cast_from_zone: Option<Zone>,
+) -> SpellCostModifierTotals {
     use crate::ability::AbilityKind;
     use crate::filter::FilterContext;
-    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::mana::ManaSymbol;
     use crate::target::ObjectFilter;
 
     fn opponents_of(game: &GameState, player: PlayerId) -> Vec<PlayerId> {
@@ -4659,20 +4795,12 @@ pub(crate) fn apply_spell_cost_modifiers(
         }
     }
 
-    let mut adjusted = cost.clone();
-    if !increase_pips.is_empty() {
-        adjusted = add_mana_cost(&adjusted, &ManaCost::from_pips(increase_pips));
+    SpellCostModifierTotals {
+        total_increase,
+        total_reduction,
+        increase_pips,
+        reduction_pips,
     }
-    if total_increase > 0 {
-        adjusted = add_generic_mana_cost(&adjusted, total_increase as u32);
-    }
-    if total_reduction > 0 {
-        adjusted = adjusted.reduce_generic(total_reduction as u32);
-    }
-    if !reduction_pips.is_empty() {
-        adjusted = reduce_mana_cost(&adjusted, &ManaCost::from_pips(reduction_pips));
-    }
-    adjusted
 }
 
 /// Total life surcharge from battlefield permanents whose "cost an additional
@@ -4774,20 +4902,19 @@ fn spell_matches_cost_modifier_filter(
         })
 }
 
-pub(crate) fn apply_battlefield_spell_cost_modifiers(
+pub(crate) fn collect_battlefield_spell_cost_modifiers(
     game: &GameState,
     caster: PlayerId,
     spell: &crate::object::Object,
-    cost: &crate::mana::ManaCost,
     chosen_target_count: usize,
     chosen_targets: &[Target],
     casting_method: &CastingMethod,
     cast_from_zone: Option<Zone>,
     view: &DerivedGameView<'_>,
-) -> crate::mana::ManaCost {
+) -> SpellCostModifierTotals {
     use crate::ability::AbilityKind;
     use crate::filter::FilterContext;
-    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::mana::ManaSymbol;
     use crate::target::ObjectFilter;
 
     fn opponents_of(game: &GameState, player: PlayerId) -> Vec<PlayerId> {
@@ -5110,20 +5237,12 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
         }
     }
 
-    let mut adjusted = cost.clone();
-    if !increase_pips.is_empty() {
-        adjusted = add_mana_cost(&adjusted, &ManaCost::from_pips(increase_pips));
+    SpellCostModifierTotals {
+        total_increase,
+        total_reduction,
+        increase_pips,
+        reduction_pips,
     }
-    if total_increase > 0 {
-        adjusted = add_generic_mana_cost(&adjusted, total_increase as u32);
-    }
-    if total_reduction > 0 {
-        adjusted = adjusted.reduce_generic(total_reduction as u32);
-    }
-    if !reduction_pips.is_empty() {
-        adjusted = reduce_mana_cost(&adjusted, &ManaCost::from_pips(reduction_pips));
-    }
-    adjusted
 }
 
 pub(crate) fn resolve_this_spell_cost_reduction_value(
@@ -5377,21 +5496,17 @@ pub fn calculate_delve_exile_count_with_targets(
     // First apply other cost reductions (like Affinity)
     let mut cost_after_reductions = base_cost.clone();
 
-    if has_affinity_for_artifacts(spell) {
-        let artifact_count = count_artifacts_controlled(game, player);
-        cost_after_reductions = cost_after_reductions.reduce_generic(artifact_count);
-    }
-
-    cost_after_reductions = apply_spell_cost_modifiers(
+    let mut totals = collect_spell_cost_modifiers(
         game,
         player,
         spell,
-        &cost_after_reductions,
         chosen_target_count,
         &[],
         &CastingMethod::Normal,
         None,
     );
+    totals.add_generic_reduction(affinity_for_artifacts_reduction(game, player, spell));
+    cost_after_reductions = totals.apply(&cost_after_reductions);
 
     // Now calculate how much generic mana remains
     let generic_remaining = cost_after_reductions.generic_mana_total();
@@ -5446,6 +5561,16 @@ pub fn has_delve(spell: &crate::object::Object) -> bool {
             false
         }
     })
+}
+
+/// Affinity for artifacts as a generic reduction to fold into the totals.
+pub(crate) fn affinity_for_artifacts_reduction(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+) -> u32 {
+    let view = DerivedGameView::new(game);
+    affinity_for_artifacts_reduction_with_view(game, player, spell, &view)
 }
 
 fn has_affinity_for_artifacts(spell: &crate::object::Object) -> bool {

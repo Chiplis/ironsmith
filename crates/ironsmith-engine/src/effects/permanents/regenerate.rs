@@ -59,11 +59,12 @@ impl EffectExecutor for RegenerateEffect {
 
         let mut outcomes = Vec::new();
         for target_id in targets {
-            // Regeneration only applies to creatures currently on the battlefield.
+            // CR 701.19a: any permanent can be regenerated, not only creatures
+            // (e.g. Welding Jar regenerating a noncreature artifact).
             let Some(obj) = game.object(target_id) else {
                 continue;
             };
-            if obj.zone != Zone::Battlefield || !game.current_is_creature(target_id) {
+            if obj.zone != Zone::Battlefield {
                 continue;
             }
             if !game.can_be_regenerated(target_id) {

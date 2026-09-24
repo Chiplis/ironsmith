@@ -20,6 +20,8 @@ pub enum KeywordActionKind {
     Convoke,
     Discover,
     CompleteDungeon,
+    /// A player moved their venture marker (CR 701.49).
+    VentureIntoDungeon,
     Evolve,
     Earthbend,
     Enlist,
@@ -62,6 +64,8 @@ pub enum KeywordActionKind {
     VisitAttraction,
     Vote,
     Airbend,
+    /// A player takes the initiative (CR 725.2).
+    TakeInitiative,
 }
 
 impl KeywordActionKind {
@@ -163,6 +167,7 @@ impl KeywordActionKind {
             Self::Convoke => "convoke",
             Self::Discover => "discover",
             Self::CompleteDungeon => "complete a dungeon",
+            Self::VentureIntoDungeon => "venture into the dungeon",
             Self::Evolve => "evolve",
             Self::Airbend => "airbend",
             Self::Earthbend => "earthbend",
@@ -205,6 +210,7 @@ impl KeywordActionKind {
             Self::UnlockDoor => "unlock this door",
             Self::VisitAttraction => "visit an Attraction",
             Self::Vote => "vote",
+            Self::TakeInitiative => "take the initiative",
         }
     }
 
@@ -227,6 +233,7 @@ impl KeywordActionKind {
             Self::Convoke => "convokes",
             Self::Discover => "discovers",
             Self::CompleteDungeon => "completes a dungeon",
+            Self::VentureIntoDungeon => "ventures into the dungeon",
             Self::Evolve => "evolves",
             Self::Airbend => "airbends",
             Self::Earthbend => "earthbends",
@@ -269,6 +276,7 @@ impl KeywordActionKind {
             Self::UnlockDoor => "unlocks this door",
             Self::VisitAttraction => "visits an Attraction",
             Self::Vote => "votes",
+            Self::TakeInitiative => "takes the initiative",
         }
     }
 }

@@ -17,18 +17,73 @@ fn counter_one_stack_object(
     ctx: &mut ExecutionContext,
     target_id: ObjectId,
 ) -> EffectOutcome {
+    counter_one_stack_object_of_kind(game, ctx, target_id, None)
+}
+
+/// The stack-object kind a stack-targeting effect's target is restricted to.
+pub(crate) fn counter_target_stack_kind(spec: &ChooseSpec) -> Option<crate::filter::StackObjectKind> {
+    match spec.base() {
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter.stack_kind,
+        _ => None,
+    }
+}
+
+fn counter_one_stack_object_of_kind(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    target_id: ObjectId,
+    kind: Option<crate::filter::StackObjectKind>,
+) -> EffectOutcome {
+    use crate::filter::StackObjectKind;
+
+    // An ability named by its own stack id is exactly that stack object.
+    if let Some(index) = game
+        .stack
+        .iter()
+        .position(|entry| entry.ability_id == Some(target_id))
+    {
+        return counter_stack_entry_at(game, ctx, index);
+    }
+
     if !game.can_be_countered(target_id) {
         return EffectOutcome::protected();
     }
 
-    // Abilities use their source's object ID but are independent stack entries.
-    // A source's spell protection and zone-change replacements do not apply
+    // Abilities use their source's object ID but are independent stack entries
+    // (a storm trigger shares its spell's ID). Counter the entry of the kind
+    // the effect targets: "target activated or triggered ability" never
+    // counters the spell below it, and prefers the most recent ability. A
+    // source's spell protection and zone-change replacements do not apply
     // when removing an ability from the stack.
-    if let Some(index) = game.stack.iter().position(|entry| entry.object_id == target_id)
-        && game.stack[index].is_ability
-    {
+    let ability_index = match kind {
+        Some(StackObjectKind::Spell) => None,
+        Some(
+            kind @ (StackObjectKind::Ability
+            | StackObjectKind::ActivatedAbility
+            | StackObjectKind::TriggeredAbility),
+        ) => game.stack.iter().rposition(|entry| {
+            entry.object_id == target_id
+                && <crate::filter::ObjectFilter as crate::filter::ObjectFilterExt>::stack_entry_matches_kind(entry, kind)
+        }),
+        _ => game
+            .stack
+            .iter()
+            .position(|entry| entry.object_id == target_id)
+            .filter(|&index| game.stack[index].is_ability),
+    };
+    if let Some(index) = ability_index {
         game.stack.remove(index);
         return EffectOutcome::resolved();
+    }
+    if matches!(
+        kind,
+        Some(
+            StackObjectKind::Ability
+                | StackObjectKind::ActivatedAbility
+                | StackObjectKind::TriggeredAbility
+        )
+    ) {
+        return EffectOutcome::target_invalid();
     }
 
     // Check if the spell can't be countered
@@ -54,7 +109,7 @@ fn counter_one_stack_object(
     }
 
     // Find the stack entry for this object
-    if game.stack.iter().any(|e| e.object_id == target_id) {
+    if game.stack.iter().any(|e| e.object_id == target_id && !e.is_ability) {
         // Capture identity before the countered spell changes zones.
         let countered_info = game.object(target_id).map(|obj| {
             (
@@ -83,7 +138,11 @@ fn counter_one_stack_object(
         match outcome {
             EventOutcome::Prevented => return EffectOutcome::prevented(),
             EventOutcome::Proceed(final_zone) => {
-                if let Some(idx) = game.stack.iter().position(|e| e.object_id == target_id) {
+                if let Some(idx) = game
+                    .stack
+                    .iter()
+                    .position(|e| e.object_id == target_id && !e.is_ability)
+                {
                     let entry = game.stack.remove(idx);
                     countered_spell = !entry.is_ability;
                     // Countered abilities simply disappear; countered spells leave the stack
@@ -105,7 +164,11 @@ fn counter_one_stack_object(
                 }
             }
             EventOutcome::Replaced => {
-                if let Some(idx) = game.stack.iter().position(|e| e.object_id == target_id) {
+                if let Some(idx) = game
+                    .stack
+                    .iter()
+                    .position(|e| e.object_id == target_id && !e.is_ability)
+                {
                     let entry = game.stack.remove(idx);
                     countered_spell = !entry.is_ability;
                 }
@@ -113,7 +176,7 @@ fn counter_one_stack_object(
             EventOutcome::NotApplicable => return EffectOutcome::target_invalid(),
         }
 
-        if !game.stack.iter().any(|e| e.object_id == target_id) {
+        if !game.stack.iter().any(|e| e.object_id == target_id && !e.is_ability) {
             if let Some((stable_id, controller)) = countered_info {
                 game.record_ui_effect_event(
                     "spell_countered",
@@ -146,6 +209,35 @@ fn counter_one_stack_object(
     }
 }
 
+/// Counter the stack object at `index` (CR 701.6a).
+///
+/// Abilities share their source's object ID, so a caller that already knows
+/// which stack entry it means (for example, the spell or ability a ward
+/// trigger is countering) removes that exact entry rather than the first one
+/// with a matching ID.
+pub(crate) fn counter_stack_entry_at(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    index: usize,
+) -> EffectOutcome {
+    let Some(entry) = game.stack.get(index) else {
+        return EffectOutcome::target_invalid();
+    };
+    let object_id = entry.object_id;
+    if !entry.is_ability {
+        return counter_one_stack_object_of_kind(
+            game,
+            ctx,
+            object_id,
+            Some(crate::filter::StackObjectKind::Spell),
+        );
+    }
+    // "Can't be countered" protects spells; it never reaches an ability,
+    // even one whose source is such a spell (a storm trigger).
+    game.stack.remove(index);
+    EffectOutcome::resolved()
+}
+
 /// Effect that counters a target spell on the stack.
 ///
 /// This removes the spell from the stack and puts it into its owner's graveyard.
@@ -175,8 +267,9 @@ impl EffectExecutor for CounterEffect {
             return Ok(EffectOutcome::target_invalid());
         }
 
+        let kind = counter_target_stack_kind(&self.target);
         Ok(EffectOutcome::aggregate(target_ids.into_iter().map(
-            |target_id| counter_one_stack_object(game, ctx, target_id),
+            |target_id| counter_one_stack_object_of_kind(game, ctx, target_id, kind),
         )))
     }
 

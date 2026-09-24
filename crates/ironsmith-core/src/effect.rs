@@ -1793,6 +1793,12 @@ pub struct ChooseModeEffect<E> {
     /// Authored ability-word label for a modal spell. Triggered modal labels
     /// live on the enclosing triggered ability instead.
     pub presentation_label: Option<crate::ability_model::PresentationLabel>,
+    /// This is the endure keyword action (CR 701.63a): the first mode puts
+    /// +1/+1 counters on the enduring permanent, the second creates the
+    /// Spirit token. If the permanent can't get counters because it left the
+    /// battlefield, the token is created.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub endure: bool,
 }
 
 impl<E> ChooseModeEffect<E> {
@@ -1821,7 +1827,14 @@ impl<E> ChooseModeEffect<E> {
             distinct_player_targets_per_mode: false,
             conditional_mode_range: None,
             presentation_label: None,
+            endure: false,
         }
+    }
+
+    /// Mark this two-mode choice as the endure keyword action (CR 701.63a).
+    pub fn as_endure(mut self) -> Self {
+        self.endure = true;
+        self
     }
 
     pub fn choose_one(modes: Vec<EffectMode<E>>) -> Self {
@@ -4335,11 +4348,30 @@ impl ClashEffect {
 pub struct EarthbendEffect {
     pub target: ChooseSpec,
     pub counters: u32,
+    /// Awaken's land animation (CR 702.113a): the land also becomes an
+    /// Elemental, and neither earthbend's return trigger nor its keyword
+    /// action applies.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub awaken: bool,
 }
 
 impl EarthbendEffect {
     pub fn new(target: ChooseSpec, counters: u32) -> Self {
-        Self { target, counters }
+        Self {
+            target,
+            counters,
+            awaken: false,
+        }
+    }
+
+    /// Awaken N: put N +1/+1 counters on target land you control, which
+    /// becomes a 0/0 Elemental creature with haste (CR 702.113a).
+    pub fn awaken(target: ChooseSpec, counters: u32) -> Self {
+        Self {
+            target,
+            counters,
+            awaken: true,
+        }
     }
 }
 
@@ -5222,11 +5254,25 @@ impl TagMatchingObjectsEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct SacrificeTargetEffect {
     pub target: ChooseSpec,
+    /// The player who sacrifices, when the text names one. CR 701.21a: a
+    /// player can sacrifice only a permanent they control, so "sacrifice it"
+    /// does nothing once another player controls it. `None` keeps the legacy
+    /// meaning (the object's controller sacrifices it).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub player: Option<PlayerFilter>,
 }
 
 impl SacrificeTargetEffect {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self {
+            target,
+            player: None,
+        }
+    }
+
+    pub fn with_player(mut self, player: PlayerFilter) -> Self {
+        self.player = Some(player);
+        self
     }
 
     pub fn source() -> Self {

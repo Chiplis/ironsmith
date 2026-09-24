@@ -30,7 +30,7 @@ impl SpecialAction {
                 let spec = turn_face_up_spec(game, object, method).ok_or(ActionError::NoSuchAbility)?;
                 (permanent_id, adjusted_turn_face_up_cost(game, player, permanent_id, &spec), PaymentReason::TurnFaceUp)
             }
-            Self::UnlockRoomDoor { room_id } => (room_id, adjusted_room_unlock_cost(game, player, room_id)?, PaymentReason::UnlockDoor),
+            Self::UnlockRoomDoor { room_id, door } => (room_id, adjusted_room_unlock_cost(game, player, room_id, door)?, PaymentReason::UnlockDoor),
             Self::RollPlanarDie => {
                 let source = game.face_up_planar_objects().first().copied().ok_or(ActionError::InvalidTiming)?;
                 (source, TotalCost::mana(planar_die_cost(game.planar_die_roll_cost(player).ok_or(ActionError::InvalidTiming)?)), PaymentReason::Other)

@@ -74,21 +74,11 @@ pub fn calculate_convoke_creatures_to_tap(
     // First apply other cost reductions (like Affinity and Delve)
     let mut cost_after_reductions = base_cost.clone();
 
-    if has_affinity_for_artifacts(spell) {
-        let artifact_count = count_artifacts_controlled(game, player);
-        cost_after_reductions = cost_after_reductions.reduce_generic(artifact_count);
-    }
-
-    cost_after_reductions = apply_spell_cost_modifiers(
-        game,
-        player,
-        spell,
-        &cost_after_reductions,
-        1,
-        &[],
-        &CastingMethod::Normal,
-        None,
-    );
+    // CR 601.2f: increases apply before any reduction, affinity included.
+    let mut totals =
+        collect_spell_cost_modifiers(game, player, spell, 1, &[], &CastingMethod::Normal, None);
+    totals.add_generic_reduction(affinity_for_artifacts_reduction(game, player, spell));
+    cost_after_reductions = totals.apply(&cost_after_reductions);
 
     let has_delve_ability = has_delve(spell);
 
@@ -206,21 +196,11 @@ pub fn calculate_improvise_artifacts_to_tap(
     // First apply other cost reductions (Affinity, Delve, Convoke)
     let mut cost_after_reductions = base_cost.clone();
 
-    if has_affinity_for_artifacts(spell) {
-        let artifact_count = count_artifacts_controlled(game, player);
-        cost_after_reductions = cost_after_reductions.reduce_generic(artifact_count);
-    }
-
-    cost_after_reductions = apply_spell_cost_modifiers(
-        game,
-        player,
-        spell,
-        &cost_after_reductions,
-        1,
-        &[],
-        &CastingMethod::Normal,
-        None,
-    );
+    // CR 601.2f: increases apply before any reduction, affinity included.
+    let mut totals =
+        collect_spell_cost_modifiers(game, player, spell, 1, &[], &CastingMethod::Normal, None);
+    totals.add_generic_reduction(affinity_for_artifacts_reduction(game, player, spell));
+    cost_after_reductions = totals.apply(&cost_after_reductions);
 
     let has_delve_ability = has_delve(spell);
 

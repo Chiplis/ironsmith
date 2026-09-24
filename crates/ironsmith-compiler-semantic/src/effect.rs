@@ -710,6 +710,13 @@ impl Effect {
         ))
     }
 
+    /// The endure keyword action's choose-one (CR 701.63a).
+    pub fn choose_one_endure(modes: Vec<EffectMode>) -> Self {
+        Self::new(
+            ChooseModeEffect::new(modes, Value::Fixed(1), Value::Fixed(1), false).as_endure(),
+        )
+    }
+
     pub fn villainous_choice(
         player: crate::target::PlayerFilter,
         player_surface: Option<String>,

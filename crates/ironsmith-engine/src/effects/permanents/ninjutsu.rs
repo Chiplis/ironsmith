@@ -345,11 +345,27 @@ fn pop_ninjutsu_attack_target(game: &mut GameState, source: ObjectId) -> Option<
     game.pop_ninjutsu_attack_target(source)
 }
 
-fn attack_target_still_valid(game: &GameState, target: &AttackTarget) -> bool {
+/// CR 508.4a: the creature enters attacking only if the player it would attack
+/// is still in the game, or the planeswalker is still controlled by a
+/// defending player (an opponent of the attacking player who's still in it).
+fn attack_target_still_valid(
+    game: &GameState,
+    attacker_controller: crate::ids::PlayerId,
+    target: &AttackTarget,
+) -> bool {
     match target {
-        AttackTarget::Player(player) => game.player(*player).is_some(),
+        AttackTarget::Player(player) => game
+            .player(*player)
+            .is_some_and(|player| player.is_in_game()),
         AttackTarget::Planeswalker(planeswalker) => game.object(*planeswalker).is_some_and(|obj| {
-            obj.zone == Zone::Battlefield && obj.has_card_type(CardType::Planeswalker)
+            let controller = game.controller_of(obj);
+            obj.zone == Zone::Battlefield
+                && obj.has_card_type(CardType::Planeswalker)
+                && controller != attacker_controller
+                && game.are_opponents(attacker_controller, controller)
+                && game
+                    .player(controller)
+                    .is_some_and(|player| player.is_in_game())
         }),
         AttackTarget::Battle(battle) => game.object(*battle).is_some_and(|obj| {
             obj.zone == Zone::Battlefield
@@ -388,7 +404,7 @@ impl EffectExecutor for NinjutsuEffect {
 
         match outcome {
             BattlefieldEntryOutcome::Moved(new_id) => {
-                let valid_target = attack_target_still_valid(game, &attack_target);
+                let valid_target = attack_target_still_valid(game, ctx.controller, &attack_target);
                 if let Some(combat) = game.combat.as_mut()
                     && valid_target
                 {

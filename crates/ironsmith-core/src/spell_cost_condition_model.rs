@@ -66,5 +66,8 @@ pub enum ThisSpellCostCondition {
     CreatureCardPutIntoYourGraveyardThisTurn,
     CreatureIsAttackingYou,
     YouDealtCombatDamageToPlayerWithSubtypeThisTurn(Subtype),
+    /// Prowl (CR 702.76a): a player was dealt combat damage this turn by a
+    /// source you controlled that had any of this spell's creature types.
+    YouDealtCombatDamageToPlayerSharingCreatureTypeThisTurn,
     YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(Subtype),
 }

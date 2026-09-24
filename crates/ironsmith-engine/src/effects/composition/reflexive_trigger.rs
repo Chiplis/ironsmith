@@ -190,6 +190,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             other_face: None,
             other_face_name: None,
             linked_face_layout: LinkedFaceLayout::None,
+            linked_face_mana_value: None,
             power: memory.power,
             toughness: memory.toughness,
             base_power: memory.power,
@@ -310,45 +311,192 @@ impl EffectExecutor for ReflexiveTriggerEffect {
                 _ => None,
             }
         }).or(parent_x);
-        ctx.x_value = reflexive_x;
-        let selection = choose_reflexive_targets(game, ctx, &self.choices);
-        ctx.x_value = parent_x;
-        let (targets, assignments) = selection.ok_or(ExecutionError::InvalidTarget)?;
-
         let mut tagged_objects = ctx.tagged_objects.clone();
         let it_tag = TagKey::from("__it__");
         if !tagged_objects.contains_key(&it_tag) && !fallback_it_snapshots.is_empty() {
             tagged_objects.insert(it_tag, fallback_it_snapshots);
         }
 
-        let mut entry = StackEntry::ability(ctx.source, ctx.controller, self.effects.clone())
-            .with_targets(targets)
-            .with_target_assignments(assignments)
-            .with_optional_costs_paid(ctx.optional_costs_paid.clone())
-            .with_tagged_objects(tagged_objects)
-            .with_effect_outcomes(ctx.effect_outcomes.clone());
-        // References such as "that player" in the follow-up still refer to
-        // the event that supplied the enclosing ability's context.
-        entry.triggering_event = ctx.triggering_event.clone();
-        entry.event_value_amount = ctx.event_value_amount;
+        // CR 603.12: a reflexive triggered ability triggers now but, like any
+        // triggered ability, is put on the stack the next time a player would
+        // receive priority (after state-based actions, CR 603.3), in APNAP
+        // order alongside its controller's other triggers; its targets are
+        // chosen then (CR 603.3d). Remember what it needs from this
+        // resolution and queue it.
+        let id = game.effect_store.next_reflexive_trigger_id;
+        game.effect_store.next_reflexive_trigger_id += 1;
+        let trigger_identity = {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            "reflexive_trigger".hash(&mut hasher);
+            id.hash(&mut hasher);
+            crate::triggers::TriggerIdentity(hasher.finish())
+        };
+        let (source_stable_id, source_name, source_snapshot) =
+            if let Some(source) = game.object(ctx.source) {
+                (
+                    source.stable_id,
+                    source.name.to_string(),
+                    ctx.source_snapshot.clone().or_else(|| {
+                        Some(ObjectSnapshot::from_object_with_calculated_characteristics(
+                            source, game,
+                        ))
+                    }),
+                )
+            } else if let Some(snapshot) = ctx.source_snapshot.clone() {
+                (snapshot.stable_id, snapshot.name.to_string(), Some(snapshot))
+            } else {
+                (
+                    crate::ids::StableId::from(ctx.source),
+                    "Reflexive trigger".to_string(),
+                    None,
+                )
+            };
+        let pending = PendingReflexiveTrigger {
+            trigger_identity,
+            source: ctx.source,
+            controller: ctx.controller,
+            effects: self.effects.clone(),
+            choices: self.choices.clone(),
+            tagged_objects: tagged_objects.clone(),
+            tagged_players: ctx.tagged_players.clone(),
+            effect_outcomes: ctx.effect_outcomes.clone(),
+            targets: ctx.targets.clone(),
+            x_value: reflexive_x,
+            iteration: ctx.iteration,
+            combat: ctx.combat,
+            triggering_event: ctx.triggering_event.clone(),
+            event_value_amount: ctx.event_value_amount,
+            optional_costs_paid: ctx.optional_costs_paid.clone(),
+            source_snapshot: source_snapshot.clone(),
+        };
+        game.effect_store.pending_reflexive_triggers.push(pending);
 
-        if let Some(x) = reflexive_x {
-            entry = entry.with_x(x);
-        }
-        if let Some(defending_player) = ctx.combat.defending_player {
-            entry = entry.with_defending_player(defending_player);
-        }
-        if let Some(source) = game.object(ctx.source) {
-            entry = entry.with_source_info(source.stable_id, source.name.to_string());
-        } else if let Some(snapshot) = ctx.source_snapshot.clone() {
-            entry = entry
-                .with_source_info(snapshot.stable_id, snapshot.name.to_string())
-                .with_source_snapshot(snapshot);
-        }
-
-        game.push_to_stack(entry);
+        let triggering_event = ctx.triggering_event.clone().unwrap_or_else(|| {
+            crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::StateTriggerEvent::new(ctx.source),
+                ctx.provenance,
+            )
+        });
+        game.defer_trigger_entries([crate::triggers::TriggeredAbilityEntry {
+            source: ctx.source,
+            controller: ctx.controller,
+            x_value: reflexive_x,
+            event_value_amount: ctx.event_value_amount,
+            ability: crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::custom(
+                    REFLEXIVE_TRIGGER_ID,
+                    "When you do".to_string(),
+                ),
+                effects: crate::resolution::ResolutionProgram::from_effects(self.effects.clone()),
+                choices: Vec::new(),
+                intervening_if: None,
+                presentation_label: None,
+            },
+            triggering_event,
+            source_stable_id,
+            source_name,
+            source_snapshot,
+            tagged_objects,
+            source_kind: crate::triggers::TriggeredAbilitySourceKind::Object,
+            trigger_identity,
+        }]);
         Ok(EffectOutcome::count(1))
     }
+}
+
+/// Custom trigger id for queued reflexive triggered abilities.
+pub(crate) const REFLEXIVE_TRIGGER_ID: &str = "reflexive_trigger";
+
+/// Resolution context a queued reflexive triggered ability carries from the
+/// resolution that triggered it.
+#[derive(Debug, Clone)]
+pub(crate) struct PendingReflexiveTrigger {
+    pub trigger_identity: crate::triggers::TriggerIdentity,
+    pub source: crate::ids::ObjectId,
+    pub controller: crate::ids::PlayerId,
+    pub effects: Vec<Effect>,
+    pub choices: Vec<ChooseSpec>,
+    pub tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    pub tagged_players: HashMap<TagKey, Vec<crate::ids::PlayerId>>,
+    pub effect_outcomes: HashMap<EffectId, EffectOutcome>,
+    pub targets: Vec<crate::effects::ResolvedTarget>,
+    pub x_value: Option<u32>,
+    pub iteration: crate::effects::context::IterationContext,
+    pub combat: crate::effects::context::CombatExecutionContext,
+    pub triggering_event: Option<crate::triggers::TriggerEvent>,
+    pub event_value_amount: Option<i32>,
+    pub optional_costs_paid: crate::cost::OptionalCostsPaid,
+    pub source_snapshot: Option<ObjectSnapshot>,
+}
+
+/// Build the stack entry for a queued reflexive triggered ability as it is put
+/// on the stack, choosing its targets now.
+///
+/// Returns `None` for an entry that isn't a reflexive trigger. `Some(None)`
+/// means the ability is removed from the stack for lack of legal targets
+/// (CR 603.3d) or is waiting on a target choice.
+pub(crate) fn reflexive_trigger_stack_entry(
+    game: &mut GameState,
+    trigger: &crate::triggers::TriggeredAbilityEntry,
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
+) -> Option<Option<StackEntry>> {
+    let index = game
+        .effect_store
+        .pending_reflexive_triggers
+        .iter()
+        .position(|pending| pending.trigger_identity == trigger.trigger_identity)?;
+    let pending = game.effect_store.pending_reflexive_triggers[index].clone();
+
+    let mut ctx = ExecutionContext::new(pending.source, pending.controller, decision_maker);
+    ctx.tagged_objects = pending.tagged_objects.clone();
+    ctx.tagged_players = pending.tagged_players.clone();
+    ctx.effect_outcomes = pending.effect_outcomes.clone();
+    ctx.targets = pending.targets.clone();
+    ctx.x_value = pending.x_value;
+    ctx.iteration = pending.iteration;
+    ctx.combat = pending.combat;
+    ctx.triggering_event = pending.triggering_event.clone();
+    ctx.event_value_amount = pending.event_value_amount;
+    ctx.optional_costs_paid = pending.optional_costs_paid.clone();
+    ctx.source_snapshot = pending.source_snapshot.clone();
+    let selection = choose_reflexive_targets(game, &mut ctx, &pending.choices);
+    if ctx.decision_maker.awaiting_choice() {
+        return Some(None);
+    }
+    drop(ctx);
+    game.effect_store.pending_reflexive_triggers.remove(index);
+    let Some((targets, assignments)) = selection else {
+        return Some(None);
+    };
+
+    let mut entry = StackEntry::ability(pending.source, pending.controller, pending.effects)
+        .with_targets(targets)
+        .with_target_assignments(assignments)
+        .with_optional_costs_paid(pending.optional_costs_paid)
+        .with_tagged_objects(pending.tagged_objects)
+        .with_effect_outcomes(pending.effect_outcomes)
+        .with_provenance(trigger.triggering_event.provenance())
+        .with_trigger_identity(pending.trigger_identity);
+    // References such as "that player" in the follow-up still refer to
+    // the event that supplied the enclosing ability's context.
+    entry.triggering_event = pending.triggering_event;
+    entry.event_value_amount = pending.event_value_amount;
+
+    if let Some(x) = pending.x_value {
+        entry = entry.with_x(x);
+    }
+    if let Some(defending_player) = pending.combat.defending_player {
+        entry = entry.with_defending_player(defending_player);
+    }
+    if let Some(source) = game.object(pending.source) {
+        entry = entry.with_source_info(source.stable_id, source.name.to_string());
+    } else if let Some(snapshot) = pending.source_snapshot {
+        entry = entry
+            .with_source_info(snapshot.stable_id, snapshot.name.to_string())
+            .with_source_snapshot(snapshot);
+    }
+    Some(Some(entry))
 }
 
 #[cfg(test)]

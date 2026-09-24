@@ -81,6 +81,7 @@ pub(super) fn calculate_with_layers(
                 if layer == Layer::Copy {
                     let had_world = chars.supertypes.contains(&Supertype::World);
                     apply_face_down_layer(object, &mut chars);
+                    apply_room_no_unlocked_door_layer(object, &mut chars, ctx.game);
                     update_world_supertype_since(
                         &mut chars,
                         had_world,
@@ -90,6 +91,7 @@ pub(super) fn calculate_with_layers(
                 }
                 if layer == Layer::Type {
                     apply_reconfigure_attached_type_rule(object, &mut chars);
+                    apply_ring_bearer_legendary_rule(object, &mut chars, ctx.game);
                     calc_guard.update(&chars);
                 }
                 if layer == Layer::Ability {
@@ -100,6 +102,7 @@ pub(super) fn calculate_with_layers(
                         &mut next_ability_counter,
                         None,
                     );
+                    add_suspected_abilities(object, ctx.game, &mut chars);
                     prune_ability_gain_prohibitions(&mut chars);
                     calc_guard.update(&chars);
                 }
@@ -617,6 +620,7 @@ pub(super) fn calculate_with_layers(
         if layer == Layer::Copy {
             let had_world = chars.supertypes.contains(&Supertype::World);
             apply_face_down_layer(object, &mut chars);
+            apply_room_no_unlocked_door_layer(object, &mut chars, ctx.game);
             update_world_supertype_since(
                 &mut chars,
                 had_world,
@@ -625,6 +629,7 @@ pub(super) fn calculate_with_layers(
             calc_guard.update(&chars);
         } else if layer == Layer::Type {
             apply_reconfigure_attached_type_rule(object, &mut chars);
+            apply_ring_bearer_legendary_rule(object, &mut chars, ctx.game);
             calc_guard.update(&chars);
         } else if layer == Layer::Ability {
             apply_ability_counters_through(
@@ -634,6 +639,7 @@ pub(super) fn calculate_with_layers(
                 &mut next_ability_counter,
                 None,
             );
+            add_suspected_abilities(object, ctx.game, &mut chars);
             prune_ability_gain_prohibitions(&mut chars);
             calc_guard.update(&chars);
         }
@@ -649,14 +655,8 @@ pub(super) fn calculate_with_layers(
         None
     };
 
-    // If level abilities set P/T, use that as the "base" for layer 7b
-    if let Some((lp, lt)) = level_pt {
-        chars.power = Some(lp);
-        chars.toughness = Some(lt);
-        calc_guard.update(&chars);
-    }
-
-    // Apply Layer 7 effects in sublayer order
+    // Apply Layer 7 effects in sublayer order. A level symbol's "base P/T"
+    // is a layer-7b effect with the leveler's timestamp (CR 711.2b, 613.4b).
     apply_layer_7_effects(
         object,
         ctx,
@@ -664,6 +664,7 @@ pub(super) fn calculate_with_layers(
         abilities_removed,
         &calc_guard,
         &mut started_groups,
+        level_pt,
     );
 
     // Add abilities from level tiers if not removed
@@ -700,6 +701,7 @@ pub(super) fn apply_layer_7_effects(
     _abilities_removed: bool,
     calc_guard: &CharacteristicCalculationGuard,
     started_groups: &mut HashSet<ContinuousEffectGroupId>,
+    level_pt: Option<(i32, i32)>,
 ) {
     use crate::dependency::needs_baseline_dependency_sort;
     use crate::dependency::sort_layer_effects;
@@ -784,8 +786,26 @@ pub(super) fn apply_layer_7_effects(
     // Track whether we've applied counter modifications (for 7c ordering)
     let mut counters_applied = false;
 
+    // Level-symbol P/T joins sublayer 7b in timestamp order (CR 711.2b).
+    let level_timestamp = ctx.effects.get_object_timestamp(object.id).unwrap_or(0);
+    let mut pending_level_pt = level_pt;
+
     // Apply in order, interleaving counters at the right point in 7c
     for effect in &pt_effects {
+        if let Some((level_power, level_toughness)) = pending_level_pt
+            && effect.modification.pt_sublayer().is_some_and(|sublayer| {
+                sublayer > PtSublayer::Setting
+                    || (sublayer == PtSublayer::Setting && effect.timestamp > level_timestamp)
+            })
+        {
+            power = Some(level_power);
+            toughness = Some(level_toughness);
+            pending_level_pt = None;
+            chars.power = power;
+            chars.toughness = toughness;
+            calc_guard.update(chars);
+        }
+
         let effect_active = if needs_source_tracking {
             continuous_effect_group_started(effect, started_groups)
                 || effect_source_is_active(effect, &source_state)
@@ -970,6 +990,11 @@ pub(super) fn apply_layer_7_effects(
         chars.power = power;
         chars.toughness = toughness;
         calc_guard.update(chars);
+    }
+
+    if let Some((level_power, level_toughness)) = pending_level_pt {
+        power = Some(level_power);
+        toughness = Some(level_toughness);
     }
 
     // If counters still haven't been applied (no 7c or 7d effects, or all 7c effects
@@ -1713,6 +1738,27 @@ pub(super) fn advance_layer_batch_source_state(
             game,
         );
         source_state.insert(id, updated);
+    }
+}
+
+/// CR 701.60c: a suspected permanent has menace and "This creature can't
+/// block" for as long as it's suspected.
+fn add_suspected_abilities(
+    object: &Object,
+    game: &crate::game_state::GameState,
+    chars: &mut CalculatedCharacteristics,
+) {
+    if object.zone != crate::zone::Zone::Battlefield || !game.is_suspected(object.id) {
+        return;
+    }
+    use crate::static_abilities::StaticAbilityId;
+    for (id, ability) in [
+        (StaticAbilityId::Menace, StaticAbility::menace()),
+        (StaticAbilityId::CantBlock, StaticAbility::cant_block()),
+    ] {
+        if !chars.static_abilities.iter().any(|a| a.id() == id) {
+            push_static_ability_once(chars, ability);
+        }
     }
 }
 

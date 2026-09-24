@@ -54,9 +54,16 @@ impl EffectExecutor for UntapEffect {
             &self.target,
             result_policy,
             choice_description,
-            |game, _ctx, object_id| {
-                if game.object(object_id).is_some() && game.is_tapped(object_id) {
-                    game.untap(object_id);
+            |game, ctx, object_id| {
+                // Untapping goes through replacement effects, including the
+                // stun-counter rule (CR 122.1d).
+                if game.object(object_id).is_some()
+                    && crate::events::processing::process_untap(
+                        game,
+                        object_id,
+                        &mut *ctx.decision_maker,
+                    )
+                {
                     events.push(TriggerEvent::new_with_provenance(
                         PermanentUntappedEvent::new(object_id),
                         provenance,

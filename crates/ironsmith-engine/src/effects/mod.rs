@@ -85,6 +85,7 @@ pub use executor_trait::{
 pub type EffectContext<'a> = context::ExecutionContext<'a>;
 pub(crate) use context::ExecutionContext;
 pub use runtime::{execute_effect, resolve_value, validate_target};
+pub(crate) use runtime::{effect_chooses_new_targets_for_copy, match_triggers_at_instruction_boundary};
 
 // Re-export effect implementations
 pub use cards::{
@@ -173,13 +174,15 @@ pub use permanents::{
     ExertCostEffect, FlipEffect, GrantObjectAbilityEffect, MeldEffect, MonstrosityEffect,
     NinjutsuCostEffect, NinjutsuEffect, PhaseInEffect, PhaseOutDuration, PhaseOutEffect,
     PrepareEffect, PutStickerEffect, ReconfigureEffect, RegenerateEffect, RenownEffect,
-    SaddleCostEffect, SneakCostEffect, SolveCaseEffect, SoulbondPairEffect, SuspectEffect,
+    SaddleCostEffect, SetClassLevelEffect, SneakCostEffect, SolveCaseEffect, SoulbondPairEffect,
+    SuspectEffect,
     TapEffect, TransformEffect, TurnFaceUpEffect, UmbraArmorEffect, UnattachObjectsEffect,
     UnearthEffect, UnlockRoomDoorEffect, UntapEffect,
 };
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AscendEffect,
     BecomeMonarchEffect, CascadeEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect,
+    MayCastForMadnessCostEffect,
     ChooseNumberAtRandomEffect,
     ChooseCardTypeEffect, ChooseColorEffect, ChooseCreatureTypeEffect, RevealChosenSubtypeEffect, ChooseLandTypeEffect,
     ChooseNamedOptionEffect, ChoosePlayerEffect, ControlCombatChoicesThisTurnEffect,
@@ -196,7 +199,7 @@ pub use player::{
     RingTemptsYouEffect, RollDiceChooseResultEffect, RollDieEffect, SkipCombatPhasesEffect,
     SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipMainPhasesThisTurnEffect,
     SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, TakeInitiativeEffect, TicketCountersEffect,
-    VentureIntoDungeonEffect, WinTheGameEffect,
+    MadWizardsLairEffect, ThroneOfTheDeadThreeEffect, VentureIntoDungeonEffect, WinTheGameEffect,
 };
 pub use replacement::{
     ApplyReplacementEffect, RegisterDamagedBySourceZoneReplacementEffect,

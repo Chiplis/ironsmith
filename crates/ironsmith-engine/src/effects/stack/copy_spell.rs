@@ -67,7 +67,12 @@ pub(crate) fn stack_entry_for_copy_target(
     game: &GameState,
     target_id: crate::ids::ObjectId,
     ctx: &ExecutionContext,
+    kind: Option<crate::filter::StackObjectKind>,
 ) -> Result<Option<StackEntry>, ExecutionError> {
+    // An ability named by its own stack id.
+    if let Some(entry) = game.stack_ability_entry(target_id) {
+        return Ok(Some(entry.clone()));
+    }
     if let Some(activation) = ctx
         .triggering_event
         .as_ref()
@@ -86,10 +91,16 @@ pub(crate) fn stack_entry_for_copy_target(
             })
             .cloned());
     }
-    if let Some(entry) = game
-        .stack
-        .iter()
-        .find(|e| e.object_id == target_id)
+    // Abilities share their source's object ID (a storm trigger has its
+    // spell's ID): prefer the most recent entry of the targeted kind.
+    let of_kind = kind.and_then(|kind| {
+        game.stack.iter().rev().find(|e| {
+            e.object_id == target_id
+                && <crate::filter::ObjectFilter as crate::filter::ObjectFilterExt>::stack_entry_matches_kind(e, kind)
+        })
+    });
+    if let Some(entry) = of_kind
+        .or_else(|| game.stack.iter().find(|e| e.object_id == target_id))
         .cloned()
     {
         if game
@@ -109,6 +120,33 @@ pub(crate) fn stack_entry_for_copy_target(
     }
 
     Ok(None)
+}
+
+/// Last known information for the resolving ability's source spell after it
+/// left the stack. Storm, casualty, replicate, conspire and demonstrate copy
+/// "it" even if the original was countered in response (CR 702.40a rulings;
+/// CR 608.2h): the copy uses the spell as it last existed on the stack.
+pub(crate) fn departed_source_spell_lki(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    target_id: crate::ids::ObjectId,
+) -> Option<(Object, StackEntry)> {
+    if target_id != ctx.source
+        || game
+            .object(target_id)
+            .is_some_and(|object| object.zone == Zone::Stack)
+        || game
+            .stack
+            .iter()
+            .any(|entry| !entry.is_ability && entry.object_id == target_id)
+    {
+        return None;
+    }
+    let lki = game.turn_store.cast_spell_lki.get(&target_id)?;
+    let (object, entry) = lki.as_ref();
+    let mut object = object.clone();
+    object.zone = Zone::Stack;
+    Some((object, entry.clone()))
 }
 
 pub(crate) fn create_stack_copy_from_object(
@@ -207,6 +245,32 @@ pub(crate) fn create_stack_copy(
     )
 }
 
+trait CopyCharacteristicModifiers {
+    fn apply_copy_characteristic_modifiers(&self, copy: &mut Object);
+}
+
+impl CopyCharacteristicModifiers for CopySpellEffect {
+    fn apply_copy_characteristic_modifiers(&self, copy: &mut Object) {
+        if let Some(colors) = self.set_colors {
+            copy.color_override = Some(colors);
+        }
+        for card_type in &self.added_card_types {
+            if !copy.card_types.contains(card_type) {
+                copy.card_types.push(*card_type);
+            }
+        }
+        for subtype in &self.added_subtypes {
+            if !copy.subtypes.contains(subtype) {
+                copy.subtypes.push(*subtype);
+            }
+        }
+        if let Some((power, toughness)) = self.set_base_power_toughness {
+            copy.base_power = Some(crate::card::PtValue::Fixed(power));
+            copy.base_toughness = Some(crate::card::PtValue::Fixed(toughness));
+        }
+    }
+}
+
 impl EffectExecutor for CopySpellEffect {
     fn execute(
         &self,
@@ -236,8 +300,12 @@ impl EffectExecutor for CopySpellEffect {
                                     || activation.snapshot.as_ref().is_some_and(|source|
                                         source.stable_id == snapshot.stable_id))))
             });
+        let source_spell_departed = matches!(self.target, ChooseSpec::Source)
+            && departed_source_spell_lki(game, ctx, ctx.source).is_some();
         let target_ids = if let Some(activation) = referenced_activation {
             vec![activation.source]
+        } else if source_spell_departed {
+            vec![ctx.source]
         } else {
             match resolve_objects_for_effect(game, ctx, &self.target) {
                 Ok(targets) => targets,
@@ -252,12 +320,51 @@ impl EffectExecutor for CopySpellEffect {
         let mut created_ids = Vec::with_capacity(copy_count.saturating_mul(target_ids.len()));
 
         for target_id in target_ids {
-            let Some(original_entry) = stack_entry_for_copy_target(game, target_id, ctx)? else {
+            if source_spell_departed
+                && let Some((target, original_entry)) =
+                    departed_source_spell_lki(game, ctx, target_id)
+            {
+                for _ in 0..copy_count {
+                    let copy_id = create_stack_copy_from_object(
+                        game,
+                        &target,
+                        target_id,
+                        &original_entry,
+                        copier,
+                        &self.removed_supertypes,
+                        |copy| self.apply_copy_characteristic_modifiers(copy),
+                        None,
+                    )?;
+                    created_ids.push(copy_id);
+                    game.queue_trigger_event(
+                        ctx.provenance,
+                        TriggerEvent::new_with_provenance(
+                            SpellCopiedEvent::new(copy_id, copier),
+                            ctx.provenance,
+                        ),
+                    );
+                }
+                continue;
+            }
+            let Some(original_entry) = stack_entry_for_copy_target(
+                game,
+                target_id,
+                ctx,
+                super::counter::counter_target_stack_kind(&self.target),
+            )?
+            else {
                 continue;
             };
             let target = game
                 .object(target_id)
                 .cloned()
+                .or_else(|| {
+                    // An ability named by its own stack id copies from its source.
+                    original_entry
+                        .is_ability
+                        .then(|| game.object(original_entry.object_id).cloned())
+                        .flatten()
+                })
                 .or_else(|| {
                     original_entry
                         .is_ability
@@ -281,28 +388,29 @@ impl EffectExecutor for CopySpellEffect {
                     &original_entry,
                     copier,
                     &self.removed_supertypes,
-                    |copy| {
-                        if let Some(colors) = self.set_colors {
-                            copy.color_override = Some(colors);
-                        }
-                        for card_type in &self.added_card_types {
-                            if !copy.card_types.contains(card_type) {
-                                copy.card_types.push(*card_type);
-                            }
-                        }
-                        for subtype in &self.added_subtypes {
-                            if !copy.subtypes.contains(subtype) {
-                                copy.subtypes.push(*subtype);
-                            }
-                        }
-                        if let Some((power, toughness)) = self.set_base_power_toughness {
-                            copy.base_power = Some(crate::card::PtValue::Fixed(power));
-                            copy.base_toughness = Some(crate::card::PtValue::Fixed(toughness));
-                        }
-                    },
+                    |copy| self.apply_copy_characteristic_modifiers(copy),
                     None,
                 )?;
                 created_ids.push(copy_id);
+
+                // A copy that targets an object makes that object become the
+                // target of the copy (ward, "becomes the target" triggers).
+                for target in &original_entry.targets {
+                    if let Target::Object(targeted) = target {
+                        game.queue_trigger_event(
+                            ctx.provenance,
+                            TriggerEvent::new_with_provenance(
+                                crate::events::spells::BecomesTargetedEvent::new(
+                                    *targeted,
+                                    copy_id,
+                                    copier,
+                                    original_entry.is_ability,
+                                ),
+                                ctx.provenance,
+                            ),
+                        );
+                    }
+                }
 
                 // Only copying a spell emits the spell-copied event. The same
                 // effect type also represents activated/triggered ability

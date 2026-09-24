@@ -684,6 +684,7 @@ fn evaluate_value(
                 tagged_objects: std::collections::HashMap::new(),
                 tagged_players: std::collections::HashMap::new(),
                 effect_outcomes: std::collections::HashMap::new(),
+                stack_entry: None,
                 players_in_range: game.range_players_for_source(effect_controller, Some(source)),
             };
             let mut total = 0i32;
@@ -721,6 +722,7 @@ fn evaluate_value(
                 tagged_objects: std::collections::HashMap::new(),
                 tagged_players: std::collections::HashMap::new(),
                 effect_outcomes: std::collections::HashMap::new(),
+                stack_entry: None,
                 players_in_range: game.range_players_for_source(effect_controller, Some(source)),
             };
             let mut total = 0i32;
@@ -2134,6 +2136,9 @@ pub(crate) fn condition_could_be_affected_by(
         | C::TriggeringObjectBecameTappedFirstTimeThisTurn
         | C::TriggeringObjectHadCountersPutFirstTimeThisTurn
         | C::TriggeringObjectHadToAttackThisCombat
+        | C::EvolveEnteringCreatureIsLarger
+        | C::SoulbondPairingPossible
+        | C::SourceClassLevelAtLeast(_)
         | C::TriggeringObjectHadCounters { .. }
         | C::SourceIsInZone(_)
         | C::ActivationTiming(_)
@@ -2153,6 +2158,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::SourceAttackedBattleThisTurn
         | C::SourceSuspected
         | C::SourceCameUnderYourControlThisTurn
+        | C::SourceCameUnderYourControlSinceYourLastUpkeep
         | C::SourceAttackedOrBlockedThisTurn
         | C::SourceIsUntapped
         | C::SourceIsAttacking

@@ -343,25 +343,12 @@ impl CardDefinitionBuilder {
         ))
     }
 
+    /// CR 702.164a: toxic is a static ability; the poison counters are a
+    /// result of the combat damage itself (702.164c), not a trigger.
     pub fn toxic(self, amount: u32) -> Self {
-        self.with_ability(crate::ability::Ability {
-            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
-                trigger: crate::triggers::Trigger::this_deals_combat_damage_to_player(
-                    crate::target::PlayerFilter::Any,
-                ),
-                effects: vec![crate::effect::Effect::poison_counters_player(
-                    amount as i32,
-                    crate::target::PlayerFilter::DamagedPlayer,
-                )]
-                .into(),
-                choices: vec![],
-                intervening_if: None,
-                presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Toxic(
-                    amount,
-                ))),
-            }),
-            functional_zones: vec![crate::zone::Zone::Battlefield],
-        })
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::toxic(amount),
+        ))
     }
 
     pub fn poisonous(self, amount: u32) -> Self {
@@ -423,34 +410,34 @@ impl CardDefinitionBuilder {
         })
     }
 
+    /// CR 702.38a: "As this object enters, reveal any number of cards ...
+    /// This permanent enters with N +1/+1 counters on it for each card
+    /// revealed this way." An "as enters" replacement, not a trigger.
     pub fn amplify(self, amount: u32) -> Self {
-        self.with_ability(crate::ability::Ability {
-            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
-                trigger: crate::triggers::Trigger::this_enters_battlefield(),
-                effects: vec![crate::effect::Effect::amplify(amount)].into(),
-                choices: vec![],
-                intervening_if: None,
-                presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Amplify(
-                    amount,
-                ))),
-            }),
-            functional_zones: vec![crate::zone::Zone::Battlefield],
-        })
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::as_enters_effect_program(
+                vec![crate::effect::Effect::amplify(amount)].into(),
+                "this creature",
+                false,
+                false,
+                Some(PresentationLabel::Keyword(PresentationKeyword::Amplify(amount))),
+            ),
+        ))
     }
 
+    /// CR 702.82a: "As this object enters, you may sacrifice any number of
+    /// creatures. This permanent enters with N +1/+1 counters on it for each
+    /// creature sacrificed this way." An "as enters" replacement.
     pub fn devour(self, multiplier: u32) -> Self {
-        self.with_ability(crate::ability::Ability {
-            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
-                trigger: crate::triggers::Trigger::this_enters_battlefield(),
-                effects: vec![crate::effect::Effect::devour(multiplier)].into(),
-                choices: vec![],
-                intervening_if: None,
-                presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Devour(
-                    multiplier,
-                ))),
-            }),
-            functional_zones: vec![crate::zone::Zone::Battlefield],
-        })
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::as_enters_effect_program(
+                vec![crate::effect::Effect::devour(multiplier)].into(),
+                "this creature",
+                false,
+                false,
+                Some(PresentationLabel::Keyword(PresentationKeyword::Devour(multiplier))),
+            ),
+        ))
     }
 
     pub fn afterlife(self, amount: u32) -> Self {
@@ -525,8 +512,9 @@ impl CardDefinitionBuilder {
                         0,
                         crate::effect::Effect::new(crate::effects::CopySpellEffect::new(
                             crate::target::ChooseSpec::Source,
+                            // CR 702.40a: every player's spells count toward storm.
                             crate::effect::Value::SpellsCastBeforeThisTurn(
-                                crate::target::PlayerFilter::You,
+                                crate::target::PlayerFilter::Any,
                             ),
                         )),
                     ),
@@ -571,9 +559,8 @@ impl CardDefinitionBuilder {
     }
 
     pub fn battle_cry(self) -> Self {
-        let mut filter = crate::target::ObjectFilter::creature()
-            .you_control()
-            .other();
+        // CR 702.91a: "each other attacking creature", not only yours.
+        let mut filter = crate::target::ObjectFilter::creature().other();
         filter.attacking = true;
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_attacks(),
@@ -587,6 +574,34 @@ impl CardDefinitionBuilder {
                 )],
             )],
         ))
+    }
+
+    /// CR 702.121a: "Whenever this creature attacks, it gets +1/+1 until end
+    /// of turn for each opponent you attacked with a creature this combat."
+    /// Only attacked players count (attacking a planeswalker or battle doesn't
+    /// attack its controller), taken from this combat's attack declarations.
+    pub fn melee(self) -> Self {
+        let opponents_attacked = crate::effect::Value::TurnHistoryCount(
+            ironsmith_core::TurnHistoryCount::PlayersAttackedThisCombat(
+                crate::target::PlayerFilter::You,
+            ),
+        );
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::this_attacks(),
+                effects: vec![crate::effect::Effect::pump(
+                    opponents_attacked.clone(),
+                    opponents_attacked,
+                    crate::target::ChooseSpec::Source,
+                    crate::effect::Until::EndOfTurn,
+                )]
+                .into(),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Melee)),
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+        })
     }
 
     pub fn firebending(self, amount: u32) -> Self {
@@ -638,7 +653,10 @@ impl CardDefinitionBuilder {
     }
 
     pub fn evolve(self) -> Self {
-        self.with_ability(crate::ability::Ability::triggered(
+        // CR 702.100a: "Whenever a creature you control enters, if that
+        // creature's power is greater than this creature's power and/or ..."
+        // is an intervening-if, checked on triggering and resolution (603.4).
+        let mut ability = crate::ability::Ability::triggered(
             crate::triggers::Trigger::enters_battlefield(
                 crate::target::ObjectFilter::creature().you_control(),
                 None,
@@ -646,7 +664,12 @@ impl CardDefinitionBuilder {
             vec![crate::effect::Effect::new(
                 crate::effects::EvolveEffect::new(),
             )],
-        ))
+        );
+        if let crate::ability::AbilityKind::Triggered(triggered) = &mut ability.kind {
+            triggered.intervening_if =
+                Some(crate::effect::Condition::EvolveEnteringCreatureIsLarger);
+        }
+        self.with_ability(ability)
     }
 
     pub fn ingest(self) -> Self {
@@ -791,15 +814,24 @@ impl CardDefinitionBuilder {
     }
 
     pub fn unleash(self) -> Self {
-        self.with_ability(crate::ability::Ability::triggered(
-            crate::triggers::Trigger::this_enters_battlefield(),
-            vec![crate::effect::Effect::may(vec![
-                crate::effect::Effect::put_counters(
-                    crate::object::CounterType::PlusOnePlusOne,
-                    1,
-                    crate::target::ChooseSpec::Source,
-                ),
-            ])],
+        // CR 702.98a: "You may have this permanent enter with an additional
+        // +1/+1 counter on it" is an entry replacement (CR 614.1c), not an
+        // ETB trigger, so it is lowered like riot.
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::as_enters_effect_program(
+                vec![crate::effect::Effect::may(vec![
+                    crate::effect::Effect::put_counters(
+                        crate::object::CounterType::PlusOnePlusOne,
+                        1,
+                        crate::target::ChooseSpec::Source,
+                    ),
+                ])]
+                .into(),
+                "this creature",
+                false,
+                false,
+                None,
+            ),
         ))
         .with_ability(crate::ability::Ability::static_ability(
             crate::static_abilities::StaticAbility::unleash(),
@@ -1021,17 +1053,28 @@ impl CardDefinitionBuilder {
         )
     }
 
+    /// CR 702.112a: "When this creature deals combat damage to a player, if
+    /// it isn't renowned, ..." The renowned check is an intervening if.
     pub fn renown(self, amount: u32) -> Self {
-        self.with_ability(crate::ability::Ability::triggered(
-            crate::triggers::Trigger::this_deals_combat_damage_to_player(
-                crate::target::PlayerFilter::Any,
-            ),
-            vec![crate::effect::Effect::renown_source(amount)],
-        ))
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::this_deals_combat_damage_to_player(
+                    crate::target::PlayerFilter::Any,
+                ),
+                effects: vec![crate::effect::Effect::renown_source(amount)].into(),
+                choices: vec![],
+                intervening_if: Some(crate::ConditionExpr::Not(Box::new(
+                    crate::ConditionExpr::SourceIsRenowned,
+                ))),
+                presentation_label: None,
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+        })
     }
 
     pub fn soulbond(self) -> Self {
-        self.with_ability(crate::ability::Ability::triggered(
+        // CR 702.95a: pairing is gated by an intervening-if (CR 603.4).
+        let mut ability = crate::ability::Ability::triggered(
             crate::triggers::Trigger::enters_battlefield(
                 crate::target::ObjectFilter::creature().you_control(),
                 None,
@@ -1039,7 +1082,11 @@ impl CardDefinitionBuilder {
             vec![crate::effect::Effect::new(
                 crate::effects::SoulbondPairEffect::new(),
             )],
-        ))
+        );
+        if let crate::ability::AbilityKind::Triggered(triggered) = &mut ability.kind {
+            triggered.intervening_if = Some(crate::effect::Condition::SoulbondPairingPossible);
+        }
+        self.with_ability(ability)
     }
 
     pub fn soulshift(self, amount: u32) -> Self {
@@ -1275,7 +1322,7 @@ impl CardDefinitionBuilder {
             ObjectFilter::land().you_control(),
         ));
         effects.push(crate::effect::Effect::new(
-            crate::effects::EarthbendEffect::new(spec, amount),
+            crate::effects::EarthbendEffect::awaken(spec, amount),
         ));
         self.alternative_casts
             .push(crate::alternative_cast::AlternativeCastingMethod::Awaken {
@@ -1327,44 +1374,27 @@ impl CardDefinitionBuilder {
     }
 
     pub fn echo(self, total_cost: TotalCost) -> Self {
+        // CR 702.30a: "At the beginning of your upkeep, if this permanent came
+        // under your control since the beginning of your last upkeep, sacrifice
+        // it unless you pay [cost]." The control check is a tracked game fact,
+        // not a counter, so counter effects can't change it.
         let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
 
-        self.with_ability(crate::ability::Ability::static_ability(
-            crate::static_abilities::StaticAbility::enters_with_counters_value(
-                crate::object::CounterType::Echo,
-                1.into(),
-            ),
-        ))
-        .with_ability(crate::ability::Ability {
+        self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: crate::triggers::Trigger::beginning_of_upkeep(
                     crate::target::PlayerFilter::You,
                 ),
-                effects: vec![crate::effect::Effect::conditional_only(
-                    crate::effect::Condition::SourceIsInZone(crate::zone::Zone::Battlefield),
-                    vec![
-                        crate::effect::Effect::with_id(
-                            0,
-                            crate::effect::Effect::remove_counters(
-                                crate::object::CounterType::Echo,
-                                1,
-                                crate::target::ChooseSpec::Source,
-                            ),
-                        ),
-                        crate::effect::Effect::if_then(
-                            crate::effect::EffectId(0),
-                            crate::effect::EffectPredicate::Happened,
-                            vec![crate::effect::Effect::unless_action(
-                                vec![crate::effect::Effect::sacrifice_source()],
-                                payment_effects,
-                                crate::target::PlayerFilter::You,
-                            )],
-                        ),
-                    ],
+                effects: vec![crate::effect::Effect::unless_action(
+                    vec![crate::effect::Effect::sacrifice_source()],
+                    payment_effects,
+                    crate::target::PlayerFilter::You,
                 )]
                 .into(),
                 choices: vec![],
-                intervening_if: None,
+                intervening_if: Some(
+                    crate::effect::Condition::SourceCameUnderYourControlSinceYourLastUpkeep,
+                ),
                 presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
@@ -1432,16 +1462,30 @@ impl CardDefinitionBuilder {
         })
     }
 
-    pub fn variable_casualty_planeswalker_copy(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::you_cast_this_spell(),
-                vec![crate::effect::Effect::new(
-                    crate::effects::VariableCasualtyPlaneswalkerCopyEffect::new(),
-                )],
-            )
-            .in_zones(vec![crate::zone::Zone::Stack]),
-        )
+    /// Casualty X on a planeswalker spell (Ob Nixilis, the Adversary): the
+    /// sacrifice is an optional cost paid while casting (CR 702.153a), and the
+    /// copy's starting loyalty is the sacrificed creature's power.
+    pub fn variable_casualty_planeswalker_copy(mut self) -> Self {
+        self.optional_costs.push(OptionalCost::custom(
+            "Casualty",
+            TotalCost::from_cost(crate::costs::Cost::sacrifice(
+                crate::target::ObjectFilter::creature().you_control(),
+            )),
+        ));
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::you_cast_this_spell(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::new(
+                        crate::effects::VariableCasualtyPlaneswalkerCopyEffect::new(),
+                    ),
+                ]),
+                choices: vec![],
+                intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel("Casualty".into())),
+                presentation_label: None,
+            }),
+            functional_zones: vec![crate::zone::Zone::Stack],
+        })
     }
 
     pub fn demonstrate(self) -> Self {
@@ -1631,29 +1675,46 @@ impl CardDefinitionBuilder {
         })
     }
 
+    /// CR 702.39a: "Whenever this creature attacks, you may choose to have
+    /// target creature defending player controls block this creature this
+    /// combat if able. If you do, untap that creature."
     pub fn provoke(self) -> Self {
+        const PROVOKED_TAG: &str = "__provoked_creature";
         let target_spec = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
             crate::target::ObjectFilter::creature()
                 .controlled_by(crate::target::PlayerFilter::Defending),
         ));
-        let untap = crate::effect::Effect::untap(target_spec.clone());
-        let must_block =
-            crate::effect::Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
-                target_spec.clone(),
-                crate::continuous::Modification::AddAbility(
-                    crate::static_abilities::StaticAbility::must_block(),
-                ),
-                crate::effect::Until::EndOfCombat,
-            ));
+        let declare_target = crate::effect::Effect::new(crate::effects::TargetOnlyEffect::new(
+            target_spec.clone(),
+        ))
+        .tag(PROVOKED_TAG);
+        // The requirement names this attacker, so blocking a different
+        // attacker doesn't satisfy it (CR 509.1c).
+        let must_block_this = crate::effect::Effect::cant_until(
+            crate::effect::Restriction::must_block_specific_attacker(
+                crate::target::ObjectFilter::tagged(PROVOKED_TAG),
+                crate::target::ObjectFilter::source(),
+            ),
+            crate::effect::Until::EndOfCombat,
+        );
+        let choose = crate::effect::Effect::with_id(
+            0,
+            crate::effect::Effect::may(vec![declare_target, must_block_this]),
+        );
+        let untap = crate::effect::Effect::if_then(
+            0,
+            crate::effect::EffectPredicate::Happened,
+            vec![crate::effect::Effect::untap(crate::target::ChooseSpec::tagged(
+                PROVOKED_TAG,
+            ))],
+        );
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: crate::triggers::Trigger::this_attacks(),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    untap, must_block,
-                ]),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![choose, untap]),
                 choices: vec![target_spec],
                 intervening_if: None,
-                presentation_label: None,
+                presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Provoke)),
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -1859,6 +1920,9 @@ impl CardDefinitionBuilder {
     }
 
     pub fn fading(self, amount: u32) -> Self {
+        // CR 702.32a: "At the beginning of your upkeep, remove a fade counter
+        // from it. If you can't, sacrifice the permanent." Removing the last
+        // counter doesn't sacrifice it; the next upkeep's failed removal does.
         self.with_ability(crate::ability::Ability::static_ability(
             crate::static_abilities::StaticAbility::enters_with_counters_value(
                 crate::object::CounterType::Fade,
@@ -1867,30 +1931,22 @@ impl CardDefinitionBuilder {
         ))
         .with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::beginning_of_upkeep(crate::target::PlayerFilter::You),
-            vec![crate::effect::Effect::remove_counters(
-                crate::object::CounterType::Fade,
-                1,
-                crate::target::ChooseSpec::Source,
-            )],
-        ))
-        .with_ability(crate::ability::Ability {
-            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
-                trigger: crate::triggers::Trigger::new(
-                    crate::triggers::CounterRemovedFromTrigger::new(
-                        crate::target::ObjectFilter::source(),
+            vec![
+                crate::effect::Effect::with_id(
+                    0,
+                    crate::effect::Effect::remove_counters(
+                        crate::object::CounterType::Fade,
+                        1,
+                        crate::target::ChooseSpec::Source,
                     ),
                 ),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    crate::effect::Effect::sacrifice_source(),
-                ]),
-                choices: vec![],
-                intervening_if: Some(crate::ConditionExpr::SourceHasNoCounter(
-                    crate::object::CounterType::Fade,
-                )),
-                presentation_label: None,
-            }),
-            functional_zones: vec![crate::zone::Zone::Battlefield],
-        })
+                crate::effect::Effect::if_then(
+                    crate::effect::EffectId(0),
+                    crate::effect::EffectPredicate::DidNotHappen,
+                    vec![crate::effect::Effect::sacrifice_source()],
+                ),
+            ],
+        ))
     }
 
     pub fn impending(self, time: u32, cost: ManaCost) -> Self {
@@ -1991,11 +2047,11 @@ impl CardDefinitionBuilder {
                 .with_all_type(CardType::Creature),
         ));
         let trigger_tag = crate::tag::CompilerReferenceTag::ModularTriggeringObject.bind();
-        let dead_source_filter = crate::target::ObjectFilter::default()
-            .in_zone(crate::zone::Zone::Graveyard)
-            .same_stable_id_as_tagged(trigger_tag.clone());
+        // CR 702.43a: count the +1/+1 counters on the permanent as it last
+        // existed on the battlefield. The graveyard card is a new object with
+        // no counters (CR 400.7), so read the tagged dies-event snapshot.
         let transfer_count = crate::effect::Value::CountersOn(
-            Box::new(crate::target::ChooseSpec::All(dead_source_filter)),
+            Box::new(crate::target::ChooseSpec::Tagged(trigger_tag.key.clone())),
             Some(crate::object::CounterType::PlusOnePlusOne),
         );
 
@@ -2031,11 +2087,11 @@ impl CardDefinitionBuilder {
                 .with_all_type(CardType::Creature),
         ));
         let trigger_tag = crate::tag::CompilerReferenceTag::ModularTriggeringObject.bind();
-        let dead_source_filter = crate::target::ObjectFilter::default()
-            .in_zone(crate::zone::Zone::Graveyard)
-            .same_stable_id_as_tagged(trigger_tag.clone());
+        // CR 702.43a: count the +1/+1 counters on the permanent as it last
+        // existed on the battlefield. The graveyard card is a new object with
+        // no counters (CR 400.7), so read the tagged dies-event snapshot.
         let transfer_count = crate::effect::Value::CountersOn(
-            Box::new(crate::target::ChooseSpec::All(dead_source_filter)),
+            Box::new(crate::target::ChooseSpec::Tagged(trigger_tag.key.clone())),
             Some(crate::object::CounterType::PlusOnePlusOne),
         );
 
@@ -2091,7 +2147,12 @@ impl CardDefinitionBuilder {
                     )]),
                 ]),
                 choices: vec![],
-                intervening_if: None,
+                // CR 702.58a: "if this permanent has a +1/+1 counter on it".
+                intervening_if: Some(crate::effect::Condition::SourceHasCounterAtLeast {
+                    counter_type: crate::object::CounterType::PlusOnePlusOne,
+                    count: 1,
+                    surface: Default::default(),
+                }),
                 presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],

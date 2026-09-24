@@ -370,6 +370,12 @@ pub trait ReplacementMatcher: Debug + Send + Sync + ReplacementMatcherClone {
         false
     }
 
+    /// Whether this matcher is a regeneration shield (CR 701.19). "Can't be
+    /// regenerated" (CR 701.19c) disables only these replacements.
+    fn is_regeneration_shield(&self) -> bool {
+        false
+    }
+
     /// Get the priority of this replacement effect per Rule 616.1.
     fn priority(&self) -> ReplacementPriority {
         ReplacementPriority::Other

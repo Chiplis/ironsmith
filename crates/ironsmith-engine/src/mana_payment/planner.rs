@@ -1408,14 +1408,25 @@ fn alternative_payment_selections(
         )
     });
 
-    let mut selected = vec![None; pips.len()];
     let mut selections = Vec::new();
-    // Explore both resource-heavy and mana-heavy ends of the bounded search.
-    // Otherwise a large graveyard can exhaust the budget on small subsets.
-    enumerate_alternative_selections(&pips, &sources, 0, &mut selected, &mut selections, false);
-    let mut resource_first = Vec::new();
-    enumerate_alternative_selections(&pips, &sources, 0, &mut selected, &mut resource_first, true);
-    selections.extend(resource_first);
+    for pips in monocolored_hybrid_pip_shapes(&pips, !sources.is_empty()) {
+        let mut selected = vec![None; pips.len()];
+        // Explore both resource-heavy and mana-heavy ends of the bounded search.
+        // Otherwise a large graveyard can exhaust the budget on small subsets.
+        let mut mana_first = Vec::new();
+        enumerate_alternative_selections(&pips, &sources, 0, &mut selected, &mut mana_first, false);
+        selections.extend(mana_first);
+        let mut resource_first = Vec::new();
+        enumerate_alternative_selections(
+            &pips,
+            &sources,
+            0,
+            &mut selected,
+            &mut resource_first,
+            true,
+        );
+        selections.extend(resource_first);
+    }
     selections.sort_by_key(|selection| {
         let selected_sources = selection
             .allocations
@@ -1467,6 +1478,61 @@ fn alternative_payment_selections(
             })
     });
     selections
+}
+
+/// Monocolored hybrid pips ({2/W}) may be paid through their generic half,
+/// which is N separate generic mana. Convoke, delve, and improvise pay one
+/// generic mana per resource (CR 702.51a, 702.66a, 702.126a), so two
+/// resources can jointly pay a {2/W}'s {2}. Offer each such pip both as
+/// printed and split into N {1} slots (with fresh pip ids, same printed
+/// index). The number of reshaped pips is bounded to keep the search small.
+fn monocolored_hybrid_pip_shapes(
+    pips: &[PaymentPipSlot],
+    has_alternative_sources: bool,
+) -> Vec<Vec<PaymentPipSlot>> {
+    const MAX_RESHAPED_PIPS: usize = 4;
+    let hybrid_indices: Vec<(usize, u8)> = if has_alternative_sources {
+        pips.iter()
+            .enumerate()
+            .filter_map(|(index, slot)| {
+                slot.alternatives.iter().find_map(|symbol| match symbol {
+                    ManaSymbol::Generic(amount) if *amount > 1 => Some((index, *amount)),
+                    _ => None,
+                })
+            })
+            .take(MAX_RESHAPED_PIPS)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let mut shapes = vec![pips.to_vec()];
+    for mask in 1u32..(1u32 << hybrid_indices.len()) {
+        let mut next_id = pips.len() as u32;
+        let mut shape = Vec::with_capacity(pips.len() + 4);
+        for (index, slot) in pips.iter().enumerate() {
+            let split = hybrid_indices
+                .iter()
+                .enumerate()
+                .find(|(_, (hybrid_index, _))| *hybrid_index == index)
+                .filter(|(bit, _)| mask & (1 << bit) != 0)
+                .map(|(_, (_, amount))| *amount);
+            match split {
+                Some(amount) => {
+                    for _ in 0..amount {
+                        shape.push(PaymentPipSlot {
+                            pip: ManaPipId(next_id),
+                            printed_index: slot.printed_index,
+                            alternatives: vec![ManaSymbol::Generic(1)],
+                        });
+                        next_id += 1;
+                    }
+                }
+                None => shape.push(slot.clone()),
+            }
+        }
+        shapes.push(shape);
+    }
+    shapes
 }
 
 fn allocation_matches_required_alternative(
@@ -1591,7 +1657,12 @@ fn enumerate_alternative_selections(
 }
 
 fn alternative_can_pay(kind: AlternativeKind, pip: &[ManaSymbol]) -> bool {
+    // CR 702.51a / 702.66a / 702.126a: each tapped creature, tapped artifact,
+    // or exiled card pays for one generic mana. A single resource can't pay the
+    // {2} half of a monocolored hybrid {2/W} pip (standalone generic and X
+    // pips are already split into {1} units).
     pip.iter().any(|symbol| match (kind, symbol) {
+        (_, ManaSymbol::Generic(amount)) if *amount > 1 => false,
         (AlternativeKind::Convoke(_), ManaSymbol::Generic(_)) => true,
         (AlternativeKind::Convoke(colors), ManaSymbol::White) => colors.contains(Color::White),
         (AlternativeKind::Convoke(colors), ManaSymbol::Blue) => colors.contains(Color::Blue),
