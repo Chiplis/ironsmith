@@ -436,6 +436,9 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
     data-local-zone-piles={samePlayerId(player.id ?? player.index, state?.perspective) ? "true" : undefined}>
     {PILE_ZONES.map((zone) => <ZonePile key={zone} player={player} zone={zone}
       onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />)}
+    {samePlayerId(player.id ?? player.index, state?.perspective) && (
+      <div className="player-zone-chat-dock"><LobbyChat /></div>
+    )}
     {samePlayerId(player.id ?? player.index, state?.perspective) &&
       <div className="player-look-pile"><LookPile key={state?.perspective} player={player} onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} /></div>}
   </div>;
