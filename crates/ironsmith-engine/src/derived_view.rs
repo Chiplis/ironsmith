@@ -259,7 +259,8 @@ fn modification_can_change_spell_cost_modifier_presence(modification: &Modificat
         | Modification::SetTextBox(_)
         | Modification::SetAbilities(_)
         | Modification::RemoveAllAbilities
-        | Modification::RemoveAllAbilitiesExceptMana => true,
+        | Modification::RemoveAllAbilitiesExceptMana
+        | Modification::RemoveStaticAbilityFamily(_) => true,
         Modification::AddAbility(static_ability) | Modification::RemoveAbility(static_ability) => {
             static_ability_has_spell_cost_modifier(static_ability)
         }
@@ -280,7 +281,8 @@ fn modification_can_change_activated_ability_cost_modifier_presence(
         | Modification::SetTextBox(_)
         | Modification::SetAbilities(_)
         | Modification::RemoveAllAbilities
-        | Modification::RemoveAllAbilitiesExceptMana => true,
+        | Modification::RemoveAllAbilitiesExceptMana
+        | Modification::RemoveStaticAbilityFamily(_) => true,
         Modification::AddAbility(static_ability) | Modification::RemoveAbility(static_ability) => {
             static_ability_has_activated_ability_cost_modifier(static_ability)
         }
@@ -299,7 +301,8 @@ fn modification_can_change_minimum_total_spell_mana_presence(modification: &Modi
         | Modification::SetTextBox(_)
         | Modification::SetAbilities(_)
         | Modification::RemoveAllAbilities
-        | Modification::RemoveAllAbilitiesExceptMana => true,
+        | Modification::RemoveAllAbilitiesExceptMana
+        | Modification::RemoveStaticAbilityFamily(_) => true,
         Modification::AddAbility(static_ability) | Modification::RemoveAbility(static_ability) => {
             static_ability_has_minimum_total_spell_mana(static_ability)
         }

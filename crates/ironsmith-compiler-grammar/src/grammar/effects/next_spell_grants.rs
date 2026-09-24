@@ -12,6 +12,8 @@ use crate::zone::Zone;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NextSpellGrantAbilitySurface<'a> {
     CantBeCountered,
+    /// "can be cast without paying its mana cost"
+    WithoutPayingManaCost,
     Keyword(&'a [OwnedLexToken]),
 }
 
@@ -232,6 +234,15 @@ fn direct_cant_ability<'a>(input: &mut LexStream<'a>) -> WResult<NextSpellGrantA
     Ok(NextSpellGrantAbilitySurface::CantBeCountered)
 }
 
+fn direct_free_cast_ability<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<NextSpellGrantAbilitySurface<'a>> {
+    primitives::phrase(&["can", "be", "cast", "without", "paying", "its", "mana", "cost"])
+        .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(NextSpellGrantAbilitySurface::WithoutPayingManaCost)
+}
+
 fn parse_standard_next_spell_grant<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<RawNextSpellGrant<'a>> {
@@ -250,6 +261,7 @@ fn parse_standard_next_spell_grant<'a>(
         )
             .map(|(_, ability)| ability),
         direct_cant_ability,
+        direct_free_cast_ability,
     ))
     .parse_next(input)?;
     Ok(RawNextSpellGrant {

@@ -2420,6 +2420,7 @@ function PriorityBar({
     triggerOrderingState,
     multiplayer,
     playerAccentOverrides,
+    startResolveAll,
   } = useGame();
   const [decisionToolbarSearchTarget, setDecisionToolbarSearchTarget] = useState(null);
   const {
@@ -2468,6 +2469,12 @@ function PriorityBar({
   const hasCustomPassLabel = !!passAction?.label && passAction.label !== "Pass priority";
   const resolvingStackPriority = stackSize > 0 && !hasCustomPassLabel;
   const passControlAdvanceLabel = "";
+  // A deep stack splits the main button into Resolve / Resolve all, laid out
+  // like the opening hand's Keep hand / Mulligan pair.
+  const showResolveAllButton = showPriorityAdvanceButton
+    && resolvingStackPriority
+    && stackSize > 2
+    && !openingHandMulliganAction;
   const passCurrentLabel = resolvingStackPriority
     ? "Resolve"
     : (
@@ -2632,6 +2639,12 @@ function PriorityBar({
     },
     [canAct, passAction, triggerPriorityAction]
   );
+  const triggerResolveAll = useCallback(() => {
+    if (peerWaitLocked || !canAct || !passAction) return;
+    dispatchHandActionHover(null);
+    clearHover();
+    startResolveAll();
+  }, [canAct, clearHover, passAction, peerWaitLocked, startResolveAll]);
   const handleActionHoverStart = useCallback(
     (group) => {
       if (!canAct || !group) return;
@@ -3021,6 +3034,35 @@ function PriorityBar({
                     </div>
                   )}
                 </div>
+                {showResolveAllButton && (
+                  <div className="action-strip-command-region shrink-0 self-stretch" style={decisionButtonStyle}>
+                    <div
+                      className="action-strip-main-region relative h-full w-[132px] shrink-0 self-stretch"
+                      style={decisionButtonStyle}
+                      data-local-action={localDecisionButton ? "true" : "false"}
+                    >
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="pass-priority-btn decision-main-button action-strip-advance-button action-strip-resolve-all-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
+                        style={decisionButtonStyle}
+                        data-local-action={localDecisionButton ? "true" : "false"}
+                        disabled={!canAct}
+                        aria-disabled={peerWaitLocked || !canAct}
+                        aria-label={ui("Resolve all")}
+                        onClick={triggerResolveAll}
+                      >
+                        <span className="sr-only">{ui("Resolve all")}</span>
+                      </Button>
+                      <div className="action-strip-main-text-stack action-strip-main-text-stack--centered absolute left-2 top-2 z-20">
+                        <div className="action-strip-main-title-row">
+                          <ActionStripMainTitleText>{ui("Resolve all")}</ActionStripMainTitleText>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {openingHandMulliganAction && (
                   <div className="action-strip-command-region action-strip-command-region--danger shrink-0 self-stretch">
                     <div className="action-strip-main-region relative h-full w-[132px] shrink-0 self-stretch">
@@ -3297,6 +3339,21 @@ function PriorityBar({
                     )}
                   </div>
                 )}
+                  {showResolveAllButton && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="pass-priority-btn decision-main-button action-strip-advance-button action-strip-resolve-all-button h-full min-w-[132px] rounded-none px-3 text-[14px] font-bold uppercase"
+                      style={decisionButtonStyle}
+                      data-local-action={localDecisionButton ? "true" : "false"}
+                      disabled={!canAct || peerWaitLocked}
+                      aria-label={ui("Resolve all")}
+                      onClick={triggerResolveAll}
+                    >
+                      {ui("Resolve all")}
+                    </Button>
+                  )}
                   {openingHandMulliganAction && (
                     <Button
                       type="button"

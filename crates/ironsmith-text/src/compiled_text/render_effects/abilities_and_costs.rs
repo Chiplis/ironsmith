@@ -2899,6 +2899,13 @@ pub(crate) fn describe_alternative_costs(costs: &[crate::costs::Cost]) -> String
             clauses.push(describe_exile_from_hand_as_cost_phrase(count, color_filter));
             continue;
         }
+        if let Some(reveal) = effect.downcast_ref::<crate::effects::LookAtHandEffect>()
+            && reveal.reveal
+            && reveal.target == ChooseSpec::Player(PlayerFilter::You)
+        {
+            clauses.push("reveal your hand".to_string());
+            continue;
+        }
 
         let mut clause = describe_effect(effect)
             .trim()
@@ -3045,6 +3052,18 @@ pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
             action
         };
         return format!("As an additional cost to cast this spell, you may {action}");
+    }
+    if cost.kind == OptionalCostKind::Casualty
+        && let Some([sacrifice]) = cost.cost.as_all()
+        && let Some(crate::filter::Comparison::GreaterThanOrEqual(power)) =
+            sacrifice.sacrifice_filter().and_then(|filter| filter.power.clone())
+    {
+        use crate::compiled_text::{
+            STANDARD_REMINDER_CLOSE_SENTINEL, STANDARD_REMINDER_OPEN_SENTINEL,
+        };
+        return format!(
+            "Casualty {power} {STANDARD_REMINDER_OPEN_SENTINEL}As you cast this spell, you may sacrifice a creature with power {power} or greater. When you do, copy this spell and you may choose a new target for the copy.{STANDARD_REMINDER_CLOSE_SENTINEL}"
+        );
     }
     if matches!(cost.kind, OptionalCostKind::Conspire) {
         let reminder_cost = cost_text

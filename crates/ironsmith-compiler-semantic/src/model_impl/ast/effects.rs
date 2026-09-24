@@ -956,6 +956,26 @@ impl EffectAst {
         )
     }
 
+    /// Substitute a non-mana payment for the cast spell's mana cost on a
+    /// cast-tagged action; other effects are returned unchanged.
+    pub fn with_cast_tagged_alternative_payment(
+        mut self,
+        payment: ironsmith_core::CastTaggedAlternativePayment,
+    ) -> Self {
+        if let Self::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
+                    alternative_payment,
+                    ..
+                }),
+            ..
+        }) = &mut self
+        {
+            *alternative_payment = Some(payment);
+        }
+        self
+    }
+
     pub fn subject_verb_cast_tagged(
         tag: TagRef,
         player: PlayerAst,
@@ -1020,6 +1040,7 @@ impl EffectAst {
                 additional_mana_cost,
                 cost_reduction,
                 mana_spend_mode,
+                alternative_payment: None,
             }),
         )
     }
@@ -1329,6 +1350,7 @@ impl EffectAst {
                 during_turns_counter_put_on_source: None,
                 spell_cost_increase: None,
                 lands_enter_tapped: false,
+                surface: None,
             }),
         )
     }
@@ -1352,6 +1374,7 @@ impl EffectAst {
                 during_turns_counter_put_on_source: Some(counter_type),
                 spell_cost_increase: None,
                 lands_enter_tapped: false,
+                surface: None,
             }),
         )
     }
@@ -1375,6 +1398,7 @@ impl EffectAst {
                 during_turns_counter_put_on_source: None,
                 spell_cost_increase,
                 lands_enter_tapped,
+                surface: None,
             }),
         )
     }
@@ -1887,6 +1911,7 @@ impl EffectAst {
             PlayerAst::Implicit,
             SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice {
                 target,
+                top_position: 0,
             }),
         )
     }
@@ -4114,6 +4139,14 @@ impl EffectAst {
                 filter,
                 reduction,
             }),
+        )
+    }
+
+    pub fn subject_verb_free_cast_next_spell_this_turn(player: PlayerAst, filter: ObjectFilter) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn { filter }),
         )
     }
 

@@ -435,6 +435,30 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         ));
     }
 
+    // "target player who was dealt combat damage by this creature this turn".
+    // A restriction sentence ("... this turn can't cast ...") has already
+    // consumed the trailing turn window before the subject reaches here.
+    if let Some(source_words) = remaining_words
+        .strip_prefix(&["player", "who", "was", "dealt", "combat", "damage", "by"][..])
+        .map(|rest| rest.strip_suffix(&["this", "turn"][..]).unwrap_or(rest))
+        && crate::util::is_source_reference_words(source_words)
+    {
+        let sources = crate::util::source_reference_surface_for_words(source_words)
+            .map(ObjectFilter::source_with_surface)
+            .unwrap_or_else(ObjectFilter::source);
+        return Ok(wrap_target_count(
+            TargetAst::Player(
+                PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn {
+                    base: Box::new(PlayerFilter::Any),
+                    sources: Box::new(sources),
+                    minimum: 1,
+                },
+                target_span,
+            ),
+            target_count,
+        ));
+    }
+
     if let Some(filter) = reference_shapes::parse_hand_advantage_player(&remaining_words) {
         return Ok(wrap_target_count(
             TargetAst::Player(filter, target_span),

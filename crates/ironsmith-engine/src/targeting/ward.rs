@@ -17,7 +17,7 @@ use crate::decisions::{WardSpec, make_decision};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
-use crate::special_actions::pay_total_cost_with_choice;
+use crate::special_actions::pay_resolution_cost_with_mana_abilities;
 use crate::static_abilities::StaticAbility;
 
 use super::types::{PendingWardCost, WardPaymentResult};
@@ -187,6 +187,9 @@ fn format_ward_cost_description(cost: &TotalCost) -> String {
 
 /// Attempt to pay a ward cost.
 ///
+/// Ward is paid while its trigger resolves, so the payer may tap mana sources
+/// for it rather than needing the mana already floating (CR 605.3a).
+///
 /// Returns true if the cost was successfully paid, false otherwise.
 fn pay_ward_cost(
     game: &mut GameState,
@@ -195,7 +198,7 @@ fn pay_ward_cost(
     cost: &TotalCost,
     decision_maker: &mut dyn DecisionMaker,
 ) -> bool {
-    pay_total_cost_with_choice(
+    pay_resolution_cost_with_mana_abilities(
         game,
         payer,
         source,
@@ -203,7 +206,6 @@ fn pay_ward_cost(
         crate::costs::PaymentReason::Effect,
         decision_maker,
     )
-    .is_ok()
 }
 
 #[cfg(test)]
@@ -337,5 +339,37 @@ mod tests {
             WardPaymentResult::Paid
         );
         assert_eq!(game.player(bob).map(|player| player.life), Some(18));
+    }
+
+    #[test]
+    fn ward_mana_cost_taps_untapped_lands_when_pool_is_empty() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let target = permanent(&mut game, alice, "Ward Bear", CardType::Creature);
+        let source = permanent(&mut game, bob, "Targeting Source", CardType::Artifact);
+        let mountains = [0, 1].map(|_| {
+            game.create_object_from_definition(
+                &crate::cards::definitions::basic_mountain(),
+                bob,
+                Zone::Battlefield,
+            )
+        });
+
+        add_ward(
+            &mut game,
+            target,
+            TotalCost::mana(crate::mana::ManaCost::from_symbols(vec![
+                crate::mana::ManaSymbol::Generic(2),
+            ])),
+        );
+
+        let ward = get_ward_cost(&game, target, bob).expect("ward cost");
+        let mut dm = SelectFirstDecisionMaker;
+        assert_eq!(
+            handle_ward_payment(&mut game, &ward, bob, source, &mut dm),
+            WardPaymentResult::Paid
+        );
+        assert!(mountains.iter().all(|&mountain| game.is_tapped(mountain)));
     }
 }

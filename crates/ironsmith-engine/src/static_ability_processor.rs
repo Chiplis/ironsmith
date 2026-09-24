@@ -256,6 +256,7 @@ fn should_infer_multilayer_static_group(effects: &[ContinuousEffect], indices: &
         matches!(
             effects[idx].modification,
             crate::continuous::Modification::RemoveAbility(_)
+                | crate::continuous::Modification::RemoveStaticAbilityFamily(_)
                 | crate::continuous::Modification::RemoveAllAbilities
                 | crate::continuous::Modification::RemoveAllAbilitiesExceptMana
                 | crate::continuous::Modification::SetAbilities(_)

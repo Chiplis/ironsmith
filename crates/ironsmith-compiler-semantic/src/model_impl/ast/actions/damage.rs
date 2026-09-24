@@ -30,4 +30,9 @@ pub enum DamageActionAst {
         target: TargetAst,
         amount: Option<Value>,
     },
+    /// "[If ...,] excess damage is dealt to that creature's controller
+    /// instead": modifies the damage instruction immediately before it.
+    ExcessDamageToController {
+        condition: Option<PredicateAst>,
+    },
 }

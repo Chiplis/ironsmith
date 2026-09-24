@@ -308,6 +308,15 @@ fn parse_turn_history_intervening_predicate(
             )),
         ))));
     }
+    // "destroy that creature if it attacked this turn" (Berserk)
+    if surface::exact_words(&words, &["it", "attacked", "this", "turn"]) {
+        let mut filter = ObjectFilter::default();
+        filter.attacked_this_turn = true;
+        return Ok(Some(PredicateAst::TaggedMatches(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            filter,
+        )));
+    }
     if surface::exact_words(&words, &["it", "has", "madness"]) {
         return Ok(Some(PredicateAst::TaggedMatches(
             crate::tag::CompilerReferenceTag::It.bind(),

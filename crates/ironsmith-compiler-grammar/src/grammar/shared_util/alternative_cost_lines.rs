@@ -149,9 +149,17 @@ pub fn parse_if_conditional_alternative_cost(
     let Some((condition_tokens, tail_tokens)) = split_condition_and_cost_tail(tokens) else {
         return Ok(None);
     };
-    if parse_self_free_cast(tail_tokens).is_none()
-        && parse_you_may_rather_than_spell_cost(tail_tokens, line)?.is_none()
-    {
+    // "If this spell is ..., you may cast it without paying its mana cost":
+    // `it` repeats the condition's own subject, this spell.
+    let condition_names_this_spell = permission_shapes::prefix_words(
+        &TokenWordView::new(condition_tokens).word_refs(),
+        &["this", "spell"],
+    );
+    let self_free_cast = parse_self_free_cast(tail_tokens).is_some()
+        || (condition_names_this_spell
+            && TokenWordView::new(tail_tokens).word_refs()
+                == ["you", "may", "cast", "it", "without", "paying", "its", "mana", "cost"]);
+    if !self_free_cast && parse_you_may_rather_than_spell_cost(tail_tokens, line)?.is_none() {
         return Ok(None);
     }
 
@@ -166,7 +174,7 @@ pub fn parse_if_conditional_alternative_cost(
         })?
     };
 
-    if parse_self_free_cast(tail_tokens).is_some() {
+    if self_free_cast {
         let method = AlternativeCastingMethod::alternative_cost_with_condition(
             "Parsed alternative cost",
             None,
@@ -216,6 +224,18 @@ fn split_condition_and_cost_tail(
 
 fn parse_special_cost_condition(tokens: &[OwnedLexToken]) -> Option<ThisSpellCostCondition> {
     let words = TokenWordView::new(tokens).word_refs();
+    if exact_one_of(
+        &words,
+        &[
+            &["this", "spell", "is", "the", "first", "spell", "youve", "cast", "this", "game"],
+            &["this", "spell", "is", "the", "first", "spell", "you've", "cast", "this", "game"],
+            &["this", "spell", "is", "the", "first", "spell", "you", "have", "cast", "this", "game"],
+            &["this", "spell", "is", "first", "spell", "youve", "cast", "this", "game"],
+            &["this", "spell", "is", "first", "spell", "you've", "cast", "this", "game"],
+        ],
+    ) {
+        return Some(ThisSpellCostCondition::FirstSpellYouCastThisGame);
+    }
     if permission_shapes::prefix_words(
         &words,
         &[

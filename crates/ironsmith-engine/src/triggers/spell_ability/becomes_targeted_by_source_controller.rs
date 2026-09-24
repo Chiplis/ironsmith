@@ -19,6 +19,8 @@ pub struct PlayerOrObjectBecomesTargetedBySourceControllerTrigger {
     pub player_filter: PlayerFilter,
     pub object_filter: ObjectFilter,
     pub source_controller: PlayerFilter,
+    /// Spell, ability, or either ("a spell or ability").
+    pub source_kind: ironsmith_core::filter_model::StackObjectKind,
 }
 
 impl PlayerOrObjectBecomesTargetedBySourceControllerTrigger {
@@ -31,6 +33,32 @@ impl PlayerOrObjectBecomesTargetedBySourceControllerTrigger {
             player_filter,
             object_filter,
             source_controller,
+            source_kind: ironsmith_core::filter_model::StackObjectKind::SpellOrAbility,
+        }
+    }
+
+    pub fn with_source_kind(mut self, source_kind: ironsmith_core::filter_model::StackObjectKind) -> Self {
+        self.source_kind = source_kind;
+        self
+    }
+
+    fn source_kind_matches(&self, by_ability: bool) -> bool {
+        use ironsmith_core::filter_model::StackObjectKind;
+        match self.source_kind {
+            StackObjectKind::SpellOrAbility => true,
+            StackObjectKind::Spell => !by_ability,
+            StackObjectKind::Ability
+            | StackObjectKind::ActivatedAbility
+            | StackObjectKind::TriggeredAbility => by_ability,
+        }
+    }
+
+    fn source_kind_text(&self) -> &'static str {
+        use ironsmith_core::filter_model::StackObjectKind;
+        match self.source_kind {
+            StackObjectKind::SpellOrAbility => "a spell or ability",
+            StackObjectKind::Spell => "a spell",
+            _ => "an ability",
         }
     }
 }
@@ -74,14 +102,13 @@ impl TriggerMatcher for BecomesTargetedBySourceControllerTrigger {
 
     fn display(&self) -> String {
         let controller = match self.source_controller {
-            PlayerFilter::You => "you",
-            PlayerFilter::Opponent => "an opponent",
-            PlayerFilter::Any => "a player",
-            _ => "a player",
+            PlayerFilter::You => "you control",
+            PlayerFilter::Opponent => "an opponent controls",
+            _ => "a player controls",
         };
         format!(
-            "Whenever {} becomes the target of a spell or ability {} controls",
-            self.target_filter.description(),
+            "Whenever {} becomes the target of a spell or ability {}",
+            singular_subject(self.target_filter.description()),
             controller
         )
     }
@@ -98,6 +125,7 @@ impl TriggerMatcher for PlayerOrObjectBecomesTargetedBySourceControllerTrigger {
         if !self
             .source_controller
             .matches_player(e.source_controller, &ctx.filter_ctx)
+            || !self.source_kind_matches(e.by_ability)
         {
             return false;
         }
@@ -122,18 +150,32 @@ impl TriggerMatcher for PlayerOrObjectBecomesTargetedBySourceControllerTrigger {
 
     fn display(&self) -> String {
         let controller = match self.source_controller {
-            PlayerFilter::You => "you",
-            PlayerFilter::Opponent => "an opponent",
-            PlayerFilter::Any => "a player",
-            _ => "a player",
+            PlayerFilter::You => "you control",
+            PlayerFilter::Opponent => "an opponent controls",
+            _ => "a player controls",
         };
         format!(
-            "Whenever {} or {} becomes the target of a spell or ability {} controls",
+            "Whenever {} or {} becomes the target of {} {}",
             crate::triggers::describe_player_filter_subject(&self.player_filter),
             self.object_filter.description(),
+            self.source_kind_text(),
             controller
         )
     }
+}
+
+/// A single triggering object reads with an indefinite article ("a
+/// creature"), unless the description already carries a determiner.
+fn singular_subject(description: String) -> String {
+    let lower = description.to_ascii_lowercase();
+    let determined = ["a ", "an ", "the ", "another ", "this ", "that ", "each ", "target "]
+        .iter()
+        .any(|prefix| lower.starts_with(prefix));
+    if determined || description.is_empty() {
+        return description;
+    }
+    let article = if lower.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" };
+    format!("{article} {description}")
 }
 
 #[cfg(test)]

@@ -922,6 +922,21 @@ impl ZoneChangeTrigger {
         }
 
         let mut parts = vec!["Whenever".to_string()];
+        // "a spell or ability an opponent controls causes <subject> to be put
+        // into <graveyard>" states the cause before the subject.
+        let opponent_effect_cause = self.cause_filter.as_ref().is_some_and(|cause| {
+            matches!(
+                cause.cause_type,
+                Some(crate::events::cause::CauseTypeFilter::EffectLike)
+            ) && cause.source_filter.is_none()
+                && matches!(
+                    cause.controller_filter,
+                    Some(crate::events::cause::ControllerFilter::ContextOpponent)
+                )
+        }) && self.to == ZonePattern::Specific(Zone::Graveyard);
+        if opponent_effect_cause {
+            parts.push("a spell or ability an opponent controls causes".to_string());
+        }
 
         // Player relation
         match &self.player {
@@ -1038,6 +1053,7 @@ impl ZoneChangeTrigger {
                     "is"
                 };
                 let graveyard = owned_zone_phrase(self.object_filter.owner.as_ref(), "graveyard");
+                let verb = if opponent_effect_cause { "to be" } else { verb };
                 parts.push(format!("{verb} put into {graveyard} from the battlefield"));
             }
             (ZonePattern::Specific(Zone::Hand), ZonePattern::Specific(Zone::Graveyard)) => {
@@ -1112,6 +1128,7 @@ impl ZoneChangeTrigger {
                     "is"
                 };
                 let graveyard = owned_zone_phrase(self.object_filter.owner.as_ref(), "graveyard");
+                let verb = if opponent_effect_cause { "to be" } else { verb };
                 parts.push(format!("{verb} put into {graveyard}"));
                 if let Some(origin) = graveyard_origin_phrase(self) {
                     parts.push(origin);

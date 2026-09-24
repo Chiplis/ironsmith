@@ -493,6 +493,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | PoisonCounters(player)
         | LoseLife(player)
         | DamageCauseLifeLoss(player)
+        | DamageReduceLifeBelowOne(player)
         | ChangeLifeTotal(player)
         | LoseGame(player)
         | WinGame(player)

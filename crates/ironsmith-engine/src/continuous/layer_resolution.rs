@@ -544,6 +544,12 @@ pub(super) fn calculate_with_layers(
                                     == crate::static_abilities::StaticAbilityId::BandsWithOther)
                     });
                 }
+                Modification::RemoveStaticAbilityFamily(id) => {
+                    chars.abilities.retain(|candidate| {
+                        !matches!(&candidate.kind, AbilityKind::Static(ability) if ability.id() == *id)
+                    });
+                    chars.static_abilities.retain(|candidate| candidate.id() != *id);
+                }
                 Modification::RemoveAbilityGeneric { ability, .. } => {
                     chars
                         .abilities
@@ -951,6 +957,7 @@ pub(super) fn apply_layer_7_effects(
             | Modification::CopyTriggeredAbilities { .. }
             | Modification::AddCombatDamageDrawAbility
             | Modification::RemoveAbility(_)
+            | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana
@@ -1570,6 +1577,7 @@ pub(super) fn effect_can_change_static_ability_presence(effect: &ContinuousEffec
             | Modification::SetAuraAttachmentFilter(_)
             | Modification::SetAbilities(_)
             | Modification::RemoveAbility(_)
+            | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana

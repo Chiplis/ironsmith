@@ -429,6 +429,11 @@ pub struct GrantPlayTaggedSurface {
     /// The event-bounded lifetime itself is carried by
     /// `GrantPlayTaggedDuration::UntilSourceExilesAnother`.
     pub until_source_exiles_another: Option<SourceReferenceSurface>,
+    /// The flexible-mana rider was authored as its own sentence: "If you
+    /// cast a spell this way, you may spend mana as though it were mana of
+    /// any type to cast it." Runtime semantics stay on the mana spend mode.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub mana_spend_followup: bool,
 }
 
 impl GrantPlayTaggedSurface {
@@ -1238,6 +1243,17 @@ pub struct DealDamageEffect {
     pub source_is_combat: bool,
     /// "The damage can't be prevented." rider on this damage.
     pub unpreventable: bool,
+    /// "Excess damage is dealt to that creature's controller instead."
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub excess_to_controller: Option<ExcessDamageRedirect>,
+}
+
+/// Damage beyond lethal dealt to a creature goes to its controller instead,
+/// optionally only while `condition` holds as the damage is dealt.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct ExcessDamageRedirect {
+    pub condition: Option<crate::value_model::Condition>,
 }
 
 impl DealDamageEffect {
@@ -1247,7 +1263,13 @@ impl DealDamageEffect {
             target,
             source_is_combat: false,
             unpreventable: false,
+            excess_to_controller: None,
         }
+    }
+
+    pub fn with_excess_to_controller(mut self, redirect: ExcessDamageRedirect) -> Self {
+        self.excess_to_controller = Some(redirect);
+        self
     }
 
     pub fn with_combat(mut self, is_combat: bool) -> Self {
@@ -2643,6 +2665,10 @@ pub struct MoveToLibraryTopOrBottomChoiceEffect {
     pub target: ChooseSpec,
     /// `None` means each object's owner chooses, matching the common surface.
     pub chooser: Option<PlayerFilter>,
+    /// Where the "top" option puts the object, counted from the top starting
+    /// at 0 ("second from the top or on the bottom" is 1).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub top_position: u32,
 }
 
 impl MoveToLibraryTopOrBottomChoiceEffect {
@@ -2650,7 +2676,13 @@ impl MoveToLibraryTopOrBottomChoiceEffect {
         Self {
             target,
             chooser: None,
+            top_position: 0,
         }
+    }
+
+    pub fn with_top_position(mut self, top_position: u32) -> Self {
+        self.top_position = top_position;
+        self
     }
 
     pub fn with_chooser(mut self, chooser: PlayerFilter) -> Self {
@@ -3659,9 +3691,24 @@ pub struct GrantNextSpellCostReductionEffect {
     pub generic_reduction: Option<Value>,
     pub applies_to_all_matching_this_turn: bool,
     pub duration: Until,
+    /// "... can be cast without paying its mana cost": the next matching
+    /// spell may be cast for a zero-mana alternative cost instead of having
+    /// its cost reduced.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub without_paying_mana_cost: bool,
 }
 
 impl GrantNextSpellCostReductionEffect {
+    pub fn next_matching_without_paying_mana_cost_this_turn(
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    ) -> Self {
+        Self {
+            without_paying_mana_cost: true,
+            ..Self::new(player, filter, crate::mana::ManaCost::new())
+        }
+    }
+
     pub fn new(
         player: PlayerFilter,
         filter: ObjectFilter,
@@ -3674,6 +3721,7 @@ impl GrantNextSpellCostReductionEffect {
             generic_reduction: None,
             applies_to_all_matching_this_turn: false,
             duration: Until::EndOfTurn,
+            without_paying_mana_cost: false,
         }
     }
 
@@ -3689,6 +3737,7 @@ impl GrantNextSpellCostReductionEffect {
             generic_reduction: Some(generic_reduction.into()),
             applies_to_all_matching_this_turn: true,
             duration: Until::EndOfTurn,
+            without_paying_mana_cost: false,
         }
     }
 
@@ -3704,6 +3753,7 @@ impl GrantNextSpellCostReductionEffect {
             generic_reduction: Some(generic_reduction.into()),
             applies_to_all_matching_this_turn: false,
             duration: Until::EndOfTurn,
+            without_paying_mana_cost: false,
         }
     }
 
@@ -3720,6 +3770,7 @@ impl GrantNextSpellCostReductionEffect {
             generic_reduction: Some(generic_reduction.into()),
             applies_to_all_matching_this_turn: true,
             duration,
+            without_paying_mana_cost: false,
         }
     }
 }

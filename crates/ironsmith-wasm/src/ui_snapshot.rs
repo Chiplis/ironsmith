@@ -3410,6 +3410,109 @@ mod tests {
         assert_eq!(encoded["abilities"], serde_json::json!(["Lifelink"]));
     }
 
+    /// The battlefield abilities of a Grizzly Bears sharing a battlefield with
+    /// `granting`, which grants it abilities in quotation marks.
+    fn bears_abilities_granted_by(name: &str, granting: &str) -> serde_json::Value {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let definition =
+            ironsmith_registry_test::compile_to_runtime_definition(name, granting, false)
+                .expect("granting card should compile");
+        game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let bears_id = game.create_object_from_card(&test_bears_card(), alice, Zone::Battlefield);
+        let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &HashSet::new());
+        let bears = battlefield
+            .iter()
+            .find(|permanent| permanent.id == bears_id.0)
+            .expect("expected Bears in battlefield snapshot");
+        serde_json::to_value(bears).expect("snapshot should serialize")["abilities"].clone()
+    }
+
+    #[test]
+    fn battlefield_granted_quoted_abilities_read_as_the_granting_cards_quotation() {
+        // Effect-granted abilities have no printed line of their own; without
+        // the granting card's quotation they read as the runtime summarizer's
+        // "unless pays sacrifice target".
+        assert_eq!(
+            bears_abilities_granted_by(
+                "Vile Consumption",
+                "Type: Enchantment\nAll creatures have \"At the beginning of your upkeep, sacrifice this creature unless you pay 1 life.\"",
+            ),
+            serde_json::json!([
+                "At the beginning of your upkeep, sacrifice this creature unless you pay 1 life."
+            ])
+        );
+        assert_eq!(
+            bears_abilities_granted_by(
+                "Cryptolith Rite",
+                "Type: Enchantment\nCreatures you control have \"{T}: Add one mana of any color.\"",
+            ),
+            serde_json::json!(["{T}: Add one mana of any color."])
+        );
+        assert_eq!(
+            bears_abilities_granted_by(
+                "Grant Probe",
+                "Type: Enchantment\nCreatures you control have \"{1}, {T}: This creature deals 1 damage to any target.\"",
+            ),
+            serde_json::json!(["{1}, {T}: This creature deals 1 damage to any target."])
+        );
+    }
+
+    #[test]
+    fn battlefield_grants_quoting_several_abilities_pair_each_with_its_own_quote() {
+        assert_eq!(
+            bears_abilities_granted_by(
+                "Grant Probe",
+                "Type: Enchantment\nCreatures you control have \"{T}: Draw a card.\" and \"{2}: This creature gets +1/+1 until end of turn.\"",
+            ),
+            serde_json::json!([
+                "{T}: Draw a card.",
+                "{2}: This creature gets +1/+1 until end of turn."
+            ])
+        );
+    }
+
+    #[test]
+    fn battlefield_equipment_granted_abilities_read_as_the_equipments_quotations() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let wand = ironsmith_registry_test::compile_to_runtime_definition(
+            "Diviner's Wand",
+            "Type: Artifact — Equipment\nEquipped creature has \"Whenever you draw a card, this creature gets +1/+1 and gains flying until end of turn\" and \"{4}: Draw a card.\"\nEquip {3}",
+            false,
+        )
+        .expect("Diviner's Wand should compile");
+        let equipment = game.create_object_from_definition(&wand, alice, Zone::Battlefield);
+        let bears_id = game.create_object_from_card(&test_bears_card(), alice, Zone::Battlefield);
+        game.object_mut(equipment).unwrap().attached_to = Some(AttachmentTarget::Object(bears_id));
+        game.object_mut(bears_id).unwrap().attachments.push(equipment);
+
+        let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &HashSet::new());
+        let bears = battlefield
+            .iter()
+            .find(|permanent| permanent.id == bears_id.0)
+            .expect("expected Bears in battlefield snapshot");
+        let abilities = serde_json::to_value(bears).expect("snapshot should serialize")["abilities"].clone();
+        assert_eq!(
+            abilities,
+            serde_json::json!([
+                "Whenever you draw a card, this creature gets +1/+1 and gains flying until end of turn.",
+                "{4}: Draw a card."
+            ])
+        );
+    }
+
+    #[test]
+    fn battlefield_granted_keyword_does_not_borrow_a_sibling_quotation() {
+        assert_eq!(
+            bears_abilities_granted_by(
+                "Grant Probe",
+                "Type: Enchantment\nCreatures you control have flying and \"{T}: Draw a card.\"",
+            ),
+            serde_json::json!(["Flying", "{T}: Draw a card."])
+        );
+    }
+
     fn equipment_shaped_definition() -> ironsmith::cards::CardDefinition {
         // Three statics compiled out of one printed sentence plus an activated
         // ability on a line of its own: more abilities than printed lines.

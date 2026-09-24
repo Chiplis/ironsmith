@@ -239,6 +239,7 @@ pub(super) fn cast_from_among(
                 additional_mana_cost: None,
                 cost_reduction: None,
                 mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
+                alternative_payment: None,
             }),
         },
     ));

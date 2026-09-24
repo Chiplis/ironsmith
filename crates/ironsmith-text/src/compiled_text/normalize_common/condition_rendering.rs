@@ -2525,6 +2525,16 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     return "that card has the chosen name".into();
                 }
             }
+            if filter.attacked_this_turn {
+                let mut plain = filter.clone();
+                plain.attacked_this_turn = false;
+                if plain.zone == Some(Zone::Battlefield) {
+                    plain.zone = None;
+                }
+                if plain == ObjectFilter::default() {
+                    return "it attacked this turn".into();
+                }
+            }
             if filter.attacking_player_only
                 && filter.attacking_player_or_planeswalker_controlled_by == Some(PlayerFilter::Opponent)
             {

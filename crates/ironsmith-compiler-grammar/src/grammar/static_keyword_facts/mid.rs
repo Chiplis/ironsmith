@@ -442,6 +442,25 @@ pub fn parse_known_spell_cost_condition(
             return Some(KnownSpellCostConditionFact::NoCardsInHandMatching(filter));
         }
     }
+    // "you have no land cards in hand"
+    if let Some(rest) = primitives::parse_word_sequence_prefix(&words, &["you", "have", "no"])
+        && (has_suffix(&words, &["in", "hand"]) || has_suffix(&words, &["in", "your", "hand"]))
+        && let Some(in_idx) = words.iter().rposition(|word| *word == "in")
+    {
+        let start_word = words.len().checked_sub(rest.len())?;
+        let start_token = view.map_word_to_token_boundary(start_word)?;
+        let end_token = view.map_word_to_token_boundary(in_idx)?;
+        if start_token < end_token
+            && let Ok(mut filter) = parse_object_filter_with_grammar_entrypoint_lexed(
+                trim_lexed_commas(tokens.get(start_token..end_token)?),
+                false,
+            )
+        {
+            filter.zone = Some(crate::zone::Zone::Hand);
+            filter.owner = Some(crate::target::PlayerFilter::You);
+            return Some(KnownSpellCostConditionFact::NoCardsInHandMatching(filter));
+        }
+    }
     if let Some(name) = parse_only_creature_cards_in_hand_named(&words) {
         return Some(KnownSpellCostConditionFact::OnlyCreatureCardsInHandNamed(
             name,

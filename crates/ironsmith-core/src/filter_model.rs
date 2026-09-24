@@ -6407,6 +6407,10 @@ fn describe_simple_any_of_keyword_clause(
 }
 
 fn describe_distinct_source_threshold(sources: &ObjectFilter, minimum: u32) -> String {
+    // "by this creature": the source itself is the only possible source.
+    if sources.source && minimum <= 1 {
+        return sources.description();
+    }
     let sources = if let [subtype] = sources.subtypes.as_slice() {
         let mut remainder = sources.clone();
         remainder.subtypes.clear();

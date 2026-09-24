@@ -1398,15 +1398,21 @@ impl CardDefinitionBuilder {
         })
     }
 
-    pub fn casualty(self, power: u32) -> Self {
+    /// Casualty N (CR 702.153a): the sacrifice is an optional additional cost
+    /// paid while casting; the cast trigger only copies the spell when it was
+    /// paid.
+    pub fn casualty(mut self, power: u32) -> Self {
         let mut creature_filter = crate::target::ObjectFilter::creature().you_control();
         creature_filter.power = Some(crate::filter::Comparison::GreaterThanOrEqual(power as i32));
 
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::you_cast_this_spell(),
-                vec![crate::effect::Effect::may(vec![
-                    crate::effect::Effect::sacrifice(creature_filter, 1),
+        self.optional_costs.push(OptionalCost::custom(
+            "Casualty",
+            TotalCost::from_cost(crate::costs::Cost::sacrifice(creature_filter)),
+        ));
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::you_cast_this_spell(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
                     crate::effect::Effect::with_id(
                         0,
                         crate::effect::Effect::new(crate::effects::CopySpellEffect::single(
@@ -1417,10 +1423,13 @@ impl CardDefinitionBuilder {
                         crate::effect::EffectId(0),
                         crate::target::PlayerFilter::You,
                     ),
-                ])],
-            )
-            .in_zones(vec![crate::zone::Zone::Stack]),
-        )
+                ]),
+                choices: vec![],
+                intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel("Casualty".into())),
+                presentation_label: None,
+            }),
+            functional_zones: vec![crate::zone::Zone::Stack],
+        })
     }
 
     pub fn variable_casualty_planeswalker_copy(self) -> Self {

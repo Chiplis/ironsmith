@@ -76,7 +76,7 @@ pub const PUBLIC_REVEALED_TAG: &str = "__public_revealed";
 pub const REVEALED_THIS_WAY_TAG: &str = crate::tag::REVEALED_THIS_WAY_TAG;
 
 // Re-export the traits, modal spec, and cost validation error
-pub use context::{ExecutionError, ResolvedTarget, TargetError, rebase_target_scope};
+pub use context::{DoThisLimit, ExecutionError, ResolvedTarget, TargetError, rebase_target_scope};
 pub use executor_trait::{
     CostExecutableEffect, CostValidationError, DeferredPlayerActionProposal,
     EffectExecutionCategory, EffectExecutor, ModalEffectSpec, ModalSpec,

@@ -4349,6 +4349,10 @@ impl StaticAbility {
         Self::new(misc::PreventAllDamageToYou)
     }
 
+    pub fn opponents_must_target_flagbearers() -> Self {
+        Self::new(misc::OpponentsMustTargetFlagbearers)
+    }
+
     pub fn search_limited_to_top_cards(
         searcher: crate::target::PlayerFilter,
         count: u32,

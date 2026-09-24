@@ -265,9 +265,6 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
         opacity: fading ? 0 : 1,
         transition: `${fading ? `opacity ${LOOK_FADE_MS}ms linear` : "opacity 120ms ease"}, transform ${ZONE_TARGET_GROW_MS}ms ease`,
       }}>
-      {zone === "graveyard" && samePlayerId(player.id ?? player.index, state?.perspective) && (
-        <div className="graveyard-chat-dock"><LobbyChat /></div>
-      )}
       <span className="zone-pile-label">{ui(label)} <strong>{count}</strong></span>
       <PopoverTrigger asChild>
         <button ref={triggerRef} type="button" className="zone-pile" data-zone-pile={zone}
@@ -298,6 +295,9 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
           label={ui("Deselect {0}", { 0: chosenInPile.name || "card" })}
         />
       ) : null}
+      {zone === "exile" && samePlayerId(player.id ?? player.index, state?.perspective) && (
+        <div className="exile-chat-dock"><LobbyChat /></div>
+      )}
       </div>
       <PopoverContent ref={menuRef} className={`zone-pile-menu${zone === "look" ? " zone-pile-menu--look" : ""}`} side={zone === "look" ? "right" : "left"} align="start" sideOffset={-(stripBounds.cardWidth + 6)} alignOffset={-6} avoidCollisions={false}
         data-local-zone-strip={samePlayerId(player.id ?? player.index, state?.perspective) ? "true" : undefined}
@@ -393,9 +393,18 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
       if (board) {
         board.style.setProperty("--battlefield-objects-top", `${Math.max(0, top - boardBounds.top)}px`);
         const lookTop = Math.max(0, top - boardBounds.top);
+        // The local piles column hangs from Look's top edge, so Graveyard
+        // lines up with Look. Place against the container's padding box and
+        // derive Look's offset from where the column is going, not where the
+        // previous layout left it.
+        const pilesTop = Math.max(0, boardBounds.top + lookTop - bounds.top - container.clientTop);
+        const nextPilesTop = bounds.top + container.clientTop + pilesTop;
+        piles.style.setProperty("--zone-piles-top", `${pilesTop}px`);
+        // Chat hangs 6px under Exile; give it whatever the board has left.
+        piles.style.setProperty("--exile-chat-room", `${Math.max(0, boardBounds.bottom - nextPilesTop - pilesBounds.height - 12)}px`);
         // Let the stack use the full height from Look's top edge. The zone
         // piles layer above the stack, so an expanded Look still covers it.
-        piles.style.setProperty("--look-area-top", `${boardBounds.top + lookTop - pilesBounds.top}px`);
+        piles.style.setProperty("--look-area-top", `${boardBounds.top + lookTop - nextPilesTop}px`);
         piles.style.setProperty("--look-area-left", `${boardBounds.left + 70 - pilesBounds.left}px`);
         board.style.setProperty("--stack-area-top", `${lookTop}px`);
       }

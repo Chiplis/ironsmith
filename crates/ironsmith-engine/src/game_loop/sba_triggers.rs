@@ -867,6 +867,13 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
     }
     if let Some(trigger_identity) = entry.trigger_identity {
         ctx = ctx.with_trigger_identity(trigger_identity);
+        ctx.do_this_limit = entry.intervening_if.as_ref().and_then(|condition| {
+            crate::effects::DoThisLimit::from_condition(
+                condition,
+                entry.object_id,
+                trigger_identity,
+            )
+        });
     }
     if let Some(source_snapshot) = entry.source_snapshot.clone() {
         ctx = ctx.with_source_snapshot(source_snapshot);
@@ -2427,6 +2434,84 @@ mod tests {
             ],
             "both controllers' ordinary triggers must stack before the active player's trigger-on-trigger entries"
         );
+    }
+
+    #[test]
+    fn do_this_only_once_each_turn_counts_performed_choices_not_triggers() {
+        use std::collections::VecDeque;
+
+        /// Answers "may" prompts from a script and counts how many it saw.
+        struct ScriptedMay {
+            answers: VecDeque<bool>,
+            prompts: usize,
+        }
+        impl crate::decision::DecisionMaker for ScriptedMay {
+            fn decide_boolean(
+                &mut self,
+                _game: &GameState,
+                _ctx: &crate::decisions::context::BooleanContext,
+            ) -> bool {
+                self.prompts += 1;
+                self.answers.pop_front().unwrap_or(false)
+            }
+        }
+
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let mut limited = crate::ability::Ability::triggered(
+            crate::triggers::Trigger::beginning_of_upkeep(crate::target::PlayerFilter::You),
+            vec![Effect::may(vec![Effect::gain_life(1)])],
+        );
+        let crate::ability::AbilityKind::Triggered(triggered) = &mut limited.kind else {
+            unreachable!();
+        };
+        triggered.intervening_if = Some(crate::ConditionExpr::DoThisMaxTimesEachTurn(1));
+        let card = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::from_raw(91_120),
+            "Once Each Turn Watcher",
+        )
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(limited)
+        .build();
+        game.create_object_from_definition(&card, alice, Zone::Battlefield);
+        let event = TriggerEvent::new_with_provenance(
+            crate::events::phase::BeginningOfUpkeepEvent::new(alice),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        let mut dm = ScriptedMay {
+            answers: VecDeque::from([false, true, true]),
+            prompts: 0,
+        };
+        let life = |game: &GameState| game.player(alice).expect("alice").life;
+        let mut expected = Vec::new();
+        for _ in 0..3 {
+            let mut trigger_queue = TriggerQueue::new();
+            for trigger in crate::triggers::check_triggers(&game, &event) {
+                trigger_queue.add(trigger);
+            }
+            put_triggers_on_stack(&mut game, &mut trigger_queue)
+                .expect("the limited ability still triggers");
+            assert_eq!(game.stack.len(), 1, "the limit never stops it triggering");
+            crate::game_loop::resolve_stack_entry_with(&mut game, &mut dm)
+                .expect("the limited ability resolves");
+            expected.push((dm.prompts, life(&game)));
+        }
+        assert_eq!(
+            expected,
+            vec![(1, 20), (2, 21), (2, 21)],
+            "declining leaves the choice available; once performed it is no longer offered"
+        );
+
+        game.turn_store.turn_history.clear_for_new_turn();
+        dm.answers = VecDeque::from([true]);
+        let mut trigger_queue = TriggerQueue::new();
+        for trigger in crate::triggers::check_triggers(&game, &event) {
+            trigger_queue.add(trigger);
+        }
+        put_triggers_on_stack(&mut game, &mut trigger_queue).expect("next turn trigger");
+        crate::game_loop::resolve_stack_entry_with(&mut game, &mut dm).expect("resolves");
+        assert_eq!((dm.prompts, life(&game)), (3, 22), "the limit resets each turn");
     }
 
     #[test]

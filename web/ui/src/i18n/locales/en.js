@@ -1387,6 +1387,7 @@ export const ui = {
   "Waiting for local action to settle before resync": "Waiting for local action to settle before resync",
   "Waiting for peer resync": "Waiting for peer resync",
   "Waiting for peer vote": "Waiting for peer vote",
+  "Resolve all": "Resolve all",
   "Waiting for peers": "Waiting for peers",
   "Waiting for peers to finish resyncing": "Waiting for peers to finish resyncing",
   "Waiting for peers to verify action payload": "Waiting for peers to verify action payload",

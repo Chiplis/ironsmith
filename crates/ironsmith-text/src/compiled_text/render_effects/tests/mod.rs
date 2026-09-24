@@ -20,6 +20,7 @@ mod comma_then_surfaces;
 mod conditional_entry_counter_surfaces;
 mod conditional_fight_surfaces;
 mod conditional_looked_entry_counter_surfaces;
+mod connive_surfaces;
 mod consult_battlefield_remainder_surfaces;
 mod consult_conditional_destination;
 mod consult_revealed_partition;

@@ -59,6 +59,9 @@ impl CauseFilterRuntimeExt for CauseFilter {
                 ControllerFilter::ContextController => {
                     cause.source_controller == Some(context_controller)
                 }
+                ControllerFilter::ContextOpponent => cause
+                    .source_controller
+                    .is_some_and(|controller| game.are_opponents(context_controller, controller)),
                 ControllerFilter::Any => true,
             };
             if !matches_controller {

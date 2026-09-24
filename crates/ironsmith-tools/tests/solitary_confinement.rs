@@ -4,7 +4,7 @@
 use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::decision::{DecisionMaker, SelectFirstDecisionMaker};
 use ironsmith::decisions::context::BooleanContext;
-use ironsmith::game_state::{Phase, Step, Target};
+use ironsmith::game_state::{Phase, Step};
 use ironsmith::ids::CardId;
 use ironsmith::target::{ChooseSpec, PlayerFilter};
 use ironsmith::triggers::TriggerQueue;
@@ -86,22 +86,16 @@ fn damage_to_you_is_prevented_but_not_to_your_creatures() {
 
 #[test]
 fn you_have_shroud() {
-    let (game, _) = setup();
+    let (mut game, confinement) = setup();
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-    let bob_card = CardDefinitionBuilder::new(CardId::new(), "Bob's Spell")
-        .card_types(vec![CardType::Sorcery])
-        .build();
-    let mut game = game;
-    let source = game.create_object_from_definition(&bob_card, bob, Zone::Hand);
-    let legal = ironsmith::game_loop::compute_legal_targets(
-        &game,
-        &ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Any)),
-        bob,
-        Some(source),
-    );
-    assert!(!legal.contains(&Target::Player(alice)), "Alice can't be targeted");
-    assert!(legal.contains(&Target::Player(bob)));
+    let bob_source = game.create_object_from_definition(&card("Bob Source", CardType::Artifact), bob, Zone::Battlefield);
+    let alice_source = game.create_object_from_definition(&card("Alice Source", CardType::Artifact), alice, Zone::Battlefield);
+    game.refresh_continuous_state();
+    assert!(!game.can_target_player_from_source(alice, bob_source), "opponents can't target Alice");
+    assert!(!game.can_target_player_from_source(alice, alice_source), "nor can Alice's own sources");
+    assert!(game.can_target_player_from_source(bob, bob_source), "Bob has no shroud");
+    let _ = confinement;
 }
 
 struct Discard(bool);

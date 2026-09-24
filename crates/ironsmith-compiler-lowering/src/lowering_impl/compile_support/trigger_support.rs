@@ -514,10 +514,12 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             player,
             object,
             source_controller,
+            source_kind,
         } => Trigger::player_or_object_becomes_targeted_by_source_controller(
             player,
             object,
             source_controller,
+            source_kind,
         ),
         TriggerSpec::ThisDealsDamage => Trigger::this_deals_damage(),
         TriggerSpec::ThisDealsDamageToPlayer { player, amount } => {
@@ -838,11 +840,13 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             filter,
             from,
             one_or_more,
+            cause_filter,
         } => {
             let trigger = crate::triggers::zone_changes::ZoneChangeTrigger::new()
                 .from(from)
                 .to(crate::zone::Zone::Graveyard)
                 .filter(filter)
+                .cause_filter(cause_filter)
                 .graveyard_surface(crate::triggers::GraveyardTriggerSurface::PutIntoGraveyard);
             if one_or_more {
                 Trigger::new(trigger.count(crate::triggers::CountMode::OneOrMore))
@@ -1533,6 +1537,7 @@ mod tests {
                 filter: crate::target::ObjectFilter::creature(),
                 from: crate::zone::Zone::Battlefield,
                 one_or_more: false,
+                cause_filter: None,
             }),
             crate::triggers::GraveyardTriggerSurface::PutIntoGraveyard
         );

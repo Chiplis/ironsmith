@@ -646,6 +646,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     },
     /// "Prevent all damage that would be dealt to you."
     PreventAllDamageToYou,
+    /// "While an opponent is choosing targets as part of casting a spell they
+    /// control or activating an ability they control, that player must choose
+    /// at least one Flagbearer on the battlefield if able."
+    OpponentsMustTargetFlagbearers,
     FirstEquipCostAlternative(String),
     ControlAttachedPermanent(String),
     SetColors {
@@ -1917,6 +1921,9 @@ where
                 display,
             },
             StaticAbilityPayload::PreventAllDamageToYou => StaticAbilityPayload::PreventAllDamageToYou,
+            StaticAbilityPayload::OpponentsMustTargetFlagbearers => {
+                StaticAbilityPayload::OpponentsMustTargetFlagbearers
+            }
             StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep { filter, display } => {
                 StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep { filter, display }
             }
@@ -4407,6 +4414,13 @@ impl<
                 source_filter,
                 display,
             },
+        }
+    }
+    pub fn opponents_must_target_flagbearers() -> Self {
+        Self {
+            id: Some(StaticAbilityId::OpponentsMustTargetFlagbearers),
+            label: "While an opponent is choosing targets as part of casting a spell they control or activating an ability they control, that player must choose at least one Flagbearer on the battlefield if able".to_string(),
+            payload: StaticAbilityPayload::OpponentsMustTargetFlagbearers,
         }
     }
     pub fn prevent_all_damage_to_you() -> Self {

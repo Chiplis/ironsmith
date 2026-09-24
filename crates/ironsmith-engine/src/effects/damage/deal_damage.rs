@@ -335,6 +335,82 @@ fn object_can_be_dealt_damage(object: &crate::object::Object) -> bool {
         || object.has_card_type(CardType::Battle)
 }
 
+trait ExcessDamageRedirectExt {
+    fn deal_with_excess_redirect(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        object_id: crate::ids::ObjectId,
+        amount: u32,
+    ) -> Result<Option<EffectOutcome>, ExecutionError>;
+}
+
+impl ExcessDamageRedirectExt for DealDamageEffect {
+    /// "Excess damage is dealt to that creature's controller instead": the
+    /// creature is dealt only lethal damage and the rest goes to its
+    /// controller (CR 120.4a).
+    fn deal_with_excess_redirect(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        object_id: crate::ids::ObjectId,
+        amount: u32,
+    ) -> Result<Option<EffectOutcome>, ExecutionError> {
+        let Some(redirect) = &self.excess_to_controller else {
+            return Ok(None);
+        };
+        if let Some(condition) = &redirect.condition
+            && !crate::condition_eval::evaluate_condition_resolution(game, condition, ctx)?
+        {
+            return Ok(None);
+        }
+        let Some(object) = game.object(object_id) else {
+            return Ok(None);
+        };
+        if !object.has_card_type(CardType::Creature) {
+            return Ok(None);
+        }
+        let controller = game.controller_of(object);
+        let keywords = crate::rules::damage::source_damage_keywords(
+            game,
+            ctx.source,
+            ctx.source_snapshot.as_ref(),
+        );
+        let excess = excess_damage_to_object(game, object_id, amount, keywords).min(amount);
+        if excess == 0 {
+            return Ok(None);
+        }
+        let to_creature = apply_processed_damage_outcome_opts(
+            game,
+            ctx.source,
+            ctx.source_snapshot.as_ref(),
+            DamageTarget::Object(object_id),
+            amount - excess,
+            self.source_is_combat,
+            self.unpreventable,
+            ctx.provenance,
+            ctx.cause.clone(),
+            &mut *ctx.decision_maker,
+        );
+        let to_controller = apply_processed_damage_outcome_opts(
+            game,
+            ctx.source,
+            ctx.source_snapshot.as_ref(),
+            DamageTarget::Player(controller),
+            excess,
+            self.source_is_combat,
+            self.unpreventable,
+            ctx.provenance,
+            ctx.cause.clone(),
+            &mut *ctx.decision_maker,
+        );
+        Ok(Some(EffectOutcome::aggregate_summing_counts([
+            to_creature,
+            to_controller,
+        ])))
+    }
+}
+
 impl EffectExecutor for DealDamageEffect {
     fn supports_simultaneous_player_action(&self) -> bool {
         true
@@ -755,6 +831,9 @@ impl EffectExecutor for DealDamageEffect {
                 })
             })
         {
+            if let Some(outcome) = self.deal_with_excess_redirect(game, ctx, object_id, amount)? {
+                return Ok(outcome);
+            }
             return Ok(apply_processed_damage_outcome_opts(
                 game,
                 ctx.source,

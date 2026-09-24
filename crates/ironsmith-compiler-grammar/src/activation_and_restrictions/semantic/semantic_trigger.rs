@@ -1537,6 +1537,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                         filter: ObjectFilter::source(),
                         from: Zone::Battlefield,
                         one_or_more: false,
+                        cause_filter: None,
                     }),
                 ));
             }
@@ -1909,6 +1910,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 filter: filter.clone(),
                 from: Zone::Battlefield,
                 one_or_more,
+                cause_filter: None,
             }),
             Box::new(TriggerSpec::PutIntoExileFromZones {
                 filter,
@@ -2116,6 +2118,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     // `put into your graveyard` family. Claim them first so the trailing
     // `from your library/battlefield` cannot be swallowed as part of the
     // object subject and downgraded to an any-origin trigger.
+    if let Some(trigger) = parse_opponent_caused_put_into_your_graveyard_from_battlefield(tokens)? {
+        return Ok(trigger);
+    }
     if let Some(trigger) = parse_put_into_your_graveyard_from_exact_zone(
         tokens,
         &words,
@@ -2272,6 +2277,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 filter,
                 from: Zone::Battlefield,
                 one_or_more,
+                cause_filter: None,
             });
         }
     }
@@ -2303,6 +2309,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             filter,
             from: Zone::Library,
             one_or_more,
+            cause_filter: None,
         });
     }
 
@@ -2323,6 +2330,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 filter,
                 from: Zone::Battlefield,
                 one_or_more,
+                cause_filter: None,
             });
         }
         let mut filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
@@ -2344,6 +2352,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             filter,
             from: Zone::Battlefield,
             one_or_more,
+            cause_filter: None,
         });
     }
 
@@ -2367,11 +2376,13 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     filter: source_filter,
                     from: Zone::Battlefield,
                     one_or_more,
+                    cause_filter: None,
                 }),
                 Box::new(TriggerSpec::PutIntoGraveyardFromZone {
                     filter: other_filter,
                     from: Zone::Battlefield,
                     one_or_more,
+                    cause_filter: None,
                 }),
             ));
         }
@@ -2380,6 +2391,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 filter: ObjectFilter::source(),
                 from: Zone::Battlefield,
                 one_or_more,
+                cause_filter: None,
             });
         }
         let mut filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
@@ -2398,6 +2410,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             filter,
             from: Zone::Battlefield,
             one_or_more,
+            cause_filter: None,
         });
     }
 
@@ -2417,6 +2430,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 filter,
                 from: Zone::Battlefield,
                 one_or_more,
+                cause_filter: None,
             });
         }
         let mut filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
@@ -2432,6 +2446,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             filter,
             from: Zone::Battlefield,
             one_or_more,
+            cause_filter: None,
         });
     }
 
@@ -2866,6 +2881,24 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
+    // "Whenever a creature you control connives" (CR 701.50): the conniving
+    // permanent is the keyword action's source object.
+    if let Some(connive_word_idx) =
+        trigger_keyword_action_word(&words, crate::events::KeywordActionKind::Connive)
+    {
+        let subject_tokens = &tokens[..connive_word_idx];
+        if let Some(filter) = parse_trigger_subject_filter_lexed(subject_tokens)?
+            && words[connive_word_idx + 1..].is_empty()
+        {
+            return Ok(TriggerSpec::KeywordAction {
+                action: crate::events::KeywordActionKind::Connive,
+                player: PlayerFilter::Any,
+                source_filter: Some(filter),
+                during_your_turn: false,
+            });
+        }
+    }
+
     if let Some(put_token_idx) = trigger_atom_token(tokens, TriggerClauseAtom::Put) {
         let subject_words =
             ActivationRestrictionCompatWords::new(&tokens[..put_token_idx]).to_word_refs();
@@ -2971,6 +3004,27 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         let subject_tokens = trigger_word_token_start(tokens, becomes_idx)
             .map(|idx| &tokens[..idx])
             .unwrap_or_default();
+        // "Whenever a player or permanent becomes the target of an ability
+        // you control": a player target or a matching object target.
+        if subject_words.starts_with(&["a", "player", "or"])
+            && let Some((source_kind, source_controller)) =
+                parse_targeting_source_controller_tail(&words[becomes_idx + 4..])
+            && let Some(object_start) = trigger_word_token_start(tokens, 3)
+        {
+            let object_tokens = &subject_tokens[object_start.min(subject_tokens.len())..];
+            let object = parse_object_filter_lexed(object_tokens, false).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported object in player-or-object becomes-targeted trigger (clause: '{}')",
+                    words.join(" ")
+                ))
+            })?;
+            return Ok(TriggerSpec::PlayerOrObjectBecomesTargetedBySourceController {
+                player: PlayerFilter::Any,
+                object,
+                source_controller,
+                source_kind,
+            });
+        }
         let subject_filter = parse_trigger_subject_filter_lexed(subject_tokens)?;
         let subject_is_source =
             subject_words.is_empty() || is_source_reference_words(subject_words);
@@ -3034,6 +3088,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                         player: subject.player,
                         object: subject.filter,
                         source_controller,
+                        source_kind: ironsmith_core::filter_model::StackObjectKind::SpellOrAbility,
                     },
                 );
             }

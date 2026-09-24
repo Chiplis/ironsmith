@@ -1546,6 +1546,9 @@ pub struct CantEffectTracker {
     /// Players whose damage dealt to them does not cause life loss.
     pub damage_cant_cause_life_loss: HashSet<PlayerId>,
 
+    /// Players whose life total damage can't reduce below 1 (Worship).
+    pub damage_cant_reduce_life_below_one: HashSet<PlayerId>,
+
     /// Players who can't lose the game.
     /// Example: Platinum Angel
     pub cant_lose_game: HashSet<PlayerId>,
@@ -1952,6 +1955,8 @@ impl CantEffectTracker {
         self.cant_lose_life.extend(other.cant_lose_life);
         self.damage_cant_cause_life_loss
             .extend(other.damage_cant_cause_life_loss);
+        self.damage_cant_reduce_life_below_one
+            .extend(other.damage_cant_reduce_life_below_one);
         self.cant_lose_game.extend(other.cant_lose_game);
         self.cant_win_game.extend(other.cant_win_game);
         self.cant_become_monarch.extend(other.cant_become_monarch);
@@ -2013,6 +2018,7 @@ impl CantEffectTracker {
         self.life_total_cant_change.clear();
         self.cant_lose_life.clear();
         self.damage_cant_cause_life_loss.clear();
+        self.damage_cant_reduce_life_below_one.clear();
         self.cant_lose_game.clear();
         self.cant_win_game.clear();
         self.cant_become_monarch.clear();
@@ -5802,6 +5808,14 @@ impl GameState {
             .unwrap_or_else(|| vec![player])
             .into_iter()
             .all(|member| self.effect_store.cant_effects.can_lose_life(member))
+    }
+
+    /// Is damage dealt to the player unable to reduce their life total below 1?
+    pub fn damage_cant_reduce_life_below_one(&self, player: PlayerId) -> bool {
+        self.effect_store
+            .cant_effects
+            .damage_cant_reduce_life_below_one
+            .contains(&player)
     }
 
     /// Can damage dealt to the player cause life loss?

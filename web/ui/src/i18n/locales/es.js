@@ -1562,6 +1562,7 @@ export const ui = {
   "Waiting for local action to settle before resync": "Esperando a que termine la acción local antes de resincronizar",
   "Waiting for peer resync": "Esperando la resincronización de otro jugador",
   "Waiting for peer vote": "Esperando un voto de otro jugador",
+  "Resolve all": "Resolver todo",
   "Waiting for peers": "Esperando a los demás jugadores",
   "Waiting for peers to finish resyncing": "Esperando a que los demás jugadores terminen de resincronizarse",
   "Waiting for peers to verify action payload": "Esperando a que los demás jugadores verifiquen los datos de la acción",

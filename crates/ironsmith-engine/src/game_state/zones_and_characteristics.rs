@@ -4189,6 +4189,7 @@ impl GameState {
             // Removals can strip cant-relevant statics granted by other
             // effects; rerun the scan rather than reason about ordering.
             | Modification::RemoveAbility(_)
+            | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana => true,

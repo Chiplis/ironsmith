@@ -17,6 +17,34 @@ impl EffectExecutor for GrantNextSpellCostReductionEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let players =
             resolve_player_filter_to_list(game, &self.player, &ctx.filter_context(game), ctx)?;
+        if self.without_paying_mana_cost {
+            for player in players {
+                let mut filter = self.filter.clone();
+                lock_target_player_filters_for_player(&mut filter, player);
+                // The permission is offered on the card before it is cast;
+                // the spell-only facets are checked when the cast consumes it.
+                filter.zone = None;
+                filter.stack_kind = None;
+                filter.cast_by = None;
+                game.effect_store
+                    .grant_registry
+                    .grant_alternative_cast_to_next_matching_spell(
+                        filter,
+                        crate::zone::Zone::Hand,
+                        player,
+                        crate::alternative_cast::AlternativeCastingMethod::alternative_cost(
+                            "Without paying its mana cost",
+                            None,
+                            vec![],
+                        ),
+                        crate::grant_registry::GrantSource::Effect {
+                            source_id: ctx.source,
+                            expires_end_of_turn: game.turn.turn_number,
+                        },
+                    );
+            }
+            return Ok(EffectOutcome::resolved());
+        }
         if self.generic_reduction.is_some() {
             let amount = self
                 .generic_reduction

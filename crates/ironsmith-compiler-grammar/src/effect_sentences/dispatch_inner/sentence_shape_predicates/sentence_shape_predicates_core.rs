@@ -386,7 +386,7 @@ pub(super) fn parse_effect_sentence_with_where_x_lexed(
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { target, .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves { target, .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { target, .. })
-            | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice { target })
+            | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice { target, .. })
             | SubjectVerbActionAst::TargetOnly { target, .. }
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { target, .. })

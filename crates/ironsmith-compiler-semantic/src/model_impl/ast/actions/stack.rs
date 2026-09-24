@@ -64,6 +64,7 @@ pub enum StackActionAst {
         additional_mana_cost: Option<ManaCost>,
         cost_reduction: Option<ManaCost>,
         mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
+        alternative_payment: Option<ironsmith_core::CastTaggedAlternativePayment>,
     },
     RetargetStackObject {
         target: TargetAst,
@@ -83,6 +84,11 @@ pub enum StackActionAst {
     ReduceNextSpellCostThisTurn {
         filter: ObjectFilter,
         reduction: ManaCost,
+    },
+    /// "The next <filter> spell you cast this turn can be cast without paying
+    /// its mana cost."
+    FreeCastNextSpellThisTurn {
+        filter: ObjectFilter,
     },
     ReduceMatchingSpellCostThisTurn {
         filter: ObjectFilter,

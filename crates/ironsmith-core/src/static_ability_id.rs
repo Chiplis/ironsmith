@@ -245,6 +245,7 @@ pub enum StaticAbilityId {
     UntapStepLimit,
     SearchLimitedToTopCards,
     PreventAllDamageToYou,
+    OpponentsMustTargetFlagbearers,
     MayChooseNotToUntapDuringUntapStep,
     ChooseCreatureTypeAsEnters,
     EntersTapped,
@@ -585,6 +586,7 @@ impl StaticAbilityId {
             | UntapStepLimit
             | SearchLimitedToTopCards
             | PreventAllDamageToYou
+            | OpponentsMustTargetFlagbearers
             | MayChooseNotToUntapDuringUntapStep
             | ChooseCreatureTypeAsEnters
             | EntersTapped

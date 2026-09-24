@@ -4034,6 +4034,20 @@ pub struct CastTaggedEffect {
     pub additional_mana_cost: Option<ManaCost>,
     pub cost_reduction: Option<ManaCost>,
     pub mana_spend_mode: crate::value_model::ManaSpendMode,
+    /// A non-mana payment made rather than paying the spell's mana cost
+    /// ("by paying an amount of {E} equal to its mana value rather than
+    /// paying its mana cost").
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub alternative_payment: Option<CastTaggedAlternativePayment>,
+}
+
+/// A payment the resolving instruction substitutes for the cast spell's mana
+/// cost.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum CastTaggedAlternativePayment {
+    /// Pay energy equal to the spell's mana value.
+    EnergyEqualToManaValue,
 }
 
 impl PartialEq for CastTaggedEffect {
@@ -4046,6 +4060,7 @@ impl PartialEq for CastTaggedEffect {
             && self.additional_mana_cost == other.additional_mana_cost
             && self.cost_reduction == other.cost_reduction
             && self.mana_spend_mode == other.mana_spend_mode
+            && self.alternative_payment == other.alternative_payment
     }
 }
 
@@ -4062,7 +4077,13 @@ impl CastTaggedEffect {
             additional_mana_cost: None,
             cost_reduction: None,
             mana_spend_mode: crate::value_model::ManaSpendMode::Normal,
+            alternative_payment: None,
         }
+    }
+
+    pub fn alternative_payment(mut self, payment: CastTaggedAlternativePayment) -> Self {
+        self.alternative_payment = Some(payment);
+        self
     }
 
     pub fn allow_land(mut self) -> Self {

@@ -197,11 +197,77 @@ impl EffectExecutor for ConniveEffect {
                 let controller = instruction.controller;
                 let target_id = instruction.object_id;
 
+                // CR 614: replacement effects such as Leader, Super-Genius's
+                // ("instead you draw a card, then that creature connives") see
+                // the would-connive event first. The replacement suppresses
+                // itself, so the connive it performs is not replaced again.
+                let would_event = crate::events::Event::new_with_provenance(
+                    KeywordActionEvent::new(
+                        KeywordActionKind::Connive,
+                        controller,
+                        target_id,
+                        count as u32,
+                    )
+                    .with_snapshot(Some(instruction.snapshot.clone())),
+                    ctx.provenance,
+                );
+                let applied_effects = ctx.replacement.suppressed_replacement_effects.clone();
+                let applied_effect_keys =
+                    ctx.replacement.suppressed_replacement_effect_keys.clone();
+                if applied_effects.is_empty() && applied_effect_keys.is_empty() {
+                    game.update_replacement_effects();
+                }
+                match crate::events::processing::process_trait_event_with_dm_and_applied_effects(
+                    game,
+                    would_event,
+                    ctx.decision_maker,
+                    &applied_effects,
+                    &applied_effect_keys,
+                ) {
+                    crate::events::processing::TraitEventResult::Replaced {
+                        effects, effect_id, ..
+                    } => {
+                        let replacement_outcome = crate::effects::composition::mechanic_actions::execute_keyword_action_replacement_effects(
+                            game,
+                            ctx,
+                            effects,
+                            effect_id,
+                            Some(instruction.snapshot.clone()),
+                        )?;
+                        for event in &replacement_outcome.events {
+                            if let Some(keyword) = event.downcast::<KeywordActionEvent>()
+                                && keyword.action == KeywordActionKind::Connive
+                            {
+                                connived_objects.push(keyword.source);
+                            }
+                        }
+                        events.extend(replacement_outcome.events);
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(
+                                EffectOutcome::with_objects(connived_objects).with_events(events)
+                            );
+                        }
+                        continue;
+                    }
+                    crate::events::processing::TraitEventResult::Prevented => continue,
+                    crate::events::processing::TraitEventResult::NeedsChoice { .. }
+                    | crate::events::processing::TraitEventResult::NeedsInteraction { .. } => {
+                        return Ok(
+                            EffectOutcome::with_objects(connived_objects).with_events(events)
+                        );
+                    }
+                    crate::events::processing::TraitEventResult::Proceed(_)
+                    | crate::events::processing::TraitEventResult::Modified(_) => {}
+                }
+
                 // Rule 701.50e: connive N draws N, discards N, then counts nonlands discarded this way.
                 let draw_outcome =
                     DrawCardsEffect::new(count as i32, PlayerFilter::Specific(controller))
                         .execute(game, ctx)?;
                 events.extend(draw_outcome.events);
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::with_objects(connived_objects).with_events(events));
+                }
 
                 // Then discard that many cards if possible.
                 let hand_cards: Vec<ObjectId> = game
@@ -228,6 +294,15 @@ impl EffectExecutor for ConniveEffect {
                     );
                     let chosen: Vec<_> =
                         make_decision(game, ctx.decision_maker, controller, Some(ctx.source), spec);
+                    // The UI surfaces this prompt on a probe pass whose state it
+                    // keeps on screen; committing a fallback discard here would
+                    // show a card discarded (and a counter placed) before the
+                    // player has chosen.
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(
+                            EffectOutcome::with_objects(connived_objects).with_events(events)
+                        );
+                    }
                     let selected = normalize_object_selection(chosen, &hand_cards, required);
                     let mut discarded_nonlands = 0;
                     for card_to_discard in selected {
@@ -347,6 +422,145 @@ mod tests {
             .power_toughness(PowerToughness::fixed(2, 2))
             .build();
         game.create_object_from_card(&card, owner, Zone::Battlefield)
+    }
+
+    /// Surfaces the first object prompt without answering it, like the UI's
+    /// replay decision maker on its first pass.
+    #[derive(Default)]
+    struct AwaitingDecisionMaker {
+        prompted: bool,
+    }
+
+    impl DecisionMaker for AwaitingDecisionMaker {
+        fn awaiting_choice(&self) -> bool {
+            self.prompted
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            self.prompted = true;
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(ctx.min)
+                .collect()
+        }
+    }
+
+    #[test]
+    fn connive_does_not_commit_a_fallback_discard_while_awaiting_the_choice() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let creature = create_creature(&mut game, alice);
+        let instant = add_card_to_hand(&mut game, alice, vec![CardType::Instant]);
+        let sorcery = add_card_to_hand(&mut game, alice, vec![CardType::Sorcery]);
+        let graveyard_before = game.player(alice).expect("Alice").graveyard.len();
+
+        let mut dm = AwaitingDecisionMaker::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let result = ConniveEffect::new(ChooseSpec::SpecificObject(creature))
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+
+        let alice_state = game.player(alice).expect("Alice");
+        assert!(
+            alice_state.hand.contains(&instant) && alice_state.hand.contains(&sorcery),
+            "no card may be discarded before the player chooses"
+        );
+        assert_eq!(alice_state.graveyard.len(), graveyard_before);
+        assert_eq!(
+            game.object(creature)
+                .and_then(|obj| obj
+                    .counters
+                    .get(&crate::object::CounterType::PlusOnePlusOne))
+                .copied()
+                .unwrap_or(0),
+            0,
+            "no counter may be placed before the discard is chosen"
+        );
+        assert!(
+            !result.events.iter().any(|event| event
+                .downcast::<KeywordActionEvent>()
+                .is_some_and(|event| event.action == KeywordActionKind::Connive)),
+            "the creature has not connived yet"
+        );
+    }
+
+    fn add_card_to_library(game: &mut GameState, owner: PlayerId) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), "Library Card")
+            .card_types(vec![CardType::Instant])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Library)
+    }
+
+    #[test]
+    fn leader_replacement_draws_first_then_connives_exactly_once() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature = create_creature(&mut game, alice);
+        let leader = create_creature(&mut game, alice);
+        game.object_mut(leader)
+            .expect("leader exists")
+            .abilities_mut()
+            .push(crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::keyword_action_replacement(
+                    KeywordActionKind::Connive,
+                    crate::target::ObjectFilter::creature().you_control(),
+                    vec![
+                        crate::effect::Effect::draw(1),
+                        crate::effect::Effect::new(ConniveEffect::new(ChooseSpec::Tagged(
+                            crate::tag::TagKey::from("it"),
+                        ))),
+                    ],
+                    "If a creature you control would connive, instead you draw a card, then that creature connives.",
+                ),
+            ));
+        for _ in 0..3 {
+            add_card_to_library(&mut game, alice);
+        }
+        let hand_before = game.player(alice).expect("Alice").hand.len();
+        let library_before = game.player(alice).expect("Alice").library.len();
+
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let result = ConniveEffect::new(ChooseSpec::SpecificObject(creature))
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+
+        let alice_state = game.player(alice).expect("Alice");
+        assert_eq!(
+            library_before - alice_state.library.len(),
+            2,
+            "one draw from the replacement plus the connive's own draw"
+        );
+        assert_eq!(
+            alice_state.hand.len(),
+            hand_before + 1,
+            "two draws, one discard"
+        );
+        let connives = result
+            .events
+            .iter()
+            .filter_map(|event| event.downcast::<KeywordActionEvent>())
+            .filter(|event| event.action == KeywordActionKind::Connive)
+            .map(|event| event.source)
+            .collect::<Vec<_>>();
+        assert_eq!(connives, vec![creature], "the creature connives exactly once");
+        assert_eq!(
+            game.object(creature)
+                .and_then(|obj| obj
+                    .counters
+                    .get(&crate::object::CounterType::PlusOnePlusOne))
+                .copied()
+                .unwrap_or(0),
+            1,
+            "a nonland was discarded, so the conniving creature gets the counter"
+        );
     }
 
     #[test]

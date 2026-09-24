@@ -141,6 +141,13 @@ impl EffectExecutor for MayEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        // "Do this only once each turn" governs the ability's first optional
+        // instruction. Once it has been performed the limit's number of times
+        // this turn, it is no longer offered; declining doesn't count.
+        let do_this_limit = ctx.do_this_limit.take();
+        if do_this_limit.is_some_and(|limit| limit.reached(game)) {
+            return Ok(EffectOutcome::declined());
+        }
         if self.should_auto_decline_without_prompt(game, ctx)? {
             return Ok(EffectOutcome::declined());
         }
@@ -184,6 +191,11 @@ impl EffectExecutor for MayEffect {
         );
 
         if should_do {
+            if let Some(limit) = do_this_limit
+                && !ctx.decision_maker.awaiting_choice()
+            {
+                game.record_do_this_action(limit.source, limit.trigger_identity);
+            }
             execute_optional_effects(&self.effects, game, ctx)
         } else {
             Ok(EffectOutcome::declined())

@@ -116,6 +116,28 @@ impl GrantPlayTaggedEffect {
         }
     }
 
+    /// The flexible-mana rider appended to a permission sentence, including
+    /// its joiner: either ", and <clause>" or, when authored as a separate
+    /// sentence, ". If you cast a spell this way, ...".
+    pub fn mana_spend_cast_suffix(&self, spell_reference: &str) -> Option<String> {
+        if self
+            .surface
+            .as_ref()
+            .is_some_and(|surface| surface.mana_spend_followup)
+        {
+            let kind = match self.mana_spend_mode {
+                ironsmith_core::value_model::ManaSpendMode::Normal => return None,
+                ironsmith_core::value_model::ManaSpendMode::AnyColor => "color",
+                ironsmith_core::value_model::ManaSpendMode::AnyType => "type",
+            };
+            return Some(format!(
+                ". If you cast a spell this way, you may spend mana as though it were mana of any {kind} to cast it"
+            ));
+        }
+        self.mana_spend_cast_clause(spell_reference)
+            .map(|clause| format!(", and {clause}"))
+    }
+
     pub fn while_on_top_of_library(mut self) -> Self {
         self.while_on_top_of_library = true;
         self

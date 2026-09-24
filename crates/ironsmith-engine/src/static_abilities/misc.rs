@@ -902,6 +902,22 @@ impl StaticAbilityKind for UntapStepLimit {
     }
 }
 
+/// Flagbearer: opponents casting spells or activating abilities must choose
+/// at least one Flagbearer on the battlefield as a target if able. Enforced
+/// where their target requirements are specialized.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct OpponentsMustTargetFlagbearers;
+
+impl StaticAbilityKind for OpponentsMustTargetFlagbearers {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::OpponentsMustTargetFlagbearers
+    }
+
+    fn display(&self) -> String {
+        "While an opponent is choosing targets as part of casting a spell they control or activating an ability they control, that player must choose at least one Flagbearer on the battlefield if able".to_string()
+    }
+}
+
 /// "Prevent all damage that would be dealt to you."
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PreventAllDamageToYou;

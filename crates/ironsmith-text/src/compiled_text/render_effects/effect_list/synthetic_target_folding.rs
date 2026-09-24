@@ -245,6 +245,7 @@ fn restriction_references_identity(
         | Restriction::PoisonCounters(player)
         | Restriction::LoseLife(player)
         | Restriction::DamageCauseLifeLoss(player)
+        | Restriction::DamageReduceLifeBelowOne(player)
         | Restriction::ChangeLifeTotal(player)
         | Restriction::LoseGame(player)
         | Restriction::WinGame(player)

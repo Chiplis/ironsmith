@@ -87,6 +87,7 @@ pub enum KeywordActionReplacementShape<'a> {
     ProliferateOpponentTwice,
     ExploreTwice,
     ExploreAfterScry { value_tokens: &'a [OwnedLexToken] },
+    ConniveAfterDraw,
     AssembleRiggerTwice,
     PlaneswalkAfterPlanarDeckChoice { count: u32 },
     LearnReturnThisFromGraveyard,
@@ -310,6 +311,7 @@ pub fn parse_keyword_action_replacement_tokens(
             parse_proliferate_you_replacement_lexed,
             parse_proliferate_opponent_replacement_lexed,
             parse_explore_replacement_lexed,
+            parse_connive_replacement_lexed,
             parse_assemble_rigger_replacement_lexed,
         )),
         "keyword-action replacement",
@@ -464,6 +466,27 @@ fn parse_explore_replacement_lexed<'a>(
             .value(KeywordActionReplacementShape::ExploreTwice),
     ))
     .parse_next(input)
+}
+
+/// Leader, Super-Genius: "If a creature you control would connive, instead
+/// you draw a card, then that creature connives."
+fn parse_connive_replacement_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<KeywordActionReplacementShape<'a>> {
+    primitives::phrase(&["if", "a", "creature", "you", "control", "would", "connive"])
+        .parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::kw("instead").parse_next(input)?;
+    primitives::phrase(&["you", "draw", "a", "card"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::kw("then").parse_next(input)?;
+    alt((
+        primitives::phrase(&["that", "creature", "connives"]),
+        primitives::phrase(&["it", "connives"]),
+    ))
+    .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(KeywordActionReplacementShape::ConniveAfterDraw)
 }
 
 fn parse_assemble_rigger_replacement_lexed<'a>(
@@ -897,6 +920,19 @@ mod tests {
         assert_eq!(
             parse_keyword_action_replacement_tokens(&tokens),
             Some(KeywordActionReplacementShape::ExploreTwice)
+        );
+    }
+
+    #[test]
+    fn parses_draw_then_connive_replacement() {
+        let tokens = lex_line(
+            "If a creature you control would connive, instead you draw a card, then that creature connives.",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_keyword_action_replacement_tokens(&tokens),
+            Some(KeywordActionReplacementShape::ConniveAfterDraw)
         );
     }
 

@@ -4290,7 +4290,11 @@ fn evaluate_condition_in_context(
                 ctx.triggering_event,
             ))
         }
-        Condition::MaxTimesEachTurn(limit) | Condition::DoThisMaxTimesEachTurn(limit) => {
+        // "Do this only once each turn" never stops the ability from
+        // triggering or resolving; it limits the optional instruction, which
+        // `MayEffect` gates through the resolution's `DoThisLimit`.
+        Condition::DoThisMaxTimesEachTurn(_) => Ok(true),
+        Condition::MaxTimesEachTurn(limit) => {
             let Some(ctx) = ctx.external() else {
                 return Ok(true);
             };

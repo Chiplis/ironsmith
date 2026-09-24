@@ -10691,6 +10691,7 @@ pub(super) fn describe_trigger_surface_with_frequency(
             == crate::triggers::zone_changes::ZonePattern::Specific(Zone::Battlefield)
         && zone_change.to == crate::triggers::zone_changes::ZonePattern::Specific(Zone::Graveyard)
         && zone_change.object_filter.owner == Some(PlayerFilter::You)
+        && zone_change.cause_filter.is_none()
     {
         let mut filter = zone_change.object_filter.clone();
         filter.owner = None;
@@ -17447,4 +17448,27 @@ fn attached_orientation_restrictions_render_from_typed_predicates() {
     let ability = crate::static_abilities::StaticAbility::from_model(model);
     assert_eq!(describe_static_ability_with_subject(&ability, "this equipment"),
         "As long as equipped creature is face down, it can't transform");
+}
+
+/// The condition on an excess-damage redirect. A damage-source condition
+/// names the object dealing the damage by its description ("the creature you
+/// control has trample"), since that object was introduced earlier.
+pub(super) fn describe_excess_redirect_condition(condition: &Condition) -> String {
+    if let Condition::SourceMatches(filter) = condition
+        && let [ability] = filter.static_abilities.as_slice()
+        && let Some(keyword) =
+            crate::compiled_text::normalize_common::describe_source_condition_static_ability(
+                *ability,
+            )
+    {
+        let mut subject = filter.clone();
+        subject.static_abilities.clear();
+        let description = subject.description();
+        let description = description
+            .strip_prefix("a ")
+            .or_else(|| description.strip_prefix("an "))
+            .unwrap_or(&description);
+        return format!("the {description} has {keyword}");
+    }
+    crate::compiled_text::normalize_common::describe_condition(condition)
 }

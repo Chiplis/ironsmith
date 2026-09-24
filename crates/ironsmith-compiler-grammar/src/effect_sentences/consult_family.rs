@@ -531,6 +531,9 @@ pub fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<ConsultCast
         effect_grammar::ConsultCastCostShape::PayLifeEqualToManaValue => {
             ConsultCastCost::PayLifeEqualToManaValue
         }
+        effect_grammar::ConsultCastCostShape::PayEnergyEqualToManaValue => {
+            ConsultCastCost::PayEnergyEqualToManaValue
+        }
     };
     Some(ConsultCastClause {
         caster,
@@ -641,6 +644,27 @@ pub fn consult_cast_effects(
                 ),
                 EffectAst::subject_verb_grant_tagged_spell_alternative_cost_pay_life_by_mana_value_until_end_of_turn(crate::tag::TagRef::of(match_tag.clone()), clause.caster),
             ]
+        }
+        ConsultCastCost::PayEnergyEqualToManaValue => {
+            if clause.allow_land || !matches!(clause.timing, ConsultCastTiming::Immediate) {
+                return Err(CardTextError::ParseError(
+                    "pay-energy consult cast clauses must be an immediate spell cast".to_string(),
+                ));
+            }
+            vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                player: clause.caster,
+                effects: vec![EffectAst::subject_verb_cast_tagged(
+                    crate::tag::TagRef::of(match_tag.clone()),
+                    clause.caster,
+                    false,
+                    false,
+                    false,
+                    None,
+                )
+                .with_cast_tagged_alternative_payment(
+                    ironsmith_core::CastTaggedAlternativePayment::EnergyEqualToManaValue,
+                )],
+            })]
         }
     };
 

@@ -2178,6 +2178,9 @@ pub fn describe_this_spell_cost_condition(condition: &ThisSpellCostCondition) ->
         ThisSpellCostCondition::YouWereDealtDamageByCreaturesThisTurnOrMore(n) => Some(format!(
             "you've been dealt damage by {n} or more creatures this turn"
         )),
+        ThisSpellCostCondition::FirstSpellYouCastThisGame => {
+            Some("this spell is the first spell you've cast this game".to_string())
+        }
         ThisSpellCostCondition::ConditionExpr { display, .. }
         | ThisSpellCostCondition::AsLongAsConditionExpr { display, .. } => Some(display.clone()),
         ThisSpellCostCondition::TargetsPlayer(player) => Some(format!(
@@ -2498,6 +2501,12 @@ pub fn this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
                     .cards_drawn_by_player(player.id)
                     >= *n
             }),
+        ThisSpellCostCondition::FirstSpellYouCastThisGame => {
+            game.turn_store
+                .turn_history
+                .spells_cast_by_player_this_game(controller)
+                == 0
+        }
         ThisSpellCostCondition::YouWereDealtDamageByCreaturesThisTurnOrMore(n) => {
             game.turn_store
                 .turn_history

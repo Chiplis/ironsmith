@@ -310,6 +310,9 @@ fn parse_phase<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a
         ));
     }
     let direction = phase_marker.parse_next(input)?;
+    // A restated replacement ("... phases out instead") carries its
+    // `instead` marker; the conditional reading owns that surface.
+    opt(primitives::kw("instead")).parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     let subject = if let Some(filter_tokens) = parse_all_phase_subject(raw_subject, direction) {
         PhaseSubjectShape::All(filter_tokens)

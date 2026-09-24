@@ -1251,7 +1251,7 @@ fn advance_reference_frame_for_effect(
                         frame.last_object_tag = Some(tag);
                     }
                 }
-                SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice { target }) => {
+                SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice { target, .. }) => {
                     let refs = lowering_reference_frame(frame);
                     let (spec, _) = resolve_target_spec_with_choices(target, &refs)?;
                     if frame.auto_tag_object_targets
@@ -4549,6 +4549,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot)
             | SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { .. })
+            | SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceMatchingSpellCostThisTurn {
                 ..
             })
@@ -4966,7 +4967,8 @@ fn resolve_effect_result_values_in_fields(
             SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases {
                 ..
             }) => {}
-            SubjectVerbActionAst::Damage(DamageActionAst::HealDamage { amount: None, .. }) => {}
+            SubjectVerbActionAst::Damage(DamageActionAst::HealDamage { amount: None, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::ExcessDamageToController { .. }) => {}
         },
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { count_value, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
@@ -5600,6 +5602,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             }
             SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice {
                 target,
+                ..
             }) => bind_unresolved_it_in_target(target, seed_tag),
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
                 source,
@@ -5888,6 +5891,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 filter,
                 ..
             })
+            | SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn { filter })
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceMatchingSpellCostThisTurn {
                 filter,
                 ..

@@ -381,6 +381,24 @@ pub fn parse_damage_source_surface(
     }
 }
 
+/// "a spell or ability you control" / "a spell you control" / "an ability you
+/// control": the kind of targeting stack object and its controller.
+pub fn parse_targeting_source_controller_tail(
+    words: &[&str],
+) -> Option<(ironsmith_core::filter_model::StackObjectKind, TriggerControllerReference)> {
+    use ironsmith_core::filter_model::StackObjectKind;
+    let (kind, prefix_words) = if word_slice_has_prefix(words, &["a", "spell", "or", "ability"]) {
+        (StackObjectKind::SpellOrAbility, 4)
+    } else if word_slice_has_prefix(words, &["an", "ability"]) {
+        (StackObjectKind::Ability, 2)
+    } else if word_slice_has_prefix(words, &["a", "spell"]) {
+        (StackObjectKind::Spell, 2)
+    } else {
+        return None;
+    };
+    Some((kind, parse_trigger_control_tail(&words[prefix_words..])?))
+}
+
 pub fn parse_spell_or_ability_controller_tail(
     words: &[&str],
 ) -> Option<TriggerControllerReference> {

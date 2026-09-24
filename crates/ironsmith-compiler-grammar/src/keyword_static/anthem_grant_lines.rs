@@ -1893,6 +1893,44 @@ pub fn parse_lose_all_abilities_and_doesnt_untap_line(
     ]))
 }
 
+/// "Enchanted creature gets +1/+1 and doesn't untap during its controller's
+/// untap step." (Dance of the Dead): a power/toughness anthem and an untap
+/// restriction on the same subject.
+pub fn parse_anthem_and_doesnt_untap_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let clauses = split_lexed_slices_on_and(tokens);
+    let [pump_clause, untap_clause] = clauses.as_slice() else {
+        return Ok(None);
+    };
+    if !is_dependent_doesnt_untap_during_controller_untap_step_line_lexed(untap_clause) {
+        return Ok(None);
+    }
+    let pump_clause = trim_edge_punctuation_tokens(pump_clause);
+    let Some(gets_idx) = pump_clause
+        .iter()
+        .position(|token| token.is_any_word(&["gets", "get"]))
+    else {
+        return Ok(None);
+    };
+    let subject_tokens = trim_edge_punctuation_tokens(&pump_clause[..gets_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let Some(anthem) = crate::keyword_static::parse_anthem_line(pump_clause)? else {
+        return Ok(None);
+    };
+    let filter = parse_object_filter(subject_tokens, false)?;
+    let subject = render_token_slice(subject_tokens);
+    Ok(Some(vec![
+        anthem,
+        StaticAbility::restriction(
+            crate::effect::Restriction::untap(filter),
+            format!("{subject} doesn't untap during its controller's untap step"),
+        ),
+    ]))
+}
+
 pub fn parse_lose_all_abilities_and_base_pt_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {

@@ -639,6 +639,7 @@ fn moves_observed_object(action: &SubjectVerbActionAst) -> bool {
         })
         | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice {
             target,
+            ..
         })
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
             target, ..

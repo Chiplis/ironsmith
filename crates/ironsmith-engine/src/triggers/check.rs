@@ -490,8 +490,7 @@ impl TriggerQueue {
         }
         let trigger_limit = match entry.ability.intervening_if.as_ref() {
             Some(crate::ConditionExpr::FirstTimeThisTurn) => Some(1),
-            Some(crate::ConditionExpr::MaxTimesEachTurn(limit))
-            | Some(crate::ConditionExpr::DoThisMaxTimesEachTurn(limit)) => Some(*limit),
+            Some(crate::ConditionExpr::MaxTimesEachTurn(limit)) => Some(*limit),
             _ => None,
         };
         self.ability_triggered_events.push((event, trigger_limit));

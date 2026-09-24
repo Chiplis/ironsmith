@@ -4518,8 +4518,7 @@ pub(super) fn describe_exile_top_then_play(
         "them"
     };
     let mana_suffix = grant_play
-        .mana_spend_cast_clause(spell_ref)
-        .map(|clause| format!(", and {clause}"))
+        .mana_spend_cast_suffix(spell_ref)
         .unwrap_or_default();
 
     if !grant_play.allow_land && !singular_count {
@@ -4714,8 +4713,7 @@ pub(crate) fn describe_look_at_top_exile_face_down_then_play_while_exiled(
     let player = describe_player_filter(&grant.player);
     let verb = if grant.allow_land { "play" } else { "cast" };
     let mana_suffix = grant
-        .mana_spend_cast_clause(cast_ref)
-        .map(|clause| format!(", and {clause}"))
+        .mana_spend_cast_suffix(cast_ref)
         .unwrap_or_default();
 
     Some(format!(

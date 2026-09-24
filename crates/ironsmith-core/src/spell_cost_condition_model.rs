@@ -16,6 +16,9 @@ pub enum ThisSpellCostCondition {
     OpponentCastSpellsThisTurnOrMore(u32),
     OpponentDrewCardsThisTurnOrMore(u32),
     YouWereDealtDamageByCreaturesThisTurnOrMore(u32),
+    /// "If this spell is the first spell you've cast this game" (Once Upon a
+    /// Time): the caster has cast no other spell this game.
+    FirstSpellYouCastThisGame,
     ConditionExpr {
         condition: Condition,
         display: String,

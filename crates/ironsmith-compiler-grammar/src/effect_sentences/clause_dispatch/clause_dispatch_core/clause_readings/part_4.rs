@@ -143,6 +143,7 @@ pub(super) fn read_cast_target_without_paying(
                     additional_mana_cost: None,
                     cost_reduction: None,
                     mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
+                    alternative_payment: None,
                 }),
             },
         )));

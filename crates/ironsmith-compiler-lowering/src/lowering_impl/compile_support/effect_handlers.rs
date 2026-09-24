@@ -114,6 +114,7 @@ pub fn compile_delayed_trigger_spec(
             filter,
             from,
             one_or_more,
+            cause_filter: None,
         } => Ok(
             ironsmith_core::DelayedTriggerSpec::PutIntoGraveyardFromZone {
                 filter: filter.clone(),
@@ -1182,6 +1183,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                     filter,
                     from,
                     one_or_more,
+                    cause_filter: None,
                 } => {
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                     let effect = Effect::new(
@@ -1547,6 +1549,9 @@ pub(super) fn try_compile_stack_and_condition_effect(
                 bind_condition_counter_antecedent_in_effects(&mut effective_if_true, counter_type);
             }
             let saved_last_tag = ctx.last_object_tag.clone();
+            // The predicate is evaluated before either branch runs, so it
+            // reads the player context from before the branches.
+            let saved_last_player = ctx.last_player_filter.clone();
             let saved_source_object_antecedent = ctx.source_object_antecedent;
             ctx.source_object_antecedent |= predicate.establishes_source_object_antecedent();
             let (true_effects, true_choices) = compile_effects(&effective_if_true, ctx)?;
@@ -1600,8 +1605,23 @@ pub(super) fn try_compile_stack_and_condition_effect(
             {
                 ctx.source_object_antecedent = true;
             }
+            // A predicate naming the declared target player ("if target
+            // opponent controls more lands than you") reads it from before the
+            // branches, which may have moved the player context elsewhere.
+            let predicate_names_target_player = matches!(
+                predicate,
+                PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerControlsMoreThanYou {
+                    player: PlayerAst::Target | PlayerAst::TargetOpponent,
+                    ..
+                })
+            );
+            let branch_last_player = predicate_names_target_player
+                .then(|| std::mem::replace(&mut ctx.last_player_filter, saved_last_player));
             let condition =
                 compile_condition_from_predicate_ast(predicate, ctx, &condition_reference_tag)?;
+            if let Some(branch_last_player) = branch_last_player {
+                ctx.last_player_filter = branch_last_player;
+            }
             ctx.last_object_tag = original_last_tag;
             ctx.source_object_antecedent = original_source_object_antecedent;
 

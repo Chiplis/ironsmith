@@ -1210,6 +1210,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::PreventAllDamageToYou => {
                 StaticAbility::prevent_all_damage_to_you()
             }
+            ironsmith_core::StaticAbilityPayload::OpponentsMustTargetFlagbearers => {
+                StaticAbility::opponents_must_target_flagbearers()
+            }
             ironsmith_core::StaticAbilityPayload::SearchLimitedToTopCards {
                 searcher,
                 count,

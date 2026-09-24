@@ -1847,6 +1847,11 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
                 clauses.push(format!("{loses} {}", lowercase_first(&ability.display())));
             }
         }
+        crate::continuous::Modification::RemoveStaticAbilityFamily(id) => {
+            let family = ironsmith_core::filter_model::describe_filter_static_ability(*id)
+                .unwrap_or("such");
+            clauses.push(format!("{loses} all {family} abilities"));
+        }
         crate::continuous::Modification::RemoveAbilityGeneric { ability, mode } => {
             let prohibition_suffix = |ability_text: &str| match mode {
                 ironsmith_core::AbilityLossMode::Lose => String::new(),
@@ -4981,6 +4986,15 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 describe_player_filter(filter)
             ),
         },
+        crate::effect::Restriction::DamageReduceLifeBelowOne(filter) => {
+            let (subject, pronoun) = match filter {
+                PlayerFilter::You => ("your".to_string(), "it"),
+                _ => (describe_possessive_player_filter(filter), "it"),
+            };
+            format!(
+                "damage that would reduce {subject} life total to less than 1 reduces {pronoun} to 1 instead"
+            )
+        }
         crate::effect::Restriction::ChangeLifeTotal(PlayerFilter::You) => {
             "your life total can't change".to_string()
         }

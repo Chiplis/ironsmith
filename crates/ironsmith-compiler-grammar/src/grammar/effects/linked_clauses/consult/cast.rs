@@ -20,6 +20,7 @@ pub enum ConsultCastCostShape {
     Normal,
     WithoutPayingManaCost,
     PayLifeEqualToManaValue,
+    PayEnergyEqualToManaValue,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,6 +36,10 @@ pub struct ConsultCastShape {
 const PAY_LIFE_MANA_VALUE_CLAUSE: &[&str] = &[
     "by", "paying", "life", "equal", "to", "the", "spell's", "mana", "value", "rather", "than",
     "paying", "its", "mana", "cost",
+];
+const PAY_ENERGY_MANA_VALUE_CLAUSE: &[&str] = &[
+    "by", "paying", "an", "amount", "of", "e", "equal", "to", "its", "mana", "value", "rather",
+    "than", "paying", "its", "mana", "cost",
 ];
 const WITHOUT_PAYING_MANA_COST: &[&str] = &["without", "paying", "its", "mana", "cost"];
 
@@ -133,6 +138,16 @@ pub fn parse_consult_cast_shape(tokens: &[OwnedLexToken]) -> Option<ConsultCastS
             allow_land,
             timing,
             cost: ConsultCastCostShape::PayLifeEqualToManaValue,
+            mana_value_condition: None,
+            surface,
+        });
+    }
+    if permission_shapes::exact_tokens(remainder, PAY_ENERGY_MANA_VALUE_CLAUSE) {
+        return Some(ConsultCastShape {
+            caster: caster.to_vec(),
+            allow_land,
+            timing,
+            cost: ConsultCastCostShape::PayEnergyEqualToManaValue,
             mana_value_condition: None,
             surface,
         });

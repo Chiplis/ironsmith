@@ -908,6 +908,10 @@ pub enum Restriction {
     PoisonCounters(PlayerFilter),
     LoseLife(PlayerFilter),
     DamageCauseLifeLoss(PlayerFilter),
+    /// "Damage that would reduce [your] life total to less than 1 reduces it
+    /// to 1 instead": the damage is still dealt; only the life total is
+    /// floored (Worship, Angel's Grace).
+    DamageReduceLifeBelowOne(PlayerFilter),
     ChangeLifeTotal(PlayerFilter),
     LoseGame(PlayerFilter),
     WinGame(PlayerFilter),
@@ -1249,6 +1253,10 @@ impl Restriction {
 
     pub fn damage_cause_life_loss(filter: PlayerFilter) -> Self {
         Self::DamageCauseLifeLoss(filter)
+    }
+
+    pub fn damage_reduce_life_below_one(filter: PlayerFilter) -> Self {
+        Self::DamageReduceLifeBelowOne(filter)
     }
 
     pub fn change_life_total(filter: PlayerFilter) -> Self {

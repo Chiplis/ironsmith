@@ -134,6 +134,48 @@ pub struct IterationContext {
     pub iterated_object: Option<ObjectId>,
 }
 
+/// A triggered ability's "Do this only once each turn" (or N times) limit.
+///
+/// The limit counts times the optional instruction was actually performed
+/// (accepted), not times the ability triggered or resolved: declining leaves
+/// the instruction available later that turn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DoThisLimit {
+    pub source: ObjectId,
+    pub trigger_identity: crate::triggers::TriggerIdentity,
+    pub limit: u32,
+}
+
+impl DoThisLimit {
+    /// The "Do this only once each turn" limit carried by a triggered
+    /// ability's intervening condition, including one conjoined with an
+    /// intervening "if" ("if Legolas is tapped, you may untap it").
+    pub fn from_condition(
+        condition: &crate::ConditionExpr,
+        source: ObjectId,
+        trigger_identity: crate::triggers::TriggerIdentity,
+    ) -> Option<Self> {
+        fn limit_of(condition: &crate::ConditionExpr) -> Option<u32> {
+            match condition {
+                crate::ConditionExpr::DoThisMaxTimesEachTurn(limit) => Some(*limit),
+                crate::ConditionExpr::And(left, right) => {
+                    limit_of(left).or_else(|| limit_of(right))
+                }
+                _ => None,
+            }
+        }
+        limit_of(condition).map(|limit| Self {
+            source,
+            trigger_identity,
+            limit,
+        })
+    }
+
+    pub fn reached(&self, game: &crate::game_state::GameState) -> bool {
+        game.do_this_action_count_this_turn(self.source, self.trigger_identity) >= self.limit
+    }
+}
+
 /// Combat-linked player selections available during execution.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CombatExecutionContext {
@@ -281,6 +323,10 @@ pub struct ExecutionContext<'a> {
     pub last_prevention_shield: Option<crate::prevention::PreventionShieldId>,
     /// Structural identity of the resolving triggered ability, when available.
     pub trigger_identity: Option<crate::triggers::TriggerIdentity>,
+    /// "Do this only once each turn" gate for the resolving triggered ability.
+    /// The first optional instruction it governs takes it, so only that
+    /// choice is limited and counted.
+    pub do_this_limit: Option<DoThisLimit>,
     /// Index of the resolving activated ability on its source object, when available.
     pub ability_index: Option<usize>,
     /// Pre-chosen modes for modal spells (set during casting per MTG rule 601.2b).
@@ -335,6 +381,7 @@ impl std::fmt::Debug for ExecutionContext<'_> {
             .field("event_value_amount", &self.event_value_amount)
             .field("last_prevention_shield", &self.last_prevention_shield)
             .field("trigger_identity", &self.trigger_identity)
+            .field("do_this_limit", &self.do_this_limit)
             .field("ability_index", &self.ability_index)
             .field("cause", &self.cause)
             .field("provenance", &self.provenance)
@@ -385,6 +432,7 @@ impl<'a> ExecutionContext<'a> {
             event_value_amount: None,
             last_prevention_shield: None,
             trigger_identity: None,
+            do_this_limit: None,
             ability_index: None,
             chosen_modes: None,
             cause: EventCause::from_effect(source, controller),
@@ -436,6 +484,7 @@ impl<'a> ExecutionContext<'a> {
             event_value_amount: None,
             last_prevention_shield: None,
             trigger_identity: None,
+            do_this_limit: None,
             ability_index: None,
             chosen_modes: None,
             cause: EventCause::from_effect(source, controller),
@@ -477,6 +526,7 @@ impl<'a> ExecutionContext<'a> {
             event_value_amount: self.event_value_amount,
             last_prevention_shield: self.last_prevention_shield,
             trigger_identity: self.trigger_identity,
+            do_this_limit: self.do_this_limit,
             ability_index: self.ability_index,
             chosen_modes: self.chosen_modes,
             cause: self.cause,

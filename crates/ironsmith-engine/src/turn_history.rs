@@ -66,6 +66,9 @@ pub struct TurnHistory {
     pub chosen_modes_by_ability_this_turn: HashMap<(ObjectId, usize), HashSet<usize>>,
     pub triggers_fired_this_turn: HashMap<(ObjectId, TriggerIdentity), u32>,
     pub triggered_abilities_resolved_this_turn: HashMap<(ObjectId, TriggerIdentity), u32>,
+    /// Times each triggered ability's "Do this only once each turn" optional
+    /// instruction was actually performed this turn.
+    pub do_this_actions_this_turn: HashMap<(ObjectId, TriggerIdentity), u32>,
     pub turn_counters: TurnCounterTracker,
     pub foretell_actions_this_turn: HashSet<PlayerId>,
     pub mana_spent_to_cast_spells_this_turn: HashMap<PlayerId, u32>,
@@ -90,6 +93,8 @@ pub struct TurnHistory {
     pub crewed_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
     pub saddled_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
     pub spell_warped_this_turn: bool,
+    /// Spells each player has cast this game (never cleared between turns).
+    pub spells_cast_this_game: HashMap<PlayerId, u32>,
     pub event_records: Vec<TurnEventRecord>,
     pub staged_event_records: Vec<TurnEventRecord>,
 }
@@ -104,6 +109,7 @@ impl TurnHistory {
         self.chosen_modes_by_ability_this_turn.clear();
         self.triggers_fired_this_turn.clear();
         self.triggered_abilities_resolved_this_turn.clear();
+        self.do_this_actions_this_turn.clear();
         self.turn_counters.clear();
         self.foretell_actions_this_turn.clear();
         self.mana_spent_to_cast_spells_this_turn.clear();
@@ -165,6 +171,9 @@ impl TurnHistory {
     ) {
         self.remove_staged_event(event.provenance());
         self.turn_counters.increment_event_kind(event.kind());
+        if let Some(cast) = event.downcast::<SpellCastEvent>() {
+            *self.spells_cast_this_game.entry(cast.caster).or_insert(0) += 1;
+        }
         self.event_records.push(TurnEventRecord {
             event: event.clone(),
             object_snapshot,
@@ -286,6 +295,11 @@ impl TurnHistory {
             .map(|player| self.die_rolls_this_turn.get(player).map_or(0, Vec::len) as u32)
             .max()
             .unwrap_or(0)
+    }
+
+    /// Spells `player` has cast this game, counting only completed casts.
+    pub fn spells_cast_by_player_this_game(&self, player: PlayerId) -> u32 {
+        self.spells_cast_this_game.get(&player).copied().unwrap_or(0)
     }
 
     pub fn spells_cast_by_player(&self, player: PlayerId) -> u32 {

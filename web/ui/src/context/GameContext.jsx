@@ -22,6 +22,7 @@ import { emitSyncFailureNotice } from "@/lib/ui-notices";
 import { cardsMeetingThresholdFromStats, loadSemanticStats } from "@/lib/semanticCache";
 import {
   buildMultiplayerSmartAutoPass,
+  findPassPriorityAction,
   priorityHoldReason,
 } from "@/lib/priority-automation";
 import {
@@ -2243,6 +2244,72 @@ export function GameProvider({ children }) {
     if (state?.decision?.kind !== "mana_payment") manuallyControlledPaymentRef.current = null;
   }, [state?.decision?.kind]);
 
+  // "Resolve all": keep passing the local player's priority while the stack
+  // drains. It stops once the stack is empty, the turn changes, the pass is a
+  // custom action, or an opponent puts something new on the stack (so they
+  // never get a response silently skipped). Choices the resolving objects ask
+  // for still prompt; the run resumes after they are answered.
+  const [resolveAllTick, setResolveAllTick] = useState(0);
+  const resolveAllRef = useRef(null);
+  const stopResolveAll = useCallback(() => {
+    resolveAllRef.current = null;
+  }, []);
+  const startResolveAll = useCallback(() => {
+    const current = stateRef.current;
+    const stackSize = Number(current?.stack_size || 0);
+    if (stackSize <= 0) return;
+    resolveAllRef.current = {
+      turn: current?.turn_number ?? null,
+      stackSize,
+      passes: 0,
+      inFlight: false,
+      dispatchedFrom: null,
+    };
+    setResolveAllTick((tick) => tick + 1);
+  }, [stateRef]);
+
+  useEffect(() => {
+    const run = resolveAllRef.current;
+    if (!run || run.inFlight) return;
+    const stackSize = Number(state?.stack_size || 0);
+    if (
+      !state
+      || state.game_over
+      || stackSize <= 0
+      || (state.turn_number ?? null) !== run.turn
+      || run.passes >= 200
+    ) {
+      stopResolveAll();
+      return;
+    }
+    const top = Array.isArray(state.stack_objects) ? state.stack_objects[0] : null;
+    if (stackSize > run.stackSize && top && !samePlayerId(top.controller, state.perspective)) {
+      stopResolveAll();
+      return;
+    }
+    run.stackSize = stackSize;
+    const decision = state.decision;
+    if (decision?.kind !== "priority" || !samePlayerId(decision.player, state.perspective)) return;
+    if (run.dispatchedFrom === state) return;
+    const passAction = findPassPriorityAction(decision);
+    if (!passAction || (passAction.label && passAction.label !== "Pass priority")) {
+      stopResolveAll();
+      return;
+    }
+    run.inFlight = true;
+    run.dispatchedFrom = state;
+    run.passes += 1;
+    Promise.resolve(dispatch(
+      { type: "priority_action", action_index: passAction.index, action_ref: passAction.action_ref },
+      passAction.label
+    ))
+      .catch(() => stopResolveAll())
+      .finally(() => {
+        run.inFlight = false;
+        if (resolveAllRef.current === run) setResolveAllTick((tick) => tick + 1);
+      });
+  }, [dispatch, resolveAllTick, state, stopResolveAll]);
+
   // Ranking is read-only and sliced. Only a finished, still-current suggestion
   // becomes an ordinary synchronized command; manual input wins every race.
   const cancelBackgroundDispatch = useCallback(() => {
@@ -2865,6 +2932,7 @@ export function GameProvider({ children }) {
       submitMultiplayerAddCardCheat,
       cancelBackgroundDispatch,
       setExternalAutoPassGate,
+      startResolveAll,
     }),
     [
       setState,
@@ -2898,6 +2966,7 @@ export function GameProvider({ children }) {
       sendLobbyChat,
       submitMultiplayerAddCardCheat,
       setExternalAutoPassGate,
+      startResolveAll,
     ]
   );
 

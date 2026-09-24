@@ -603,8 +603,15 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "have"),
         ],
+        "parse_opponents_must_target_flagbearers_line" => vec![
+            StaticAbilityLineHeadHint::Pair("while", "an"),
+        ],
         "parse_prevent_all_damage_to_you_line" => vec![
             StaticAbilityLineHeadHint::Pair("prevent", "all"),
+        ],
+        "parse_prevent_damage_to_you_from_source_filter_line" => vec![
+            StaticAbilityLineHeadHint::Pair("if", "a"),
+            StaticAbilityLineHeadHint::Pair("if", "an"),
         ],
         "parse_search_limited_to_top_cards_line" => vec![
             StaticAbilityLineHeadHint::Pair("if", "an"),
@@ -642,6 +649,10 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Pair("you", "may"),
             StaticAbilityLineHeadHint::Single("once"),
             StaticAbilityLineHeadHint::Pair("once", "during"),
+        ],
+        "parse_player_may_cast_spells_free_and_flash_line" => vec![
+            StaticAbilityLineHeadHint::Pair("any", "player"),
+            StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
         "parse_you_may_cast_exile_counter_cards_with_mana_permission_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
@@ -1491,6 +1502,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_untap_step_limit_line),
         single_static_ability_ast_rule!(parse_search_limited_to_top_cards_line),
         single_static_ability_ast_rule!(parse_prevent_all_damage_to_you_line),
+        single_static_ability_ast_rule!(parse_opponents_must_target_flagbearers_line),
         single_static_ability_ast_passthrough_rule!(parse_doesnt_untap_during_untap_step_line),
         multi_static_ability_ast_rule!(parse_attached_restrictions_with_ignore_special_action_line),
         multi_static_ability_ast_rule!(parse_attached_is_goaded_line),
@@ -1566,6 +1578,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(
             parse_you_may_cast_exile_counter_cards_with_mana_permission_line
         ),
+        multi_static_ability_ast_rule!(parse_player_may_cast_spells_free_and_flash_line),
         multi_static_ability_ast_rule!(parse_surveilled_graveyard_play_life_cost_line),
         single_static_ability_ast_rule!(parse_as_you_cascade_land_drop_line),
         single_static_ability_ast_rule!(parse_play_from_permission_with_haste_this_way_line),
@@ -3417,6 +3430,13 @@ pub fn parse_filter_dont_untap_during_controllers_untap_steps_line(
     };
     let subject_tokens = trim_commas(spec.subject_tokens);
     if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    // "Enchanted creature gets +1/+1 and doesn't untap ...": the subject
+    // phrase carries another predicate; a filter parse would silently drop it.
+    if subject_tokens.iter().any(|token| {
+        token.is_any_word(&["gets", "get", "has", "have", "gains", "gain", "loses", "lose", "and"])
+    }) {
         return Ok(None);
     }
 

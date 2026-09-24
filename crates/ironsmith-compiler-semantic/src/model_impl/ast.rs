@@ -287,6 +287,7 @@ pub enum TriggerSpec {
         player: PlayerFilter,
         object: ObjectFilter,
         source_controller: PlayerFilter,
+        source_kind: ironsmith_core::filter_model::StackObjectKind,
     },
     ThisDealsDamage,
     ThisDealsDamageToPlayer {
@@ -457,6 +458,9 @@ pub enum TriggerSpec {
         filter: ObjectFilter,
         from: Zone,
         one_or_more: bool,
+        /// "a spell or ability an opponent controls causes ... to be put
+        /// into your graveyard"
+        cause_filter: Option<crate::events::cause::CauseFilter>,
     },
     PutIntoGraveyardFromAnyExcept {
         filter: ObjectFilter,

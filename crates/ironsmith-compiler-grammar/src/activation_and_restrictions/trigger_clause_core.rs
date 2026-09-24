@@ -1314,6 +1314,25 @@ const PUT_INTO_YOUR_GRAVEYARD_FROM_BATTLEFIELD_SUFFIXES: &[TriggerSuffixShape] =
         8,
     ),
 ];
+const CAUSED_PUT_INTO_YOUR_GRAVEYARD_FROM_BATTLEFIELD_SUFFIXES: &[TriggerSuffixShape] = &[
+    trigger_suffix_shape(
+        clause_shape!(
+            suffix
+                & [
+                    "to",
+                    "be",
+                    "put",
+                    "into",
+                    "your",
+                    "graveyard",
+                    "from",
+                    "the",
+                    "battlefield",
+                ]
+        ),
+        9,
+    ),
+];
 const PUT_INTO_GRAVEYARD_FROM_BATTLEFIELD_SUFFIXES: &[TriggerSuffixShape] = &[
     trigger_suffix_shape(
         clause_shape!(suffix & ["is", "put", "into", "graveyard", "from", "battlefield"]),
@@ -1655,6 +1674,49 @@ fn parse_put_into_your_graveyard_from_exact_zone(
         filter,
         from,
         one_or_more,
+        cause_filter: None,
+    }))
+}
+
+/// "a spell or ability an opponent controls causes <subject> to be put into
+/// your graveyard from the battlefield": the ordinary battlefield-origin
+/// graveyard trigger, restricted to spell/ability causes whose controller is
+/// an opponent of this trigger's controller.
+pub(crate) fn parse_opponent_caused_put_into_your_graveyard_from_battlefield(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    let Some((_, rest)) = crate::grammar::primitives::parse_prefix(
+        tokens,
+        crate::grammar::primitives::phrase(&[
+            "a", "spell", "or", "ability", "an", "opponent", "controls", "causes",
+        ]),
+    ) else {
+        return Ok(None);
+    };
+    let rest_words = ActivationRestrictionCompatWords::new(rest).to_word_refs();
+    let Some(TriggerSpec::PutIntoGraveyardFromZone {
+        filter,
+        from,
+        one_or_more,
+        cause_filter: None,
+    }) = parse_put_into_your_graveyard_from_exact_zone(
+        rest,
+        &rest_words,
+        CAUSED_PUT_INTO_YOUR_GRAVEYARD_FROM_BATTLEFIELD_SUFFIXES,
+        Zone::Battlefield,
+    )?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(TriggerSpec::PutIntoGraveyardFromZone {
+        filter,
+        from,
+        one_or_more,
+        cause_filter: Some(crate::events::cause::CauseFilter {
+            cause_type: Some(crate::events::cause::CauseTypeFilter::EffectLike),
+            source_filter: None,
+            controller_filter: Some(crate::events::cause::ControllerFilter::ContextOpponent),
+        }),
     }))
 }
 

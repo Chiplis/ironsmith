@@ -416,8 +416,10 @@ impl TriggerMatcher for KeywordActionTrigger {
                 self.action.third_person()
             );
         }
-        if self.action == KeywordActionKind::Fight
-            && let Some(source_filter) = &self.source_filter
+        if matches!(
+            self.action,
+            KeywordActionKind::Fight | KeywordActionKind::Connive
+        ) && let Some(source_filter) = &self.source_filter
         {
             return format!(
                 "Whenever {} {}",
@@ -706,6 +708,56 @@ mod tests {
             trigger.display(),
             "Whenever a creature you control explores"
         );
+    }
+
+    #[test]
+    fn creature_you_control_connives_matches_only_your_conniving_creatures() {
+        use crate::effects::{ConniveEffect, EffectExecutor, ExecutionContext};
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let creature = |id| {
+            crate::card::CardBuilder::new(crate::ids::CardId::from_raw(id), "Conniver")
+                .card_types(vec![crate::types::CardType::Creature])
+                .build()
+        };
+        let watcher = game.create_object_from_card(
+            &crate::card::CardBuilder::new(crate::ids::CardId::from_raw(20), "Glorious Purpose")
+                .card_types(vec![crate::types::CardType::Enchantment])
+                .build(),
+            alice,
+            crate::zone::Zone::Battlefield,
+        );
+        let alices = game.create_object_from_card(&creature(21), alice, crate::zone::Zone::Battlefield);
+        let bobs = game.create_object_from_card(&creature(22), bob, crate::zone::Zone::Battlefield);
+
+        let trigger = KeywordActionTrigger::matching_object(
+            KeywordActionKind::Connive,
+            PlayerFilter::Any,
+            ObjectFilter::creature().you_control(),
+        );
+        assert_eq!(
+            trigger.display(),
+            "Whenever a creature you control connives"
+        );
+        for (conniver, controller, expected) in [(alices, alice, true), (bobs, bob, false)] {
+            let mut ctx = ExecutionContext::new_default(conniver, controller);
+            let outcome = ConniveEffect::new(crate::target::ChooseSpec::SpecificObject(conniver))
+                .execute(&mut game, &mut ctx)
+                .expect("connive executes");
+            let connive_event = outcome
+                .events
+                .iter()
+                .find(|event| {
+                    event
+                        .downcast::<KeywordActionEvent>()
+                        .is_some_and(|event| event.action == KeywordActionKind::Connive)
+                })
+                .expect("connive emits its keyword action");
+            let trigger_ctx = TriggerContext::for_source(watcher, alice, &game);
+            assert_eq!(trigger.matches(connive_event, &trigger_ctx), expected);
+        }
     }
 
     #[test]

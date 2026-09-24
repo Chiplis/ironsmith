@@ -1300,6 +1300,13 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::DamageReduceLifeBelowOne(filter) => {
+                for player in &game.players {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
+                        tracker.damage_cant_reduce_life_below_one.insert(player.id);
+                    }
+                }
+            }
             Restriction::ChangeLifeTotal(filter) => {
                 for player in &game.players {
                     if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {

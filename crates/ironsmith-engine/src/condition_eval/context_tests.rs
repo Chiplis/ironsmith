@@ -327,6 +327,27 @@ fn hand_thresholds_preserve_signed_external_and_missing_player_behavior() {
 }
 
 #[test]
+fn do_this_limit_never_stops_registration_or_resolution() {
+    // "Do this only once each turn" limits the optional instruction, which
+    // MayEffect gates; the ability itself keeps triggering.
+    let (mut game, alice, _, source, _) = fixture();
+    let identity = TriggerIdentity(99002);
+    let external = ExternalEvaluationContext {
+        controller: alice,
+        source,
+        trigger_identity: Some(identity),
+        ..Default::default()
+    };
+    let condition = Condition::DoThisMaxTimesEachTurn(1);
+    game.record_trigger_fired(source, identity);
+    game.record_do_this_action(source, identity);
+    assert!(evaluate_condition_external(&game, &condition, &external));
+    let mut exec = ExecutionContext::new_default(source, alice);
+    exec.trigger_identity = Some(identity);
+    assert!(evaluate_condition_resolution(&game, &condition, &exec).unwrap());
+}
+
+#[test]
 fn trigger_limits_are_checked_at_registration_without_rejecting_resolution() {
     let (mut game, alice, _, source, _) = fixture();
     let identity = TriggerIdentity(99001);
@@ -339,7 +360,6 @@ fn trigger_limits_are_checked_at_registration_without_rejecting_resolution() {
     let conditions = [
         Condition::FirstTimeThisTurn,
         Condition::MaxTimesEachTurn(1),
-        Condition::DoThisMaxTimesEachTurn(1),
     ];
     for condition in &conditions {
         assert!(evaluate_condition_external(&game, condition, &external));
