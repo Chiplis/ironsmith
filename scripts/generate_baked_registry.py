@@ -1197,6 +1197,20 @@ def is_full_art_print(card: dict) -> bool:
     return bool(card.get("full_art"))
 
 
+def is_standard_printing(card: dict) -> bool:
+    """Mirror the UI's standard-printing policy in generated card metadata."""
+    if not isinstance(card, dict):
+        return False
+    if card.get("full_art") is True or card.get("textless") is True:
+        return False
+    if card.get("border_color") == "borderless":
+        return False
+    return not any(
+        effect in {"showcase", "extendedart", "borderless"}
+        for effect in (card.get("frame_effects") or [])
+    )
+
+
 def compact_image_uris(raw: object) -> dict:
     if not isinstance(raw, dict):
         return {}
@@ -1212,6 +1226,8 @@ def compact_scryfall_metadata(card: dict, *, face: dict | None = None) -> dict:
     source = face if isinstance(face, dict) else card
     metadata = {
         "full_art": is_full_art_print(card),
+        "standard_printing": is_standard_printing(card),
+        "frame": card.get("frame") if isinstance(card.get("frame"), str) else None,
         "image_uris": compact_image_uris(
             source.get("image_uris") or card.get("image_uris")
         ),
