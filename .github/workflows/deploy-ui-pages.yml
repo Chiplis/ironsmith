@@ -4,6 +4,17 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".cargo/**"
+      - "rust-toolchain*"
+      - "rebuild-wasm.sh"
+      - "scripts/**"
+      - "crates/**"
+      - "npm/ironsmith-wasm/**"
+      - "web/wasm_demo/**"
+      - "web/ui/**"
   workflow_dispatch:
     inputs:
       ref:
