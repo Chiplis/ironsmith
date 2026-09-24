@@ -265,9 +265,6 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
         opacity: fading ? 0 : 1,
         transition: `${fading ? `opacity ${LOOK_FADE_MS}ms linear` : "opacity 120ms ease"}, transform ${ZONE_TARGET_GROW_MS}ms ease`,
       }}>
-      {zone === "graveyard" && samePlayerId(player.id ?? player.index, state?.perspective) && (
-        <div className="graveyard-chat-dock"><LobbyChat /></div>
-      )}
       <span className="zone-pile-label">{ui(label)} <strong>{count}</strong></span>
       <PopoverTrigger asChild>
         <button ref={triggerRef} type="button" className="zone-pile" data-zone-pile={zone}
@@ -427,6 +424,9 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
     data-local-zone-piles={samePlayerId(player.id ?? player.index, state?.perspective) ? "true" : undefined}>
     {PILE_ZONES.map((zone) => <ZonePile key={zone} player={player} zone={zone}
       onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />)}
+    {samePlayerId(player.id ?? player.index, state?.perspective) && (
+      <div className="player-zone-chat-dock"><LobbyChat /></div>
+    )}
     {samePlayerId(player.id ?? player.index, state?.perspective) &&
       <div className="player-look-pile"><LookPile key={state?.perspective} player={player} onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} /></div>}
   </div>;

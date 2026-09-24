@@ -3,13 +3,14 @@ import { useGame } from "@/context/GameContext";
 import useUiText from "@/i18n/useUiText";
 
 const EMPTY_MESSAGES = [];
+const MAX_CHAT_LENGTH = 240;
 
 export default function LobbyChat() {
   const { multiplayer, sendLobbyChat } = useGame();
   const ui = useUiText();
   const [draft, setDraft] = useState("");
   const [error, setError] = useState(false);
-  const [collapsedMessageId, setCollapsedMessageId] = useState(null);
+  const [collapsedMessageId, setCollapsedMessageId] = useState("");
   const [reopenCount, setReopenCount] = useState(0);
   const listRef = useRef(null);
   const followRef = useRef(true);
@@ -56,7 +57,7 @@ export default function LobbyChat() {
         followRef.current = true;
       } else setError(true);
     }}>
-      <input aria-label={ui("Chat message")} placeholder={ui("Message…")} maxLength={500}
+      <input aria-label={ui("Chat message")} placeholder={ui("Message…")} maxLength={MAX_CHAT_LENGTH}
         value={draft} onChange={(event) => setDraft(event.target.value)} />
       <button type="submit" disabled={!draft.trim()} aria-label={ui("Send message")}>{ui("Send")}</button>
     </form>

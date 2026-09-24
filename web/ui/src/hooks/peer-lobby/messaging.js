@@ -95,6 +95,8 @@ import { approximateMessageBytes, recordDiagnosticEvent, recordPeerMessage, reco
 import { describeSubstitutions, withSupportedCards } from "../../lib/unsupported-card-substitution.js";
 import { formatDeckRequirement } from "../../lib/lobby-deck.js";
 
+const MAX_LOBBY_CHAT_LENGTH = 240;
+
 function normalizeLobbyDeckOptions(value) {
   if (!Array.isArray(value)) return [];
   return value
@@ -2022,7 +2024,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 
   const receiveLobbyChat = useCallback((entry) => {
     if (!entry || typeof entry.id !== "string" || typeof entry.text !== "string"
-      || !entry.text.trim() || entry.text.length > 500 || typeof entry.name !== "string") return;
+      || !entry.text.trim() || entry.text.length > MAX_LOBBY_CHAT_LENGTH || typeof entry.name !== "string") return;
     updateMultiplayer((prev) => ({
       ...prev,
       chatMessages: (prev.chatMessages || []).some((item) => item.id === entry.id)
@@ -2035,7 +2037,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     const session = multiplayerRef.current;
     const player = session.players.find((item) => item.peerId === peerId);
     if (!player || player.connected === false || typeof text !== "string"
-      || !text.trim() || text.length > 500) return false;
+      || !text.trim() || text.length > MAX_LOBBY_CHAT_LENGTH) return false;
     const entry = { id: crypto.randomUUID(), peerId, name: player.name,
       text: text.trim(), sentAt: Date.now() };
     receiveLobbyChat(entry);
@@ -2045,7 +2047,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 
   const sendLobbyChat = useCallback((text) => {
     const session = multiplayerRef.current;
-    if (!session.role || typeof text !== "string" || !text.trim() || text.length > 500) return false;
+    if (!session.role || typeof text !== "string" || !text.trim() || text.length > MAX_LOBBY_CHAT_LENGTH) return false;
     if (session.role === "host") return publishLobbyChat(session.localPeerId, text);
     return safeSend(hostConnectionRef.current, {
       type: "lobby_chat_send", protocolVersion: PROTOCOL_VERSION, text: text.trim(),
