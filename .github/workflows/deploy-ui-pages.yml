@@ -15,6 +15,7 @@ on:
       - "npm/ironsmith-wasm/**"
       - "web/wasm_demo/**"
       - "web/ui/**"
+      - ".github/workflows/deploy-ui-pages.yml"
   workflow_dispatch:
     inputs:
       ref:
@@ -70,7 +71,8 @@ jobs:
             web/wasm_demo/pkg
             web/ui/public/cards
             web/ui/public/ironsmith_semantic_scores.json
-          key: ironsmith-pages-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rebuild-wasm.sh', 'scripts/generate_baked_registry.py', 'scripts/stream_scryfall_blocks.py', 'crates/**') }}
+            catalog
+          key: ironsmith-pages-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rebuild-wasm.sh', 'scripts/generate_baked_registry.py', 'scripts/stream_scryfall_blocks.py', 'crates/**', 'tools/deck-catalog/**') }}
 
       - name: Build the engine and browser card assets
         if: steps.generated-cache.outputs.cache-hit != 'true'
@@ -82,6 +84,18 @@ jobs:
           test -s web/wasm_demo/pkg/engine_bg.wasm
           test -s web/wasm_demo/pkg/compiler_bg.wasm
           test -s web/wasm_demo/pkg/verifier_bg.wasm
+
+      - name: Sync the bounded Modern deck catalog
+        working-directory: tools/deck-catalog
+        run: |
+          node sync.mjs \
+            --format modern \
+            --page 0 \
+            --events 5 \
+            --limit 24 \
+            --collection-limit 12 \
+            --recent-events 20 \
+            --major-events 5
 
       - name: Install UI dependencies
         working-directory: web/ui
