@@ -1,4 +1,5 @@
 import { classifyCard, RANDOM_GAME_ZONES } from "./random-game.js";
+import { resolveAssetUrl } from "./card-art-url.js";
 
 const CARD_FETCH_CONCURRENCY = 12;
 // A random table only needs a pool a little larger than the cards it places.
@@ -7,13 +8,8 @@ const POOL_FLOOR = 24;
 // Cards outside the filters still cost a request, so the walk has to end.
 const ATTEMPT_MULTIPLIER = 5;
 
-function assetBaseUrl() {
-  const configured = typeof import.meta !== "undefined" ? import.meta.env?.BASE_URL : null;
-  return new URL(configured || "/", globalThis?.location?.href || "http://localhost/").href;
-}
-
 export function cardAssetUrl(path) {
-  return new URL(`cards/${path}`, assetBaseUrl()).href;
+  return resolveAssetUrl(`cards/${String(path || "").replace(/^\/+/, "")}`);
 }
 
 // Keyed by the fetch that read it, so the app shares one manifest while a

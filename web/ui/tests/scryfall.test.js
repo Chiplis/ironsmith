@@ -132,6 +132,38 @@ test("preloading resolves and caches Scryfall image URLs by card name", async ()
   }
 });
 
+test("generated local metadata supplies hand art before any Scryfall request", async () => {
+  const originalFetch = globalThis.fetch;
+  const name = "Generated Local Hand Card";
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    assert.equal(String(url), "http://localhost/cards/generated-local-hand-card.json");
+    return {
+      ok: true,
+      json: async () => ({
+        scryfall: {
+          standard_printing: true,
+          frame: "2015",
+          image_uris: {
+            normal: "https://cards.example.test/generated-local-hand-card.jpg",
+          },
+        },
+      }),
+    };
+  };
+
+  try {
+    assert.equal(
+      await resolveScryfallImageUrl(name, "normal"),
+      "https://cards.example.test/generated-local-hand-card.jpg",
+    );
+    assert.deepEqual(urls, ["http://localhost/cards/generated-local-hand-card.json"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("Scryfall API fallback resolves CDN image URLs without using format=image", async () => {
   const originalFetch = globalThis.fetch;
   const urls = [];

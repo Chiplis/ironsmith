@@ -1,5 +1,6 @@
 import { localizedPrintingFlavor } from './printing-flavor.js';
 import { printingForImageFace } from './card-printing-face.js';
+import { resolveCardAssetUrl } from './card-art-url.js';
 const BASIC_LAND_NAMES = new Set([
   "Plains",
   "Island",
@@ -229,14 +230,6 @@ function prefersLiveScryfallCard(cardName) {
   return isBasicLandName(cardName);
 }
 
-function baseAssetUrl() {
-  const configured = typeof import.meta !== "undefined"
-    ? import.meta.env?.BASE_URL
-    : null;
-  const base = configured || "/";
-  return new URL(base, globalThis?.location?.href || "http://localhost/").href;
-}
-
 const STABLE_CARD_ASSET_FETCH_OPTIONS = { cache: "no-cache" };
 
 export function cardRouteKey(name) {
@@ -462,7 +455,7 @@ async function fetchLocalCardPayload(cardName) {
   if (localCardPayloadCache.has(route)) return localCardPayloadCache.get(route);
 
   const request = (async () => {
-    const url = new URL(`cards/${route}.json`, baseAssetUrl()).href;
+    const url = resolveCardAssetUrl(route);
     const response = await fetch(url, STABLE_CARD_ASSET_FETCH_OPTIONS);
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`Local card metadata fetch failed: HTTP ${response.status}`);
