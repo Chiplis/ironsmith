@@ -68,7 +68,7 @@ pub(super) use continuous_and_choices::*;
 pub(crate) use costs_and_triggers::*;
 pub(super) use effect_lists::*;
 pub(super) use effect_lists::{
-    describe_face_down_pile_then_manifest, rendered_action_target, target_specs_select_same_objects,
+    describe_face_down_pile_then_manifest, describe_face_down_pile_then_restack, rendered_action_target, target_specs_select_same_objects,
 };
 pub(super) use emblem_surfaces::*;
 pub(super) use looked_partition::*;

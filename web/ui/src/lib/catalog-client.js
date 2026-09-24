@@ -1,4 +1,6 @@
 import { cardRouteKey } from "./scryfall.js";
+import { baseAssetUrl } from "./asset-base.js";
+import { versionedCardAssetUrl } from "./card-asset-cache.js";
 
 function normalize(value) {
   return String(value || "")
@@ -23,8 +25,7 @@ const CATALOG_MISSING_MESSAGE = "No deck catalog found. Run tools/deck-catalog/s
 // Every catalog request has to resolve against the deployed base path: the site
 // is served from a subdirectory, where a root-absolute /catalog/... would miss.
 function assetUrl(path) {
-  const configured = typeof import.meta !== "undefined" ? import.meta.env?.BASE_URL : null;
-  return new URL(path, new URL(configured || "/", globalThis?.location?.href || "http://localhost/")).href;
+  return new URL(path, baseAssetUrl()).href;
 }
 
 function searchTokens(query) {
@@ -147,7 +148,7 @@ export async function loadLocalCardArt(cardName, { fetchImpl = globalThis.fetch 
   if (!route) return "";
   if (cardArtCache.has(route)) return cardArtCache.get(route);
   if (cardArtRequests.has(route)) return cardArtRequests.get(route);
-  const request = fetchImpl(assetUrl(`cards/${route}.json`), { cache: "force-cache" })
+  const request = fetchImpl(versionedCardAssetUrl(assetUrl(`cards/${route}.json`)), { cache: "force-cache" })
     .then(async (response) => {
       if (!response?.ok) return "";
       const payload = await response.json();

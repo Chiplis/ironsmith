@@ -48,7 +48,10 @@ fn pile_intro(input: &mut LexStream<'_>) -> WResult<()> {
     Ok(())
 }
 
-fn parse_cloak_pile_exile<'a>(input: &mut LexStream<'a>) -> WResult<CloakPileExileShape<'a>> {
+/// "exile <target> and the top N cards of <library> in a face-down pile"
+fn parse_face_down_pile_exile_prefix<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<CloakPileExileShape<'a>> {
     primitives::kw("exile").parse_next(input)?;
     let target_tokens = repeat_till(
         1..,
@@ -76,13 +79,6 @@ fn parse_cloak_pile_exile<'a>(input: &mut LexStream<'a>) -> WResult<CloakPileExi
         .filter(|owner| owner.consumed_words == TokenWordView::new(owner_tokens).len())
         .ok_or_else(|| primitives::backtrack_err("cloak pile owner", "library owner"))?;
     pile_intro.parse_next(input)?;
-    primitives::comma().parse_next(input)?;
-    primitives::phrase(&["shuffle", "that", "pile"]).parse_next(input)?;
-    primitives::comma().parse_next(input)?;
-    primitives::phrase(&["then", "cloak", "those", "cards"]).parse_next(input)?;
-    opt(primitives::period()).parse_next(input)?;
-    eof.void().parse_next(input)?;
-
     let library_count = i32::try_from(count)
         .map(Value::Fixed)
         .map_err(|_| primitives::backtrack_err("cloak pile count", "signed card count"))?;
@@ -90,6 +86,61 @@ fn parse_cloak_pile_exile<'a>(input: &mut LexStream<'a>) -> WResult<CloakPileExi
         target_tokens,
         library_count,
         library_owner: owner.player,
+    })
+}
+
+fn parse_cloak_pile_exile<'a>(input: &mut LexStream<'a>) -> WResult<CloakPileExileShape<'a>> {
+    let shape = parse_face_down_pile_exile_prefix.parse_next(input)?;
+    primitives::comma().parse_next(input)?;
+    primitives::phrase(&["shuffle", "that", "pile"]).parse_next(input)?;
+    primitives::comma().parse_next(input)?;
+    primitives::phrase(&["then", "cloak", "those", "cards"]).parse_next(input)?;
+    opt(primitives::period()).parse_next(input)?;
+    eof.void().parse_next(input)?;
+    Ok(shape)
+}
+
+fn parse_standalone_pile_exile<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<CloakPileExileShape<'a>> {
+    let shape = parse_face_down_pile_exile_prefix.parse_next(input)?;
+    opt(primitives::period()).parse_next(input)?;
+    eof.void().parse_next(input)?;
+    Ok(shape)
+}
+
+/// "If you do, shuffle that pile and put it back on top of your library."
+fn parse_pile_restack(input: &mut LexStream<'_>) -> WResult<()> {
+    primitives::phrase(&["if", "you", "do"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["shuffle", "that", "pile", "and", "put", "it", "back", "on", "top", "of", "your", "library"])
+        .parse_next(input)?;
+    opt(primitives::period()).parse_next(input)?;
+    eof.void().parse_next(input)?;
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FaceDownPileRestackShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub library_count: Value,
+    pub library_owner: PlayerAst,
+}
+
+pub fn parse_face_down_pile_restack_shape<'a>(
+    exile: &'a [OwnedLexToken],
+    followup: &[OwnedLexToken],
+) -> Option<FaceDownPileRestackShape<'a>> {
+    let exile = crate::grammar::primitives::probe_all(
+        exile,
+        parse_standalone_pile_exile,
+        "face-down-pile-exile",
+    )?;
+    crate::grammar::primitives::probe_all(followup, parse_pile_restack, "face-down-pile-restack")?;
+    Some(FaceDownPileRestackShape {
+        target_tokens: exile.target_tokens,
+        library_count: exile.library_count,
+        library_owner: exile.library_owner,
     })
 }
 

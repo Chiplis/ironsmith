@@ -503,6 +503,14 @@ const PAIR_SHAPES: &[Shape] = &[
         },
     },
     Shape {
+        id: RuleId::new("exile-face-down-pile-then-restack"),
+        head: HeadDiscriminator::words(&["exile"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_exile_face_down_pile_then_restack(sentences, sentence_idx))
+        },
+    },
+    Shape {
         id: RuleId::new("each-player-shuffle-reveal-put-revealed-types-rest-bottom"),
         head: HeadDiscriminator::words(&["each"]),
         consumed: 2,

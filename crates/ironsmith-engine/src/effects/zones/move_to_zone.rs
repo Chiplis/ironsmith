@@ -428,10 +428,20 @@ impl EffectExecutor for MoveToZoneEffect {
                 .and_then(|event| event.downcast::<crate::events::ZoneChangeEvent>())
             && let Some(tagged) = ctx.get_tagged_all(tag).cloned()
         {
+            // An object this same resolution exiled is still findable by the
+            // rest of the effect (CR 400.7 exception): "exile it and ... . If
+            // you do, ... put it back on top of your library."
+            let exiled_this_resolution = ctx
+                .get_tagged_all(crate::tag::SOURCE_EXILED_TAG)
+                .map(|snapshots| snapshots.iter().map(|snapshot| snapshot.object_id).collect::<Vec<_>>())
+                .unwrap_or_default();
             object_ids.retain(|id| {
                 let Some(object) = game.object(*id) else {
                     return true;
                 };
+                if exiled_this_resolution.contains(id) {
+                    return true;
+                }
                 let names_triggering_object = tagged
                     .iter()
                     .any(|snapshot| snapshot.stable_id == object.stable_id)

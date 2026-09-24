@@ -4,8 +4,6 @@ import { beginJournalEntry, completeJournalEntry, failJournalEntry, recordWorker
 import { useEffect, useRef, useState } from "react";
 import { isGameRead } from '../lib/game-methods.js';
 
-const MIN_INIT_PHASE_MS = 180;
-
 const WORKER_METHODS = [
   "addCardToHand",
   "autocompleteCardNames",
@@ -92,7 +90,6 @@ const ZIFFLE_WORKER_METHODS = new Set([
   "ziffleVerifyShuffle",
 ]);
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function toError(raw) {
   if (raw instanceof Error) return raw;
@@ -162,7 +159,6 @@ export function useWasmGame() {
 
     let disposed = false;
     let nextRequestId = 1;
-    let initStartedAt = 0;
     const pending = new Map();
     let nextZiffleRequestId = 1;
     let zifflePool = [];
@@ -339,9 +335,6 @@ export function useWasmGame() {
     };
 
     const finishReady = async () => {
-      const elapsed = initStartedAt > 0 ? performance.now() - initStartedAt : MIN_INIT_PHASE_MS;
-      const remaining = Math.max(0, MIN_INIT_PHASE_MS - elapsed);
-      if (remaining > 0) await sleep(remaining);
       if (disposed) return;
       setProgress(1);
       setGame(gameProxy);
@@ -355,9 +348,6 @@ export function useWasmGame() {
       if (msg.type === "progress") {
         if (typeof msg.phase === "string") {
           setPhase(msg.phase);
-          if (msg.phase === "init" && initStartedAt === 0) {
-            initStartedAt = performance.now();
-          }
         }
         if (typeof msg.progress === "number") {
           const clamped = Math.max(0, Math.min(1, msg.progress));

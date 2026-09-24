@@ -20666,6 +20666,7 @@ pub(super) fn describe_resolution_program(
         }
         if segment.self_replacements.is_empty()
             && let Some(rendered) = describe_face_down_pile_then_manifest(&segment.default_effects)
+                .or_else(|| describe_face_down_pile_then_restack(&segment.default_effects))
         {
             rendered_segments.push(rendered);
             continue;

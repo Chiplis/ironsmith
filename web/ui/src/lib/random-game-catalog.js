@@ -1,4 +1,7 @@
 import { classifyCard, RANDOM_GAME_ZONES } from "./random-game.js";
+import { baseAssetUrl } from "./asset-base.js";
+import { CARD_ASSET_FETCH_OPTIONS, versionedCardAssetUrl } from "./card-asset-cache.js";
+import { decodeRandomCardPool } from "./random-card-pool.js";
 
 const CARD_FETCH_CONCURRENCY = 12;
 // A random table only needs a pool a little larger than the cards it places.
@@ -7,13 +10,8 @@ const POOL_FLOOR = 24;
 // Cards outside the filters still cost a request, so the walk has to end.
 const ATTEMPT_MULTIPLIER = 5;
 
-function assetBaseUrl() {
-  const configured = typeof import.meta !== "undefined" ? import.meta.env?.BASE_URL : null;
-  return new URL(configured || "/", globalThis?.location?.href || "http://localhost/").href;
-}
-
 export function cardAssetUrl(path) {
-  return new URL(`cards/${path}`, assetBaseUrl()).href;
+  return versionedCardAssetUrl(new URL(`cards/${path}`, baseAssetUrl()).href);
 }
 
 // Keyed by the fetch that read it, so the app shares one manifest while a
@@ -27,7 +25,7 @@ const indexPromises = new WeakMap();
  */
 export function loadRandomGameIndex({ fetchImpl = globalThis.fetch } = {}) {
   if (!indexPromises.has(fetchImpl)) {
-    const request = fetchImpl(cardAssetUrl("index.json"))
+    const request = fetchImpl(cardAssetUrl("index.json"), CARD_ASSET_FETCH_OPTIONS)
       .then((response) => {
         if (!response.ok) throw new Error(`Card index fetch failed: HTTP ${response.status}`);
         return response.json();
@@ -40,6 +38,31 @@ export function loadRandomGameIndex({ fetchImpl = globalThis.fetch } = {}) {
     indexPromises.set(fetchImpl, request);
   }
   return indexPromises.get(fetchImpl);
+}
+
+const poolPromises = new WeakMap();
+
+/**
+ * Every compiled card already classified at build time, or null when this
+ * deployment has no pool (a dev server, a test transport). The pool makes
+ * sampling local; without it the catalogue falls back to reading card assets.
+ */
+export function loadRandomCardPool({ fetchImpl = globalThis.fetch } = {}) {
+  if (!poolPromises.has(fetchImpl)) {
+    const url = versionedCardAssetUrl(new URL("random-card-pool.json", baseAssetUrl()).href);
+    const request = Promise.resolve()
+      .then(() => fetchImpl(url, CARD_ASSET_FETCH_OPTIONS))
+      .then((response) => (response?.ok ? response.json() : null))
+      .then((pool) => decodeRandomCardPool(pool))
+      .catch(() => {
+        // A deployment without a pool resolves to null and is remembered; a
+        // request that failed outright is tried again next time.
+        poolPromises.delete(fetchImpl);
+        return null;
+      });
+    poolPromises.set(fetchImpl, request);
+  }
+  return poolPromises.get(fetchImpl);
 }
 
 /** How many distinct cards the configuration will ask the catalogue for. */
@@ -74,7 +97,7 @@ function sampleRoutes(index, config, rng) {
 
 async function fetchClassifiedCard(route, fetchImpl) {
   try {
-    const response = await fetchImpl(cardAssetUrl(`${route}.json`));
+    const response = await fetchImpl(cardAssetUrl(`${route}.json`), CARD_ASSET_FETCH_OPTIONS);
     if (!response.ok) return null;
     return classifyCard(await response.json());
   } catch {
@@ -94,6 +117,12 @@ export async function resolveNamedCards(names, { fetchImpl = globalThis.fetch } 
     .map((name) => String(name || "").trim())
     .filter(Boolean))];
   if (wanted.length === 0) return [];
+  const pool = await loadRandomCardPool({ fetchImpl });
+  if (pool) {
+    const byName = new Map(pool.map((card) => [nameKey(card.name), card]));
+    const found = wanted.map((name) => byName.get(nameKey(name)));
+    if (found.every(Boolean)) return found;
+  }
   const index = await loadRandomGameIndex({ fetchImpl });
   const routeByName = new Map(index.map((card) => [nameKey(card.name), card.route]));
   const routes = wanted.map((name) => routeByName.get(nameKey(name))).filter(Boolean);
@@ -117,6 +146,10 @@ export async function collectRandomGameCards({
   fetchImpl = globalThis.fetch,
   signal = null,
 } = {}) {
+  const pool = await loadRandomCardPool({ fetchImpl });
+  if (pool) {
+    return collectFromPool({ pool, config, rng, want, accept, onProgress });
+  }
   const index = await loadRandomGameIndex({ fetchImpl });
   const target = Math.max(1, Math.trunc(Number(want)) || randomGameCardBudget(config));
   const order = sampleRoutes(index, config, rng);
@@ -142,4 +175,24 @@ export async function collectRandomGameCards({
   }
 
   return { cards, inspected: Math.min(budget, order.length), indexSize: index.length };
+}
+
+// The same draw as the asset walk, over classifications known up front: a
+// uniform shuffle of the score-eligible cards, kept in order until the pool is
+// full. Nothing is fetched, so no attempt budget is needed.
+function collectFromPool({ pool, config, rng, want, accept, onProgress }) {
+  const target = Math.max(1, Math.trunc(Number(want)) || randomGameCardBudget(config));
+  const order = sampleRoutes(pool, config, rng);
+  const cards = [];
+  const seen = new Set();
+  let inspected = 0;
+  for (const card of order) {
+    if (cards.length >= target) break;
+    inspected += 1;
+    if (seen.has(card.name) || !accept(card)) continue;
+    seen.add(card.name);
+    cards.push(card);
+  }
+  onProgress?.({ collected: cards.length, target, inspected });
+  return { cards, inspected, indexSize: pool.length };
 }

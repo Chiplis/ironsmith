@@ -1568,10 +1568,11 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
                     tags,
-                    accumulated_tags,
                     ..
                 }) => {
-                    if let Some(tag) = tags.first().or_else(|| accumulated_tags.first()) {
+                    // Accumulated tags name a union built across several
+                    // effects, never the antecedent of a later "it".
+                    if let Some(tag) = tags.first() {
                         frame.last_object_tag = Some(if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                             next_reference_tag(id_gen, "exiled")
                         } else {

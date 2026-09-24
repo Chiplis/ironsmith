@@ -132,6 +132,7 @@ pub(in crate::compiled_text) use helpers_01::render_remove_abilities_then_destro
 pub(in crate::compiled_text) use helpers_01::render_search_reveal_opponent_choose_rest_bundle;
 use helpers_01::*;
 pub(in crate::compiled_text) use helpers_02::describe_face_down_pile_then_manifest;
+pub(in crate::compiled_text) use helpers_02::describe_face_down_pile_then_restack;
 pub(in crate::compiled_text) use helpers_02::render_consult_reveal_move_matches_then_bottom;
 pub(in crate::compiled_text) use helpers_02::render_consult_reveal_put_battlefield_rest_graveyard;
 pub(in crate::compiled_text) use helpers_02::render_exile_top_then_put_from_among_onto_battlefield;
@@ -13276,6 +13277,9 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
     // exact structural matcher before broader list patterns can consume its
     // exile prefix and strand the manifest consumer as an unsupported tail.
     if let Some(compact) = describe_face_down_pile_then_manifest(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_face_down_pile_then_restack(effects) {
         return compact;
     }
     if let Some(compact) = describe_choose_exiled_card_then_play_without_paying(effects) {

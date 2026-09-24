@@ -23,10 +23,16 @@ import AddCardBar from "./AddCardBar";
 import DiagnosticsSheet from "./DiagnosticsSheet";
 import TableActionControls from "./TableActionControls";
 import Workspace from "./Workspace";
+import TableErrorBoundary from "./TableErrorBoundary";
 import MobileLandscapeGate from "./MobileLandscapeGate";
 import LogDrawer from "@/components/overlays/LogDrawer";
 import { copyTextToClipboard } from "@/lib/clipboard";
-import { addFixedStartingBoardPreset, buildRandomStartingBoard } from "@/lib/starting-board";
+import {
+  addFixedStartingBoardPreset,
+  buildRandomStartingBoard,
+  prefetchRandomStartingBoard,
+  startingBoardKey,
+} from "@/lib/starting-board";
 
 export default function Shell() {
   const ui = useUiText();
@@ -251,6 +257,15 @@ export default function Shell() {
     });
   }, [joinLobby, loading, multiplayer.mode, playerNames, state, wasmError]);
 
+  // The startup board needs no engine, so build it while the WASM downloads.
+  const startupBoardRef = useRef(null);
+  useEffect(() => {
+    if (initialPuzzleQueryRef.current || fixedStartingBoard) return;
+    startupBoardRef.current = prefetchRandomStartingBoard(parseNames(playerNames), startingLife, semanticThreshold);
+    // Mount-time settings are the ones the first init reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Initialize game when WASM loads
   useEffect(() => {
     if (!game) return;
@@ -275,7 +290,16 @@ export default function Shell() {
           await refresh(`Puzzle loaded from link${skippedSuffix}`);
         } else {
           const names = parseNames(playerNames);
-          await resetStartingBoard(game, names, startingLife, fixedStartingBoard, semanticThreshold);
+          const prefetched = startupBoardRef.current;
+          startupBoardRef.current = null;
+          const prefetchedPayload = prefetched?.key === startingBoardKey(names, startingLife, semanticThreshold)
+            ? await prefetched.payload.catch(() => null)
+            : null;
+          if (prefetchedPayload && !fixedStartingBoard) {
+            await applyPuzzleToGame(game, prefetchedPayload);
+          } else {
+            await resetStartingBoard(game, names, startingLife, fixedStartingBoard, semanticThreshold);
+          }
           await refresh("WASM loaded");
         }
       } catch (err) {
@@ -744,30 +768,32 @@ export default function Shell() {
       ) : null}
       {!dockToolbarsInTable ? topbarElement : null}
       {renderTopLevelAddCardBar ? addCardBarElement : null}
-      <Workspace
-        zoneViews={zoneViews}
-        setZoneViews={setZoneViews}
-        deckLoadingMode={deckLoadingMode}
-        puzzleSetupMode={puzzleSetupMode}
-        onLoadDecks={handleLoadCustomDecks}
-        onOpenLobby={handleOpenLobbyFromDecks}
-        onTestDecks={handleLoadCustomDecks}
-        onCancelDeckLoading={() => setDeckLoadingMode(false)}
-        onLoadPuzzle={(payload, successMessage) => runWasmInteraction(
-          () => loadPuzzle(payload, successMessage)
-        )}
-        onCancelPuzzleSetup={() => setPuzzleSetupMode(false)}
-        notices={[]}
-        onDismissNotice={dismissNotice}
-        mobileOpponentIndex={mobileOpponentIndex}
-        setMobileOpponentIndex={setMobileOpponentIndex}
-        mobileViewMode={mobileViewMode}
-        setMobileViewMode={setMobileViewMode}
-        middleUtilityControls={dockToolbarsInTable ? utilityControlsElement : null}
-        middleTopbar={dockToolbarsInTable ? topbarElement : null}
-        middleAddCardBar={null}
-        zoneActionControls={zoneActionControlsElement}
-      />
+      <TableErrorBoundary resetKey={state}>
+        <Workspace
+          zoneViews={zoneViews}
+          setZoneViews={setZoneViews}
+          deckLoadingMode={deckLoadingMode}
+          puzzleSetupMode={puzzleSetupMode}
+          onLoadDecks={handleLoadCustomDecks}
+          onOpenLobby={handleOpenLobbyFromDecks}
+          onTestDecks={handleLoadCustomDecks}
+          onCancelDeckLoading={() => setDeckLoadingMode(false)}
+          onLoadPuzzle={(payload, successMessage) => runWasmInteraction(
+            () => loadPuzzle(payload, successMessage)
+          )}
+          onCancelPuzzleSetup={() => setPuzzleSetupMode(false)}
+          notices={[]}
+          onDismissNotice={dismissNotice}
+          mobileOpponentIndex={mobileOpponentIndex}
+          setMobileOpponentIndex={setMobileOpponentIndex}
+          mobileViewMode={mobileViewMode}
+          setMobileViewMode={setMobileViewMode}
+          middleUtilityControls={dockToolbarsInTable ? utilityControlsElement : null}
+          middleTopbar={dockToolbarsInTable ? topbarElement : null}
+          middleAddCardBar={null}
+          zoneActionControls={zoneActionControlsElement}
+        />
+      </TableErrorBoundary>
       <LogDrawer open={logOpen} onOpenChange={setLogOpen} />
       {lobbyOpen ? (
         <LobbyOverlay

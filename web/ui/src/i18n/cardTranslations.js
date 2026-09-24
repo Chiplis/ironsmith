@@ -1,18 +1,11 @@
 import { cardRouteKey, fetchScryfallLocalizedCardTranslation } from "@/lib/scryfall";
 import { loadGeneratedTextTranslation } from "./generatedTextTranslations";
 import { hasTranslatedFields, translationForFace } from "./cardTranslationFace";
+import { baseAssetUrl } from "@/lib/asset-base";
 
 const cardI18nBucketCache = new Map();
 const officialCardTranslationCache = new Map();
 const translatedCardViewCache = new Map();
-
-function baseAssetUrl() {
-  const configured = typeof import.meta !== "undefined"
-    ? import.meta.env?.BASE_URL
-    : null;
-  const base = configured || "/";
-  return new URL(base, globalThis?.location?.href || "http://localhost/").href;
-}
 
 // Prebuilt translations are sharded into bucket files keyed by the first two
 // characters of the lookup key, so the asset count stays in the hundreds
