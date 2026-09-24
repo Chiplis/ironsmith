@@ -1,6 +1,6 @@
 import { cardRouteKey } from "./scryfall.js";
-import { baseAssetUrl } from "./asset-base.js";
 import { versionedCardAssetUrl } from "./card-asset-cache.js";
+import { resolveCardAssetUrl } from "./card-art-url.js";
 
 // A card the engine cannot load still has to occupy its slot in the deck, so
 // it becomes a basic land of the colour it leaned on most rather than blocking
@@ -37,7 +37,7 @@ export async function loadCardManaCost(cardName, { fetchImpl = globalThis.fetch 
   if (!route || typeof fetchImpl !== "function") return "";
   if (manaCostRequests.has(route)) return manaCostRequests.get(route);
   const request = Promise.resolve()
-    .then(() => fetchImpl(versionedCardAssetUrl(new URL(`cards/${route}.json`, baseAssetUrl()).href), { cache: "force-cache" }))
+    .then(() => fetchImpl(versionedCardAssetUrl(resolveCardAssetUrl(route)), { cache: "force-cache" }))
     .then(async (response) => (response?.ok ? String((await response.json())?.scryfall?.mana_cost || "") : ""))
     // A card with no printing on hand tells us nothing about its colours; the
     // colourless basic is the honest stand-in.

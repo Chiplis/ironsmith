@@ -50,3 +50,50 @@ test('hand, battlefield and token loaders follow image loads, source changes and
   assert.deepEqual(errors,[]);
  }finally{await browser.close();await server.close();}
 });
+
+test('hand art survives a CDN response without CORS headers', async () => {
+ const server=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});await server.listen();
+ const browser=await chromium.launch();
+ const source='https://cards.scryfall.io/normal/front/a/b/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jpg';
+ try {
+  const page=await browser.newPage({viewport:{width:900,height:500}});
+  await page.addInitScript(({source}) => { window.__cardArtLoaderSource=source; }, {source});
+  await page.route('https://cards.scryfall.io/**', route => route.fulfill({contentType:'image/svg+xml',body:art}));
+  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/card-art-loader.html`, {waitUntil:'domcontentloaded'});
+  await page.waitForFunction(() => !document.querySelector('[data-probe="hand"] [data-card-art-loader]'));
+  assert.equal(await page.locator('[data-probe="hand"] img').evaluate(image => image.naturalWidth > 0), true);
+ } finally { await browser.close(); await server.close(); }
+});
+
+test('a transient art failure retries once when metadata settles, but missing art stays failed', async () => {
+ const server=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});await server.listen();
+ const browser=await chromium.launch();
+ const source='https://cards.scryfall.io/normal/front/c/d/cccccccc-dddd-eeee-ffff-000000000000.jpg';
+ try {
+  const page=await browser.newPage({viewport:{width:900,height:500}});
+  await page.addInitScript(({source}) => {
+    window.__cardArtLoaderSource=source;
+    window.__cardArtLoaderPending=true;
+    window.__cardArtLoaderPendingFixture=true;
+  }, {source});
+  let attempts=0;
+  await page.route('https://cards.scryfall.io/**', route => {
+    attempts += 1;
+    if (attempts === 1) return route.abort();
+    return route.fulfill({contentType:'image/svg+xml',body:art});
+  });
+  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/card-art-loader.html`, {waitUntil:'domcontentloaded'});
+  await page.waitForFunction(() => document.querySelector('[data-probe="late"] [data-card-art-loader="unavailable"]'));
+  await page.evaluate(() => window.setCardArtMetadataSettled());
+  await page.waitForFunction(() => !document.querySelector('[data-probe="late"] [data-card-art-loader]'));
+  assert.equal(attempts, 2);
+
+  const missing='https://cards.scryfall.io/normal/front/e/f/eeeeeeee-ffff-0000-1111-222222222222.jpg';
+  await page.evaluate((next) => window.changeArt(next), missing);
+  await page.route(missing, route => route.fulfill({status:404,body:''}));
+  await page.waitForFunction(() => document.querySelector('[data-probe="late"] [data-card-art-loader="unavailable"]'));
+  const attemptsAfterMissing=attempts;
+  await page.waitForTimeout(100);
+  assert.equal(attempts, attemptsAfterMissing);
+ } finally { await browser.close(); await server.close(); }
+});

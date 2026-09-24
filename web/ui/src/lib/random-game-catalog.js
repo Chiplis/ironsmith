@@ -2,6 +2,7 @@ import { classifyCard, RANDOM_GAME_ZONES } from "./random-game.js";
 import { baseAssetUrl } from "./asset-base.js";
 import { CARD_ASSET_FETCH_OPTIONS, versionedCardAssetUrl } from "./card-asset-cache.js";
 import { decodeRandomCardPool } from "./random-card-pool.js";
+import { resolveAssetUrl } from "./card-art-url.js";
 
 const CARD_FETCH_CONCURRENCY = 12;
 // A random table only needs a pool a little larger than the cards it places.
@@ -11,7 +12,7 @@ const POOL_FLOOR = 24;
 const ATTEMPT_MULTIPLIER = 5;
 
 export function cardAssetUrl(path) {
-  return versionedCardAssetUrl(new URL(`cards/${path}`, baseAssetUrl()).href);
+  return versionedCardAssetUrl(resolveAssetUrl(`cards/${String(path || "").replace(/^\/+/, "")}`));
 }
 
 // Keyed by the fetch that read it, so the app shares one manifest while a

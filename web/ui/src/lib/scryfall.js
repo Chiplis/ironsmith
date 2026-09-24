@@ -1,7 +1,7 @@
 import { localizedPrintingFlavor } from './printing-flavor.js';
 import { printingForImageFace } from './card-printing-face.js';
-import { baseAssetUrl } from './asset-base.js';
 import { CARD_ASSET_FETCH_OPTIONS, versionedCardAssetUrl } from './card-asset-cache.js';
+import { resolveCardAssetUrl } from './card-art-url.js';
 const BASIC_LAND_NAMES = new Set([
   "Plains",
   "Island",
@@ -456,7 +456,7 @@ async function fetchLocalCardPayload(cardName) {
   if (localCardPayloadCache.has(route)) return localCardPayloadCache.get(route);
 
   const request = (async () => {
-    const url = versionedCardAssetUrl(new URL(`cards/${route}.json`, baseAssetUrl()).href);
+    const url = versionedCardAssetUrl(resolveCardAssetUrl(route));
     const response = await fetch(url, STABLE_CARD_ASSET_FETCH_OPTIONS);
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`Local card metadata fetch failed: HTTP ${response.status}`);
