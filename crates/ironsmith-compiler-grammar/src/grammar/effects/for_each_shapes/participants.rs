@@ -15,6 +15,8 @@ use crate::util::{
 pub enum ForEachParticipantScope {
     Opponent,
     OpponentExceptDefending,
+    /// "each of that player's opponents" / "each opponent of that player"
+    OpponentOfThatPlayer,
     Player,
     PlayerExceptYou,
     PlayerExceptTarget,
@@ -207,6 +209,19 @@ pub fn parse_participant_clause_shape(
         .unwrap_or(tokens);
     let participant_is_actor =
         primitives::parse_prefix(tokens, primitives::kw("each").void()).is_some();
+    if let Some((_, rest)) = primitives::parse_prefix(
+        tokens,
+        alt((
+            primitives::phrase(&["each", "of", "that", "player's", "opponents"]),
+            primitives::phrase(&["each", "of", "that", "players", "opponents"]),
+        )),
+    ) {
+        return Some(ForEachParticipantClauseShape {
+            scope: ForEachParticipantScope::OpponentOfThatPlayer,
+            participant_is_actor: true,
+            inner_tokens: trim(rest),
+        });
+    }
     if let Some((_, rest)) = primitives::parse_prefix(tokens, opponent_prefix) {
         let mut scope = ForEachParticipantScope::Opponent;
         let mut inner_tokens = trim(rest);
@@ -215,6 +230,11 @@ pub fn parse_participant_clause_shape(
             primitives::phrase(&["other", "than", "defending", "player"]),
         ) {
             scope = ForEachParticipantScope::OpponentExceptDefending;
+            inner_tokens = trim(rest);
+        } else if let Some((_, rest)) =
+            primitives::parse_prefix(inner_tokens, primitives::phrase(&["of", "that", "player"]))
+        {
+            scope = ForEachParticipantScope::OpponentOfThatPlayer;
             inner_tokens = trim(rest);
         }
         return Some(ForEachParticipantClauseShape {

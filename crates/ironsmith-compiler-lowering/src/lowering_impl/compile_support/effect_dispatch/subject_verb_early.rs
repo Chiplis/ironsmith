@@ -344,7 +344,13 @@ pub(super) fn compile_exile_top_of_library(
             ctx.last_exiled_collection_tag = Some(resolved_tag.clone());
         }
         ctx.last_exiled_collection_is_plural = exiled_is_plural;
-        ctx.last_object_tag = Some(resolved_tag.clone());
+        // An accumulated tag names a union being built across several
+        // effects ("exile it and the top six cards ... in a pile"), not the
+        // cards this effect just exiled, so it never becomes the antecedent
+        // of a later "it".
+        if !tags.is_empty() {
+            ctx.last_object_tag = Some(resolved_tag.clone());
+        }
     }
     ctx.last_player_filter = Some(player_filter);
     Ok((vec![Effect::new(effect)], subject.into_choices()))

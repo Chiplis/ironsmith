@@ -1461,13 +1461,16 @@ pub(crate) fn this_spell_cast_timing_allows(
         ThisSpellCastTiming::BeforeAttackersAreDeclared => {
             matches!(game.turn.phase, Phase::Combat) && game.turn.step == Some(Step::BeginCombat)
         }
-        ThisSpellCastTiming::BeforeCombatDamageStep => {
-            matches!(game.turn.phase, Phase::Combat)
-                && matches!(
-                    game.turn.step,
-                    Some(Step::BeginCombat | Step::DeclareAttackers | Step::DeclareBlockers)
-                )
-        }
+        // Any time earlier in the turn than its combat damage step: the
+        // beginning phase, the precombat main phase, or combat before damage.
+        ThisSpellCastTiming::BeforeCombatDamageStep => match game.turn.phase {
+            Phase::Beginning | Phase::FirstMain => true,
+            Phase::Combat => matches!(
+                game.turn.step,
+                Some(Step::BeginCombat | Step::DeclareAttackers | Step::DeclareBlockers)
+            ),
+            Phase::NextMain | Phase::Ending => false,
+        },
         ThisSpellCastTiming::DuringOpponentsUpkeep => {
             !game.is_active_player(player)
                 && matches!(game.turn.phase, Phase::Beginning)

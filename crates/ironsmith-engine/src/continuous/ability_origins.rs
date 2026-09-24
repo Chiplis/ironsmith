@@ -12,6 +12,17 @@ pub struct AbilityEffectOrigin {
     timestamp: u64,
     static_ability: Option<StaticAbilityInstanceId>,
 }
+impl AbilityEffectOrigin {
+    /// The object whose effect granted the ability.
+    pub fn source(&self) -> ObjectId {
+        self.source
+    }
+    /// The static ability of `source` that generated the effect, when a static
+    /// ability (rather than a resolving spell or ability) generated it.
+    pub fn static_ability(&self) -> Option<StaticAbilityInstanceId> {
+        self.static_ability
+    }
+}
 impl From<&ContinuousEffect> for AbilityEffectOrigin {
     fn from(effect: &ContinuousEffect) -> Self {
         Self {

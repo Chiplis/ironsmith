@@ -1490,13 +1490,13 @@ fn pre_rule_permission_payment_followup(
     fn annotate(effect: &mut EffectAst, life: bool, mode: Option<ironsmith_core::value_model::ManaSpendMode>, rider: &mut Option<EffectAst>) -> bool {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Grants(grant), .. }) = effect {
             let parts = match grant {
-                GrantActionAst::GrantPlayTaggedUntilEndOfTurn { tag, player, allow_any_color_for_cast, .. } => Some((tag, player, allow_any_color_for_cast, true)),
-                GrantActionAst::GrantPlayTaggedForAsLongAsExiled { tag, player, allow_any_color_for_cast, .. }
-                | GrantActionAst::GrantPlayTaggedUntilYourNextTurn { tag, player, allow_any_color_for_cast, .. }
-                | GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { tag, player, allow_any_color_for_cast, .. } => Some((tag, player, allow_any_color_for_cast, false)),
+                GrantActionAst::GrantPlayTaggedUntilEndOfTurn { tag, player, allow_any_color_for_cast, surface, .. } => Some((tag, player, allow_any_color_for_cast, surface, true)),
+                GrantActionAst::GrantPlayTaggedForAsLongAsExiled { tag, player, allow_any_color_for_cast, surface, .. }
+                | GrantActionAst::GrantPlayTaggedUntilYourNextTurn { tag, player, allow_any_color_for_cast, surface, .. }
+                | GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { tag, player, allow_any_color_for_cast, surface, .. } => Some((tag, player, allow_any_color_for_cast, surface, false)),
                 _ => None,
             };
-            if let Some((tag, player, spending, until_end_of_turn)) = parts {
+            if let Some((tag, player, spending, surface, until_end_of_turn)) = parts {
                 if life {
                     if !until_end_of_turn { return false; }
                     let pool_tag = tag.clone();
@@ -1516,7 +1516,10 @@ fn pre_rule_permission_payment_followup(
                             if_false: Vec::new(),
                         })],
                     });
-                } else if let Some(mode) = mode { *spending = mode; }
+                } else if let Some(mode) = mode {
+                    *spending = mode;
+                    surface.get_or_insert_with(Default::default).mana_spend_followup = true;
+                }
                 return true;
             }
         }
@@ -1582,7 +1585,132 @@ fn pre_rule_repeat_sacrifice_for_types(
     Ok(Some(PreParseFollowupResult::Handled { consumed_sentences: 1, route: Some("repeat-sacrifice-for-types") }))
 }
 
+/// "[If <condition>,] excess damage is dealt to that creature's controller
+/// instead." modifies the damage instruction the previous sentence ended with.
+fn pre_rule_excess_damage_to_controller(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    const TAIL: &[&str] = &[
+        "excess", "damage", "is", "dealt", "to", "that", "creatures", "controller", "instead",
+    ];
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let damage_by_object = matches!(
+        state.effects.last(),
+        Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { .. }),
+            ..
+        }))
+    );
+    let modifies_damage = damage_by_object
+        || matches!(
+            state.effects.last(),
+            Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { .. }),
+                ..
+            }))
+        );
+    if !modifies_damage {
+        return Ok(None);
+    }
+    let condition = if words.as_slice() == TAIL {
+        None
+    } else if words.first() == Some(&"if")
+        && words.ends_with(TAIL)
+        && let Some(comma) = tokens.iter().position(|token| token.is_comma())
+        && crate::lexer::parser_token_word_refs(&tokens[comma + 1..]).as_slice() == TAIL
+    {
+        // "If the creature you control has trample": the object dealing the
+        // damage, which is the damage source while the damage is dealt.
+        let condition_tokens = &tokens[1..comma];
+        let condition_words = crate::lexer::parser_token_word_refs(condition_tokens);
+        let has_idx = condition_words.iter().position(|word| *word == "has");
+        match (condition_words.first(), has_idx) {
+            (Some(&"the"), Some(has_idx)) if damage_by_object && has_idx > 1 => {
+                let mut filter_tokens = condition_tokens[1..has_idx].to_vec();
+                filter_tokens.extend(crate::lexer::synthetic_phrase_tokens("with"));
+                filter_tokens.extend_from_slice(&condition_tokens[has_idx + 1..]);
+                let filter = crate::object_filters::parse_object_filter_lexed(&filter_tokens, false)?;
+                if filter.static_abilities.is_empty() {
+                    return Ok(None);
+                }
+                Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(filter)))
+            }
+            (Some(&"the"), _) => return Ok(None),
+            _ => Some(crate::grammar::filters::parse_condition_predicate_lexed(condition_tokens)?),
+        }
+    } else {
+        return Ok(None);
+    };
+    // The rider belongs to the damage instruction itself, so both lower
+    // together as one sequence.
+    let damage = state.effects.pop().expect("checked above");
+    state.effects.push(EffectAst::Sequence {
+        effects: vec![
+            damage,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject: SubjectVerbSubjectAst {
+                    role: SubjectVerbRoleAst::Actor,
+                    player: PlayerAst::Implicit,
+                },
+                action: SubjectVerbActionAst::Damage(DamageActionAst::ExcessDamageToController {
+                    condition,
+                }),
+            }),
+        ],
+    });
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: Some("excess-damage-to-controller"),
+    }))
+}
+
+/// "[Until end of turn,] damage that would reduce your life total to less
+/// than 1 reduces it to 1 instead." (Angel's Grace)
+fn pre_rule_damage_life_floor(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    const CLAUSE: &[&str] = &[
+        "damage", "that", "would", "reduce", "your", "life", "total", "to", "less", "than", "1",
+        "reduces", "it", "to", "1", "instead",
+    ];
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let (duration, duration_surface) = if words.as_slice() == CLAUSE {
+        (crate::effect::Until::Forever, crate::effect::RestrictionDurationSurface::Default)
+    } else if words.starts_with(&["until", "end", "of", "turn"]) && words[4..] == *CLAUSE {
+        (
+            crate::effect::Until::EndOfTurn,
+            crate::effect::RestrictionDurationSurface::LeadingUntilEndOfTurn,
+        )
+    } else {
+        return Ok(None);
+    };
+    state.effects.push(EffectAst::subject_verb_cant_starting_with_duration_surface(
+        crate::effect::Restriction::damage_reduce_life_below_one(PlayerFilter::You),
+        duration,
+        crate::effect::RestrictionStart::Immediate,
+        duration_surface,
+        None,
+    ));
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: Some("damage-life-floor"),
+    }))
+}
+
 const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
+    pre_followup_rule!("damage-life-floor", &["until", "damage"], pre_rule_damage_life_floor),
+    pre_followup_rule!(
+        "excess-damage-to-controller",
+        &["excess", "if"],
+        pre_rule_excess_damage_to_controller
+    ),
     pre_followup_rule!("repeat-sacrifice-for-types", &["then", "repeat"], pre_rule_repeat_sacrifice_for_types),
     pre_followup_rule!("permission-payment-followup", &["if"], pre_rule_permission_payment_followup),
     pre_followup_rule!(

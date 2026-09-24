@@ -1543,6 +1543,16 @@
         effect.downcast_ref::<crate::effects::MoveToLibraryTopOrBottomChoiceEffect>()
     {
         let target = describe_choose_spec(&move_choice.target);
+        if move_choice.top_position > 0 && move_choice.chooser.is_none() {
+            let position = match move_choice.top_position + 1 {
+                2 => "second".to_string(),
+                3 => "third".to_string(),
+                n => format!("{n}th"),
+            };
+            return format!(
+                "The owner of {target} puts it into their library {position} from the top or on the bottom"
+            );
+        }
         if let Some(chooser) = &move_choice.chooser
             && !matches!(
                 chooser,
@@ -2625,6 +2635,26 @@
         return format!("Destroy {target}{where_clause}");
     }
     if let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() {
+        if let Some(deal_damage) = with_source
+            .effect
+            .downcast_ref::<crate::effects::DealDamageEffect>()
+            && let Some(redirect) = &deal_damage.excess_to_controller
+        {
+            let mut plain_damage = deal_damage.clone();
+            plain_damage.excess_to_controller = None;
+            let mut plain = with_source.clone();
+            plain.effect = Box::new(Effect::new(plain_damage));
+            let base = describe_effect_impl(&Effect::new(plain));
+            let rider = "excess damage is dealt to that creature's controller instead";
+            return match &redirect.condition {
+                Some(condition) => format!(
+                    "{}. If {}, {rider}",
+                    base.trim_end_matches('.'),
+                    describe_excess_redirect_condition(condition)
+                ),
+                None => format!("{}. {}", base.trim_end_matches('.'), capitalize_first(rider)),
+            };
+        }
         if let Some(for_each) = unwrap_basic_tag_wrappers(&with_source.effect)
             .downcast_ref::<crate::effects::ForEachObject>()
             && let Some(compact) =
@@ -2838,6 +2868,20 @@
         return describe_effect(&with_source.effect);
     }
     if let Some(deal_damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
+        if let Some(redirect) = &deal_damage.excess_to_controller {
+            let mut plain = deal_damage.clone();
+            plain.excess_to_controller = None;
+            let base = describe_effect_impl(&Effect::new(plain));
+            let rider = "excess damage is dealt to that creature's controller instead";
+            return match &redirect.condition {
+                Some(condition) => format!(
+                    "{}. If {}, {rider}",
+                    base.trim_end_matches('.'),
+                    describe_excess_redirect_condition(condition)
+                ),
+                None => format!("{}. {}", base.trim_end_matches('.'), capitalize_first(rider)),
+            };
+        }
         if deal_damage.unpreventable {
             let mut preventable = deal_damage.clone();
             preventable.unpreventable = false;
@@ -6888,6 +6932,13 @@
         if cast_tagged.without_paying_mana_cost {
             text.push_str(" without paying its mana cost");
         }
+        match cast_tagged.alternative_payment {
+            Some(ironsmith_core::CastTaggedAlternativePayment::EnergyEqualToManaValue) => text
+                .push_str(
+                    " by paying an amount of {E} equal to its mana value rather than paying its mana cost",
+                ),
+            None => {}
+        }
         if let Some(additional) = cast_tagged.additional_mana_cost.as_ref() {
             text.push_str(&format!(
                 " by paying {} in addition to its other costs",
@@ -6918,6 +6969,19 @@
                 .is_some()
         {
             return format!("You may {}", lowercase_first(&describe_effect(manifest)));
+        }
+        // "you may have it connive": the optional connive keeps the causative
+        // "have" and the bare infinitive, not "you may it connives".
+        if matches!(may.decider, None | Some(PlayerFilter::You))
+            && let [connive] = may.effects.as_slice()
+            && let Some(connive) = connive.downcast_ref::<crate::effects::ConniveEffect>()
+            && connive.target.count().is_single()
+            && matches!(connive.count, Value::Fixed(1))
+        {
+            return format!(
+                "You may have {} connive",
+                describe_choose_spec(&connive.target)
+            );
         }
         if let Some(compact) = describe_triggering_object_controller_may_attach_source(may) {
             return compact;

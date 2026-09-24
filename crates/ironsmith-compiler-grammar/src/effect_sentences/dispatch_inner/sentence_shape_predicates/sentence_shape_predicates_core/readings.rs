@@ -651,6 +651,7 @@ const SENTENCE_READINGS: &[Reading] = &[
         },
         read: |input| input.outcome(part_3::read_next_spell_grant_sentence(input)),
     },
+
     Reading {
         id: RuleId::new("matching-spell-cost-reduction"),
         head: HeadDiscriminator::Any,

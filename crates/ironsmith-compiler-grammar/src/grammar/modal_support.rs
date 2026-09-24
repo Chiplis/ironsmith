@@ -658,6 +658,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestDread)
             | SubjectVerbActionAst::Damage(DamageActionAst::HealDamage { amount: None, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::ExcessDamageToController { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Behold { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight { .. })
@@ -723,6 +724,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot)
             | SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { .. })
+            | SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceMatchingSpellCostThisTurn {
                 ..
             })

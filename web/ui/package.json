@@ -5,7 +5,7 @@
   "packageManager": "pnpm@11.1.1",
   "type": "module",
   "scripts": {
-    "dev": "pnpm assets:mana && vite",
+    "dev": "pnpm assets:mana && pnpm assets:random-pool && vite",
     "predev": "node ./scripts/sync-deck-catalog-assets.mjs",
     "lan": "pnpm assets:mana && vite --mode lan --host 0.0.0.0",
     "build:lan": "pnpm build --mode lan",
@@ -15,7 +15,7 @@
     "test:lan": "node --test tests/lan-service.test.mjs tests/lan-browser.test.mjs tests/sha256.test.mjs",
     "test:deck-catalog": "node --test tests/catalog-client.test.js tests/deck-catalog-import.test.js tests/card-name-resolution.test.js",
     "prebuild": "node ./scripts/sync-deck-catalog-assets.mjs",
-    "build": "pnpm assets:mana && node ./scripts/build-scryfall-i18n.mjs --if-changed --locale es && vite build",
+    "build": "pnpm assets:mana && node ./scripts/build-scryfall-i18n.mjs --if-changed --locale es && pnpm assets:random-pool && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
     "i18n:extract-static": "node ./scripts/extract-i18n-static.mjs",
@@ -30,7 +30,8 @@
     "test:relay": "node --test tests/relay-format.test.mjs tests/relay-resync.test.mjs ../relay/tests/relay.test.mjs tests/relay-browser.test.mjs",
     "i18n:check": "node scripts/check-ui-i18n.mjs",
     "test:i18n": "node --test tests/ui-i18n.test.js tests/decision-text-translation.test.js tests/card-translation-face.test.js tests/scryfall-i18n-text.test.js tests/priority-advance-locale.test.js",
-    "assets:mana": "node ./scripts/sync-mana-assets.mjs"
+    "assets:mana": "node ./scripts/sync-mana-assets.mjs",
+    "assets:random-pool": "node ./scripts/build-random-card-pool.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

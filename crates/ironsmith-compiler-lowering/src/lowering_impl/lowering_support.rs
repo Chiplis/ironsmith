@@ -939,6 +939,14 @@ fn default_trigger_last_object_prelude(
         } if tag.as_str() == crate::tag::CompilerReferenceTag::ManifestDreadGraveyard.as_str() => {
             Some(EffectPreludeTag::TriggeringObject(tag.clone()))
         }
+        // "At the beginning of the upkeep of enchanted creature's controller,
+        // ... untap that creature": the default reference is the permanent
+        // this source is attached to, which must be tagged at resolution.
+        _ if tag.as_str() == crate::tag::CompilerReferenceTag::Enchanted.as_str()
+            || tag.as_str() == crate::tag::CompilerReferenceTag::Equipped.as_str() =>
+        {
+            Some(EffectPreludeTag::AttachedSource(tag.clone()))
+        }
         _ => None,
     }
 }
@@ -2075,7 +2083,9 @@ fn stage_effects_from_normalized(
                 .unwrap_or_else(|| (crate::tag::CompilerReferenceTag::Triggering.bind()).into());
             prelude.insert(0, EffectPreludeTag::TriggeringObject(tag));
         }
-        if let Some(default_prelude) = default_last_object_prelude {
+        if let Some(default_prelude) = default_last_object_prelude
+            && !prelude.contains(&default_prelude)
+        {
             prelude.insert(0, default_prelude);
         }
         if references_triggering_source {

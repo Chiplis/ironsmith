@@ -1,3 +1,5 @@
+import { baseAssetUrl } from "../lib/asset-base.js";
+
 const generatedTextCache = new Map();
 
 const encoder = new TextEncoder();
@@ -23,14 +25,6 @@ export async function generatedTextHash(sourceText) {
   if (!normalized) return "";
   const digest = await crypto.subtle.digest("SHA-256", encoder.encode(normalized));
   return hexFromBytes(digest);
-}
-
-function baseAssetUrl() {
-  const configured = typeof import.meta !== "undefined"
-    ? import.meta.env?.BASE_URL
-    : null;
-  const base = configured || "/";
-  return new URL(base, globalThis?.location?.href || "http://localhost/").href;
 }
 
 export function generatedTextTranslationUrl(locale, sourceHash) {

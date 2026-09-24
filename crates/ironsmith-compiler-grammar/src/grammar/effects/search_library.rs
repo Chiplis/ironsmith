@@ -317,6 +317,7 @@ fn search_library_words_are_default_card_selector(words: &[&str]) -> bool {
     words.is_empty()
         || search_word_stream_eq_phrase(words, &["card"])
         || search_word_stream_eq_phrase(words, &["cards"])
+        || search_word_stream_eq_phrase(words, &["any", "card"])
 }
 
 fn search_library_prefix_len(
@@ -1598,6 +1599,30 @@ pub fn parse_search_library_object_filter_lexed(
     filter_tokens: &[OwnedLexToken],
     clause_display: &str,
 ) -> Result<ObjectFilter, CardTextError> {
+    // "an additional Plains card": another card beyond the one the previous
+    // search in this instruction already found (it is still in the library).
+    let words = parser_token_word_refs(filter_tokens);
+    let additional_idx = match words.as_slice() {
+        ["additional", ..] => Some(0),
+        ["a" | "an", "additional", ..] => Some(1),
+        _ => None,
+    };
+    if let Some(idx) = additional_idx
+        && let Some(position) = filter_tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, token)| token.as_word().is_some())
+            .nth(idx + 1)
+            .map(|(position, _)| position)
+    {
+        let mut filter =
+            parse_search_library_object_filter_lexed(&filter_tokens[position..], clause_display)?;
+        filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::It.bind().into(),
+            relation: crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
+        });
+        return Ok(filter);
+    }
     let filter_tokens = &strip_search_library_instead_of_count_tokens(filter_tokens);
     let (filter_tokens, color_count) = if let Some((stripped, color_count)) =
         strip_search_library_color_count_phrase_lexed(filter_tokens)

@@ -38,6 +38,7 @@ fn player_filter_references_identity(
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { base: inner, .. }
         | PlayerFilter::HasMoreLifeThanYou { base: inner }
         | PlayerFilter::LostLifeThisTurn { base: inner }
+        | PlayerFilter::OpponentOf(inner)
         | PlayerFilter::MaxSpeed { base: inner, .. } => {
             player_filter_references_identity(inner, identity)
         }
@@ -245,6 +246,7 @@ fn restriction_references_identity(
         | Restriction::PoisonCounters(player)
         | Restriction::LoseLife(player)
         | Restriction::DamageCauseLifeLoss(player)
+        | Restriction::DamageReduceLifeBelowOne(player)
         | Restriction::ChangeLifeTotal(player)
         | Restriction::LoseGame(player)
         | Restriction::WinGame(player)

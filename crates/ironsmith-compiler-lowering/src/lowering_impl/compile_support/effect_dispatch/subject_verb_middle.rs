@@ -329,6 +329,13 @@ pub(super) fn compile_target_only_action(
     if let Some(chooser) = delegated_chooser {
         target_only = target_only.with_chooser(chooser);
     }
+    // A declared player target is the player later references ("that
+    // player", a condition naming the target) mean.
+    if spec.is_target()
+        && let ChooseSpec::Player(filter) = spec.base()
+    {
+        ctx.last_player_filter = Some(PlayerFilter::Target(Box::new(filter.clone())));
+    }
     let effect = tag_object_target_effect(Effect::new(target_only), &spec, ctx, "targeted");
     Ok((vec![effect], choices))
 }
@@ -1002,6 +1009,7 @@ pub(super) fn compile_subject_verb_middle(
             additional_mana_cost,
             cost_reduction,
             mana_spend_mode,
+            alternative_payment,
         }) => {
             let resolved_tag = if tag.as_str() == "__last_revealed__" {
                 ctx.last_revealed_tag.clone().ok_or_else(|| {
@@ -1043,6 +1051,7 @@ pub(super) fn compile_subject_verb_middle(
                     additional_mana_cost.clone(),
                     cost_reduction.clone(),
                     *mana_spend_mode,
+                    *alternative_payment,
                 )],
                 Vec::new(),
             ))
@@ -1223,6 +1232,7 @@ pub(super) fn compile_subject_verb_middle(
             during_turns_counter_put_on_source,
             spell_cost_increase,
             lands_enter_tapped,
+            surface,
         }) => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -1261,6 +1271,9 @@ pub(super) fn compile_subject_verb_middle(
                 grant_play = grant_play.with_spell_cost_increase(cost);
             }
             grant_play = grant_play.with_lands_enter_tapped(*lands_enter_tapped);
+            if let Some(surface) = surface.clone() {
+                grant_play = grant_play.with_surface(surface);
+            }
             let mut effects = vec![Effect::new(grant_play)];
             if *without_paying_mana_cost {
                 effects.push(Effect::new(
@@ -2037,11 +2050,13 @@ pub(super) fn compile_subject_verb_middle(
         }
         SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice {
             target,
+            top_position,
         }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let mut move_effect =
-                crate::effects::MoveToLibraryTopOrBottomChoiceEffect::new(spec.clone());
+                crate::effects::MoveToLibraryTopOrBottomChoiceEffect::new(spec.clone())
+                    .with_top_position(*top_position);
             if !matches!(player, PlayerAst::ItsOwner) {
                 let chooser = match player {
                     PlayerAst::Implicit | PlayerAst::You => PlayerFilter::You,
@@ -2436,7 +2451,7 @@ pub(super) fn compile_subject_verb_middle(
             condition,
             set_quantifier_surface,
         }) => {
-            let abilities = lower_granted_abilities_ast_to_object_abilities(abilities)?;
+            let removals = lower_ability_removal_modifications(abilities)?;
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let mut choices = Vec::new();
             collect_targeted_player_specs_from_filter(&resolved_filter, &mut choices);
@@ -2451,7 +2466,7 @@ pub(super) fn compile_subject_verb_middle(
                     )
                 })
                 .transpose()?;
-            if abilities.is_empty() {
+            if removals.is_empty() {
                 let mut apply = crate::effects::ApplyContinuousEffect::new_runtime(
                     crate::continuous::EffectTarget::Filter(resolved_filter),
                     crate::effects::continuous::RuntimeModification::RemoveAllAbilities,
@@ -2466,16 +2481,14 @@ pub(super) fn compile_subject_verb_middle(
             } else {
                 let mut apply = crate::effects::ApplyContinuousEffect::new(
                     crate::continuous::EffectTarget::Filter(resolved_filter),
-                    crate::continuous::Modification::RemoveAbility(abilities[0].clone()),
+                    removals[0].clone(),
                     duration.clone(),
                 )
                 .with_set_quantifier_surface(*set_quantifier_surface)
                 .lock_filter_at_resolution();
 
-                for ability in abilities.iter().skip(1) {
-                    apply = apply.with_additional_modification(
-                        crate::continuous::Modification::RemoveAbility(ability.clone()),
-                    );
+                for removal in removals.iter().skip(1) {
+                    apply = apply.with_additional_modification(removal.clone());
                 }
                 if let Some(condition) = resolved_condition {
                     apply = apply.with_condition(condition);
@@ -2562,8 +2575,8 @@ pub(super) fn compile_subject_verb_middle(
                 })
                 .map(Some);
             }
-            let abilities = lower_granted_abilities_ast_to_object_abilities(abilities)?;
-            let Some(first_ability) = abilities.first() else {
+            let removals = lower_ability_removal_modifications(abilities)?;
+            let Some((first_removal, other_removals)) = removals.split_first() else {
                 return compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
                     Effect::new(crate::effects::ApplyContinuousEffect::with_spec_runtime(
                         spec,
@@ -2583,14 +2596,12 @@ pub(super) fn compile_subject_verb_middle(
                 };
                 let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
                     effect_spec,
-                    crate::continuous::Modification::RemoveAbility(first_ability.clone()),
+                    first_removal.clone(),
                     duration.clone(),
                 );
 
-                for ability in abilities.iter().skip(1) {
-                    apply = apply.with_additional_modification(
-                        crate::continuous::Modification::RemoveAbility(ability.clone()),
-                    );
+                for removal in other_removals {
+                    apply = apply.with_additional_modification(removal.clone());
                 }
 
                 if let Some(surface) = source_reference_surface {
@@ -3477,4 +3488,27 @@ fn apply_token_definition_granted_abilities(
         }
     }
     Ok(())
+}
+
+/// Layer-6 removals for a lost-ability list: concrete abilities are removed
+/// individually, and an ability family ("all landwalk abilities") removes
+/// every static ability with that identity.
+fn lower_ability_removal_modifications(
+    abilities: &[GrantedAbilityAst],
+) -> Result<Vec<crate::continuous::Modification>, CardTextError> {
+    let (families, concrete): (Vec<_>, Vec<_>) = abilities
+        .iter()
+        .cloned()
+        .partition(|ability| matches!(ability, GrantedAbilityAst::StaticAbilityFamily(_)));
+    let mut removals = lower_granted_abilities_ast_to_object_abilities(&concrete)?
+        .into_iter()
+        .map(crate::continuous::Modification::RemoveAbility)
+        .collect::<Vec<_>>();
+    removals.extend(families.into_iter().filter_map(|family| match family {
+        GrantedAbilityAst::StaticAbilityFamily(id) => {
+            Some(crate::continuous::Modification::RemoveStaticAbilityFamily(id))
+        }
+        _ => None,
+    }));
+    Ok(removals)
 }

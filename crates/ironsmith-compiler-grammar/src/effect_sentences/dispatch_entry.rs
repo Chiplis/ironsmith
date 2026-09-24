@@ -752,6 +752,7 @@ pub(super) enum ConsultCastCost {
     Normal,
     WithoutPayingManaCost,
     PayLifeEqualToManaValue,
+    PayEnergyEqualToManaValue,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -11356,6 +11357,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestDread)
             | SubjectVerbActionAst::Damage(DamageActionAst::HealDamage { amount: None, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::ExcessDamageToController { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Behold { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight { .. })
@@ -11417,6 +11419,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot)
             | SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { .. })
+            | SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RingTemptsYou)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::VentureIntoDungeon {
                 ..

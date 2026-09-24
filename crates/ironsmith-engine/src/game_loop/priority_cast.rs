@@ -2335,6 +2335,54 @@ fn resolved_next_target_chooser(
     }
 }
 
+/// Flagbearer: while an opponent of a Flagbearer-lock controller chooses
+/// targets for a spell or ability they control, they must choose at least one
+/// Flagbearer on the battlefield if able. The first requirement that can take
+/// a Flagbearer takes one.
+fn enforce_flagbearer_targeting(
+    game: &GameState,
+    player: PlayerId,
+    chooser: PlayerId,
+    requirements: &mut [TargetRequirement],
+) {
+    if chooser != player {
+        return;
+    }
+    let locked = game.battlefield.iter().any(|&id| {
+        game.object(id).is_some_and(|object| {
+            let controller = game.controller_of(object);
+            controller != player
+                && game.are_opponents(controller, player)
+                && game.object_has_static_ability_id(
+                    id,
+                    crate::static_abilities::StaticAbilityId::OpponentsMustTargetFlagbearers,
+                )
+        })
+    });
+    if !locked {
+        return;
+    }
+    let is_flagbearer = |target: &Target| match target {
+        Target::Object(id) => {
+            game.battlefield.contains(id)
+                && game
+                    .calculated_subtypes(*id)
+                    .contains(&crate::types::Subtype::Flagbearer)
+        }
+        Target::Player(_) => false,
+    };
+    if let Some(requirement) = requirements
+        .iter_mut()
+        .find(|requirement| requirement.legal_targets.iter().any(is_flagbearer))
+    {
+        requirement.legal_targets.retain(is_flagbearer);
+        requirement
+            .legal_target_sets
+            .retain(|targets| targets.iter().any(is_flagbearer));
+        requirement.min_targets = requirement.min_targets.max(1);
+    }
+}
+
 fn specialize_target_requirement_for_chooser(
     game: &GameState,
     controller: PlayerId,
@@ -2530,6 +2578,12 @@ pub(super) fn continue_to_targets_or_mana_payment(
             }
         }
 
+        enforce_flagbearer_targeting(
+            game,
+            player,
+            chooser,
+            &mut pending.remaining_requirements[..requirement_count],
+        );
         let requirements = pending.remaining_requirements[..requirement_count].to_vec();
         pending.stage = CastStage::ChoosingTargets;
         pending.active_target_requirement_count = requirements.len();
@@ -5803,6 +5857,12 @@ pub(super) fn continue_activation(
                             requirement,
                         );
                     }
+                    enforce_flagbearer_targeting(
+                        game,
+                        player,
+                        chooser,
+                        &mut pending.remaining_requirements[..requirement_count],
+                    );
                     let requirements = pending.remaining_requirements[..requirement_count].to_vec();
                     pending.stage = ActivationStage::ChoosingTargets;
                     pending.active_target_requirement_count = requirements.len();

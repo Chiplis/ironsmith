@@ -200,12 +200,14 @@ pub fn parse_library_origin_source_pump_unblockable_triggered_line(
                 filter,
                 from: Zone::Library,
                 one_or_more: true,
+                cause_filter: None,
             } if exact_owned_card_filter(filter) => Some(trigger.clone()),
             TriggerSpec::PutIntoGraveyardOneOrMore(filter) if exact_owned_card_filter(filter) => {
                 Some(TriggerSpec::PutIntoGraveyardFromZone {
                     filter: filter.clone(),
                     from: Zone::Library,
                     one_or_more: true,
+                    cause_filter: None,
                 })
             }
             _ => None,

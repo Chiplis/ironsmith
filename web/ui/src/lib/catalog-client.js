@@ -1,4 +1,6 @@
 import { cardRouteKey } from "./scryfall.js";
+import { versionedCardAssetUrl } from "./card-asset-cache.js";
+import { resolveAssetUrl, resolveCardAssetUrl } from "./card-art-url.js";
 
 function normalize(value) {
   return String(value || "")
@@ -19,13 +21,6 @@ const cardArtRequests = new Map();
 // The catalog is generated locally and never committed, so a checkout that has
 // not run tools/deck-catalog/sync.mjs serves no catalog at all.
 const CATALOG_MISSING_MESSAGE = "No deck catalog found. Run tools/deck-catalog/sync.mjs to download decks.";
-
-// Every catalog request has to resolve against the deployed base path: the site
-// is served from a subdirectory, where a root-absolute /catalog/... would miss.
-function assetUrl(path) {
-  const configured = typeof import.meta !== "undefined" ? import.meta.env?.BASE_URL : null;
-  return new URL(path, new URL(configured || "/", globalThis?.location?.href || "http://localhost/")).href;
-}
 
 function searchTokens(query) {
   return catalogQueryTokens(query);
@@ -100,8 +95,8 @@ export async function loadCatalogIndex({ format = "modern", fetchImpl = globalTh
   if (cacheable && catalogIndexRequests.has(format)) return catalogIndexRequests.get(format);
 
   const request = Promise.all([
-    fetchImpl(assetUrl(`catalog/${format}/index.json`), { cache: "no-store" }),
-    fetchImpl(assetUrl(`catalog/${format}/search-index.json`), { cache: "no-store" }),
+    fetchImpl(resolveAssetUrl(`catalog/${format}/index.json`), { cache: "no-store" }),
+    fetchImpl(resolveAssetUrl(`catalog/${format}/search-index.json`), { cache: "no-store" }),
   ]).then(async ([response, searchResponse]) => {
     if (response?.status === 404) throw new Error(CATALOG_MISSING_MESSAGE);
     if (!response?.ok) throw new Error(`Catalog index request failed (${response?.status || "unknown"})`);
@@ -126,7 +121,7 @@ export async function loadCatalogDeckDetail(entry, { format = "modern", fetchImp
   const cacheable = fetchImpl === globalThis.fetch;
   if (cacheable && catalogDetailCache.has(cacheKey)) return catalogDetailCache.get(cacheKey);
   if (cacheable && catalogDetailRequests.has(cacheKey)) return catalogDetailRequests.get(cacheKey);
-  const request = fetchImpl(assetUrl(`catalog/${format}/${entry.detail}`), { cache: "force-cache" })
+  const request = fetchImpl(resolveAssetUrl(`catalog/${format}/${entry.detail}`), { cache: "force-cache" })
     .then((response) => {
       if (!response?.ok) throw new Error(`Catalog deck request failed (${response?.status || "unknown"})`);
       return response.json();
@@ -147,7 +142,7 @@ export async function loadLocalCardArt(cardName, { fetchImpl = globalThis.fetch 
   if (!route) return "";
   if (cardArtCache.has(route)) return cardArtCache.get(route);
   if (cardArtRequests.has(route)) return cardArtRequests.get(route);
-  const request = fetchImpl(assetUrl(`cards/${route}.json`), { cache: "force-cache" })
+  const request = fetchImpl(versionedCardAssetUrl(resolveCardAssetUrl(route)), { cache: "force-cache" })
     .then(async (response) => {
       if (!response?.ok) return "";
       const payload = await response.json();

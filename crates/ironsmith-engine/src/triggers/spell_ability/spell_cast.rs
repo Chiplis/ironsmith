@@ -804,6 +804,7 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
                 | PlayerFilter::HasMoreLifeThanYou { .. }
                 | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
                 | PlayerFilter::ControlsMost { .. }
+                | PlayerFilter::OpponentOf(_)
                 | PlayerFilter::MaxSpeed { .. } => player_filter.description(),
                 PlayerFilter::CastCardTypeThisTurn(card_type) => format!(
                     "a player who cast one or more {} spells this turn",

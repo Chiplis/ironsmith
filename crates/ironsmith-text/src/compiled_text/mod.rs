@@ -1550,6 +1550,7 @@ fn finalize_ast_surface_line(line: String) -> String {
     line = normalize_choose_sacrifice_rest_surface(&line);
     line = normalize_for_each_number_surface(&line);
     line = normalize_temporary_trample_pump_surface(&line);
+    line = normalize_where_x_before_duration_surface(&line);
     line = normalize_chosen_player_adds_mana_surface(&line);
     line = normalize_role_token_attached_surface(&line);
     line = normalize_create_role_then_attach_surface(&line);
@@ -2482,6 +2483,27 @@ fn singularize_counted_noun(noun: &str) -> String {
     }
 }
 
+/// A where-clause belongs after the duration it qualifies: "gets +X/+0,
+/// where X is its power until end of turn" reads as "gets +X/+0 until end of
+/// turn, where X is its power".
+fn normalize_where_x_before_duration_surface(line: &str) -> String {
+    let Some(where_start) = line.find(", where X is ") else {
+        return line.to_string();
+    };
+    let clause_end = line[where_start..]
+        .find('.')
+        .map_or(line.len(), |offset| where_start + offset);
+    let clause = &line[where_start..clause_end];
+    let Some(where_clause) = clause.strip_suffix(" until end of turn") else {
+        return line.to_string();
+    };
+    format!(
+        "{} until end of turn{where_clause}{}",
+        &line[..where_start],
+        &line[clause_end..]
+    )
+}
+
 fn normalize_temporary_trample_pump_surface(line: &str) -> String {
     let draw_prefix = "Draw a card, target creature gains trample until end of turn, then it gets ";
     if let Some(rest) = line.strip_prefix(draw_prefix)
@@ -2509,6 +2531,13 @@ fn normalize_temporary_trample_pump_surface(line: &str) -> String {
     let Some((pump, suffix)) = after_marker.split_once(" until end of turn") else {
         return line.to_string();
     };
+    // "+X/+0, where X is its power" keeps its where-clause after the
+    // duration, as Oracle writes it.
+    if let Some((pump, where_x)) = pump.split_once(", where X is ") {
+        return format!(
+            "{subject} gains trample and gets {pump} until end of turn, where X is {where_x}{suffix}"
+        );
+    }
     format!("{subject} gains trample and gets {pump} until end of turn{suffix}")
 }
 

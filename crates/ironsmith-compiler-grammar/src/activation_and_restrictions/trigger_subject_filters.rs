@@ -213,6 +213,14 @@ pub fn parse_spell_or_ability_controller_tail(words: &[&str]) -> Option<PlayerFi
     Some(trigger_controller_player_filter(controller))
 }
 
+pub fn parse_targeting_source_controller_tail(
+    words: &[&str],
+) -> Option<(ironsmith_core::filter_model::StackObjectKind, PlayerFilter)> {
+    let (kind, controller) =
+        crate::grammar::trigger_subjects::parse_targeting_source_controller_tail(words)?;
+    Some((kind, trigger_controller_player_filter(controller)))
+}
+
 pub fn parse_spell_controller_tail(words: &[&str]) -> Option<PlayerFilter> {
     let controller = crate::grammar::trigger_subjects::parse_spell_controller_tail(words)?;
     Some(trigger_controller_player_filter(controller))

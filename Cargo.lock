@@ -1521,6 +1521,7 @@ dependencies = [
  "ironsmith-artifact-effect-decoder",
  "ironsmith-compiled-artifact",
  "ironsmith-engine",
+ "serde_json",
 ]
 
 [[package]]

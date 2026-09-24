@@ -134,6 +134,15 @@
 .my-zone-board-shell .player-look-pile .zone-pile-slot:first-child {
   margin-top: 0;
 }
+/* Our piles hang from Look's top edge (measured in PlayerZonePiles), so the
+   Graveyard label and art line up with Look's. */
+.my-zone-board-shell .player-zone-piles {
+  top: var(--zone-piles-top, auto);
+  bottom: auto;
+}
+.my-zone-board-shell .player-zone-piles > .zone-pile-slot:first-child {
+  margin-top: 0;
+}
 .look-eye-effect {
   position: absolute;
   z-index: 2;
@@ -4532,6 +4541,11 @@ html[data-hand-pointer-suspended="true"] * {
   justify-content: flex-end;
   z-index: 40;
   pointer-events: auto;
+}
+/* Shrink the message log to fit the board below Exile (28px is the header). */
+.exile-chat-dock .lobby-chat-body,
+.exile-chat-dock .lobby-chat-body-inner {
+  height: clamp(56px, calc(var(--exile-chat-room, 160px) - 28px), 132px);
 }
 
 .lobby-chat {

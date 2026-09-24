@@ -141,15 +141,33 @@ pub(super) fn parse_effect_clause_unstacked(
         Verb::Put => {
             if let Some((SubjectAst::Player(PlayerAst::ItsOwner), target)) =
                 parse_controller_or_owner_of_target_subject(subject_tokens)
-                && is_pronoun_top_or_bottom_library_choice_put_tail(rest)
             {
-                return Ok(EffectAst::subject_verb(
-                    SubjectVerbRoleAst::Actor,
-                    PlayerAst::ItsOwner,
-                    SubjectVerbActionAst::Library(
-                        LibraryActionAst::MoveToLibraryTopOrBottomChoice { target },
-                    ),
-                ));
+                // "... puts it on their choice of the top or bottom of their
+                // library" / "... puts it into their library second from the
+                // top or on the bottom".
+                let top_position = if is_pronoun_top_or_bottom_library_choice_put_tail(rest) {
+                    Some(0)
+                } else {
+                    let words = crate::lexer::parser_token_word_refs(rest);
+                    (words.as_slice()
+                        == [
+                            "it", "into", "their", "library", "second", "from", "the", "top",
+                            "or", "on", "the", "bottom",
+                        ])
+                        .then_some(1)
+                };
+                if let Some(top_position) = top_position {
+                    return Ok(EffectAst::subject_verb(
+                        SubjectVerbRoleAst::Actor,
+                        PlayerAst::ItsOwner,
+                        SubjectVerbActionAst::Library(
+                            LibraryActionAst::MoveToLibraryTopOrBottomChoice {
+                                target,
+                                top_position,
+                            },
+                        ),
+                    ));
+                }
             }
         }
         _ => {}

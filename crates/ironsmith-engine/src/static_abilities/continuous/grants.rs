@@ -767,7 +767,9 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
                 if !ability_text.ends_with('.') {
                     ability_text.push('.');
                 }
-                format!("\"{ability_text}\"")
+                // A quoted ability is a whole ability, so it opens with a
+                // capital even when the authored surface was lowercased.
+                format!("\"{}\"", capitalize_first(&ability_text))
             }
             _ => ability_text,
         };

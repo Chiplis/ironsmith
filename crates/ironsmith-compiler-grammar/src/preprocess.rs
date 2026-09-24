@@ -975,6 +975,20 @@ fn rewrite_borrow_static_condition(condition: &[OwnedLexToken], ability: &str) -
 
 /// A borrowed-ability static sentence, rewritten to its canonical "as long
 /// as there is ..." form; the sentence text as rendered otherwise.
+fn borrow_condition_is_anaphoric(sentence: &[OwnedLexToken]) -> bool {
+    let Some(preprocess_grammar::BorrowStaticSentenceSurfaceTokens::Leading { condition, .. }) =
+        preprocess_grammar::parse_borrow_static_sentence_surface_tokens(sentence)
+    else {
+        return false;
+    };
+    let words = crate::lexer::parser_token_word_refs(condition);
+    let subject_start = usize::from(words.first() == Some(&"if"));
+    matches!(
+        words.get(subject_start).copied(),
+        Some("it" | "that" | "the")
+    )
+}
+
 fn rewrite_borrow_static_sentence(sentence: &[OwnedLexToken]) -> String {
     let rendered = || render_token_slice(sentence).trim().to_string();
     let Some(ability) = find_borrow_ability_source_phrase(sentence) else {
@@ -1178,7 +1192,14 @@ fn expand_borrow_ability_line(text: &str) -> String {
             }
         }
 
-        expanded.push(rewrite_borrow_static_sentence(sentence));
+        // A follow-up sentence whose condition names an object from the
+        // previous sentence ("If the creature you control has trample, ...")
+        // is a resolution-time check on that object, not a static condition.
+        if !expanded.is_empty() && borrow_condition_is_anaphoric(sentence) {
+            expanded.push(render_token_slice(sentence).trim().to_string());
+        } else {
+            expanded.push(rewrite_borrow_static_sentence(sentence));
+        }
         expanded_tokens.push(sentence.to_vec());
     }
 

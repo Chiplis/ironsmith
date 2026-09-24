@@ -654,7 +654,8 @@ impl GameState {
             | Modification::SetAbilities(_)
             | Modification::CopyStaticAbilityVariants { .. }
             | Modification::RemoveAllAbilities
-            | Modification::RemoveAllAbilitiesExceptMana => true,
+            | Modification::RemoveAllAbilitiesExceptMana
+            | Modification::RemoveStaticAbilityFamily(_) => true,
             Modification::AddAbility(static_ability)
             | Modification::RemoveAbility(static_ability) => {
                 Self::static_ability_may_provide_enter_as_copy(static_ability)
@@ -3019,6 +3020,7 @@ impl GameState {
             // cannot change the triggered-ability list.
             Modification::AddAbility(_)
             | Modification::RemoveAbility(_)
+            | Modification::RemoveStaticAbilityFamily(_)
             | Modification::CopyActivatedAbilities { .. }
             | Modification::CopyStaticAbilityVariants { .. }
             | Modification::ChangeController(_)

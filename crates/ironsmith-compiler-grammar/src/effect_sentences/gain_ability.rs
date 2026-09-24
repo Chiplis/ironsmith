@@ -1707,6 +1707,13 @@ fn parse_simple_ability_modifier_clause_lexed(
     let (abilities, is_choice) =
         if losing && ability_surface == gain_shapes::AbilityReferenceSurface::ThisAbility {
             (vec![GrantedAbilityAst::ThisAbility], false)
+        } else if losing && ability_word_refs.as_slice() == ["all", "landwalk", "abilities"] {
+            (
+                vec![GrantedAbilityAst::StaticAbilityFamily(
+                    ironsmith_core::static_ability_id::StaticAbilityId::Landwalk,
+                )],
+                false,
+            )
         } else {
             parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, !losing)?
         };

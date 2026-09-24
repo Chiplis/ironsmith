@@ -1891,6 +1891,31 @@ impl GameState {
             .unwrap_or(0)
     }
 
+    /// Record that a triggered ability's "Do this only once each turn"
+    /// instruction was performed.
+    pub fn record_do_this_action(&mut self, source_object_id: ObjectId, trigger_id: TriggerIdentity) {
+        *self
+            .turn_store
+            .turn_history
+            .do_this_actions_this_turn
+            .entry((source_object_id, trigger_id))
+            .or_insert(0) += 1;
+    }
+
+    /// How many times a triggered ability's limited instruction was performed this turn.
+    pub fn do_this_action_count_this_turn(
+        &self,
+        source_object_id: ObjectId,
+        trigger_id: TriggerIdentity,
+    ) -> u32 {
+        self.turn_store
+            .turn_history
+            .do_this_actions_this_turn
+            .get(&(source_object_id, trigger_id))
+            .copied()
+            .unwrap_or(0)
+    }
+
     /// Record that a specific triggered ability resolved this turn.
     pub fn record_triggered_ability_resolved(
         &mut self,

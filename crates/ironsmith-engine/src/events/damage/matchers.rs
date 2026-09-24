@@ -67,6 +67,30 @@ impl ReplacementMatcher for DamageToPlayerMatcher {
     }
 }
 
+/// Matches preventable damage to a player matching the filter.
+#[derive(Debug, Clone)]
+pub struct PreventableDamageToPlayerMatcher {
+    pub player_filter: PlayerFilter,
+}
+
+impl ReplacementMatcher for PreventableDamageToPlayerMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if event.event_kind() != EventKind::Damage {
+            return false;
+        }
+        let Some(damage) = downcast_event::<DamageEvent>(event) else {
+            return false;
+        };
+        !damage.is_unpreventable
+            && matches!(damage.target, DamageTarget::Player(player_id)
+                if self.player_filter.matches_player(player_id, &ctx.filter_ctx))
+    }
+
+    fn display(&self) -> String {
+        "When preventable damage would be dealt to a player".to_string()
+    }
+}
+
 /// Matches damage events where the target is an object matching the filter.
 #[derive(Debug, Clone)]
 pub struct DamageToObjectMatcher {

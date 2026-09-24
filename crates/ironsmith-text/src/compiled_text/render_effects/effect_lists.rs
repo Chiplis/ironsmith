@@ -132,6 +132,7 @@ pub(in crate::compiled_text) use helpers_01::render_remove_abilities_then_destro
 pub(in crate::compiled_text) use helpers_01::render_search_reveal_opponent_choose_rest_bundle;
 use helpers_01::*;
 pub(in crate::compiled_text) use helpers_02::describe_face_down_pile_then_manifest;
+pub(in crate::compiled_text) use helpers_02::describe_face_down_pile_then_restack;
 pub(in crate::compiled_text) use helpers_02::render_consult_reveal_move_matches_then_bottom;
 pub(in crate::compiled_text) use helpers_02::render_consult_reveal_put_battlefield_rest_graveyard;
 pub(in crate::compiled_text) use helpers_02::render_exile_top_then_put_from_among_onto_battlefield;
@@ -1084,9 +1085,8 @@ pub(super) fn describe_temporary_tagged_permission_surface(
             ironsmith_core::GrantPlayTaggedManaReferenceSurface::ThoseSpells => "those spells",
         })
         .unwrap_or(if plural { "them" } else { "that spell" });
-    if let Some(mana_clause) = permission.mana_spend_cast_clause(mana_reference) {
-        clause.push_str(", and ");
-        clause.push_str(&mana_clause);
+    if let Some(mana_suffix) = permission.mana_spend_cast_suffix(mana_reference) {
+        clause.push_str(&mana_suffix);
     }
     Some(clause)
 }
@@ -5125,8 +5125,7 @@ pub(super) fn describe_choose_top_exile_then_play_structural(effects: &[Effect])
         "that card"
     };
     let mana_suffix = grant
-        .mana_spend_cast_clause(spell_ref)
-        .map(|clause| format!(", and {clause}"))
+        .mana_spend_cast_suffix(spell_ref)
         .unwrap_or_default();
     let permission = if let Some(counter_type) = grant.during_turns_counter_put_on_source {
         format!(
@@ -12839,6 +12838,7 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
         return text;
     }
     if let Some(text) = describe_restricted_player_target_life_loss(effects) { return text; }
+    if let Some(text) = describe_coordinated_same_duration_restrictions(effects) { return text; }
     if let Some(text) = describe_target_combat_and_activation_restrictions(effects) { return text; }
     if let Some(compact) = describe_chosen_object_type_qualified_counters(effects) {
         return compact;
@@ -13277,6 +13277,9 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
     // exact structural matcher before broader list patterns can consume its
     // exile prefix and strand the manifest consumer as an unsupported tail.
     if let Some(compact) = describe_face_down_pile_then_manifest(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_face_down_pile_then_restack(effects) {
         return compact;
     }
     if let Some(compact) = describe_choose_exiled_card_then_play_without_paying(effects) {
@@ -14380,8 +14383,7 @@ fn describe_linked_exile_top_play_parts(
         "them"
     };
     let mana_suffix = grant_play
-        .mana_spend_cast_clause(spell_reference)
-        .map(|clause| format!(", and {clause}"))
+        .mana_spend_cast_suffix(spell_reference)
         .unwrap_or_default();
 
     let permission = if let Some(counter_type) = grant_play.during_turns_counter_put_on_source {
@@ -14477,17 +14479,39 @@ pub(in crate::compiled_text) fn describe_linked_exile_top_play_clause(
         })
         .and_then(|reduction| reduction.generic_reduction.as_ref())
         .is_some_and(|reduction| reduction == &exile_top.count);
-    let (exile_clause, permission) = describe_linked_exile_top_play_parts(
+    let (exile_clause, mut permission) = describe_linked_exile_top_play_parts(
         exile_top,
         grant_play,
         suppress_count_where_clause,
         consumes_free_cast,
     )?;
+    // "You may look at and play those cards ...": a lone look at exactly the
+    // exiled set, by the permission's grantee, joins the permission clause.
+    let mut look_idx = None;
+    if grant_idx == exile_idx + 2
+        && let Some(look) = structural_unwrap_render_wrappers(&effects[exile_idx + 1])
+            .downcast_ref::<crate::effects::LookAtObjectsEffect>()
+        && look.viewer == grant_play.player
+        && look.filter.zone == Some(Zone::Exile)
+        && matches!(
+            look.filter.tagged_constraints.as_slice(),
+            [constraint] if constraint.tag == grant_play.tag
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        )
+        && let Some(rest) = permission.strip_prefix("You may ")
+    {
+        permission = format!("You may look at and {rest}");
+        look_idx = Some(exile_idx + 1);
+    }
     let synthetic_target_idx =
         synthetic_target_prefix_for_linked_exile(effects, exile_idx, exile_top);
 
-    let mut sentences = if let Some(coordinated) =
-        describe_create_token_and_exile_top_setup(effects, exile_idx, grant_idx, &exile_clause)
+    let mut sentences = if let Some(coordinated) = look_idx
+        .is_none()
+        .then(|| {
+            describe_create_token_and_exile_top_setup(effects, exile_idx, grant_idx, &exile_clause)
+        })
+        .flatten()
     {
         coordinated
     } else {
@@ -14498,7 +14522,8 @@ pub(in crate::compiled_text) fn describe_linked_exile_top_play_clause(
             setup.push(prefix);
         }
         setup.push(capitalize_first(&exile_clause));
-        let intervening = describe_linked_play_fragment(&effects[exile_idx + 1..grant_idx])?;
+        let intervening_start = look_idx.map_or(exile_idx + 1, |idx| idx + 1);
+        let intervening = describe_linked_play_fragment(&effects[intervening_start..grant_idx])?;
         if !intervening.is_empty() {
             setup.push(capitalize_first(&intervening));
         }

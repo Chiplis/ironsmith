@@ -482,6 +482,10 @@ pub enum Modification {
         mode: ironsmith_core::AbilityLossMode,
     },
 
+    /// Remove every static ability of one family ("loses all landwalk
+    /// abilities").
+    RemoveStaticAbilityFamily(crate::static_abilities::StaticAbilityId),
+
     /// Remove all abilities
     RemoveAllAbilities,
 
@@ -555,6 +559,9 @@ impl Modification {
                     ability: convert_removed_ability(ability)?,
                     mode: ironsmith_core::AbilityLossMode::Lose,
                 }
+            }
+            ironsmith_core::CompiledContinuousModification::RemoveStaticAbilityFamily(id) => {
+                Self::RemoveStaticAbilityFamily(id)
             }
             ironsmith_core::CompiledContinuousModification::AddCardTypes(card_types) => {
                 Self::AddCardTypes(card_types)
@@ -658,6 +665,7 @@ impl Modification {
             | Modification::CopyTriggeredAbilities { .. }
             | Modification::AddCombatDamageDrawAbility
             | Modification::RemoveAbility(_)
+            | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana
@@ -3510,6 +3518,7 @@ fn player_filter_source_independent(filter: &PlayerFilter) -> bool {
         | PlayerFilter::CastCardTypeThisTurn(_) => true,
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
+        | PlayerFilter::OpponentOf(base)
         | PlayerFilter::MaxSpeed { base, .. }
         | PlayerFilter::LostLifeThisTurn { base } => player_filter_source_independent(base),
         // The comparison reads the current battlefield and may contain
@@ -4780,6 +4789,12 @@ fn apply_modification_to_chars(
                                 == crate::static_abilities::StaticAbilityId::BandsWithOther)
                 });
             }
+        }
+        Modification::RemoveStaticAbilityFamily(id) => {
+            chars.abilities.retain(|candidate| {
+                !matches!(&candidate.kind, AbilityKind::Static(ability) if ability.id() == *id)
+            });
+            chars.static_abilities.retain(|candidate| candidate.id() != *id);
         }
         Modification::RemoveAllAbilities => {
             chars.abilities.clear();

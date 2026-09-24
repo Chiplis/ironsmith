@@ -1610,6 +1610,7 @@ pub(crate) fn describe_face_down_pile_then_manifest(effects: &[Effect]) -> Optio
     };
     let (library, _) = describe_exile_top_clause(library_exile, false)?;
     let library = library.strip_prefix("Exile ")?;
+    let library = library.strip_suffix(" face down").unwrap_or(library);
     let action = if manifest.cloak { "cloak" } else { "manifest" };
     let transition = if manifest.shuffle {
         format!("shuffle that pile, then {action} those cards")
@@ -1624,6 +1625,72 @@ pub(crate) fn describe_face_down_pile_then_manifest(effects: &[Effect]) -> Optio
 
     Some(format!(
         "Exile {target} and {library} in a face-down pile, {transition}{tapped}"
+    ))
+}
+
+/// Renders a hidden pile built from one object and the top of its
+/// controller's library that is then shuffled back on top: "Exile it and the top six cards of your library in a face-down
+/// pile. If you do, shuffle that pile and put it back on top of your
+/// library."
+pub(crate) fn describe_face_down_pile_then_restack(effects: &[Effect]) -> Option<String> {
+    fn wrapper_chain_contains_tag(effect: &Effect, expected: &crate::TagKey) -> bool {
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            return wrapper_chain_contains_tag(&with_id.effect, expected);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return tagged.tag == *expected || wrapper_chain_contains_tag(&tagged.effect, expected);
+        }
+        false
+    }
+    let body = effects
+        .iter()
+        .filter(|effect| {
+            effect
+                .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                .is_none()
+        })
+        .collect::<Vec<_>>();
+    let [target_exile_effect, library_exile_effect, if_effect] = body.as_slice() else {
+        return None;
+    };
+    let with_id = library_exile_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let library_exile = with_id
+        .effect
+        .downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+    let [pile_tag] = library_exile.accumulated_tags.as_slice() else {
+        return None;
+    };
+    let target_exile = unwrap_basic_tag_wrappers(target_exile_effect)
+        .downcast_ref::<crate::effects::ExileEffect>()?;
+    let if_effect = if_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    let [restack] = if_effect.then.as_slice() else {
+        return None;
+    };
+    let restack = restack.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if !library_exile.face_down
+        || !library_exile.moved_tags.is_empty()
+        || library_exile.player != PlayerFilter::You
+        || !target_exile.face_down
+        || !wrapper_chain_contains_tag(target_exile_effect, pile_tag)
+        || if_effect.condition != with_id.id
+        || !if_effect.else_.is_empty()
+        || !matches!(
+            if_effect.predicate,
+            crate::effect::EffectPredicate::Happened | crate::effect::EffectPredicate::Succeeded
+        )
+        || !matches!(restack.target.base(), ChooseSpec::Tagged(tag) if tag == pile_tag)
+        || restack.zone != Zone::Library
+        || !restack.to_top
+        || restack.library_order != Some(crate::effects::LibraryPlacementOrder::Random)
+    {
+        return None;
+    }
+    let target = describe_choose_spec(&target_exile.spec);
+    let (library, _) = describe_exile_top_clause(library_exile, false)?;
+    let library = library.strip_prefix("Exile ")?;
+    let library = library.strip_suffix(" face down").unwrap_or(library);
+    Some(format!(
+        "Exile {target} and {library} in a face-down pile. If you do, shuffle that pile and put it back on top of your library"
     ))
 }
 

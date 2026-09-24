@@ -180,6 +180,9 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => filter.description(),
         PlayerFilter::ControlsMost { .. } => filter.description(),
+        PlayerFilter::OpponentOf(base) => {
+            format!("an opponent of {}", describe_player_filter(base))
+        }
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,

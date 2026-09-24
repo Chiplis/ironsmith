@@ -138,6 +138,7 @@ fn your_graveyard_from_library_preempts_the_broad_any_origin_trigger() {
         filter,
         from: Zone::Library,
         one_or_more: true,
+        cause_filter: None,
     } = parsed
     else {
         panic!("expected exact library-origin trigger, got {parsed:#?}");

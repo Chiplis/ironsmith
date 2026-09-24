@@ -126,6 +126,26 @@ pub(super) fn check_special_action_payment(
     )
 }
 
+/// Pay a cost a resolving spell or ability demands (ward, for one). The payer
+/// may activate mana abilities while paying (CR 605.3a), so the check counts
+/// untapped sources and the payment goes through the interactive mana route.
+pub(crate) fn pay_resolution_cost_with_mana_abilities(
+    game: &mut GameState,
+    player: PlayerId,
+    source: ObjectId,
+    cost: &crate::cost::TotalCost,
+    reason: crate::costs::PaymentReason,
+    dm: &mut dyn DecisionMaker,
+) -> bool {
+    let payment = SpecialActionPayment {
+        source,
+        cost: cost.clone(),
+        reason,
+    };
+    check_special_action_payment(game, player, &payment).is_ok()
+        && pay_special_action_payment(game, player, &payment, dm).is_ok()
+}
+
 /// Adjacent mana components are one payment, so paying a generic component
 /// cannot consume the only color needed by the next component. Preserve the
 /// order of non-mana costs and normalize alternative branches recursively.

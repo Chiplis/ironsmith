@@ -1672,7 +1672,6 @@ export default function GameCard({
             fetchPriority={imageFetchPriority}
             decoding="async"
             referrerPolicy="no-referrer"
-            crossOrigin={variant === "hand" ? "anonymous" : undefined}
             onLoad={variant === "hand" ? handleHandArtLoad : undefined}
           />
         )}

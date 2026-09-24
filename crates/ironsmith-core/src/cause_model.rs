@@ -139,6 +139,9 @@ pub enum ControllerFilter {
     You,
     Opponent,
     ContextController,
+    /// An opponent of the player evaluating the filter (the trigger's
+    /// controller), independent of who controls the affected object.
+    ContextOpponent,
     Any,
 }
 

@@ -1489,6 +1489,9 @@ pub enum PlayerFilter {
         base: Box<PlayerFilter>,
         has_max_speed: bool,
     },
+    /// The opponents of the player(s) `base` names ("each of that player's
+    /// opponents"), as opposed to `Opponent`, which is relative to you.
+    OpponentOf(Box<PlayerFilter>),
     ChosenPlayer,
     TaggedPlayer(TagKey),
     IteratedPlayer,
@@ -1617,7 +1620,8 @@ impl PlayerFilter {
                 player.mentions_iterated_player() || filter.mentions_iterated_player()
             }
             Self::ControlsMost { filter } => filter.mentions_iterated_player(),
-            Self::MaxSpeed { base, .. } => base.mentions_iterated_player(),
+            Self::OpponentOf(base)
+            | Self::MaxSpeed { base, .. } => base.mentions_iterated_player(),
             Self::Excluding { base, excluded } => {
                 base.mentions_iterated_player() || excluded.mentions_iterated_player()
             }
@@ -1720,6 +1724,7 @@ impl PlayerFilter {
                 "the player who controls the most {}",
                 pluralize_count_terminal_word(&filter.description())
             ),
+            Self::OpponentOf(base) => format!("an opponent of {}", base.description()),
             Self::MaxSpeed {
                 base,
                 has_max_speed,
@@ -3786,7 +3791,8 @@ impl ObjectFilter {
                 PlayerFilter::ControlsMost { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
-                PlayerFilter::MaxSpeed { .. } => {
+                PlayerFilter::OpponentOf(_)
+                | PlayerFilter::MaxSpeed { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 PlayerFilter::ChosenPlayer => parts.push("the chosen player's".to_string()),
@@ -3976,7 +3982,8 @@ impl ObjectFilter {
                 PlayerFilter::ControlsMost { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
-                PlayerFilter::MaxSpeed { .. } => {
+                PlayerFilter::OpponentOf(_)
+                | PlayerFilter::MaxSpeed { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::ChosenPlayer => "the chosen player owns".to_string(),
@@ -6407,6 +6414,10 @@ fn describe_simple_any_of_keyword_clause(
 }
 
 fn describe_distinct_source_threshold(sources: &ObjectFilter, minimum: u32) -> String {
+    // "by this creature": the source itself is the only possible source.
+    if sources.source && minimum <= 1 {
+        return sources.description();
+    }
     let sources = if let [subtype] = sources.subtypes.as_slice() {
         let mut remainder = sources.clone();
         remainder.subtypes.clear();
@@ -6497,6 +6508,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
             pluralize_count_terminal_word(&filter.description())
         ),
         PlayerFilter::ControlsMost { .. } => format!("{}'s", filter.description()),
+        PlayerFilter::OpponentOf(_) => format!("{}'s", describe_player_filter(filter)),
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -6611,6 +6623,9 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "the player who controls the most {}",
             pluralize_count_terminal_word(&filter.description())
         ),
+        PlayerFilter::OpponentOf(base) => {
+            format!("an opponent of {}", describe_player_filter(base))
+        }
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,

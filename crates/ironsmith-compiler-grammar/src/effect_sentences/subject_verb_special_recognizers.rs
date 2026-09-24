@@ -84,14 +84,30 @@ pub fn parse_scaled_target_power_sentence(
             axes,
             multiplier,
         } => {
-            let target = parse_target_phrase_lexed(target_tokens)?;
-            let amount_source_filter =
-                target_ast_to_object_filter(target.clone()).unwrap_or_else(|| {
-                    let mut fallback = ObjectFilter::default();
-                    fallback.card_types.push(CardType::Creature);
-                    fallback
-                });
-            let value_spec = Box::new(ChooseSpec::target(ChooseSpec::Object(amount_source_filter)));
+            // "double its power": the pronoun names the previously chosen
+            // object, whose own power is the amount.
+            let pronoun = crate::lexer::token_word_refs(target_tokens).as_slice() == ["its"];
+            let target = if pronoun {
+                crate::cards::builders::TargetAst::Tagged(
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                    None,
+                )
+            } else {
+                parse_target_phrase_lexed(target_tokens)?
+            };
+            let value_spec = if pronoun {
+                Box::new(ChooseSpec::Tagged(
+                    crate::tag::CompilerReferenceTag::It.bind().into(),
+                ))
+            } else {
+                let amount_source_filter =
+                    target_ast_to_object_filter(target.clone()).unwrap_or_else(|| {
+                        let mut fallback = ObjectFilter::default();
+                        fallback.card_types.push(CardType::Creature);
+                        fallback
+                    });
+                Box::new(ChooseSpec::target(ChooseSpec::Object(amount_source_filter)))
+            };
             let scaled_stat = |value: Value| {
                 if multiplier == 1 {
                     value

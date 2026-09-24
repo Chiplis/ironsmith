@@ -786,6 +786,9 @@ where
                 description
             } else if description.contains(" card") {
                 description.replacen(" card", " spell", 1)
+            } else if let Some((head, qualifier)) = description.split_once(" with ") {
+                // "creature spells with mana value 3 or less"
+                format!("{head} spells with {qualifier}")
             } else {
                 format!("{description} spells")
             }
@@ -1002,7 +1005,8 @@ where
                     "That player may".to_string()
                 }
                 PlayerFilter::ControlsMost { .. } => "That player may".to_string(),
-                PlayerFilter::MaxSpeed { .. } => "That player may".to_string(),
+                PlayerFilter::OpponentOf(_)
+                | PlayerFilter::MaxSpeed { .. } => "That player may".to_string(),
                 PlayerFilter::ChosenPlayer => "The chosen player may".to_string(),
                 PlayerFilter::TaggedPlayer(_)
                 | PlayerFilter::IteratedPlayer

@@ -641,7 +641,10 @@ pub fn target_ast_player_filter(player: PlayerFilter, span: Option<TextSpan>) ->
         match player {
             PlayerFilter::Any => PlayerFilter::target_player(),
             PlayerFilter::Opponent => PlayerFilter::target_opponent(),
-            other => other,
+            // A qualified player target ("target player who was dealt combat
+            // damage by ... this turn") is still the one chosen player.
+            target @ (PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_)) => target,
+            qualified => PlayerFilter::Target(Box::new(qualified)),
         }
     } else {
         player

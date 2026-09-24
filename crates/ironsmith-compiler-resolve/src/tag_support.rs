@@ -350,6 +350,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             })
             | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice {
                 target,
+                ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters {
                 target,
@@ -1155,6 +1156,7 @@ pub fn player_filter_references_tag(filter: &PlayerFilter, tag: &str) -> bool {
         | PlayerFilter::AliasedTarget(inner)
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { base: inner, .. }
         | PlayerFilter::HasMoreLifeThanYou { base: inner }
+        | PlayerFilter::OpponentOf(inner)
         | PlayerFilter::MaxSpeed { base: inner, .. }
         | PlayerFilter::WasDealtDamageBySourceThisGame { base: inner }
         | PlayerFilter::LostLifeThisTurn { base: inner } => {
@@ -1471,6 +1473,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot)
         | SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer { .. })
         | SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { .. })
+            | SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn { .. })
         | SubjectVerbActionAst::Stack(StackActionAst::ReduceMatchingSpellCostThisTurn { .. })
         | SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RingTemptsYou)
@@ -1496,6 +1499,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearGoad { .. })
         | SubjectVerbActionAst::Damage(DamageActionAst::HealDamage { amount: None, .. })
+        | SubjectVerbActionAst::Damage(DamageActionAst::ExcessDamageToController { .. })
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
             ..
         })
@@ -2042,6 +2046,7 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
             })
             | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice {
                 target,
+                ..
             })
             | SubjectVerbActionAst::PermanentState(
                 PermanentStateActionAst::SwitchPowerToughness { target, .. },
@@ -2127,6 +2132,7 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 filter,
                 ..
             })
+            | SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn { filter })
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceMatchingSpellCostThisTurn {
                 filter,
                 ..

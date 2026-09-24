@@ -137,6 +137,23 @@ fn parse_become_target_subject_shape_with_optional_context<'a>(
     {
         return BecomeTargetSubjectShape::FilteredMany(filter_tokens);
     }
+    // A bare plural object set ("artifacts you control become ...") names
+    // every matching object, exactly like "all artifacts you control".
+    // Possessives normalize to the same word ("creature's" -> "creatures"),
+    // so the plural noun must be authored without an apostrophe.
+    if !target_words.contains(&"target")
+        && target_tokens.iter().any(|token| {
+            token.as_word().is_some_and(|word| {
+                matches!(
+                    word,
+                    "artifacts" | "creatures" | "lands" | "permanents" | "enchantments"
+                        | "planeswalkers" | "tokens"
+                )
+            }) && !token.literal_surface().contains(['\'', '’'])
+        })
+    {
+        return BecomeTargetSubjectShape::FilteredMany(target_tokens);
+    }
     if let Some(surface) = context
         .and_then(|context| {
             crate::util::source_reference_surface_for_words_with_context(context, &target_words)

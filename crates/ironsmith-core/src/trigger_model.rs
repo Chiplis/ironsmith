@@ -294,6 +294,9 @@ pub enum TriggerKind {
         player: PlayerFilter,
         object: ObjectFilter,
         controller: PlayerFilter,
+        /// Spell, ability, or either ("a spell or ability").
+        #[cfg_attr(feature = "serde", serde(default = "spell_or_ability_stack_kind"))]
+        source_kind: crate::filter_model::StackObjectKind,
     },
     ThisDealsDamage,
     ThisDealsDamageToPlayer {
@@ -1094,24 +1097,30 @@ impl Trigger {
         player: PlayerFilter,
         object: ObjectFilter,
         controller: PlayerFilter,
+        source_kind: crate::filter_model::StackObjectKind,
     ) -> Self {
         let controller_text = match controller {
-            PlayerFilter::You => "you",
-            PlayerFilter::Opponent => "an opponent",
-            PlayerFilter::Any => "a player",
-            _ => "a player",
+            PlayerFilter::You => "you control",
+            PlayerFilter::Opponent => "an opponent controls",
+            _ => "a player controls",
         };
         Self::typed(
             format!(
-                "Whenever {} or {} becomes the target of a spell or ability {} controls",
+                "Whenever {} or {} becomes the target of {} {}",
                 crate::filter_model::describe_player_filter(&player),
                 object.description(),
+                match source_kind {
+                    crate::filter_model::StackObjectKind::Spell => "a spell",
+                    crate::filter_model::StackObjectKind::SpellOrAbility => "a spell or ability",
+                    _ => "an ability",
+                },
                 controller_text
             ),
             TriggerKind::PlayerOrObjectBecomesTargetedBySourceController {
                 player,
                 object,
                 controller,
+                source_kind,
             },
         )
     }
@@ -2568,4 +2577,9 @@ impl CompilerTriggerMatcher for CounterRemovedFromTrigger {
             TriggerKind::CounterRemovedFrom(self),
         )
     }
+}
+
+#[cfg(feature = "serde")]
+fn spell_or_ability_stack_kind() -> crate::filter_model::StackObjectKind {
+    crate::filter_model::StackObjectKind::SpellOrAbility
 }

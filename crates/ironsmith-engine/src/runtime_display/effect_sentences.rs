@@ -356,6 +356,30 @@ fn same_word(left: &str, right: &str) -> bool {
     shared >= MIN_STEM_LEN && left[..shared] == right[..shared]
 }
 
+/// The candidate sharing the most words with `probe`, earliest on a tie.
+///
+/// Used to tell apart several printed quotations when all that is known of the
+/// ability is its runtime wording. Returns `None` when nothing shares a word.
+pub(crate) fn best_matching_text(candidates: &[String], probe: &str) -> Option<usize> {
+    let probe_words: Vec<String> = words_of(probe)
+        .into_iter()
+        .filter(|word| word.len() > 2)
+        .collect();
+    let mut best: Option<(usize, usize)> = None;
+    for (index, candidate) in candidates.iter().enumerate() {
+        let mut words = words_of(candidate);
+        words.dedup();
+        let score = words
+            .iter()
+            .filter(|word| probe_words.iter().any(|probe| same_word(probe, word)))
+            .count();
+        if score > 0 && best.is_none_or(|(seen, _)| score > seen) {
+            best = Some((score, index));
+        }
+    }
+    best.map(|(_, index)| index)
+}
+
 /// A plain-words phrase for an effect list, for a surface with no printed
 /// sentence to quote: each effect contributes the words its executor type
 /// implies in the order they appear, so `CreateTokenEffect` reads "create

@@ -111,27 +111,148 @@ pub fn dedupe_consecutive_lines(lines: Vec<String>) -> Vec<String> {
 /// An ability a permanent gained records the card that lent it, so its wording
 /// is that card's printed line rather than anything this object prints: a
 /// creature copying Walking Ballista's abilities through Agatha's Soul Cauldron
-/// has no line of its own for them. Returns `None` for an ability a continuous
-/// effect wrote from whole cloth, which no card prints.
+/// has no line of its own for them. An ability a continuous effect granted
+/// (Vile Consumption's `All creatures have "At the beginning of your upkeep,
+/// ..."`) reads as the quotation the granting card prints for it. Returns
+/// `None` when no card prints the ability's wording.
 pub fn printed_ability_line(
     game: &GameState,
     object: &Object,
     abilities: &CalculatedAbilities,
     ability_index: usize,
 ) -> Option<String> {
-    fn resolve(game: &GameState, object: &Object, origin: &AbilityOrigin) -> Option<String> {
+    fn resolve(
+        game: &GameState,
+        object: &Object,
+        origin: &AbilityOrigin,
+        ability: &Ability,
+    ) -> Option<String> {
         match origin {
             AbilityOrigin::Printed(index) => object.ability_label(*index),
             AbilityOrigin::Borrowed { source, origin, .. } => game
                 .object(*source)
-                .and_then(|lender| resolve(game, lender, origin)),
-            AbilityOrigin::Effect { .. } => None,
+                .and_then(|lender| resolve(game, lender, origin, ability)),
+            AbilityOrigin::Effect { effect, .. } => granted_ability_quote(game, effect, ability),
         }
     }
 
+    let ability = abilities.get(ability_index)?;
     abilities
         .origin(ability_index)
-        .and_then(|origin| resolve(game, object, origin))
+        .and_then(|origin| resolve(game, object, origin, ability))
+}
+
+/// The quotation a granting card prints for an ability its effect grants.
+///
+/// The granted ability's wording exists only inside the grant's own printed
+/// line, between quotation marks. The line is the granting static ability's
+/// label when the effect records which static ability generated it, else any
+/// of the source's lines (a resolved "gains \"...\"" instruction). A line can
+/// quote several abilities (`has "{T}: ..." and "{4}: ..."`), so the
+/// quotation is chosen by the ability's shape and then by shared wording.
+fn granted_ability_quote(
+    game: &GameState,
+    effect: &crate::continuous::AbilityEffectOrigin,
+    ability: &Ability,
+) -> Option<String> {
+    let lender = game.object(effect.source())?;
+    let granting_line = effect.static_ability().and_then(|instance| {
+        let index = lender.abilities.iter().position(|printed| {
+            matches!(&printed.kind, AbilityKind::Static(static_ability)
+                if static_ability.instance_id() == instance)
+        })?;
+        lender.ability_label(index)
+    });
+    let lines = match granting_line {
+        Some(line) => vec![line],
+        None => canonical_lines(&lender.compiled_card_text),
+    };
+
+    let mut quotes: Vec<String> = lines
+        .iter()
+        .flat_map(|line| quoted_segments(line))
+        .filter(|quote| quote_fits_ability_kind(quote, ability))
+        .collect();
+    // An activated ability's cost is printed verbatim before its colon, which
+    // tells sibling quotations apart even when the effect has no plain words.
+    if let AbilityKind::Activated(activated) = &ability.kind {
+        let cost = activated.mana_cost.display().to_ascii_lowercase();
+        let same_cost: Vec<String> = quotes
+            .iter()
+            .filter(|quote| {
+                quote
+                    .split_once(": ")
+                    .is_some_and(|(printed, _)| printed.trim().to_ascii_lowercase() == cost.trim())
+            })
+            .cloned()
+            .collect();
+        if !same_cost.is_empty() {
+            quotes = same_cost;
+        }
+    }
+    // A granted keyword (the "flying" of `have flying and "..."`) is printed
+    // bare, so a static ability only takes a quotation that shares its words.
+    let chosen = match quotes.as_slice() {
+        [] => return None,
+        [only] if !matches!(ability.kind, AbilityKind::Static(_)) => only,
+        _ => {
+            let index = effect_sentences::best_matching_text(&quotes, &ability_surface_text(ability))?;
+            &quotes[index]
+        }
+    };
+    let mut text = capitalize_first(chosen.trim());
+    if !matches!(ability.kind, AbilityKind::Static(_))
+        && !text.ends_with(['.', '!', '?', ')'])
+    {
+        text.push('.');
+    }
+    Some(text)
+}
+
+/// The quotations in a printed line, outside its reminder text.
+///
+/// Reminder text quotes the abilities of the tokens it describes (`(It's an
+/// artifact with "{T}, Sacrifice this token: ...")`), which no grant gives.
+fn quoted_segments(line: &str) -> Vec<String> {
+    let mut quotes = Vec::new();
+    let mut depth = 0usize;
+    let mut open: Option<String> = None;
+    for ch in line.chars() {
+        match (&mut open, ch) {
+            (Some(quote), '"') => {
+                let quote = std::mem::take(quote);
+                open = None;
+                if depth == 0 && !quote.trim().is_empty() {
+                    quotes.push(quote.trim().trim_end_matches(',').to_string());
+                }
+            }
+            (Some(quote), _) => quote.push(ch),
+            (None, '"') => open = Some(String::new()),
+            (None, '(') => depth += 1,
+            (None, ')') => depth = depth.saturating_sub(1),
+            (None, _) => {}
+        }
+    }
+    quotes
+}
+
+/// Whether a quotation reads as an ability of `ability`'s kind: a trigger
+/// opens with its trigger word, an activated ability puts its cost before a
+/// colon, and a static ability does neither.
+fn quote_fits_ability_kind(quote: &str, ability: &Ability) -> bool {
+    let lower = quote.trim().to_ascii_lowercase();
+    let triggered = ["at ", "when ", "whenever "]
+        .iter()
+        .any(|word| lower.starts_with(word));
+    let activated = !triggered
+        && lower
+            .split_once(": ")
+            .is_some_and(|(cost, _)| !cost.contains(". ") && !cost.contains(", then"));
+    match ability.kind {
+        AbilityKind::Triggered(_) => triggered,
+        AbilityKind::Activated(_) => activated,
+        AbilityKind::Static(_) => !triggered && !activated,
+    }
 }
 
 /// The printed line behind one currently active ability of `source`.

@@ -29,9 +29,15 @@ fn choose_library_position(
     chooser: PlayerId,
     source: ObjectId,
     object_name: &str,
+    top_position: u32,
 ) -> LibraryPositionChoice {
+    let top_label = if top_position == 0 {
+        "Top of library".to_string()
+    } else {
+        format!("{} from the top of library", ordinal_position(top_position + 1))
+    };
     let options = vec![
-        SelectableOption::new(0, "Top of library"),
+        SelectableOption::new(0, top_label),
         SelectableOption::new(1, "Bottom of library"),
     ];
     let choice_ctx = SelectOptionsContext::new(
@@ -52,16 +58,32 @@ fn choose_library_position(
     }
 }
 
+fn ordinal_position(position: u32) -> String {
+    match position {
+        2 => "Second".to_string(),
+        3 => "Third".to_string(),
+        n => format!("{n}th"),
+    }
+}
+
 fn position_library_objects(
     game: &mut GameState,
     object_ids: &[ObjectId],
     position: LibraryPositionChoice,
+    top_position: u32,
 ) {
     for &new_id in object_ids {
         let Some(owner) = game.object(new_id).map(|object| object.owner) else {
             continue;
         };
         match position {
+            LibraryPositionChoice::Top if top_position > 0 => game
+                .move_library_card_to_nth_from_top(
+                    owner,
+                    new_id,
+                    top_position as usize + 1,
+                    "card put into library from the top",
+                ),
             LibraryPositionChoice::Top => {
                 game.move_library_card_to_top(owner, new_id, "card put on top of library")
             }
@@ -128,6 +150,7 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
                 chooser,
                 ctx.source,
                 &object_name,
+                self.top_position,
             );
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
@@ -160,7 +183,12 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
                             game.add_exiled_with_source_link(ctx.source, new_id);
                         }
                     } else if result.final_zone == Zone::Library {
-                        position_library_objects(game, &result.new_object_ids, choice);
+                        position_library_objects(
+                            game,
+                            &result.new_object_ids,
+                            choice,
+                            self.top_position,
+                        );
                         if from_zone == Zone::Battlefield {
                             maybe_prompt_for_split_result_order(
                                 game,

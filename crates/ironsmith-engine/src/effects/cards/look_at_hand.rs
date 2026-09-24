@@ -10,6 +10,18 @@ use crate::target::ChooseSpec;
 pub type LookAtHandEffect = ironsmith_core::LookAtHandEffect;
 
 impl EffectExecutor for LookAtHandEffect {
+    /// "Reveal your hand" can be paid as a cost (Land Grant's alternative
+    /// cost); an empty hand can still be revealed.
+    fn as_cost_executable(&self) -> Option<&dyn crate::effects::CostExecutableEffect> {
+        (self.reveal && matches!(self.target, ChooseSpec::Player(crate::target::PlayerFilter::You)))
+            .then_some(self as &dyn crate::effects::CostExecutableEffect)
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        (self.reveal && matches!(self.target, ChooseSpec::Player(crate::target::PlayerFilter::You)))
+            .then(|| "Reveal your hand".to_string())
+    }
+
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }
@@ -217,5 +229,16 @@ mod tests {
         assert!(dm.calls.iter().all(|call| call.subject == bob));
         assert!(dm.calls.iter().all(|call| call.zone == Zone::Hand));
         assert!(dm.calls.iter().all(|call| call.cards == vec![card1, card2]));
+    }
+}
+
+impl crate::effects::CostExecutableEffect for LookAtHandEffect {
+    fn can_execute_as_cost(
+        &self,
+        _game: &GameState,
+        _source: crate::ids::ObjectId,
+        _controller: crate::ids::PlayerId,
+    ) -> Result<(), crate::effects::executor_trait::CostValidationError> {
+        Ok(())
     }
 }

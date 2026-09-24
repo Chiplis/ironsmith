@@ -5049,6 +5049,9 @@ pub(super) fn describe_for_players_subject(filter: &PlayerFilter) -> Option<&'st
         {
             Some("Each player other than target player")
         }
+        PlayerFilter::OpponentOf(base) if matches!(base.as_ref(), PlayerFilter::IteratedPlayer) => {
+            Some("Each of that player's opponents")
+        }
         _ => None,
     }
 }

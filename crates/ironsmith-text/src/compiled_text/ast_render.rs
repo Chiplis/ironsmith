@@ -2772,7 +2772,7 @@ fn describe_structural_quoted_static_grant_bundle(
             if idx == last && !ability.ends_with(['!', '?']) {
                 ability.push('.');
             }
-            format!("\"{ability}\"")
+            format!("\"{}\"", capitalize_first(&ability))
         })
         .collect::<Vec<_>>();
     Some((
@@ -2787,11 +2787,15 @@ enum AttachedGrantSurface {
     Quoted(String),
 }
 
+/// A quoted ability is a whole ability: it opens with a capital, and so does
+/// the instruction after an activation cost (`"Sacrifice this creature: It
+/// deals 1 damage to any target."`).
 fn capitalize_quoted_grant_instruction(text: &str) -> String {
+    let text = capitalize_first(text);
     if let Some((cost, instruction)) = text.split_once(": ") {
         format!("{cost}: {}", capitalize_first(instruction))
     } else {
-        capitalize_first(text)
+        text
     }
 }
 
@@ -3792,6 +3796,48 @@ fn describe_structural_conditioned_no_defender_bundle(
     Some((
         format!("{label}As long as {condition_text}, this creature {predicate}"),
         2,
+    ))
+}
+
+/// A game rule that applies only while the source is in a given tap state
+/// ("As long as this artifact is untapped, players can't untap more than one
+/// land during their untap steps"). The rule is not granted to the source,
+/// so it reads with a leading condition rather than "this artifact has".
+fn describe_structural_source_state_conditioned_global_rule(
+    ability: &Ability,
+    subject: &str,
+) -> Option<String> {
+    if ability.functional_zones.as_slice() != [Zone::Battlefield] {
+        return None;
+    }
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return None;
+    };
+    let model = static_ability.compiled_model()?;
+    let ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } = &model.payload
+    else {
+        return None;
+    };
+    let state = match condition {
+        Condition::SourceIsUntapped => "untapped",
+        Condition::SourceIsTapped => "tapped",
+        _ => return None,
+    };
+    if !matches!(
+        ability.payload,
+        ironsmith_core::StaticAbilityPayload::UntapStepLimit { .. }
+    ) {
+        return None;
+    }
+    let rule = crate::static_abilities::StaticAbility::from_model(ability.as_ref().clone()).display();
+    let rule = rule.trim().trim_end_matches('.');
+    if rule.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "As long as {} is {state}, {}",
+        lowercase_first(subject),
+        lowercase_first(rule)
     ))
 }
 
@@ -16201,6 +16247,7 @@ fn describe_exile_top_treasure_conditional_cast_fallback_program(
                 mana_reference: None,
                 control_source: None,
                 until_source_exiles_another: None,
+                mana_spend_followup: false,
             })
         )
     {
@@ -16278,6 +16325,7 @@ mod exile_top_treasure_conditional_cast_fallback_tests {
             mana_reference: None,
             control_source: None,
             until_source_exiles_another: None,
+            mana_spend_followup: false,
         });
         let fallback = Effect::if_then(
             crate::effect::EffectId(7),
@@ -20618,6 +20666,7 @@ pub(super) fn describe_resolution_program(
         }
         if segment.self_replacements.is_empty()
             && let Some(rendered) = describe_face_down_pile_then_manifest(&segment.default_effects)
+                .or_else(|| describe_face_down_pile_then_restack(&segment.default_effects))
         {
             rendered_segments.push(rendered);
             continue;
@@ -29484,7 +29533,7 @@ fn is_suspend_helper_ability(ability: &Ability) -> bool {
             || is_suspend_cast_when_last_counter_removed_trigger(triggered))
 }
 
-fn is_conspire_helper_ability(ability: &Ability) -> bool {
+fn is_copy_on_paid_cost_helper_ability(ability: &Ability) -> bool {
     let AbilityKind::Triggered(triggered) = &ability.kind else {
         return false;
     };
@@ -29493,6 +29542,7 @@ fn is_conspire_helper_ability(ability: &Ability) -> bool {
             triggered.intervening_if.as_ref(),
             Some(Condition::ThisSpellPaidLabel(label))
                 if label.display_label().eq_ignore_ascii_case("Conspire")
+                    || label.display_label().eq_ignore_ascii_case("Casualty")
         )
         || !triggered.choices.is_empty()
         || triggered
@@ -32560,7 +32610,7 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 ability_idx += 1;
                 continue;
             }
-            if is_conspire_helper_ability(ability) {
+            if is_copy_on_paid_cost_helper_ability(ability) {
                 ability_idx += 1;
                 continue;
             }
@@ -32988,6 +33038,13 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             }
             if let Some(text) =
                 describe_structural_source_combat_presence_restriction(ability, subject)
+            {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += 1;
+                continue;
+            }
+            if let Some(text) =
+                describe_structural_source_state_conditioned_global_rule(ability, subject)
             {
                 output.push(format!("Static ability {}: {text}", ability_idx + 1));
                 ability_idx += 1;
@@ -33606,6 +33663,116 @@ fn describe_source_line_anthem_keyword_loss_group(abilities: &[Ability]) -> Opti
             capitalize_first(subject)
         ))
     }
+}
+
+/// Recombine an unconditional anthem and an untap-step restriction authored as
+/// one clause ("Enchanted creature gets +1/+1 and doesn't untap during its
+/// controller's untap step"). Both payloads must affect the same objects.
+fn describe_source_line_anthem_untap_restriction_group(abilities: &[Ability]) -> Option<String> {
+    let [first, second] = abilities else {
+        return None;
+    };
+    if first.functional_zones != second.functional_zones {
+        return None;
+    }
+    let mut anthem = None;
+    let mut restriction = None;
+    for ability in abilities {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        let model = static_ability.compiled_model()?;
+        match &model.payload {
+            ironsmith_core::StaticAbilityPayload::Anthem(spec)
+                if anthem.is_none() && spec.condition.is_none() =>
+            {
+                anthem = Some((static_ability, spec.filter.as_ref()?));
+            }
+            ironsmith_core::StaticAbilityPayload::RuleRestriction {
+                restriction: ironsmith_core::Restriction::Untap(filter),
+                additional_restrictions,
+                ..
+            } if restriction.is_none() && additional_restrictions.is_empty() => {
+                restriction = Some((static_ability, filter));
+            }
+            _ => return None,
+        }
+    }
+    let (anthem, anthem_filter) = anthem?;
+    let (restriction, restriction_filter) = restriction?;
+    if anthem_filter != restriction_filter {
+        return None;
+    }
+    let anthem_display = anthem.display();
+    let anthem_display = anthem_display.trim().trim_end_matches('.');
+    let (subject, anthem_tail, anthem_verb) =
+        split_static_predicate_with_verb(anthem_display, &[" gets ", " get "])?;
+    let restriction_display = restriction.display();
+    let restriction_display = restriction_display.trim().trim_end_matches('.');
+    let (restriction_subject, restriction_tail) = [" doesn't untap ", " don't untap "]
+        .iter()
+        .find_map(|verb| {
+            restriction_display
+                .split_once(verb)
+                .map(|(subject, tail)| (subject, format!("{}{tail}", verb.trim_start())))
+        })?;
+    if !static_bundle_subjects_match(subject, restriction_subject) {
+        return None;
+    }
+    Some(format!(
+        "{} {anthem_verb} {anthem_tail} and {restriction_tail}",
+        capitalize_first(subject)
+    ))
+}
+
+/// Recombine a free alternative cast and flash timing granted to the same
+/// spells for the same player, authored as one permission ("Any player may
+/// cast creature spells with mana value 3 or less without paying their mana
+/// costs and as though they had flash").
+fn describe_source_line_free_cast_and_flash_group(abilities: &[Ability]) -> Option<String> {
+    let [first, second] = abilities else {
+        return None;
+    };
+    let AbilityKind::Static(free_ability) = &first.kind else {
+        return None;
+    };
+    let AbilityKind::Static(flash_ability) = &second.kind else {
+        return None;
+    };
+    let free_model = free_ability.compiled_model()?;
+    let flash_model = flash_ability.compiled_model()?;
+    let ironsmith_core::StaticAbilityPayload::Grants(free) = &free_model.payload else {
+        return None;
+    };
+    let ironsmith_core::StaticAbilityPayload::Grants(flash) = &flash_model.payload else {
+        return None;
+    };
+    if free.filter != flash.filter || free.zone != flash.zone || free.beneficiary != flash.beneficiary
+    {
+        return None;
+    }
+    let ironsmith_core::Grantable::AlternativeCast(method) = &free.grantable else {
+        return None;
+    };
+    if method.mana_cost().is_some() || !method.non_mana_costs().is_empty() {
+        return None;
+    }
+    let ironsmith_core::Grantable::Ability(granted) = &flash.grantable else {
+        return None;
+    };
+    if crate::static_abilities::StaticAbility::from_model(granted.clone()).id()
+        != crate::static_abilities::StaticAbilityId::Flash
+    {
+        return None;
+    }
+    let flash_display = flash_ability.display();
+    let permission = flash_display
+        .trim()
+        .trim_end_matches('.')
+        .strip_suffix(" as though they had flash")?;
+    Some(format!(
+        "{permission} without paying their mana costs and as though they had flash"
+    ))
 }
 
 /// Recombine one granted static keyword and one removed static keyword from a
@@ -34286,6 +34453,8 @@ fn describe_source_line_static_group(
         })
         .or_else(|| describe_source_line_static_ability_loss_group(members))
         .or_else(|| describe_source_line_anthem_keyword_loss_group(members))
+        .or_else(|| describe_source_line_anthem_untap_restriction_group(members))
+        .or_else(|| describe_source_line_free_cast_and_flash_group(members))
         .or_else(|| describe_source_line_grant_keyword_loss_group(members))
         .or_else(|| {
             describe_structural_attached_anthem_condition_chain_bundle(members)

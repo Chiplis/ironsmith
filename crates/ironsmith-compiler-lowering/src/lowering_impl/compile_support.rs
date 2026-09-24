@@ -195,6 +195,32 @@ pub fn compile_annotated_effects_with_context(
     while idx < annotated.effects.len() {
         let current = &annotated.effects[idx];
         apply_local_reference_env_for_effect(ctx, &current.in_env, &current.effect);
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Damage(
+                    crate::cards::builders::DamageActionAst::ExcessDamageToController { condition },
+                ),
+            ..
+        }) = &current.effect
+        {
+            let condition = condition
+                .as_ref()
+                .map(|predicate| compile_condition_from_predicate_ast(predicate, ctx, &None))
+                .transpose()?;
+            let redirect = ironsmith_core::ExcessDamageRedirect { condition };
+            let rebuilt = compiled.iter().enumerate().rev().find_map(|(position, effect)| {
+                with_excess_damage_redirect(effect, &redirect).map(|effect| (position, effect))
+            });
+            let Some((position, effect)) = rebuilt else {
+                return Err(CardTextError::ParseError(
+                    "excess damage redirect has no preceding damage instruction".to_string(),
+                ));
+            };
+            compiled[position] = effect;
+            apply_local_reference_env(ctx, &current.out_env);
+            idx += 1;
+            continue;
+        }
         let suppress_force_for_power_self_damage =
             preserves_existing_it_for_power_self_damage_followup(
                 &current.effect,
@@ -684,6 +710,7 @@ fn bind_relative_iterated_player_filter_to_player_filter(
         }
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
+        | PlayerFilter::OpponentOf(base)
         | PlayerFilter::MaxSpeed { base, .. }
         | PlayerFilter::WasDealtDamageBySourceThisGame { base }
         | PlayerFilter::LostLifeThisTurn { base } => {
@@ -3290,4 +3317,34 @@ pub fn push_choice(choices: &mut Vec<ChooseSpec>, choice: ChooseSpec) {
     if !choices.iter().any(|existing| existing == &choice) {
         choices.push(choice);
     }
+}
+
+/// Rebuild a lowered damage instruction (through its identity wrappers) so
+/// excess damage to a creature goes to that creature's controller.
+fn with_excess_damage_redirect(
+    effect: &Effect,
+    redirect: &ironsmith_core::ExcessDamageRedirect,
+) -> Option<Effect> {
+    if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
+        return Some(Effect::new(damage.clone().with_excess_to_controller(redirect.clone())));
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        let inner = with_excess_damage_redirect(&tagged.effect, redirect)?;
+        let mut rebuilt = tagged.clone();
+        rebuilt.effect = Box::new(inner);
+        return Some(Effect::new(rebuilt));
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        let inner = with_excess_damage_redirect(&with_id.effect, redirect)?;
+        let mut rebuilt = with_id.clone();
+        rebuilt.effect = Box::new(inner);
+        return Some(Effect::new(rebuilt));
+    }
+    if let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() {
+        let inner = with_excess_damage_redirect(&with_source.effect, redirect)?;
+        let mut rebuilt = with_source.clone();
+        rebuilt.effect = Box::new(inner);
+        return Some(Effect::new(rebuilt));
+    }
+    None
 }

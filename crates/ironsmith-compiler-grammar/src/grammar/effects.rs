@@ -1654,6 +1654,25 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     let duration_surface = prepared_clause.duration_surface;
     let clause_tokens = prepared_clause.clause_tokens;
 
+    // "damage that would reduce your life total to less than 1 reduces it to
+    // 1 instead" (Angel's Grace, after its "until end of turn" duration).
+    if token_word_refs(&clause_tokens).as_slice()
+        == [
+            "damage", "that", "would", "reduce", "your", "life", "total", "to", "less", "than",
+            "1", "reduces", "it", "to", "1", "instead",
+        ]
+    {
+        return Ok(Some(vec![
+            EffectAst::subject_verb_cant_starting_with_duration_surface(
+                crate::effect::Restriction::damage_reduce_life_below_one(PlayerFilter::You),
+                duration,
+                crate::effect::RestrictionStart::Immediate,
+                duration_surface,
+                None,
+            ),
+        ]));
+    }
+
     if let Some(fact) =
         super::activation_costs::cant_shapes::parse_per_attacker_cant_tax_tokens(&clause_tokens)
     {

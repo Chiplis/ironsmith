@@ -3249,4 +3249,234 @@ mod live_action_rollback_tests {
             "regeneration clears damage"
         );
     }
+
+    #[test]
+    fn ward_payment_taps_untapped_lands_and_spell_resolves() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.turn_number = 1;
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+        wasm.runner = Some(ironsmith::turn_runner::TurnRunner::from_state_for_sync(
+            ironsmith::turn_runner::TurnState::FirstMainPriority,
+        ));
+        wasm.runner_awaiting_priority = true;
+        wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
+
+        let discharge = ObjectId(
+            wasm.add_card_to_zone(0, "Galvanic Discharge".to_string(), "Hand".to_string(), true)
+                .expect("Galvanic Discharge should load"),
+        );
+        let terror = ObjectId(
+            wasm.add_card_to_zone(1, "Tolarian Terror".to_string(), "Battlefield".to_string(), true)
+                .expect("Tolarian Terror should load"),
+        );
+        for _ in 0..3 {
+            wasm.add_card_to_zone(0, "Mountain".to_string(), "Battlefield".to_string(), true)
+                .expect("Mountain should load");
+        }
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+        dispatch_priority_action_matching(&mut wasm, |action| {
+            matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == discharge)
+        });
+
+        let mut saw_ward_mana_payment = false;
+        for _ in 0..24 {
+            let Some(ctx) = wasm.pending_decision.clone() else {
+                break;
+            };
+            let command = match &ctx {
+                DecisionContext::Priority(_) if wasm.game.stack.is_empty() => break,
+                DecisionContext::Priority(_) => {
+                    dispatch_pass_priority(&mut wasm);
+                    continue;
+                }
+                DecisionContext::ManaPayment(payment) => {
+                    saw_ward_mana_payment |=
+                        payment.request.reason == ironsmith::costs::PaymentReason::Effect;
+                    confirm_pending_mana_payment(&mut wasm);
+                    continue;
+                }
+                DecisionContext::Targets(_) => UiCommand::SelectTargets {
+                    targets: vec![TargetInput::Object { object: terror.0 }],
+                },
+                // Yes to paying ward and to paying energy.
+                DecisionContext::Boolean(_) => UiCommand::SelectOptions {
+                    option_indices: vec![1],
+                },
+                DecisionContext::Number(_) => UiCommand::NumberChoice { value: 3 },
+                other => panic!("unexpected decision {other:?}"),
+            };
+            let ctx = wasm.pending_decision.take().unwrap();
+            if wasm.pending_live_continuation.is_some() {
+                wasm.dispatch_live_priority_continuation(ctx, command).unwrap();
+            } else {
+                wasm.dispatch_live_priority_response(ctx, command).unwrap();
+            }
+        }
+
+        assert!(
+            saw_ward_mana_payment,
+            "agreeing to pay ward should offer a mana payment that can tap lands"
+        );
+        let tapped = wasm
+            .game
+            .battlefield
+            .iter()
+            .filter(|id| wasm.game.is_tapped(**id))
+            .count();
+        assert_eq!(tapped, 3, "Galvanic Discharge and ward {{2}} tap all three Mountains");
+        assert_eq!(
+            wasm.game.damage_on(terror),
+            3,
+            "the paid-for spell should resolve instead of being countered"
+        );
+    }
+
+    fn cast_join_the_maestros(pay_casualty: bool) -> (WasmGame, ObjectId, bool) {
+        let alice = PlayerId::from_index(0);
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.turn_number = 1;
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+        wasm.runner = Some(ironsmith::turn_runner::TurnRunner::from_state_for_sync(
+            ironsmith::turn_runner::TurnState::FirstMainPriority,
+        ));
+        wasm.runner_awaiting_priority = true;
+        wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
+
+        let spell = ObjectId(
+            wasm.add_card_to_zone(0, "Join the Maestros".to_string(), "Hand".to_string(), true)
+                .expect("Join the Maestros should load"),
+        );
+        let bears = ObjectId(
+            wasm.add_card_to_zone(0, "Grizzly Bears".to_string(), "Battlefield".to_string(), true)
+                .expect("Grizzly Bears should load"),
+        );
+        for _ in 0..5 {
+            wasm.add_card_to_zone(0, "Swamp".to_string(), "Battlefield".to_string(), true)
+                .expect("Swamp should load");
+        }
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+        dispatch_priority_action_matching(&mut wasm, |action| {
+            matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)
+        });
+
+        // Answer casting prompts until the spell is on the stack.
+        let mut sacrificed_while_casting = false;
+        for _ in 0..12 {
+            let Some(ctx) = wasm.pending_decision.clone() else {
+                break;
+            };
+            eprintln!("cast decision: {}", format!("{ctx:?}").chars().take(300).collect::<String>());
+            let command = match &ctx {
+                DecisionContext::Priority(_) => break,
+                DecisionContext::ManaPayment(_) => {
+                    confirm_pending_mana_payment(&mut wasm);
+                    continue;
+                }
+                DecisionContext::SelectOptions(options)
+                    if options.description.starts_with("Choose optional costs") =>
+                {
+                    UiCommand::SelectOptions {
+                        option_indices: options
+                            .options
+                            .iter()
+                            .filter(|option| {
+                                pay_casualty
+                                    && option.description.to_ascii_lowercase().contains("casualty")
+                            })
+                            .map(|option| option.index)
+                            .collect(),
+                    }
+                }
+                DecisionContext::SelectOptions(options) => UiCommand::SelectOptions {
+                    option_indices: vec![options.options[0].index],
+                },
+                DecisionContext::Boolean(_) => UiCommand::SelectOptions {
+                    option_indices: vec![usize::from(pay_casualty)],
+                },
+                DecisionContext::SelectObjects(objects) => UiCommand::SelectObjects {
+                    object_ids: objects
+                        .candidates
+                        .iter()
+                        .filter(|candidate| candidate.legal)
+                        .take(1)
+                        .map(|candidate| candidate.id.0)
+                        .collect(),
+                    object_stable_ids: Vec::new(),
+                    object_hidden_refs: Vec::new(),
+                },
+                other => panic!("unexpected casting decision {other:?}"),
+            };
+            let ctx = wasm.pending_decision.take().unwrap();
+            if wasm.pending_live_continuation.is_some() {
+                wasm.dispatch_live_priority_continuation(ctx, command).unwrap();
+            } else {
+                wasm.dispatch_live_priority_response(ctx, command).unwrap();
+            }
+        }
+        if !wasm.game.battlefield.contains(&bears) {
+            sacrificed_while_casting = true;
+        }
+        eprintln!("after cast: stack={} bears_on_bf={}", wasm.game.stack.len(), wasm.game.battlefield.contains(&bears));
+        (wasm, bears, sacrificed_while_casting)
+    }
+
+    fn resolve_stack_and_count_ogres(wasm: &mut WasmGame) -> usize {
+        for _ in 0..16 {
+            match wasm.pending_decision.clone() {
+                Some(DecisionContext::Priority(_)) if wasm.game.stack.is_empty() => break,
+                Some(DecisionContext::Priority(_)) => dispatch_pass_priority(wasm),
+                other => panic!("unexpected resolution decision {other:?}"),
+            }
+        }
+        wasm.game
+            .battlefield
+            .iter()
+            .filter(|id| {
+                wasm.game
+                    .object(**id)
+                    .is_some_and(|object| object.name.as_str().contains("Ogre"))
+            })
+            .count()
+    }
+
+    #[test]
+    fn casualty_sacrifices_while_casting_and_copies_the_spell() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let (mut wasm, _bears, sacrificed_while_casting) = cast_join_the_maestros(true);
+        assert!(
+            sacrificed_while_casting,
+            "casualty's sacrifice is an additional cost paid while casting"
+        );
+        assert_eq!(
+            wasm.game.stack.len(),
+            2,
+            "the spell and its casualty copy trigger should both be on the stack"
+        );
+        assert_eq!(resolve_stack_and_count_ogres(&mut wasm), 2);
+    }
+
+    #[test]
+    fn declining_casualty_keeps_the_creature_and_adds_no_copy_trigger() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let (mut wasm, bears, _) = cast_join_the_maestros(false);
+        assert!(wasm.game.battlefield.contains(&bears));
+        assert_eq!(wasm.game.stack.len(), 1, "no copy trigger without the casualty cost");
+        assert_eq!(resolve_stack_and_count_ogres(&mut wasm), 1);
+    }
 }

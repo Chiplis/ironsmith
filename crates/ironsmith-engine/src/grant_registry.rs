@@ -451,6 +451,10 @@ pub struct Grant {
     pub play_from_constraints: PlayFromConstraints,
     /// Shared total-use budget for a tagged play collection.
     pub shared_usage_id: Option<SharedGrantUsageId>,
+    /// "The next matching spell you cast this turn can be cast ...": the
+    /// grant's shared budget is exhausted as soon as its player casts any
+    /// spell matching `filter`, whether or not this grant was used.
+    pub ends_on_next_matching_cast: bool,
     /// How this grant was created.
     pub source: GrantSource,
 }
@@ -516,6 +520,7 @@ impl GrantRegistry {
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: Some(shared_usage_id),
+            ends_on_next_matching_cast: false,
             source,
         });
     }
@@ -548,6 +553,56 @@ impl GrantRegistry {
             limited.get_or_insert(shared_usage_id);
         }
         limited
+    }
+
+    /// Grant an alternative casting method to the next spell matching
+    /// `filter` that `player` casts; see `ends_on_next_matching_cast`.
+    pub fn grant_alternative_cast_to_next_matching_spell(
+        &mut self,
+        filter: ObjectFilter,
+        zone: Zone,
+        player: PlayerId,
+        method: AlternativeCastingMethod,
+        source: GrantSource,
+    ) {
+        let budget = self.create_shared_usage_budget(1);
+        self.grant_to_filter(filter, zone, player, Grantable::AlternativeCast(method), source);
+        let grant = self.grants.last_mut().expect("just inserted");
+        grant.shared_usage_id = Some(budget);
+        grant.ends_on_next_matching_cast = true;
+    }
+
+    /// Exhaust every next-matching-spell grant whose filter the spell just
+    /// cast by `caster` satisfies.
+    pub fn exhaust_next_matching_cast_grants(
+        game: &mut crate::game_state::GameState,
+        spell_id: ObjectId,
+        caster: PlayerId,
+    ) {
+        let Some(spell) = game.object(spell_id) else {
+            return;
+        };
+        let ctx = game.filter_context_for(caster, None);
+        let exhausted = game
+            .effect_store
+            .grant_registry
+            .grants
+            .iter()
+            .filter(|grant| grant.ends_on_next_matching_cast && grant.player == caster)
+            .filter(|grant| grant.source.is_valid(game))
+            .filter(|grant| {
+                grant.filter.as_ref().is_none_or(|filter| {
+                    filter.matches(spell, &grant_filter_context(&ctx, grant, game), game)
+                })
+            })
+            .filter_map(|grant| grant.shared_usage_id)
+            .collect::<Vec<_>>();
+        for id in exhausted {
+            game.effect_store
+                .grant_registry
+                .shared_usage_remaining
+                .insert(id, 0);
+        }
     }
 
     /// Spend one use from a previously selected shared budget.
@@ -584,6 +639,7 @@ impl GrantRegistry {
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: None,
+            ends_on_next_matching_cast: false,
             source,
         });
     }
@@ -611,6 +667,7 @@ impl GrantRegistry {
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: None,
+            ends_on_next_matching_cast: false,
             source,
         });
     }
@@ -638,6 +695,7 @@ impl GrantRegistry {
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: None,
+            ends_on_next_matching_cast: false,
             source,
         });
     }
@@ -666,6 +724,7 @@ impl GrantRegistry {
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: None,
+            ends_on_next_matching_cast: false,
             source,
         });
     }
@@ -696,6 +755,7 @@ impl GrantRegistry {
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: None,
+            ends_on_next_matching_cast: false,
             source,
         });
     }
@@ -723,6 +783,7 @@ impl GrantRegistry {
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: None,
+            ends_on_next_matching_cast: false,
             source,
         });
     }
@@ -1289,6 +1350,7 @@ impl GrantRegistry {
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
                         shared_usage_id: None,
+                        ends_on_next_matching_cast: false,
                         source: GrantSource::StaticAbility { source_id },
                     });
                 }

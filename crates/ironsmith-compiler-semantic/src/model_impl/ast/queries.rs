@@ -122,6 +122,7 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
             })
             | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice {
                 target,
+                ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters {
                 target,

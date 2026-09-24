@@ -911,6 +911,9 @@ pub enum OptionalCostKind {
     Offspring,
     Bargain,
     Conspire,
+    /// "Casualty N" (CR 702.153a): you may sacrifice a creature with power N
+    /// or greater as an additional cost; a cast trigger copies the spell.
+    Casualty,
     Gift,
     Behold,
     Waterbend,
@@ -949,6 +952,7 @@ impl OptionalCostKind {
             "offspring" => Self::Offspring,
             "bargain" => Self::Bargain,
             "conspire" => Self::Conspire,
+            "casualty" => Self::Casualty,
             "gift" => Self::Gift,
             "behold" => Self::Behold,
             "waterbend" => Self::Waterbend,
@@ -993,6 +997,7 @@ impl OptionalCostKind {
             Self::Offspring => "Offspring",
             Self::Bargain => "Bargain",
             Self::Conspire => "Conspire",
+            Self::Casualty => "Casualty",
             Self::Gift => "Gift",
             Self::Behold => "Behold",
             Self::Waterbend => "Waterbend",

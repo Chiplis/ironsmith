@@ -981,6 +981,7 @@ fn object_matches_filter_with_chars(
             | PlayerFilter::HasMoreLifeThanYou { .. }
             | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
             | PlayerFilter::ControlsMost { .. }
+            | PlayerFilter::OpponentOf(_)
             | PlayerFilter::MaxSpeed { .. }
             | PlayerFilter::CastCardTypeThisTurn(_)
             | PlayerFilter::AttackedBySourceThisTurn
@@ -1406,6 +1407,12 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
                 }
             });
             chars.static_abilities.retain(|sa| sa != ability);
+        }
+        Modification::RemoveStaticAbilityFamily(id) => {
+            chars.abilities.retain(|a| {
+                !matches!(&a.kind, crate::ability::AbilityKind::Static(sa) if sa.id() == *id)
+            });
+            chars.static_abilities.retain(|sa| sa.id() != *id);
         }
         Modification::RemoveAbilityGeneric { ability, .. } => {
             chars.abilities.retain(|a| a != ability);
@@ -2366,6 +2373,7 @@ fn modification_can_remove_static_ability_presence(modification: &Modification) 
             | Modification::SetSubtypes(_)
             | Modification::SetAbilities(_)
             | Modification::RemoveAbility(_)
+            | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana
@@ -2426,6 +2434,7 @@ fn modification_can_change_abilities_or_matching_characteristics(
             | Modification::CopyTriggeredAbilities { .. }
             | Modification::AddCombatDamageDrawAbility
             | Modification::RemoveAbility(_)
+            | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana
@@ -2518,6 +2527,7 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
             | Modification::CopyTriggeredAbilities { .. }
             | Modification::AddCombatDamageDrawAbility
             | Modification::RemoveAbility(_)
+            | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana => {

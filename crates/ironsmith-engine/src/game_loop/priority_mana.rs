@@ -3376,6 +3376,9 @@ pub(super) fn finalize_spell_cast(
                 effect.remaining_uses -= 1;
             }
         }
+        crate::grant_registry::GrantRegistry::exhaust_next_matching_cast_grants(
+            game, new_id, caster,
+        );
     }
     queue_becomes_targeted_events(
         game,

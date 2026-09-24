@@ -87,6 +87,7 @@ fn player_filter_references_target_player(filter: &crate::target::PlayerFilter) 
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
         | PlayerFilter::LostLifeThisTurn { base }
+        | PlayerFilter::OpponentOf(base)
         | PlayerFilter::MaxSpeed { base, .. } => player_filter_references_target_player(base),
         _ => false,
     }
@@ -929,6 +930,13 @@ pub(super) fn resolve_stack_entry_full(
     }
     if let Some(trigger_identity) = entry.trigger_identity {
         ctx = ctx.with_trigger_identity(trigger_identity);
+        ctx.do_this_limit = entry.intervening_if.as_ref().and_then(|condition| {
+            crate::effects::DoThisLimit::from_condition(
+                condition,
+                execution_source,
+                trigger_identity,
+            )
+        });
     }
     if let Some(ability_index) = entry.ability_index {
         ctx = ctx.with_ability_index(ability_index);

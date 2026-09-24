@@ -59,6 +59,7 @@ pub enum GrantActionAst {
         spell_cost_increase: Option<ManaCost>,
         /// Whether lands played through this exact permission enter tapped.
         lands_enter_tapped: bool,
+        surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
     },
     GrantPlayTaggedForAsLongAsYouControlSource {
         tag: TagRef,

@@ -2203,7 +2203,8 @@ impl PlayerFilterExt for PlayerFilter {
             PlayerFilter::HasMoreLifeThanYou { base } => base.matches_player(player, ctx),
             PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => false,
             PlayerFilter::ControlsMost { .. } => false,
-            PlayerFilter::MaxSpeed { .. } => false,
+            PlayerFilter::OpponentOf(_)
+            | PlayerFilter::MaxSpeed { .. } => false,
             PlayerFilter::ChosenPlayer => ctx.chosen_player.is_some_and(|chosen| chosen == player),
             PlayerFilter::TaggedPlayer(tag) => ctx
                 .tagged_players
@@ -2450,6 +2451,11 @@ pub(crate) fn player_filter_matches_game(
             player_filter_matches_game(base, player, game, ctx)
                 && game.has_max_speed(player) == *has_max_speed
         }
+        PlayerFilter::OpponentOf(base) => game.players.iter().any(|other| {
+            other.is_in_game()
+                && game.are_opponents(other.id, player)
+                && player_filter_matches_game(base, other.id, game, ctx)
+        }),
         PlayerFilter::Target(inner) => {
             let inner = inner
                 .relative_target_exclusion_base()
@@ -3303,7 +3309,8 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::ControlsMost { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
-                PlayerFilter::MaxSpeed { .. } => {
+                PlayerFilter::OpponentOf(_)
+                | PlayerFilter::MaxSpeed { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 PlayerFilter::CastCardTypeThisTurn(card_type) => parts.push(format!(
@@ -3462,7 +3469,8 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::ControlsMost { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
-                PlayerFilter::MaxSpeed { .. } => {
+                PlayerFilter::OpponentOf(_)
+                | PlayerFilter::MaxSpeed { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::CastCardTypeThisTurn(card_type) => format!(

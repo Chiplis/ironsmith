@@ -49,6 +49,41 @@ impl EffectExecutor for CastTaggedEffect {
 
         let caster = resolve_player_filter(game, &self.player, ctx)?;
 
+        // A substituted payment replaces the mana cost: the spell is cast
+        // without paying it, and the substitute is paid once the cast is made.
+        let energy_payment = match self.alternative_payment {
+            Some(ironsmith_core::CastTaggedAlternativePayment::EnergyEqualToManaValue)
+                if !is_land =>
+            {
+                let mana_value = game
+                    .object(object_id)
+                    .and_then(|obj| obj.mana_cost.as_ref())
+                    .map_or(0, |cost| cost.mana_value());
+                if game
+                    .player(caster)
+                    .is_none_or(|player| player.energy_counters < mana_value)
+                {
+                    return Ok(EffectOutcome::impossible());
+                }
+                Some(mana_value)
+            }
+            _ => None,
+        };
+        let without_paying_mana_cost = self.without_paying_mana_cost || energy_payment.is_some();
+        let pay_energy = |game: &mut GameState, outcome: EffectOutcome| match energy_payment {
+            Some(amount) if amount > 0 => match game.remove_player_counters_with_source(
+                caster,
+                crate::object::CounterType::Energy,
+                amount,
+                Some(ctx.source),
+                Some(ctx.controller),
+            ) {
+                Some((_, event)) => outcome.with_event(event),
+                None => outcome,
+            },
+            _ => outcome,
+        };
+
         if self.as_copy {
             let copy_id = game.new_object_id();
 
@@ -99,7 +134,7 @@ impl EffectExecutor for CastTaggedEffect {
                 from_zone,
                 caster,
                 &casting_method,
-                self.without_paying_mana_cost,
+                without_paying_mana_cost,
                 self.cost_reduction.as_ref(),
                 self.additional_mana_cost.as_ref(),
                 self.mana_spend_mode,
@@ -116,14 +151,15 @@ impl EffectExecutor for CastTaggedEffect {
                     Ok(EffectOutcome::impossible())
                 };
             };
-            return Ok(with_spell_cast_event(
+            let outcome = with_spell_cast_event(
                 EffectOutcome::with_objects(vec![new_id]),
                 game,
                 new_id,
                 caster,
                 from_zone,
                 ctx.provenance,
-            ));
+            );
+            return Ok(pay_energy(game, outcome));
         }
 
         if is_land {
@@ -162,7 +198,7 @@ impl EffectExecutor for CastTaggedEffect {
             from_zone,
             caster,
             &casting_method,
-            self.without_paying_mana_cost,
+            without_paying_mana_cost,
             self.cost_reduction.as_ref(),
             self.additional_mana_cost.as_ref(),
             self.mana_spend_mode,
@@ -178,14 +214,15 @@ impl EffectExecutor for CastTaggedEffect {
                 Ok(EffectOutcome::impossible())
             };
         };
-        Ok(with_spell_cast_event(
+        let outcome = with_spell_cast_event(
             EffectOutcome::with_objects(vec![new_id]),
             game,
             new_id,
             caster,
             from_zone,
             ctx.provenance,
-        ))
+        );
+        Ok(pay_energy(game, outcome))
     }
 }
 

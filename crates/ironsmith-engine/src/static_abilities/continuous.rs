@@ -2309,7 +2309,8 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             crate::target::PlayerFilter::ControlsMost { .. } => {
                 "as long as that player is the monarch".to_string()
             }
-            crate::target::PlayerFilter::MaxSpeed { .. } => {
+            crate::target::PlayerFilter::OpponentOf(_)
+            | crate::target::PlayerFilter::MaxSpeed { .. } => {
                 "as long as that player is the monarch".to_string()
             }
             crate::target::PlayerFilter::CastCardTypeThisTurn(_) => {

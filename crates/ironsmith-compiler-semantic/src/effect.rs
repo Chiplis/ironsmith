@@ -2268,6 +2268,7 @@ impl Effect {
         additional_mana_cost: Option<crate::mana::ManaCost>,
         cost_reduction: Option<crate::mana::ManaCost>,
         mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
+        alternative_payment: Option<ironsmith_core::CastTaggedAlternativePayment>,
     ) -> Self {
         Self::new(crate::effects::CastTaggedEffect {
             tag,
@@ -2280,6 +2281,7 @@ impl Effect {
             additional_mana_cost,
             cost_reduction,
             mana_spend_mode,
+            alternative_payment,
         })
     }
 

@@ -5093,11 +5093,11 @@
             } else {
                 "them"
             };
-            let mana_clause = grant_play_tagged
-                .mana_spend_cast_clause(pronoun)
+            let mana_suffix = grant_play_tagged
+                .mana_spend_cast_suffix(pronoun)
                 .expect("flexible mana grant has a cast clause");
             return format!(
-                "{} may {verb} {object_text} {timing}, and {mana_clause}",
+                "{} may {verb} {object_text} {timing}{mana_suffix}",
                 describe_player_filter(&grant_play_tagged.player),
             );
         }
@@ -5441,6 +5441,11 @@
             Until::EndOfTurn => "this turn".to_string(),
             _ => describe_until(&grant_next_spell_cost_reduction.duration),
         };
+        if grant_next_spell_cost_reduction.without_paying_mana_cost {
+            return format!(
+                "The next {spell_text} {player_text} cast {duration_text} can be cast without paying its mana cost",
+            );
+        }
         let (reduction, where_suffix) = grant_next_spell_cost_reduction
             .generic_reduction
             .as_ref()

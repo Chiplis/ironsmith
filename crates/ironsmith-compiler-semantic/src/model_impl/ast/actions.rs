@@ -1125,6 +1125,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 additional_mana_cost,
                 cost_reduction,
                 mana_spend_mode,
+                alternative_payment,
             }) => f
                 .debug_struct("CastTagged")
                 .field("tag", tag)
@@ -1137,6 +1138,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("additional_mana_cost", additional_mana_cost)
                 .field("cost_reduction", cost_reduction)
                 .field("mana_spend_mode", mana_spend_mode)
+                .field("alternative_payment", alternative_payment)
                 .finish(),
             Self::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
                 tag,
@@ -1206,6 +1208,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 during_turns_counter_put_on_source,
                 spell_cost_increase,
                 lands_enter_tapped,
+                surface,
             }) => f
                 .debug_struct("GrantPlayTaggedForAsLongAsExiled")
                 .field("tag", tag)
@@ -1220,6 +1223,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 )
                 .field("spell_cost_increase", spell_cost_increase)
                 .field("lands_enter_tapped", lands_enter_tapped)
+                .field("surface", surface)
                 .finish(),
             Self::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource {
                 tag,
@@ -1341,9 +1345,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("attached_to", attached_to)
                 .field("all", all)
                 .finish(),
-            Self::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice { target }) => f
+            Self::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice {
+                target,
+                top_position,
+            }) => f
                 .debug_struct("MoveToLibraryTopOrBottomChoice")
                 .field("target", target)
+                .field("top_position", top_position)
                 .finish(),
             Self::TargetOnly {
                 target,
@@ -2440,6 +2448,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("player", player)
                 .field("duration", duration)
                 .finish(),
+            Self::Stack(StackActionAst::FreeCastNextSpellThisTurn { filter }) => f
+                .debug_struct("FreeCastNextSpellThisTurn")
+                .field("filter", filter)
+                .finish(),
             Self::Stack(StackActionAst::ReduceNextSpellCostThisTurn { filter, reduction }) => f
                 .debug_struct("ReduceNextSpellCostThisTurn")
                 .field("filter", filter)
@@ -2510,6 +2522,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("HealDamage")
                 .field("target", target)
                 .field("amount", amount)
+                .finish(),
+            Self::Damage(DamageActionAst::ExcessDamageToController { condition }) => f
+                .debug_struct("ExcessDamageToController")
+                .field("condition", condition)
                 .finish(),
             Self::PermanentState(PermanentStateActionAst::RemoveFromCombat { target }) => {
                 f.debug_tuple("RemoveFromCombat").field(target).finish()

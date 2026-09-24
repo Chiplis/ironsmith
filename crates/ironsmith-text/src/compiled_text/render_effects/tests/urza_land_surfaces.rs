@@ -139,7 +139,7 @@ fn urzas_factory_token_keeps_its_hyphenated_assembly_worker_type() {
 }
 
 #[test]
-fn metalcraft_mana_restriction_renders_once() {
+fn mana_activation_restriction_renders_once_in_printed_wording() {
     for (name, type_line, text) in [
         (
             "Mox Opal",
@@ -150,6 +150,13 @@ fn metalcraft_mana_restriction_renders_once() {
             "Urza's Workshop",
             "Land — Urza's",
             "Metalcraft — {T}: Add {C} for each Urza's land you control. Activate only if you control three or more artifacts.",
+        ),
+        // The typed condition would re-render as "one or more artifacts";
+        // the authored clause is the printed wording.
+        (
+            "Spire of Industry",
+            "Land",
+            "{T}, Pay 1 life: Add one mana of any color. Activate only if you control an artifact.",
         ),
     ] {
         let definition = compile_printed((name, type_line, text));

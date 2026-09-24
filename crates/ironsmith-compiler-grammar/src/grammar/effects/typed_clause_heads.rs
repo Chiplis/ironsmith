@@ -248,6 +248,8 @@ fn is_structural_action(word: &str) -> bool {
             | "manifests"
             | "must"
             | "open"
+            | "phase"
+            | "phases"
             | "populate"
             | "populates"
             | "proliferate"

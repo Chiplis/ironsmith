@@ -8,7 +8,8 @@ pub(super) fn opponent_filter(scope: ForEachParticipantScope) -> Option<PlayerFi
             PlayerFilter::Opponent,
             PlayerFilter::Defending,
         )),
-        ForEachParticipantScope::Player
+        ForEachParticipantScope::OpponentOfThatPlayer
+        | ForEachParticipantScope::Player
         | ForEachParticipantScope::PlayerExceptYou
         | ForEachParticipantScope::PlayerExceptTarget
         | ForEachParticipantScope::PlayerExceptItsController
@@ -33,6 +34,10 @@ pub(super) fn player_filter(scope: ForEachParticipantScope) -> Option<PlayerFilt
         ForEachParticipantScope::PlayerOnYourTeam => Some(PlayerFilter::excluding(
             PlayerFilter::Any,
             PlayerFilter::Opponent,
+        )),
+        // "that player" is the player the surrounding clause already names.
+        ForEachParticipantScope::OpponentOfThatPlayer => Some(PlayerFilter::OpponentOf(
+            Box::new(PlayerFilter::IteratedPlayer),
         )),
         ForEachParticipantScope::Opponent | ForEachParticipantScope::OpponentExceptDefending => {
             None

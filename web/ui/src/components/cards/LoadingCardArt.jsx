@@ -37,5 +37,10 @@ function ArtImage({ src, pending, variant, colors, svg = false, onLoad, ...image
 
 // Source changes reset the state. Derived hand-corner repairs retain loaded state.
 export default function LoadingCardArt({ sourceKey, ...props }) {
-  return <ArtImage key={sourceKey || props.src || "pending"} {...props} />;
+  // A URL can be known before its image metadata has settled. If that first
+  // request fails, remount once when the lookup settles so a transient error
+  // does not become a session-long blank card. A settled missing URL keeps a
+  // stable fallback and never retries or polls.
+  const sourceIdentity = `${sourceKey || props.src || "pending"}|${props.pending ? "pending" : "settled"}`;
+  return <ArtImage key={sourceIdentity} {...props} />;
 }

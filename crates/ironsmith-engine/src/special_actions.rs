@@ -4,6 +4,7 @@
 //! suspending/foretelling cards, and activating mana abilities.
 
 mod payment;
+pub(crate) use payment::pay_resolution_cost_with_mana_abilities;
 use payment::{SpecialActionPayment, check_special_action_payment, pay_special_action_payment};
 
 use crate::ability::ActivatedAbilityRuntimeExt as _;

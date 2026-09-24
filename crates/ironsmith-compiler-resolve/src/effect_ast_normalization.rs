@@ -132,6 +132,75 @@ pub fn normalize_effects_ast_in_place(effects: &mut Vec<EffectAst>) {
     normalize_effects_vec(effects);
 }
 
+/// "You may search your library ...": the search's implicit chooser is the
+/// player given the option, not whichever player was mentioned last (a
+/// target named by a preceding condition, for example).
+fn bind_may_player_to_implicit_search_choosers(effect: &mut EffectAst) {
+    use crate::cards::builders::{ObjectChoiceEffectAst, PlayerAst};
+    let EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+        player: may_player @ PlayerAst::You,
+        effects,
+    }) = effect
+    else {
+        return;
+    };
+    for inner in effects {
+        if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            player: chooser @ PlayerAst::Implicit,
+            search_mode: Some(_),
+            ..
+        }) = inner
+        {
+            *chooser = *may_player;
+        }
+    }
+}
+
+/// "If target opponent controls more lands than you, ...": when a condition
+/// is where the spell's player target is first named, declare that target
+/// ahead of the conditional so the predicate reads the chosen player.
+fn declare_predicate_introduced_player_targets(effects: &mut Vec<EffectAst>) {
+    use crate::cards::builders::{PlayerAst, PlayerPredicateAst, TargetAst};
+    let mut index = 0;
+    while index < effects.len() {
+        let introduced = match &effects[index] {
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate:
+                    PredicateAst::Player(PlayerPredicateAst::PlayerControlsMoreThanYou {
+                        player: player @ (PlayerAst::Target | PlayerAst::TargetOpponent),
+                        ..
+                    }),
+                ..
+            }) => Some(*player),
+            _ => None,
+        };
+        let already_declared = effects[..index].iter().any(|earlier| {
+            matches!(
+                crate::cards::builders::primary_target_from_effect(earlier),
+                Some(TargetAst::Player(_, Some(_)))
+            )
+        });
+        if let Some(player) = introduced
+            && !already_declared
+        {
+            let filter = if matches!(player, PlayerAst::TargetOpponent) {
+                crate::target::PlayerFilter::Opponent
+            } else {
+                crate::target::PlayerFilter::Any
+            };
+            effects.insert(
+                index,
+                EffectAst::subject_verb_target_only(TargetAst::Player(
+                    filter,
+                    Some(crate::diagnostics::TextSpan::synthetic()),
+                )),
+            );
+            index += 1;
+        }
+        index += 1;
+    }
+}
+
 fn typed_where_x_binding(effect: &EffectAst) -> Option<Value> {
     let EffectAst::SubjectVerb(subject_verb) = effect else {
         return None;
@@ -266,7 +335,9 @@ fn bind_typed_where_x_references(effects: &mut [EffectAst], inherited: Option<Va
 }
 
 fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
+    declare_predicate_introduced_player_targets(effects);
     for effect in effects.iter_mut() {
+        bind_may_player_to_implicit_search_choosers(effect);
         normalize_nested_effects(effect);
         collapse_single_nested_coordination(effect);
         // The generic "you may" parser can wrap an already optional repeat

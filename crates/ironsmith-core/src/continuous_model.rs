@@ -43,6 +43,9 @@ pub enum CompiledContinuousModification<StaticAbility, Ability> {
     AddAbility(StaticAbility),
     AddAbilityGeneric(Ability),
     RemoveAbility(Ability),
+    /// Remove every static ability of one family ("loses all landwalk
+    /// abilities").
+    RemoveStaticAbilityFamily(crate::static_ability_id::StaticAbilityId),
     AddCardTypes(Vec<CardType>),
     RemoveCardTypes(Vec<CardType>),
     RemoveSupertypes(Vec<Supertype>),

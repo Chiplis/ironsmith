@@ -1,4 +1,5 @@
 import { createAsyncLimiter } from "../lib/bounded-async.js";
+import { CARD_ASSET_FETCH_OPTIONS, versionedCardAssetUrl } from "../lib/card-asset-cache.js";
 import { createSnapshotEncoder } from "../lib/snapshot-channel.js";
 import { replayTrustedMatch, replayTrustedActions } from "../lib/relay/replay-trusted-match.js";
 import { compileWasmWithProgress } from "../lib/wasm-loading.js";
@@ -47,10 +48,12 @@ const targetPreviews = new Map();
 let engineModule = null;
 let engineExports = null;
 const missingCardRoutes = new Set();
-const fetchSource = createAsyncLimiter(8);
+// Card assets are a few KB each and share one HTTP/2 connection, so a table
+// that needs dozens of them is bounded by round trips, not bandwidth.
+const fetchSource = createAsyncLimiter(24);
 const sourceRequests = new Map();
 const knownRuntimeCardNames = new Set();
-const STABLE_CARD_ASSET_FETCH_OPTIONS = { cache: "no-cache" };
+const STABLE_CARD_ASSET_FETCH_OPTIONS = CARD_ASSET_FETCH_OPTIONS;
 const SNAPSHOT_METHODS = new Set([
   "advancePhase",
   "applyVerifiedHiddenLibraryShuffle",
@@ -196,7 +199,7 @@ function cardAssetUrl(route) {
   if (!cardAssetsBaseUrl) {
     return null;
   }
-  return new URL(`${route}.json`, cardAssetsBaseUrl).href;
+  return versionedCardAssetUrl(new URL(`${route}.json`, cardAssetsBaseUrl).href);
 }
 
 function cardNameAlreadyKnown(name) {
@@ -395,7 +398,7 @@ async function loadCardIndex() {
   }
   if (!cardIndexPromise) {
     cardIndexPromise = fetch(
-      new URL("index.json", cardAssetsBaseUrl).href,
+      versionedCardAssetUrl(new URL("index.json", cardAssetsBaseUrl).href),
       STABLE_CARD_ASSET_FETCH_OPTIONS
     ).then(async (response) => {
       if (!response.ok) {

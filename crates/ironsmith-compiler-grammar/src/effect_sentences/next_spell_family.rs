@@ -64,6 +64,15 @@ pub fn parse_next_spell_grant_sentence_lexed(
 fn lower_next_spell_grant(
     shape: super::super::grammar::effects::NextSpellGrantShape<'_>,
 ) -> Option<Vec<EffectAst>> {
+    if shape.ability
+        == super::super::grammar::effects::NextSpellGrantAbilitySurface::WithoutPayingManaCost
+    {
+        let [filter] = <[_; 1]>::try_from(shape.filters).ok()?;
+        return Some(vec![EffectAst::subject_verb_free_cast_next_spell_this_turn(
+            shape.player,
+            filter,
+        )]);
+    }
     let ability = parse_next_spell_grant_ability(shape.ability)?;
     let effects = shape
         .filters

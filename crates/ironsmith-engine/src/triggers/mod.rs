@@ -115,6 +115,7 @@ pub(crate) fn describe_player_filter_subject(filter: &PlayerFilter) -> String {
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
+        | PlayerFilter::OpponentOf(_)
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::CastCardTypeThisTurn(_)
         | PlayerFilter::AttackedBySourceThisTurn
@@ -164,6 +165,7 @@ pub fn describe_player_filter_possessive(filter: &PlayerFilter) -> String {
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
+        | PlayerFilter::OpponentOf(_)
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::CastCardTypeThisTurn(_)
         | PlayerFilter::AttackedBySourceThisTurn
@@ -1366,12 +1368,16 @@ impl Trigger {
         player_filter: PlayerFilter,
         object_filter: ObjectFilter,
         source_controller: PlayerFilter,
+        source_kind: ironsmith_core::filter_model::StackObjectKind,
     ) -> Self {
-        Self::new(PlayerOrObjectBecomesTargetedBySourceControllerTrigger::new(
-            player_filter,
-            object_filter,
-            source_controller,
-        ))
+        Self::new(
+            PlayerOrObjectBecomesTargetedBySourceControllerTrigger::new(
+                player_filter,
+                object_filter,
+                source_controller,
+            )
+            .with_source_kind(source_kind),
+        )
     }
 
     // === Card Triggers ===

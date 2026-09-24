@@ -107,6 +107,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::PutSticker { .. }
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceMatchingSpellCostThisTurn { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { .. })
+            | SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RegenerateAll { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::RemoveCountersAll { .. })
@@ -2104,6 +2105,20 @@ pub(super) fn compile_subject_verb_late(
 
             let effect = Effect::control_player(target_player.clone(), start, duration);
             Ok((vec![effect], choices))
+        }
+        SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn { filter }) => {
+            let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
+            let player_filter = subject.into_player_filter();
+            let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            Ok((
+                vec![Effect::new(
+                    crate::effects::GrantNextSpellCostReductionEffect::next_matching_without_paying_mana_cost_this_turn(
+                        player_filter,
+                        resolved_filter,
+                    ),
+                )],
+                Vec::new(),
+            ))
         }
         SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn {
             filter,

@@ -882,6 +882,52 @@ pub fn parse_exile_face_down_pile_then_cloak(
     ]))
 }
 
+/// "Exile <target> and the top N cards of <library> in a face-down pile. If
+/// you do, shuffle that pile and put it back on top of your library."
+///
+/// The named object's exile establishes the pile; the library exile then
+/// appends to it and the "if you do" gate observes the pile exile.
+pub fn parse_exile_face_down_pile_then_restack(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = sentences[sentence_idx].lowered();
+    let Some(shape) = effect_grammar::parse_face_down_pile_restack_shape(
+        first_tokens,
+        sentences[sentence_idx + 1].lowered(),
+    ) else {
+        return Ok(None);
+    };
+
+    let target = effect_sentences::parse_target_phrase(shape.target_tokens)?;
+    let pile_tag = helper_tag_for_tokens(first_tokens, "face_down_pile");
+    Ok(Some(vec![
+        EffectAst::TagAffected {
+            effect: Box::new(EffectAst::subject_verb_exile(target, true)),
+            tag: crate::tag::TagRef::of(pile_tag.clone()),
+        },
+        EffectAst::subject_verb_exile_top_of_library_face_down(
+            shape.library_owner,
+            shape.library_count,
+            crate::tag::TagRef::of(pile_tag.clone()),
+        ),
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+            predicate: IfResultPredicate::Did,
+            effects: vec![
+                EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(crate::tag::TagRef::of(pile_tag), None),
+                    crate::zone::Zone::Library,
+                    true,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )
+                .with_library_order(Some(LibraryBottomOrderAst::Random), PlayerAst::You),
+            ],
+        }),
+    ]))
+}
+
 pub fn parse_look_at_top_then_put_one_hand_other_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,

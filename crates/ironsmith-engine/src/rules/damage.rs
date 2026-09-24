@@ -170,6 +170,15 @@ pub(crate) fn apply_processed_damage_assignment(
             }
             // Damage is still dealt even when a replacement/restriction stops the life loss.
             let life_lost = if game.can_damage_cause_life_loss(player_id) {
+                // "Damage that would reduce your life total to less than 1
+                // reduces it to 1 instead": the full damage is still dealt.
+                let amount = if game.damage_cant_reduce_life_below_one(player_id)
+                    && let Some(life) = game.player(player_id).map(|player| player.life)
+                {
+                    amount.min(u32::try_from((life - 1).max(0)).unwrap_or(0))
+                } else {
+                    amount
+                };
                 game.lose_life(player_id, amount)
             } else {
                 0

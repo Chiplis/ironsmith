@@ -83,6 +83,9 @@ pub mod cards {
             KeywordAction(Box<KeywordAction>),
             StaticAbility(Box<StaticAbilityAst>),
             ThisAbility,
+            /// Every static ability of one family ("all landwalk
+            /// abilities"); only meaningful as something lost.
+            StaticAbilityFamily(ironsmith_core::static_ability_id::StaticAbilityId),
             MustAttack,
             MustBlock,
             CanAttackAsThoughNoDefender,

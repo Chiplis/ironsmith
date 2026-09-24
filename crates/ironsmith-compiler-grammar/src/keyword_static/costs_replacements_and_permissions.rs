@@ -2630,14 +2630,25 @@ pub fn parse_prevent_damage_to_other_creature_you_control_put_counters_line(
 
 pub fn parse_damage_source_filter_words(words: &[&str]) -> Option<ObjectFilter> {
     let mut words = strip_leading_article_word_refs(words).to_vec();
+    // "a source an opponent controls" / "a source you control"
+    let controller = if words.ends_with(&["an", "opponent", "controls"]) {
+        words.truncate(words.len() - 3);
+        Some(PlayerFilter::Opponent)
+    } else if words.ends_with(&["you", "control"]) {
+        words.truncate(words.len() - 2);
+        Some(PlayerFilter::You)
+    } else {
+        None
+    };
     if word_slice_last_is_any(&words, &["source", "sources"]) {
         words.pop();
     }
+    let mut filter = ObjectFilter::default();
+    filter.controller = controller;
     if words.is_empty() {
-        return Some(ObjectFilter::default());
+        return Some(filter);
     }
 
-    let mut filter = ObjectFilter::default();
     let mut colors: Option<ColorSet> = None;
     for word in words {
         if matches!(word, "and" | "or") {
@@ -3197,6 +3208,36 @@ pub fn parse_untap_during_each_other_players_untap_step_line(
             format!("Untap all {subject_text} during each other player's untap step"),
         ),
     ))
+}
+
+/// "Prevent all damage that would be dealt to you." (Solitary Confinement)
+pub fn parse_prevent_all_damage_to_you_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    if words.as_slice() != ["prevent", "all", "damage", "that", "would", "be", "dealt", "to", "you"] {
+        return Ok(None);
+    }
+    Ok(Some(StaticAbility::prevent_all_damage_to_you()))
+}
+
+/// Flagbearer: "While an opponent is choosing targets as part of casting a
+/// spell they control or activating an ability they control, that player must
+/// choose at least one Flagbearer on the battlefield if able."
+pub fn parse_opponents_must_target_flagbearers_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(trim_edge_punctuation_tokens(tokens));
+    let expected = [
+        "while", "an", "opponent", "is", "choosing", "targets", "as", "part", "of", "casting",
+        "a", "spell", "they", "control", "or", "activating", "an", "ability", "they", "control",
+        "that", "player", "must", "choose", "at", "least", "one", "flagbearer", "on", "the",
+        "battlefield", "if", "able",
+    ];
+    if words.as_slice() != expected {
+        return Ok(None);
+    }
+    Ok(Some(StaticAbility::opponents_must_target_flagbearers()))
 }
 
 /// "If an opponent would search a library, that player searches the top four
@@ -4187,6 +4228,64 @@ pub fn parse_during_your_turn_graveyard_cards_have_retrace_line(
     ))
 }
 
+/// "Any player may cast creature spells with mana value 3 or less without
+/// paying their mana costs and as though they had flash." (Aluren): a free
+/// alternative cast from hand and flash timing for the same spells.
+pub fn parse_player_may_cast_spells_free_and_flash_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    const FREE: &[&str] = &["without", "paying", "their", "mana", "costs"];
+    const FLASH: &[&str] = &["as", "though", "they", "had", "flash"];
+    let tokens = trim_edge_punctuation_tokens(tokens);
+    let words = parser_token_word_refs(tokens);
+    let (beneficiary, rest_start) = match words.as_slice() {
+        ["any", "player", "may", "cast", ..] => (PlayerFilter::Any, 4),
+        ["you", "may", "cast", ..] => (PlayerFilter::You, 3),
+        _ => return Ok(None),
+    };
+    let Some(without) = words[rest_start..].iter().position(|word| *word == "without") else {
+        return Ok(None);
+    };
+    let tail = &words[rest_start + without..];
+    let with_flash = if tail == [FREE, &["and"], FLASH].concat().as_slice() {
+        true
+    } else if tail == FREE {
+        false
+    } else {
+        return Ok(None);
+    };
+    let view = TokenWordView::new(tokens);
+    let (Some(start), Some(end)) = (
+        view.map_word_to_token_boundary(rest_start),
+        view.map_word_to_token_boundary(rest_start + without),
+    ) else {
+        return Ok(None);
+    };
+    let spell_words = &words[rest_start..rest_start + without];
+    if !spell_words.contains(&"spells") || spell_words.contains(&"from") {
+        return Ok(None);
+    }
+    let Ok(mut filter) = parse_object_filter_lexed(&tokens[start..end], false) else {
+        return Ok(None);
+    };
+    // The permission applies to cards being cast, not to objects already on
+    // the stack.
+    filter.zone = None;
+    filter.stack_kind = None;
+    let mut free =
+        crate::model::CompilerGrantSpecCore::cast_from_hand_without_paying_mana_cost_matching(
+            filter.clone(),
+        );
+    free.beneficiary = beneficiary.clone();
+    let mut abilities = vec![StaticAbility::grants(free)];
+    if with_flash {
+        let mut flash = crate::model::CompilerGrantSpecCore::flash_to_spells_matching(filter);
+        flash.beneficiary = beneficiary;
+        abilities.push(StaticAbility::grants(flash));
+    }
+    Ok(Some(abilities))
+}
+
 pub fn parse_cast_spells_from_hand_without_paying_mana_costs_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -4849,6 +4948,26 @@ pub fn parse_keyword_action_replacement_line(
                         crate::tag::CompilerReferenceTag::It.bind(),
                         None,
                     )),
+                ],
+                display,
+            )
+        }
+        keyword_static_lines::KeywordActionReplacementShape::ConniveAfterDraw => {
+            StaticAbility::keyword_action_replacement(
+                crate::events::KeywordActionKind::Connive,
+                ObjectFilter::creature().controlled_by(PlayerFilter::You),
+                vec![
+                    EffectAst::subject_verb(
+                        SubjectVerbRoleAst::Actor,
+                        PlayerAst::You,
+                        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
+                            count: Value::Fixed(1),
+                        }),
+                    ),
+                    EffectAst::subject_verb_connive(
+                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
+                        Value::Fixed(1),
+                    ),
                 ],
                 display,
             )

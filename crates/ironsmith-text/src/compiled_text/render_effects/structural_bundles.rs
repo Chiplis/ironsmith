@@ -13884,6 +13884,30 @@ pub(super) fn describe_target_combat_and_activation_restrictions(effects: &[Effe
     Some(format!("Until your next turn, {} can't attack or block and its activated abilities can't be activated", describe_choose_spec(&target.target)))
 }
 
+/// Two restrictions sharing one duration read as one coordinated sentence:
+/// "You can't lose the game this turn and your opponents can't win the game
+/// this turn."
+pub(super) fn describe_coordinated_same_duration_restrictions(effects: &[Effect]) -> Option<String> {
+    let [first, second] = effects else { return None; };
+    let left = first.downcast_ref::<crate::effects::CantEffect>()?;
+    let right = second.downcast_ref::<crate::effects::CantEffect>()?;
+    if left.duration != right.duration
+        || left.start != right.start
+        || left.duration_surface != right.duration_surface
+        || left.restriction == right.restriction
+    {
+        return None;
+    }
+    let left_text = describe_effect(first);
+    let right_text = describe_effect(second);
+    let left_text = left_text.trim().trim_end_matches('.');
+    let right_text = right_text.trim().trim_end_matches('.');
+    if left_text.is_empty() || right_text.is_empty() || left_text.contains(". ") || right_text.contains(". ") {
+        return None;
+    }
+    Some(format!("{} and {}", capitalize_first(left_text), lowercase_first(right_text)))
+}
+
 pub(super) fn describe_restricted_player_target_life_loss(effects: &[Effect]) -> Option<String> {
     let [target_effect, life_effect] = effects else { return None; };
     let target = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;

@@ -12,6 +12,9 @@
     if let Some(compact) = describe_face_down_pile_then_manifest(effects) {
         return compact;
     }
+    if let Some(compact) = describe_face_down_pile_then_restack(effects) {
+        return compact;
+    }
     if let Some(compact) = describe_looked_cloak_selected_rest_bottom(effects) {
         return compact;
     }
