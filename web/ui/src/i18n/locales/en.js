@@ -550,6 +550,8 @@ export const ui = {
   "Communal": "Communal",
   "Compile {0}": "Compile {0}",
   "Compile Card": "Compile Card",
+  "Load counter showcase": "Load counter showcase",
+  "Loading counters...": "Loading counters...",
   "Compile card failed: {0}": "Compile card failed: {0}",
   "Compile Status": "Compile Status",
   "Compiled {0}": "Compiled {0}",
