@@ -46,34 +46,10 @@ function abbreviateCounterKind(rawKind) {
 }
 
 function counterPalette(rawKind) {
-  if (counterDisplayLabel(rawKind)?.startsWith("+")) {
-    return { accent: "#67d79a", fill: "#164c2f", stroke: "#aef0ca" };
-  }
-  if (counterDisplayLabel(rawKind)?.startsWith("-")) {
-    return { accent: "#df6d83", fill: "#551626", stroke: "#ffb0c1" };
-  }
-  switch (rawKind) {
-    case "Plus One Plus One":
-      return { accent: "#67d79a", fill: "#164c2f", stroke: "#aef0ca" };
-    case "Minus One Minus One":
-      return { accent: "#df6d83", fill: "#551626", stroke: "#ffb0c1" };
-    case "Lore":
-      return { accent: "#e1bd73", fill: "#5c3e0f", stroke: "#f8dba2" };
-    case "Loyalty":
-      return { accent: "#f1b561", fill: "#612e09", stroke: "#ffd7a2" };
-    case "Charge":
-      return { accent: "#6bc2ff", fill: "#12355b", stroke: "#bbebff" };
-    case "Shield":
-      return { accent: "#84d6cf", fill: "#123f3b", stroke: "#c5f7ef" };
-    case "Stun":
-      return { accent: "#f2a464", fill: "#5d280b", stroke: "#ffd2a1" };
-    case "Vigilance":
-      return { accent: "#b7df9f", fill: "#293e14", stroke: "#ebffd6" };
-    case "Finality":
-      return { accent: "#b48fff", fill: "#302052", stroke: "#ddd0ff" };
-    default:
-      return { accent: "#a7c3e7", fill: "#1b2d49", stroke: "#dcecff" };
-  }
+  // Keep the surface neutral while the icon carries the semantic identity.
+  // This also prevents target/hover glow colors from changing the badge fill.
+  void rawKind;
+  return { accent: "#c4ccd6", fill: "#080a0d", stroke: "#8e98a6" };
 }
 
 function normalizeCounterEntry(rawCounter, fallbackKind = "") {
