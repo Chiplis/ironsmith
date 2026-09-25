@@ -34,6 +34,7 @@ import {
   isDisconnectTimeoutForfeitCommand,
   isForfeitCommand,
   isProtocolResponseTimeoutForfeitCommand,
+  isWitnessForfeitCommand,
   isRejectedActionCheatReason,
   cheatOffenderForError,
   selectObjectCandidateForId,
@@ -493,6 +494,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       const isTimeoutForfeit = isActionTimeoutForfeitCommand(message.command);
       const isDisconnectForfeit = isDisconnectTimeoutForfeitCommand(message.command);
       const isProtocolTimeoutForfeit = isProtocolResponseTimeoutForfeitCommand(message.command);
+      const isWitnessForfeit = isWitnessForfeitCommand(message.command);
       const isSelfForfeit = isSelfForfeitCommand(message.command, message.actorIndex);
       if (isSelfForfeit && !isSorcerySpeedForfeitState(liveStateForClock, message.actorIndex)) {
         throw new Error("Surrender is only available at sorcery speed");
@@ -502,6 +504,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
         && !isTimeoutForfeit
         && !isDisconnectForfeit
         && !isProtocolTimeoutForfeit
+        && !isWitnessForfeit
       ) {
         if (Number(message.command.player) !== Number(message.actorIndex)) {
           throw new Error("A player can only forfeit themselves");
@@ -517,6 +520,10 @@ export function usePeerLobbyValidation(base, servicesRef) {
         });
       } else if (isProtocolTimeoutForfeit) {
         await validateProtocolResponseTimeoutCommand(message.command, {
+          actorIndex: message.actorIndex,
+        });
+      } else if (isWitnessForfeit) {
+        await servicesRef.current.validateWitnessForfeitCommand(message.command, {
           actorIndex: message.actorIndex,
         });
       } else if (
@@ -4325,9 +4332,15 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	      if (!localEntry) {
 	        throw new Error("Local player is missing from the match payload");
 	      }
+	      // The lobby's advertised mode binds the match: a host cannot start a
+	      // Verified lobby (or tournament) as a Trusted match.
+	      if (currentSession.securityMode === MULTIPLAYER_SECURITY_VERIFIED && !verifiedMode) {
+	        throw new Error("Host tried to start this Verified lobby as a Trusted match");
+	      }
 	      payload.securityMode = securityMode;
 	      if (verifiedMode && !options.skipGenesisVerification) {
 	        await verifySignedMatchGenesis(payload);
+	        await servicesRef.current.verifyMatchWitness(payload, currentSession);
 	      }
 	      if (verifiedMode) {
 	        await verifyZiffleCeremoniesForPayload(payload);
@@ -4351,7 +4364,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 
 	      if (isRelayId(payload.lobbyId)) {
         await loadFormatCatalog();
-        if (verifiedMode) throw new Error('Public relay lobbies require Trusted mode');
+        if (verifiedMode && !currentSession.tournament?.tournamentId) throw new Error('Public relay lobbies require Trusted mode');
         assertFormatMatch({ ...payload, decks: validationDecksForMatchPayload(payload),
           sideboards: validationSideboardsForMatchPayload(payload), commanders: validationCommandersForMatchPayload(payload) });
       }

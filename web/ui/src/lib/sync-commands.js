@@ -1,3 +1,4 @@
+import { WITNESS_FORFEIT_REASON } from "./tournament/witness-protocol.js";
 import { canonicalWireJson } from "./wire-json.js";
 
 export function sameActionRef(left, right) {
@@ -5,9 +6,12 @@ export function sameActionRef(left, right) {
   return canonicalWireJson(left) === canonicalWireJson(right);
 }
 
+// Forfeits that may target any seat, not only the one owing the decision.
+// A witness forfeit is checked against its witness certificate instead.
 const DISCONNECT_TIMEOUT_POLICY_REASONS = new Set([
   "disconnect_timeout_policy",
   "peer_claimed_disconnect_timeout",
+  WITNESS_FORFEIT_REASON,
 ]);
 
 export function findPriorityActionForCommand(decision, command) {

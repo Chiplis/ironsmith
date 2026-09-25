@@ -1,6 +1,9 @@
 import { PUBLIC_FORMATS } from '../../ui/src/lib/relay/formats.js';
+import { redeemInvite, witnessKeyResponse, witnessOp } from './witness.js';
+export { TournamentRegistry, WitnessDisputes } from './witness.js';
 
 const ID = /^[a-f0-9]{32}$/;
+const HASH = /^[a-f0-9]{64}$/;
 const PEER = /^ws-([a-f0-9]{32})-([a-f0-9]{32})$/;
 const TTL = 150_000;
 const MAX_FRAME = 128 * 1024;
@@ -8,6 +11,7 @@ const json = (body, status = 200) => Response.json(body, { status });
 const directory = (env) => env.DIRECTORY.get(env.DIRECTORY.idFromName('public'));
 const room = (env, id) => env.ROOMS.get(env.ROOMS.idFromName(id));
 const send = (ws, data) => { try { ws.send(JSON.stringify(data)); } catch { /* close event cleans up */ } };
+const plain = (value) => !!value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 
 export default {
   async fetch(request, env) {
@@ -16,11 +20,14 @@ export default {
     if (!origin || !allowed.includes(origin)) return json({ error: 'Origin not allowed' }, 403);
     const headers = { 'Access-Control-Allow-Origin': origin, 'Vary': 'Origin', 'Cache-Control': 'no-store' };
     if (request.method === 'OPTIONS') return new Response(null, { headers: { ...headers,
-      'Access-Control-Allow-Methods': 'GET, OPTIONS' } });
-    if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' } });
     const url = new URL(request.url);
     let response;
-    if (url.pathname === '/lobbies') response = await directory(env).fetch('https://internal/list');
+    // Redeem is sent as text/plain so browsers skip the preflight; it is the only POST.
+    if (request.method === 'POST' && url.pathname === '/witness/redeem') response = await redeemInvite(request, env);
+    else if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+    else if (url.pathname === '/lobbies') response = await directory(env).fetch('https://internal/list');
+    else if (url.pathname === '/witness/key') response = await witnessKeyResponse(env);
     else {
       const match = url.pathname.match(/^\/rooms\/([a-f0-9]{32})\/socket$/);
       if (!match || request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') return json({ error: 'Not found' }, 404);
@@ -67,8 +74,20 @@ export class LobbyRoom {
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
   }
   sockets() { return this.ctx.getWebSockets().filter(ws => ws.readyState === 1); }
+  deliver(to, message) {
+    const targets = this.sockets().filter(socket => {
+      const a = socket.deserializeAttachment(); return a.authenticated && a.peer === to;
+    });
+    for (const target of targets) send(target, message);
+    return targets.length > 0;
+  }
   async fetch(request) {
     const url = new URL(request.url);
+    // Internal route for WitnessDisputes: the Worker only forwards /rooms/<id>/socket upgrades.
+    if (url.pathname === '/deliver' && request.method === 'POST') {
+      const { to, message } = await request.json();
+      return json({ delivered: this.deliver(to, message) });
+    }
     const roomId = url.pathname.split('/')[2];
     const peer = url.searchParams.get('peer');
     if (!PEER.test(peer || '') || peer.match(PEER)[1] !== roomId) return json({ error: 'Invalid peer' }, 400);
@@ -100,7 +119,13 @@ export class LobbyRoom {
               const rules = PUBLIC_FORMATS[msg.format];
               const desiredPlayers = rules.maxPlayers === 2 ? 2 : Number(msg.desiredPlayers);
               if (![2, 3, 4].includes(desiredPlayers)) throw new Error('Invalid player count');
-              await this.ctx.storage.put('config', { host: state.peer, format: msg.format, desiredPlayers });
+              const securityMode = msg.securityMode ?? 'trusted';
+              if (!['trusted', 'verified'].includes(securityMode)) throw new Error('Invalid security mode');
+              if ((securityMode === 'verified') !== (msg.tournamentId != null)) throw new Error('Verified mode requires a tournament room');
+              if (msg.tournamentId != null && !HASH.test(msg.tournamentId)) throw new Error('Invalid tournament');
+              // Old clients send no securityMode; their config stays unchanged.
+              await this.ctx.storage.put('config', { host: state.peer, format: msg.format, desiredPlayers,
+                ...(msg.securityMode != null ? { securityMode } : {}), ...(msg.tournamentId != null ? { tournamentId: msg.tournamentId } : {}) });
             } else if (!existing && !this.sockets().some(socket => {
               const a = socket.deserializeAttachment(); return a.authenticated && a.peer === config.host;
             })) throw new Error('Lobby host is offline');
@@ -126,7 +151,7 @@ export class LobbyRoom {
       ws.serializeAttachment(state);
       if (msg.type === 'advertise') {
         const config = await this.ctx.storage.get('config');
-        if (state.peer !== config.host) return;
+        if (state.peer !== config.host || config.tournamentId) return;
         const listing = msg.lobby || {};
         const response = await directory(this.env).fetch('https://internal/update', { method: 'POST', body: JSON.stringify({
           room: state.room, id: config.host, format: config.format, securityMode: 'trusted',
@@ -137,7 +162,14 @@ export class LobbyRoom {
         if (!response.ok) send(ws, { type: 'error', message: 'Public directory is full; lobby is still joinable by code' });
         return;
       }
-      if (!['offer', 'answer', 'data', 'close'].includes(msg.type) || !ID.test(msg.connectionId || '')) throw new Error('Invalid frame');
+      if (msg.type === 'witness') {
+        if (typeof msg.id !== 'string' || msg.id.length > 64) throw new Error('Invalid frame');
+        try { send(ws, { type: 'witness_result', id: msg.id, ok: true, result: await witnessOp(this, state, msg) }); }
+        catch (error) { send(ws, { type: 'witness_result', id: msg.id, ok: false, error: error.message }); }
+        return;
+      }
+      if (!['offer', 'answer', 'data', 'close', 'rtc'].includes(msg.type) || !ID.test(msg.connectionId || '')) throw new Error('Invalid frame');
+      if (msg.type === 'rtc' && !plain(msg.signal)) throw new Error('Invalid frame');
       const target = this.sockets().find(socket => {
         const a = socket.deserializeAttachment(); return a.authenticated && a.peer === msg.to;
       });
@@ -145,6 +177,7 @@ export class LobbyRoom {
       // Ignore client-supplied sender identity; prohibit cross-room traffic by lookup.
       send(target, { type: msg.type, from: state.peer, connectionId: msg.connectionId,
         ...(msg.type === 'data' ? { data: msg.data } : {}),
+        ...(msg.type === 'rtc' ? { signal: msg.signal } : {}),
         ...(['offer', 'answer'].includes(msg.type) ? { metadata: msg.metadata || {} } : {}) });
     } catch (error) {
       send(ws, { type: 'error', message: error.message });

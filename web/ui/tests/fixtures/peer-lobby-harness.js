@@ -685,6 +685,8 @@ function Harness() {
       matchConfig: () => game.matchConfig(),
       submitMultiplayerCommand: lobby.submitMultiplayerCommand,
       submitMultiplayerAddCardCheat: lobby.submitMultiplayerAddCardCheat,
+      redeemTournamentInvite: lobby.redeemTournamentInvite,
+      openWitnessChallenge: lobby.openWitnessChallenge,
       setAutoPass: (enabled) => {
         autoPassEnabledRef.current = Boolean(enabled);
         autoPassAttemptRef.current = "";

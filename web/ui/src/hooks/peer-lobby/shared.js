@@ -1,5 +1,7 @@
 import { WebSocketPeer } from '../../lib/relay/websocket-peer.js';
-import { PUBLIC_FORMATS, isRelayId } from '../../lib/relay/formats.js';
+import { PUBLIC_FORMATS, isRelayId, relayBaseUrl } from '../../lib/relay/formats.js';
+import { readRelayOnlyPreference } from '../../lib/relay/session.js';
+import { WITNESS_FORFEIT_REASON } from '../../lib/tournament/witness-protocol.js';
 import { validateFormatDeck } from '../../lib/relay/format-legality.js';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { approximateMessageBytes, markActionStage, recordDiagnosticEvent, recordPeerMessage } from "../../lib/action-diagnostics.js";
@@ -504,6 +506,18 @@ export function parseIceConfig() {
   return null;
 }
 
+// Relay rooms open over the WebSocket relay, then try a direct data channel
+// unless this browser chose relay-only.
+export function relayPeerOptions(extra = {}) {
+  return {
+    transport: "websocket",
+    url: relayBaseUrl(),
+    relayOnly: readRelayOnlyPreference(),
+    iceServers: parseIceConfig()?.iceServers,
+    ...extra,
+  };
+}
+
 export function describePeerServer(options) {
   if (options?.transport === "websocket") return "WebSocket relay";
   if (options?.transport === "lan") return "local network";
@@ -673,11 +687,16 @@ export function isProtocolResponseTimeoutForfeitCommand(command) {
     && isProtocolResponseTimeoutForfeitReason(command?.reason);
 }
 
+export function isWitnessForfeitCommand(command) {
+  return isForfeitCommand(command) && String(command?.reason || "") === WITNESS_FORFEIT_REASON;
+}
+
 export function isSelfForfeitCommand(command, actorIndex) {
   return isForfeitCommand(command)
     && !isActionTimeoutForfeitCommand(command)
     && !isDisconnectTimeoutForfeitCommand(command)
     && !isProtocolResponseTimeoutForfeitCommand(command)
+    && String(command?.reason || "") !== WITNESS_FORFEIT_REASON
     && Number(command.player) === Number(actorIndex);
 }
 
@@ -912,11 +931,14 @@ export function buildExportedMatchOutcome({
   matchDisputed,
   disputes = [],
 }) {
-  if (matchDisputed || disputes.length > 0) {
-    const accusedPlayers = Array.from(new Set([
-      ...(matchDisputed?.accusedPlayers || []),
-      ...disputes.flatMap((dispute) => dispute?.accusedPlayers || []),
-    ].map(Number))).sort((left, right) => left - right);
+  // Only signed evidence in the transcript makes an exported match
+  // "disputed"; the verifier derives the same status from it. A dispute this
+  // browser saw without such evidence (for example a 1v1 protocol timeout
+  // outside a tournament) is kept as an unverified note beside the outcome.
+  if (disputes.length > 0) {
+    const accusedPlayers = Array.from(new Set(
+      disputes.flatMap((dispute) => dispute?.accusedPlayers || []).map(Number)
+    )).sort((left, right) => left - right);
     return {
       status: "disputed",
       disputed: true,
@@ -926,6 +948,19 @@ export function buildExportedMatchOutcome({
       finalPublicCheckpointHash,
     };
   }
+  const outcome = buildUndisputedMatchOutcome({ uiState, finalPublicCheckpoint, finalStateHash, finalPublicCheckpointHash });
+  if (!matchDisputed) return outcome;
+  return {
+    ...outcome,
+    localDispute: {
+      reason: String(matchDisputed.reason || ""),
+      accusedPlayers: (matchDisputed.accusedPlayers || []).map(Number),
+      verified: false,
+    },
+  };
+}
+
+function buildUndisputedMatchOutcome({ uiState, finalPublicCheckpoint, finalStateHash, finalPublicCheckpointHash }) {
 
   const gameOver = uiState?.game_over || null;
   if (gameOver?.kind === "winner") {

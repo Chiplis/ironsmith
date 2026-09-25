@@ -1,4 +1,5 @@
 import { sha256Bytes } from "./sha256.js";
+import { WITNESS_DISPUTE_TYPE, WITNESS_FORFEIT_REASON, verifyForfeitCertificate, verifyTranscriptWitness, verifyWitnessDispute } from "./tournament/witness-protocol.js";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -1763,11 +1764,13 @@ async function verifyActionForkDispute(dispute, players, cryptoImpl = globalThis
   };
 }
 
-async function verifyTranscriptDisputes(disputes, players, cryptoImpl = globalThis.crypto) {
+async function verifyTranscriptDisputes(disputes, players, cryptoImpl = globalThis.crypto, witness = null, matchId = "") {
   const entries = Array.isArray(disputes) ? disputes : [];
   const reports = [];
   for (const dispute of entries) {
-    reports.push(await verifyActionForkDispute(dispute, players, cryptoImpl));
+    reports.push(dispute?.type === WITNESS_DISPUTE_TYPE
+      ? await verifyWitnessDispute(dispute, players, witness, matchId)
+      : await verifyActionForkDispute(dispute, players, cryptoImpl));
   }
   return reports;
 }
@@ -3662,6 +3665,10 @@ export async function verifyLiveAuditTranscript(
     genesis: transcript.genesis,
   };
   await verifySignedMatchGenesis(transcriptMatch, cryptoImpl);
+  const witnessReport = await verifyTranscriptWitness(
+    transcriptMatch,
+    await sha256Hex(canonicalJson(matchGenesisPayload(transcriptMatch)), cryptoImpl),
+  );
   const expectedMatchId = String(matchGenesisPayload(transcriptMatch).matchId || "");
   if (!expectedMatchId) {
     throw new Error("Live audit transcript is missing its signed match id");
@@ -3782,6 +3789,8 @@ export async function verifyLiveAuditTranscript(
     const disconnectForfeit = isDisconnectForfeitCommand(audit.command);
     const protocolTimeoutForfeit = isProtocolResponseTimeoutForfeitCommand(audit.command);
     const matchClockTimeoutForfeit = isMatchClockTimeoutForfeitCommand(audit.command);
+    const witnessForfeit = audit.command?.type === "forfeit_player"
+      && String(audit.command?.reason || "") === WITNESS_FORFEIT_REASON;
     const actionQuorumPlayers = forfeitTarget == null
       ? activeQuorumPlayers
       : activeQuorumPlayers.filter((player) =>
@@ -3792,6 +3801,7 @@ export async function verifyLiveAuditTranscript(
       : (
         disconnectForfeit
           || protocolTimeoutForfeit
+          || witnessForfeit
           || activeQuorumPlayers.length < 3
           || Number(audit.actor) === forfeitTarget
           ? 0
@@ -3826,7 +3836,19 @@ export async function verifyLiveAuditTranscript(
       players: actionQuorumPlayers,
       threshold: actionQuorumThresholdOverride,
     }, cryptoImpl);
-    if (forfeitTarget != null && forfeitTarget !== Number(audit.actor)) {
+    if (witnessForfeit) {
+      // The tournament witness is the independent attestation: it signed that
+      // the target never answered a challenge the actor opened.
+      if (!witnessReport) {
+        throw new Error(`Action ${expectedSeq} uses a witness forfeit outside a tournament match`);
+      }
+      await verifyForfeitCertificate(audit.command.witness_forfeit, witnessReport.witnessPublicKey, {
+        matchId: expectedMatchId,
+        tournamentId: witnessReport.tournamentId,
+        accusedSeat: forfeitTarget,
+        claimantSeat: Number(audit.actor),
+      });
+    } else if (forfeitTarget != null && forfeitTarget !== Number(audit.actor)) {
       // The live receive-gate (usePeerLobby.js) forbids forfeiting another player
       // unless it is an involuntary forfeit (disconnect / protocol-response timeout
       // / match-clock timeout). A generic `forfeit_player` aimed at someone else is
@@ -4029,6 +4051,8 @@ export async function verifyLiveAuditTranscript(
     transcript.disputes || transcript.disputeEvidence || [],
     players,
     cryptoImpl,
+    witnessReport,
+    expectedMatchId,
   );
   const outcome = verifyTranscriptOutcome({
     transcript,
@@ -4046,6 +4070,7 @@ export async function verifyLiveAuditTranscript(
     outcome,
     engineReplay,
     disputes: disputeReports,
+    ...(witnessReport ? { witness: witnessReport } : {}),
   };
 }
 

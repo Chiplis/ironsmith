@@ -57,6 +57,7 @@ import {
   isForfeitCommand,
   isOwnerPrivateViewRequirement,
   isProtocolResponseTimeoutForfeitCommand,
+  isWitnessForfeitCommand,
   isRejectedActionCheatReason,
   cheatOffenderForError,
   isSelfForfeitCommand,
@@ -3538,6 +3539,8 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       if (Number(message?.actorIndex) === target) return 0;
       if (isDisconnectTimeoutForfeitCommand(message.command)) return 0;
       if (isProtocolResponseTimeoutForfeitCommand(message.command)) return 0;
+      // The witness's signed forfeit is the independent attestation.
+      if (isWitnessForfeitCommand(message.command)) return 0;
       return players.length;
     }
     return actionQuorumThreshold(players.length);

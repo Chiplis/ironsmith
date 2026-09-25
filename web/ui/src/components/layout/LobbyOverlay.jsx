@@ -4,6 +4,9 @@ import { PUBLIC_FORMATS, isRelayId, relayBaseUrl } from '@/lib/relay/formats';
 import { validateFormatDeck, formatCatalogDate } from '@/lib/relay/format-legality';
 import { useMemo, useState } from "react";
 import LocalLobbySearch from "./LocalLobbySearch";
+import TournamentPanel from "./TournamentPanel";
+import { listTournamentCertificates } from "@/lib/tournament/credentials";
+import { readRelayOnlyPreference, writeRelayOnlyPreference } from "@/lib/relay/session";
 import CompetitiveDeckPicker from "./CompetitiveDeckPicker";
 import LobbyDeckEditor, { LobbyDeckCatalogPicker } from "./LobbyDeckEditor";
 import {
@@ -166,9 +169,14 @@ export default function LobbyOverlay({
       : normalizeMatchFormat(initialCreateFormat);
   const [transport, setTransport] = useState('peerjs');
   const [advertise, setAdvertise] = useState(true);
+  const [relayOnly, setRelayOnly] = useState(() => readRelayOnlyPreference());
+  const tournamentCertificates = useMemo(() => listTournamentCertificates(), []);
+  const [createTournamentId, setCreateTournamentId] = useState(() => tournamentCertificates[0]?.tournamentId || "");
   const [mode, setMode] = useState(
-    initialMode === "join" ? "join" : "create"
+    ["join", "tournaments"].includes(initialMode) ? initialMode : "create"
   );
+  // Tournament matches ride the relay room in Verified mode.
+  const relayTransport = transport === 'websocket' || transport === 'tournament';
   const [createFormat, setCreateFormat] = useState(
     resolvedInitialCreateFormat
   );
@@ -273,7 +281,7 @@ export default function LobbyOverlay({
   const handleCreateFormatChange = (nextFormat) => {
     const normalized = normalizeMatchFormat(nextFormat);
     setCreateFormat(normalized);
-    if (transport === 'websocket' && PUBLIC_FORMATS[normalized]) {
+    if (relayTransport && PUBLIC_FORMATS[normalized]) {
       setDesiredPlayers(PUBLIC_FORMATS[normalized].maxPlayers === 2 ? 2 : desiredPlayers);
       setStartingLife(PUBLIC_FORMATS[normalized].startingLife);
     }
@@ -293,9 +301,14 @@ export default function LobbyOverlay({
       setStatus("Verified mode requires the LAN server's trusted HTTPS address. Use Trusted mode at this HTTP address.", true);
       return;
     }
+    if (transport === 'tournament' && !createTournamentId) {
+      setStatus("Redeem a tournament invite in the Tournaments tab first", true);
+      return;
+    }
     createLobby({
-      transport,
+      transport: relayTransport ? 'websocket' : transport,
       advertise,
+      ...(transport === 'tournament' ? { tournamentId: createTournamentId } : {}),
       name: createName,
       desiredPlayers,
       startingLife,
@@ -353,7 +366,7 @@ export default function LobbyOverlay({
         <SheetHeader className="fantasy-sheet-header pr-12">
           <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Multiplayer")}</div>
           <SheetTitle>
-            {lobbyActive ? ui("Multiplayer Lobby") : mode === "join" ? ui("Join Lobby") : ui("Create Lobby")}
+            {lobbyActive ? ui("Multiplayer Lobby") : mode === "join" ? ui("Join Lobby") : mode === "tournaments" ? ui("Tournaments") : ui("Create Lobby")}
           </SheetTitle>
           <SheetDescription className={lobbyActive ? "sr-only" : "max-w-[46ch] text-[13px] leading-5"}>{ui("Host or join a multiplayer table, submit decks, and manage invite links from one place.")}</SheetDescription>
         </SheetHeader>
@@ -382,13 +395,21 @@ export default function LobbyOverlay({
                   aria-pressed={mode === "join"}
                   onClick={() => setMode("join")}
                 >{ui("Join")}</button>
+                <button
+                  type="button"
+                  className={`${modeTabClass} ${
+                    mode === "tournaments" ? "brightness-125" : "opacity-70"
+                  }`}
+                  aria-pressed={mode === "tournaments"}
+                  onClick={() => setMode("tournaments")}
+                >{ui("Tournaments")}</button>
               </div>
 
               {mode === 'create' && <div className={`${panelClass} lobby-sheet-connection-panel`}>
                 <label className={labelClass}>{ui("Connection")}<select aria-label={ui("Connection")} className={inputClass} value={transport} onChange={event => {
                     const value = event.target.value;
                     setTransport(value);
-                    if (value === 'websocket') {
+                    if (value === 'websocket' || value === 'tournament') {
                       const format = PUBLIC_FORMATS[createFormat] ? createFormat : 'modern';
                       setCreateFormat(format); setStartingLife(PUBLIC_FORMATS[format].startingLife);
                       setDesiredPlayers(PUBLIC_FORMATS[format].maxPlayers === 2 ? 2 : desiredPlayers);
@@ -397,12 +418,22 @@ export default function LobbyOverlay({
                   }}>
                     <option value="peerjs">{import.meta.env.VITE_LAN_LOBBY === 'true' ? ui('Local network') : ui('Peer-to-peer')}</option>
                     <option value="websocket" disabled={!relayBaseUrl()}>{ui("WebSocket lobby")}{!relayBaseUrl() ? ui(' (not configured)') : ''}</option>
+                    <option value="tournament" disabled={!relayBaseUrl()}>{ui("Tournament match")}{!relayBaseUrl() ? ui(' (not configured)') : ''}</option>
                   </select>
                 </label>
+                {transport === 'tournament' && (tournamentCertificates.length
+                  ? <label className={labelClass}>{ui("Tournament")}<select aria-label={ui("Tournament")} className={inputClass}
+                      value={createTournamentId} onChange={event => setCreateTournamentId(event.target.value)}>
+                      {tournamentCertificates.map(entry => <option key={entry.tournamentId} value={entry.tournamentId}>{entry.tournamentName + " · " + entry.playerName}</option>)}
+                    </select></label>
+                  : <p className="text-sm text-muted-foreground">{ui("Redeem your organizer's invite in the Tournaments tab first.")}</p>)}
+                {transport === 'tournament' && <p className="text-sm text-muted-foreground">{ui("Verified mode with the tournament witness: seats are certified by your organizer's invites, and a player who stops answering the witness forfeits. Share the lobby code with your opponent directly; tournament tables are not listed publicly.")}</p>}
+                {relayTransport && <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={relayOnly} onChange={e => { setRelayOnly(e.target.checked); writeRelayOnlyPreference(e.target.checked); }} />{ui("Hide my IP address (relay only, slower)")}</label>}
                 {transport === 'websocket' && <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={advertise} onChange={e => setAdvertise(e.target.checked)} />{ui("Advertise in public lobby search")}</label>}
                 {transport === 'websocket' && <p className="text-sm text-muted-foreground">{ui("Format rules are enforced. Open decklists are shared with the table. Reopen this lobby link in the same browser to recover your seat. Play waits while the host is offline.")}</p>}
-                <fieldset className="lobby-sheet-mode-panel grid gap-2">
+                {transport !== 'tournament' && <fieldset className="lobby-sheet-mode-panel grid gap-2">
                   <legend className="text-[12px] uppercase tracking-[0.18em] text-muted-foreground">{ui("Multiplayer Mode")}</legend>
                   <div className="grid gap-2 md:grid-cols-2">
                     {securityModeOptions.map((option) => {
@@ -442,15 +473,19 @@ export default function LobbyOverlay({
                       );
                     })}
                   </div>
-                </fieldset>
+                </fieldset>}
               </div>}
-              {mode === "create" ? (
+              {mode === "tournaments" ? <TournamentPanel /> : mode === "create" ? (
                 <div className="lobby-sheet-setup-grid grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
                   <div className="lobby-sheet-setup-main grid gap-4">
                     <div className="lobby-sheet-setup-fields grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                       <label className={labelClass}>{ui("Your Name")}<input
                           className={inputClass}
-                          value={createName}
+                          disabled={transport === 'tournament'}
+                          title={transport === 'tournament' ? ui("Tournament seats use the name on your invite") : undefined}
+                          value={transport === 'tournament'
+                            ? (tournamentCertificates.find(entry => entry.tournamentId === createTournamentId)?.playerName || createName)
+                            : createName}
                           onChange={(event) => setCreateName(event.target.value)}
                           placeholder={ui("Host name")}
                         />
@@ -461,7 +496,7 @@ export default function LobbyOverlay({
                           value={createFormat}
                           onChange={(event) => handleCreateFormatChange(event.target.value)}
                         >
-                          {transport === 'websocket' ? Object.values(PUBLIC_FORMATS).map(f => <option key={f.id} value={f.id}>{ui(f.label)}</option>) : <>
+                          {relayTransport ? Object.values(PUBLIC_FORMATS).map(f => <option key={f.id} value={f.id}>{ui(f.label)}</option>) : <>
                             <option value={MATCH_FORMAT_NORMAL}>{ui("Normal")}</option>
                             <option value={MATCH_FORMAT_COMMANDER}>{ui("Commander")}</option>
                             <option value={MATCH_FORMAT_PLANECHASE}>{ui("Planechase")}</option>
@@ -473,7 +508,7 @@ export default function LobbyOverlay({
                           type="number"
                           min={1}
                           value={startingLife}
-                          disabled={transport === 'websocket'}
+                          disabled={relayTransport}
                           onChange={(event) => setStartingLife(Number(event.target.value) || 20)}
                         />
                       </label>
@@ -481,7 +516,7 @@ export default function LobbyOverlay({
                           className={inputClass}
                           aria-label={ui("Players")}
                           value={desiredPlayers}
-                          disabled={transport === 'websocket' && PUBLIC_FORMATS[createFormat]?.maxPlayers === 2}
+                          disabled={relayTransport && PUBLIC_FORMATS[createFormat]?.maxPlayers === 2}
                           onChange={(event) => setDesiredPlayers(Number(event.target.value) || 2)}
                         >
                           <option value={2}>{ui("2 Players")}</option>
@@ -575,6 +610,8 @@ export default function LobbyOverlay({
                       </label>
                     </div>
                     {relayBaseUrl() && <PublicLobbySearch onSelect={setJoinCode} />}
+                    {relayBaseUrl() && <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={relayOnly} onChange={e => { setRelayOnly(e.target.checked); writeRelayOnlyPreference(e.target.checked); }} />{ui("Hide my IP address in WebSocket and tournament lobbies (relay only, slower)")}</label>}
                     {import.meta.env.VITE_LAN_LOBBY === "true" && <LocalLobbySearch onSelect={setJoinCode} />}
                     <CompetitiveDeckPicker
                       format="modern"

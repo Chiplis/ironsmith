@@ -15,7 +15,7 @@ export function saveRelayIdentity(room, url, identity) {
 }
 const durableFields = ['role', 'lobbyId', 'hostPeerId', 'localPeerId', 'localName',
   'localPlayerIndex', 'desiredPlayers', 'startingLife', 'format', 'securityMode',
-  'localDeckText', 'localCommanderText', 'players', 'matchStarted', 'rematch'];
+  'localDeckText', 'localCommanderText', 'players', 'matchStarted', 'rematch', 'tournament'];
 export function durableRelaySession(session) {
   return Object.fromEntries(durableFields.filter(field => session[field] !== undefined)
     .map(field => [field, session[field]]));
@@ -29,9 +29,21 @@ export function readPeerSession(lobbyId) {
       && value.session.securityMode === 'trusted' ? value : null;
   } catch { return null; }
 }
+// Verified matches hold private deck secrets and ziffle state that a replayed
+// public journal cannot rebuild, so only trusted matches are journaled.
 export function canPersistMatch(session) {
+  if (session?.securityMode === 'verified') return false;
   return isRelayId(session?.lobbyId)
     || Boolean(session?.lobbyId && session?.securityMode === 'trusted');
+}
+const relayOnlyKey = 'ironsmith-relay-only-v1';
+// Per-browser privacy choice: never open direct WebRTC channels, so opponents
+// never see this browser's IP addresses.
+export function readRelayOnlyPreference() {
+  try { return localStorage.getItem(relayOnlyKey) === 'true'; } catch { return false; }
+}
+export function writeRelayOnlyPreference(enabled) {
+  try { localStorage.setItem(relayOnlyKey, enabled ? 'true' : 'false'); } catch { /* preference is best effort */ }
 }
 export function saveRelayLobby(session, previous) {
   if (!isRelayId(session.lobbyId)) {

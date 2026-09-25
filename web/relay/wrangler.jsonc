@@ -6,7 +6,13 @@
   "vars": { "ALLOWED_ORIGINS": "https://chiplis.com,http://localhost:5173,http://127.0.0.1:5173" },
   "durable_objects": { "bindings": [
     { "name": "ROOMS", "class_name": "LobbyRoom" },
-    { "name": "DIRECTORY", "class_name": "LobbyDirectory" }
+    { "name": "DIRECTORY", "class_name": "LobbyDirectory" },
+    { "name": "TOURNAMENTS", "class_name": "TournamentRegistry" },
+    { "name": "DISPUTES", "class_name": "WitnessDisputes" }
   ] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["LobbyRoom", "LobbyDirectory"] }]
+  // WITNESS_SIGNING_KEY is a secret (see README), never a var.
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["LobbyRoom", "LobbyDirectory"] },
+    { "tag": "v2", "new_sqlite_classes": ["TournamentRegistry", "WitnessDisputes"] }
+  ]
 }

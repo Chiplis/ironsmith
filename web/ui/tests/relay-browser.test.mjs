@@ -22,6 +22,9 @@ async function setup(t) {
     const page = await context.newPage();
     page.on('pageerror', e => console.error('Browser error:', e.message));
     await page.addInitScript(() => {
+      // These cases exercise relay socket drops and relay recovery; a direct
+      // channel would (correctly) keep the game alive through them.
+      localStorage.setItem('ironsmith-relay-only-v1', 'true');
       const NativeWebSocket = window.WebSocket; window.testSockets = [];
       window.WebSocket = class extends NativeWebSocket { constructor(...args) { super(...args); window.testSockets.push(this); } };
     });

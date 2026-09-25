@@ -5,7 +5,7 @@ import { replayTrustedMatch, replayTrustedActions } from '../../lib/relay/replay
 import { readRelaySession, readPeerSession, relayCheckpoint, relayMatchId } from '../../lib/relay/session.js';
 import { PUBLIC_FORMATS, isRelayId, relayBaseUrl } from '../../lib/relay/formats.js';
 import { loadFormatCatalog, validateFormatDeck, assertFormatMatch } from '../../lib/relay/format-legality.js';
-import { buildPeerOptions, describePeerServer } from './shared.js';
+import { buildPeerOptions, describePeerServer, relayPeerOptions } from './shared.js';
 import {
   CURRENT_AUDIT_MAX_PLAYERS,
   CURRENT_AUDIT_MIN_PLAYERS,
@@ -1207,6 +1207,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         hostSeat: 0,
       });
       await verifySignedMatchGenesis(payload);
+      await servicesRef.current.attachWitnessGenesis(payload);
       matchStartPayloadRef.current = cloneMultiplayerPayload(payload);
       if (liveAuditTranscriptRef.current) {
         liveAuditTranscriptRef.current = {
@@ -1477,6 +1478,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         hostSeat: 0,
       });
       await verifySignedMatchGenesis(payload);
+      await servicesRef.current.attachWitnessGenesis(payload);
       matchStartPayloadRef.current = cloneMultiplayerPayload(payload);
       if (liveAuditTranscriptRef.current) {
         liveAuditTranscriptRef.current = {
@@ -3058,6 +3060,16 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             }
 		          }
 
+	          if (session.tournament?.tournamentId && !session.matchStarted) {
+	            try {
+	              await servicesRef.current.acceptGuestCertificate(conn.peer, message.witnessCertificate, sanitizePlayerName(message.name, ""));
+	            } catch (err) {
+	              safeSend(conn, { type: "reject", protocolVersion: PROTOCOL_VERSION,
+	                reason: `Tournament seat refused: ${toErrorMessage(err)}` });
+	              conn.close();
+	              return;
+	            }
+	          }
 	          clientConnectionsRef.current.set(conn.peer, conn);
           const name = sanitizePlayerName(
             message.name,
@@ -3900,18 +3912,31 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       advertise = true,
       resume = null,
       deckOptions = [],
+      tournamentId = resume?.session?.tournament?.tournamentId || "",
     }) => {
+      let tournament = null;
+      if (tournamentId) {
+        // Tournament matches are Verified relay rooms kept out of the public
+        // directory; the seat name is the one the organizer certified.
+        transport = 'websocket';
+        advertise = false;
+        try {
+          const entry = await servicesRef.current.localTournamentCertificate(tournamentId);
+          tournament = { tournamentId, tournamentName: entry.tournamentName, playerName: entry.playerName, witnessPublicKey: entry.witnessPublicKey };
+          name = entry.playerName;
+        } catch (error) { setStatus(error.message, true); return; }
+      }
       if (transport === 'websocket') {
         if (!relayBaseUrl()) { setStatus('WebSocket lobby service is not configured', true); return; }
         if (!PUBLIC_FORMATS[format]) { setStatus('Choose a format for the public lobby', true); return; }
         try { await loadFormatCatalog(); } catch (error) { setStatus(error.message, true); return; }
-        securityMode = MULTIPLAYER_SECURITY_TRUSTED;
+        securityMode = tournament ? MULTIPLAYER_SECURITY_VERIFIED : MULTIPLAYER_SECURITY_TRUSTED;
         startingLife = PUBLIC_FORMATS[format].startingLife;
         if (PUBLIC_FORMATS[format].maxPlayers === 2) desiredPlayers = 2;
       }
       teardownPeer();
       peerOptionsRef.current = transport === 'websocket'
-        ? { transport, format, desiredPlayers, advertise, url: relayBaseUrl(), ...(resume ? { room: resume.session.lobbyId.split('-')[1] } : {}) } : buildPeerOptions();
+        ? relayPeerOptions({ format, desiredPlayers, advertise, ...(tournament ? { tournamentId } : {}), ...(resume ? { room: resume.session.lobbyId.split('-')[1] } : {}) }) : buildPeerOptions();
       peerServerLabelRef.current = describePeerServer(peerOptionsRef.current);
       const normalizedFormat = normalizeMatchFormat(format);
       const normalizedSecurityMode =
@@ -3957,6 +3982,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       }
       const peer = createPeer(resume && transport !== "websocket" ? resume.session.localPeerId : "", peerOptionsRef.current);
       peerRef.current = peer;
+      peer.on?.("witness", (message) => { void servicesRef.current.handleWitnessEvent(message); });
       let reconnectTimer = null;
       let reconnectAttempts = 0;
       const clearReconnect = () => {
@@ -4003,6 +4029,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         startingLife: lifeTotal,
         format: normalizedFormat,
         securityMode: normalizedSecurityMode,
+        tournament,
         signalingServer: peerServerLabelRef.current,
         localDeckText: String(deckText || ""),
         localCommanderText: String(commanderText || ""),
@@ -4034,6 +4061,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           if (!session.matchStarted) {
             broadcastLobbyState();
           }
+          void servicesRef.current.syncWitnessStatus();
           setStatus(`Lobby signaling reconnected: ${peerId}`);
           return;
         }
@@ -4201,7 +4229,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       teardownPeer();
       actionHistoryRef.current = [];
       peerOptionsRef.current = isRelayId(lobbyId)
-        ? { transport: 'websocket', room: lobbyId.split('-')[1], url: relayBaseUrl() } : buildPeerOptions();
+        ? relayPeerOptions({ room: lobbyId.split('-')[1] }) : buildPeerOptions();
       peerServerLabelRef.current = describePeerServer(peerOptionsRef.current);
       const localName = sanitizePlayerName(name, "Guest");
       const targetLobby = String(lobbyId || "").trim();
@@ -4216,6 +4244,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       );
       const peer = createPeer(!isRelayId(lobbyId) && saved && !resumeAsGuest ? saved.peerId : "", peerOptionsRef.current);
       peerRef.current = peer;
+      peer.on?.("witness", (message) => { void servicesRef.current.handleWitnessEvent(message); });
       let reconnectTimer = null;
       let reconnectAttempts = 0;
       let hostReconnectTimer = null;
@@ -4389,12 +4418,16 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             session.localCommanderText
           );
           const requestedPlayerIndex = resolveReconnectPlayerIndex(session, targetLobby);
+          const tournament = session.tournament;
           const joinRequest = {
             type: "join_request",
             runtimeVersion: RUNTIME_VERSION,
             trustedProtocol: 2,
             protocolVersion: PROTOCOL_VERSION,
-            name: localName,
+            name: tournament?.playerName || localName,
+            ...(tournament ? {
+              witnessCertificate: (await servicesRef.current.localTournamentCertificate(tournament.tournamentId)).certificate,
+            } : {}),
             securityMode: sessionSecurityMode(session),
             deck: currentDeck.deck,
             sideboard: currentDeck.sideboard,
@@ -4529,17 +4562,32 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         }, delay);
       };
 
-      peer.on("open", (peerId) => {
+      peer.on("open", async (peerId) => {
         clearTimeout(peerOpenTimeout);
         clearReconnect();
         clearHostReconnect();
         const previousPeerId = multiplayerRef.current.localPeerId;
+        // The relay room, not the host, says whether this is a tournament.
+        const roomTournamentId = String(peer.config?.tournamentId || "");
+        let tournament = null;
+        if (roomTournamentId) {
+          try {
+            const entry = await servicesRef.current.localTournamentCertificate(roomTournamentId);
+            tournament = { tournamentId: roomTournamentId, tournamentName: entry.tournamentName, playerName: entry.playerName, witnessPublicKey: entry.witnessPublicKey };
+          } catch (error) { setStatus(error.message, true); leaveLobby(""); return; }
+        }
         updateMultiplayer((prev) => ({
           ...prev,
           localPeerId: peerId,
-          ...(peer.config ? { format: peer.config.format, securityMode: MULTIPLAYER_SECURITY_TRUSTED } : {}),
+          ...(peer.config ? {
+            format: peer.config.format,
+            securityMode: tournament ? MULTIPLAYER_SECURITY_VERIFIED : MULTIPLAYER_SECURITY_TRUSTED,
+            tournament,
+            ...(tournament ? { localName: tournament.playerName } : {}),
+          } : {}),
         }));
         if (previousPeerId === peerId && hostConnectionRef.current?.open) {
+          void servicesRef.current.syncWitnessStatus();
           setStatus(`Lobby signaling reconnected: ${peerId}`);
           return;
         }

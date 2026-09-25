@@ -41,6 +41,7 @@ import {
   isForfeitCommand,
   isHiddenIdentityViolationReason,
   isProtocolResponseTimeoutForfeitCommand,
+  isWitnessForfeitCommand,
   isSelfForfeitCommand,
   isSorcerySpeedForfeitState,
   isTrustedMultiplayerSecurityMode,
@@ -88,6 +89,8 @@ import { useTrustedSequencer } from "./peer-lobby/trusted-sequencer.js";
 import { wireStablePayload } from "../lib/accepted-actions.js";
 import { usePeerLobbyMessaging } from "./peer-lobby/messaging.js";
 import { usePeerLobbyEndOfMatchDisclosure } from "./peer-lobby/end-of-match-disclosure.js";
+import { usePeerLobbyTournamentWitness } from "./peer-lobby/tournament-witness.js";
+import { redeemTournamentInvite as redeemInviteWithAuditKey } from "../lib/tournament/credentials.js";
 
 export function usePeerLobby({
   game,
@@ -285,6 +288,10 @@ export function usePeerLobby({
   const messaging = usePeerLobbyMessaging(peerLobbyBase, servicesRef);
   const { sendLobbyChat, broadcastLobbyState, createLobby, joinLobby, readyForRematch, startHostedMatch, startRematch, startRematchSideboarding, updateRematchDeck } = messaging;
   Object.assign(servicesRef.current, messaging);
+
+  const tournamentWitness = usePeerLobbyTournamentWitness(peerLobbyBase, servicesRef);
+  const { openWitnessChallenge } = tournamentWitness;
+  Object.assign(servicesRef.current, tournamentWitness);
 
   const updateLobbyDeck = useCallback(
     async (updates) => {
@@ -547,6 +554,14 @@ export function usePeerLobby({
       rememberIgnoredActionIntentKey(timedOutActionIntentKey, "protocol_response_timeout");
       clearPendingActionIntent(timedOutActionIntentKey);
     }
+    // Tournament matches settle every liveness dispute through the witness.
+    if (await openWitnessChallenge({
+      accusedSeat: targetPlayerIndex,
+      reason: "protocol_response_timeout",
+      request: claim.requestPayload,
+    })) {
+      return true;
+    }
     if (threshold <= 0) {
       markMatchDisputed(
         `Protocol response timeout from ${targetName}; two-player matches require external arbitration.`,
@@ -743,6 +758,7 @@ export function usePeerLobby({
         const isTimeoutForfeit = isActionTimeoutForfeitCommand(command);
         const isDisconnectForfeit = isDisconnectTimeoutForfeitCommand(command);
         const isProtocolTimeoutForfeit = isProtocolResponseTimeoutForfeitCommand(command);
+        const isWitnessForfeit = isWitnessForfeitCommand(command);
         const isSelfForfeit = isSelfForfeitCommand(command, session.localPlayerIndex);
         if (isSelfForfeit && !isSorcerySpeedForfeitState(preSubmitState, session.localPlayerIndex)) {
           throw new Error("Surrender is only available at sorcery speed");
@@ -752,6 +768,7 @@ export function usePeerLobby({
           && !isTimeoutForfeit
           && !isDisconnectForfeit
           && !isProtocolTimeoutForfeit
+          && !isWitnessForfeit
         ) {
           if (Number(command.player) !== Number(session.localPlayerIndex)) {
             throw new Error("A player can only forfeit themselves");
@@ -809,6 +826,10 @@ export function usePeerLobby({
           await validateProtocolResponseTimeoutCommand(command, {
             actorIndex: session.localPlayerIndex,
             skipCertificate: trustedMode,
+          });
+        } else if (isWitnessForfeit) {
+          await servicesRef.current.validateWitnessForfeitCommand(command, {
+            actorIndex: session.localPlayerIndex,
           });
         } else if (
           expectedActor !== null
@@ -1884,6 +1905,10 @@ export function usePeerLobby({
   // Timer lifetimes must not depend on the action callback, whose dependencies
   // can change on each render. Restarting a timer runs its immediate tick again,
   // which publishes state and can starve socket reconnect events in a render loop.
+  // Sub-hooks reach these through servicesRef (timeout claims, witness forfeits).
+  servicesRef.current.submitMultiplayerCommand = submitMultiplayerCommand;
+  servicesRef.current.submitProtocolResponseTimeoutClaim = submitProtocolResponseTimeoutClaim;
+
   const timerCommandRef = useRef(submitMultiplayerCommand);
   useEffect(() => {
     timerCommandRef.current = submitMultiplayerCommand;
@@ -1954,6 +1979,13 @@ export function usePeerLobby({
       if (Number(timer.remainingMs ?? 0) > Number(timer.graceMs || 0) + MATCH_CLOCK_CLAIM_SKEW_MS) return;
 
       timeoutClaimInFlightRef.current = claimKey;
+      if (matchStartPayloadRef.current?.tournament) {
+        // The opponent challenges us when our own clock runs out.
+        if (Number(timer.activePlayerIndex) !== Number(session.localPlayerIndex)) {
+          await openWitnessChallenge({ accusedSeat: Number(timer.activePlayerIndex), reason: "match_clock_timeout" });
+        }
+        return;
+      }
       const playerName = playerNameForIndex(session.players, timer.activePlayerIndex);
       const command = {
         type: "forfeit_player",
@@ -2068,6 +2100,7 @@ export function usePeerLobby({
       ].join(":");
       if (disconnectForfeitInFlightRef.current.has(claimKey)) return;
       disconnectForfeitInFlightRef.current.add(claimKey);
+      if (await openWitnessChallenge({ accusedSeat: Number(warning.playerIndex), reason: "disconnect" })) return;
       const playerName = playerNameForIndex(session.players, warning.playerIndex);
       const command = {
         type: "forfeit_player",
@@ -2160,6 +2193,12 @@ export function usePeerLobby({
     [teardownPeer]
   );
 
+  // Redeeming binds the organizer's invite to this browser's audit key.
+  const redeemTournamentInvite = useCallback(async (code) => {
+    const { keyPair, publicKey } = await ensureAuditIdentity();
+    return redeemInviteWithAuditKey(code, { keyPair, auditPublicKey: publicKey });
+  }, [ensureAuditIdentity]);
+
   return {
     matchClockStore: matchClockStore.current,
     multiplayer,
@@ -2178,5 +2217,7 @@ export function usePeerLobby({
     submitMultiplayerAddCardCheat,
     exportAuditTranscript,
     routePeerIdForPlayer,
+    redeemTournamentInvite,
+    openWitnessChallenge,
   };
 }
