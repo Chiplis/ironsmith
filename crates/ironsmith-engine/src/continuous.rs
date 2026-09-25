@@ -2175,6 +2175,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                         continue;
                     };
                     apply_ability_counters_through(object, chars, counters, next_counter, None);
+                    add_suspected_abilities(object, game, chars);
                     prune_ability_gain_prohibitions(chars);
                     guards[idx].update(chars);
                 }
@@ -2353,6 +2354,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                     continue;
                 };
                 apply_ability_counters_through(object, chars, counters, next_counter, None);
+                add_suspected_abilities(object, game, chars);
                 prune_ability_gain_prohibitions(chars);
                 guards[idx].update(chars);
             }
@@ -2932,6 +2934,7 @@ fn calculate_with_layers_direct_internal(
                         &mut next_ability_counter,
                         None,
                     );
+                    add_suspected_abilities(object, game, &mut chars);
                     prune_ability_gain_prohibitions(&mut chars);
                     calc_guard.update(&chars);
                 }
@@ -3091,6 +3094,7 @@ fn calculate_with_layers_direct_internal(
                 &mut next_ability_counter,
                 None,
             );
+            add_suspected_abilities(object, game, &mut chars);
             prune_ability_gain_prohibitions(&mut chars);
             calc_guard.update(&chars);
         }

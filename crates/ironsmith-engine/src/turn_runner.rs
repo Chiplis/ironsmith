@@ -4590,6 +4590,8 @@ mod tests {
     #[test]
     fn test_turn_runner_pauses_for_drawn_commander_choice() {
         let mut game = setup_game();
+        // Not the starting player's first turn, which skips the draw (CR 103.8a).
+        game.turn.turn_number = 2;
         let alice = PlayerId::from_index(0);
         let commander =
             crate::card::CardBuilder::new(crate::ids::CardId::from_raw(9100), "Runner Commander")
@@ -4792,7 +4794,7 @@ mod tests {
     }
 
     #[test]
-    fn test_turn_runner_keeps_starting_players_first_draw_in_commander_game() {
+    fn test_turn_runner_skips_starting_players_first_draw_in_two_player_commander_game() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let commander =
@@ -4815,11 +4817,12 @@ mod tests {
 
         let action = runner.advance(&mut game, &mut tq).unwrap();
         assert!(matches!(action, TurnAction::RunPriority));
+        // CR 103.8a: a two-player Commander game is a two-player game.
         assert_eq!(
             game.player(alice).expect("alice should exist").hand.len(),
-            1
+            0
         );
-        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 1);
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 0);
     }
 
     #[test]

@@ -1991,6 +1991,8 @@ mod tests {
     #[test]
     fn execute_draw_step_with_can_move_drawn_commander_to_command_zone() {
         let mut game = setup_game();
+        // Not the starting player's first turn, which skips the draw (CR 103.8a).
+        game.turn.turn_number = 2;
         let alice = PlayerId::from_index(0);
         let commander = CardBuilder::new(CardId::from_raw(9000), "Topdeck Commander")
             .card_types(vec![CardType::Creature])
@@ -2018,6 +2020,8 @@ mod tests {
     #[test]
     fn execute_draw_step_with_can_leave_commander_in_hand() {
         let mut game = setup_game();
+        // Not the starting player's first turn, which skips the draw (CR 103.8a).
+        game.turn.turn_number = 2;
         let alice = PlayerId::from_index(0);
         let commander = CardBuilder::new(CardId::from_raw(9001), "Honest Commander")
             .card_types(vec![CardType::Creature])
@@ -2107,7 +2111,7 @@ mod tests {
     }
 
     #[test]
-    fn execute_draw_step_keeps_starting_players_first_draw_in_commander_game() {
+    fn execute_draw_step_skips_starting_players_first_draw_in_two_player_commander_game() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let commander = CardBuilder::new(CardId::from_raw(9003), "Opening Commander")
@@ -2124,16 +2128,17 @@ mod tests {
         let mut dm = AlwaysNoDecisionMaker;
         let events = execute_draw_step_with(&mut game, &mut dm);
 
-        assert_eq!(
-            events.len(),
-            1,
-            "commander games should keep the opening draw"
+        // CR 103.8a: a two-player Commander game is a two-player game, so the
+        // starting player skips their first draw.
+        assert!(
+            events.is_empty(),
+            "two-player commander games skip the starting player's first draw"
         );
         assert_eq!(
             game.player(alice).expect("alice should exist").hand.len(),
-            1
+            0
         );
-        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 1);
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 0);
     }
 
     #[test]
