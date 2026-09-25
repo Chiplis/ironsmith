@@ -99,6 +99,19 @@ function hoveredPriorityActionGroups(decision, hoveredObjectId, suppressBattlefi
   return grouped;
 }
 
+function disclosureStatusLabel(entry) {
+  switch (entry?.status) {
+    case "verified":
+      return entry.reason === "sent" ? "disclosed" : "verified";
+    case "cheat_detected":
+      return `cheat detected${entry.reason ? ` (${entry.reason})` : ""}`;
+    case "missing":
+      return "disclosure missing";
+    default:
+      return "awaiting disclosure";
+  }
+}
+
 export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   const ui = useUiText();
   const {
@@ -130,6 +143,11 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   const rematchSideboarding = rematch?.phase === "sideboarding";
   const rematchReady = Boolean(rematch?.localReady);
   const showGameOverPanel = Boolean(gameOver);
+  // End-of-match disclosure verdicts (verified multiplayer): every player
+  // opens its remaining hidden hand and face-down cards when the match ends.
+  const disclosureEntries = Object.entries(multiplayer?.endOfMatchDisclosure?.byPlayer || {})
+    .map(([player, entry]) => ({ player, ...entry }))
+    .sort((left, right) => Number(left.player) - Number(right.player));
   const canPlayAgain = Boolean(
     gameOver
     && (multiplayer?.matchStarted || multiplayer?.mode === "in_match")
@@ -332,6 +350,22 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
               <div className="text-[16px] font-bold leading-tight text-[#f2d9a3]">
                 {ui(gameOverText)}
               </div>
+              {disclosureEntries.length > 0 && (
+                <div className="flex flex-col gap-0.5 text-[11px] leading-snug">
+                  <div className="font-bold uppercase tracking-wider text-[#d8bf7a]">
+                    Hidden-card disclosure
+                  </div>
+                  {disclosureEntries.map((entry) => (
+                    <div
+                      key={entry.player}
+                      className={entry.status === "cheat_detected" ? "text-[#ff8a7a]" : "text-muted-foreground"}
+                      title={entry.reason || undefined}
+                    >
+                      {entry.name}: {disclosureStatusLabel(entry)}
+                    </div>
+                  ))}
+                </div>
+              )}
               {rematchSideboarding ? (
                 <div className="text-[12px] leading-snug text-muted-foreground">
                   {t("game.sideboardNext")}

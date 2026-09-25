@@ -17,7 +17,27 @@ export function findPriorityActionForCommand(decision, command) {
 
   const actions = Array.isArray(decision.actions) ? decision.actions : [];
   if (command.action_ref) {
-    return actions.find((action) => sameActionRef(action?.action_ref, command.action_ref)) || null;
+    const matched = actions.find((action) => sameActionRef(action?.action_ref, command.action_ref));
+    if (matched) return matched;
+    // A face-down cast (morph, megamorph, disguise) of a hidden hand card is
+    // replayed on peers that hold only a placeholder: the card is never
+    // opened, so their priority menu cannot list it. The command's public
+    // cast kind lets the engine re-derive and validate the action itself.
+    const ref = command.action_ref;
+    const method = ref?.casting_method || null;
+    if (
+      String(ref?.kind || "") === "cast_spell"
+      && String(method?.kind || "") === "face_down"
+      && method?.face_down_kind
+    ) {
+      return {
+        action_ref: ref,
+        object_id: Number(ref.spell_id),
+        kind: "cast_spell",
+        synthetic_face_down_cast: true,
+      };
+    }
+    return null;
   }
 
   if (command.action_index !== null && command.action_index !== undefined) {

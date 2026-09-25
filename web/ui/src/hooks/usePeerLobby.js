@@ -197,23 +197,6 @@ export function usePeerLobby({
     return subscribeState(snapshot => { stateRef.current = snapshot; });
   }, [subscribeState]);
 
-  // End-of-match disclosure: once the match (or the local player's part of
-  // it) is over, open the hidden cards still owed and verify the peers'.
-  useEffect(() => {
-    const onEnded = (snapshot) => {
-      if (!snapshot) return;
-      const ended = Boolean(snapshot.game_over)
-        || (snapshot.players || []).some((player) =>
-          player?.has_lost || player?.hasLost || player?.has_left_game || player?.hasLeftGame
-        );
-      if (!ended) return;
-      void Promise.resolve(servicesRef.current.onEndOfMatchRuntimeState?.(snapshot)).catch(() => {});
-    };
-    if (subscribeState) return subscribeState(onEnded);
-    onEnded(state);
-    return undefined;
-  }, [state, subscribeState]);
-
   useEffect(() => {
     peerRef.current?.advertise?.({
       available: multiplayer.role === "host" && multiplayer.mode === "lobby"
@@ -232,6 +215,24 @@ export function usePeerLobby({
   // peer message sequences.
 
   const servicesRef = useRef({});
+
+  // End-of-match disclosure: once the match (or the local player's part of
+  // it) is over, open the hidden cards still owed and verify the peers'.
+  useEffect(() => {
+    const onEnded = (snapshot) => {
+      if (!snapshot) return;
+      const ended = Boolean(snapshot.game_over)
+        || (snapshot.players || []).some((player) =>
+          player?.has_lost || player?.hasLost || player?.has_left_game || player?.hasLeftGame
+        );
+      if (!ended) return;
+      void Promise.resolve(servicesRef.current.onEndOfMatchRuntimeState?.(snapshot)).catch(() => {});
+    };
+    if (subscribeState) return subscribeState(onEnded);
+    onEnded(state);
+    return undefined;
+  }, [state, subscribeState]);
+
   const peerLobbyBase = {
     game, state, setState, setStatus, applySyncedCommand, multiplayer, setMultiplayer, matchClockStore,
     peerRef, hostConnectionRef, clientConnectionsRef, peerConnectionsRef, connectionHeartbeatsRef,
