@@ -115,7 +115,7 @@ pub(super) fn describe_you_own_or_control_union(
 }
 
 pub(super) fn plus_minus_counter_delta(
-    counters: &std::collections::HashMap<CounterType, u32>,
+    counters: &std::collections::BTreeMap<CounterType, u32>,
 ) -> i32 {
     let plus = counters
         .get(&CounterType::PlusOnePlusOne)

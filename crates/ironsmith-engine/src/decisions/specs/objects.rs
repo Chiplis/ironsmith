@@ -123,6 +123,12 @@ pub struct ChooseObjectsSpec {
     pub require_explicit_choice: bool,
     /// Whether hidden candidate identities should be opened while the decision is active.
     pub hidden_card_visibility: DecisionHiddenCardVisibility,
+    /// How the *chosen* candidates are revealed, independent of
+    /// `hidden_card_visibility` (which opens every candidate while the
+    /// decision is active). `Public` makes peer front ends open the chosen
+    /// hidden cards publicly before the answer is replayed, without showing
+    /// the candidates that were not chosen.
+    pub selection_reveal_policy: Option<SelectionRevealPolicy>,
 }
 
 impl ChooseObjectsSpec {
@@ -144,7 +150,15 @@ impl ChooseObjectsSpec {
             allow_partial_completion: false,
             require_explicit_choice: false,
             hidden_card_visibility: DecisionHiddenCardVisibility::None,
+            selection_reveal_policy: None,
         }
+    }
+
+    /// Reveal only the chosen candidates with `policy` (see
+    /// `selection_reveal_policy`).
+    pub fn with_selection_reveal_policy(mut self, policy: SelectionRevealPolicy) -> Self {
+        self.selection_reveal_policy = Some(policy);
+        self
     }
 
     pub fn allow_partial_completion(mut self) -> Self {
@@ -233,7 +247,10 @@ impl DecisionSpec for ChooseObjectsSpec {
         } else {
             ctx
         };
-        let ctx = ctx.with_reveal_policy(SelectionRevealPolicy::from(self.hidden_card_visibility));
+        let ctx = ctx.with_reveal_policy(
+            self.selection_reveal_policy
+                .unwrap_or_else(|| SelectionRevealPolicy::from(self.hidden_card_visibility)),
+        );
         let ctx = ctx.with_hidden_card_view(
             self.candidates.clone(),
             self.hidden_card_visibility,

@@ -1026,6 +1026,7 @@ fn execute_draw_step_for_player_with(
                 game.record_cards_drawn_in_current_draw_step(active_player, drawn_event.amount());
             }
             game.stage_turn_history_event(&event);
+            game.note_hidden_draw_for_reveal_window(&event);
             draw_events.push(event);
             let cards = draw_events
                 .last()

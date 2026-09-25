@@ -40,11 +40,11 @@ impl GameState {
         let archenemies = decks
             .iter()
             .map(|(owner, _)| *owner)
-            .collect::<HashSet<_>>();
+            .collect::<std::collections::BTreeSet<_>>();
         let mut state = ArchenemyState {
             variant,
             archenemies: archenemies.clone(),
-            scheme_decks: HashMap::new(),
+            scheme_decks: std::collections::BTreeMap::new(),
             face_up: Vec::new(),
         };
         for (owner, cards) in decks {

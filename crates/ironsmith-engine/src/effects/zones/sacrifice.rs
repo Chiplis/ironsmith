@@ -361,6 +361,9 @@ impl EffectExecutor for SacrificeEffect {
         } else {
             choose_objects_to_sacrifice(game, ctx, player_id, &self.filter, count)?
         };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         sacrifice_selected_objects(
             game,
             ctx,
@@ -752,6 +755,9 @@ impl EffectExecutor for EachPlayerSacrificesEffect {
             let chosen = ctx.with_temp_iterated_player(Some(player_id), |ctx| {
                 choose_objects_to_sacrifice(game, ctx, player_id, &self.filter, count)
             })?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             chosen_memory.extend(
                 chosen
                     .iter()

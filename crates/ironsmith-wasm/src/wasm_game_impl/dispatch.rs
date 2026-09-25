@@ -886,6 +886,47 @@ impl WasmGame {
             .map_err(|error| JsValue::from_str(&error))
     }
 
+    /// Seats whose hidden draws open an owner reveal window (Miracle).
+    ///
+    /// In a hidden-deck match every peer must agree on this, so it is derived
+    /// only from public inputs: the open decklists when the match publishes
+    /// them (a seat qualifies when a listed card can trigger as it is drawn or
+    /// grants miracle), otherwise every seat with a hidden deck qualifies.
+    /// Unknown card names count as qualifying.
+    fn hidden_draw_reveal_players_for_setup(
+        &self,
+        hidden_manifests: &[HiddenDeckManifestInput],
+        public_decklists: Option<&[Vec<String>]>,
+        commanders: Option<&[Vec<String>]>,
+    ) -> Vec<PlayerId> {
+        let mut seats = hidden_manifests
+            .iter()
+            .map(|manifest| manifest.owner)
+            .collect::<Vec<_>>();
+        seats.sort_unstable();
+        seats.dedup();
+        seats
+            .into_iter()
+            .filter(|&seat| {
+                let Some(lists) = public_decklists else {
+                    return true;
+                };
+                let Some(list) = lists.get(usize::from(seat)) else {
+                    return true;
+                };
+                let seat_commanders = commanders
+                    .and_then(|commanders| commanders.get(usize::from(seat)))
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                list.iter().chain(seat_commanders).any(|name| {
+                    self.find_card_definition(name)
+                        .is_none_or(card_definition_may_trigger_when_drawn)
+                })
+            })
+            .map(PlayerId::from_index)
+            .collect()
+    }
+
     /// Start a fully specified match from a synchronized lobby payload.
     #[wasm_bindgen(js_name = startMatch)]
     pub fn start_match(&mut self, config: JsValue) -> Result<JsValue, JsValue> {
@@ -1299,6 +1340,11 @@ impl WasmGame {
             }
         }
         let hidden_manifests = config.hidden_deck_manifests.unwrap_or_default();
+        let hidden_draw_reveal_players = self.hidden_draw_reveal_players_for_setup(
+            &hidden_manifests,
+            config.public_decklists.as_deref(),
+            config.commanders.as_deref(),
+        );
 
         if let Some(decks) = config.decks {
             if decks.len() != self.game.players.len() {
@@ -1342,6 +1388,8 @@ impl WasmGame {
         if self.match_format == MatchFormatInput::Normal {
             self.populate_hidden_manifest_sideboards(&sideboards, &hidden_manifests);
         }
+        self.game
+            .set_hidden_draw_reveal_players(hidden_draw_reveal_players);
 
         if let Some(commanders) = config.commanders {
             if commanders.len() != self.game.players.len() {
@@ -1619,10 +1667,12 @@ impl WasmGame {
             .find_card_definition(&input.card_name)
             .cloned()
             .ok_or_else(|| JsValue::from_str(&format!("unknown card name: {}", input.card_name)))?;
+        // A face-down placeholder shows the face-down overlay name; its
+        // identity name is the restore state's ("Hidden Card" until opened).
         let Some(existing_name) = self
             .game
             .object(object_id)
-            .map(|object| object.name.clone())
+            .map(|object| object.identity_name().clone())
         else {
             return Err(JsValue::from_str(
                 "hidden ziffle object is not present in this engine",
@@ -1661,7 +1711,7 @@ impl WasmGame {
         if let Some(existing_name) = self
             .game
             .object(reveal.object_id)
-            .map(|object| object.name.clone())
+            .map(|object| object.identity_name().clone())
             && existing_name != "Hidden Card"
         {
             if existing_name != reveal.input.card_name {
@@ -1796,14 +1846,20 @@ impl WasmGame {
         input: ApplyHiddenLibraryShuffleInput,
     ) -> Result<(), JsValue> {
         let owner = PlayerId::from_index(input.owner);
-        let library = self
+        let current_library = self
             .game
             .player(owner)
             .ok_or_else(|| JsValue::from_str("hidden shuffle owner is not present"))?
             .library
             .clone();
-        let order = if input.after_order.is_empty() {
-            library
+        // Index `p` of `order` is the object at ziffle position `p` of the verified
+        // deck. The verified deck can be smaller than the current library when the
+        // effect shuffled all but some cards and then reinserted them (Mystical
+        // Tutor, Worldly Tutor, Imperial Seal: the searched card is excluded from
+        // the shuffle), and it can name cards that left the library after the
+        // shuffle in the same action (mulligan draws, shuffle-then-draw).
+        let order: Vec<ObjectId> = if input.after_order.is_empty() {
+            current_library.to_vec()
         } else {
             input
                 .after_order
@@ -1817,46 +1873,69 @@ impl WasmGame {
                 })
                 .collect()
         };
-        if !input.after_order.is_empty() {
-            let current_library = self
-                .game
-                .player(owner)
-                .ok_or_else(|| JsValue::from_str("hidden shuffle owner is not present"))?
-                .library
-                .clone();
-            let current_library_set = current_library.iter().copied().collect::<HashSet<_>>();
-            let reordered_library = order
-                .iter()
-                .copied()
-                .filter(|object_id| current_library_set.contains(object_id))
-                .collect::<Vec<_>>();
-            let reordered_set = reordered_library.iter().copied().collect::<HashSet<_>>();
-            if reordered_library.len() != current_library.len()
-                || reordered_set.len() != current_library_set.len()
-                || !current_library_set
-                    .iter()
-                    .all(|id| reordered_set.contains(id))
-            {
-                return Err(JsValue::from_str(
-                    "verified hidden shuffle order does not cover the current library",
-                ));
-            }
-            if let Some(player) = self.game.player_mut(owner) {
-                player.library = reordered_library.into();
-            }
-        }
         let mut seen = HashSet::new();
-        for (position, object_id) in order.iter().copied().enumerate() {
-            if position > u16::MAX as usize {
-                return Err(JsValue::from_str("hidden shuffle library is too large"));
-            }
+        for object_id in order.iter().copied() {
             if !seen.insert(object_id) {
                 return Err(JsValue::from_str(
                     "hidden shuffle order contains duplicate cards",
                 ));
             }
+        }
+        if order.len() > u16::MAX as usize + 1 {
+            return Err(JsValue::from_str("hidden shuffle library is too large"));
+        }
+        let current_library_set = current_library.iter().copied().collect::<HashSet<_>>();
+        if !input.after_order.is_empty() {
+            // Library cards outside the verified deck were not part of this
+            // shuffle. They keep their already-verified hidden commitments and
+            // ziffle positions, so they must be tracked hidden cards of the owner;
+            // anything else means the proof does not account for the library.
+            for object_id in current_library.iter().copied() {
+                if seen.contains(&object_id) {
+                    continue;
+                }
+                let covered_elsewhere = self
+                    .game
+                    .hidden_card_info(object_id)
+                    .is_some_and(|info| info.owner == owner);
+                if !covered_elsewhere {
+                    return Err(JsValue::from_str(
+                        "verified hidden shuffle order does not cover the current library",
+                    ));
+                }
+            }
+            if input.enforce_library_order.unwrap_or(true) {
+                // Re-sequence the covered cards to the verified order while the
+                // excluded (reinserted) cards keep their current library index.
+                let mut covered_in_order = order
+                    .iter()
+                    .copied()
+                    .filter(|object_id| current_library_set.contains(object_id));
+                let reordered_library = current_library
+                    .iter()
+                    .copied()
+                    .map(|object_id| {
+                        if seen.contains(&object_id) {
+                            covered_in_order.next().unwrap_or(object_id)
+                        } else {
+                            object_id
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                if let Some(player) = self.game.player_mut(owner) {
+                    player.library = reordered_library.into();
+                }
+            }
+        }
+        for (position, object_id) in order.iter().copied().enumerate() {
+            let in_library = current_library_set.contains(&object_id);
             let Some(zone) = self.game.object(object_id).map(|object| object.zone) else {
-                return Err(JsValue::from_str("hidden shuffle card is not present"));
+                if in_library {
+                    return Err(JsValue::from_str("hidden shuffle card is not present"));
+                }
+                // A card that left the library after the shuffle and no longer
+                // exists (e.g. ceased to exist) has nothing left to reseal.
+                continue;
             };
             let Some(info) = self.game.hidden_card_info(object_id).cloned() else {
                 if zone.is_hidden()
@@ -1882,6 +1961,12 @@ impl WasmGame {
                             )),
                         },
                     );
+                    continue;
+                }
+                if !in_library {
+                    // Left the library after the shuffle and is no longer a
+                    // tracked hidden card (already opened publicly): nothing to
+                    // re-pin.
                     continue;
                 }
                 return Err(JsValue::from_str(&format!(
@@ -3762,4 +3847,19 @@ impl WasmGame {
             }
         }
     }
+}
+
+/// Whether a card can trigger from its owner's hand as it is drawn (Miracle,
+/// CR 702.94a) or can give that ability to other cards (miracle granters such
+/// as Lorehold, the Historian).
+fn card_definition_may_trigger_when_drawn(definition: &CardDefinition) -> bool {
+    definition
+        .alternative_casts
+        .iter()
+        .any(|method| method.is_miracle())
+        || definition.abilities.iter().any(|ability| {
+            matches!(ability.kind, ironsmith::ability::AbilityKind::Triggered(_))
+                && ability.functional_zones.contains(&Zone::Hand)
+        })
+        || definition.canonical_text.to_ascii_lowercase().contains("miracle")
 }

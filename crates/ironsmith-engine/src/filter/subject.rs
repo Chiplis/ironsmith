@@ -54,7 +54,7 @@ impl<'a> ObjectSubject<'a> {
             Self::Snapshot(snapshot) => snapshot.mana_cost.as_ref(),
         }
     }
-    pub(crate) fn counters(self) -> &'a std::collections::HashMap<CounterType, u32> {
+    pub(crate) fn counters(self) -> &'a std::collections::BTreeMap<CounterType, u32> {
         match self {
             Self::Live(object) => &object.counters,
             Self::Snapshot(snapshot) => &snapshot.counters,

@@ -758,7 +758,7 @@ pub struct Player {
     pub energy_counters: u32,
     pub experience_counters: u32,
     /// Player counters without dedicated rules fields (for example, rad counters).
-    pub other_counters: HashMap<crate::object::CounterType, u32>,
+    pub other_counters: std::collections::BTreeMap<crate::object::CounterType, u32>,
     pub speed: Option<u8>,
     pub ring_temptations: u32,
     pub ring_bearer: Option<ObjectId>,
@@ -819,7 +819,7 @@ impl Player {
             poison_counters: 0,
             energy_counters: 0,
             experience_counters: 0,
-            other_counters: HashMap::new(),
+            other_counters: std::collections::BTreeMap::new(),
             speed: None,
             ring_temptations: 0,
             ring_bearer: None,

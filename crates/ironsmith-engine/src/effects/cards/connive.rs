@@ -299,6 +299,12 @@ impl EffectExecutor for ConniveEffect {
                         hand_cards.clone(),
                         required,
                         Some(required),
+                    )
+                    // Discarded hidden cards are opened publicly before the
+                    // answer is replayed (Madness, discard triggers); see
+                    // `game_state::hidden_hand_choices`.
+                    .with_selection_reveal_policy(
+                        crate::decisions::context::SelectionRevealPolicy::Public,
                     );
                     let chosen: Vec<_> =
                         make_decision(game, ctx.decision_maker, controller, Some(ctx.source), spec);

@@ -2174,6 +2174,7 @@ impl TurnRunner {
             );
         }
         game.stage_turn_history_event(&event);
+        game.note_hidden_draw_for_reveal_window(&event);
         let mut draw_events = vec![event];
         for reveal_event in pending.reveal_events {
             game.stage_turn_history_event(&reveal_event);

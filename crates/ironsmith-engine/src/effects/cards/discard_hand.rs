@@ -43,6 +43,34 @@ impl EffectExecutor for DiscardHandEffect {
 
         let count = hand_cards.len();
 
+        // Hidden-information matches: the owner reveals the hand publicly
+        // before any card moves, so every peer applies Madness (CR 702.35a)
+        // and discard triggers to the same identities (see
+        // `game_state::hidden_hand_choices`). Never prompts otherwise.
+        if hand_cards
+            .iter()
+            .any(|id| game.hidden_identity_is_private(*id))
+        {
+            let to_reveal: Vec<_> = hand_cards
+                .iter()
+                .copied()
+                .filter(|id| *id != ctx.source)
+                .collect();
+            if game
+                .reveal_private_hidden_cards_publicly(
+                    &mut *ctx.decision_maker,
+                    player_id,
+                    ctx.source,
+                    &to_reveal,
+                    "Reveal the cards you discard",
+                    false,
+                )
+                .is_none()
+            {
+                return Ok(EffectOutcome::count(0));
+            }
+        }
+
         // Discard each card using the event system. The cause is inherited from
         // the execution context so discard-as-cost stays cost-caused.
         let cause = ctx.cause.clone();

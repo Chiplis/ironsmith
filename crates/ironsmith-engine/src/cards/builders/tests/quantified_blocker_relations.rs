@@ -57,7 +57,7 @@ fn install_two_blocked_attackers(
     decoy_blocker: ObjectId,
 ) {
     game.combat = Some(crate::combat_state::CombatState {
-        blockers: std::collections::HashMap::from([
+        blockers: std::collections::BTreeMap::from([
             (source_attacker, source_blockers),
             (decoy_attacker, vec![decoy_blocker]),
         ]),

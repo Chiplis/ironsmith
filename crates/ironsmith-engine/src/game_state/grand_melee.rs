@@ -95,9 +95,10 @@ pub struct GrandMeleeState {
     starting_player_count: usize,
     focused_marker: u32,
     markers: Vec<GrandMeleeTurnMarker>,
-    deferred_extra_turns: HashMap<PlayerId, usize>,
-    marker_reducing_departures: std::collections::HashSet<PlayerId>,
-    prepared_simultaneous_departures: std::collections::HashSet<PlayerId>,
+    // Ordered: snapshotted into the public sync checkpoint as a Vec.
+    deferred_extra_turns: std::collections::BTreeMap<PlayerId, usize>,
+    marker_reducing_departures: std::collections::BTreeSet<PlayerId>,
+    prepared_simultaneous_departures: std::collections::BTreeSet<PlayerId>,
     /// Provenance roots of stack objects, retained after an object is popped
     /// so triggers emitted during its resolution remain bound to its lane.
     stack_provenance_markers: HashMap<ProvNodeId, u32>,
@@ -260,9 +261,9 @@ impl GameState {
             starting_player_count,
             focused_marker: 1,
             markers,
-            deferred_extra_turns: HashMap::new(),
-            marker_reducing_departures: std::collections::HashSet::new(),
-            prepared_simultaneous_departures: std::collections::HashSet::new(),
+            deferred_extra_turns: std::collections::BTreeMap::new(),
+            marker_reducing_departures: std::collections::BTreeSet::new(),
+            prepared_simultaneous_departures: std::collections::BTreeSet::new(),
             stack_provenance_markers: HashMap::new(),
         });
         self.load_grand_melee_lane(&first_lane);

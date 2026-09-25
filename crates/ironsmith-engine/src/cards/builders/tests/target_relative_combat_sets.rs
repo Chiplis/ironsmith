@@ -59,7 +59,7 @@ fn install_two_blocked_attackers(
                 target: crate::combat_state::AttackTarget::Player(blocker_controller),
             },
         ],
-        blockers: std::collections::HashMap::from([
+        blockers: std::collections::BTreeMap::from([
             (
                 target_attacker,
                 vec![first_target_blocker, second_target_blocker],

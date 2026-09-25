@@ -716,7 +716,7 @@ fn wall_of_corpses_can_target_only_the_attacker_it_blocks_and_resolves_from_lki(
                 target: crate::combat_state::AttackTarget::Player(alice),
             },
         ],
-        blockers: std::collections::HashMap::from([
+        blockers: std::collections::BTreeMap::from([
             (blocked_attacker, vec![wall]),
             (unrelated_attacker, vec![other_blocker]),
         ]),

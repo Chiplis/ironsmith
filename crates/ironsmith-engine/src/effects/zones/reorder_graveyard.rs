@@ -63,6 +63,9 @@ impl EffectExecutor for ReorderGraveyardEffect {
 
         let spec = OrderGraveyardSpec::new(ctx.source, graveyard.clone());
         let ordered = make_decision(game, ctx.decision_maker, player_id, Some(ctx.source), spec);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         let ordered = normalize_order_response(ordered, &graveyard);
 
         if let Some(player) = game.player_mut(player_id) {

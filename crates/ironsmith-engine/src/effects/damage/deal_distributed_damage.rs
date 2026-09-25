@@ -15,7 +15,6 @@ use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
 use crate::target::PlayerFilter;
 use crate::types::CardType;
-use std::collections::HashMap;
 
 pub use ironsmith_core::DamageDistributionMode;
 
@@ -157,26 +156,38 @@ impl DealDistributedDamageEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let mut allocations: HashMap<Target, u32> = HashMap::new();
+        // Keep allocations in the order targets were chosen (first mention wins)
+        // so damage events apply in the same order on every peer.
+        fn allocation_slot(allocations: &mut Vec<(Target, u32)>, target: Target) -> &mut u32 {
+            let index = match allocations.iter().position(|(existing, _)| *existing == target) {
+                Some(index) => index,
+                None => {
+                    allocations.push((target, 0));
+                    allocations.len() - 1
+                }
+            };
+            &mut allocations[index].1
+        }
+        let mut allocations: Vec<(Target, u32)> = Vec::new();
         for (target, amount) in distribution {
             if amount > 0 && available_targets.contains(&target) {
-                *allocations.entry(target).or_insert(0) += amount;
+                *allocation_slot(&mut allocations, target) += amount;
             }
         }
 
-        let assigned_total: u32 = allocations.values().copied().sum();
+        let assigned_total: u32 = allocations.iter().map(|(_, amount)| *amount).sum();
         if self.distribution == DamageDistributionMode::Chosen && assigned_total > total {
             return Ok(EffectOutcome::impossible());
         }
 
         if self.distribution == DamageDistributionMode::EvenRoundedDown && !allocations.is_empty() {
             let share = total / allocations.len() as u32;
-            for amount in allocations.values_mut() {
+            for (_, amount) in allocations.iter_mut() {
                 *amount = share;
             }
         }
 
-        let distributed_total: u32 = allocations.values().copied().sum();
+        let distributed_total: u32 = allocations.iter().map(|(_, amount)| *amount).sum();
 
         // CR 608.2b does not let a resolving spell reassign damage that was
         // announced for a target that has since become illegal.
@@ -186,7 +197,7 @@ impl DealDistributedDamageEffect {
         {
             let remaining = total - distributed_total;
             if let Some(first_target) = available_targets.first().copied() {
-                *allocations.entry(first_target).or_insert(0) += remaining;
+                *allocation_slot(&mut allocations, first_target) += remaining;
             }
         }
 

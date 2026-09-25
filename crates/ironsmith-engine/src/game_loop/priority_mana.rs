@@ -2782,7 +2782,8 @@ pub(crate) fn propose_spell_cast(
 
         match casting_method {
             CastingMethod::FaceDown => {
-                obj.apply_face_down_cast_overlay();
+                let disguise_ward = crate::decision::face_down_cast_uses_disguise(obj);
+                obj.apply_face_down_cast_overlay_with_disguise_ward(disguise_ward);
                 mark_face_down = true;
             }
             CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { .. } => {

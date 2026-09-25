@@ -82,6 +82,7 @@ import { usePeerLobbyAuditMaterial } from "./peer-lobby/audit-material.js";
 import { usePeerLobbyCryptoResync } from "./peer-lobby/crypto-resync.js";
 import { usePeerLobbyValidation } from "./peer-lobby/validation.js";
 import { useTrustedSequencer } from "./peer-lobby/trusted-sequencer.js";
+import { wireStablePayload } from "../lib/accepted-actions.js";
 import { usePeerLobbyMessaging } from "./peer-lobby/messaging.js";
 
 export function usePeerLobby({
@@ -242,7 +243,7 @@ export function usePeerLobby({
   Object.assign(servicesRef.current, connections);
 
   const auditMaterial = usePeerLobbyAuditMaterial(peerLobbyBase, servicesRef);
-  const { buildLocalDeckAuditManifest, buildLocalOpeningsForCommand, buildLocalRequirementOpeningsForRequirements, buildSequencedActionAudit, currentKnownPublicAuditCheckpointHash, currentPublicAuditCheckpointHash, previewAuditOpeningInInspector, previewRequirementsForCommand, revealAuditOpenings, verifyAuditSatisfiesCryptoRequirements, verifySequencedActionAudit } = auditMaterial;
+  const { buildLocalDeckAuditManifest, buildLocalOpeningsForCommand, buildLocalRequirementOpeningsForRequirements, buildSequencedActionAudit, currentPublicAuditCheckpointHash, previewAuditOpeningInInspector, previewRequirementsForCommand, revealAuditOpenings, verifyAuditSatisfiesCryptoRequirements, verifySequencedActionAudit } = auditMaterial;
   Object.assign(servicesRef.current, auditMaterial);
 
   const cryptoResync = usePeerLobbyCryptoResync(peerLobbyBase, servicesRef);
@@ -793,6 +794,11 @@ export function usePeerLobby({
           setStatus("It is not your turn to act");
           return;
         }
+        // The command is signed (intent + audit envelope) and hashed locally but
+        // crosses PeerJS, where BinaryPack turns `undefined` fields into `null`.
+        // Freeze its wire form now so every signed/hashed copy matches what
+        // peers receive and compare against `message.command`.
+        command = wireStablePayload(command);
         const nextSequence = Number(multiplayerRef.current.lastAppliedSequence || 0) + 1;
         if (trustedMode) {
           await servicesRef.current.submitTrustedIntent(command, label || "");
@@ -935,9 +941,11 @@ export function usePeerLobby({
         let preActionPublicCheckpointHash = "";
         const ensurePreActionPublicCheckpointHash = async () => {
           if (!preActionPublicCheckpointHash) {
-            preActionPublicCheckpointHash =
-              currentKnownPublicAuditCheckpointHash()
-              || await currentPublicAuditCheckpointHash();
+            // Always hash the live engine: receivers check the intent against
+            // their live pre-action state, and the previous action's recorded
+            // post-hash goes stale if anything mutated the engine since then
+            // (late async reveals, a resync import, a rollback).
+            preActionPublicCheckpointHash = await currentPublicAuditCheckpointHash();
           }
           return preActionPublicCheckpointHash;
         };
@@ -1290,24 +1298,6 @@ export function usePeerLobby({
             publishState: publishAppliedStateImmediately,
           })
         );
-        const remotePostOpeningState = await timePeerSyncPhase(
-          "submit_action:reveal_remote_openings_post",
-          {
-            ...submitPerf,
-            openings: Array.isArray(remoteCryptoMaterial.openings) ? remoteCryptoMaterial.openings.length : 0,
-          },
-          () => revealAuditOpenings(
-            remoteCryptoMaterial.openings || [],
-            {
-              timing: "post",
-              shuffleProofs,
-              updateState: false,
-            }
-          )
-        );
-        if (remotePostOpeningState) {
-          appliedState = remotePostOpeningState;
-        }
         const appliedRequirements = await timePeerSyncPhase(
           "submit_action:applied_requirements_from_state",
           submitPerf,
@@ -1375,8 +1365,32 @@ export function usePeerLobby({
             ...submitPerf,
             shuffle_proofs: Array.isArray(localizedShuffleProofs) ? localizedShuffleProofs.length : 0,
           },
-          () => applyVerifiedShuffleProofs(localizedShuffleProofs)
+          () => applyVerifiedShuffleProofs(localizedShuffleProofs, {
+            requirements: shuffleApplicationRequirements,
+          })
         );
+        // Remote post openings are revealed after the verified shuffles are
+        // applied, the same order peers use when they apply this action, so a
+        // card still in a shuffled library is opened against the post-shuffle
+        // ceremony on every seat and is not re-redacted by the reseal.
+        const remotePostOpeningState = await timePeerSyncPhase(
+          "submit_action:reveal_remote_openings_post",
+          {
+            ...submitPerf,
+            openings: Array.isArray(remoteCryptoMaterial.openings) ? remoteCryptoMaterial.openings.length : 0,
+          },
+          () => revealAuditOpenings(
+            remoteCryptoMaterial.openings || [],
+            {
+              timing: "post",
+              shuffleProofs,
+              updateState: false,
+            }
+          )
+        );
+        if (remotePostOpeningState) {
+          appliedState = remotePostOpeningState;
+        }
         await timePeerSyncPhase(
           "submit_action:reveal_local_ziffle_hand",
           {
@@ -1675,6 +1689,9 @@ export function usePeerLobby({
         commitMatchClockAudit(clock, appliedState);
         await appendAppliedSequencedAction(message);
         localSubmissionCommitted = true;
+        // The action is committed; free the engine savepoint now rather than
+        // holding it across relay/publish/drain (drained actions take their own).
+        await localSubmissionSnapshot?.release?.();
         if (signedActionIntent) {
           broadcastActionIntentProgress(
             signedActionIntent,

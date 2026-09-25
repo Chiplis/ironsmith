@@ -193,6 +193,9 @@ impl EffectExecutor for SaddleCostEffect {
             );
             make_decision(game, ctx.decision_maker, controller, Some(source), spec)
         };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
 
         let mut chosen = chosen;
         chosen.sort();

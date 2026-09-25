@@ -1,5 +1,5 @@
 import { createAsyncLimiter } from "../lib/bounded-async.js";
-import { CARD_ASSET_FETCH_OPTIONS, versionedCardAssetUrl } from "../lib/card-asset-cache.js";
+import { CARD_ASSET_MISSING, fetchCardAssetJson, versionedCardAssetUrl } from "../lib/card-asset-cache.js";
 import { createSnapshotEncoder } from "../lib/snapshot-channel.js";
 import { replayTrustedMatch, replayTrustedActions } from "../lib/relay/replay-trusted-match.js";
 import { compileWasmWithProgress } from "../lib/wasm-loading.js";
@@ -47,13 +47,18 @@ let previewWorker = null;
 const targetPreviews = new Map();
 let engineModule = null;
 let engineExports = null;
+// Routes the server answered with a definitive 404. Any other failure (SPA
+// HTML fallback, captive portal, truncated cached body) is transient: it is
+// only remembered briefly, so a later reveal of that card retries instead of
+// failing "unknown card name" on this peer for the rest of the session.
 const missingCardRoutes = new Set();
+const transientMissingCardRoutes = new Map();
+const TRANSIENT_CARD_SOURCE_MISS_MS = 15_000;
 // Card assets are a few KB each and share one HTTP/2 connection, so a table
 // that needs dozens of them is bounded by round trips, not bandwidth.
 const fetchSource = createAsyncLimiter(24);
 const sourceRequests = new Map();
 const knownRuntimeCardNames = new Set();
-const STABLE_CARD_ASSET_FETCH_OPTIONS = CARD_ASSET_FETCH_OPTIONS;
 const SNAPSHOT_METHODS = new Set([
   "advancePhase",
   "applyVerifiedHiddenLibraryShuffle",
@@ -408,14 +413,13 @@ async function loadCardIndex() {
     return null;
   }
   if (!cardIndexPromise) {
-    cardIndexPromise = fetch(
+    const indexPromise = fetchCardAssetJson(
       versionedCardAssetUrl(new URL("index.json", cardAssetsBaseUrl).href),
-      STABLE_CARD_ASSET_FETCH_OPTIONS
-    ).then(async (response) => {
-      if (!response.ok) {
-        throw new Error(`Card index fetch failed: HTTP ${response.status}`);
+      { validate: (value) => Boolean(value && typeof value === "object") }
+    ).then((index) => {
+      if (index === CARD_ASSET_MISSING) {
+        throw new Error("Card index fetch failed: HTTP 404");
       }
-      const index = await response.json();
       const cards = Array.isArray(index.cards) ? index.cards : [];
       const normalizedCards = cards.map((card) => {
         const name = String(card?.name || "").trim();
@@ -431,6 +435,11 @@ async function loadCardIndex() {
         cards: normalizedCards,
       };
     });
+    // Never pin a failed index load for the session; the next caller retries.
+    indexPromise.catch(() => {
+      if (cardIndexPromise === indexPromise) cardIndexPromise = null;
+    });
+    cardIndexPromise = indexPromise;
   }
   return cardIndexPromise;
 }
@@ -467,27 +476,25 @@ async function fetchCardSourceUncached(name) {
   if (previewCardSources.has(route)) return previewCardSources.get(route);
   const url = cardAssetUrl(route);
   if (!url) return null;
-  const response = await fetch(url, STABLE_CARD_ASSET_FETCH_OPTIONS);
-  if (response.status === 404) {
-    missingCardRoutes.add(route);
-    return null;
+  const retryAt = transientMissingCardRoutes.get(route);
+  if (retryAt != null) {
+    if (Date.now() < retryAt) return null;
+    transientMissingCardRoutes.delete(route);
   }
-  if (!response.ok) {
-    throw new Error(`Card source fetch failed for "${name}": HTTP ${response.status}`);
-  }
-  const contentType = String(response.headers.get("content-type") || "").toLowerCase();
-  if (!contentType.includes("application/json")) {
-    missingCardRoutes.add(route);
-    return null;
-  }
-  let payload = null;
+  let payload;
   try {
-    payload = await response.json();
-  } catch {
-    missingCardRoutes.add(route);
+    payload = await fetchCardAssetJson(url, {
+      validate: (value) => Boolean(value && typeof value === "object" && value.group),
+    });
+  } catch (error) {
+    if (!error?.cardAssetInvalidBody) {
+      throw new Error(`Card source fetch failed for "${name}": ${error?.message || error}`);
+    }
+    console.warn(`[ironsmith] card source for "${name}" is temporarily unavailable`, error);
+    transientMissingCardRoutes.set(route, Date.now() + TRANSIENT_CARD_SOURCE_MISS_MS);
     return null;
   }
-  if (!payload || typeof payload !== "object" || !payload.group) {
+  if (payload === CARD_ASSET_MISSING) {
     missingCardRoutes.add(route);
     return null;
   }
@@ -723,6 +730,7 @@ async function handleInit(msg = {}) {
     registeredCardRoutes.clear();
     previewCardSources.clear();
     missingCardRoutes.clear();
+    transientMissingCardRoutes.clear();
     const assetBaseUrl = String(msg.assetBaseUrl || "").trim();
     cardAssetsBaseUrl = assetBaseUrl ? new URL("cards/", assetBaseUrl).href : null;
     postProgress("module", 0);

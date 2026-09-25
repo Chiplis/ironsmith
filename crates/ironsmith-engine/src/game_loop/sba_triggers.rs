@@ -273,6 +273,12 @@ pub fn put_triggers_on_stack_with_dm(
 
     loop {
         drain_pending_trigger_events(game, trigger_queue);
+        // Hidden-information matches: the owner of a hidden card just drawn
+        // answers its draw reveal window before triggers are put on the stack
+        // (CR 702.94a: a miracle card triggers only if revealed as drawn).
+        if resolve_pending_hidden_draw_reveals(game, trigger_queue, decision_maker) {
+            return Ok(());
+        }
         drain_ability_triggered_events(game, trigger_queue, &mut announced_counts)?;
 
         // Triggered mana abilities resolve immediately and never use the stack.
@@ -331,6 +337,55 @@ pub fn put_triggers_on_stack_with_dm(
             return Ok(());
         }
     }
+}
+
+/// Answer the pending draw reveal windows of hidden-information matches.
+///
+/// Every peer opens the same window for a hidden card drawn by an eligible
+/// player (`GameState::note_hidden_draw_for_reveal_window`) and asks its owner
+/// whether to reveal it. The owner's answer names the card with a public
+/// selection reveal policy, so the peer front end opens its identity on every
+/// peer before replaying the answer; then every engine re-checks the draw for
+/// that card's own hand-functioning triggers (Miracle) identically. Declining
+/// keeps the card private and triggers nothing, as a declined miracle reveal.
+///
+/// Returns true when the window is awaiting the owner's answer.
+fn resolve_pending_hidden_draw_reveals(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    decision_maker: &mut dyn DecisionMaker,
+) -> bool {
+    while let Some((player, card)) = game.next_pending_hidden_draw_reveal() {
+        let Some(revealed) = game.reveal_private_hidden_cards_publicly(
+            decision_maker,
+            player,
+            card,
+            &[card],
+            "You may reveal the first card you drew this turn as you draw it (Miracle)",
+            true,
+        ) else {
+            return true;
+        };
+        game.finish_pending_hidden_draw_reveal(card);
+        if !revealed.contains(&card) {
+            continue;
+        }
+        let provenance = game
+            .provenance_graph_mut()
+            .alloc_root_event(crate::events::EventKind::CardsDrawn);
+        let event = TriggerEvent::new(
+            crate::events::other::CardsDrawnEvent::new(player, vec![card], true),
+            provenance,
+        );
+        game.refresh_continuous_state();
+        for trigger in crate::triggers::check_triggers(game, &event) {
+            // Every other source already saw the original draw event.
+            if trigger.source == card {
+                trigger_queue.add(trigger);
+            }
+        }
+    }
+    false
 }
 
 fn drain_ability_triggered_events(

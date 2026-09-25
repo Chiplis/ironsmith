@@ -371,7 +371,7 @@ pub(crate) trait TailMatchSubject: TaggedConstraintSubject {
     fn tail_object_id(&self) -> ObjectId;
     fn tail_name(&self) -> &str;
     fn tail_first_printed_set_name(&self) -> Option<&str>;
-    fn tail_counters(&self) -> &std::collections::HashMap<CounterType, u32>;
+    fn tail_counters(&self) -> &std::collections::BTreeMap<CounterType, u32>;
     fn tail_abilities(&self) -> &[crate::ability::Ability];
     fn tail_has_alternative_cast_kind(
         &self,
@@ -448,7 +448,7 @@ impl TailMatchSubject for Object {
         self.first_printed_set_name.as_deref()
     }
 
-    fn tail_counters(&self) -> &std::collections::HashMap<CounterType, u32> {
+    fn tail_counters(&self) -> &std::collections::BTreeMap<CounterType, u32> {
         &self.counters
     }
 
@@ -558,7 +558,7 @@ impl TailMatchSubject for LayeredSubject<'_> {
         }
     }
 
-    fn tail_counters(&self) -> &std::collections::HashMap<CounterType, u32> {
+    fn tail_counters(&self) -> &std::collections::BTreeMap<CounterType, u32> {
         &self.object.counters
     }
 
@@ -660,7 +660,7 @@ impl TailMatchSubject for ObjectSnapshot {
         self.first_printed_set_name.as_deref()
     }
 
-    fn tail_counters(&self) -> &std::collections::HashMap<CounterType, u32> {
+    fn tail_counters(&self) -> &std::collections::BTreeMap<CounterType, u32> {
         &self.counters
     }
 
@@ -1497,7 +1497,7 @@ fn resolve_filter_comparison_rhs_value(
     use crate::effect::Value;
     use crate::target::ChooseSpec;
 
-    fn total_counters(counters: &std::collections::HashMap<CounterType, u32>) -> i32 {
+    fn total_counters(counters: &std::collections::BTreeMap<CounterType, u32>) -> i32 {
         counters.values().copied().sum::<u32>() as i32
     }
 

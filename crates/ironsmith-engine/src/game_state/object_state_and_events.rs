@@ -2251,6 +2251,9 @@ impl GameState {
                 self.are_opponents(controller, monarch).then_some(group_id)
             })
             .collect::<Vec<_>>();
+        // Sorted: returns allocate new object ids, so order must match on every peer.
+        let mut qualifying_groups = qualifying_groups;
+        qualifying_groups.sort_unstable();
 
         for group_id in qualifying_groups {
             self.exile_tracking_mut()

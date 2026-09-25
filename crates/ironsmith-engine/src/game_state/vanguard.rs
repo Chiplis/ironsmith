@@ -49,9 +49,9 @@ impl GameState {
         }
 
         let mut state = VanguardState {
-            cards: HashMap::new(),
-            hand_modifiers: HashMap::new(),
-            life_modifiers: HashMap::new(),
+            cards: std::collections::BTreeMap::new(),
+            hand_modifiers: std::collections::BTreeMap::new(),
+            life_modifiers: std::collections::BTreeMap::new(),
         };
         for (owner, mut definition) in cards {
             let hand_modifier = definition.card.hand_modifier;

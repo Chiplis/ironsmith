@@ -3,7 +3,6 @@
 //! This module provides the `make_decision` function, which is the primary
 //! entry point for making player decisions using the new spec-based system.
 
-use std::collections::HashMap;
 
 use crate::color::Color;
 use crate::decision::{DecisionMaker, FallbackStrategy, LegalAction};
@@ -117,6 +116,7 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                 && ctx.max == Some(1)
                 && !ctx.allow_partial_completion
                 && !ctx.require_explicit_choice
+                && !select_objects_offers_hidden_zone_cards(game, &ctx)
             {
                 let mut legal = ctx.candidates.iter().filter(|candidate| candidate.legal);
                 if let Some(candidate) = legal.next()
@@ -347,6 +347,26 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
     }
 }
 
+/// Whether a selection offers cards in a hidden zone (hand, library) whose
+/// identity the mental-poker layer tracks.
+///
+/// Such candidate lists can differ between peers: the owner sees which of
+/// its hidden cards match, the other peers hold placeholders. Auto-picking a
+/// lone legal candidate would then answer the decision on one peer and prompt
+/// on another, desyncing the positional decision stream, so these decisions
+/// are always asked. The test is symmetric: every peer tracks the same cards.
+fn select_objects_offers_hidden_zone_cards(
+    game: &GameState,
+    ctx: &crate::decisions::context::SelectObjectsContext,
+) -> bool {
+    ctx.candidates.iter().any(|candidate| {
+        game.hidden_card_info(candidate.id).is_some()
+            && game
+                .object(candidate.id)
+                .is_some_and(|object| object.zone.is_hidden())
+    })
+}
+
 pub fn publish_hidden_card_views_for_decision(
     game: &GameState,
     dm: &mut (impl DecisionMaker + ?Sized),
@@ -357,7 +377,9 @@ pub fn publish_hidden_card_views_for_decision(
             continue;
         }
 
-        let mut grouped: HashMap<(PlayerId, Zone), Vec<ObjectId>> = HashMap::new();
+        // Ordered: view/crypto requirement order must match on every peer.
+        let mut grouped: std::collections::BTreeMap<(PlayerId, Zone), Vec<ObjectId>> =
+            std::collections::BTreeMap::new();
         for &id in &view.object_ids {
             let Some(object) = game.object(id) else {
                 continue;

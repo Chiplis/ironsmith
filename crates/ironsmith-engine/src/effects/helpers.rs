@@ -62,7 +62,9 @@ pub(crate) fn view_hidden_candidate_objects(
     } else {
         HashSet::new()
     };
-    let mut grouped: HashMap<(PlayerId, Zone), Vec<ObjectId>> = HashMap::new();
+    // Ordered map: view/crypto requirement order must match on every peer.
+    let mut grouped: std::collections::BTreeMap<(PlayerId, Zone), Vec<ObjectId>> =
+        std::collections::BTreeMap::new();
     for &id in candidates {
         if already_publicly_revealed.contains(&id) {
             continue;
@@ -1916,7 +1918,26 @@ pub fn resolve_objects_for_effect_with_choice_description(
             None
         };
         let mut candidates = candidate_object_ids_for_filter(game, filter, ctx);
-        if candidates.is_empty() {
+        // A choice among hidden hand cards must look the same on every peer:
+        // the owner knows which cards match, peers hold placeholders. Keep the
+        // placeholders choosable and never skip, auto-pick, or fail the choice
+        // because of the local filter result (see
+        // `game_state::hidden_hand_choices`).
+        let hidden_filter_ctx = ctx.filter_context(game);
+        let hidden_hand_choice = !count.is_random()
+            && game.hidden_hand_choice_for_filter(filter, &hidden_filter_ctx);
+        if hidden_hand_choice {
+            for id in game.hidden_hand_placeholder_candidates(
+                filter,
+                &hidden_filter_ctx,
+                game.all_hand_card_ids(),
+            ) {
+                if !candidates.contains(&id) {
+                    candidates.push(id);
+                }
+            }
+        }
+        if candidates.is_empty() && !hidden_hand_choice {
             if count.min == 0 || resolved_dynamic_count.is_some() {
                 return Ok(Vec::new());
             }
@@ -1939,10 +1960,10 @@ pub fn resolve_objects_for_effect_with_choice_description(
             } else if spec.count_value().is_some() {
                 let bounded = x.min(candidates.len());
                 (bounded, bounded)
-            } else if x > candidates.len() {
+            } else if x > candidates.len() && !hidden_hand_choice {
                 return Err(ExecutionError::InvalidTarget);
             } else {
-                (x, x)
+                (x.min(candidates.len()), x.min(candidates.len()))
             }
         } else {
             (
@@ -1969,7 +1990,7 @@ pub fn resolve_objects_for_effect_with_choice_description(
             return Ok(candidates);
         }
 
-        if candidates.len() < min {
+        if candidates.len() < min && !hidden_hand_choice {
             return Err(ExecutionError::InvalidTarget);
         }
 
@@ -2039,24 +2060,49 @@ pub fn resolve_objects_for_effect_with_choice_description(
             );
         }
 
-        if candidates.len() == 1 && min == 1 && max == 1 {
+        if candidates.len() == 1 && min == 1 && max == 1 && !hidden_hand_choice {
             return Ok(candidates);
         }
 
         let description =
             choice_description.unwrap_or_else(|| format!("Choose {}", filter.description()));
         let choosing_player = ctx.iteration.iterated_player.unwrap_or(ctx.controller);
+        let mut choice_spec = ChooseObjectsSpec::new(
+            ctx.source,
+            description.clone(),
+            candidates.clone(),
+            min,
+            Some(max),
+        );
+        if hidden_hand_choice {
+            choice_spec = choice_spec
+                .allow_partial_completion()
+                .require_explicit_choice();
+        }
         let chosen: Vec<ObjectId> = make_decision(
             game,
             ctx.decision_maker,
             choosing_player,
             Some(ctx.source),
-            ChooseObjectsSpec::new(ctx.source, description, candidates.clone(), min, Some(max)),
+            choice_spec,
         );
         if ctx.decision_maker.awaiting_choice() {
             return Ok(Vec::new());
         }
 
+        if hidden_hand_choice {
+            // No fill-to-minimum and no identity-dependent normalization: both
+            // would rewrite the choice differently on peers holding
+            // placeholders. Chosen placeholders are validated once opened.
+            let chosen = normalize_objects_for_count(chosen, &candidates, 0, max);
+            game.record_hidden_identity_obligations(
+                &chosen,
+                filter,
+                &hidden_filter_ctx,
+                &description,
+            );
+            return Ok(chosen);
+        }
         let chosen = normalize_objects_for_count(chosen, &candidates, min, max);
         let chosen = if filter.distinct_mana_values {
             normalize_chosen_distinct_mana_values(game, chosen, &candidates, min, max, true)

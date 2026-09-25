@@ -50,9 +50,7 @@ import {
   nowMonotonicMs,
   openingHasZifflePosition,
   payloadSizeBytes,
-  playerLibraryOrderFromCheckpoint,
   playerNameForIndex,
-  projectShuffleOrderToCurrentLibrary,
   protocolResponseTimeoutClaimFromError,
   publicCheckpointHash,
   publicDeckManifest,
@@ -356,16 +354,26 @@ export function usePeerLobbyValidation(base, servicesRef) {
       return;
     }
 
-    const validationSnapshot = (dryRun || isTrustedMultiplayerSecurityMode(sessionSecurityMode(session)))
-      ? await createSequencedActionValidationSnapshot()
-      : null;
+    // Every apply (dry run, trusted and audited) is transactional: a failure
+    // after the engine or crypto bookkeeping has been mutated (post-reveal
+    // checks, checkpoint hash mismatch, reveal-token timeouts) must leave this
+    // seat exactly at N-1 so a later copy of action N, or a resync, applies on
+    // a consistent base. Runtime savepoints make this an engine-side handle;
+    // it is released as soon as the action commits and always in `finally`.
+    const validationSnapshot = await createSequencedActionValidationSnapshot();
     let snapshotRestored = false;
+    let snapshotReleased = false;
     const restoreValidationSnapshot = async () => {
-      if (!validationSnapshot || snapshotRestored) return;
+      if (!validationSnapshot || snapshotRestored || snapshotReleased) return;
       snapshotRestored = await restoreSequencedActionValidationSnapshotIfCurrent(validationSnapshot);
       if (!snapshotRestored) {
         throw new Error("Action validation snapshot was superseded by a newer action");
       }
+    };
+    const releaseValidationSnapshot = async () => {
+      if (snapshotReleased) return;
+      snapshotReleased = true;
+      await validationSnapshot?.release?.();
     };
 
     if (!dryRun) {
@@ -436,6 +444,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
           ...message,
           securityMode: MULTIPLAYER_SECURITY_TRUSTED,
         });
+        await releaseValidationSnapshot();
         recordDiagnosticEvent("apply_action:applied", applyPhaseReport());
         if (Number(nextSequence) === Number(matchClockObservationExemptSequenceRef.current || 0)) {
           matchClockObservationExemptSequenceRef.current = 0;
@@ -611,11 +620,6 @@ export function usePeerLobbyValidation(base, servicesRef) {
         sequence: nextSequence,
         publishState: publishAppliedStateImmediately,
       });
-      const remotePostOpeningState = await revealAuditOpenings(message.audit?.openings || [], {
-        timing: "post",
-        shuffleProofs: message.audit?.shuffleProofs || [],
-        updateState: false,
-      });
       const appliedCryptoRequirements = filterCryptoRequirementsForCommand(
         localCommand,
         liveStateForClock,
@@ -646,7 +650,20 @@ export function usePeerLobbyValidation(base, servicesRef) {
         actionShuffleProofs,
         actionShuffleApplicationRequirements
       );
-      await applyVerifiedShuffleProofs(localizedActionShuffleProofs);
+      await applyVerifiedShuffleProofs(localizedActionShuffleProofs, {
+        requirements: actionCryptoRequirements,
+      });
+      // Post openings are revealed only after the verified shuffles are applied,
+      // matching the actor, which reseals before building its post openings: a
+      // card still in the library after the shuffle (Courser of Kruphix, Future
+      // Sight, shuffle-then-reveal-top) is opened at its post-shuffle ziffle
+      // position, and revealing it before the reseal would be undone by the
+      // reseal's redaction.
+      const remotePostOpeningState = await revealAuditOpenings(message.audit?.openings || [], {
+        timing: "post",
+        shuffleProofs: message.audit?.shuffleProofs || [],
+        updateState: false,
+      });
       await verifyAuditSatisfiesCryptoRequirements({
         requirements: appliedCryptoRequirements,
         audit: message.audit,
@@ -680,6 +697,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       }
       commitMatchClockAudit(message.audit?.clock, appliedState);
       await appendAppliedSequencedAction(message);
+      await releaseValidationSnapshot();
       recordDiagnosticEvent("apply_action:applied", applyPhaseReport());
       if (Number(nextSequence) === Number(matchClockObservationExemptSequenceRef.current || 0)) {
         matchClockObservationExemptSequenceRef.current = 0;
@@ -705,13 +723,12 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	          error: failureReason,
 	        });
 	      }
-      if (validationSnapshot) {
-        try {
-          await restoreValidationSnapshot();
-        } catch {
-          // Preserve the validation error as the actionable failure.
-        }
-      } else {
+      try {
+        await restoreValidationSnapshot();
+      } catch {
+        // Preserve the validation error as the actionable failure.
+      }
+      if (!snapshotRestored) {
         updateMultiplayer((prev) => ({
           ...prev,
           submittingAction: false,
@@ -773,7 +790,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
         throw err;
       }
     } finally {
-      await validationSnapshot?.release?.();
+      await releaseValidationSnapshot();
     }
   }
 
@@ -1297,7 +1314,20 @@ export function usePeerLobbyValidation(base, servicesRef) {
       if (type === "private_open" && viewer !== Number(requester)) continue;
       if (type === "private_view_window" && viewer !== Number(requester)) continue;
       if (type === "public_open" || type === "private_open") {
-        const position = ziffleRevealPositionFromRequirement(requirement);
+        let position = ziffleRevealPositionFromRequirement(requirement);
+        // A card outside the library is opened at its pinned position in the
+        // ceremony its public commitment names; that pin does not authorize the
+        // same position number in a different (later) ceremony.
+        const pinnedDeckHash = String(zone || "").toLowerCase() !== "library"
+          ? zifflePublicPositionFromSources(requirement)?.deckHash || ""
+          : "";
+        const ceremonyDeckHash = String(ceremony?.deckHash || "");
+        if (pinnedDeckHash && ceremonyDeckHash && pinnedDeckHash !== ceremonyDeckHash) {
+          position =
+            zifflePositionFromCommitment(requirement?.commitment)
+            ?? zifflePositionFromCommitment(requirement?.positionCommitment)
+            ?? zifflePositionFromCommitment(requirement?.position_commitment);
+        }
         if (position != null) exactPositions.add(position);
       } else if (type === "verifiable_shuffle" && zone === "library") {
         const afterOrder = normalizeShuffleOrder(requirement?.afterOrder ?? requirement?.after_order);
@@ -2539,55 +2569,73 @@ export function usePeerLobbyValidation(base, servicesRef) {
     }
   }
 
-	  async function applyVerifiedShuffleProofs(shuffleProofs = []) {
-	    const currentGame = gameRef.current;
-	    if (!currentGame || typeof currentGame.applyVerifiedHiddenLibraryShuffle !== "function") return;
-	    for (const proof of shuffleProofs || []) {
-	      if (String(proof?.zone || "library") !== "library") continue;
-	      let afterOrder = normalizeShuffleOrder(proof.afterOrder ?? proof.after_order);
-	      if (typeof currentGame.exportSyncCheckpoint === "function") {
-	        try {
-	          const checkpoint = await currentGame.exportSyncCheckpoint();
-	          const currentLibrary = playerLibraryOrderFromCheckpoint(checkpoint, proof.owner);
-	          if (currentLibrary.length > 0) {
-	            const projectedAfterOrder = projectShuffleOrderToCurrentLibrary(afterOrder, currentLibrary);
-	            if (projectedAfterOrder) {
-	              afterOrder = projectedAfterOrder;
-	            } else if (
-	              afterOrder.length >= currentLibrary.length
-	              && String(proof.deckHash || "")
-	            ) {
-	              afterOrder = currentLibrary;
-	            }
-	          }
-	        } catch {
-	          // Fall back to the proof-carried order; the engine will validate coverage.
-	        }
-	      }
-	      try {
-	        await currentGame.applyVerifiedHiddenLibraryShuffle({
-	          owner: Number(proof.owner),
-	          deckHash: String(proof.deckHash || ""),
-	          afterOrder,
+  // Applies verified ziffle shuffles to the local engine, in the order the
+  // shuffles happened within the action (alignShuffleProofsWithRequirements
+  // sorts them chronologically and matches proofs by requirement id only).
+  //
+  // Each proof's afterOrder is the full verified deck: index p is the object at
+  // ziffle position p. It is passed to the engine unprojected so that
+  //  - cards that left the library after the shuffle in the same action (draws,
+  //    mulligans, Mind's Desire) are re-pinned to their post-shuffle position,
+  //  - library cards that were excluded from the shuffle and reinserted
+  //    (Mystical/Vampiric/Enlightened/Worldly Tutor, Imperial Seal: the engine
+  //    journals the shuffle over N-1 cards plus a hidden_order_update over N)
+  //    keep their existing verified position, and
+  //  - the lookup ceremony keeps every position, so zifflePositionForObjectId
+  //    still resolves drawn/exiled cards.
+  // The engine only re-sequences the library to a proof's order for the last
+  // shuffle of that owner, and only when no deterministic reorder
+  // (hidden_order_update) in the action moved cards around it.
+  async function applyVerifiedShuffleProofs(shuffleProofs = [], options = {}) {
+    const currentGame = gameRef.current;
+    if (!currentGame || typeof currentGame.applyVerifiedHiddenLibraryShuffle !== "function") return;
+    const libraryProofs = (shuffleProofs || []).filter((proof) =>
+      proof && String(proof?.zone || "library") === "library"
+    );
+    if (libraryProofs.length === 0) return;
+    const lastProofIndexByOwner = new Map();
+    libraryProofs.forEach((proof, index) => {
+      lastProofIndexByOwner.set(Number(proof.owner), index);
+    });
+    const ownersWithOrderUpdates = new Set(
+      (options.requirements || [])
+        .filter((requirement) =>
+          ziffleRequirementType(requirement) === "hidden_order_update"
+          && String(requirement?.zone || "library") === "library"
+        )
+        .map((requirement) => Number(requirement.owner))
+    );
+    for (const [index, proof] of libraryProofs.entries()) {
+      const owner = Number(proof.owner);
+      const afterOrder = normalizeShuffleOrder(proof.afterOrder ?? proof.after_order);
+      const enforceLibraryOrder =
+        lastProofIndexByOwner.get(owner) === index
+        && !ownersWithOrderUpdates.has(owner);
+      try {
+        await currentGame.applyVerifiedHiddenLibraryShuffle({
+          owner,
+          deckHash: String(proof.deckHash || ""),
+          afterOrder,
+          enforceLibraryOrder,
         });
       } catch (err) {
         throw new Error(
           `${String(err?.message || err || "failed to apply verified shuffle")}; `
-          + `shuffle proof owner ${Number(proof.owner)} requirement ${String(proof.requirementId || "")} `
+          + `shuffle proof owner ${owner} requirement ${String(proof.requirementId || "")} `
           + `afterOrderLen ${afterOrder.length} firstAfterOrder ${afterOrder.slice(0, 12).join(",")}`
         );
-	      }
-		      clearOwnerZiffleOpeningCache(proof.owner);
-			      const localProof = {
-			        ...cloneMultiplayerPayload(proof),
-			        afterOrder,
-			        after_order: afterOrder,
-			        authenticatedOrder: true,
-			      };
-		      liveZiffleCeremoniesRef.current.set(Number(proof.owner), localProof);
-	      rememberLocalZiffleCeremonyForLookup(localProof);
-	    }
-	  }
+      }
+      clearOwnerZiffleOpeningCache(owner);
+      const localProof = {
+        ...cloneMultiplayerPayload(proof),
+        afterOrder,
+        after_order: afterOrder,
+        authenticatedOrder: true,
+      };
+      liveZiffleCeremoniesRef.current.set(owner, localProof);
+      rememberLocalZiffleCeremonyForLookup(localProof);
+    }
+  }
 
   async function rngCommitmentForNonce(nonceHex) {
     return sha256Hex(canonicalJson({

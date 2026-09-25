@@ -1570,24 +1570,48 @@ export function shuffleProofWithRequirementOrder(proof, requirement) {
   };
 }
 
+function shuffleRequirementRandomCountBefore(requirement) {
+  const value = Number(requirement?.randomCountBefore ?? requirement?.random_count_before);
+  return Number.isSafeInteger(value) && value >= 0 ? value : Number.MAX_SAFE_INTEGER;
+}
+
+// Pairs each verifiable_shuffle requirement with its proof by requirement id
+// only (never by owner/zone alone: with two shuffles of the same library in one
+// action that would attach one shuffle's proof to the other's requirement), and
+// returns the pairs in the order the shuffles happened (the engine's random
+// counter at shuffle time), so they can be applied in sequence.
 export function alignShuffleProofsWithRequirements(shuffleProofs = [], requirements = []) {
-  const shuffleRequirements = (requirements || []).filter((requirement) =>
-    String(requirement?.type || requirement?.requirement_type || "") === "verifiable_shuffle"
-  );
+  const seenRequirementIds = new Set();
+  const shuffleRequirements = (requirements || []).filter((requirement) => {
+    if (String(requirement?.type || requirement?.requirement_type || "") !== "verifiable_shuffle") {
+      return false;
+    }
+    const id = String(requirement?.id || requirement?.requirementId || requirement?.requirement_id || "");
+    if (!id) return true;
+    if (seenRequirementIds.has(id)) return false;
+    seenRequirementIds.add(id);
+    return true;
+  });
   if (shuffleRequirements.length === 0) return shuffleProofs || [];
   const aligned = [];
   const usedProofs = new Set();
-  for (const requirement of shuffleRequirements) {
+  for (const [index, requirement] of shuffleRequirements.entries()) {
     const proof = (shuffleProofs || []).find((candidate) =>
       !usedProofs.has(candidate) && shuffleProofMatchesRequirement(candidate, requirement)
-    ) || (shuffleProofs || []).find((candidate) =>
-      !usedProofs.has(candidate) && shuffleProofSameOwnerZone(candidate, requirement)
     );
     if (!proof) continue;
     usedProofs.add(proof);
-    aligned.push(shuffleProofWithRequirementOrder(proof, requirement));
+    aligned.push({
+      index,
+      randomCountBefore: shuffleRequirementRandomCountBefore(requirement),
+      proof: shuffleProofWithRequirementOrder(proof, requirement),
+    });
   }
-  return aligned.length > 0 ? aligned : (shuffleProofs || []);
+  if (aligned.length === 0) return shuffleProofs || [];
+  aligned.sort((left, right) =>
+    left.randomCountBefore - right.randomCountBefore || left.index - right.index
+  );
+  return aligned.map((entry) => entry.proof);
 }
 
 export function wasmObjectIdArg(objectId) {
@@ -2479,6 +2503,52 @@ export function clearStoredRevealedOpeningsForMatchOwner(matchId, owner) {
   }
 }
 
+// Storage-side twin of the in-memory purge in clearOwnerZiffleOpeningCache.
+// A shuffle invalidates every ziffle position the owner's cached openings
+// carry; entries that only live in session storage (written before a refresh
+// or reconnect) must be purged too, or readEntry would reload an
+// `object:<id>` / `position:` entry pinned to a pre-shuffle position.
+// Object- and position-indexed entries are removed; the owner's other entries
+// (slot/commitment indexed) keep their card identity but lose the position.
+// `skipIndexKeys` lists entries the caller already rewrote from memory.
+export function purgeStoredZifflePositionOpeningsForMatchOwner(matchId, owner, skipIndexKeys = null) {
+  const storage = getPeerSessionStorage();
+  if (!storage) return;
+  const normalizedOwner = Number(owner);
+  if (!Number.isSafeInteger(normalizedOwner)) return;
+  const normalizedMatchId = String(matchId || "");
+  const storagePrefix = revealedOpeningStorageKey("");
+  const matchPrefix = revealedOpeningStorageKey(`${normalizedMatchId}:`);
+  const objectPrefix = `${normalizedMatchId}:object:`;
+  const positionPrefix = `${normalizedMatchId}:owner:${normalizedOwner}:position:`;
+  try {
+    const removals = [];
+    const rewrites = [];
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (!key || !key.startsWith(matchPrefix)) continue;
+      const indexKey = key.slice(storagePrefix.length);
+      if (skipIndexKeys && skipIndexKeys.has(indexKey)) continue;
+      let parsed = null;
+      try {
+        parsed = JSON.parse(storage.getItem(key) || "null");
+      } catch {
+        parsed = null;
+      }
+      if (!parsed || Number(parsed.owner) !== normalizedOwner) continue;
+      if (indexKey.startsWith(objectPrefix) || indexKey.startsWith(positionPrefix)) {
+        removals.push(key);
+      } else {
+        rewrites.push([key, stripTransientZifflePositionOpeningFields(parsed)]);
+      }
+    }
+    for (const key of removals) storage.removeItem(key);
+    for (const [key, opening] of rewrites) storage.setItem(key, JSON.stringify(opening));
+  } catch {
+    // Ignore localStorage failures.
+  }
+}
+
 export function ziffleIdentityStorageKey(context) {
   return `${ZIFFLE_IDENTITY_STORAGE_PREFIX}:${String(context || "")}`;
 }
@@ -2846,11 +2916,17 @@ export function hiddenSourceZone(source) {
   return String(source?.zone ?? source?.hiddenZone ?? source?.hidden_zone ?? "").trim().toLowerCase();
 }
 
+// The ziffle position a hidden card is pinned to. The engine publishes
+// `publicSlot` / `publicCommitment` ("ziffle:<deckHash>:<position>") when a
+// verified shuffle reseals the library and carries it through zone changes;
+// the reseal also re-pins cards that left the library after the shuffle in the
+// same action. The pin is therefore authoritative in every zone: a card that
+// left the library before a later shuffle (Urza's Saga III, fetchlands,
+// Stoneforge, search-then-shuffle) must be opened at its pinned position in the
+// ceremony whose deckHash the commitment names, never re-derived against the
+// live post-shuffle ceremony (whose order no longer contains it).
 export function zifflePublicPositionFromSources(...sources) {
-  const knownZones = (sources || [])
-    .map(hiddenSourceZone)
-    .filter(Boolean);
-  const useAsPosition = !knownZones.some((zone) => zone !== "library");
+  const useAsPosition = true;
   for (const source of sources || []) {
     if (!source || typeof source !== "object") continue;
     const publicCommitment = String(

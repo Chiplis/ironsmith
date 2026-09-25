@@ -13,7 +13,6 @@
 //! - Rule 608.2h: If a spell or ability needs to use information about an object
 //!   that has left a zone, it uses the object's last known information.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::ability::{Ability, AbilityKind};
@@ -197,7 +196,7 @@ pub struct ObjectSnapshot {
 
     // === Non-copiable state ===
     /// Counters on the object.
-    pub counters: HashMap<CounterType, u32>,
+    pub counters: std::collections::BTreeMap<CounterType, u32>,
     /// Whether this was a token.
     pub is_token: bool,
     /// Whether the object was tapped.
@@ -688,7 +687,7 @@ impl ObjectSnapshot {
             snow_mana_spent_to_cast: ManaPool::default(),
             mana_sources_spent_to_cast: Vec::new(),
             optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
-            counters: HashMap::new(),
+            counters: std::collections::BTreeMap::new(),
             is_token: false,
             tapped: false,
             attacking: false,
@@ -745,7 +744,7 @@ impl ObjectSnapshot {
 
     /// Set counters for testing.
     #[cfg(test)]
-    pub fn with_counters(mut self, counters: HashMap<CounterType, u32>) -> Self {
+    pub fn with_counters(mut self, counters: std::collections::BTreeMap<CounterType, u32>) -> Self {
         self.counters = counters;
         self
     }

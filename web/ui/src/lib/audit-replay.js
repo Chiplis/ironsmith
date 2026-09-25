@@ -1,5 +1,6 @@
 import { publicCheckpointHash } from "./multiplayer-audit.js";
 import { resolveSyncedCommand } from "./sync-commands.js";
+import { captureEngineRestorePoint, restoreEngineRestorePoint } from "./engine-restore-point.js";
 
 const DEFAULT_OPENING_HAND_SIZE = 7;
 
@@ -273,21 +274,38 @@ function alignShuffleProofsWithRequirements(shuffleProofs = [], requirements = [
     requirementType(requirement) === "verifiable_shuffle"
   );
   if (shuffleRequirements.length === 0) return shuffleProofs || [];
+  // Match by requirement id only and apply in shuffle order (engine random
+  // counter), mirroring the live peer path.
   const aligned = [];
   const usedProofs = new Set();
-  for (const requirement of shuffleRequirements) {
+  const seenRequirementIds = new Set();
+  for (const [index, requirement] of shuffleRequirements.entries()) {
+    const id = String(requirementId(requirement) || "");
+    if (id) {
+      if (seenRequirementIds.has(id)) continue;
+      seenRequirementIds.add(id);
+    }
     const proof = (shuffleProofs || []).find((candidate) =>
       !usedProofs.has(candidate) && shuffleProofMatchesRequirement(candidate, requirement)
-    ) || (shuffleProofs || []).find((candidate) =>
-      !usedProofs.has(candidate)
-      && Number(candidate?.owner) === Number(requirement.owner)
-      && String(candidate?.zone || "library") === String(requirement.zone || "library")
     );
     if (!proof) continue;
     usedProofs.add(proof);
-    aligned.push(proofWithRequirementOrder(proof, requirement));
+    const randomCountBefore = Number(
+      requirement?.randomCountBefore ?? requirement?.random_count_before
+    );
+    aligned.push({
+      index,
+      randomCountBefore: Number.isSafeInteger(randomCountBefore) && randomCountBefore >= 0
+        ? randomCountBefore
+        : Number.MAX_SAFE_INTEGER,
+      proof: proofWithRequirementOrder(proof, requirement),
+    });
   }
-  return aligned.length > 0 ? aligned : (shuffleProofs || []);
+  if (aligned.length === 0) return shuffleProofs || [];
+  aligned.sort((left, right) =>
+    left.randomCountBefore - right.randomCountBefore || left.index - right.index
+  );
+  return aligned.map((entry) => entry.proof);
 }
 
 async function applyVerifiedShuffleProofs(game, shuffleProofs = [], requirements = []) {
@@ -298,11 +316,24 @@ async function applyVerifiedShuffleProofs(game, shuffleProofs = [], requirements
   if (!applyShuffle) {
     throw new Error("Game engine cannot replay transcript: missing applyVerifiedHiddenLibraryShuffle");
   }
-  for (const proof of proofs) {
+  const lastProofIndexByOwner = new Map();
+  proofs.forEach((proof, index) => lastProofIndexByOwner.set(Number(proof.owner), index));
+  const ownersWithOrderUpdates = new Set(
+    (requirements || [])
+      .filter((requirement) =>
+        requirementType(requirement) === "hidden_order_update"
+        && String(requirement?.zone || "library") === "library"
+      )
+      .map((requirement) => Number(requirement.owner))
+  );
+  for (const [index, proof] of proofs.entries()) {
+    const owner = Number(proof.owner);
     await applyShuffle({
-      owner: Number(proof.owner),
+      owner,
       deckHash: String(proof.deckHash || ""),
       afterOrder: normalizeShuffleOrder(proof.afterOrder ?? proof.after_order),
+      enforceLibraryOrder:
+        lastProofIndexByOwner.get(owner) === index && !ownersWithOrderUpdates.has(owner),
     });
   }
 }
@@ -374,8 +405,10 @@ export async function applyAuditReplayActionWithGame({
   await injectTranscriptSeeds(game, requirements, audit);
   await revealAuditOpenings(game, audit.openings || [], "pre");
   await dispatchReplayCommand(game, command);
-  await revealAuditOpenings(game, audit.openings || [], "post");
+  // Same order as the live actor and peers: reseal verified shuffles first, then
+  // reveal post openings against the post-shuffle ceremony.
   await applyVerifiedShuffleProofs(game, audit.shuffleProofs || [], requirements);
+  await revealAuditOpenings(game, audit.openings || [], "post");
   const checkpointHash = await currentPublicCheckpointHash(game, cryptoImpl);
   const uiState = optionalGameMethod(game, "uiState");
   return {
@@ -396,10 +429,12 @@ export async function replayAuditTranscriptWithGame({
   }
   const match = transcript.match || {};
   const actions = Array.isArray(transcript.actions) ? transcript.actions : [];
-  const exportSyncCheckpoint = requiredGameMethod(game, "exportSyncCheckpoint");
-  const importSyncCheckpoint = requiredGameMethod(game, "importSyncCheckpoint");
+  requiredGameMethod(game, "exportSyncCheckpoint");
+  requiredGameMethod(game, "importSyncCheckpoint");
   const restorePerspective = normalizedPerspective(perspectiveIndex, match);
-  const restoreCheckpoint = await exportSyncCheckpoint();
+  // Restore the caller's game losslessly: a sync checkpoint alone would drop
+  // continuous effects, delayed triggers and the rest of the rules state.
+  const restorePoint = await captureEngineRestorePoint(game);
   let replayError = null;
   let restoreError = null;
   let report = null;
@@ -443,7 +478,7 @@ export async function replayAuditTranscriptWithGame({
     replayError = err;
   } finally {
     try {
-      await importSyncCheckpoint(restoreCheckpoint, restorePerspective);
+      await restoreEngineRestorePoint(game, restorePoint, restorePerspective);
     } catch (restoreErr) {
       restoreError = restoreErr;
     }

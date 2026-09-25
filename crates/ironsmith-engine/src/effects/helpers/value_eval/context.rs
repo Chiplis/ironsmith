@@ -405,7 +405,7 @@ impl PropertyObject<'_> {
             Self::Snapshot(snapshot) => &snapshot.name,
         }
     }
-    pub(super) fn counters(&self) -> &HashMap<crate::object::CounterType, u32> {
+    pub(super) fn counters(&self) -> &std::collections::BTreeMap<crate::object::CounterType, u32> {
         match self {
             Self::Live(object) | Self::LayerBaseline(object) => &object.counters,
             Self::Snapshot(snapshot) => &snapshot.counters,

@@ -81,6 +81,9 @@ impl EffectExecutor for ConspireCostEffect {
             Some(2),
         );
         let mut chosen = make_decision(game, ctx.decision_maker, controller, Some(source), spec);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         chosen.sort();
         chosen.dedup();
 

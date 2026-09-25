@@ -1727,9 +1727,30 @@ fn for_each_public_nonbattlefield_trigger_object_id(
     }
 }
 
+/// Visit hand objects whose hand-functioning triggered abilities may be checked.
+///
+/// In a hidden-information (mental-poker) match each peer runs its own engine:
+/// the owner holds the real card while every other peer holds an ability-less
+/// "Hidden Card" placeholder for the same object. Checking the abilities of a
+/// hidden-tracked hand card would therefore create a trigger (Miracle, "when
+/// you draw this", ...) on the owner's engine only, desyncing the stack, the
+/// prompts that follow and the public checkpoint. Whether a cryptographic slot
+/// backs a hand object (`hidden_card_info`) is the same on every peer, so it is
+/// the symmetric gate: such objects never trigger from the hand while their
+/// identity is private. They trigger again once every peer learned the card
+/// through an owner-answered public reveal (`is_publicly_revealed_hidden_card`,
+/// recorded while the owner's answer is replayed on every peer, after the peer
+/// front end opened the chosen card publicly). Miracle uses exactly that: a
+/// hidden card drawn by an eligible player opens a draw reveal window
+/// (`note_hidden_draw_for_reveal_window`), and revealing re-checks the draw.
 fn for_each_hidden_trigger_object_id(game: &GameState, mut visit: impl FnMut(ObjectId)) {
     for player in &game.players {
         for &obj_id in &player.hand {
+            if game.hidden_card_info(obj_id).is_some()
+                && !game.is_publicly_revealed_hidden_card(obj_id)
+            {
+                continue;
+            }
             visit(obj_id);
         }
     }
@@ -2612,6 +2633,8 @@ fn check_triggers_with_view_and_registry(
     });
 
     // Hand is hidden, but some mechanics (for example Miracle) legitimately trigger there.
+    // Cards backed by a cryptographic hidden slot are skipped on every peer so
+    // the owner (real card) and other peers (placeholder) emit the same list.
     for_each_hidden_trigger_object_id(game, |obj_id| {
         check_triggers_in_zone(game, obj_id, trigger_event, view, &mut triggered);
     });

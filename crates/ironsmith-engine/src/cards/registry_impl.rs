@@ -97,10 +97,13 @@ impl CardRegistry {
             }
 
             let loose_key = normalize_card_loose_lookup_name(normalized);
+            // `min` (not `find`) so a loose-key collision resolves to the
+            // same canonical card on every peer regardless of hash order.
             if let Some(canonical) = self
                 .cards
                 .keys()
-                .find(|name| normalize_card_loose_lookup_name(name) == loose_key)
+                .filter(|name| normalize_card_loose_lookup_name(name) == loose_key)
+                .min()
                 .cloned()
             {
                 self.register_alias(normalized, canonical);

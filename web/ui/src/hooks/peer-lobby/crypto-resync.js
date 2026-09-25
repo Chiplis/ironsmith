@@ -3,6 +3,7 @@ import { relayMatchId, canPersistMatch } from '../../lib/relay/session.js';
 import { initializeRelayMatch, appendRelayAction } from '../../lib/relay/session.js';
 import { immutableAction, actionCursor, restoreActionCursor, actionPrefixHash, wireStablePayload, EMPTY_ACTION_PREFIX } from '../../lib/accepted-actions.js';
 import { isRelayId } from '../../lib/relay/formats.js';
+import { captureEngineRestorePoint, restoreEngineRestorePoint } from '../../lib/engine-restore-point.js';
 import {
   DISCONNECT_AUTO_FORFEIT_MS,
   DISCONNECT_FORFEIT_REASON,
@@ -110,7 +111,9 @@ import {
   verifyProtocolResponseTimeoutCertificate,
   verifyProtocolResponseTimeoutVote,
   wasmObjectIdArg,
+  removeStoredRevealedOpening,
   writeStoredActionQuorumVote,
+  writeStoredRevealedOpening,
   ziffleContextFromCeremony,
   ziffleDeckHashFromCommitment,
   ziffleKeyContextForCeremony,
@@ -1274,7 +1277,10 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     ) {
       throw new Error("Cannot authorize post-apply hidden-card material without sandbox replay");
     }
-    const checkpoint = await currentGame.exportSyncCheckpoint();
+    // This sandbox runs on the live engine, so the rollback must be lossless:
+    // a sync checkpoint drops continuous effects, delayed triggers, shields and
+    // turn history, which would silently desync this seat from its peers.
+    const restorePoint = await captureEngineRestorePoint(currentGame);
     const previousState = cloneMultiplayerPayload(stateRef.current);
     const localPlayer = resolveLocalPlayerIndex(multiplayerRef.current);
     try {
@@ -1293,8 +1299,9 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
         )
       );
     } finally {
-      await currentGame.importSyncCheckpoint(
-        checkpoint,
+      await restoreEngineRestorePoint(
+        currentGame,
+        restorePoint,
         localPlayer ?? multiplayerRef.current.localPlayerIndex ?? 0
       );
       const restoredState = typeof currentGame.uiState === "function"
@@ -1970,8 +1977,13 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
         : peerIndex != null && typeof currentGame.exportRedactedSyncCheckpoint === "function"
           ? await currentGame.exportRedactedSyncCheckpoint(peerIndex)
           : await currentGame.exportSyncCheckpoint();
-      const serializedCheckpoint = checkpoint;
-      const actions = suffix ? actionHistoryRef.current.slice(baseSequence) : actionHistoryRef.current;
+      // serde-wasm-bindgen emits `undefined` for `None` fields; BinaryPack turns
+      // those into `null` in transit while the hash drops them. Hash and send
+      // the same JSON round-tripped form so the signed envelope verifies.
+      const serializedCheckpoint = wireStablePayload(checkpoint);
+      const actions = wireStablePayload(
+        suffix ? actionHistoryRef.current.slice(baseSequence) : actionHistoryRef.current
+      );
       const lastSequence = Number(actionHistoryRef.current.at(-1)?.seq ?? 0);
       const resyncEnvelope = isVerifiedMultiplayerSecurityMode(securityMode)
         ? await buildSignedResyncEnvelope({
@@ -2165,7 +2177,8 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
           ? 0
           : Math.min(Number(baseRemaining[activePlayer] || 0), observedElapsed);
     }
-    const clock = {
+    // Hashed here and sent verbatim: keep it free of `undefined` fields.
+    const clock = wireStablePayload({
       type: MATCH_CLOCK_AUDIT_TYPE,
       version: 1,
       matchId: currentAuditMatchId(),
@@ -2184,7 +2197,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       remainingMsByPlayer: debitMatchClockRemaining(baseRemaining, activePlayer, elapsedMs),
       previousClockHash: String(runtime.clockHash || INITIAL_MATCH_CLOCK_HASH),
       basisSequence: Number(multiplayerRef.current.lastAppliedSequence || 0),
-    };
+    });
     clock.clockHash = await matchClockAuditHash(clock);
     return clock;
   }
@@ -4177,7 +4190,58 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 	      relayedActionIds: trusted ? null : [...relayedActionIdsRef.current],
 	      ziffleHandRevealKey: ziffleHandRevealKeyRef.current,
 	      ziffleHandRevealQuickKey: ziffleHandRevealQuickKeyRef.current,
+      // Shuffle/opening bookkeeping that describes the engine's hidden zones.
+      // A rollback that restores the engine without these would leave shuffle
+      // records (live ceremonies, slot->position maps, reveal tokens, opening
+      // caches) describing a library order the engine no longer has. Entries
+      // are replaced rather than mutated in place, so shallow copies suffice.
+      crypto: trusted ? null : captureSequencedActionCryptoRefs(),
 	    };
+  }
+
+  function captureSequencedActionCryptoRefs() {
+    return {
+      liveZiffleCeremonies: new Map(liveZiffleCeremoniesRef.current),
+      localZiffleCeremonyLookup: new Map(localZiffleCeremonyLookupRef.current),
+      ziffleOpeningPositions: new Map(ziffleOpeningPositionsRef.current),
+      ziffleRevealTokenCache: new Map(ziffleRevealTokenCacheRef.current),
+      localRevealedOpenings: new Map(localRevealedOpeningsRef.current),
+      privateViewDisclosures: new Map(privateViewDisclosuresRef.current),
+      verifiedAuditOpenings: new Set(verifiedAuditOpeningsRef.current),
+      verifiedShuffleProofs: new Set(verifiedShuffleProofsRef.current),
+    };
+  }
+
+  function restoreCollectionInPlace(target, saved) {
+    // Keep the live collection's identity: callers may hold `ref.current`.
+    target.clear();
+    if (target instanceof Map) {
+      for (const [key, value] of saved) target.set(key, value);
+    } else {
+      for (const value of saved) target.add(value);
+    }
+  }
+
+  function restoreSequencedActionCryptoRefs(saved) {
+    if (!saved) return;
+    // Revealed openings are mirrored in session storage (read back as a
+    // fallback by the opening lookups), so reconcile the mirror with the
+    // restored map instead of leaving post-rollback entries behind.
+    const liveOpenings = localRevealedOpeningsRef.current;
+    for (const key of liveOpenings.keys()) {
+      if (!saved.localRevealedOpenings.has(key)) removeStoredRevealedOpening(key);
+    }
+    for (const [key, opening] of saved.localRevealedOpenings) {
+      if (liveOpenings.get(key) !== opening) writeStoredRevealedOpening(key, opening);
+    }
+    restoreCollectionInPlace(liveOpenings, saved.localRevealedOpenings);
+    restoreCollectionInPlace(liveZiffleCeremoniesRef.current, saved.liveZiffleCeremonies);
+    restoreCollectionInPlace(localZiffleCeremonyLookupRef.current, saved.localZiffleCeremonyLookup);
+    restoreCollectionInPlace(ziffleOpeningPositionsRef.current, saved.ziffleOpeningPositions);
+    restoreCollectionInPlace(ziffleRevealTokenCacheRef.current, saved.ziffleRevealTokenCache);
+    restoreCollectionInPlace(privateViewDisclosuresRef.current, saved.privateViewDisclosures);
+    restoreCollectionInPlace(verifiedAuditOpeningsRef.current, saved.verifiedAuditOpenings);
+    restoreCollectionInPlace(verifiedShuffleProofsRef.current, saved.verifiedShuffleProofs);
   }
 
   async function restoreSequencedActionValidationSnapshot(snapshot) {
@@ -4216,6 +4280,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 	    if (snapshot.relayedActionIds) relayedActionIdsRef.current = new Set(snapshot.relayedActionIds);
 	    ziffleHandRevealKeyRef.current = snapshot.ziffleHandRevealKey;
 	    ziffleHandRevealQuickKeyRef.current = snapshot.ziffleHandRevealQuickKey || "";
+    restoreSequencedActionCryptoRefs(snapshot.crypto);
     const restoredState = currentGame && typeof currentGame.uiState === "function"
       ? await currentGame.uiState()
       : cloneMultiplayerPayload(snapshot.state);

@@ -442,7 +442,40 @@ pub(crate) struct SyncCheckpoint {
     exiled_with_source: Vec<(u64, Vec<u64>)>,
     #[serde(default)]
     return_exiled_when_source_leaves: Vec<u64>,
+    /// Plain-data public rules state beyond objects and zones; absent in older
+    /// checkpoints. Not part of the public audit checkpoint.
+    #[serde(default)]
+    rules: SyncRulesState,
     id_counters: SyncIdCounters,
+}
+
+/// Public, plain-data rules state that a checkpoint can carry losslessly.
+///
+/// Every field is public information (designations, combat declarations and
+/// the extra-turn queue), so the same value is exported to every perspective.
+/// State built from runtime programs (continuous effects, delayed triggers,
+/// replacement/prevention shields, pending triggers) has no wire encoding; a
+/// same-engine rollback must use a runtime savepoint instead of a checkpoint.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncRulesState {
+    /// Main-game combat. Grand Melee lanes carry their own combat instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    combat: Option<SyncGrandMeleeCombat>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    monarch: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    initiative: Option<u8>,
+    #[serde(default)]
+    has_day_night: bool,
+    #[serde(default)]
+    is_night: bool,
+    #[serde(default)]
+    extra_turns: Vec<u8>,
+    #[serde(default)]
+    current_turn_is_extra: bool,
+    #[serde(default)]
+    combat_phases_started_this_turn: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1619,7 +1652,7 @@ fn conspiracy_state_from_sync(sync: &SyncConspiracy) -> ConspiracyState {
 }
 
 fn planechase_state_from_sync(sync: &SyncPlanechase) -> Result<PlanechaseState, JsValue> {
-    let mut card_kinds = HashMap::new();
+    let mut card_kinds = std::collections::BTreeMap::new();
     for (object, kind) in &sync.card_kinds {
         let kind = match kind.as_str() {
             "plane" => PlanarCardKind::Plane,
@@ -1650,7 +1683,7 @@ fn planechase_state_from_sync(sync: &SyncPlanechase) -> Result<PlanechaseState, 
         face_up: face_up.clone(),
         planar_controller,
         planar_controllers: if sync.planar_controllers.is_empty() {
-            HashSet::from([planar_controller])
+            std::collections::BTreeSet::from([planar_controller])
         } else {
             sync.planar_controllers
                 .iter()
@@ -2091,18 +2124,79 @@ impl WasmGame {
                     source_name: entry.source_name.clone(),
                 })
                 .collect(),
-            exiled_with_source: self
-                .game
-                .exiled_with_source_entries()
-                .map(|(source, linked)| (source.0, raw_ids(linked)))
-                .collect(),
-            return_exiled_when_source_leaves: self
-                .game
-                .return_exiled_when_source_leaves_ids()
-                .map(|id| id.0)
-                .collect(),
+            // Sorted: both come from engine hash containers.
+            exiled_with_source: {
+                let mut entries = self
+                    .game
+                    .exiled_with_source_entries()
+                    .map(|(source, linked)| (source.0, raw_ids(linked)))
+                    .collect::<Vec<_>>();
+                entries.sort_unstable_by_key(|(source, _)| *source);
+                entries
+            },
+            return_exiled_when_source_leaves: {
+                let mut ids = self
+                    .game
+                    .return_exiled_when_source_leaves_ids()
+                    .map(|id| id.0)
+                    .collect::<Vec<_>>();
+                ids.sort_unstable();
+                ids
+            },
+            rules: self.sync_rules_state(),
             id_counters: SyncIdCounters::from_game(&self.game),
         }
+    }
+
+    fn sync_rules_state(&self) -> SyncRulesState {
+        // Grand Melee keeps combat and the extra-turn queue per marker lane, and
+        // its restore loads the focused lane, so the main copy is not repeated.
+        let grand_melee = self.game.grand_melee().is_some();
+        SyncRulesState {
+            combat: if grand_melee {
+                None
+            } else {
+                self.game.combat.as_ref().map(sync_grand_melee_combat)
+            },
+            monarch: self.game.monarch.map(|player| player.0),
+            initiative: self.game.initiative.map(|player| player.0),
+            has_day_night: self.game.has_day_night,
+            is_night: self.game.is_night,
+            extra_turns: if grand_melee {
+                Vec::new()
+            } else {
+                self.game
+                    .turn_store
+                    .extra_turns
+                    .iter()
+                    .map(|player| player.0)
+                    .collect()
+            },
+            current_turn_is_extra: self.game.turn_store.current_turn_is_extra,
+            combat_phases_started_this_turn: self.game.turn_store.combat_phases_started_this_turn,
+        }
+    }
+
+    fn restore_sync_rules_state(&mut self, rules: &SyncRulesState, grand_melee: bool) {
+        if !grand_melee {
+            self.game.combat = rules.combat.as_ref().map(grand_melee_combat_from_sync);
+            self.game.turn_store.extra_turns = rules
+                .extra_turns
+                .iter()
+                .copied()
+                .map(PlayerId::from_index)
+                .collect();
+        }
+        // Assign the designations directly: the setters would replay their
+        // side effects (UI events, day/night transformations, returns from
+        // exile) that already happened before the checkpoint was taken.
+        self.game.monarch = rules.monarch.map(PlayerId::from_index);
+        self.game.initiative = rules.initiative.map(PlayerId::from_index);
+        self.game.has_day_night = rules.has_day_night;
+        self.game.is_night = rules.has_day_night && rules.is_night;
+        self.game.turn_store.current_turn_is_extra = rules.current_turn_is_extra;
+        self.game.turn_store.combat_phases_started_this_turn =
+            rules.combat_phases_started_this_turn;
     }
 
     fn public_audit_exile_ids(&self) -> Vec<ObjectId> {
@@ -2205,6 +2299,13 @@ impl WasmGame {
             .into_iter()
             .filter_map(|id| {
                 let object = self.game.object(id)?;
+                // Printed stats of a card whose identity is not public (a
+                // face-down exiled or foretold card) are known only to the
+                // peers that opened it; hashing them would desync the peers
+                // that hold a placeholder. Face-down permanents and spells
+                // keep their stats: the face-down overlay makes them public.
+                let stats_public = self.public_audit_object_identity_is_public(id)
+                    || object.face_down_cast_state.is_some();
                 Some(PublicAuditObject {
                     id: object.id.0,
                     stable_id: object.stable_id.0.0,
@@ -2213,10 +2314,10 @@ impl WasmGame {
                     zone: sync_zone_name(object.zone).to_string(),
                     identity: self.public_audit_object_identity(id, object),
                     token: matches!(object.kind, ironsmith::object::ObjectKind::Token),
-                    power: object.power(),
-                    toughness: object.toughness(),
-                    loyalty: object.loyalty(),
-                    defense: object.defense(),
+                    power: stats_public.then(|| object.power()).flatten(),
+                    toughness: stats_public.then(|| object.toughness()).flatten(),
+                    loyalty: stats_public.then(|| object.loyalty()).flatten(),
+                    defense: stats_public.then(|| object.defense()).flatten(),
                     counters: object
                         .counters
                         .iter()
@@ -3035,6 +3136,7 @@ impl WasmGame {
             }
         }
         self.game.set_deploy_creatures(checkpoint.deploy_creatures);
+        self.restore_sync_rules_state(&checkpoint.rules, checkpoint.grand_melee.is_some());
 
         for object in checkpoint.objects.iter() {
             let id = ObjectId::from_raw(object.id);
@@ -3645,6 +3747,7 @@ mod sync_checkpoint_tests {
             owner: 1,
             deck_hash: "mulligan-deck".to_string(),
             after_order: after_order.clone(),
+            enforce_library_order: None,
         })
         .expect("verified shuffle should reseal library and drawn hand cards");
 
@@ -3710,6 +3813,7 @@ mod sync_checkpoint_tests {
             owner: 1,
             deck_hash: "mulligan-deck".to_string(),
             after_order: pre_draw_after_order.iter().map(|id| id.0).collect(),
+            enforce_library_order: None,
         })
         .expect("verified shuffle should resolve pre-draw ids through zone-change results");
 
@@ -3757,6 +3861,7 @@ mod sync_checkpoint_tests {
             owner: 1,
             deck_hash: "second-mulligan-deck".to_string(),
             after_order: second_pre_draw_after_order.iter().map(|id| id.0).collect(),
+            enforce_library_order: None,
         })
         .expect("verified shuffle should follow multi-zone-change id chains");
 
@@ -3828,6 +3933,7 @@ mod sync_checkpoint_tests {
             owner: 1,
             deck_hash: "verified-deck".to_string(),
             after_order: verified_full_order.iter().map(|id| id.0).collect(),
+            enforce_library_order: None,
         })
         .expect("verified shuffle should impose the authenticated public order");
 
@@ -3921,6 +4027,7 @@ mod sync_checkpoint_tests {
                 owner: 0,
                 deck_hash: format!("mulligan-{mulligan_index}"),
                 after_order,
+                enforce_library_order: None,
             })
             .expect("verified shuffle should reseal repeated mulligan order");
         }

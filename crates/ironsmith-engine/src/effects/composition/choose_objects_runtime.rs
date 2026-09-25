@@ -438,14 +438,13 @@ fn effective_search_zones(
     Ok(zones)
 }
 
-fn collect_candidates_in_zone(
+fn choice_filter_context(
     effect: &ChooseObjectsEffect,
     game: &GameState,
     ctx: &ExecutionContext,
     chooser_id: PlayerId,
-    search_zone: Zone,
-) -> Result<Vec<ObjectId>, ExecutionError> {
-    let filter_ctx = if object_filter_mentions_iterated_player(&effect.filter)
+) -> crate::filter::FilterContext {
+    if object_filter_mentions_iterated_player(&effect.filter)
         && matches!(effect.chooser, PlayerFilter::Target(_))
     {
         let base_ctx = ctx.filter_context(game);
@@ -456,7 +455,58 @@ fn collect_candidates_in_zone(
         }
     } else {
         ctx.filter_context(game)
-    };
+    }
+}
+
+/// The filter applied to cards in a player's hand (ownership is resolved by
+/// `hand_candidate_players`).
+fn hand_zone_filter(effect: &ChooseObjectsEffect) -> ObjectFilter {
+    let mut filter = effect.filter.clone();
+    filter.owner = None;
+    filter
+}
+
+fn hand_candidate_ids(
+    effect: &ChooseObjectsEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+    filter_ctx: &crate::filter::FilterContext,
+    chooser_id: PlayerId,
+) -> Result<Vec<ObjectId>, ExecutionError> {
+    Ok(hand_candidate_players(effect, game, ctx, filter_ctx, chooser_id)?
+        .iter()
+        .filter_map(|owner_id| game.player(*owner_id))
+        .flat_map(|player| player.hand.iter().copied())
+        .collect())
+}
+
+/// Whether this choice picks among hand cards whose identities some peer
+/// cannot see (see `game_state::hidden_hand_choices`). The answer is the same
+/// on every peer, so it may shape the prompt; the local filter result may not.
+fn hidden_hand_choice(
+    effect: &ChooseObjectsEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+    chooser_id: PlayerId,
+) -> Result<bool, ExecutionError> {
+    if effect.count.is_random()
+        || !effective_search_zones(effect, game, chooser_id)?.contains(&Zone::Hand)
+    {
+        return Ok(false);
+    }
+    let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
+    let hand_ids = hand_candidate_ids(effect, game, ctx, &filter_ctx, chooser_id)?;
+    Ok(game.hand_choice_depends_on_hidden_identity(&hand_zone_filter(effect), hand_ids))
+}
+
+fn collect_candidates_in_zone(
+    effect: &ChooseObjectsEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+    chooser_id: PlayerId,
+    search_zone: Zone,
+) -> Result<Vec<ObjectId>, ExecutionError> {
+    let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
     let top_only_limit = top_only_selection_limit(effect, ctx.x_value);
     let mut hidden_zone_filter = effect.filter.clone();
     if matches!(
@@ -474,14 +524,34 @@ fn collect_candidates_in_zone(
             .filter(|(_, obj)| effect.filter.matches(obj, &filter_ctx, game))
             .map(|(id, _)| id)
             .collect(),
-        Zone::Hand => hand_candidate_players(effect, game, ctx, &filter_ctx, chooser_id)?
-            .iter()
-            .filter_map(|owner_id| game.player(*owner_id))
-            .flat_map(|player| player.hand.iter())
-            .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
-            .filter(|(_, obj)| hidden_zone_filter.matches(obj, &filter_ctx, game))
-            .map(|(id, _)| id)
-            .collect(),
+        Zone::Hand => {
+            let hand_ids = hand_candidate_ids(effect, game, ctx, &filter_ctx, chooser_id)?;
+            // A placeholder's filter result is unknown on this peer while the
+            // owner knows it: keep it choosable (as hidden library searches
+            // do) so every peer offers the owner's real choice. The chosen
+            // card is validated once opened.
+            let placeholders = if game.hand_choice_depends_on_hidden_identity(
+                &hidden_zone_filter,
+                hand_ids.iter().copied(),
+            ) {
+                game.hidden_hand_placeholder_candidates(
+                    &hidden_zone_filter,
+                    &filter_ctx,
+                    hand_ids.iter().copied(),
+                )
+            } else {
+                Vec::new()
+            };
+            hand_ids
+                .into_iter()
+                .filter(|id| {
+                    placeholders.contains(id)
+                        || game.object(*id).is_some_and(|obj| {
+                            hidden_zone_filter.matches(obj, &filter_ctx, game)
+                        })
+                })
+                .collect()
+        }
         Zone::Graveyard => {
             let owner_ids =
                 graveyard_candidate_players(effect, game, ctx, &filter_ctx, chooser_id)?;
@@ -1143,6 +1213,11 @@ pub(crate) fn fixed_choice_requirement_is_unmet(
 
     let chooser_id =
         crate::effects::helpers::resolve_player_filter_as_chooser(game, &effect.chooser, ctx)?;
+    // Whether a hidden hand holds enough matches is known only to its owner;
+    // withholding the offer on that basis would desync the peers.
+    if hidden_hand_choice(effect, game, ctx, chooser_id)? {
+        return Ok(false);
+    }
     let mut candidates = collect_candidates(effect, game, ctx, chooser_id)?;
     if !game.source_snapshot_is_exempt_from_range(Some(ctx.source), ctx.source_snapshot.as_ref()) {
         candidates
@@ -1261,7 +1336,9 @@ pub(crate) fn run_choose_objects(
                 }
             }
         }
-        if candidates.is_empty() {
+        // Symmetric across peers; see `game_state::hidden_hand_choices`.
+        let hidden_hand_choice = hidden_hand_choice(effect, game, ctx, chooser_id)?;
+        if candidates.is_empty() && !hidden_hand_choice {
             if effect.replace_tagged_objects || is_implicit_object_tag(effect.tag.as_str()) {
                 ctx.clear_object_tag(effect.tag.as_str());
             }
@@ -1302,7 +1379,7 @@ pub(crate) fn run_choose_objects(
         } else {
             compute_choice_bounds(effect.count, candidates.len())
         };
-        if max == 0 {
+        if max == 0 && !hidden_hand_choice {
             let outcome = EffectOutcome::count(0);
             return Ok(if let Some(search_event) = search_event.clone() {
                 outcome.with_event(search_event)
@@ -1395,15 +1472,20 @@ pub(crate) fn run_choose_objects(
             randomized.truncate(max);
             randomized
         } else {
-            let mut spec =
-                ChooseObjectsSpec::new(ctx.source, description, candidates.clone(), min, Some(max));
+            let mut spec = ChooseObjectsSpec::new(
+                ctx.source,
+                description.clone(),
+                candidates.clone(),
+                min,
+                Some(max),
+            );
             if let Some(constraint) = aggregate_constraint.clone() {
                 spec = spec.with_aggregate_constraint(constraint);
             }
-            if allow_hidden_partial {
+            if allow_hidden_partial || hidden_hand_choice {
                 spec = spec.allow_partial_completion();
             }
-            if has_hidden_search_zones {
+            if has_hidden_search_zones || hidden_hand_choice {
                 spec = spec.require_explicit_choice();
             }
             if has_hidden_search_zones {
@@ -1425,14 +1507,30 @@ pub(crate) fn run_choose_objects(
         let preserve_order = effect.count_value.as_ref().is_some_and(|value| {
             value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ChooseAllInOrder)
         });
+        // Never fill a hidden hand choice up to its minimum: the fill would
+        // pick different cards on the owner and on peers holding placeholders.
+        let fill_to_min = !allow_hidden_partial && !hidden_hand_choice;
         let chosen = normalize_chosen_objects(
             chosen,
             &candidates,
             min,
             max,
-            !allow_hidden_partial,
+            fill_to_min,
             preserve_order,
         );
+        if hidden_hand_choice && chosen.iter().any(|id| !candidates.contains(id)) {
+            // A known card outside the candidates failed the filter (for a
+            // peer, after the chosen card was opened): reject the choice.
+            return Err(ExecutionError::InvalidTarget);
+        }
+        // Identity-dependent normalizations (names, mana values, powers,
+        // types, aggregate bounds) cannot be evaluated for placeholders. For
+        // an honest choice they are no-ops on the owner, so skip them wherever
+        // a placeholder was chosen instead of rewriting the choice differently
+        // from the owner.
+        let chose_placeholder = hidden_hand_choice
+            && chosen.iter().any(|id| game.is_hidden_card_placeholder(*id));
+        let allow_hidden_partial = allow_hidden_partial || hidden_hand_choice;
         let chosen = enforce_public_search_choice_constraint(
             game,
             &candidates,
@@ -1442,7 +1540,7 @@ pub(crate) fn run_choose_objects(
         );
         let chosen =
             enforce_single_graveyard_choice_constraint(effect, game, &candidates, chosen, min, max);
-        let chosen = if effect.filter.distinct_names {
+        let chosen = if effect.filter.distinct_names && !chose_placeholder {
             normalize_chosen_distinct_names(
                 game,
                 chosen,
@@ -1454,7 +1552,7 @@ pub(crate) fn run_choose_objects(
         } else {
             chosen
         };
-        let chosen = if effect.filter.distinct_mana_values {
+        let chosen = if effect.filter.distinct_mana_values && !chose_placeholder {
             normalize_chosen_distinct_mana_values(
                 game,
                 chosen,
@@ -1466,7 +1564,7 @@ pub(crate) fn run_choose_objects(
         } else {
             chosen
         };
-        let chosen = if effect.filter.distinct_powers {
+        let chosen = if effect.filter.distinct_powers && !chose_placeholder {
             normalize_chosen_distinct_powers(
                 game,
                 chosen,
@@ -1478,7 +1576,7 @@ pub(crate) fn run_choose_objects(
         } else {
             chosen
         };
-        let chosen = if effect.filter.distinct_creature_types {
+        let chosen = if effect.filter.distinct_creature_types && !chose_placeholder {
             normalize_chosen_distinct_creature_types(
                 game,
                 chosen,
@@ -1490,7 +1588,7 @@ pub(crate) fn run_choose_objects(
         } else {
             chosen
         };
-        let chosen = if effect.filter.one_per_card_type {
+        let chosen = if effect.filter.one_per_card_type && !chose_placeholder {
             normalize_chosen_one_per_card_type(
                 game,
                 chosen,
@@ -1502,7 +1600,9 @@ pub(crate) fn run_choose_objects(
         } else {
             chosen
         };
-        let chosen = if let Some(constraint) = aggregate_constraint.clone() {
+        let chosen = if let Some(constraint) = aggregate_constraint.clone()
+            && !chose_placeholder
+        {
             normalize_chosen_aggregate_constraint(
                 game,
                 chosen,
@@ -1516,6 +1616,7 @@ pub(crate) fn run_choose_objects(
             chosen
         };
         if let Some(constraint) = aggregate_constraint.as_ref()
+            && !chose_placeholder
             && let Some(crate::effect::Value::Fixed(minimum)) =
                 constraint.minimum.as_ref().map(|value| value.unhinted())
         {
@@ -1525,6 +1626,20 @@ pub(crate) fn run_choose_objects(
                     "chosen objects have aggregate value {chosen_total}, below required minimum {minimum}"
                 )));
             }
+        }
+        if chose_placeholder {
+            let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
+            let hand_placeholders: Vec<ObjectId> = chosen
+                .iter()
+                .copied()
+                .filter(|id| game.is_hidden_tracked_hand_card(*id))
+                .collect();
+            game.record_hidden_identity_obligations(
+                &hand_placeholders,
+                &hand_zone_filter(effect),
+                &filter_ctx,
+                &description,
+            );
         }
         if effect.reveal && !chosen.is_empty() {
             view_hidden_candidate_objects(

@@ -4245,6 +4245,11 @@ pub(super) fn get_legal_exile_from_hand_cards(
                     if card_id == source {
                         return false;
                     }
+                    // A hidden placeholder's color is unknown on this peer;
+                    // it stays payable and is checked once opened.
+                    if color_filter.is_some() && game.is_hidden_card_placeholder(card_id) {
+                        return true;
+                    }
                     game.object(card_id).is_some_and(|obj| {
                         if let Some(required_colors) = color_filter {
                             !obj.colors().intersection(required_colors).is_empty()
@@ -4298,6 +4303,14 @@ pub(super) fn get_legal_reveal_from_hand_cards(
                 .filter(|&card_id| {
                     if card_id == source {
                         return false;
+                    }
+                    // A hidden placeholder's characteristics are unknown on
+                    // this peer; it stays revealable and is checked once the
+                    // reveal opens it.
+                    if (card_type.is_some() || color_filter.is_some())
+                        && game.is_hidden_card_placeholder(card_id)
+                    {
+                        return true;
                     }
                     let Some(obj) = game.object(card_id) else {
                         return false;
@@ -4364,6 +4377,15 @@ pub(super) fn get_legal_cost_choice_objects(
         _ => Vec::new(),
     };
 
+    // Hidden hand placeholders stay choosable when the filter depends on
+    // identities this peer cannot see (see `game_state::hidden_hand_choices`).
+    let placeholders = if zone == Zone::Hand
+        && game.hand_choice_depends_on_hidden_identity(filter, ids.iter().copied())
+    {
+        game.hidden_hand_placeholder_candidates(filter, &ctx, ids.iter().copied())
+    } else {
+        Vec::new()
+    };
     let mut candidates = ids
         .into_iter()
         .filter(|&id| {
@@ -4371,7 +4393,7 @@ pub(super) fn get_legal_cost_choice_objects(
                 if filter.other && obj.id == source {
                     return false;
                 }
-                filter.matches(obj, &ctx, game)
+                placeholders.contains(&id) || filter.matches(obj, &ctx, game)
             })
         })
         .collect::<Vec<_>>();

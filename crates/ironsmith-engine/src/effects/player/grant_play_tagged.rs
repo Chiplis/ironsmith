@@ -247,9 +247,15 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 if !linked.is_empty() {
                     return linked;
                 }
-                ctx.tagged_objects
+                // Sorted by tag so grant order is identical on every peer.
+                let mut helper_tags = ctx
+                    .tagged_objects
                     .iter()
                     .filter(|(tag, _)| tag.as_str().starts_with("__sentence_helper_exiled"))
+                    .collect::<Vec<_>>();
+                helper_tags.sort_by(|(left, _), (right, _)| left.as_str().cmp(right.as_str()));
+                helper_tags
+                    .into_iter()
                     .flat_map(|(_, snapshots)| snapshots.iter().cloned())
                     .collect::<Vec<_>>()
             })
@@ -261,8 +267,9 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         let mut granted = 0usize;
         let mut seen = std::collections::HashSet::new();
         let mut shared_usage_by_player = std::collections::HashMap::new();
+        // Ordered: permissions are pushed into a game-state Vec per player.
         let mut mana_permission_stable_ids =
-            std::collections::HashMap::<crate::ids::PlayerId, Vec<crate::ids::StableId>>::new();
+            std::collections::BTreeMap::<crate::ids::PlayerId, Vec<crate::ids::StableId>>::new();
         for snapshot in snapshots {
             let mut object_id = snapshot.object_id;
             if game.object(object_id).is_none() {

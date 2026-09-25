@@ -162,6 +162,9 @@ impl EffectExecutor for SurveilEffect {
         .into_iter()
         .filter(|c| top_cards_top_to_bottom.contains(c))
         .collect();
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
 
         let kept_on_top_top_to_bottom: Vec<ObjectId> = top_cards_top_to_bottom
             .iter()
@@ -175,6 +178,9 @@ impl EffectExecutor for SurveilEffect {
             "Reorder cards to keep on top of your library",
             &kept_on_top_top_to_bottom,
         );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
 
         // Put cards going to graveyard
         for &card_id in &cards_to_graveyard {

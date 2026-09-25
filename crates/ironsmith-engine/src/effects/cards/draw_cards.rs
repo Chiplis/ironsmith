@@ -410,6 +410,7 @@ impl EffectExecutor for DrawCardsEffect {
                 .map(CardsDrawnEvent::amount)
                 .unwrap_or(0);
             game.record_cards_drawn_in_current_draw_step(player_id, drawn_count);
+            game.note_hidden_draw_for_reveal_window(&event);
             let reveal_events = automatic_reveal_events_for_draw(
                 game,
                 player_id,

@@ -532,6 +532,8 @@ impl GameState {
         self.auxiliary_tracking_mut()
             .sector_designations
             .remove(&old_id);
+        // A publicly revealed hidden card becomes a new object (CR 400.7).
+        self.forget_public_hidden_card_reveal(old_id);
         self.stable_id_index.remove(&old_object.stable_id);
         self.commander_tracking_mut()
             .declined_command_zone_moves

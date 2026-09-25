@@ -247,7 +247,8 @@ impl EffectExecutor for RemoveAnyCountersAmongEffect {
 
         let mut valid_targets =
             valid_targets_with_tags(self, game, ctx.source, ctx.controller, &ctx.tagged_objects);
-        let mut allocations: HashMap<ObjectId, u32> = HashMap::new();
+        let mut allocations: std::collections::BTreeMap<ObjectId, u32> =
+            std::collections::BTreeMap::new();
         if self.single_object {
             valid_targets.retain(|object_id| {
                 game.object(*object_id)

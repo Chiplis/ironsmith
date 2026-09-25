@@ -10,7 +10,9 @@ use crate::tag::TagKeyWalk;
 use std::fmt;
 use std::ops::Deref;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+// Ord compares string content (never pointer/intern order), so ordered
+// collections keyed by interned names are deterministic across peers.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TagKeyWalk)]
 pub struct InternedStr(&'static str);
 
 impl InternedStr {

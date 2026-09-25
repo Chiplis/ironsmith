@@ -38,6 +38,8 @@ pub enum ExileWouldDieVictimKind {
 pub enum ExileGraveyardFilterKind {
     Source,
     AnyCard,
+    /// "a card you didn't control"
+    CardYouDidntControl,
     CreatureCard,
     CyclingCard,
     ObjectFilter,
@@ -226,6 +228,11 @@ fn classify_exile_graveyard_filter(tokens: &[OwnedLexToken]) -> ExileGraveyardFi
         || exact_phrase(tokens, &["card"])
     {
         return ExileGraveyardFilterKind::AnyCard;
+    }
+    if exact_phrase(tokens, &["a", "card", "you", "didn't", "control"])
+        || exact_phrase(tokens, &["a", "card", "you", "didnt", "control"])
+    {
+        return ExileGraveyardFilterKind::CardYouDidntControl;
     }
     if exact_phrase(tokens, &["a", "creature", "card"])
         || exact_phrase(tokens, &["creature", "card"])

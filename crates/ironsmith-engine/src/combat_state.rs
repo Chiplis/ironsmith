@@ -24,11 +24,12 @@ pub struct CombatState {
     /// All declared attackers with their targets.
     pub attackers: Vec<AttackerInfo>,
     /// Mapping from attacker to their blockers.
-    pub blockers: HashMap<ObjectId, Vec<ObjectId>>,
+    /// Ordered so every iteration (damage, triggers, sync) is peer-stable.
+    pub blockers: std::collections::BTreeMap<ObjectId, Vec<ObjectId>>,
     /// CR 509.1h: becoming blocked persists when the last blocker leaves.
     pub blocked_attackers: HashSet<ObjectId>,
     /// Damage assignment order: attacker -> ordered list of blockers.
-    pub damage_assignment_order: HashMap<ObjectId, Vec<ObjectId>>,
+    pub damage_assignment_order: std::collections::BTreeMap<ObjectId, Vec<ObjectId>>,
     /// Attacking bands declared for the current combat.
     pub attacking_bands: Vec<Vec<ObjectId>>,
     /// Creatures that were required to attack when they were declared this combat.
@@ -1705,13 +1706,16 @@ pub fn get_blockers(combat: &CombatState, attacker: ObjectId) -> &[ObjectId] {
 }
 
 /// Returns the attacker that a blocker is blocking, if any.
+///
+/// When the blocker blocks several attackers, the lowest attacker id is
+/// returned so the answer doesn't depend on hash-map iteration order.
 pub fn get_blocked_attacker(combat: &CombatState, blocker: ObjectId) -> Option<ObjectId> {
-    for (attacker_id, blockers) in &combat.blockers {
-        if blockers.contains(&blocker) {
-            return Some(*attacker_id);
-        }
-    }
-    None
+    combat
+        .blockers
+        .iter()
+        .filter(|(_, blockers)| blockers.contains(&blocker))
+        .map(|(attacker_id, _)| *attacker_id)
+        .min()
 }
 
 /// Blocked status lasts until the attacker leaves combat, even with no blockers left.
@@ -2744,7 +2748,7 @@ mod tests {
                 creature: attacker,
                 target: AttackTarget::Player(bob),
             }],
-            blockers: HashMap::from([(attacker, vec![blocker])]),
+            blockers: std::collections::BTreeMap::from([(attacker, vec![blocker])]),
             ..Default::default()
         };
 
@@ -2797,7 +2801,7 @@ mod tests {
                 creature: attacker,
                 target: AttackTarget::Player(bob),
             }],
-            blockers: HashMap::from([(attacker, vec![first, second])]),
+            blockers: std::collections::BTreeMap::from([(attacker, vec![first, second])]),
             ..Default::default()
         };
 

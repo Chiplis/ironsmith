@@ -153,7 +153,7 @@ fn cohort_attached_first_strike_checks_current_combat_partner_and_each_combat_un
                         creature: attacker,
                         target: crate::combat_state::AttackTarget::Player(defender),
                     }],
-                    blockers: std::collections::HashMap::from([(attacker, vec![blocker])]),
+                    blockers: std::collections::BTreeMap::from([(attacker, vec![blocker])]),
                     ..Default::default()
                 });
                 game.attach_object_to_target(source, crate::object::AttachmentTarget::Object(host));

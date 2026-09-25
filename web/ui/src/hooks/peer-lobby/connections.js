@@ -49,6 +49,7 @@ import {
   reconnectProofPayload,
   recordPeerSyncPerf,
   reindexPlayers,
+  purgeStoredZifflePositionOpeningsForMatchOwner,
   removeStoredRevealedOpening,
   resolveLocalPlayerIndex,
   resolveLocalPlayerIndexFromPeer,
@@ -1117,11 +1118,13 @@ export function usePeerLobbyConnections(base, servicesRef) {
       }
 	    }
 	    const normalizedMatchId = String(matchId || "");
+	    const handledIndexKeys = new Set();
 	    for (const [key, opening] of [...localRevealedOpeningsRef.current.entries()]) {
 	      if (
 	        key.startsWith(`${normalizedMatchId}:`)
 	        && Number(opening?.owner) === normalizedOwner
 	      ) {
+	        handledIndexKeys.add(key);
 	        if (
 	          key.startsWith(`${normalizedMatchId}:object:`)
 	          || key.startsWith(`${normalizedMatchId}:owner:${normalizedOwner}:position:`)
@@ -1135,6 +1138,14 @@ export function usePeerLobbyConnections(base, servicesRef) {
 	        }
 	      }
 	    }
+	    // Entries persisted before a refresh/reconnect that were never loaded
+	    // back into memory carry the same pre-shuffle positions; purge them too so
+	    // readEntry cannot resurrect them.
+	    purgeStoredZifflePositionOpeningsForMatchOwner(
+	      normalizedMatchId,
+	      normalizedOwner,
+	      handledIndexKeys
+	    );
 	  }, [currentAuditMatchId]);
 
   const rememberLocalRevealedOpening = useCallback((opening, details = {}) => {

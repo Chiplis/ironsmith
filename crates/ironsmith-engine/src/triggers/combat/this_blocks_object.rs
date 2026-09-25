@@ -226,7 +226,7 @@ mod tests {
         let first_attacker = create_creature(&mut game, "First", bob, vec![]);
         let second_attacker = create_creature(&mut game, "Second", bob, vec![]);
         game.combat = Some(crate::combat_state::CombatState {
-            blockers: std::collections::HashMap::from([
+            blockers: std::collections::BTreeMap::from([
                 (first_attacker, vec![source]),
                 (second_attacker, vec![source]),
             ]),
@@ -266,7 +266,7 @@ mod tests {
         let source = create_creature(&mut game, "Lairwatch Giant", alice, vec![]);
         let attacker = create_creature(&mut game, "Attacker", bob, vec![]);
         game.combat = Some(crate::combat_state::CombatState {
-            blockers: std::collections::HashMap::from([(attacker, vec![source])]),
+            blockers: std::collections::BTreeMap::from([(attacker, vec![source])]),
             ..Default::default()
         });
         let event = TriggerEvent::new_with_provenance(

@@ -3377,8 +3377,21 @@ pub(crate) fn spell_view_for_face_down_cast(
     spell: &crate::object::Object,
 ) -> crate::object::Object {
     let mut view = spell.clone();
-    view.apply_face_down_cast_overlay();
+    let disguise_ward = face_down_cast_uses_disguise(spell);
+    view.apply_face_down_cast_overlay_with_disguise_ward(disguise_ward);
     view
+}
+
+/// Whether a face-down cast of `spell` is a disguise cast, whose face-down
+/// spell has ward {2} (CR 702.168a).
+///
+/// The caster decides this when choosing the casting permission. In peer
+/// matches the cast command references the spell, so its identity is opened
+/// on every peer before the command is replayed, and every peer reaches the
+/// same answer here. The result is then stored publicly on the face-down
+/// state (`FaceDownCastState::disguise_ward`) and never re-derived.
+pub fn face_down_cast_uses_disguise(spell: &crate::object::Object) -> bool {
+    spell.has_disguise_ability()
 }
 
 pub(crate) fn linked_face_definition(

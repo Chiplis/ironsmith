@@ -317,7 +317,10 @@ fn execute_legacy_general_combat_damage_step(
     // First, collect all blocker damage info (including per-recipient assigned damage).
     let mut blocker_damage_info: Vec<(ObjectId, ObjectId, PlayerId, u32, DamageResult)> =
         Vec::new();
-    for (blocker_id, mut attacker_ids) in attackers_by_blocker {
+    // Sorted by blocker: damage results are applied in this order.
+    let mut blocker_groups = attackers_by_blocker.into_iter().collect::<Vec<_>>();
+    blocker_groups.sort_by_key(|(blocker, _)| blocker.0);
+    for (blocker_id, mut attacker_ids) in blocker_groups {
         if game.combat_damage_assignment_is_suppressed(blocker_id) {
             continue;
         }
@@ -2977,7 +2980,7 @@ mod tests {
                     target: AttackTarget::Player(bob),
                 },
             ],
-            blockers: std::collections::HashMap::from([
+            blockers: std::collections::BTreeMap::from([
                 (earlier, vec![blocker]),
                 (later, vec![blocker]),
             ]),
@@ -3018,7 +3021,7 @@ mod tests {
                 creature: attacker,
                 target: AttackTarget::Player(bob),
             }],
-            blockers: std::collections::HashMap::from([(attacker, vec![blocker])]),
+            blockers: std::collections::BTreeMap::from([(attacker, vec![blocker])]),
             ..CombatState::default()
         };
 
@@ -3111,7 +3114,7 @@ mod tests {
                 creature: attacker,
                 target: AttackTarget::Player(bob),
             }],
-            blockers: std::collections::HashMap::from([(attacker, vec![first, second])]),
+            blockers: std::collections::BTreeMap::from([(attacker, vec![first, second])]),
             ..CombatState::default()
         };
 
@@ -3147,7 +3150,7 @@ mod tests {
                 creature: attacker,
                 target: AttackTarget::Player(bob),
             }],
-            blockers: std::collections::HashMap::from([(attacker, vec![first, second])]),
+            blockers: std::collections::BTreeMap::from([(attacker, vec![first, second])]),
             ..CombatState::default()
         };
 
@@ -3185,7 +3188,7 @@ mod tests {
                 creature: attacker,
                 target: AttackTarget::Player(bob),
             }],
-            blockers: std::collections::HashMap::from([(attacker, vec![blocker])]),
+            blockers: std::collections::BTreeMap::from([(attacker, vec![blocker])]),
             ..CombatState::default()
         };
 
@@ -3213,8 +3216,8 @@ mod tests {
                 creature: attacker,
                 target: AttackTarget::Player(bob),
             }],
-            blockers: std::collections::HashMap::from([(attacker, vec![first, second])]),
-            damage_assignment_order: std::collections::HashMap::from([(
+            blockers: std::collections::BTreeMap::from([(attacker, vec![first, second])]),
+            damage_assignment_order: std::collections::BTreeMap::from([(
                 attacker,
                 vec![second, first],
             )]),

@@ -244,11 +244,11 @@ impl GameState {
             .as_ref()
             .map(|state| (state.variant, state.archenemies.clone()));
         let mut restarted_vanguard = VanguardState {
-            cards: HashMap::new(),
-            hand_modifiers: HashMap::new(),
-            life_modifiers: HashMap::new(),
+            cards: std::collections::BTreeMap::new(),
+            hand_modifiers: std::collections::BTreeMap::new(),
+            life_modifiers: std::collections::BTreeMap::new(),
         };
-        let mut restarted_scheme_decks = HashMap::<PlayerId, Vec<ObjectId>>::new();
+        let mut restarted_scheme_decks = std::collections::BTreeMap::<PlayerId, Vec<ObjectId>>::new();
         let mut restarted_conspiracy = ConspiracyState::default();
         for card in cards {
             let exempt =

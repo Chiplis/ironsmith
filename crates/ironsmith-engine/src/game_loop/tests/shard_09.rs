@@ -846,7 +846,7 @@ pub(super) fn raphael_tag_team_tough_trigger_only_happens_first_time_each_turn_a
                 target: AttackTarget::Player(bob),
             },
         ],
-        blockers: std::collections::HashMap::new(),
+        blockers: std::collections::BTreeMap::new(),
         ..Default::default()
     });
     if let Some(combat) = game.combat.as_mut() {

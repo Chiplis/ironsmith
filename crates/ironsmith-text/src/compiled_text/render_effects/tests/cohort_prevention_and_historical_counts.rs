@@ -375,7 +375,7 @@ fn cohort_first_strike_prevention_removes_blocker_without_dealing_combat_damage(
                 creature: source,
                 target: crate::combat_state::AttackTarget::Player(bob),
             }],
-            blockers: std::collections::HashMap::from([(source, vec![blocker])]),
+            blockers: std::collections::BTreeMap::from([(source, vec![blocker])]),
             ..Default::default()
         };
         game.take_pending_trigger_events();
@@ -513,7 +513,7 @@ fn cohort_unpreventable_combat_damage_happens_before_prevention_followup() {
             creature: source,
             target: crate::combat_state::AttackTarget::Player(bob),
         }],
-        blockers: std::collections::HashMap::from([(source, vec![blocker])]),
+        blockers: std::collections::BTreeMap::from([(source, vec![blocker])]),
         ..Default::default()
     };
     let events = crate::game_loop::execute_combat_damage_step(&mut game, &combat, true);

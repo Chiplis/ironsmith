@@ -49,7 +49,7 @@ impl GameState {
         }
 
         let mut state = AttractionState {
-            decks: HashMap::new(),
+            decks: std::collections::BTreeMap::new(),
             face_up: Vec::new(),
             lights: HashMap::new(),
             visit_programs: HashMap::new(),

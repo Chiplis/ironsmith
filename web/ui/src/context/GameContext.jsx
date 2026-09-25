@@ -7,6 +7,7 @@ import {
   startMainThreadMonitor,
 } from "@/lib/action-diagnostics";
 import { setJournalPolicy } from "@/lib/engine-journal";
+import { captureEngineRestorePoint, restoreEngineRestorePoint } from "@/lib/engine-restore-point";
 import { mergePriorityAnalysis } from "@/lib/priority-analysis-scheduler.js";
 import { castingMethodChoiceForAction, finishExplicitCastingMethod } from "@/lib/casting-method-choice";
 import { startTransition, useContext, useState, useCallback, useRef, useMemo, useEffect, useSyncExternalStore } from "react";
@@ -2534,15 +2535,17 @@ export function GameProvider({ children }) {
           throw new Error("Game engine cannot start replay mode");
         }
         const existingSession = auditReplaySessionRef.current;
-        const restoreCheckpoint = existingSession?.restoreCheckpoint
-          || await currentGame.exportSyncCheckpoint();
+        // The live match is restored from a lossless runtime savepoint; the
+        // checkpoint only backs it up if the engine instance is replaced.
+        const restorePoint = existingSession?.restorePoint
+          || await captureEngineRestorePoint(currentGame, { keepCheckpoint: true });
         const restorePerspective = Number(
           existingSession?.restorePerspective ?? stateRef.current?.perspective ?? 0
         );
         const session = {
           transcript: cloneJson(prepared.transcript),
           sourceLabel: prepared.sourceLabel || sourceLabel,
-          restoreCheckpoint,
+          restorePoint,
           restorePerspective,
           actionCount: prepared.actionCount,
         };
@@ -2568,9 +2571,9 @@ export function GameProvider({ children }) {
           return nextReplayState;
         } catch (err) {
           auditReplaySessionRef.current = existingSession || null;
-          if (!existingSession && typeof currentGame.importSyncCheckpoint === "function") {
+          if (!existingSession) {
             try {
-              await currentGame.importSyncCheckpoint(restoreCheckpoint, restorePerspective);
+              await restoreEngineRestorePoint(currentGame, restorePoint, restorePerspective);
               const restored = typeof currentGame.uiState === "function"
                 ? await currentGame.uiState()
                 : stateRef.current;
@@ -2672,13 +2675,10 @@ export function GameProvider({ children }) {
       return runAuditReplayWasmInteraction(async () => {
         const currentGame = gameRef.current;
         try {
-          if (
-            currentGame
-            && session.restoreCheckpoint
-            && typeof currentGame.importSyncCheckpoint === "function"
-          ) {
-            await currentGame.importSyncCheckpoint(
-              session.restoreCheckpoint,
+          if (currentGame && session.restorePoint) {
+            await restoreEngineRestorePoint(
+              currentGame,
+              session.restorePoint,
               session.restorePerspective,
             );
             const restored = typeof currentGame.uiState === "function"

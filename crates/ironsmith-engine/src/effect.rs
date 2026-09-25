@@ -238,7 +238,7 @@ impl OutcomeObjectMemory {
                 snow_mana_spent_to_cast: crate::player::ManaPool::default(),
                 mana_sources_spent_to_cast: Vec::new(),
                 optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
-                counters: std::collections::HashMap::new(),
+                counters: std::collections::BTreeMap::new(),
                 is_token: self.is_token,
                 tapped: false,
                 attacking: false,

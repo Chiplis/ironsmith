@@ -35,9 +35,9 @@ pub(super) struct SubgameFrame {
     nonwinner_effects: Vec<Effect>,
     original_definitions: HashMap<StableId, crate::cards::CardDefinition>,
     transfer_kinds: HashMap<StableId, SubgameTransferKind>,
-    vanguard_modifiers: HashMap<PlayerId, (i32, i32)>,
+    vanguard_modifiers: std::collections::BTreeMap<PlayerId, (i32, i32)>,
     archenemy_variant: Option<ArchenemyVariant>,
-    archenemies: HashSet<PlayerId>,
+    archenemies: std::collections::BTreeSet<PlayerId>,
 }
 
 /// Observable result of restoring one suspended parent game.
@@ -336,26 +336,26 @@ impl GameState {
         child.deploy_creatures = self.deploy_creatures;
 
         let mut child_vanguards = VanguardState {
-            cards: HashMap::new(),
-            hand_modifiers: HashMap::new(),
-            life_modifiers: HashMap::new(),
+            cards: std::collections::BTreeMap::new(),
+            hand_modifiers: std::collections::BTreeMap::new(),
+            life_modifiers: std::collections::BTreeMap::new(),
         };
         let mut child_planar = PlanechaseState {
-            decks: HashMap::new(),
+            decks: std::collections::BTreeMap::new(),
             communal_deck: None,
             deck_owners: HashMap::new(),
-            card_kinds: HashMap::new(),
+            card_kinds: std::collections::BTreeMap::new(),
             face_up: Vec::new(),
             planar_controller: child.turn.active_player,
-            planar_controllers: HashSet::from([child.turn.active_player]),
-            face_up_controllers: HashMap::new(),
+            planar_controllers: std::collections::BTreeSet::from([child.turn.active_player]),
+            face_up_controllers: std::collections::BTreeMap::new(),
             voluntary_rolls_this_turn: HashMap::new(),
             planeswalk_count: 0,
         };
         let mut child_schemes = archenemy_variant.map(|variant| ArchenemyState {
             variant,
             archenemies: archenemies.clone(),
-            scheme_decks: HashMap::new(),
+            scheme_decks: std::collections::BTreeMap::new(),
             face_up: Vec::new(),
         });
         for (stable_id, owner, mut definition, kind) in transferred {
@@ -729,10 +729,11 @@ impl GameState {
         self.subgame_just_resumed = true;
 
         let mut returned_ids = Vec::with_capacity(returned.len());
-        let mut libraries_to_shuffle = HashSet::new();
+        // Ordered: each shuffle consumes the game RNG.
+        let mut libraries_to_shuffle = std::collections::BTreeSet::new();
         let mut returned_planar = Vec::new();
         let mut returned_schemes = Vec::new();
-        let mut returned_vanguards = HashMap::new();
+        let mut returned_vanguards = std::collections::BTreeMap::new();
         for mut card in returned {
             let zone = match card.destination {
                 ReturnedDestination::Library => Zone::Library,
@@ -793,14 +794,14 @@ impl GameState {
         if !returned_planar.is_empty() {
             let communal = returned_planar.iter().any(|(_, _, _, communal)| *communal);
             let mut state = self.planechase.take().unwrap_or(PlanechaseState {
-                decks: HashMap::new(),
+                decks: std::collections::BTreeMap::new(),
                 communal_deck: communal.then(Vec::new),
                 deck_owners: HashMap::new(),
-                card_kinds: HashMap::new(),
+                card_kinds: std::collections::BTreeMap::new(),
                 face_up: Vec::new(),
                 planar_controller: self.turn.active_player,
-                planar_controllers: HashSet::from([self.turn.active_player]),
-                face_up_controllers: HashMap::new(),
+                planar_controllers: std::collections::BTreeSet::from([self.turn.active_player]),
+                face_up_controllers: std::collections::BTreeMap::new(),
                 voluntary_rolls_this_turn: HashMap::new(),
                 planeswalk_count: 0,
             });
@@ -828,7 +829,7 @@ impl GameState {
             let mut state = self.archenemy.take().unwrap_or(ArchenemyState {
                 variant: archenemy_variant.unwrap_or(ArchenemyVariant::Default),
                 archenemies,
-                scheme_decks: HashMap::new(),
+                scheme_decks: std::collections::BTreeMap::new(),
                 face_up: Vec::new(),
             });
             for (owner, object) in returned_schemes {

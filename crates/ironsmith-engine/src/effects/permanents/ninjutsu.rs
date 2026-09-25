@@ -106,6 +106,9 @@ impl EffectExecutor for NinjutsuCostEffect {
                 spec,
             )
         };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
 
         let chosen_attacker = chosen
             .into_iter()
@@ -248,6 +251,9 @@ impl EffectExecutor for SneakCostEffect {
                 spec,
             )
         };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
 
         let chosen_attacker = chosen
             .into_iter()

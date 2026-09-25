@@ -664,6 +664,12 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
+        "parse_source_exiled_play_life_cost_line" => vec![
+            StaticAbilityLineHeadHint::Single("you"),
+            StaticAbilityLineHeadHint::Pair("you", "may"),
+            StaticAbilityLineHeadHint::Single("during"),
+            StaticAbilityLineHeadHint::Pair("during", "your"),
+        ],
         "parse_fixed_mana_cost_instead_of_mana_cost_grant_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
@@ -1580,6 +1586,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         multi_static_ability_ast_rule!(parse_player_may_cast_spells_free_and_flash_line),
         multi_static_ability_ast_rule!(parse_surveilled_graveyard_play_life_cost_line),
+        multi_static_ability_ast_rule!(parse_source_exiled_play_life_cost_line),
         single_static_ability_ast_rule!(parse_as_you_cascade_land_drop_line),
         single_static_ability_ast_rule!(parse_play_from_permission_with_haste_this_way_line),
         single_static_ability_ast_rule!(

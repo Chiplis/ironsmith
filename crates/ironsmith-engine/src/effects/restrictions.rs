@@ -79,6 +79,8 @@ fn collapse_tagged_filter_to_specific_objects(
                     .then_some(snapshot.object_id)
             })
             .collect();
+        // Tag-map iteration order is per-instance; keep the stored filter stable.
+        object_ids.sort_unstable();
     }
 
     match object_ids.as_slice() {

@@ -606,13 +606,17 @@ pub(crate) fn run_vote(
             };
 
             let max_votes = object_vote_counts.values().copied().max().unwrap_or(0);
-            let winning_objects: Vec<ObjectId> = object_vote_counts
+            // Sorted so the tagged-object order is identical on every peer
+            // (the counts map is a std HashMap with per-instance iteration order).
+            let mut winning_objects: Vec<ObjectId> = object_vote_counts
                 .iter()
                 .filter_map(|(object_id, count)| {
                     (*count == max_votes && *count > 0).then_some(*object_id)
                 })
                 .collect();
-            let voted_objects: Vec<ObjectId> = object_vote_counts.keys().copied().collect();
+            winning_objects.sort_unstable();
+            let mut voted_objects: Vec<ObjectId> = object_vote_counts.keys().copied().collect();
+            voted_objects.sort_unstable();
             ctx.set_tagged_objects(
                 VOTED_OBJECTS_TAG,
                 snapshots_for_objects(game, &voted_objects),

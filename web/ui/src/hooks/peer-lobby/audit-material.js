@@ -3498,6 +3498,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
       }
 	      let localHiddenMetadata = null;
 	      let debugOpeningEntry = null;
+	      let openingObjectHiddenLocally = false;
 	      try {
 	        await verifyAuditOpeningsAgainstManifests([opening], options);
 	        const openingObjectId = opening.objectId == null ? null : Number(opening.objectId);
@@ -3508,6 +3509,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 		        localHiddenMetadata = opening.objectId != null
 		          ? await currentHiddenCardMetadataForObject(opening.objectId)
 		          : null;
+		        openingObjectHiddenLocally = Boolean(localHiddenMetadata);
 		        const openingPositionCommitment = String(opening.positionCommitment || "");
 		        if (
 		          localHiddenMetadata
@@ -3579,6 +3581,9 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 	          }
 		          const explicitObject = checkpointObjectForId(checkpoint, openingObjectId);
 		          explicitObjectPresent = Boolean(explicitObject);
+		          openingObjectHiddenLocally = openingObjectHiddenLocally || Boolean(
+		            explicitObject && checkpointObjectHiddenCard(explicitObject)
+		          );
 		          explicitObjectExistsWithoutHidden = Boolean(
 		            explicitObject && !checkpointObjectHiddenCard(explicitObject)
 		          );
@@ -3846,8 +3851,20 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
         changed = true;
       } catch (err) {
         const message = String(err?.message || err || "");
+        // A post opening at a ziffle position whose object is a hidden card in
+        // this engine must apply: failing it means this seat and the actor
+        // disagree about the post-action ceremony (e.g. revealing before the
+        // verified shuffle was resealed), so surface it instead of dropping it.
+        const unappliedPostZiffleOpening = Boolean(
+          timing === "post"
+          && openingObjectHiddenLocally
+          && ziffleDeckHashFromCommitment(
+            opening.positionCommitment || opening.publicCommitment || opening.public_commitment
+          )
+        );
         if (
           opensCommandObject
+          || unappliedPostZiffleOpening
           || (!message.includes("not present") && !message.includes("not a hidden"))
         ) {
           throw new Error(
@@ -3868,6 +3885,15 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
             + ` processed ${JSON.stringify(debugProcessedPostOpenings)}`
           );
         }
+        console.warn("[ironsmith] audit opening skipped: target is not a hidden card here", {
+          timing,
+          owner: Number(opening.owner),
+          slot: Number(opening.slot),
+          objectId: opening.objectId == null ? null : Number(opening.objectId),
+          position: opening.position == null ? null : Number(opening.position),
+          positionCommitment: String(opening.positionCommitment || "").slice(0, 32),
+          error: message,
+        });
       }
     }
     if (changed && options.updateState !== false) {

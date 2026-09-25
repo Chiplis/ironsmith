@@ -33,6 +33,7 @@ mod free_for_all_setup_tests {
             commander_draft: None,
             opening_hand_size: Some(0),
             hidden_deck_manifests: None,
+            public_decklists: None,
             free_for_all: options,
             teams: None,
             starting_player: None,
@@ -1831,6 +1832,18 @@ impl WasmGame {
         &mut self,
         reveals: &[(PlayerId, ObjectId, CardDefinition)],
     ) -> Result<(), String> {
+        // Every format: a card chosen from a hidden hand while it was a
+        // placeholder on this peer must satisfy that choice's filter now that
+        // its identity is opened (a cheating owner could otherwise pick any
+        // card for "put a creature card from your hand onto the battlefield").
+        for (_, object_id, definition) in reveals {
+            if let Some(violation) = self
+                .game
+                .hidden_identity_obligation_violation(*object_id, definition)
+            {
+                return Err(violation);
+            }
+        }
         if self.match_format != MatchFormatInput::Normal || reveals.is_empty() {
             return Ok(());
         }
@@ -3255,6 +3268,7 @@ mod starting_player_setup_tests {
             commander_draft: None,
             opening_hand_size: Some(0),
             hidden_deck_manifests: None,
+            public_decklists: None,
             free_for_all: None,
             teams: None,
             starting_player,
@@ -3350,6 +3364,7 @@ mod normal_constructed_setup_tests {
             commander_draft: None,
             opening_hand_size: Some(0),
             hidden_deck_manifests: None,
+            public_decklists: None,
             free_for_all: None,
             teams: None,
             starting_player: None,
@@ -3391,6 +3406,7 @@ mod normal_constructed_setup_tests {
             commander_draft: None,
             opening_hand_size: Some(0),
             hidden_deck_manifests: Some(hidden_manifests(deck_count, sideboard_count)),
+            public_decklists: None,
             free_for_all: None,
             teams: None,
             starting_player: None,
@@ -3445,6 +3461,7 @@ mod normal_constructed_setup_tests {
             commander_draft: None,
             opening_hand_size: Some(7),
             hidden_deck_manifests: None,
+            public_decklists: None,
             free_for_all: None,
             teams: None,
             starting_player: None,
@@ -3844,6 +3861,7 @@ mod commander_setup_tests {
             commander_draft: None,
             opening_hand_size: Some(1),
             hidden_deck_manifests: None,
+            public_decklists: None,
             free_for_all: None,
             teams: None,
             starting_player: None,
@@ -4085,6 +4103,7 @@ mod commander_setup_tests {
             commander_draft: None,
             opening_hand_size: Some(3),
             hidden_deck_manifests: Some(manifests),
+            public_decklists: None,
             free_for_all: None,
             teams: None,
             starting_player: None,
@@ -4213,6 +4232,7 @@ mod commander_draft_setup_tests {
             }),
             opening_hand_size: Some(1),
             hidden_deck_manifests: None,
+            public_decklists: None,
             free_for_all: None,
             teams: None,
             starting_player: None,
@@ -4411,6 +4431,7 @@ mod planechase_setup_tests {
             commander_draft: None,
             opening_hand_size: Some(0),
             hidden_deck_manifests: None,
+            public_decklists: None,
             free_for_all: None,
             teams: None,
             starting_player: None,
@@ -4484,6 +4505,7 @@ mod vanguard_setup_tests {
             // Vanguard always uses seven as its unmodified opening-hand basis.
             opening_hand_size: Some(1),
             hidden_deck_manifests: None,
+            public_decklists: None,
             free_for_all: None,
             teams: None,
             starting_player: None,
@@ -4586,6 +4608,7 @@ mod archenemy_setup_tests {
             commander_draft: None,
             opening_hand_size: Some(1),
             hidden_deck_manifests: None,
+            public_decklists: None,
             free_for_all: None,
             teams: None,
             starting_player: None,
@@ -4734,6 +4757,7 @@ mod conspiracy_setup_tests {
             commander_draft: None,
             opening_hand_size: Some(1),
             hidden_deck_manifests: None,
+            public_decklists: None,
             free_for_all: None,
             teams: None,
             starting_player: None,

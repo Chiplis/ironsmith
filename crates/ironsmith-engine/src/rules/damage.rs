@@ -621,7 +621,7 @@ mod tests {
             hand_modifier: 0,
             life_modifier: 0,
             abilities: std::sync::Arc::new(vec![]),
-            counters: HashMap::new(),
+            counters: std::collections::BTreeMap::new(),
             attached_to: None,
             attachments: vec![],
             spell_effect: None,

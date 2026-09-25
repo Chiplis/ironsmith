@@ -69,7 +69,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             snow_mana_spent_to_cast: crate::player::ManaPool::default(),
             mana_sources_spent_to_cast: Vec::new(),
             optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
-            counters: HashMap::new(),
+            counters: std::collections::BTreeMap::new(),
             is_token: memory.is_token,
             tapped: false,
             attacking: false,

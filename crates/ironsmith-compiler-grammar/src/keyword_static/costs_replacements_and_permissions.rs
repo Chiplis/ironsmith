@@ -3817,6 +3817,88 @@ pub fn parse_surveilled_graveyard_play_life_cost_line(
     ]))
 }
 
+/// "[During your turn,] you may play cards exiled with <source>. If you cast
+/// a spell this way, pay life equal to its mana value rather than pay its
+/// mana cost."
+pub fn parse_source_exiled_play_life_cost_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    use winnow::Parser as _;
+    let (during_your_turn, rest) = match crate::grammar::primitives::parse_prefix(
+        tokens,
+        crate::grammar::primitives::phrase(&["during", "your", "turn"]),
+    ) {
+        Some((_, rest)) => (true, trim_lexed_commas(rest)),
+        None => (false, tokens),
+    };
+    let Some((_, rest)) = crate::grammar::primitives::parse_prefix(
+        rest,
+        crate::grammar::primitives::phrase(&["you", "may", "play"]),
+    ) else {
+        return Ok(None);
+    };
+    let Some((reference, tail)) =
+        crate::grammar::permission_facts::source_exiled::parse_cards_from_source_exiled_tokens(rest)
+    else {
+        return Ok(None);
+    };
+    if crate::grammar::primitives::parse_all(
+        tail,
+        (
+            winnow::combinator::opt(crate::grammar::primitives::period()),
+            crate::grammar::primitives::phrase(&["if", "you", "cast", "a", "spell", "this", "way"]),
+            winnow::combinator::opt(crate::grammar::primitives::comma()),
+            crate::grammar::primitives::phrase(&[
+                "pay", "life", "equal", "to", "its", "mana", "value", "rather", "than", "pay", "its",
+                "mana", "cost",
+            ]),
+            winnow::combinator::opt(crate::grammar::primitives::period()),
+        )
+            .void(),
+        "source-exiled play life cost",
+    )
+    .is_err()
+    {
+        return Ok(None);
+    }
+    let usage_limit = during_your_turn.then_some(crate::grant::GrantUsageLimit::DuringYourTurns);
+    let surface = crate::grant::SourceExiledGrantSurface {
+        source: reference.surface,
+        plural_spell_subject: false,
+        generic_card_pool: true,
+        generic_cast_this_way_subject: true,
+    };
+    let mut pool = ObjectFilter::default();
+    pool.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+        tag: (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
+        relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+    });
+    let mut spells = pool.clone();
+    spells.excluded_card_types.push(CardType::Land);
+    let mut play = crate::model::CompilerGrantSpecCore::new(
+        crate::model::CompilerGrantableCore::play_from(),
+        pool,
+        Zone::Exile,
+    )
+    .with_beneficiary(PlayerFilter::You)
+    .with_source_exiled_surface(surface.clone());
+    let mut life = crate::model::CompilerGrantSpecCore::new(
+        crate::model::CompilerGrantableCore::life_equal_mana_value_from_zone(
+            Zone::Exile,
+            usage_limit,
+        ),
+        spells,
+        Zone::Exile,
+    )
+    .with_beneficiary(PlayerFilter::You)
+    .with_source_exiled_surface(surface);
+    if let Some(limit) = usage_limit {
+        play = play.with_usage_limit(limit);
+        life = life.with_usage_limit(limit);
+    }
+    Ok(Some(vec![StaticAbility::grants(play), StaticAbility::grants(life)]))
+}
+
 pub fn parse_you_may_static_grant_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
@@ -5100,6 +5182,14 @@ pub fn parse_exile_to_exile_instead_of_graveyard_line(
         keyword_static_lines::ExileGraveyardFilterKind::AnyCard => {
             let mut filter = ObjectFilter::default();
             filter.set_explicit_card_noun(true);
+            filter
+        }
+        keyword_static_lines::ExileGraveyardFilterKind::CardYouDidntControl => {
+            // Cards outside the battlefield and stack are controlled by their
+            // owners, so only a permanent or spell you controlled is spared.
+            let mut filter = ObjectFilter::default();
+            filter.set_explicit_card_noun(true);
+            filter.controller = Some(PlayerFilter::NotYou);
             filter
         }
         keyword_static_lines::ExileGraveyardFilterKind::CreatureCard => ObjectFilter::creature(),

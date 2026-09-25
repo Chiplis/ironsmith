@@ -80,6 +80,9 @@ impl EffectExecutor for ReorderLibraryTopEffect {
             Some(ctx.source),
             spec,
         );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         let ordered = normalize_order_response(ordered, &current_top_to_bottom);
 
         if let Some(player) = game.player(library_owner) {

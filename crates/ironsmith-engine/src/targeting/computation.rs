@@ -3,7 +3,6 @@
 //! This module provides functions for computing legal targets
 //! for spells and abilities.
 
-use std::collections::HashMap;
 
 use crate::ability::extract_static_abilities;
 use crate::filter::ObjectFilterExt as _;
@@ -224,7 +223,10 @@ pub fn legal_target_sets_for_spec(
         return Vec::new();
     };
 
-    let mut by_controller: HashMap<PlayerId, Vec<Target>> = HashMap::new();
+    // Ordered by controller so target-set order (and the `first()` fallback) is
+    // identical on every peer.
+    let mut by_controller: std::collections::BTreeMap<PlayerId, Vec<Target>> =
+        std::collections::BTreeMap::new();
     for target in legal_targets {
         let Target::Object(object_id) = target else {
             continue;

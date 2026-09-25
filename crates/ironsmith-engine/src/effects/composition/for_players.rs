@@ -559,6 +559,11 @@ impl EffectExecutor for ForPlayersEffect {
                 if unit_has_mutating_effect {
                     ctx.tagged_objects = pre_unit_tagged_objects.clone();
                 }
+                // A proposal prompt is still unanswered: unwind before
+                // committing any fallback choice.
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
 
                 let game_checkpoint = game.clone();
                 let mut batch_outcomes = Vec::with_capacity(prepared.len());

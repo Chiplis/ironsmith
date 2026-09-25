@@ -369,6 +369,7 @@ fn manabrew_match_setup(input: &ManabrewMatchConfigInput) -> MatchSetupInput {
         commander_draft: None,
         opening_hand_size: Some(opening_hand_size),
         hidden_deck_manifests: None,
+        public_decklists: None,
         free_for_all: None,
         teams: None,
         // Manabrew's protocol has the caller decide seating and expects the
@@ -3346,6 +3347,7 @@ mod manabrew_tests {
             commander_draft: None,
             opening_hand_size: Some(0),
             hidden_deck_manifests: None,
+            public_decklists: None,
             free_for_all: None,
             teams: None,
             starting_player: None,

@@ -15,7 +15,7 @@
 //! - read a serializable snapshot
 
 use std::collections::hash_map::DefaultHasher;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::sync::OnceLock;
 #[cfg(not(target_arch = "wasm32"))]
@@ -500,14 +500,17 @@ fn merge_carried_active_viewed_cards(
     }
 }
 
+// Ordered maps: crypto requirement lists are built by iterating these, and
+// that order is transmitted/replayed positionally, so it must be identical on
+// every peer (std HashMap iteration order is per-instance random on wasm32).
 #[derive(Debug, Clone, Default)]
 struct CryptoAuditState {
-    hidden_by_id: HashMap<ObjectId, HiddenAuditCard>,
-    hidden_by_key: HashMap<(u8, u16, String), HiddenAuditCard>,
-    stable_by_id: HashMap<ObjectId, StableId>,
-    id_by_stable: HashMap<StableId, ObjectId>,
-    libraries: HashMap<PlayerId, Vec<ObjectId>>,
-    hands: HashMap<PlayerId, Vec<ObjectId>>,
+    hidden_by_id: BTreeMap<ObjectId, HiddenAuditCard>,
+    hidden_by_key: BTreeMap<(u8, u16, String), HiddenAuditCard>,
+    stable_by_id: BTreeMap<ObjectId, StableId>,
+    id_by_stable: BTreeMap<StableId, ObjectId>,
+    libraries: BTreeMap<PlayerId, Vec<ObjectId>>,
+    hands: BTreeMap<PlayerId, Vec<ObjectId>>,
     random_count: u64,
     operation_checkpoint: usize,
 }
@@ -1110,7 +1113,8 @@ fn merge_hidden_decision_views(
             continue;
         }
 
-        let mut grouped: HashMap<(PlayerId, Zone), Vec<ObjectId>> = HashMap::new();
+        // Ordered: audit/active viewed-card order feeds crypto requirements.
+        let mut grouped: BTreeMap<(PlayerId, Zone), Vec<ObjectId>> = BTreeMap::new();
         for &id in &view.object_ids {
             let Some(object) = game.object(id) else {
                 continue;
@@ -1638,7 +1642,11 @@ impl WasmGame {
             operation_checkpoint: self.game.crypto_audit_checkpoint(),
             ..CryptoAuditState::default()
         };
-        for (&object_id, info) in self.game.hidden_card_entries() {
+        // Sorted so a (owner, slot, commitment) key collision in
+        // `hidden_by_key` resolves identically on every peer.
+        let mut hidden_entries: Vec<_> = self.game.hidden_card_entries().collect();
+        hidden_entries.sort_unstable_by_key(|(object_id, _)| **object_id);
+        for (&object_id, info) in hidden_entries {
             let Some(object) = self.game.object(object_id) else {
                 continue;
             };
@@ -4408,6 +4416,12 @@ struct MatchSetupInput {
     opening_hand_size: Option<usize>,
     #[serde(default)]
     hidden_deck_manifests: Option<Vec<HiddenDeckManifestInput>>,
+    /// Public card lists (main deck, sideboard and commanders) of every seat in
+    /// a hidden-deck match with open decklists. Only used to decide, identically
+    /// on every peer, which seats get an owner draw reveal window (Miracle).
+    /// Absent in closed-decklist matches: every hidden seat then gets one.
+    #[serde(default)]
+    public_decklists: Option<Vec<Vec<String>>>,
     /// CR 806/811 attack and range choices, valid for Free-for-All or
     /// Alternating Teams. Omitting them for Alternating Teams selects the
     /// recommended range of influence of 2.
@@ -4728,8 +4742,18 @@ struct TranscriptLibraryShuffleInput {
 struct ApplyHiddenLibraryShuffleInput {
     owner: u8,
     deck_hash: String,
+    /// The verified ziffle deck order: index `p` is the object that sits at
+    /// ziffle position `p` of `deck_hash`. It may cover only part of the
+    /// current library (shuffle-then-reinsert tutors) and may name cards that
+    /// left the library after the shuffle in the same action.
     #[serde(default)]
     after_order: Vec<u64>,
+    /// When true (the default), the covered library cards are re-sequenced to
+    /// the verified order. Callers pass false for a shuffle that a later shuffle
+    /// or deterministic reorder in the same action superseded, so only its
+    /// ziffle positions are published.
+    #[serde(default)]
+    enforce_library_order: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]

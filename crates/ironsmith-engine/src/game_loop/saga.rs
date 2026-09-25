@@ -218,6 +218,11 @@ fn choose_read_ahead_chapter(
         Some(saga_id),
         choice_spec,
     );
+    if decision_maker.awaiting_choice() {
+        // Unwind without committing a fallback chapter; callers treat 0 as
+        // "place no lore counters".
+        return 0;
+    }
     chosen
         .pop()
         .and_then(|idx| u32::try_from(idx + 1).ok())

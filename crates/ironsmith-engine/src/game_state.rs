@@ -1,7 +1,7 @@
 use crate::effect::RestrictionExt as _;
 use crate::filter::ObjectFilterExt as _;
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::ops::{Deref, DerefMut, Range};
 use std::sync::Arc;
 
@@ -46,6 +46,7 @@ mod conspiracy;
 mod emperor;
 mod free_for_all;
 mod grand_melee;
+mod hidden_hand_choices;
 mod mana_and_permissions;
 mod object_state_and_events;
 mod planechase;
@@ -99,22 +100,22 @@ pub enum PlanarDieFace {
 #[derive(Debug, Clone)]
 pub struct PlanechaseState {
     /// Individual planar decks, stored bottom-to-top (top is the last element).
-    pub decks: HashMap<PlayerId, Vec<ObjectId>>,
+    pub decks: BTreeMap<PlayerId, Vec<ObjectId>>,
     /// Optional communal planar deck, also bottom-to-top.
     pub communal_deck: Option<Vec<ObjectId>>,
     /// Original individual-deck owner for each planar card.
     pub deck_owners: HashMap<ObjectId, PlayerId>,
     /// Typed plane/phenomenon identity for every planar object.
-    pub card_kinds: HashMap<ObjectId, PlanarCardKind>,
+    pub card_kinds: BTreeMap<ObjectId, PlanarCardKind>,
     /// Face-up planar objects. Ordinary Planechase has exactly one after setup.
     pub face_up: Vec<ObjectId>,
     /// Player currently designated as planar controller.
     pub planar_controller: PlayerId,
     /// Every planar controller in a Grand Melee game. Ordinary Planechase has
     /// exactly the singular `planar_controller` in this set.
-    pub planar_controllers: HashSet<PlayerId>,
+    pub planar_controllers: BTreeSet<PlayerId>,
     /// Controller of each simultaneously face-up planar card.
-    pub face_up_controllers: HashMap<ObjectId, PlayerId>,
+    pub face_up_controllers: BTreeMap<ObjectId, PlayerId>,
     /// Voluntary planar-die special actions taken by each player this turn.
     pub voluntary_rolls_this_turn: HashMap<PlayerId, u32>,
     /// Number of completed planeswalk actions, for duration/history consumers.
@@ -125,11 +126,11 @@ pub struct PlanechaseState {
 #[derive(Debug, Clone)]
 pub struct VanguardState {
     /// Exactly one face-up Vanguard command-zone object per player.
-    pub cards: HashMap<PlayerId, ObjectId>,
+    pub cards: BTreeMap<PlayerId, ObjectId>,
     /// Printed signed hand modifier for each player's vanguard.
-    pub hand_modifiers: HashMap<PlayerId, i32>,
+    pub hand_modifiers: BTreeMap<PlayerId, i32>,
     /// Printed signed life modifier for each player's vanguard.
-    pub life_modifiers: HashMap<PlayerId, i32>,
+    pub life_modifiers: BTreeMap<PlayerId, i32>,
 }
 
 /// Archenemy rules profile used to validate supplementary scheme decks.
@@ -145,9 +146,9 @@ pub enum ArchenemyVariant {
 pub struct ArchenemyState {
     pub variant: ArchenemyVariant,
     /// Players designated as archenemies.
-    pub archenemies: HashSet<PlayerId>,
+    pub archenemies: BTreeSet<PlayerId>,
     /// Face-down scheme decks, stored bottom-to-top.
-    pub scheme_decks: HashMap<PlayerId, Vec<ObjectId>>,
+    pub scheme_decks: BTreeMap<PlayerId, Vec<ObjectId>>,
     /// Currently face-up schemes in the command zone.
     pub face_up: Vec<ObjectId>,
 }
@@ -163,7 +164,7 @@ pub enum AttractionDeckFormat {
 #[derive(Debug, Clone)]
 pub struct AttractionState {
     /// Attraction decks stored bottom-to-top (top is the last element).
-    pub decks: HashMap<PlayerId, Vec<ObjectId>>,
+    pub decks: BTreeMap<PlayerId, Vec<ObjectId>>,
     /// Attraction permanents opened from these decks and still tracked face up.
     pub face_up: Vec<ObjectId>,
     /// Printed lit numbers keyed by the physical card's stable identity.
@@ -593,6 +594,19 @@ struct AuxiliaryTrackingState {
     draft_removed_cards: HashMap<(PlayerId, String), HashSet<ObjectId>>,
     /// Cryptographic hidden-card slots that have not been opened on this peer.
     hidden_cards: HashMap<ObjectId, HiddenCardInfo>,
+    /// Filters that cards chosen while they were hidden placeholders must
+    /// satisfy once their identity is opened on this peer.
+    hidden_identity_obligations: Vec<hidden_hand_choices::HiddenIdentityObligation>,
+    /// Hidden-tracked hand cards whose identity every peer learned through an
+    /// owner-answered public reveal (see `hidden_hand_choices`). Symmetric:
+    /// it only changes while a decision answer is replayed.
+    publicly_revealed_hidden_cards: BTreeSet<ObjectId>,
+    /// Players whose deck may hold a card that triggers as it is drawn
+    /// (Miracle). Drawing a hidden card opens an owner reveal window for them.
+    hidden_draw_reveal_players: BTreeSet<PlayerId>,
+    /// Hidden cards just drawn whose owner has not yet answered the draw
+    /// reveal window, in draw order.
+    pending_hidden_draw_reveals: Vec<(PlayerId, ObjectId)>,
     /// Noncopiable alpha/beta/gamma designations on battlefield permanents.
     sector_designations: HashMap<ObjectId, crate::marker::SectorDesignation>,
     /// Partially collected asynchronous CR 704.5u choices for the priority driver.
@@ -6817,13 +6831,20 @@ impl GameState {
         let zone = self.object(id)?.zone;
         let handles = self.object_store.shared_handles_for_definition(def);
         let object = self.object_mut(id)?;
-        object.apply_card_definition_with_shared(def, &handles);
-        if zone == Zone::Battlefield
-            && let Some(loyalty) = object.base_loyalty
-            && loyalty > 0
-        {
-            object.add_counters(crate::object::CounterType::Loyalty, loyalty);
+        // Learning a face-down object's identity (privately or publicly) does
+        // not turn it face up: keep the face-down overlay, its public
+        // characteristics and counters, and store the printed card for when it
+        // is turned face up (CR 708.2, 708.8).
+        if !object.learn_face_down_identity_with_shared(def, &handles) {
+            object.apply_card_definition_with_shared(def, &handles);
+            if zone == Zone::Battlefield
+                && let Some(loyalty) = object.base_loyalty
+                && loyalty > 0
+            {
+                object.add_counters(crate::object::CounterType::Loyalty, loyalty);
+            }
         }
+        self.clear_hidden_identity_obligations(id);
         self.mark_continuous_state_dirty();
         Some(info)
     }
@@ -7072,7 +7093,8 @@ impl GameState {
 /// consuming one turn uses exactly one of them (CR 614.10a).
 #[derive(Debug, Clone, Default)]
 pub struct PendingTurnSkips {
-    counts: std::collections::HashMap<PlayerId, u32>,
+    // Ordered: `iter()` feeds a first-match consume in team games.
+    counts: std::collections::BTreeMap<PlayerId, u32>,
 }
 impl PendingTurnSkips {
     pub fn insert(&mut self, player: PlayerId) {

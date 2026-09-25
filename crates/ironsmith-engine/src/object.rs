@@ -418,6 +418,13 @@ pub struct FaceDownCastState {
     pub abilities: Arc<Vec<Ability>>,
     pub spell_effect: Option<SharedValue<crate::resolution::ResolutionProgram>>,
     pub aura_attach_filter: Option<SharedValue<AuraAttachmentFilter>>,
+    /// Public face-down kind: this object was cast face down using disguise,
+    /// so the face-down overlay carries ward {2} (CR 702.168a).
+    ///
+    /// This is recorded when the overlay is applied and never re-derived from
+    /// the hidden abilities above: peers that hold a hidden-card placeholder
+    /// must agree on the face-down characteristics without knowing them.
+    pub disguise_ward: bool,
 }
 
 /// Stored copiable fields needed to restore a prototype card outside the stack
@@ -497,7 +504,7 @@ pub struct Object {
     pub abilities: Arc<Vec<Ability>>,
 
     // Non-copiable values (kept on Object)
-    pub counters: HashMap<CounterType, u32>,
+    pub counters: std::collections::BTreeMap<CounterType, u32>,
     pub attached_to: Option<AttachmentTarget>,
     pub attachments: Vec<ObjectId>,
 
@@ -736,7 +743,7 @@ impl Object {
             hand_modifier: card.hand_modifier,
             life_modifier: card.life_modifier,
             abilities: Arc::new(Vec::new()),
-            counters: HashMap::new(),
+            counters: std::collections::BTreeMap::new(),
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: None,
@@ -819,7 +826,7 @@ impl Object {
             hand_modifier: 0,
             life_modifier: 0,
             abilities: Arc::new(Vec::new()),
-            counters: HashMap::new(),
+            counters: std::collections::BTreeMap::new(),
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: None,
@@ -1086,7 +1093,7 @@ impl Object {
             hand_modifier: 0,
             life_modifier: 0,
             abilities: Arc::new(Vec::new()),
-            counters: HashMap::new(),
+            counters: std::collections::BTreeMap::new(),
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: None,
@@ -1159,7 +1166,7 @@ impl Object {
             life_modifier: source.life_modifier,
             abilities: source.abilities.clone(),
             // Non-copiable values reset to defaults
-            counters: HashMap::new(),
+            counters: std::collections::BTreeMap::new(),
             attached_to: None,
             attachments: Vec::new(),
             // Note: spell_effect is copiable for spell copies
@@ -1231,7 +1238,7 @@ impl Object {
             hand_modifier: source.hand_modifier,
             life_modifier: source.life_modifier,
             abilities: source.abilities.clone(),
-            counters: HashMap::new(),
+            counters: std::collections::BTreeMap::new(),
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: source.spell_effect.clone(),
@@ -1301,7 +1308,7 @@ impl Object {
             hand_modifier: 0,
             life_modifier: 0,
             abilities: copiable.abilities.clone(),
-            counters: HashMap::new(),
+            counters: std::collections::BTreeMap::new(),
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: None,
@@ -1370,7 +1377,7 @@ impl Object {
             hand_modifier: 0,
             life_modifier: 0,
             abilities: Arc::new(abilities),
-            counters: HashMap::new(),
+            counters: std::collections::BTreeMap::new(),
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: None,
@@ -1580,19 +1587,37 @@ impl Object {
         true
     }
 
-    /// Apply the shared face-down cast overlay used by morph-style casting.
-    pub fn apply_face_down_cast_overlay(&mut self) -> bool {
-        if self.face_down_cast_state.is_some() {
-            return false;
-        }
-
-        let has_disguise = self.abilities.iter().any(|ability| {
+    /// Whether this object's own (possibly hidden) abilities include disguise.
+    ///
+    /// Only the casting engine may consult this, at the moment it chooses the
+    /// disguise casting permission; the result is then recorded publicly via
+    /// [`Self::apply_face_down_cast_overlay_with_disguise_ward`].
+    pub fn has_disguise_ability(&self) -> bool {
+        self.abilities.iter().any(|ability| {
             matches!(
                 &ability.kind,
                 crate::ability::AbilityKind::Static(static_ability)
                     if static_ability.is_disguise()
             )
-        });
+        })
+    }
+
+    /// Apply the shared face-down overlay (a 2/2 nameless colorless creature,
+    /// CR 708.2) without any cast-kind extras. Manifest, "turn face down", and
+    /// "put onto the battlefield face down" effects use this: none of them
+    /// grant disguise's ward, and none may depend on the hidden abilities.
+    pub fn apply_face_down_cast_overlay(&mut self) -> bool {
+        self.apply_face_down_cast_overlay_with_disguise_ward(false)
+    }
+
+    /// Apply the face-down overlay for a face-down cast. `disguise_ward` is the
+    /// public cast kind (cast using disguise, CR 702.168a); it is stored on the
+    /// face-down state so every peer derives the same ward {2} regardless of
+    /// whether it knows the card's real abilities.
+    pub fn apply_face_down_cast_overlay_with_disguise_ward(&mut self, disguise_ward: bool) -> bool {
+        if self.face_down_cast_state.is_some() {
+            return false;
+        }
 
         self.face_down_cast_state = Some(Box::new(FaceDownCastState {
             name: self.name.clone(),
@@ -1612,6 +1637,7 @@ impl Object {
             abilities: self.abilities.clone(),
             spell_effect: self.spell_effect.clone(),
             aura_attach_filter: self.aura_attach_filter.clone(),
+            disguise_ward,
         }));
 
         self.name = FACE_DOWN_DISPLAY_NAME.into();
@@ -1634,7 +1660,7 @@ impl Object {
                     if static_ability.turn_face_up_cost().is_some()
             )
         });
-        if has_disguise {
+        if disguise_ward {
             self.abilities_mut()
                 .push(Ability::static_ability(StaticAbility::ward(
                     TotalCost::mana(ManaCost::from_pips(vec![vec![
@@ -1646,6 +1672,76 @@ impl Object {
         self.aura_attach_filter = None;
         self.bestow_cast_state = None;
         true
+    }
+
+    /// Learn the identity of a face-down object without turning it face up.
+    ///
+    /// Private knowledge (a controller looking at its own manifest, cloak, or
+    /// morph, or an owner opening its own hidden slot) must not change the
+    /// object's face-down characteristics: every peer, including those that
+    /// only hold a hidden-card placeholder, has to keep deriving the same
+    /// 2/2 nameless creature (CR 708.2) and the same public state. The printed
+    /// characteristics are stored as the face-down restore state, so they take
+    /// effect only when the object is turned face up (CR 708.8) or leaves.
+    ///
+    /// Returns `false` (and changes nothing) when the object has no face-down
+    /// overlay.
+    pub(crate) fn learn_face_down_identity_with_shared(
+        &mut self,
+        def: &crate::cards::CardDefinition,
+        handles: &CardSharedHandles,
+    ) -> bool {
+        let Some(disguise_ward) = self
+            .face_down_cast_state
+            .as_ref()
+            .map(|state| state.disguise_ward)
+        else {
+            return false;
+        };
+        let mut face_up = self.clone();
+        face_up.face_down_cast_state = None;
+        face_up.apply_card_definition_with_shared(def, handles);
+
+        self.kind = face_up.kind;
+        self.card = face_up.card;
+        // Card-level data consulted only once the card is face up again.
+        self.other_face = face_up.other_face;
+        self.other_face_name = face_up.other_face_name.clone();
+        self.linked_face_layout = face_up.linked_face_layout;
+        self.alternative_casts = face_up.alternative_casts.clone();
+        self.has_fuse = face_up.has_fuse;
+        self.optional_costs = face_up.optional_costs.clone();
+        self.additional_cost = face_up.additional_cost.clone();
+        self.face_down_cast_state = Some(Box::new(FaceDownCastState {
+            name: face_up.name,
+            first_printed_set_name: face_up.first_printed_set_name,
+            mana_cost: face_up.mana_cost,
+            color_override: face_up.color_override,
+            supertypes: face_up.supertypes,
+            card_types: face_up.card_types,
+            subtypes: face_up.subtypes,
+            compiled_card_text: face_up.compiled_card_text,
+            ability_labels: face_up.ability_labels,
+            rules_text_color_identity: face_up.rules_text_color_identity,
+            base_power: face_up.base_power,
+            base_toughness: face_up.base_toughness,
+            base_loyalty: face_up.base_loyalty,
+            base_defense: face_up.base_defense,
+            abilities: face_up.abilities,
+            spell_effect: face_up.spell_effect,
+            aura_attach_filter: face_up.aura_attach_filter,
+            disguise_ward,
+        }));
+        true
+    }
+
+    /// The object's real (printed) name: the face-down restore name when the
+    /// face-down overlay is active, otherwise the current name.
+    pub fn identity_name(&self) -> &SharedStr {
+        self.face_down_cast_state
+            .as_ref()
+            .map(|state| &state.name)
+            .unwrap_or(&self.name)
     }
 
     /// End the shared face-down cast overlay and restore printed characteristics.
@@ -2044,7 +2140,7 @@ impl Object {
             hand_modifier: def.card.hand_modifier,
             life_modifier: def.card.life_modifier,
             abilities: handles.abilities.clone(),
-            counters: HashMap::new(),
+            counters: std::collections::BTreeMap::new(),
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: handles.spell_effect.clone(),

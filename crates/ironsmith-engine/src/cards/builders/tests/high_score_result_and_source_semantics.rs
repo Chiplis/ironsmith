@@ -97,7 +97,7 @@ fn ib_halfheart_sacrifices_the_blocked_goblin_and_it_damages_every_one_of_its_bl
         Zone::Battlefield,
     );
     game.combat = Some(crate::combat_state::CombatState {
-        blockers: std::collections::HashMap::from([
+        blockers: std::collections::BTreeMap::from([
             (goblin, vec![first_blocker, second_blocker]),
             (decoy_attacker, vec![unrelated_blocker]),
         ]),
@@ -184,7 +184,7 @@ fn ib_halfheart_requires_another_goblin_and_successful_sacrifice_before_damage()
         Zone::Battlefield,
     );
     game.combat = Some(crate::combat_state::CombatState {
-        blockers: std::collections::HashMap::from([(goblin, vec![blocker])]),
+        blockers: std::collections::BTreeMap::from([(goblin, vec![blocker])]),
         ..Default::default()
     });
 

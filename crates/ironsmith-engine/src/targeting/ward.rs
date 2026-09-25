@@ -170,6 +170,11 @@ pub fn handle_ward_payment(
         description,
     );
     let should_pay: bool = make_decision(game, decision_maker, caster, Some(source), spec);
+    if decision_maker.awaiting_choice() {
+        // No answer yet: don't attempt payment. The caller must check
+        // `awaiting_choice()` and unwind instead of countering.
+        return WardPaymentResult::NotPaid;
+    }
 
     if should_pay {
         // Player chose to pay - attempt to deduct the cost
@@ -251,14 +256,17 @@ impl crate::effects::EffectExecutor for WardCounterEffect {
             ward_controller: ctx.controller,
             cost: self.cost.clone(),
         };
-        if handle_ward_payment(
+        let payment = handle_ward_payment(
             game,
             &pending,
             payer,
             self.targeting_source,
             &mut *ctx.decision_maker,
-        ) == WardPaymentResult::Paid
-        {
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effect::EffectOutcome::count(0));
+        }
+        if payment == WardPaymentResult::Paid {
             return Ok(crate::effect::EffectOutcome::resolved());
         }
         let Some(index) = self.stack_index(game) else {

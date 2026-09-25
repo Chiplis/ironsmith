@@ -1483,10 +1483,11 @@ fn check_role_sbas_with_view(
     candidates: &[ObjectId],
     actions: &mut Vec<StateBasedAction>,
 ) {
-    use std::collections::HashMap;
-
-    let mut roles_by_target_and_controller: HashMap<(ObjectId, PlayerId), Vec<ObjectId>> =
-        HashMap::new();
+    // Ordered map: SBA action order must be identical on every peer.
+    let mut roles_by_target_and_controller: std::collections::BTreeMap<
+        (ObjectId, PlayerId),
+        Vec<ObjectId>,
+    > = std::collections::BTreeMap::new();
 
     for &obj_id in candidates {
         if game.is_phased_out(obj_id) {

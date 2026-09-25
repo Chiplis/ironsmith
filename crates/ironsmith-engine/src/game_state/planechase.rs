@@ -50,14 +50,14 @@ impl GameState {
 
         let planar_controller = self.turn.active_player;
         let mut state = PlanechaseState {
-            decks: HashMap::new(),
+            decks: std::collections::BTreeMap::new(),
             communal_deck: None,
             deck_owners: HashMap::new(),
-            card_kinds: HashMap::new(),
+            card_kinds: std::collections::BTreeMap::new(),
             face_up: Vec::new(),
             planar_controller,
-            planar_controllers: HashSet::from([planar_controller]),
-            face_up_controllers: HashMap::new(),
+            planar_controllers: std::collections::BTreeSet::from([planar_controller]),
+            face_up_controllers: std::collections::BTreeMap::new(),
             voluntary_rolls_this_turn: HashMap::new(),
             planeswalk_count: 0,
         };
@@ -101,14 +101,14 @@ impl GameState {
 
         let planar_controller = self.turn.active_player;
         let mut state = PlanechaseState {
-            decks: HashMap::new(),
+            decks: std::collections::BTreeMap::new(),
             communal_deck: Some(Vec::with_capacity(cards.len())),
             deck_owners: HashMap::new(),
-            card_kinds: HashMap::new(),
+            card_kinds: std::collections::BTreeMap::new(),
             face_up: Vec::new(),
             planar_controller,
-            planar_controllers: HashSet::from([planar_controller]),
-            face_up_controllers: HashMap::new(),
+            planar_controllers: std::collections::BTreeSet::from([planar_controller]),
+            face_up_controllers: std::collections::BTreeMap::new(),
             voluntary_rolls_this_turn: HashMap::new(),
             planeswalk_count: 0,
         };
@@ -200,7 +200,7 @@ impl GameState {
                     *controller = player;
                 }
             }
-            state.planar_controllers = controllers;
+            state.planar_controllers = controllers.into_iter().collect();
         } else {
             state.planar_controllers.clear();
             state.planar_controllers.insert(player);

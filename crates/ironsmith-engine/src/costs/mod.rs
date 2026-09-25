@@ -840,14 +840,26 @@ pub(crate) fn legal_discard_cost_cards(
 ) -> Vec<crate::ids::ObjectId> {
     use crate::filter::ObjectFilterExt;
     let ctx = crate::filter::FilterContext::new(player).with_source(source);
-    game.player(player)
-        .into_iter()
-        .flat_map(|p| p.hand.iter().copied())
+    let hand: Vec<crate::ids::ObjectId> = game
+        .player(player)
+        .map(|p| p.hand.iter().copied().collect())
+        .unwrap_or_default();
+    // Peers holding hidden-card placeholders cannot evaluate the filter; keep
+    // them payable so the owner's real choice replays on every peer. The
+    // discarded card is opened (it becomes public) and then checked.
+    let placeholders = if game.hand_choice_depends_on_hidden_identity(filter, hand.iter().copied())
+    {
+        game.hidden_hand_placeholder_candidates(filter, &ctx, hand.iter().copied())
+    } else {
+        Vec::new()
+    };
+    hand.into_iter()
         .filter(|id| {
             *id != source
-                && game
-                    .object(*id)
-                    .is_some_and(|object| filter.matches(object, &ctx, game))
+                && (placeholders.contains(id)
+                    || game
+                        .object(*id)
+                        .is_some_and(|object| filter.matches(object, &ctx, game)))
         })
         .collect()
 }
