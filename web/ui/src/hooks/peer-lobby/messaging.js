@@ -95,7 +95,29 @@ import { approximateMessageBytes, recordDiagnosticEvent, recordPeerMessage, reco
 import { describeSubstitutions, withSupportedCards } from "../../lib/unsupported-card-substitution.js";
 import { formatDeckRequirement } from "../../lib/lobby-deck.js";
 
-const MAX_LOBBY_CHAT_LENGTH = 240;
+const MAX_LOBBY_CHAT_LENGTH = 120;
+const LOBBY_CHAT_EMOJI_PATTERNS = [
+  new RegExp("\\p{Extended_Pictographic}", "u"),
+  new RegExp("\\p{Emoji_Presentation}", "u"),
+  new RegExp("\\p{Emoji_Modifier}", "u"),
+  new RegExp("\\p{Regional_Indicator}", "u"),
+];
+
+function normalizeLobbyChatText(value) {
+  const text = Array.from(String(value ?? "").normalize("NFKC"))
+    .filter((character) => {
+      const codePoint = character.codePointAt(0);
+      if (codePoint <= 0x1f || codePoint === 0x7f
+        || codePoint === 0x200b || codePoint === 0x200c || codePoint === 0x200d
+        || codePoint === 0xfe0f || codePoint === 0xfeff
+        || character === "<" || character === ">") return false;
+      return !LOBBY_CHAT_EMOJI_PATTERNS.some((pattern) => pattern.test(character));
+    })
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > MAX_LOBBY_CHAT_LENGTH ? "" : text;
+}
 
 function normalizeLobbyDeckOptions(value) {
   if (!Array.isArray(value)) return [];
@@ -2024,35 +2046,61 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 
   const receiveLobbyChat = useCallback((entry) => {
     if (!entry || typeof entry.id !== "string" || typeof entry.text !== "string"
-      || !entry.text.trim() || entry.text.length > MAX_LOBBY_CHAT_LENGTH || typeof entry.name !== "string") return;
+      || !normalizeLobbyChatText(entry.text) || typeof entry.name !== "string") return;
+    const text = normalizeLobbyChatText(entry.text);
     updateMultiplayer((prev) => ({
       ...prev,
       chatMessages: (prev.chatMessages || []).some((item) => item.id === entry.id)
         ? prev.chatMessages
-        : [...(prev.chatMessages || []), entry].slice(-100),
+      : [...(prev.chatMessages || []), { ...entry, text }].slice(-100),
     }));
   }, [updateMultiplayer]);
 
+  const broadcastLobbyChat = useCallback((entry) => {
+    const payload = { type: "lobby_chat", protocolVersion: PROTOCOL_VERSION, entry };
+    const sentConnections = new Set();
+    const sendOnce = (conn) => {
+      if (!conn || sentConnections.has(conn)) return;
+      sentConnections.add(conn);
+      safeSend(conn, payload);
+    };
+    // Before a match starts, clients are on their lobby connections. During a
+    // match, the host can also have direct peer connections; sending through
+    // both keeps chat alive across the same transport transition used by game
+    // actions without duplicating messages on shared connections.
+    for (const conn of clientConnectionsRef.current.values()) sendOnce(conn);
+    for (const conn of peerConnectionsRef.current.values()) sendOnce(conn);
+  }, [clientConnectionsRef, peerConnectionsRef]);
+
   const publishLobbyChat = useCallback((peerId, text) => {
     const session = multiplayerRef.current;
-    const player = session.players.find((item) => item.peerId === peerId);
-    if (!player || player.connected === false || typeof text !== "string"
-      || !text.trim() || text.length > MAX_LOBBY_CHAT_LENGTH) return false;
-    const entry = { id: crypto.randomUUID(), peerId, name: player.name,
-      text: text.trim(), sentAt: Date.now() };
+    const player = session.players.find((item) =>
+      item.peerId === peerId || item.currentPeerId === peerId
+    );
+    const normalizedText = normalizeLobbyChatText(text);
+    if (!player || player.connected === false || !normalizedText) return false;
+    const entry = { id: crypto.randomUUID(), peerId: player.peerId || peerId, name: player.name,
+      text: normalizedText, sentAt: Date.now() };
     receiveLobbyChat(entry);
-    broadcastToClients({ type: "lobby_chat", protocolVersion: PROTOCOL_VERSION, entry });
+    broadcastLobbyChat(entry);
     return true;
-  }, [multiplayerRef, receiveLobbyChat, broadcastToClients]);
+  }, [multiplayerRef, receiveLobbyChat, broadcastLobbyChat]);
 
   const sendLobbyChat = useCallback((text) => {
     const session = multiplayerRef.current;
-    if (!session.role || typeof text !== "string" || !text.trim() || text.length > MAX_LOBBY_CHAT_LENGTH) return false;
-    if (session.role === "host") return publishLobbyChat(session.localPeerId, text);
-    return safeSend(hostConnectionRef.current, {
-      type: "lobby_chat_send", protocolVersion: PROTOCOL_VERSION, text: text.trim(),
-    });
-  }, [multiplayerRef, hostConnectionRef, publishLobbyChat]);
+    const normalizedText = normalizeLobbyChatText(text);
+    if (!session.role || !normalizedText) return false;
+    if (session.role === "host") return publishLobbyChat(session.localPeerId, normalizedText);
+    const payload = {
+      type: "lobby_chat_send", protocolVersion: PROTOCOL_VERSION, text: normalizedText,
+    };
+    if (safeSend(hostConnectionRef.current, payload)) return true;
+    const host = session.players.find((player) =>
+      player.peerId === session.hostPeerId || player.currentPeerId === session.hostPeerId
+    );
+    const hostPeerId = String(host?.currentPeerId || host?.peerId || session.hostPeerId || "").trim();
+    return safeSend(hostPeerId ? peerConnectionsRef.current.get(hostPeerId) : null, payload);
+  }, [multiplayerRef, hostConnectionRef, peerConnectionsRef, publishLobbyChat]);
 
   const handleHostMessage = useCallback(
     async (message) => {
@@ -2413,6 +2461,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     switch (message.type) {
       case "peer_ready":
         return;
+      case "lobby_chat":
+        receiveLobbyChat(message.entry);
+        return;
+      case "lobby_chat_send":
+        publishLobbyChat(conn.peer, message.text);
+        return;
       case "apply_action":
         if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(multiplayerRef.current))) return;
         await applySequencedActionMessage(message);
@@ -2493,6 +2547,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     resolveTimeoutVote,
     resolveZiffleRevealToken,
     resolveZiffleShuffleStep,
+    publishLobbyChat,
+    receiveLobbyChat,
   ]);
 
   const handlePeerDisconnect = useCallback(
