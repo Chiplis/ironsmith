@@ -504,9 +504,15 @@ pub(crate) fn minimum_blockers_with_view(attacker: &Object, view: &DerivedGameVi
         .map(|c| c.static_abilities)
         .unwrap_or_else(|| get_static_abilities(attacker).into());
 
+    // CR 702.110b: menace (printed, granted, or from being suspected) needs
+    // two or more blockers.
     abilities
         .iter()
-        .filter_map(|ability| ability.minimum_blockers())
+        .filter_map(|ability| {
+            ability
+                .minimum_blockers()
+                .or((ability.id() == StaticAbilityId::Menace).then_some(2))
+        })
         .max()
         .or_else(|| {
             view.object_has_static_ability_id(attacker.id, StaticAbilityId::Menace)
@@ -915,8 +921,12 @@ mod tests {
 
         assert!(!can_block(&attacker, &blocker, &game));
 
+        // The restriction grants no permission: without flying or reach it
+        // still can't block a flyer (CR 509.1b, 702.9b).
         let mut flying_attacker = make_creature("Flyer", 2, 2);
         add_ability(&mut flying_attacker, StaticAbility::flying());
+        assert!(!can_block(&flying_attacker, &blocker, &game));
+        add_ability(&mut blocker, StaticAbility::flying());
         assert!(can_block(&flying_attacker, &blocker, &game));
     }
 

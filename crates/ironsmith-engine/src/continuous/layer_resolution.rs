@@ -1743,7 +1743,7 @@ pub(super) fn advance_layer_batch_source_state(
 
 /// CR 701.60c: a suspected permanent has menace and "This creature can't
 /// block" for as long as it's suspected.
-fn add_suspected_abilities(
+pub(super) fn add_suspected_abilities(
     object: &Object,
     game: &crate::game_state::GameState,
     chars: &mut CalculatedCharacteristics,
