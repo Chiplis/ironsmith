@@ -263,6 +263,34 @@
 /* Disabled buttons must not swallow pointer transitions for the strip. */
 /* Unselectable zone cards still accept hover and focus for inspection. */
 .zone-pile-card-row > img, .zone-pile-card-row > .zone-pile-placeholder { width: 100%; height: 100%; object-fit: cover; }
+.zone-pile-counter-rail {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  z-index: 2;
+  display: flex;
+  max-width: calc(100% - 6px);
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  pointer-events: none;
+}
+.zone-pile-counter-rail .battlefield-counter-chip {
+  width: clamp(32px, calc(var(--zone-strip-card-width, 72px) * 0.52), 46px);
+  min-height: clamp(16px, calc(var(--zone-strip-card-width, 72px) * 0.24), 20px);
+  gap: 2px;
+  padding-inline: 3px;
+}
+.zone-pile-counter-rail .battlefield-counter-amount {
+  font-size: clamp(12px, calc(var(--zone-strip-card-width, 72px) * 0.16), 15px);
+}
+.zone-pile-counter-rail .battlefield-counter-icon {
+  width: clamp(9px, calc(var(--zone-strip-card-width, 72px) * 0.13), 12px);
+  height: clamp(9px, calc(var(--zone-strip-card-width, 72px) * 0.13), 12px);
+}
+.zone-pile-counter-rail .battlefield-counter-symbol {
+  font-size: clamp(13px, calc(var(--zone-strip-card-width, 72px) * 0.18), 17px);
+}
 .zone-pile-card-row:hover, .zone-pile-card-row:focus-visible { border-color: var(--ui-border-strong); }
 .zone-pile-card-row[data-target-legal="true"] { border-color: #fff; box-shadow: 0 0 4px rgba(255, 255, 255, 0.7); }
 /* A card the hovered stack object is aimed at: the white glow a linked
@@ -1014,7 +1042,7 @@
 }
 
 .game-card.field-card.battlefield-portrait-card .game-card-surface {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .game-card.field-card.battlefield-portrait-card .battlefield-frame::before {
@@ -1026,7 +1054,9 @@
 }
 
 .game-card.field-card.battlefield-portrait-card .battlefield-counter-rail {
-  inset: 4px 3px auto auto;
+  top: clamp(-8px, calc(var(--bf-card-height, 96px) * -0.05), -3px);
+  right: clamp(-9px, calc(var(--bf-card-width, 124px) * -0.055), -4px);
+  left: auto;
 }
 
 /* Hidden hands use compact portrait card backs instead of full-width rows. */

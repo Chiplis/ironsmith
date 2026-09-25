@@ -1,10 +1,15 @@
 import useUiText from "@/i18n/useUiText";
 import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Sparkles, SquareSplitHorizontal, Layers3 } from "lucide-react";
+import { Loader2, RefreshCw, Sparkles, SquareSplitHorizontal, Layers3 } from "lucide-react";
 
 import { useGame } from "@/context/GameContext";
 import { cn } from "@/lib/utils";
-import { customCardArtUrl, setCompiledCardNames, setCustomCardArtUrls } from "@/lib/scryfall";
+import {
+  customCardArtUrl,
+  resolveScryfallImageUrl,
+  setCompiledCardNames,
+  setCustomCardArtUrls,
+} from "@/lib/scryfall";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -65,6 +70,82 @@ function blankDraft() {
     layout: "single",
     hasFuse: false,
     faces: [blankFace()],
+  };
+}
+
+// These cards intentionally use the compiler's existing "enters with"
+// grammar.  The forge can therefore exercise the real counter snapshot path
+// without adding a test-only mutation to the engine.
+const COUNTER_LAB_PRESETS = [
+  {
+    id: "plus-one",
+    label: "+1/+1",
+    counter: { kind: "Plus One Plus One", amount: 1 },
+    name: "Counter Lab Plus One",
+    cardTypes: ["Creature"],
+    power: "2",
+    toughness: "2",
+    oracleText: "This creature enters with one +1/+1 counter on it.",
+  },
+  {
+    id: "minus-one",
+    label: "-1/-1",
+    counter: { kind: "Minus One Minus One", amount: 1 },
+    name: "Counter Lab Minus One",
+    cardTypes: ["Creature"],
+    power: "2",
+    toughness: "2",
+    oracleText: "This creature enters with one -1/-1 counter on it.",
+  },
+  {
+    id: "charge",
+    label: "charge",
+    counter: { kind: "Charge", amount: 3 },
+    name: "Counter Lab Charge",
+    cardTypes: ["Artifact"],
+    oracleText: "This artifact enters with three charge counters on it.",
+  },
+  {
+    id: "time",
+    label: "time",
+    counter: { kind: "Time", amount: 3 },
+    name: "Counter Lab Time",
+    cardTypes: ["Artifact"],
+    oracleText: "This artifact enters with three time counters on it.",
+  },
+  {
+    id: "stun",
+    label: "stun",
+    counter: { kind: "Stun", amount: 2 },
+    name: "Counter Lab Stun",
+    cardTypes: ["Creature"],
+    power: "3",
+    toughness: "3",
+    oracleText: "This creature enters with two stun counters on it.",
+  },
+  {
+    id: "lore",
+    label: "lore",
+    counter: { kind: "Lore", amount: 1 },
+    name: "Counter Lab Lore",
+    cardTypes: ["Enchantment"],
+    oracleText: "This enchantment enters with one lore counter on it.",
+  },
+];
+
+function counterLabDraft(preset) {
+  const face = blankFace(preset.name);
+  return {
+    layout: "single",
+    hasFuse: false,
+    faces: [{
+      ...face,
+      name: preset.name,
+      cardTypes: [...preset.cardTypes],
+      oracleText: preset.oracleText,
+      power: preset.power || "",
+      toughness: preset.toughness || "",
+    }],
   };
 }
 
@@ -393,6 +474,7 @@ export default function CreateCardForgeSheet({
   const [open, setOpen] = useState(false);
   const [seedLoading, setSeedLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [counterLabLoading, setCounterLabLoading] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [seedDraft, setSeedDraft] = useState(null);
@@ -546,6 +628,92 @@ export default function CreateCardForgeSheet({
     });
   }, [draft, game, primaryName, refresh, runWasmInteraction, selectedPlayer, setStatus, skipTriggers, zone]);
 
+  const handleCounterLab = useCallback(async () => {
+    const result = await runWasmInteraction(async () => {
+      if (!game || typeof game.createCustomCard !== "function") {
+        setStatus("This WASM build does not expose custom card compilation", true);
+        return false;
+      }
+
+      setCounterLabLoading(true);
+      const created = [];
+      const failed = [];
+      try {
+        for (const preset of COUNTER_LAB_PRESETS) {
+          try {
+            await game.createCustomCard({
+              draft: normalizeDraftForApi(counterLabDraft(preset)),
+              playerIndex: selectedPlayer,
+              counterSeed: preset.counter,
+              // Reuse the placement selector so the showcase can exercise
+              // counters on cards that start in the graveyard or exile too.
+              zoneName: zone,
+              // The counter-bearing static abilities must resolve on entry.
+              skipTriggers: false,
+            });
+            created.push(preset.label);
+          } catch (error) {
+            failed.push(`${preset.label}: ${String(error?.message || error)}`);
+          }
+        }
+
+        if (created.length === 0) {
+          setStatus("Counter showcase could not compile any card", true);
+          return false;
+        }
+
+        // Counter Lab cards intentionally have custom names, so the regular
+        // name-based art resolver cannot find a printing for them. Apply any
+        // already-known art immediately; resolving a fallback printing must
+        // never hold the WASM operation open or delay the visible cards.
+        const knownArtUrl = seedDraft?.faces?.[0]?.artUrl
+          || draft.faces?.[0]?.artUrl
+          || "";
+        setCustomCardArtUrls(COUNTER_LAB_PRESETS.map((preset) => ({
+          name: preset.name,
+          artUrl: knownArtUrl,
+        })));
+        setCompiledCardNames(COUNTER_LAB_PRESETS.map((preset) => preset.name));
+
+        setOpen(false);
+        await refresh(
+          `Counter showcase: ${created.length} cards in ${zone}${
+            failed.length > 0 ? ` (${failed.length} skipped)` : ""
+          }`
+        );
+        if (failed.length > 0) {
+          console.warn("Counter showcase skipped presets:", failed);
+        }
+        // Resolve a real printing after the showcase is visible. This is
+        // deliberately fire-and-forget so a slow/offline art service cannot
+        // make the counter loader appear stuck.
+        void (async () => {
+          const sampledDraft = seedDraft?.faces?.[0]?.name
+            ? seedDraft
+            : (typeof game.sampleLoadedDeckSeed === "function"
+              ? await game.sampleLoadedDeckSeed(selectedPlayer).catch(() => null)
+              : null);
+          const artSourceName = sampledDraft?.faces?.[0]?.name || draft.faces?.[0]?.name;
+          if (!artSourceName) return;
+          const showcaseArtUrl = await resolveScryfallImageUrl(artSourceName, "normal").catch(() => "");
+          if (!showcaseArtUrl) return;
+          setCustomCardArtUrls(COUNTER_LAB_PRESETS.map((preset) => ({
+            name: preset.name,
+            artUrl: showcaseArtUrl,
+          })));
+          await refresh();
+        })().catch(() => {});
+        return true;
+      } finally {
+        setCounterLabLoading(false);
+      }
+    });
+    if (result === undefined) {
+      setStatus("Counter showcase is waiting for another game action to finish", true);
+    }
+    return result;
+  }, [draft.faces, game, refresh, runWasmInteraction, seedDraft, selectedPlayer, setStatus, zone]);
+
   const faceTabs = useMemo(() => (
     draft.faces.map((face, index) => ({
       value: `face-${index}`,
@@ -615,6 +783,19 @@ export default function CreateCardForgeSheet({
                 disabled={!seedDraft}
                 onClick={resetToSeed}
               >{ui("Reset Seed")}</Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="stone-pill"
+                disabled={disabled || submitting || counterLabLoading || seedLoading || previewLoading}
+                onClick={() => void handleCounterLab()}
+              >
+                {counterLabLoading ? (
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                ) : null}
+                {counterLabLoading ? ui("Loading counters...") : ui("Load counter showcase")}
+              </Button>
             </div>
           </div>
 

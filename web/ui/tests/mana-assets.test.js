@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { access, readFile } from 'node:fs/promises';
 import { manaAssets, manaGlyphs } from '../src/lib/mana-assets.generated.js';
-import { manaSymbolUrl, counterSymbolUrl } from '../src/lib/mana-assets.js';
+import { counterDisplayLabel, manaSymbolUrl, counterSymbolUrl } from '../src/lib/mana-assets.js';
 
 test('every supported symbol and glyph is packaged locally', async () => {
   for (const code of Object.keys(manaAssets)) {
@@ -22,4 +22,15 @@ test('counter mappings cover named and keyword counters with safe fallback', () 
   assert.equal(counterSymbolUrl('Unrecognized counter'), null);
   assert.equal(manaSymbolUrl('invalid'), null);
   assert.equal(manaSymbolUrl(' w/u/p '), '/mana/symbols/W-U-P.svg');
+});
+
+test('numeric power and toughness counters keep their exact visible labels', () => {
+  for (const [kind, expected] of [
+    ['Plus Two Plus Two', '+2/+2'],
+    ['-2/-1', '-2/-1'],
+    ['+0/+1', '+0/+1'],
+  ]) {
+    assert.equal(counterDisplayLabel(kind), expected);
+  }
+  assert.equal(counterDisplayLabel('charge'), null);
 });

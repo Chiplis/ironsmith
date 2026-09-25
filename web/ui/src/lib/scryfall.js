@@ -172,6 +172,15 @@ function clearCachedCardImageUrls(cardName) {
   }
 }
 
+function clearCachedCardJson(cardName) {
+  const keyPrefix = `${customArtKey(cardName)}|`;
+  for (const key of cardJsonCache.keys()) {
+    if (key.startsWith(keyPrefix)) {
+      cardJsonCache.delete(key);
+    }
+  }
+}
+
 // A card compiled in the forge may take an existing card's name, and then its
 // printing is only a template: the scan's printed text is not this card's text.
 // Surfaces that would otherwise show the printing as-is consult this to draw
@@ -616,6 +625,7 @@ export function setCustomCardArtUrls(entries) {
     if (!key) continue;
 
     clearCachedCardImageUrls(entry.name);
+    clearCachedCardJson(entry.name);
     const artUrl = String(entry?.artUrl || "").trim();
     if (artUrl) {
       map[key] = artUrl;
@@ -659,6 +669,8 @@ export function scryfallImageUrl(cardName, version = "normal") {
   const query = String(cardName || "").trim();
   if (!query) return "";
   if (isHiddenCardName(query)) return HIDDEN_CARD_BACK_IMAGE_URL;
+  const customUrl = customCardArtUrl(query);
+  if (customUrl) return customUrl;
   const cached = resolvedCardImageUrlCache.get(cardImageCacheKey(query, version, preferredCardPrint(query)));
   if (cached) return cached;
   return "";
@@ -668,6 +680,8 @@ export async function resolveScryfallImageUrl(cardName, version = "normal") {
   const query = String(cardName || "").trim();
   if (!query) return "";
   if (isHiddenCardName(query)) return HIDDEN_CARD_BACK_IMAGE_URL;
+  const customUrl = customCardArtUrl(query);
+  if (customUrl) return customUrl;
 
   const preference = preferredCardPrint(query);
   const preferredKey = cardImageCacheKey(query, version, preference);
