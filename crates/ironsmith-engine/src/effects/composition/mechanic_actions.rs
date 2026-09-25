@@ -1680,6 +1680,9 @@ impl EffectExecutor for AmplifyEffect {
             .map(|player| player.hand.to_vec())
             .unwrap_or_default()
             .into_iter()
+            // The entering card itself isn't one of the cards in your hand you
+            // reveal (CR 702.38a), even while the entry program runs.
+            .filter(|&id| id != ctx.source)
             .filter(|&id| {
                 game.object(id).is_some_and(|obj| {
                     obj.zone == Zone::Hand

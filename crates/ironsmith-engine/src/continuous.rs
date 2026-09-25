@@ -1754,6 +1754,16 @@ fn apply_room_no_unlocked_door_layer(
     chars.compiled_card_text = Arc::from("");
 }
 
+/// Whether a level symbol's 7b base P/T (timestamp `level_timestamp`) must be
+/// applied before `effect` (CR 711.2b, 613.7): effects in later sublayers, and
+/// later-timestamped 7b effects, apply on top of it.
+fn level_pt_precedes(effect: &ContinuousEffect, level_timestamp: u64) -> bool {
+    effect.modification.pt_sublayer().is_some_and(|sublayer| {
+        sublayer > PtSublayer::Setting
+            || (sublayer == PtSublayer::Setting && effect.timestamp > level_timestamp)
+    })
+}
+
 pub(crate) fn update_world_supertype_since(
     chars: &mut CalculatedCharacteristics,
     had_world: bool,
@@ -2116,6 +2126,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                     };
                     let had_world = chars.supertypes.contains(&Supertype::World);
                     apply_face_down_layer(object, chars);
+                    apply_room_no_unlocked_door_layer(object, chars, game);
                     update_world_supertype_since(
                         chars,
                         had_world,
@@ -2136,6 +2147,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                         continue;
                     };
                     apply_reconfigure_attached_type_rule(object, chars);
+                    apply_ring_bearer_legendary_rule(object, chars, game);
                     guards[idx].update(chars);
                 }
             }
@@ -2296,6 +2308,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                 };
                 let had_world = chars.supertypes.contains(&Supertype::World);
                 apply_face_down_layer(object, chars);
+                apply_room_no_unlocked_door_layer(object, chars, game);
                 update_world_supertype_since(
                     chars,
                     had_world,
@@ -2315,6 +2328,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                     continue;
                 };
                 apply_reconfigure_attached_type_rule(object, chars);
+                apply_ring_bearer_legendary_rule(object, chars, game);
                 guards[idx].update(chars);
             }
         } else if layer == Layer::Ability {
@@ -2333,6 +2347,7 @@ fn calculate_characteristics_layer_batch_with_effects(
         }
     }
 
+    let mut pending_level_pt: HashMap<ObjectId, (i32, i32, u64)> = HashMap::new();
     for (idx, &id) in order.iter().enumerate() {
         if abilities_removed.contains(&id) {
             continue;
@@ -2343,10 +2358,15 @@ fn calculate_characteristics_layer_batch_with_effects(
         let Some(chars) = chars_by_id.get_mut(&id) else {
             continue;
         };
+        // CR 711.2b: level P/T is a 7b effect with the leveler's timestamp;
+        // it's applied in timestamp order with the other P/T effects below.
         if let Some((lp, lt)) = get_level_ability_pt(object) {
-            chars.power = Some(lp);
-            chars.toughness = Some(lt);
-            guards[idx].update(chars);
+            let timestamp = game
+                .effect_store
+                .continuous_effects
+                .get_object_timestamp(id)
+                .unwrap_or(0);
+            pending_level_pt.insert(id, (lp, lt, timestamp));
         }
         apply_level_granted_abilities(object, chars);
         prune_ability_gain_prohibitions(chars);
@@ -2423,6 +2443,13 @@ fn calculate_characteristics_layer_batch_with_effects(
                 let Some(chars) = chars_by_id.get_mut(id) else {
                     continue;
                 };
+                if let Some(&(lp, lt, timestamp)) = pending_level_pt.get(id)
+                    && level_pt_precedes(effect, timestamp)
+                {
+                    chars.power = Some(lp);
+                    chars.toughness = Some(lt);
+                    pending_level_pt.remove(id);
+                }
                 let mut removed = abilities_removed.contains(id);
                 apply_modification_to_chars(
                     effect,
@@ -2462,6 +2489,10 @@ fn calculate_characteristics_layer_batch_with_effects(
             continue;
         };
 
+        if let Some((lp, lt, _)) = pending_level_pt.remove(&id) {
+            chars.power = Some(lp);
+            chars.toughness = Some(lt);
+        }
         apply_reconfigure_attached_type_rule(object, chars);
         guards[idx].update(chars);
 
@@ -2884,6 +2915,7 @@ fn calculate_with_layers_direct_internal(
                 if layer == Layer::Copy {
                     let had_world = chars.supertypes.contains(&Supertype::World);
                     apply_face_down_layer(object, &mut chars);
+                    apply_room_no_unlocked_door_layer(object, &mut chars, game);
                     update_world_supertype_since(
                         &mut chars,
                         had_world,
@@ -2896,6 +2928,7 @@ fn calculate_with_layers_direct_internal(
                 }
                 if layer == Layer::Type {
                     apply_reconfigure_attached_type_rule(object, &mut chars);
+                    apply_ring_bearer_legendary_rule(object, &mut chars, game);
                     calc_guard.update(&chars);
                 }
                 if layer == Layer::Ability {
@@ -3045,6 +3078,7 @@ fn calculate_with_layers_direct_internal(
         if layer == Layer::Copy {
             let had_world = chars.supertypes.contains(&Supertype::World);
             apply_face_down_layer(object, &mut chars);
+            apply_room_no_unlocked_door_layer(object, &mut chars, game);
             update_world_supertype_since(
                 &mut chars,
                 had_world,
@@ -3056,6 +3090,7 @@ fn calculate_with_layers_direct_internal(
             calc_guard.update(&chars);
         } else if layer == Layer::Type {
             apply_reconfigure_attached_type_rule(object, &mut chars);
+            apply_ring_bearer_legendary_rule(object, &mut chars, game);
             calc_guard.update(&chars);
         } else if layer == Layer::Ability {
             apply_ability_counters_through(
@@ -3073,13 +3108,17 @@ fn calculate_with_layers_direct_internal(
     // Layer 7: Power/Toughness with proper sublayer handling
     // Process in sublayer order: 7a, 7b, 7c, 7d
 
-    // First, check for level abilities (if not removed) - these apply in 7b (Setting)
-    // Level P/T needs to be applied before other 7b effects so it can be overridden
+    // Level abilities apply in 7b with the leveler's timestamp (CR 711.2b);
+    // they're interleaved with the other P/T effects by timestamp below.
+    let mut pending_level_pt = None;
     if !abilities_removed {
         if let Some((lp, lt)) = get_level_ability_pt(object) {
-            chars.power = Some(lp);
-            chars.toughness = Some(lt);
-            calc_guard.update(&chars);
+            let timestamp = game
+                .effect_store
+                .continuous_effects
+                .get_object_timestamp(object.id)
+                .unwrap_or(0);
+            pending_level_pt = Some((lp, lt, timestamp));
         }
         // Add level-granted abilities to the characteristics
         apply_level_granted_abilities(object, &mut chars);
@@ -3181,6 +3220,13 @@ fn calculate_with_layers_direct_internal(
             }
 
             mark_continuous_effect_group_started(effect, &mut started_groups);
+            if let Some((lp, lt, timestamp)) = pending_level_pt
+                && level_pt_precedes(effect, timestamp)
+            {
+                chars.power = Some(lp);
+                chars.toughness = Some(lt);
+                pending_level_pt = None;
+            }
             apply_modification_to_chars(
                 effect,
                 &mut chars,
@@ -3198,6 +3244,10 @@ fn calculate_with_layers_direct_internal(
         }
     }
 
+    if let Some((lp, lt, _)) = pending_level_pt {
+        chars.power = Some(lp);
+        chars.toughness = Some(lt);
+    }
     apply_reconfigure_attached_type_rule(object, &mut chars);
     calc_guard.update(&chars);
 

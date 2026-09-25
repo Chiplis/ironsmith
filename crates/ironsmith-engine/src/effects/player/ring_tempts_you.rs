@@ -134,14 +134,20 @@ mod tests {
         assert_eq!(outcome.status, crate::effect::OutcomeStatus::Succeeded);
         assert_eq!(game.ring_temptations(alice), 1);
         assert_eq!(game.current_ring_bearer(alice), Some(second));
-        assert!(
-            game.object(second)
-                .is_some_and(|object| object.supertypes.contains(&Supertype::Legendary))
-        );
+        // CR 701.54c: the Ring-bearer is legendary through a layer-4 effect,
+        // not a copiable supertype (CR 701.54b).
+        game.refresh_continuous_state();
+        let legendary = |id| {
+            game.current_characteristics(id)
+                .is_some_and(|chars| chars.supertypes.contains(&Supertype::Legendary))
+        };
+        assert!(legendary(second));
+        assert!(!legendary(first));
         assert!(
             !game
-                .object(first)
-                .is_some_and(|object| object.supertypes.contains(&Supertype::Legendary))
+                .object(second)
+                .is_some_and(|object| object.supertypes.contains(&Supertype::Legendary)),
+            "Legendary isn't written into the bearer's copiable supertypes"
         );
         assert_eq!(outcome.events.len(), 1);
         let keyword = outcome.events[0]

@@ -1061,6 +1061,30 @@ impl ReplacementEffect {
 mod tests {
     use super::*;
 
+    /// CR 701.19c: "can't be regenerated" removes regeneration shields only,
+    /// not other one-shot replacements sourced from the same permanent.
+    #[test]
+    fn removing_regeneration_shields_keeps_other_one_shot_effects() {
+        let source = ObjectId::from_raw(7);
+        let controller = PlayerId::from_index(0);
+        let mut manager = ReplacementEffectManager::new();
+        let shield = manager.add_one_shot_effect(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            crate::events::permanents::matchers::RegenerationShieldMatcher::new(source),
+            ReplacementAction::Instead(Vec::new()),
+        ));
+        let other = manager.add_one_shot_effect(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            crate::events::permanents::matchers::ThisWouldBeDestroyedMatcher,
+            ReplacementAction::Instead(Vec::new()),
+        ));
+        manager.remove_regeneration_shields_from_source(source);
+        assert!(manager.get_effect(shield).is_none(), "regeneration shield removed");
+        assert!(manager.get_effect(other).is_some(), "unrelated replacement kept");
+    }
+
     #[test]
     fn test_damage_prevention() {
         let effect =

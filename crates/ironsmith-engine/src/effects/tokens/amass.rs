@@ -217,15 +217,19 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .expect("amass orcs should resolve");
 
-        let army = game.object(existing).expect("existing army should exist");
+        // CR 701.47a: becoming an Orc is a type-changing effect (layer 4),
+        // not a change to the Army's copiable subtypes.
+        let subtypes = game.calculated_subtypes(existing);
         assert!(
-            army.subtypes.contains(&Subtype::Orc),
+            subtypes.contains(&Subtype::Orc),
             "expected existing Army to gain Orc subtype"
         );
         assert!(
-            army.subtypes.contains(&Subtype::Zombie),
+            subtypes.contains(&Subtype::Zombie),
             "expected existing Army to keep prior creature subtype"
         );
+        let army = game.object(existing).expect("existing army should exist");
+        assert!(!army.subtypes.contains(&Subtype::Orc), "not a copiable value");
         assert_eq!(
             army.counters
                 .get(&CounterType::PlusOnePlusOne)
