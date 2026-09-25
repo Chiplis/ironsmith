@@ -60,7 +60,7 @@ fn u040_only_precombat_main_with_rad_queues_a_sourceless_rule_trigger() {
 }
 
 #[test]
-fn u040_intervening_if_is_checked_before_stacking_and_at_resolution() {
+fn u040_intervening_if_is_checked_when_triggering_and_at_resolution() {
     let (mut game, alice, _) = game();
     begin_precombat_main(&mut game, alice);
     add_rad(&mut game, alice, 1);
@@ -68,9 +68,13 @@ fn u040_intervening_if_is_checked_before_stacking_and_at_resolution() {
     let mut queue = TriggerQueue::new();
     generate_and_queue_step_triggers(&mut game, &mut queue);
 
+    // CR 603.4: the condition is not checked again when the ability is put
+    // on the stack; it goes on the stack and does nothing on resolution.
     game.remove_player_counters_with_source(alice, CounterType::Rad, 1, None, None)
         .expect("rad counter removed before stacking");
     put_triggers_on_stack(&mut game, &mut queue).expect("stack trigger pass");
+    assert_eq!(game.stack.len(), 1);
+    resolve_stack_entry(&mut game).expect("resolve radiation without rad");
     assert!(game.stack_is_empty());
     assert_eq!(game.player(alice).expect("Alice").library.len(), 1);
 

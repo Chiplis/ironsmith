@@ -453,7 +453,13 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
 
     // Check for HexproofFrom. A permission to target "as though it didn't
     // have hexproof" also covers "hexproof from [quality]" (CR 702.11e).
-    if game.controller_of(target) != source.protection_controller(game) && !ignores_hexproof {
+    if game.controller_of(target) != source.protection_controller(game)
+        && !ignores_hexproof
+        && !game
+            .effect_store
+            .cant_effects
+            .ignores_hexproof_from_for_object(game, target_id, permission_player)
+    {
         for ability in target_abilities.iter() {
             if let Some(filter) = ability.hexproof_from_filter()
                 && source.matches(
@@ -1381,7 +1387,14 @@ fn compute_object_targets_with_filter_context(
     view.prewarm_characteristics(&prewarm_ids);
 
     let candidate_ids = view.candidate_ids_for_filter_with_context(filter, &filter_ctx);
-    let stack_filter = filter.zone == Some(Zone::Stack) || filter.stack_kind.is_some();
+    // "Target activated or triggered ability" is a disjunction of two
+    // stack-kind filters, so the branches say whether it names stack objects.
+    fn names_stack_objects(filter: &ObjectFilter) -> bool {
+        filter.zone == Some(Zone::Stack)
+            || filter.stack_kind.is_some()
+            || filter.any_of.iter().any(names_stack_objects)
+    }
+    let stack_filter = names_stack_objects(filter);
     let mut seen_candidates = std::collections::HashSet::new();
     for object_id in candidate_ids {
         if stack_filter && !seen_candidates.insert(object_id) {
@@ -1407,17 +1420,14 @@ fn compute_object_targets_with_filter_context(
                     targets.push(Target::Object(ability_id));
                 }
             }
-            // The object itself is a target only as its own stack object (a
-            // spell, or an ability copy that has its own object).
-            if !game
-                .stack
-                .iter()
-                .any(|entry| entry.object_id == object_id && entry.ability_id.is_none())
-            {
-                continue;
-            }
         }
-        let stack_object_ctx = stack_filter.then(|| {
+        // The object itself matches a stack branch only as its own stack
+        // object (a spell, or an ability copy that has its own object): for
+        // a permanent whose abilities are on the stack the hint names no
+        // entry, so only the filter's other branches can match it.
+        let stack_object_ctx = (stack_filter
+            && game.stack.iter().any(|entry| entry.object_id == object_id))
+        .then(|| {
             let mut own_ctx = filter_ctx.clone();
             own_ctx.stack_entry = Some(object_id);
             own_ctx

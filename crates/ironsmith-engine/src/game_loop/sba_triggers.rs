@@ -42,8 +42,10 @@ pub fn check_and_apply_sbas_with(
     game.refresh_continuous_state();
     // Day/night transformations happen outside any resolution; finish their
     // "As this transforms" choices before anyone receives priority.
+    let awaiting_before = decision_maker.awaiting_choice();
     game.apply_pending_day_night_as_transforms(decision_maker)?;
-    if decision_maker.awaiting_choice() {
+    // Stop only for a choice those transforms just asked for.
+    if !awaiting_before && decision_maker.awaiting_choice() {
         return Ok(());
     }
     let mut seen_mandatory_states = std::collections::HashSet::new();
