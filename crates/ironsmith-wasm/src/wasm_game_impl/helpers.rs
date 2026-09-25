@@ -1230,15 +1230,11 @@ pub(super) fn target_choice_view(
         Target::Object(id) if game.object(*id).is_none() && game.stack_ability_entry(*id).is_some() => {
             // An ability on the stack, named by its own stack id. Stack
             // objects are public.
-            let entry = game.stack_ability_entry(*id).expect("checked above");
-            let source_name = game
-                .object(entry.object_id)
-                .map(|object| object.name.to_string())
-                .or_else(|| entry.source_name.clone())
-                .unwrap_or_else(|| "Ability".to_string());
             TargetChoiceView::Object {
                 object: id.0,
-                name: format!("{source_name} ability"),
+                name: game
+                    .stack_ability_name(*id)
+                    .expect("checked above"),
             }
         }
         Target::Object(id) => {
@@ -1276,6 +1272,9 @@ pub(super) fn attack_target_view(game: &GameState, target: &AttackTarget) -> Att
         AttackTarget::Battle(id) => AttackTargetView::Battle {
             object: id.0,
             name: object_name(game, *id),
+        },
+        AttackTarget::Nothing { .. } => AttackTargetView::Nothing {
+            name: "nothing".to_string(),
         },
     }
 }

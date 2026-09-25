@@ -375,6 +375,8 @@ fn attack_target_still_valid(
                         .is_some_and(|player| player.is_in_game())
                 })
         }),
+        // CR 506.4c / 508.4a: the returned creature wasn't attacking anything.
+        AttackTarget::Nothing { .. } => false,
     }
 }
 

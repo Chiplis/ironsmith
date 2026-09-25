@@ -817,11 +817,33 @@ fn perform_repeatable_mana_payment_action(
         .with_targets(action.targets)
         .with_tagged_objects(action.tagged_objects);
     ctx.tagged_players = action.tagged_players;
-    for effect in &action.effects {
-        crate::effects::execute_effect(game, effect, &mut ctx)
-            .map_err(|_| ActionError::InvalidTarget)?;
-    }
-    Ok(())
+    // "If you do, [effects]" happens right away, without the stack. Like a
+    // resolving ability's instructions, each one's events trigger abilities
+    // as they happen (CR 603.2); those abilities wait for the next priority.
+    crate::effects::with_per_event_trigger_matching(game, true, |game| {
+        let mut reported = Vec::new();
+        for (index, effect) in action.effects.iter().enumerate() {
+            let outcome = crate::effects::execute_effect(game, effect, &mut ctx)
+                .map_err(|_| ActionError::InvalidTarget)?;
+            reported.extend(outcome.events);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(());
+            }
+            if crate::effects::match_triggers_at_instruction_boundary(
+                game,
+                &ctx,
+                action.effects.get(index + 1),
+                reported.iter(),
+            ) {
+                reported.clear();
+            }
+        }
+        crate::effects::retain_unmatched_outcome_events(game, &mut reported);
+        for event in reported {
+            game.queue_trigger_event(ctx.provenance, event);
+        }
+        Ok(())
+    })
 }
 
 fn delayed_trigger_prepayment(

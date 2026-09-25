@@ -333,6 +333,7 @@ pub enum StaticAbilityId {
     DoubleLifeChangeReplacement,
     PregameAction,
     DeckConstructionRuleText,
+    DungeonEntryRestriction,
     DraftRuleText,
     HiddenAgenda,
     DoubleAgenda,
@@ -676,6 +677,7 @@ impl StaticAbilityId {
             | DoubleLifeChangeReplacement
             | PregameAction
             | DeckConstructionRuleText
+            | DungeonEntryRestriction
             | DraftRuleText
             | HiddenAgenda
             | DoubleAgenda

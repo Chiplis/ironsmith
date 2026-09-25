@@ -334,3 +334,33 @@ mod tests {
         );
     }
 }
+
+/// Printed text of a dungeon card (CR 309), as a compiler source block.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DungeonSource {
+    pub name: String,
+    pub block: String,
+}
+
+/// The dungeon cards. Dungeons are nontraditional cards filtered out of
+/// `cards.json`, so their Scryfall oracle text is kept in `data/dungeons.json`
+/// (also read by `scripts/generate_baked_registry.py`).
+pub fn dungeon_sources() -> Vec<DungeonSource> {
+    let payload: Value = serde_json::from_str(include_str!("../data/dungeons.json"))
+        .expect("data/dungeons.json is valid JSON");
+    payload
+        .get("dungeons")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|dungeon| {
+            let name = dungeon.get("name")?.as_str()?;
+            let type_line = dungeon.get("type_line")?.as_str()?;
+            let oracle_text = dungeon.get("oracle_text")?.as_str()?;
+            Some(DungeonSource {
+                name: name.to_string(),
+                block: format!("Type: {type_line}\n{oracle_text}"),
+            })
+        })
+        .collect()
+}

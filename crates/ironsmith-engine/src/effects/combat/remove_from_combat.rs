@@ -83,6 +83,18 @@ impl EffectExecutor for RemoveFromCombatEffect {
                 if removed {
                     game.clear_ninjutsu_attack_targets_for(object_id);
                 }
+                // CR 506.4 / 506.4c: a planeswalker or battle removed from
+                // combat stops being attacked; its attackers attack nothing.
+                let was_attacked = game.combat.as_ref().is_some_and(|combat| {
+                    combat
+                        .attackers
+                        .iter()
+                        .any(|info| info.target.attacked_permanent() == Some(object_id))
+                });
+                if was_attacked {
+                    game.remove_attacked_permanent_from_combat(object_id, None);
+                }
+                let removed = removed || was_attacked;
 
                 Ok(removed)
             },

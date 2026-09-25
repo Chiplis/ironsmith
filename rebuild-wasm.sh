@@ -177,6 +177,7 @@ inputs = [
     ("rebuild-wasm.sh", root / "rebuild-wasm.sh"),
     ("scripts/generate_baked_registry.py", root / "scripts" / "generate_baked_registry.py"),
     ("scripts/stream_scryfall_blocks.py", root / "scripts" / "stream_scryfall_blocks.py"),
+    ("dungeon-sources", root / "crates" / "ironsmith-card-source" / "data" / "dungeons.json"),
     ("artifact-baker", root / "crates" / "ironsmith-artifact-baker" / "src" / "main.rs"),
     ("artifact-compiler-fingerprint", root / "scripts" / "artifact_compiler_fingerprint.py"),
     ("registry-db", db_path),

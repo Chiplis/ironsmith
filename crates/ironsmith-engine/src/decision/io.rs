@@ -3209,11 +3209,18 @@ fn prompt_distribute(
     for (i, target) in targets.iter().enumerate() {
         // Use the target's name if available, otherwise look it up
         let name = if !target.name.is_empty() {
-            target.name.as_str()
+            target.name.to_string()
         } else {
             match target.target {
-                Target::Object(id) => game.object(id).map(|o| o.name.as_str()).unwrap_or("?"),
-                Target::Player(pid) => game.player(pid).map(|p| p.name.as_str()).unwrap_or("?"),
+                Target::Object(id) => game
+                    .object(id)
+                    .map(|o| o.name.to_string())
+                    .or_else(|| game.stack_ability_name(id))
+                    .unwrap_or_else(|| "?".to_string()),
+                Target::Player(pid) => game
+                    .player(pid)
+                    .map(|p| p.name.to_string())
+                    .unwrap_or_else(|| "?".to_string()),
             }
         };
         println!("  {}: {}", i, name);
@@ -3576,6 +3583,8 @@ fn prompt_choose_targets(
                         } else {
                             format!("{} ({})", obj.name, controller_name)
                         }
+                    } else if let Some(name) = game.stack_ability_name(*id) {
+                        name
                     } else {
                         format!("Object #{}", id.0)
                     }

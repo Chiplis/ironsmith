@@ -372,6 +372,7 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     bind_all_players_subtype_choices_to_return_inclusion(effects);
     bind_quantified_choice_collections_to_destroy_followups(effects);
     bind_counted_set_followups(effects);
+    bind_drawn_cards_to_reveal_followups(effects);
     bind_until_next_turn_permissions_to_prior_exiled_collection(effects);
     bind_choice_remainder_to_choice_domain(effects);
     bind_consult_remainder_to_revealed_collection(effects);
@@ -1626,6 +1627,51 @@ fn bind_counted_set_followups(effects: &mut [EffectAst]) {
     }
 }
 
+/// "Draw a card and reveal it": a draw produces no object result of its own,
+/// so a following "reveal it/them" has no antecedent unless the drawn cards
+/// are tagged. Tag exactly the cards the draw moved to hand and point the
+/// reveal (and, through it, later "them"/"one of them" references) at them.
+fn bind_drawn_cards_to_reveal(draw: &mut EffectAst, reveal: &mut EffectAst) -> bool {
+    if !matches!(
+        draw,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
+            ..
+        })
+    ) {
+        return false;
+    }
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { tag }),
+        ..
+    }) = reveal
+    else {
+        return false;
+    };
+    if tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str() {
+        return false;
+    }
+    // A sentence-helper "revealed" tag renders as an ordinary "it"/"that
+    // card" reference. Reference resolution only mints `_s0_` spellings, so
+    // this one never collides with a generated tag; a later draw-and-reveal
+    // in the same ability simply rebinds it.
+    let drawn = ironsmith_compiler_semantic::tag::sentence_helper_tag("revealed", 0, 1, 0);
+    *tag = drawn.clone();
+    let inner = std::mem::replace(draw, EffectAst::Sequence { effects: Vec::new() });
+    *draw = EffectAst::TagAffected {
+        effect: Box::new(inner),
+        tag: drawn,
+    };
+    true
+}
+
+fn bind_drawn_cards_to_reveal_followups(effects: &mut [EffectAst]) {
+    for index in 1..effects.len() {
+        let (before, after) = effects.split_at_mut(index);
+        bind_drawn_cards_to_reveal(&mut before[index - 1], &mut after[0]);
+    }
+}
+
 fn normalize_nested_effects(effect: &mut EffectAst) {
     match effect {
         EffectAst::ForEach(ForEachEffectAst::RepeatProcess { effects, .. }) => {
@@ -1747,6 +1793,17 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         EffectAst::Coordination(coordination) => {
             for member in &mut coordination.members {
                 normalize_effects_vec(&mut member.effects);
+            }
+            // "Draw three cards and reveal them": the reveal is a separate
+            // coordinated member whose pronoun names the drawn cards.
+            for index in 1..coordination.members.len() {
+                let (before, after) = coordination.members.split_at_mut(index);
+                if let (Some(draw), Some(reveal)) = (
+                    before[index - 1].effects.last_mut(),
+                    after[0].effects.first_mut(),
+                ) {
+                    bind_drawn_cards_to_reveal(draw, reveal);
+                }
             }
         }
         EffectAst::ControlFlow(control) => {

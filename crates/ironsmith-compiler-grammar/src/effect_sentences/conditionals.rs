@@ -46,7 +46,13 @@ pub fn parse_type_line(
     shared_values::parse_type_line_with(
         raw,
         parse_supertype_word,
-        |word| parse_card_type(&word.to_ascii_lowercase()),
+        |word| {
+            let lower = word.to_ascii_lowercase();
+            // CR 309.1: "Dungeon" is a card type only on a printed type line;
+            // in rules text "dungeon" names the object, not a filter type.
+            parse_card_type(&lower)
+                .or_else(|| (lower == "dungeon").then_some(crate::types::CardType::Dungeon))
+        },
         parse_type_line_subtype_word,
     )
 }

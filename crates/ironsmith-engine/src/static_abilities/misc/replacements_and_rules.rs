@@ -3969,6 +3969,39 @@ impl StaticAbilityKind for DeckConstructionRuleText {
     }
 }
 
+/// A dungeon's entry restriction: "You can't enter this dungeon unless you
+/// 'venture into [quality].'" (CR 701.49d). It functions outside the game:
+/// the venture action reads it when choosing a dungeon to bring in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DungeonEntryRestriction {
+    pub quality: String,
+}
+
+impl DungeonEntryRestriction {
+    pub fn new(quality: impl Into<String>) -> Self {
+        Self {
+            quality: quality.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for DungeonEntryRestriction {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DungeonEntryRestriction
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "You can't enter this dungeon unless you \"venture into {}.\"",
+            self.quality
+        )
+    }
+
+    fn dungeon_entry_quality(&self) -> Option<&str> {
+        Some(&self.quality)
+    }
+}
+
 // =============================================================================
 // Placeholder / Marker Abilities
 // =============================================================================

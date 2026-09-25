@@ -2287,6 +2287,9 @@ pub(super) enum CombatAttackTargetSnapshot {
     Player { player: u8 },
     Planeswalker { object: u64 },
     Battle { object: u64 },
+    /// CR 506.4c: the planeswalker or battle it was attacking was removed from
+    /// combat; it's still attacking, but not attacking anything.
+    Nothing,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -2315,6 +2318,7 @@ pub(super) fn combat_snapshot(game: &GameState) -> Option<CombatSnapshot> {
                     CombatAttackTargetSnapshot::Planeswalker { object: object.0 }
                 }
                 AttackTarget::Battle(object) => CombatAttackTargetSnapshot::Battle { object: object.0 },
+                AttackTarget::Nothing { .. } => CombatAttackTargetSnapshot::Nothing,
             },
         })
         .collect();
@@ -2993,6 +2997,7 @@ impl GameSnapshot {
             .map(|entry| {
                 game.object(entry.object_id)
                     .map(|obj| obj.name.to_string())
+                    .or_else(|| entry.source_name.clone())
                     .unwrap_or_else(|| format!("Object#{}", entry.object_id.0))
             })
             .collect();
@@ -3005,7 +3010,10 @@ impl GameSnapshot {
         let mut stack_size = game.stack.len();
 
         if let Some(stack_id) = pending_cast_stack_id
-            && !game.stack.iter().any(|entry| entry.object_id == stack_id)
+            && !game
+                .stack
+                .iter()
+                .any(|entry| !entry.is_ability && entry.object_id == stack_id)
             && let Some(obj) = game.object(stack_id)
         {
             stack_preview.insert(0, obj.name.to_string());

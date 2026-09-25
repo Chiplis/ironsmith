@@ -156,4 +156,4 @@ mod library_programs;
 pub use library_programs::{discard_subject_owner_filter, parse_discard};
 #[path = "sacrifice_discard/resource.rs"]
 mod resource_programs;
-pub use resource_programs::parse_sacrifice;
+pub use resource_programs::{parse_sacrifice, sacrifice_object_list_members};

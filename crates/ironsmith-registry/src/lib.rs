@@ -38,6 +38,30 @@ pub use ironsmith_compiler::{
     WorkspaceSplitMarker,
 };
 
+/// Compile the dungeon cards (CR 309) from their printed text and register
+/// them in the engine's dungeon catalog, once per process. Hosts that load
+/// baked artifacts (the lean web engine) register the same dungeons from
+/// their compiled routes instead.
+pub fn register_builtin_dungeons() -> Result<usize, String> {
+    static REGISTERED: std::sync::OnceLock<Result<usize, String>> = std::sync::OnceLock::new();
+    REGISTERED
+        .get_or_init(|| {
+            let sources = ironsmith_card_source::dungeon_sources();
+            for source in &sources {
+                let definition =
+                    ironsmith_compiler_runtime::compile_to_runtime_definition(
+                        &source.name,
+                        source.block.clone(),
+                        false,
+                    )
+                    .map_err(|error| format!("{}: {error}", source.name))?;
+                ironsmith::dungeon::register_dungeon_definition(&definition)?;
+            }
+            Ok(sources.len())
+        })
+        .clone()
+}
+
 /// Concrete registry/catalog ownership boundary.
 #[derive(Debug, Clone, Default)]
 pub struct RegistryCatalog {

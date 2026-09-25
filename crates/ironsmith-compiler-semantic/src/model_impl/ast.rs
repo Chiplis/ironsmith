@@ -643,6 +643,12 @@ pub enum TriggerSpec {
         amount: u32,
     },
     SagaChapter(Vec<u32>),
+    /// CR 309.4c room ability: "When you move your venture marker into this
+    /// room". Carries the printed room name and the rooms its arrows lead to.
+    DungeonRoom {
+        room: String,
+        leads_to: Vec<String>,
+    },
     FinalChapterAbilityResolved(ObjectFilter),
     Either(Box<TriggerSpec>, Box<TriggerSpec>),
 }

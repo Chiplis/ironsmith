@@ -368,6 +368,7 @@ mod tests {
             &game,
         );
         game.combat = Some(CombatState {
+            attacked_permanent_types: Default::default(),
             attackers: vec![
                 AttackerInfo {
                     creature: source_battlefield,

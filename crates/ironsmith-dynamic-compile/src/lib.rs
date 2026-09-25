@@ -6,4 +6,5 @@
 pub use ironsmith_compiler::CardDefinitionBuilder as CompilerCardDefinitionBuilder;
 pub use ironsmith_registry::{
     compile_builder_to_runtime_definition, compile_to_runtime_definition,
+    register_builtin_dungeons,
 };

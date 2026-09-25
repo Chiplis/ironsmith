@@ -60,7 +60,8 @@ use super::recognized_document::KeywordLineKind;
 use super::recognized_document::{
     LevelItemKind, RecognizedActivatedLine, RecognizedDocument, RecognizedLevelHeader,
     RecognizedLevelItem, RecognizedLine, RecognizedMetadataLine, RecognizedModalBlock,
-    RecognizedModalMode, RecognizedSagaChapterLine, RecognizedStatementLine, RecognizedStaticLine,
+    RecognizedDungeonRoomLine, RecognizedModalMode, RecognizedSagaChapterLine,
+    RecognizedStatementLine, RecognizedStaticLine,
     RecognizedTriggerIntro, RecognizedTriggeredLine, RecognizedUnsupportedLine,
 };
 use super::semantic_assembly::assemble_non_metadata_line;
@@ -111,6 +112,7 @@ fn recognized_line_kind(line: &RecognizedLine) -> &'static str {
         RecognizedLine::Statement(_) => "statement",
         RecognizedLine::LevelHeader(_) => "level-header",
         RecognizedLine::SagaChapter(_) => "saga-chapter",
+        RecognizedLine::DungeonRoom(_) => "dungeon-room",
         RecognizedLine::Modal(_) => "modal",
         RecognizedLine::Unsupported(_) => "unsupported",
     }
@@ -3396,6 +3398,12 @@ pub fn recognize_document_with_context(
                     source_line: line.info.display_line_index,
                 });
                 let _line_references = line_context.reference_scope();
+                // CR 309.4: a dungeon's lines are its rooms (and, for
+                // Undercity, its entry restriction), never ordinary abilities.
+                if try_push_dungeon_line(preprocessed, line, &mut lines)? {
+                    idx += 1;
+                    continue;
+                }
                 // Numeric result rows belong to the preceding die-roll
                 // instruction, even when their body contains a gain clause.
                 if document_grammar::parse_numeric_result_prefix_tokens(&line.info.source_tokens)
@@ -3602,6 +3610,116 @@ fn try_push_modal_bullet_block(
     trace_recognized_line(&modal_block);
     lines.push(modal_block);
     Ok(Some(next_idx))
+}
+
+fn document_is_dungeon(preprocessed: &PreprocessedDocument) -> bool {
+    preprocessed
+        .card
+        .card_types_ref()
+        .contains(&crate::types::CardType::Dungeon)
+        || preprocessed.items.iter().any(|item| {
+            matches!(
+                item,
+                PreprocessedItem::Metadata(metadata)
+                    if matches!(
+                        metadata.value,
+                        crate::cards::builders::MetadataLine::TypeLine(ref raw)
+                            if raw
+                                .split(|ch: char| !ch.is_alphabetic())
+                                .any(|part| part == "Dungeon")
+                    )
+            )
+        })
+}
+
+/// "You can't enter this dungeon unless you "venture into [quality].""
+/// (CR 701.49d). Returns the quality.
+fn dungeon_entry_restriction_quality(raw_line: &str) -> Option<String> {
+    let normalized = raw_line.trim().replace(['’', '‘'], "'").replace(['“', '”'], "\"");
+    let rest = normalized
+        .strip_prefix("You can't enter this dungeon unless you ")?
+        .trim_start_matches('"');
+    let quality = rest
+        .strip_prefix("venture into ")?
+        .trim_end_matches(['"', '.', ' '])
+        .trim();
+    (!quality.is_empty()).then(|| quality.to_string())
+}
+
+/// Split a printed room line, "Room Name — effect. (Leads to: A, B)", into
+/// its name and the rooms its arrows point to (CR 309.4, 309.5a).
+fn dungeon_room_header(raw_line: &str) -> Option<(String, Vec<String>)> {
+    let (name, body) = raw_line.split_once('—')?;
+    let name = name.trim();
+    if name.is_empty() {
+        return None;
+    }
+    let body = body.trim();
+    let leads_to = match body.rfind("(Leads to:") {
+        Some(start) if body.ends_with(')') => body[start + "(Leads to:".len()..body.len() - 1]
+            .split(',')
+            .map(str::trim)
+            .filter(|room| !room.is_empty())
+            .map(str::to_string)
+            .collect(),
+        _ => Vec::new(),
+    };
+    Some((name.to_string(), leads_to))
+}
+
+fn try_push_dungeon_line(
+    preprocessed: &PreprocessedDocument,
+    line: &PreprocessedLine,
+    lines: &mut Vec<RecognizedLine>,
+) -> Result<bool, CardTextError> {
+    if !document_is_dungeon(preprocessed) {
+        return Ok(false);
+    }
+    let raw_line = line.info.raw_line.as_str();
+    if let Some(quality) = dungeon_entry_restriction_quality(raw_line) {
+        let recognized = RecognizedLine::Static(RecognizedStaticLine {
+            info: line.info.clone(),
+            parse_tokens: line.tokens.clone(),
+            chosen_option: None,
+            parsed: Some(Box::new(LineAst::StaticAbility(
+                crate::model::CompilerStaticAbilityCore::dungeon_entry_restriction(quality).into(),
+            ))),
+        });
+        trace_recognized_line(&recognized);
+        lines.push(recognized);
+        return Ok(true);
+    }
+    let Some((room, leads_to)) = dungeon_room_header(raw_line) else {
+        return Err(CardTextError::ParseError(format!(
+            "dungeon line is not a room (\"Room — effect\"): '{raw_line}'"
+        )));
+    };
+    // The preprocessed stream has the "Leads to" reminder removed; the room
+    // ability's effect is everything after the room name's em dash.
+    let Some(dash_idx) = line
+        .tokens
+        .iter()
+        .position(|token| matches!(token.kind, TokenKind::EmDash))
+    else {
+        return Err(CardTextError::ParseError(format!(
+            "dungeon room line lacks its em dash: '{raw_line}'"
+        )));
+    };
+    let body_tokens = line.tokens[dash_idx + 1..].to_vec();
+    let parse_tokens = normalize_named_source_sentence_tokens(&preprocessed.card, &body_tokens)
+        .unwrap_or(body_tokens);
+    let text = render_token_slice(&parse_tokens).trim().to_string();
+    let effects_ast = parse_effect_sentences_lexed(&parse_tokens)?;
+    let recognized = RecognizedLine::DungeonRoom(RecognizedDungeonRoomLine {
+        info: line.info.clone(),
+        room,
+        leads_to,
+        text,
+        effects_ast,
+    });
+    trace_recognized_line(&recognized);
+    lines.push(recognized);
+    Ok(true)
 }
 
 fn try_push_saga_chapter(
@@ -4640,6 +4758,7 @@ fn recognized_line_source_index(line: &RecognizedLine) -> Option<usize> {
             line.items.first().map(|item| item.info.display_line_index)
         }
         RecognizedLine::SagaChapter(line) => Some(line.info.display_line_index),
+        RecognizedLine::DungeonRoom(line) => Some(line.info.display_line_index),
         RecognizedLine::Unsupported(line) => Some(line.info.display_line_index),
     }
 }

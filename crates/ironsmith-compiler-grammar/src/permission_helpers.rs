@@ -1139,7 +1139,7 @@ pub fn parse_permission_clause_spec_lexed(
         let tail_tokens = tail.tail_tokens;
 
         let default_lifetime = prefixed_lifetime.unwrap_or(PermissionLifetime::Immediate);
-        let Some((lifetime, without_paying_mana_cost)) =
+        let Some((mut lifetime, without_paying_mana_cost)) =
             parse_permission_tail_tokens(tail_tokens, default_lifetime)
         else {
             if let Some(prefixed) = prefixed_lifetime {
@@ -1158,6 +1158,21 @@ pub fn parse_permission_clause_spec_lexed(
             return Ok(None);
         };
 
+        // "Exile the top two cards of your library. You may play them." A
+        // permission over a whole exiled collection that states no duration
+        // is a lasting effect (CR 611.2a: it lasts until the end of the
+        // game), not an instruction to play the cards during resolution.
+        if lifetime == PermissionLifetime::Immediate
+            && prefixed_lifetime.is_none()
+            && !without_paying_mana_cost
+            && !target_ref.as_copy
+            && matches!(
+                token_word_refs(target_tokens).as_slice(),
+                ["them"] | ["those", "cards"]
+            )
+        {
+            lifetime = PermissionLifetime::ForAsLongAsExiled;
+        }
         let mut target_surface = target_ref
             .surface
             .clone()
@@ -2196,8 +2211,57 @@ pub fn parse_cast_or_play_tagged_clause(
             without_paying_mana_cost,
             lifetime: PermissionLifetime::Immediate,
             filter,
+            max_plays,
             ..
         }) => {
+            // "You may cast one of them without paying its mana cost": the
+            // player may choose one card of the referenced pool as the
+            // ability resolves and casts it then (CR 608.2g). Choosing up to
+            // one is the "may", as for "a spell from among them".
+            if max_plays == Some(1)
+                && filter.is_none()
+                && !as_copy
+                && matches!(player, PlayerAst::Implicit | PlayerAst::You)
+            {
+                let chosen_tag = super::util::helper_tag_for_tokens(&trimmed, "chosen");
+                let mut pool = ObjectFilter::default();
+                pool.tagged_constraints.push(TaggedObjectConstraint {
+                    tag,
+                    relation: TaggedOpbjectRelation::IsTaggedObject,
+                });
+                if !allow_land {
+                    pool.excluded_card_types.push(crate::types::CardType::Land);
+                }
+                let count = if player == PlayerAst::You {
+                    crate::effect::ChoiceCount::up_to(1)
+                } else {
+                    crate::effect::ChoiceCount::exactly(1)
+                };
+                return Ok(Some(EffectAst::Sequence {
+                    effects: vec![
+                        EffectAst::ObjectChoices(
+                            crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+                                filter: pool,
+                                count,
+                                count_value: None,
+                                player: PlayerAst::You,
+                                tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                            },
+                        ),
+                        EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                            tag: crate::tag::TagRef::of(chosen_tag),
+                            effects: vec![EffectAst::subject_verb_cast_tagged(
+                                crate::tag::CompilerReferenceTag::It.bind(),
+                                PlayerAst::You,
+                                allow_land,
+                                false,
+                                without_paying_mana_cost,
+                                None,
+                            )],
+                        }),
+                    ],
+                }));
+            }
             let (tag, narrowing) = if let Some(mut filter) = filter {
                 let narrowed_tag = super::util::helper_tag_for_tokens(&trimmed, "castable");
                 filter.zone = Some(Zone::Exile);

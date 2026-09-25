@@ -33,9 +33,46 @@ pub struct CombatState {
     pub attacking_bands: Vec<Vec<ObjectId>>,
     /// Creatures that were required to attack when they were declared this combat.
     pub had_to_attack_this_combat: HashSet<ObjectId>,
+    /// CR 506.4 / 506.4e: the card types each attacked planeswalker or battle
+    /// had when it began being attacked this combat.
+    pub attacked_permanent_types: HashMap<ObjectId, AttackedPermanentTypes>,
+}
+
+/// Whether an attacked permanent was a planeswalker and/or a battle when it
+/// began being attacked. It stays attacked only while it keeps a type it was
+/// attacked as; CR 506.4e's both-types rules apply only if it was both.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AttackedPermanentTypes {
+    pub planeswalker: bool,
+    pub battle: bool,
 }
 
 impl CombatState {
+    /// Record, for each planeswalker or battle that just began being
+    /// attacked, the card types it has now (CR 506.4e). Already-recorded
+    /// permanents keep their declaration-time types.
+    pub fn record_attacked_permanent_types(&mut self, game: &GameState) {
+        for info in &self.attackers {
+            let Some(permanent) = info.target.attacked_permanent() else {
+                continue;
+            };
+            self.attacked_permanent_types
+                .entry(permanent)
+                .or_insert_with(|| {
+                    let as_battle = matches!(info.target, AttackTarget::Battle(_));
+                    AttackedPermanentTypes {
+                        planeswalker: !as_battle
+                            || game.object_has_card_type(
+                                permanent,
+                                crate::types::CardType::Planeswalker,
+                            ),
+                        battle: as_battle
+                            || game.object_has_card_type(permanent, crate::types::CardType::Battle),
+                    }
+                });
+        }
+    }
+
     pub fn remember_blocked_attackers(&mut self) {
         self.blocked_attackers.extend(
             self.blockers.iter()
@@ -66,6 +103,53 @@ pub enum AttackTarget {
     Planeswalker(ObjectId),
     /// Attacking a battle.
     Battle(ObjectId),
+    /// CR 506.4c: the planeswalker or battle this creature was attacking was
+    /// removed from combat. The creature is still an attacking creature (it
+    /// can be blocked), but it isn't attacking any player, planeswalker, or
+    /// battle, so it assigns no combat damage if unblocked (CR 510.1b).
+    /// `defending_player` keeps the player it was attacking at declaration
+    /// (CR 508.5). Never a legal target to declare an attack against.
+    Nothing { defending_player: Option<PlayerId> },
+}
+
+impl AttackTarget {
+    /// The planeswalker or battle being attacked, if any.
+    pub fn attacked_permanent(&self) -> Option<ObjectId> {
+        match self {
+            AttackTarget::Planeswalker(id) | AttackTarget::Battle(id) => Some(*id),
+            AttackTarget::Player(_) | AttackTarget::Nothing { .. } => None,
+        }
+    }
+
+    /// Whether this creature is attacking nothing (CR 506.4c).
+    pub fn is_nothing(&self) -> bool {
+        matches!(self, AttackTarget::Nothing { .. })
+    }
+}
+
+impl From<&AttackTarget> for crate::triggers::AttackEventTarget {
+    fn from(target: &AttackTarget) -> Self {
+        match *target {
+            AttackTarget::Player(player) => Self::Player(player),
+            AttackTarget::Planeswalker(object) => Self::Planeswalker(object),
+            AttackTarget::Battle(object) => Self::Battle(object),
+            AttackTarget::Nothing { .. } => Self::Nothing,
+        }
+    }
+}
+
+impl From<crate::triggers::AttackEventTarget> for AttackTarget {
+    fn from(target: crate::triggers::AttackEventTarget) -> Self {
+        use crate::triggers::AttackEventTarget;
+        match target {
+            AttackEventTarget::Player(player) => Self::Player(player),
+            AttackEventTarget::Planeswalker(object) => Self::Planeswalker(object),
+            AttackEventTarget::Battle(object) => Self::Battle(object),
+            AttackEventTarget::Nothing => Self::Nothing {
+                defending_player: None,
+            },
+        }
+    }
 }
 
 impl std::fmt::Display for AttackTarget {
@@ -74,6 +158,7 @@ impl std::fmt::Display for AttackTarget {
             AttackTarget::Player(id) => write!(f, "player {}", id.0),
             AttackTarget::Planeswalker(id) => write!(f, "planeswalker #{}", id.0),
             AttackTarget::Battle(id) => write!(f, "battle #{}", id.0),
+            AttackTarget::Nothing { .. } => write!(f, "nothing"),
         }
     }
 }
@@ -289,6 +374,7 @@ pub fn end_combat(combat: &mut CombatState) {
     combat.damage_assignment_order.clear();
     combat.attacking_bands.clear();
     combat.had_to_attack_this_combat.clear();
+    combat.attacked_permanent_types.clear();
 }
 
 fn battlefield_static_abilities(game: &GameState) -> Vec<StaticAbility> {
@@ -488,6 +574,9 @@ pub fn declare_attackers(
                 }
                 protector
             }
+            AttackTarget::Nothing { .. } => {
+                return Err(CombatError::InvalidAttackTarget(target.clone()));
+            }
         };
 
         if !game.player_is_within_range(attacking_player, defending_player) {
@@ -533,10 +622,6 @@ pub fn declare_attackers(
             }
         }
 
-        // Validate attack target
-        match target {
-            AttackTarget::Player(_) | AttackTarget::Planeswalker(_) | AttackTarget::Battle(_) => {}
-        }
     }
 
     if let Some(max_attackers) = max_creatures_can_attack_each_combat(game)
@@ -561,6 +646,9 @@ pub fn declare_attackers(
             AttackTarget::Battle(battle_id) => game
                 .battle_protector(*battle_id)
                 .ok_or_else(|| CombatError::InvalidAttackTarget(target.clone()))?,
+            AttackTarget::Nothing { .. } => {
+                return Err(CombatError::InvalidAttackTarget(target.clone()));
+            }
         };
         *attackers_per_defender.entry(defending_player).or_insert(0) += 1;
     }
@@ -646,6 +734,7 @@ pub fn declare_attackers(
             game.tap(creature_id);
         }
     }
+    combat.record_attacked_permanent_types(game);
 
     Ok(())
 }
@@ -1690,6 +1779,27 @@ pub fn defending_player_for_attack_target(
         AttackTarget::Player(player) => Some(*player),
         AttackTarget::Planeswalker(planeswalker) => game.controller_of_id(*planeswalker),
         AttackTarget::Battle(battle) => game.battle_protector(*battle),
+        AttackTarget::Nothing { defending_player } => *defending_player,
+    }
+}
+
+/// Return the defending player for an attack event's target. An attacker
+/// that's attacking nothing keeps the defending player it had when declared
+/// (CR 506.4c, 508.5), looked up from the current combat.
+pub fn defending_player_for_attack_event(
+    game: &GameState,
+    target: crate::triggers::AttackEventTarget,
+    attacker: ObjectId,
+) -> Option<PlayerId> {
+    use crate::triggers::AttackEventTarget;
+    match target {
+        AttackEventTarget::Player(player) => Some(player),
+        AttackEventTarget::Planeswalker(planeswalker) => game.controller_of_id(planeswalker),
+        AttackEventTarget::Battle(battle) => game.battle_protector(battle),
+        AttackEventTarget::Nothing => game
+            .combat
+            .as_ref()
+            .and_then(|combat| defending_player_for_attacker(game, combat, attacker)),
     }
 }
 

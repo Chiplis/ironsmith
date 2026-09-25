@@ -97,6 +97,13 @@ pub fn parse_sacrifice(
     // have bound it. Lowering supplies You when no outer actor exists.
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
+    // "Sacrifice a creature, an artifact, and a land": each listed object is
+    // its own choice of a different permanent, and all of them are
+    // sacrificed at the same time (CR 701.21a).
+    if let Some(effect) = parse_sacrifice_object_list(tokens, player, opponent_chooses_object)? {
+        return Ok(wrap_unless_escaped(effect, unless_escaped));
+    }
+
     // A definite singular choice reference identifies the previously chosen
     // object; it does not ask the player to make a new sacrifice choice.
     if let Some(chosen) = crate::grammar::targets::parse_chosen_object_target(tokens) {
@@ -525,4 +532,95 @@ pub fn parse_sacrifice(
         None => sacrifice,
     };
     Ok(wrap_unless_escaped(effect, unless_escaped))
+}
+
+/// Split "a creature, an artifact, and a land" into its indefinite object
+/// phrases. Only an `and` list of two or more `a`/`an` phrases qualifies; an
+/// `or` list is one type union ("a creature, artifact, or land").
+pub fn sacrifice_object_list_members(tokens: &[OwnedLexToken]) -> Option<Vec<&[OwnedLexToken]>> {
+    let mut members = Vec::new();
+    let mut start = 0usize;
+    let mut saw_and = false;
+    for (index, token) in tokens.iter().enumerate() {
+        let is_and = token.is_word("and");
+        if token.is_word("or") {
+            return None;
+        }
+        if token.is_comma() || is_and {
+            let member = crate::util::trim_edge_punctuation_tokens(&tokens[start..index]);
+            if !member.is_empty() {
+                members.push(member);
+            }
+            saw_and |= is_and;
+            start = index + 1;
+        }
+    }
+    let last = crate::util::trim_edge_punctuation_tokens(&tokens[start..]);
+    if !last.is_empty() {
+        members.push(last);
+    }
+    if !saw_and || members.len() < 2 {
+        return None;
+    }
+    members
+        .iter()
+        .all(|member| {
+            member.len() >= 2
+                && member
+                    .first()
+                    .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+        })
+        .then_some(members)
+}
+
+fn parse_sacrifice_object_list(
+    tokens: &[OwnedLexToken],
+    player: PlayerAst,
+    opponent_chooses_object: bool,
+) -> Result<Option<EffectAst>, CardTextError> {
+    if opponent_chooses_object {
+        return Ok(None);
+    }
+    let Some(members) = sacrifice_object_list_members(tokens) else {
+        return Ok(None);
+    };
+    let mut filters = Vec::with_capacity(members.len());
+    for member in &members {
+        let Ok(mut filter) = parse_object_filter_lexed(&member[1..], false) else {
+            return Ok(None);
+        };
+        if filter.source || !filter.tagged_constraints.is_empty() {
+            return Ok(None);
+        }
+        filter.zone = Some(Zone::Battlefield);
+        if filter.controller.is_none() {
+            filter.controller = controller_filter_for_token_player(player);
+        }
+        filters.push(filter);
+    }
+    let tag = crate::util::helper_tag_for_tokens(tokens, "sacrificed");
+    let mut effects = filters
+        .into_iter()
+        .map(|filter| {
+            // Each later choice excludes the permanents already chosen, so an
+            // artifact creature can't answer for both "a creature" and "an
+            // artifact".
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                filter: filter.not_tagged(tag.clone()),
+                count: crate::effect::ChoiceCount::exactly(1),
+                count_value: None,
+                player,
+                tag: crate::tag::TagRef::of(tag.clone()),
+            })
+        })
+        .collect::<Vec<_>>();
+    effects.push(EffectAst::subject_verb_sacrifice_all(
+        if matches!(player, PlayerAst::Implicit) {
+            PlayerAst::Implicit
+        } else {
+            PlayerAst::That
+        },
+        ObjectFilter::tagged(tag),
+    ));
+    Ok(Some(EffectAst::Sequence { effects }))
 }

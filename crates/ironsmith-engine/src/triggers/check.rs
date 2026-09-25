@@ -3721,39 +3721,32 @@ pub fn verify_intervening_if(
     let defending_player = if event.kind() == crate::events::traits::EventKind::CreatureAttacked {
         event
             .downcast::<crate::events::combat::CreatureAttackedEvent>()
-            .and_then(|attacked| match attacked.target {
-                crate::triggers::AttackEventTarget::Player(player_id) => Some(player_id),
-                crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id) => game
-                    .object(planeswalker_id)
-                    .map(|planeswalker| game.controller_of(planeswalker)),
-                crate::triggers::AttackEventTarget::Battle(battle_id) => {
-                    game.battle_protector(battle_id)
-                }
+            .and_then(|attacked| {
+                crate::combat_state::defending_player_for_attack_event(
+                    game,
+                    attacked.target,
+                    attacked.attacker,
+                )
             })
     } else if event.kind() == crate::events::traits::EventKind::CreatureAttackedAndUnblocked {
         event
             .downcast::<crate::events::combat::CreatureAttackedAndUnblockedEvent>()
-            .and_then(|attacked| match attacked.target {
-                crate::triggers::AttackEventTarget::Player(player_id) => Some(player_id),
-                crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id) => game
-                    .object(planeswalker_id)
-                    .map(|planeswalker| game.controller_of(planeswalker)),
-                crate::triggers::AttackEventTarget::Battle(battle_id) => {
-                    game.battle_protector(battle_id)
-                }
+            .and_then(|attacked| {
+                crate::combat_state::defending_player_for_attack_event(
+                    game,
+                    attacked.target,
+                    attacked.attacker,
+                )
             })
     } else if event.kind() == crate::events::traits::EventKind::CreatureBecameBlocked {
         event
             .downcast::<crate::events::combat::CreatureBecameBlockedEvent>()
-            .and_then(|blocked| blocked.attack_target)
-            .and_then(|target| match target {
-                crate::triggers::AttackEventTarget::Player(player_id) => Some(player_id),
-                crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id) => game
-                    .object(planeswalker_id)
-                    .map(|planeswalker| game.controller_of(planeswalker)),
-                crate::triggers::AttackEventTarget::Battle(battle_id) => {
-                    game.battle_protector(battle_id)
-                }
+            .and_then(|blocked| {
+                crate::combat_state::defending_player_for_attack_event(
+                    game,
+                    blocked.attack_target?,
+                    blocked.attacker,
+                )
             })
     } else {
         None

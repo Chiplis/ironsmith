@@ -68,6 +68,7 @@ impl GameEventType for CreatureAttackedEvent {
             AttackEventTarget::Player(_) => "Creature attacks player".to_string(),
             AttackEventTarget::Planeswalker(_) => "Creature attacks planeswalker".to_string(),
             AttackEventTarget::Battle(_) => "Creature attacks battle".to_string(),
+            AttackEventTarget::Nothing => "Creature attacks".to_string(),
         }
     }
 
@@ -82,8 +83,9 @@ impl GameEventType for CreatureAttackedEvent {
     fn player(&self) -> Option<PlayerId> {
         match self.target {
             AttackEventTarget::Player(p) => Some(p),
-            AttackEventTarget::Planeswalker(_) => None,
-            AttackEventTarget::Battle(_) => None,
+            AttackEventTarget::Planeswalker(_)
+            | AttackEventTarget::Battle(_)
+            | AttackEventTarget::Nothing => None,
         }
     }
 

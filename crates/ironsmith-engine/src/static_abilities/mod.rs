@@ -101,6 +101,10 @@ impl From<&crate::combat_state::AttackTarget> for AttackTaxTargetKind {
             crate::combat_state::AttackTarget::Player(_) => Self::Player,
             crate::combat_state::AttackTarget::Planeswalker(_) => Self::Planeswalker,
             crate::combat_state::AttackTarget::Battle(_) => Self::Battle,
+            // Never declared as an attack target; taxes are paid as attackers
+            // are declared (CR 508.1g), and it counts as no planeswalker or
+            // battle.
+            crate::combat_state::AttackTarget::Nothing { .. } => Self::Player,
         }
     }
 }
@@ -318,6 +322,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     /// Retain the compiler's typed static-ability model for structural
     /// rendering passes. Hand-authored runtime abilities return `None`.
     fn is_source_only_graveyard_replacement(&self) -> bool { false }
+
+    /// The quality named by a dungeon's "You can't enter this dungeon unless
+    /// you 'venture into [quality]'" restriction (CR 701.49d).
+    fn dungeon_entry_quality(&self) -> Option<&str> {
+        None
+    }
 
     fn compiled_model(&self) -> Option<&CompiledStaticAbility> {
         None
@@ -1627,6 +1637,10 @@ impl StaticAbility {
     /// Get the display text for this ability.
     pub fn display(&self) -> String {
         self.0.display()
+    }
+
+    pub fn dungeon_entry_quality(&self) -> Option<&str> {
+        self.0.dungeon_entry_quality()
     }
 
     pub fn compiled_model(&self) -> Option<&CompiledStaticAbility> {
@@ -4597,6 +4611,10 @@ impl StaticAbility {
 
     pub fn deck_construction_rule_text(text: impl Into<String>) -> Self {
         Self::new(DeckConstructionRuleText::new(text))
+    }
+
+    pub fn dungeon_entry_restriction(quality: impl Into<String>) -> Self {
+        Self::new(DungeonEntryRestriction::new(quality))
     }
 
     pub fn rule_fallback_text(text: impl Into<String>) -> Self {

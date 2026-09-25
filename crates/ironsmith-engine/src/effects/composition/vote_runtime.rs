@@ -511,6 +511,34 @@ fn execute_vote_payloads(
     let mut outcomes = Vec::new();
     let mut token_batches: Vec<TokenBatchByController> = vec![BTreeMap::new(); options.len()];
 
+    // The tokens each vote creates are regrouped into one entry event per
+    // option below, so no boundary inside a payload may match them first.
+    game.effect_store.trigger_matching_holds += 1;
+    let payloads = execute_vote_payload_effects(
+        options.as_slice(),
+        votes,
+        game,
+        ctx,
+        &mut outcomes,
+        &mut token_batches,
+    );
+    game.effect_store.trigger_matching_holds -= 1;
+    payloads?;
+
+    let mut aggregate = EffectOutcome::aggregate(outcomes);
+    let cause = EventCause::from_effect(ctx.source, ctx.controller);
+    append_batched_token_events(&mut aggregate, cause, token_batches, ctx.provenance);
+    Ok(aggregate)
+}
+
+fn execute_vote_payload_effects(
+    options: &[crate::effects::VoteOption],
+    votes: &[PlayerVote],
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    outcomes: &mut Vec<EffectOutcome>,
+    token_batches: &mut [TokenBatchByController],
+) -> Result<(), ExecutionError> {
     for vote in votes {
         if let Some(option) = options.get(vote.option_index) {
             ctx.with_temp_iterated_player(Some(vote.player), |ctx| {
@@ -531,11 +559,7 @@ fn execute_vote_payloads(
             })?;
         }
     }
-
-    let mut aggregate = EffectOutcome::aggregate(outcomes);
-    let cause = EventCause::from_effect(ctx.source, ctx.controller);
-    append_batched_token_events(&mut aggregate, cause, token_batches, ctx.provenance);
-    Ok(aggregate)
+    Ok(())
 }
 
 pub(crate) fn run_vote(

@@ -17362,7 +17362,7 @@ pub(super) fn normalize_modal_named_source_etb_surface(
 
 /// Suffix for entry counters fused onto a return-to-battlefield move
 /// ("with a +1/+1 counter on it").
-fn describe_entry_counters_suffix(
+pub(crate) fn describe_entry_counters_suffix(
     counters: &[ironsmith_core::BattlefieldEntryCounterSpec],
 ) -> String {
     if counters.is_empty() {

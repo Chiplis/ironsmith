@@ -3326,6 +3326,12 @@ impl<
         Self::identified(StaticAbilityId::DeckConstructionRuleText, text)
     }
 
+    /// CR 701.49d: "You can't enter this dungeon unless you 'venture into
+    /// [quality].'" The label is the quality (for Undercity, "Undercity").
+    pub fn dungeon_entry_restriction(quality: impl Into<String>) -> Self {
+        Self::identified(StaticAbilityId::DungeonEntryRestriction, quality)
+    }
+
     pub fn rule_fallback_text(text: impl Into<String>) -> Self {
         Self::identified(StaticAbilityId::RuleFallbackText, text)
     }

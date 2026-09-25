@@ -76,7 +76,12 @@ impl EffectExecutor for ConditionalEffect {
         for (index, effect) in effects_to_execute.iter().enumerate() {
             outcomes.push(execute_effect(game, effect, ctx)?);
             if let Some(next) = effects_to_execute.get(index + 1) {
-                crate::effects::match_triggers_at_instruction_boundary(game, ctx, Some(next));
+                crate::effects::match_triggers_at_instruction_boundary(
+                    game,
+                    ctx,
+                    Some(next),
+                    outcomes.iter().flat_map(|outcome| outcome.events.iter()),
+                );
             }
         }
 

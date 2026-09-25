@@ -77,6 +77,7 @@ pub fn assemble_non_metadata_line(
         RecognizedLine::Modal(modal) => assemble_modal_block(modal),
         RecognizedLine::LevelHeader(level) => assemble_level_header(level),
         RecognizedLine::SagaChapter(saga) => assemble_saga_chapter(saga),
+        RecognizedLine::DungeonRoom(room) => assemble_dungeon_room(room),
         RecognizedLine::Unsupported(unsupported) => {
             crate::parse_loss::record(
                 "allow_unsupported_recognized_line",
@@ -266,6 +267,27 @@ fn assemble_level_header(
             })
             .collect(),
     }))
+}
+
+fn assemble_dungeon_room(
+    room: super::recognized_document::RecognizedDungeonRoomLine,
+) -> Result<RewriteSemanticItem, CardTextError> {
+    let mut info = room.info;
+    // CR 309.4b: room names are flavor, printed like an ability word.
+    info.semantic_facts.triggered_ability.presentation_label =
+        Some(PresentationLabel::AbilityWord(room.room.clone()));
+    Ok(parsed_line_item(
+        info,
+        vec![crate::cards::builders::LineAst::Triggered {
+            trigger: crate::cards::builders::TriggerSpec::DungeonRoom {
+                room: room.room,
+                leads_to: room.leads_to,
+            },
+            effects: room.effects_ast,
+            max_triggers_per_turn: None,
+        }],
+        ParsedRestrictions::default(),
+    ))
 }
 
 fn assemble_saga_chapter(

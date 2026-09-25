@@ -55,8 +55,9 @@ impl GameEventType for CreatureAttackedAndUnblockedEvent {
     fn player(&self) -> Option<PlayerId> {
         match self.target {
             AttackEventTarget::Player(p) => Some(p),
-            AttackEventTarget::Planeswalker(_) => None,
-            AttackEventTarget::Battle(_) => None,
+            AttackEventTarget::Planeswalker(_)
+            | AttackEventTarget::Battle(_)
+            | AttackEventTarget::Nothing => None,
         }
     }
 

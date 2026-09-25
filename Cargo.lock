@@ -1488,6 +1488,7 @@ dependencies = [
 name = "ironsmith-registry"
 version = "0.1.0"
 dependencies = [
+ "ironsmith-card-source",
  "ironsmith-compiler",
  "ironsmith-compiler-runtime",
  "ironsmith-core",

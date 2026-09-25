@@ -850,6 +850,12 @@ pub struct EffectStore {
     /// queued (coalescing token or damage-prevention events, tagging a zone
     /// change) hold matching off until they are done.
     pub(crate) trigger_matching_holds: u32,
+    /// Events an effect reported in its result that a nested instruction
+    /// boundary already matched, by occurrence. They still travel up in the
+    /// enclosing instructions' results, and are skipped when those finish.
+    /// Holding the events keeps each occurrence's key unique until the
+    /// outermost resolution ends.
+    pub(crate) matched_outcome_events: HashMap<usize, crate::triggers::TriggerEvent>,
     pub active_state_trigger_conditions: HashSet<crate::triggers::ActiveStateTriggerKey>,
     /// Pending replacement effect choice when multiple effects could apply.
     /// When set, advance_priority returns a ChooseReplacementEffect decision
@@ -894,6 +900,7 @@ impl Default for EffectStore {
             next_stack_ability_id: STACK_ABILITY_ID_BASE,
             per_event_trigger_matching: false,
             trigger_matching_holds: 0,
+            matched_outcome_events: HashMap::new(),
             active_state_trigger_conditions: HashSet::new(),
             pending_replacement_choice: None,
             grant_registry: crate::grant_registry::GrantRegistry::new(),

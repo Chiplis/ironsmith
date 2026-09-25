@@ -33,7 +33,12 @@ fn execute_optional_effects(
         }
         outcomes.push(outcome);
         if let Some(next) = effects.get(index + 1) {
-            crate::effects::match_triggers_at_instruction_boundary(game, ctx, Some(next));
+            crate::effects::match_triggers_at_instruction_boundary(
+                game,
+                ctx,
+                Some(next),
+                outcomes.iter().flat_map(|outcome| outcome.events.iter()),
+            );
         }
     }
     Ok(EffectOutcome::aggregate(outcomes).with_execution_fact(ExecutionFact::Accepted))

@@ -2422,6 +2422,18 @@ impl GameState {
         self.stack.iter().find(|entry| entry.ability_id == Some(id))
     }
 
+    /// How a target id that names an ability on the stack reads to players:
+    /// "<source> ability". Stack objects are public (CR 405.1).
+    pub fn stack_ability_name(&self, id: ObjectId) -> Option<String> {
+        let entry = self.stack_ability_entry(id)?;
+        let source_name = self
+            .object(entry.object_id)
+            .map(|object| object.name.to_string())
+            .or_else(|| entry.source_name.clone())
+            .unwrap_or_else(|| "Ability".to_string());
+        Some(format!("{source_name} ability"))
+    }
+
     /// Stack index of the spell or ability a target id names: an ability by
     /// its own [`StackEntry::ability_id`], a spell by its object id.
     pub fn stack_entry_index_for_target(&self, id: ObjectId) -> Option<usize> {

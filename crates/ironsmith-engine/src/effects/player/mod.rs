@@ -132,9 +132,7 @@ pub use skip_turn::SkipTurnEffect;
 pub use speed::{IncreaseSpeedEffect, ReduceSpeedEffect};
 pub use take_initiative::TakeInitiativeEffect;
 pub use ticket_counters::TicketCountersEffect;
-pub use venture_into_dungeon::{
-    MadWizardsLairEffect, ThroneOfTheDeadThreeEffect, VentureIntoDungeonEffect,
-};
+pub use venture_into_dungeon::VentureIntoDungeonEffect;
 pub(crate) use venture_into_dungeon::complete_finished_dungeons;
 pub use win_the_game::WinTheGameEffect;
 

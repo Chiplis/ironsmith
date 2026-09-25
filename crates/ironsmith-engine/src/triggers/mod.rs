@@ -322,6 +322,11 @@ impl Trigger {
         self.matcher.saga_chapters()
     }
 
+    /// Room data for a dungeon room ability's trigger (CR 309.4c).
+    pub fn as_dungeon_room(&self) -> Option<&DungeonRoomTrigger> {
+        self.matcher.dungeon_room()
+    }
+
     // === Zone Change Triggers ===
 
     /// Create a "when this permanent enters the battlefield" trigger.
@@ -1498,6 +1503,11 @@ impl Trigger {
     /// Create a saga chapter trigger for specific chapters.
     pub fn saga_chapter(chapters: Vec<u32>) -> Self {
         Self::new(SagaChapterTrigger::new(chapters))
+    }
+
+    /// Create a dungeon room ability trigger (CR 309.4c).
+    pub fn dungeon_room(room: impl Into<String>, leads_to: Vec<String>) -> Self {
+        Self::new(DungeonRoomTrigger::new(room, leads_to))
     }
 
     /// Create a trigger for a final Saga chapter ability resolving.

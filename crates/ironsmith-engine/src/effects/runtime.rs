@@ -98,7 +98,7 @@ pub fn validate_target(
 /// Whether `effect` chooses new targets for a copy just made. Choosing new
 /// targets is part of creating the copy (CR 707.10c), so the copy's events
 /// are matched once its targets are final.
-pub(crate) fn effect_chooses_new_targets_for_copy(effect: &Effect) -> bool {
+fn effect_chooses_new_targets_for_copy(effect: &Effect) -> bool {
     effect
         .downcast_ref::<crate::effects::ChooseNewTargetsEffect>()
         .is_some()
@@ -110,28 +110,90 @@ pub(crate) fn effect_chooses_new_targets_for_copy(effect: &Effect) -> bool {
 /// A boundary between two instructions of a resolving spell or ability.
 ///
 /// Abilities trigger the moment their event happens, against the game state
-/// right after it (CR 603.2, 603.6a): match the events queued so far now, so a
-/// later instruction can't change what an "enters" filter sees, a permanent
-/// arriving later doesn't trigger on an earlier event, and a watcher leaving
-/// later still sees it. Matched abilities wait to be put on the stack the next
-/// time a player would receive priority (CR 603.3). `next` is the instruction
-/// about to run.
-pub(crate) fn match_triggers_at_instruction_boundary(
+/// right after it (CR 603.2, 603.6a): match the events of the instructions
+/// performed so far now, so a later instruction can't change what an
+/// "enters" filter sees, a permanent arriving later doesn't trigger on an
+/// earlier event, and a watcher leaving later still sees it. Matched
+/// abilities wait to be put on the stack the next time a player would
+/// receive priority (CR 603.3). `next` is the instruction about to run.
+///
+/// Both kinds of events are matched here: the ones the finished instructions
+/// queued, and the ones they reported in their results (`reported`). A
+/// reported event keeps travelling up in the enclosing instructions' results;
+/// it is remembered as matched so no later boundary matches it again.
+/// Returns whether this was a matching point (so `reported` is now matched).
+pub(crate) fn match_triggers_at_instruction_boundary<'a>(
     game: &mut GameState,
     ctx: &ExecutionContext,
     next: Option<&Effect>,
-) {
+    reported: impl IntoIterator<Item = &'a crate::triggers::TriggerEvent>,
+) -> bool {
     if !game.effect_store.per_event_trigger_matching
         || game.effect_store.trigger_matching_holds > 0
-        || game.effect_store.pending_trigger_events.is_empty()
         || ctx.decision_maker.awaiting_choice()
         || next.is_some_and(effect_chooses_new_targets_for_copy)
     {
-        return;
+        return false;
+    }
+    let fresh = reported
+        .into_iter()
+        .filter(|event| !outcome_event_already_matched(game, event))
+        .cloned()
+        .collect::<Vec<_>>();
+    if fresh.is_empty() && game.effect_store.pending_trigger_events.is_empty() {
+        return true;
     }
     let mut matched = crate::triggers::TriggerQueue::new();
+    for event in fresh {
+        game.effect_store
+            .matched_outcome_events
+            .insert(event.occurrence_key(), event.clone());
+        crate::game_loop::queue_triggers_from_event(game, &mut matched, event, false);
+    }
     crate::game_loop::drain_pending_trigger_events(game, &mut matched);
     game.defer_trigger_entries(matched.take_all());
+    true
+}
+
+/// Whether a boundary inside the current resolution already matched `event`.
+fn outcome_event_already_matched(
+    game: &GameState,
+    event: &crate::triggers::TriggerEvent,
+) -> bool {
+    game.effect_store
+        .matched_outcome_events
+        .contains_key(&event.occurrence_key())
+}
+
+/// Drop the events a boundary inside the current resolution already matched,
+/// so whoever consumes a resolution's reported events matches only the rest.
+pub(crate) fn retain_unmatched_outcome_events(
+    game: &GameState,
+    events: &mut Vec<crate::triggers::TriggerEvent>,
+) {
+    if game.effect_store.matched_outcome_events.is_empty() {
+        return;
+    }
+    events.retain(|event| !outcome_event_already_matched(game, event));
+}
+
+/// Run `run` as the instructions of a resolving spell or ability, matching
+/// triggered abilities at each instruction boundary when `enabled`
+/// (CR 603.2). Restores the enclosing setting afterwards; the outermost
+/// resolution forgets which reported events were matched once it is over.
+pub(crate) fn with_per_event_trigger_matching<R>(
+    game: &mut GameState,
+    enabled: bool,
+    run: impl FnOnce(&mut GameState) -> R,
+) -> R {
+    let previous = game.effect_store.per_event_trigger_matching;
+    game.effect_store.per_event_trigger_matching = enabled;
+    let result = run(game);
+    game.effect_store.per_event_trigger_matching = previous;
+    if !previous {
+        game.effect_store.matched_outcome_events.clear();
+    }
+    result
 }
 
 pub fn execute_effect(

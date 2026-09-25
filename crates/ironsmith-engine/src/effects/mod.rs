@@ -85,7 +85,10 @@ pub use executor_trait::{
 pub type EffectContext<'a> = context::ExecutionContext<'a>;
 pub(crate) use context::ExecutionContext;
 pub use runtime::{execute_effect, resolve_value, validate_target};
-pub(crate) use runtime::{effect_chooses_new_targets_for_copy, match_triggers_at_instruction_boundary};
+pub(crate) use runtime::{
+    match_triggers_at_instruction_boundary, retain_unmatched_outcome_events,
+    with_per_event_trigger_matching,
+};
 
 // Re-export effect implementations
 pub use cards::{
@@ -199,7 +202,7 @@ pub use player::{
     RingTemptsYouEffect, RollDiceChooseResultEffect, RollDieEffect, SkipCombatPhasesEffect,
     SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipMainPhasesThisTurnEffect,
     SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, TakeInitiativeEffect, TicketCountersEffect,
-    MadWizardsLairEffect, ThroneOfTheDeadThreeEffect, VentureIntoDungeonEffect, WinTheGameEffect,
+    VentureIntoDungeonEffect, WinTheGameEffect,
 };
 pub use replacement::{
     ApplyReplacementEffect, RegisterDamagedBySourceZoneReplacementEffect,

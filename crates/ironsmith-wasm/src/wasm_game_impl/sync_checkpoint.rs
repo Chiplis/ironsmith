@@ -550,6 +550,11 @@ struct SyncGrandMeleeCombat {
     damage_assignment_order: Vec<(u64, Vec<u64>)>,
     attacking_bands: Vec<Vec<u64>>,
     had_to_attack_this_combat: Vec<u64>,
+    /// CR 506.4e: (permanent, was a planeswalker, was a battle) when it began
+    /// being attacked. Older checkpoints omit it; types are then recorded
+    /// again from the current state.
+    #[serde(default)]
+    attacked_permanent_types: Vec<(u64, bool, bool)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -558,6 +563,12 @@ enum SyncGrandMeleeAttackTarget {
     Player { player: u8 },
     Planeswalker { object: u64 },
     Battle { object: u64 },
+    /// CR 506.4c: attacking nothing after its planeswalker or battle was
+    /// removed from combat; keeps the declaration-time defending player.
+    Nothing {
+        #[serde(default)]
+        defending_player: Option<u8>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -1030,6 +1041,11 @@ fn sync_grand_melee_combat(combat: &ironsmith::combat_state::CombatState) -> Syn
                     AttackTarget::Battle(object) => {
                         SyncGrandMeleeAttackTarget::Battle { object: object.0 }
                     }
+                    AttackTarget::Nothing { defending_player } => {
+                        SyncGrandMeleeAttackTarget::Nothing {
+                            defending_player: defending_player.map(|player| player.0),
+                        }
+                    }
                 };
                 (attacker.creature.0, target)
             })
@@ -1043,6 +1059,15 @@ fn sync_grand_melee_combat(combat: &ironsmith::combat_state::CombatState) -> Syn
             .map(|band| raw_ids(band))
             .collect(),
         had_to_attack_this_combat,
+        attacked_permanent_types: {
+            let mut types = combat
+                .attacked_permanent_types
+                .iter()
+                .map(|(object, types)| (object.0, types.planeswalker, types.battle))
+                .collect::<Vec<_>>();
+            types.sort_unstable();
+            types
+        },
     }
 }
 
@@ -1050,6 +1075,19 @@ fn grand_melee_combat_from_sync(
     combat: &SyncGrandMeleeCombat,
 ) -> ironsmith::combat_state::CombatState {
     ironsmith::combat_state::CombatState {
+        attacked_permanent_types: combat
+            .attacked_permanent_types
+            .iter()
+            .map(|(object, planeswalker, battle)| {
+                (
+                    ObjectId::from_raw(*object),
+                    ironsmith::combat_state::AttackedPermanentTypes {
+                        planeswalker: *planeswalker,
+                        battle: *battle,
+                    },
+                )
+            })
+            .collect(),
         blocked_attackers: combat.blocked_attackers.iter().map(|id| ObjectId::from_raw(*id)).collect(),
         attackers: combat
             .attackers
@@ -1065,6 +1103,11 @@ fn grand_melee_combat_from_sync(
                     }
                     SyncGrandMeleeAttackTarget::Battle { object } => {
                         AttackTarget::Battle(ObjectId::from_raw(*object))
+                    }
+                    SyncGrandMeleeAttackTarget::Nothing { defending_player } => {
+                        AttackTarget::Nothing {
+                            defending_player: defending_player.map(PlayerId::from_index),
+                        }
                     }
                 },
             })

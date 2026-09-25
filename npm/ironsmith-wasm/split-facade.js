@@ -44,7 +44,9 @@ function sourceArtifacts(source) {
   if (!group || typeof group !== "object") {
     throw new TypeError("card source is missing its group");
   }
-  if (group.kind === "single") {
+  if (group.kind === "single" || group.kind === "dungeon") {
+    // A dungeon (CR 309) compiles like a single card; the engine files it in
+    // its dungeon catalog instead of the deck-building registry.
     return [compileCardArtifact({
       name: group.name,
       text: group.block,

@@ -26,6 +26,9 @@ DEFAULT_DB_PATH = ROOT / "reports" / "engine-status.sqlite3"
 OUT_FILE = ROOT / "src" / "cards" / "generated_registry.rs"
 PAYLOAD_FILE_NAME = "generated_registry_payload.bin"
 REGISTRY_DB_PATH_ENV = "IRONSMITH_REGISTRY_DB_PATH"
+# Dungeon cards (CR 309) are filtered out of cards.json as nontraditional
+# cards; their printed text is kept in this data file instead.
+DUNGEON_SOURCE_PATH = ROOT / "crates" / "ironsmith-card-source" / "data" / "dungeons.json"
 FRONTEND_CARD_ASSET_VERSION = 1
 
 
@@ -1384,6 +1387,34 @@ def add_frontend_route(
     )
 
 
+def load_dungeon_sources(path: Path = DUNGEON_SOURCE_PATH) -> List[dict]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    dungeons = payload.get("dungeons")
+    if not isinstance(dungeons, list):
+        raise RuntimeError(f"[generate_baked_registry] {path} has no dungeons list")
+    return dungeons
+
+
+def frontend_asset_payload_for_dungeon(dungeon: dict) -> dict:
+    """A dungeon route. The artifact baker compiles `block` like a single
+    card; the engine files the result in its dungeon catalog (CR 309.2), not
+    the deck-building registry. Room abilities compile from the printed
+    "Room — effect. (Leads to: ...)" lines (CR 309.4c, 309.5a)."""
+    name = dungeon["name"]
+    block = f"Type: {dungeon['type_line']}\n{dungeon['oracle_text']}"
+    return {
+        "version": FRONTEND_CARD_ASSET_VERSION,
+        "canonicalName": name,
+        "aliases": [],
+        "scryfall": {"oracle_id": dungeon.get("oracle_id")},
+        "group": {
+            "kind": "dungeon",
+            "name": name,
+            "block": block,
+        },
+    }
+
+
 def threshold_counts_for_scores(scores: Iterable[float]) -> List[int]:
     threshold_counts = [0] * 100
     for raw_score in scores:
@@ -1505,6 +1536,13 @@ def write_frontend_card_assets(
             }
         )
 
+    index_dungeons: List[dict] = []
+    for dungeon in load_dungeon_sources():
+        add_frontend_route(routes, dungeon["name"], frontend_asset_payload_for_dungeon(dungeon))
+        index_dungeons.append(
+            {"name": dungeon["name"], "route": frontend_card_route_key(dungeon["name"])}
+        )
+
     cards_dir.mkdir(parents=True, exist_ok=True)
 
     retained_artifact_routes = 0
@@ -1552,6 +1590,7 @@ def write_frontend_card_assets(
         "scoredCount": len(scored_scores),
         "thresholdCounts": threshold_counts_for_scores(scored_scores),
         "cards": index_cards,
+        "dungeons": index_dungeons,
     }
     (cards_dir / "index.json").write_text(
         json.dumps(index_payload, ensure_ascii=False, separators=(",", ":")),

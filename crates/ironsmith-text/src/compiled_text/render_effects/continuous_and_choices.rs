@@ -2260,8 +2260,10 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_bottom(
 
 pub(super) fn describe_battlefield_entry_state_for_looked_move(
     move_to_zone: &crate::effects::MoveToZoneEffect,
-) -> &'static str {
-    match (
+) -> String {
+    // Counters the card enters with ("with three +1/+1 counters on it") are
+    // part of the same entry (CR 122.6) and follow the tapped/attacking state.
+    let state = match (
         move_to_zone.enters_tapped,
         move_to_zone.enters_attacking,
         &move_to_zone.attack_target_mode,
@@ -2284,7 +2286,11 @@ pub(super) fn describe_battlefield_entry_state_for_looked_move(
         (false, true, _) => " attacking",
         (true, false, _) => " tapped",
         _ => "",
-    }
+    };
+    format!(
+        "{state}{}",
+        super::describe_entry_counters_suffix(&move_to_zone.enters_with_counters)
+    )
 }
 
 pub(super) fn describe_looked_battlefield_selection(

@@ -359,7 +359,9 @@ pub(crate) fn compute_legal_attackers_with_view(
             .iter()
             .filter(|target| match target {
                 AttackTarget::Player(player) => required_attack_players.contains(player),
-                AttackTarget::Planeswalker(_) | AttackTarget::Battle(_) => false,
+                AttackTarget::Planeswalker(_)
+                | AttackTarget::Battle(_)
+                | AttackTarget::Nothing { .. } => false,
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -383,7 +385,9 @@ pub(crate) fn compute_legal_attackers_with_view(
         let has_required_attack_target = !required_attack_players.is_empty()
             && valid_targets.iter().any(|target| match target {
                 AttackTarget::Player(player) => required_attack_players.contains(player),
-                AttackTarget::Planeswalker(_) | AttackTarget::Battle(_) => false,
+                AttackTarget::Planeswalker(_)
+                | AttackTarget::Battle(_)
+                | AttackTarget::Nothing { .. } => false,
             });
         let must_attack = abilities
             .iter()

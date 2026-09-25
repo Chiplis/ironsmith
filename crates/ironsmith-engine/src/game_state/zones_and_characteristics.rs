@@ -470,6 +470,9 @@ impl GameState {
         {
             self.release_phase_out_holds_for_source(old_id);
             self.note_attraction_left_battlefield(old_id);
+            // CR 506.4: a planeswalker or battle that leaves the battlefield
+            // stops being attacked.
+            self.remove_attacked_permanent_from_combat(old_id, None);
         }
         if let Some(snapshot) = pre_move_snapshot.as_ref() {
             for entry in &mut self.stack {

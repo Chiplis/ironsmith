@@ -849,10 +849,16 @@ impl GameState {
                 crate::target::PlayerFilter::TaggedPlayer(tag),
                 nonwinner_effects,
             );
-            let outcome = execute_effect(self, &Effect::new(continuation), &mut ctx)?;
-            for event in outcome.events {
-                self.queue_trigger_event(ctx.provenance, event);
-            }
+            // The rest of the resolving spell's instructions: their events
+            // are matched as they happen, as on the stack (CR 603.2).
+            crate::effects::with_per_event_trigger_matching(self, true, |game| {
+                let mut events = execute_effect(game, &Effect::new(continuation), &mut ctx)?.events;
+                crate::effects::retain_unmatched_outcome_events(game, &mut events);
+                for event in events {
+                    game.queue_trigger_event(ctx.provenance, event);
+                }
+                Ok::<(), ExecutionError>(())
+            })?;
         }
 
         if let Some(resolving_object) = resolving_object

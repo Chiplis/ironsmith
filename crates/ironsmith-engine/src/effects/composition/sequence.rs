@@ -201,7 +201,12 @@ impl EffectExecutor for SequenceEffect {
                 ));
             }
             if let Some(next) = self.effects.get(index + 1) {
-                crate::effects::match_triggers_at_instruction_boundary(game, ctx, Some(next));
+                crate::effects::match_triggers_at_instruction_boundary(
+                    game,
+                    ctx,
+                    Some(next),
+                    events.iter(),
+                );
             }
         }
 

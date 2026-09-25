@@ -1183,6 +1183,7 @@ impl GameState {
                     .remove(&id);
             }
             self.remove_object_from_combat(id);
+            self.remove_attacked_permanent_from_combat(id, None);
             if let Some(snapshot) = permanent_snapshot {
                 self.record_ui_effect_event(
                     "phase_out",
@@ -1271,6 +1272,49 @@ impl GameState {
             order.retain(|object| *object != id);
         }
         self.clear_ninjutsu_attack_targets_for(id);
+    }
+
+    /// CR 506.4 / 506.4c: stop a planeswalker or battle from being attacked.
+    /// Creatures attacking it remain attacking creatures but attack nothing;
+    /// they keep the defending player they had at declaration (CR 508.5),
+    /// which is `defending_player` when given, else the permanent's current
+    /// controller (planeswalker) or protector (battle).
+    pub(crate) fn remove_attacked_permanent_from_combat(
+        &mut self,
+        permanent: ObjectId,
+        defending_player: Option<PlayerId>,
+    ) {
+        let Some(combat) = self.combat.as_ref() else {
+            return;
+        };
+        if !combat
+            .attackers
+            .iter()
+            .any(|info| info.target.attacked_permanent() == Some(permanent))
+        {
+            return;
+        }
+        let planeswalker_defender = defending_player.or_else(|| self.controller_of_id(permanent));
+        let battle_defender = defending_player.or_else(|| self.battle_protector(permanent));
+        let Some(combat) = self.combat.as_mut() else {
+            return;
+        };
+        combat.attacked_permanent_types.remove(&permanent);
+        for info in &mut combat.attackers {
+            info.target = match info.target {
+                crate::combat_state::AttackTarget::Planeswalker(id) if id == permanent => {
+                    crate::combat_state::AttackTarget::Nothing {
+                        defending_player: planeswalker_defender,
+                    }
+                }
+                crate::combat_state::AttackTarget::Battle(id) if id == permanent => {
+                    crate::combat_state::AttackTarget::Nothing {
+                        defending_player: battle_defender,
+                    }
+                }
+                ref other => other.clone(),
+            };
+        }
     }
 
     /// Check if a card is exiled via madness.

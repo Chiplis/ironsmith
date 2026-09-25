@@ -634,6 +634,10 @@ fn run_cli() {
 
     // Create the card registry
     let registry = CardRegistry::with_builtin_cards();
+    // Dungeon cards (CR 309) begin outside the game; compile their rooms.
+    if let Err(error) = ironsmith_registry::register_builtin_dungeons() {
+        eprintln!("warning: dungeon cards failed to compile: {error}");
+    }
 
     // Build decks for each player
     let deck1 = if !args.decks.is_empty() {

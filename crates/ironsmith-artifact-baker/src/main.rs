@@ -40,6 +40,13 @@ enum CardSourceGroup {
         layout: String,
         faces: Vec<CardFaceSource>,
     },
+    /// A dungeon card (CR 309). It compiles exactly like a single card; its
+    /// room abilities come from the printed "Room — effect. (Leads to: ...)"
+    /// lines. Dungeons are not playable cards, so there is no semantic score.
+    Dungeon {
+        name: String,
+        block: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,6 +142,15 @@ fn compile_source(source: &CardSourceFile) -> Result<Vec<CompiledCardArtifact>, 
                 layout: LinkedFaceLayout::None,
             })?])
         }
+        CardSourceGroup::Dungeon { name, block } => Ok(vec![compile_artifact(CompileInput {
+            name,
+            text: block,
+            score: None,
+            local_id: 1,
+            other_face_id: None,
+            other_face_name: None,
+            layout: LinkedFaceLayout::None,
+        })?]),
         CardSourceGroup::Linked { layout, faces } => {
             if faces.len() != 2 {
                 return Err(format!(
@@ -179,7 +195,9 @@ fn source_cache_key(source: &CardSourceFile) -> Result<String, String> {
 
 fn source_texts(source: &CardSourceFile) -> Vec<&str> {
     match &source.group {
-        CardSourceGroup::Single { block, .. } => vec![block],
+        CardSourceGroup::Single { block, .. } | CardSourceGroup::Dungeon { block, .. } => {
+            vec![block]
+        }
         CardSourceGroup::Linked { faces, .. } => {
             faces.iter().map(|face| face.block.as_str()).collect()
         }

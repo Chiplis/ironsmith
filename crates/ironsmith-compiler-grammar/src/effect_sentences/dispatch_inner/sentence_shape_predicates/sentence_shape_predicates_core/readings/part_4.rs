@@ -339,6 +339,17 @@ pub(super) fn read_immediate_sacrifice_sentence(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
     if sentence_shapes::parse_immediate_sacrifice_sentence_tokens(tokens).is_some() {
+        // "Sacrifice a creature, an artifact, and a land" lists the objects of
+        // one sacrifice; it is not a chain of separate sacrifice actions.
+        let body = crate::util::trim_edge_punctuation_tokens(&tokens[1..]);
+        if tokens.first().is_some_and(|token| token.is_word("sacrifice"))
+            && super::super::super::super::zone_handlers::sacrifice_object_list_members(body)
+                .is_some()
+        {
+            return Ok(Some(vec![super::super::super::super::zone_handlers::parse_sacrifice(
+                body, None, None,
+            )?]));
+        }
         let mut effects = super::super::super::super::parse_effect_chain_inner_lexed(tokens)?;
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(Some(effects));

@@ -630,6 +630,12 @@ impl WasmGame {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         let priority_state = PriorityLoopState::new(2);
+        // Builds that compile source in-process compile the dungeon cards
+        // themselves; lean builds register them from their baked routes.
+        #[cfg(feature = "dynamic-compile")]
+        if let Err(error) = ironsmith_dynamic_compile::register_builtin_dungeons() {
+            eprintln!("[ironsmith] dungeon cards failed to compile: {error}");
+        }
         #[cfg(test)]
         let registry = {
             static FIXTURE_REGISTRY: std::sync::OnceLock<CardRegistry> =

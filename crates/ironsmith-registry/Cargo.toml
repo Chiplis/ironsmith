@@ -17,6 +17,7 @@ ironsmith = { package = "ironsmith-engine", path = "../ironsmith-engine", defaul
 ironsmith-runtime-catalog = { path = "../ironsmith-runtime-catalog", default-features = false }
 ironsmith-compiler = { path = "../ironsmith-compiler", default-features = false }
 ironsmith-compiler-runtime = { path = "../ironsmith-compiler-runtime", default-features = false }
+ironsmith-card-source = { path = "../ironsmith-card-source" }
 
 [dev-dependencies]
 ironsmith-text = { path = "../ironsmith-text", default-features = false }

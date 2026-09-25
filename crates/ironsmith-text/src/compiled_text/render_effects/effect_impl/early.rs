@@ -30,6 +30,11 @@
     }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
         let members: Vec<&Effect> = sequence.effects.iter().collect();
+        if let [draw, reveal] = sequence.effects.as_slice()
+            && let Some(text) = effect_lists::describe_draw_then_reveal_drawn(draw, reveal)
+        {
+            return text;
+        }
         if let Some(text) = describe_single_hand_reveal_setup(&members)
             .or_else(|| describe_random_hand_look_setup(&members)) {
             return text;

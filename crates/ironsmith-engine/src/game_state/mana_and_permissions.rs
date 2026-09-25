@@ -160,22 +160,139 @@ impl GameState {
                     .map(|controller| (id, controller))
             })
             .collect::<HashMap<_, _>>();
-        let changed = controllers
+        let previous_controllers = controllers
             .iter()
             .filter_map(|(&id, &controller)| {
                 self.battlefield_flags
                     .controller_at_last_refresh
                     .get(&id)
-                    .is_some_and(|previous| *previous != controller)
-                    .then_some(id)
+                    .filter(|previous| **previous != controller)
+                    .map(|previous| (id, *previous))
             })
-            .collect::<Vec<_>>();
+            .collect::<HashMap<_, _>>();
+        let changed = previous_controllers.keys().copied().collect::<Vec<_>>();
 
         self.battlefield_flags_mut().controller_at_last_refresh = controllers;
         for &id in &changed {
             self.set_summoning_sick(id);
         }
         self.reconcile_combat_membership(&changed);
+        self.reconcile_attacked_permanents(&previous_controllers);
+    }
+
+    /// CR 506.4 / 506.4e: a planeswalker or battle that's being attacked is
+    /// removed from combat if it leaves the battlefield, its controller
+    /// changes, or it stops being a planeswalker (resp. battle). Only a
+    /// permanent that was both when it began being attacked stays attacked
+    /// while it's still either one, except that one that stops being a battle
+    /// but is still a planeswalker is removed unless it's controlled by its
+    /// protector. Creatures attacking a removed permanent attack nothing
+    /// (CR 506.4c).
+    fn reconcile_attacked_permanents(&mut self, previous_controllers: &HashMap<ObjectId, PlayerId>) {
+        use crate::combat_state::AttackTarget;
+        use crate::types::CardType;
+
+        let Some(combat) = self.combat.as_ref() else {
+            return;
+        };
+        if !combat
+            .attackers
+            .iter()
+            .any(|info| info.target.attacked_permanent().is_some())
+        {
+            return;
+        }
+        // Permanents that began being attacked outside a declaration (e.g.
+        // entering attacking) are recorded the first time they're seen.
+        let mut combat = self.combat.take().expect("combat checked above");
+        combat.record_attacked_permanent_types(self);
+        let mut attacked = combat
+            .attackers
+            .iter()
+            .filter_map(|info| {
+                let permanent = info.target.attacked_permanent()?;
+                Some((
+                    permanent,
+                    matches!(info.target, AttackTarget::Battle(_)),
+                    combat
+                        .attacked_permanent_types
+                        .get(&permanent)
+                        .copied()
+                        .unwrap_or_default(),
+                ))
+            })
+            .collect::<Vec<_>>();
+        self.combat = Some(combat);
+        attacked.sort_by_key(|(id, as_battle, _)| (id.0, *as_battle));
+        attacked.dedup_by_key(|(id, as_battle, _)| (*id, *as_battle));
+        for (permanent, as_battle, attacked_as) in attacked {
+            let on_battlefield = self
+                .object(permanent)
+                .is_some_and(|object| object.zone == Zone::Battlefield)
+                && !self.is_phased_out(permanent);
+            if !on_battlefield {
+                self.remove_attacked_permanent_from_combat(permanent, None);
+                continue;
+            }
+            if let Some(previous) = previous_controllers.get(&permanent) {
+                // For a planeswalker the defending player was its controller;
+                // a battle's defending player is its protector (CR 508.5).
+                let defender = if as_battle {
+                    self.battle_protector(permanent)
+                } else {
+                    Some(*previous)
+                };
+                self.remove_attacked_permanent_from_combat(permanent, defender);
+                continue;
+            }
+            let is_planeswalker = self.object_has_card_type(permanent, CardType::Planeswalker);
+            let is_battle = self.object_has_card_type(permanent, CardType::Battle);
+            let was_both = attacked_as.planeswalker && attacked_as.battle;
+            let retarget = if !was_both {
+                // CR 506.4: attacked as only one of them, it's removed once
+                // it stops being that, even if it has become the other.
+                let still_attacked = if as_battle { is_battle } else { is_planeswalker };
+                if !still_attacked {
+                    self.remove_attacked_permanent_from_combat(permanent, None);
+                }
+                continue;
+            } else {
+                // CR 506.4e: it was both when it began being attacked.
+                match (is_planeswalker, is_battle) {
+                    (false, false) => {
+                        self.remove_attacked_permanent_from_combat(permanent, None);
+                        continue;
+                    }
+                    (_, true) if as_battle => continue,
+                    // Stopped being a planeswalker but is still a battle.
+                    (false, true) => AttackTarget::Battle(permanent),
+                    (true, _) if !as_battle => {
+                        if !is_battle
+                            && self.battle_protector(permanent) != self.controller_of_id(permanent)
+                        {
+                            self.remove_attacked_permanent_from_combat(permanent, None);
+                        }
+                        continue;
+                    }
+                    // Stopped being a battle but is still a planeswalker.
+                    (true, false) => {
+                        if self.battle_protector(permanent) != self.controller_of_id(permanent) {
+                            self.remove_attacked_permanent_from_combat(permanent, None);
+                            continue;
+                        }
+                        AttackTarget::Planeswalker(permanent)
+                    }
+                    (true, true) => continue,
+                }
+            };
+            if let Some(combat) = self.combat.as_mut() {
+                for info in &mut combat.attackers {
+                    if info.target.attacked_permanent() == Some(permanent) {
+                        info.target = retarget.clone();
+                    }
+                }
+            }
+        }
     }
 
     /// CR 506.4: a permanent is removed from combat if its controller changes,

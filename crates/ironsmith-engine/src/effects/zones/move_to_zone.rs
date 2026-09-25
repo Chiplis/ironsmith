@@ -208,6 +208,7 @@ fn choose_attack_target_for_player(
                         .unwrap_or_else(|| "a battle".to_string());
                     format!("Attack {battle_name} protected by {player_name}")
                 }
+                AttackTarget::Nothing { .. } => "Attack nothing".to_string(),
             };
             SelectableOption::new(index, description)
         })
@@ -265,13 +266,8 @@ fn matching_cost_candidate_count(
 fn enters_attacking_targets(game: &GameState, combat: &CombatState) -> Vec<AttackTarget> {
     let mut defending_players = Vec::new();
     for attacker in &combat.attackers {
-        let defending_player = match attacker.target {
-            AttackTarget::Player(player) => Some(player),
-            AttackTarget::Planeswalker(planeswalker) => game
-                .object(planeswalker)
-                .map(|object| game.controller_of(object)),
-            AttackTarget::Battle(battle) => game.battle_protector(battle),
-        };
+        let defending_player =
+            crate::combat_state::defending_player_for_attack_target(game, &attacker.target);
         if let Some(player) = defending_player
             && !defending_players.contains(&player)
         {
@@ -323,6 +319,7 @@ fn attack_target_description(game: &GameState, target: &AttackTarget) -> String 
             .object(*object_id)
             .map(|object| object.name.to_string())
             .unwrap_or_else(|| format!("battle #{}", object_id.0)),
+        AttackTarget::Nothing { .. } => "nothing".to_string(),
     }
 }
 

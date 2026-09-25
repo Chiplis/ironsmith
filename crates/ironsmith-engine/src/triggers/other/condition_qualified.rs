@@ -41,15 +41,12 @@ impl TriggerMatcher for ConditionQualifiedTrigger {
                     source: ctx.source_id,
                     defending_player: event
                         .downcast::<crate::events::combat::CreatureAttackedEvent>()
-                        .and_then(|attack| match attack.target {
-                            crate::triggers::AttackEventTarget::Player(player) => Some(player),
-                            crate::triggers::AttackEventTarget::Planeswalker(id) => ctx
-                                .game
-                                .object(id)
-                                .map(|object| ctx.game.controller_of(object)),
-                            crate::triggers::AttackEventTarget::Battle(id) => {
-                                ctx.game.battle_protector(id)
-                            }
+                        .and_then(|attack| {
+                            crate::combat_state::defending_player_for_attack_event(
+                                ctx.game,
+                                attack.target,
+                                attack.attacker,
+                            )
                         }),
                     filter_source: Some(ctx.source_id),
                     triggering_event: Some(event),

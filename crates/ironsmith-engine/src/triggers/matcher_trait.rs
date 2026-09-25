@@ -268,6 +268,12 @@ pub trait TriggerMatcher:
     fn saga_chapters(&self) -> Option<&[u32]> {
         None
     }
+
+    /// If this is a dungeon room ability's trigger (CR 309.4c), return the
+    /// room it belongs to.
+    fn dungeon_room(&self) -> Option<&super::DungeonRoomTrigger> {
+        None
+    }
 }
 
 impl Clone for Box<dyn TriggerMatcher> {

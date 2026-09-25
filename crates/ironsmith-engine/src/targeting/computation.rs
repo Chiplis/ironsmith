@@ -1503,16 +1503,8 @@ fn combat_players_for_attacking_source(
 ) -> Option<(PlayerId, PlayerId)> {
     let combat = game.combat.as_ref()?;
     let attack_target = crate::combat_state::get_attack_target(combat, source_id)?;
-    let defending_player = match attack_target {
-        crate::combat_state::AttackTarget::Player(player_id) => *player_id,
-        crate::combat_state::AttackTarget::Planeswalker(planeswalker_id) => {
-            let planeswalker = game.object(*planeswalker_id)?;
-            game.controller_of(planeswalker)
-        }
-        crate::combat_state::AttackTarget::Battle(battle_id) => {
-            game.battle_protector(*battle_id)?
-        }
-    };
+    let defending_player =
+        crate::combat_state::defending_player_for_attack_target(game, attack_target)?;
     let source = game.object(source_id)?;
     Some((defending_player, game.controller_of(source)))
 }
@@ -2124,6 +2116,7 @@ mod tests {
         game.add_object(not_attacking);
         game.add_object(alice_walker);
         game.combat = Some(crate::combat_state::CombatState {
+            attacked_permanent_types: Default::default(),
             attackers: vec![
                 crate::combat_state::AttackerInfo {
                     creature: attacking_alice_id,
@@ -2173,6 +2166,7 @@ mod tests {
         game.add_object(defending_creature);
         game.add_object(attacking_creature);
         game.combat = Some(crate::combat_state::CombatState {
+            attacked_permanent_types: Default::default(),
             attackers: vec![crate::combat_state::AttackerInfo {
                 creature: source_id,
                 target: crate::combat_state::AttackTarget::Player(bob),
@@ -2206,6 +2200,7 @@ mod tests {
         game.add_object(source);
         game.add_object(bob_walker);
         game.combat = Some(crate::combat_state::CombatState {
+            attacked_permanent_types: Default::default(),
             attackers: vec![crate::combat_state::AttackerInfo {
                 creature: source_id,
                 target: crate::combat_state::AttackTarget::Planeswalker(bob_walker_id),

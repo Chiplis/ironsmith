@@ -1730,6 +1730,8 @@ impl TurnRunner {
         if !game.continuous_state_is_clean() {
             game.refresh_continuous_state();
         }
+        // The refresh may have removed permanents from combat (CR 506.4).
+        self.sync_combat_from_game(game);
         let first_step_strikers = use_snapshot.then_some(&self.first_step_strikers);
         if let Some(distribution) = self.pending_distribution.take()
             && let Some(prompt) = crate::game_loop::next_combat_damage_assignment_prompt(

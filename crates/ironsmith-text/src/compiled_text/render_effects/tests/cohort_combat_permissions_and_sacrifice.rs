@@ -48,11 +48,7 @@ fn cohort_attack_bonus_uses_defending_player_relationship_and_one_group_trigger(
         game.combat = Some(combat.clone());
         let mut count = 0;
         for info in &combat.attackers {
-            let target = match info.target {
-                AttackTarget::Player(p) => crate::triggers::AttackEventTarget::Player(p),
-                AttackTarget::Planeswalker(o) => crate::triggers::AttackEventTarget::Planeswalker(o),
-                AttackTarget::Battle(o) => crate::triggers::AttackEventTarget::Battle(o),
-            };
+            let target = crate::triggers::AttackEventTarget::from(&info.target);
             let event = crate::triggers::TriggerEvent::new_with_provenance(
                 crate::events::combat::CreatureAttackedEvent::with_total_attackers(info.creature, target, 6),
                 crate::provenance::ProvNodeId::default(),

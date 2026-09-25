@@ -41,6 +41,8 @@ impl AttacksYouTrigger {
             AttackEventTarget::Battle(battle) => {
                 ctx.game.battle_protector(*battle) == Some(ctx.controller)
             }
+            // CR 506.4c: it isn't attacking you.
+            AttackEventTarget::Nothing => false,
         }
     }
 
@@ -54,6 +56,8 @@ impl AttacksYouTrigger {
             AttackTarget::Battle(battle) => {
                 ctx.game.battle_protector(*battle) == Some(ctx.controller)
             }
+            // CR 506.4c: it isn't attacking you.
+            AttackTarget::Nothing { .. } => false,
         }
     }
 

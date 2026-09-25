@@ -773,6 +773,9 @@ pub(crate) fn interpret_trigger_model(
         }
         TriggerKind::Expend { amount, player } => crate::triggers::Trigger::expend(amount, player),
         TriggerKind::SagaChapter { chapters } => crate::triggers::Trigger::saga_chapter(chapters),
+        TriggerKind::DungeonRoom { room, leads_to } => {
+            crate::triggers::Trigger::dungeon_room(room, leads_to)
+        }
         TriggerKind::FinalChapterAbilityResolved { filter } => {
             crate::triggers::Trigger::final_chapter_ability_resolved(filter)
         }

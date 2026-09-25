@@ -397,7 +397,12 @@ impl EffectExecutor for IfEffect {
                     .get(index + 1)
                     .or_else(|| (repetition + 1 < repetitions).then(|| &branch[0]));
                 if let Some(next) = next {
-                    crate::effects::match_triggers_at_instruction_boundary(game, ctx, Some(next));
+                    crate::effects::match_triggers_at_instruction_boundary(
+                        game,
+                        ctx,
+                        Some(next),
+                        outcomes.iter().flat_map(|outcome| outcome.events.iter()),
+                    );
                 }
             }
         }

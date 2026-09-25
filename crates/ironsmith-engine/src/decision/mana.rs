@@ -1402,6 +1402,7 @@ pub(crate) fn player_was_attacked_this_step(game: &GameState, player: PlayerId) 
                 .object(planeswalker_id)
                 .is_some_and(|planeswalker| game.controller_of(planeswalker) == player),
             AttackTarget::Battle(battle_id) => game.battle_protector(battle_id) == Some(player),
+            AttackTarget::Nothing { .. } => false,
         })
 }
 
@@ -1557,6 +1558,8 @@ pub(crate) fn this_spell_cast_condition_allows(
                         crate::combat_state::AttackTarget::Battle(battle_id) => {
                             game.battle_protector(battle_id) == Some(player)
                         }
+                        // CR 506.4c: it isn't attacking anything.
+                        crate::combat_state::AttackTarget::Nothing { .. } => false,
                     })
                 })
         }

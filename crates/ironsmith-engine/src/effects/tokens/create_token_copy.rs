@@ -112,6 +112,7 @@ pub(super) fn choose_attack_target(
                         .unwrap_or_else(|| "a battle".to_string());
                     format!("Attack {battle_name} protected by {player_name}")
                 }
+                AttackTarget::Nothing { .. } => "Attack nothing".to_string(),
             };
             SelectableOption::new(index, description)
         })
@@ -1331,7 +1332,9 @@ mod tests {
             .iter()
             .filter_map(|(_, target)| match target {
                 AttackTarget::Player(player) => Some(*player),
-                AttackTarget::Planeswalker(_) | AttackTarget::Battle(_) => None,
+                AttackTarget::Planeswalker(_)
+                | AttackTarget::Battle(_)
+                | AttackTarget::Nothing { .. } => None,
             })
             .collect();
         attacked_players.sort();

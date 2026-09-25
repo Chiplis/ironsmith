@@ -16,6 +16,9 @@ pub enum AttackEventTarget {
     Player(PlayerId),
     Planeswalker(ObjectId),
     Battle(ObjectId),
+    /// CR 506.4c: an attacking creature whose planeswalker or battle was
+    /// removed from combat isn't attacking anything.
+    Nothing,
 }
 
 #[cfg(test)]

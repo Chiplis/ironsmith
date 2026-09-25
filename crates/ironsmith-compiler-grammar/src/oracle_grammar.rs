@@ -95,6 +95,13 @@ pub enum OracleGrammarLine {
         text: String,
         effects_debug: Vec<String>,
     },
+    DungeonRoom {
+        info: OracleGrammarLineInfo,
+        room: String,
+        leads_to: Vec<String>,
+        text: String,
+        effects_debug: Vec<String>,
+    },
     Unsupported {
         info: OracleGrammarLineInfo,
         reason_code: String,
@@ -220,6 +227,17 @@ fn convert_line(line: RecognizedLine) -> OracleGrammarLine {
         RecognizedLine::SagaChapter(line) => OracleGrammarLine::SagaChapter {
             info: convert_info(&line.info),
             chapters: line.chapters,
+            text: line.text,
+            effects_debug: line
+                .effects_ast
+                .iter()
+                .map(|effect| format!("{effect:?}"))
+                .collect(),
+        },
+        RecognizedLine::DungeonRoom(line) => OracleGrammarLine::DungeonRoom {
+            info: convert_info(&line.info),
+            room: line.room,
+            leads_to: line.leads_to,
             text: line.text,
             effects_debug: line
                 .effects_ast

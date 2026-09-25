@@ -45,6 +45,8 @@ pub enum CardType {
     Scheme,
     Conspiracy,
     Kindred, // Formerly Tribal
+    /// CR 309.1: a nontraditional card type; dungeons begin outside the game.
+    Dungeon,
 }
 
 impl CardType {
@@ -64,6 +66,7 @@ impl CardType {
             CardType::Scheme => "scheme",
             CardType::Conspiracy => "conspiracy",
             CardType::Kindred => "kindred",
+            CardType::Dungeon => "dungeon",
         }
     }
 
@@ -83,6 +86,7 @@ impl CardType {
             CardType::Scheme => "scheme card",
             CardType::Conspiracy => "conspiracy card",
             CardType::Kindred => "kindred card",
+            CardType::Dungeon => "dungeon card",
         }
     }
 
@@ -102,6 +106,7 @@ impl CardType {
             CardType::Scheme => "schemes",
             CardType::Conspiracy => "conspiracies",
             CardType::Kindred => "kindred cards",
+            CardType::Dungeon => "dungeons",
         }
     }
 

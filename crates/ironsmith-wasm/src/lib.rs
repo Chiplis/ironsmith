@@ -2356,6 +2356,8 @@ enum AttackTargetView {
     Player { player: u8, name: String },
     Planeswalker { object: u64, name: String },
     Battle { object: u64, name: String },
+    /// CR 506.4c: attacking nothing (never offered as a declarable target).
+    Nothing { name: String },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -4186,6 +4188,10 @@ enum ExternalCardSourceGroup {
         has_fuse: bool,
         faces: Vec<ExternalCardFaceSource>,
     },
+    /// A dungeon card (CR 309). Dungeons begin outside the game, so their
+    /// compiled definitions go to the engine's dungeon catalog rather than
+    /// the card registry players build decks from.
+    Dungeon { name: String, block: String },
 }
 
 #[derive(Debug, Clone, Deserialize)]

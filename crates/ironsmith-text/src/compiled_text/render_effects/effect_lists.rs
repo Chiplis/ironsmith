@@ -846,6 +846,131 @@ fn describe_attributed_target_choice_pair(effects: &[Effect]) -> Option<(String,
     ))
 }
 
+/// "Draw three cards and reveal them": the reveal names the drawn cards, so a
+/// plural draw takes a plural pronoun.
+pub(crate) fn describe_draw_then_reveal_drawn(draw_effect: &Effect, reveal_effect: &Effect) -> Option<String> {
+    let tagged = draw_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let draw = tagged.effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    let reveal = structural_unwrap_render_wrappers(reveal_effect)
+        .downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+    if reveal.tag != tagged.tag || draw.player != PlayerFilter::You {
+        return None;
+    }
+    let Value::Fixed(count) = draw.count.unhinted() else {
+        return None;
+    };
+    let count = u32::try_from(*count).ok()?;
+    if count == 1 {
+        return Some("Draw a card and reveal it".to_string());
+    }
+    let count_text = small_number_word(count).unwrap_or_else(|| count.to_string());
+    Some(format!("Draw {count_text} cards and reveal them"))
+}
+
+/// "You may cast one of them without paying its mana cost": an up-to-one
+/// choice from the referenced pool, then casting the chosen card.
+fn describe_may_cast_one_of_tagged(choose_effect: &Effect, cast_effect: &Effect) -> Option<String> {
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let for_each = structural_unwrap_render_wrappers(cast_effect)
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    if choose.chooser != PlayerFilter::You
+        || choose.is_search
+        || choose.count != crate::effect::ChoiceCount::up_to(1)
+        || for_each.tag != choose.tag
+    {
+        return None;
+    }
+    let [membership] = choose.filter.tagged_constraints.as_slice() else {
+        return None;
+    };
+    if membership.relation != crate::target::TaggedOpbjectRelation::IsTaggedObject {
+        return None;
+    }
+    let mut residual = choose.filter.clone();
+    residual.tagged_constraints.clear();
+    residual.zone = None;
+    let excludes_lands = residual.excluded_card_types == [CardType::Land];
+    residual.excluded_card_types.clear();
+    if residual != ObjectFilter::default() {
+        return None;
+    }
+    let [cast_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let cast = structural_unwrap_render_wrappers(cast_effect)
+        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    if cast.player != PlayerFilter::You || cast.as_copy || cast.allow_land == excludes_lands {
+        return None;
+    }
+    let verb = if cast.allow_land { "play" } else { "cast" };
+    let cost = if cast.without_paying_mana_cost {
+        " without paying its mana cost"
+    } else {
+        ""
+    };
+    Some(format!("You may {verb} one of them{cost}"))
+}
+
+/// "Sacrifice a creature, an artifact, and a land" lowers to one choice per
+/// listed object (each excluding the permanents already chosen) followed by
+/// one simultaneous sacrifice of the chosen set; restore the authored list.
+fn describe_sacrifice_chosen_object_list(effects: &[&Effect]) -> Option<(String, usize)> {
+    let mut tag = None;
+    let mut phrases = Vec::new();
+    for effect in effects {
+        let Some(choose) = structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        else {
+            break;
+        };
+        if choose.chooser != PlayerFilter::You
+            || choose.is_search
+            || choose.count != crate::effect::ChoiceCount::exactly(1)
+            || tag.as_ref().is_some_and(|tag| tag != &choose.tag)
+            || !choose.filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag == choose.tag
+                    && constraint.relation == crate::target::TaggedOpbjectRelation::IsNotTaggedObject
+            })
+        {
+            return None;
+        }
+        tag = Some(choose.tag.clone());
+        let mut filter = choose.filter.clone();
+        filter
+            .tagged_constraints
+            .retain(|constraint| constraint.tag != choose.tag);
+        if !filter.tagged_constraints.is_empty() {
+            return None;
+        }
+        filter.controller = None;
+        filter.zone = None;
+        phrases.push(with_indefinite_article(&describe_choose_spec(
+            &ChooseSpec::Object(filter),
+        )));
+    }
+    let tag = tag?;
+    if phrases.len() < 2 {
+        return None;
+    }
+    let sacrifice = structural_unwrap_render_wrappers(effects.get(phrases.len())?)
+        .downcast_ref::<crate::effects::zones::SacrificePlayerEffect>()?;
+    if sacrifice.player != PlayerFilter::You
+        || !sacrifice.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == tag
+                && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+        })
+    {
+        return None;
+    }
+    let list = match phrases.as_slice() {
+        [first, second] => format!("{first} and {second}"),
+        [init @ .., last] => format!("{}, and {last}", init.join(", ")),
+        [] => return None,
+    };
+    Some((format!("Sacrifice {list}"), phrases.len() + 1))
+}
+
 /// The authored "destroy target creature of an opponent's choice" lowers to
 /// an opponent-chosen target declaration followed by destroying the declared
 /// object; restore the authored surface.
@@ -13805,6 +13930,26 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
         {
             parts.push(compact);
             idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) = describe_draw_then_reveal_drawn(filtered[idx], filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) = describe_may_cast_one_of_tagged(filtered[idx], filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if let Some((compact, consumed)) = describe_sacrifice_chosen_object_list(&filtered[idx..])
+        {
+            parts.push(compact);
+            idx += consumed;
             continue;
         }
         include!("effect_list/loop_patterns_early.rs");

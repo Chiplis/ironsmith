@@ -1843,6 +1843,15 @@ pub(super) fn triggered_to_stack_entry_with_effects(
                     entry = entry.with_defending_player(protector);
                 }
             }
+            // CR 506.4c / 508.5: it attacks nothing now; its defending player
+            // is the one it was attacking when declared.
+            AttackEventTarget::Nothing => {
+                if let Some(defending_player) = game.combat.as_ref().and_then(|combat| {
+                    crate::combat_state::defending_player_for_attacker(game, combat, attacked.attacker)
+                }) {
+                    entry = entry.with_defending_player(defending_player);
+                }
+            }
         }
     }
     if trigger.triggering_event.kind() == EventKind::CreatureAttackedAndUnblocked
@@ -1862,6 +1871,15 @@ pub(super) fn triggered_to_stack_entry_with_effects(
             AttackEventTarget::Battle(battle_id) => {
                 if let Some(protector) = game.battle_protector(battle_id) {
                     entry = entry.with_defending_player(protector);
+                }
+            }
+            // CR 506.4c / 508.5: it attacks nothing now; its defending player
+            // is the one it was attacking when declared.
+            AttackEventTarget::Nothing => {
+                if let Some(defending_player) = game.combat.as_ref().and_then(|combat| {
+                    crate::combat_state::defending_player_for_attacker(game, combat, attacked.attacker)
+                }) {
+                    entry = entry.with_defending_player(defending_player);
                 }
             }
         }
@@ -1884,6 +1902,15 @@ pub(super) fn triggered_to_stack_entry_with_effects(
             AttackEventTarget::Battle(battle_id) => {
                 if let Some(protector) = game.battle_protector(battle_id) {
                     entry = entry.with_defending_player(protector);
+                }
+            }
+            // CR 506.4c / 508.5: it attacks nothing now; its defending player
+            // is the one it was attacking when declared.
+            AttackEventTarget::Nothing => {
+                if let Some(defending_player) = game.combat.as_ref().and_then(|combat| {
+                    crate::combat_state::defending_player_for_attacker(game, combat, blocked.attacker)
+                }) {
+                    entry = entry.with_defending_player(defending_player);
                 }
             }
         }
@@ -1917,13 +1944,7 @@ fn combat_damage_defending_player(
         crate::events::DamageTarget::Object(_) => {
             let combat = game.combat.as_ref()?;
             let attack_target = get_attack_target(combat, damage.source)?;
-            match attack_target {
-                AttackTarget::Player(player) => Some(*player),
-                AttackTarget::Planeswalker(planeswalker) => game
-                    .object(*planeswalker)
-                    .map(|object| game.controller_of(object)),
-                AttackTarget::Battle(battle) => game.battle_protector(*battle),
-            }
+            crate::combat_state::defending_player_for_attack_target(game, attack_target)
         }
     }
 }

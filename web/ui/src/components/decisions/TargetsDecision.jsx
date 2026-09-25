@@ -108,6 +108,19 @@ function buildTargetNameMaps(state) {
     if (Number.isFinite(stackId) && stackObject?.name) {
       objectNames.set(stackId, stackObject.name);
     }
+    // A target names an ability on the stack by its own stack id.
+    const targetId = Number(stackObject?.target_object_id);
+    if (
+      stackObject?.target_object_id != null
+      && Number.isFinite(targetId)
+      && stackObject?.name
+      && !objectNames.has(targetId)
+    ) {
+      objectNames.set(
+        targetId,
+        stackObject.ability_kind ? `${stackObject.name} ability` : stackObject.name,
+      );
+    }
   }
 
   return { objectNames, playerNames };

@@ -66,6 +66,7 @@ pub enum RecognizedLine {
     Modal(RecognizedModalBlock),
     LevelHeader(RecognizedLevelHeader),
     SagaChapter(RecognizedSagaChapterLine),
+    DungeonRoom(RecognizedDungeonRoomLine),
     Unsupported(RecognizedUnsupportedLine),
 }
 
@@ -223,6 +224,19 @@ pub struct RecognizedSagaChapterLine {
     pub info: LineInfo,
     pub chapters: Vec<u32>,
     pub presentation_label: Option<String>,
+    pub text: String,
+    pub effects_ast: Vec<EffectAst>,
+}
+
+/// A dungeon room line, "Room Name — effect. (Leads to: A, B)". CR 309.4c
+/// makes the printed effect a triggered ability, "When you move your venture
+/// marker into this room, [effect]." The arrows (CR 309.5a) are printed as the
+/// trailing "Leads to" parenthetical.
+#[derive(Debug, Clone)]
+pub struct RecognizedDungeonRoomLine {
+    pub info: LineInfo,
+    pub room: String,
+    pub leads_to: Vec<String>,
     pub text: String,
     pub effects_ast: Vec<EffectAst>,
 }

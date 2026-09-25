@@ -256,6 +256,8 @@ pub(super) fn attacking_defending_player_for_object(
         // This relation explicitly includes players and planeswalkers;
         // a battle's protector does not make the battle a planeswalker.
         crate::combat_state::AttackTarget::Battle(_) => None,
+        // CR 506.4c: it isn't attacking any player or planeswalker.
+        crate::combat_state::AttackTarget::Nothing { .. } => None,
     }
 }
 
@@ -268,6 +270,7 @@ pub(super) fn attacking_player_for_object(
         crate::combat_state::AttackTarget::Player(player_id) => Some(*player_id),
         crate::combat_state::AttackTarget::Planeswalker(_) => None,
         crate::combat_state::AttackTarget::Battle(_) => None,
+        crate::combat_state::AttackTarget::Nothing { .. } => None,
     }
 }
 

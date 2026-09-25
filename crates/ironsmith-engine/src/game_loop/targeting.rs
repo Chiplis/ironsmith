@@ -78,7 +78,7 @@ pub(super) fn queue_triggers_for_event(
 }
 
 /// Ingest an event into trigger system with optional delayed-trigger checks.
-pub(super) fn queue_triggers_from_event(
+pub(crate) fn queue_triggers_from_event(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     event: TriggerEvent,

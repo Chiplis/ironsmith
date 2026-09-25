@@ -704,6 +704,27 @@ fn protocol_target(game: &GameState, target: Target) -> TargetRef {
             intent: None,
             oracle: None,
         },
+        // An ability on the stack is named by its own stack id, which is not
+        // an object; point at its stack object, not at its source's card.
+        Target::Object(object)
+            if game
+                .stack_entry_index_for_target(object)
+                .is_some_and(|index| game.stack[index].is_ability) =>
+        {
+            let index = game
+                .stack_entry_index_for_target(object)
+                .expect("checked above");
+            let entry = &game.stack[index];
+            TargetRef {
+                kind: TargetKind::Spell,
+                id: game
+                    .object(entry.object_id)
+                    .map(|source| format!("stack-{}-{index}", source.stable_id.0.0))
+                    .unwrap_or_else(|| format!("stack-ability-{}", object.0)),
+                intent: None,
+                oracle: None,
+            }
+        }
         Target::Object(object) => TargetRef {
             kind: if game
                 .object(object)
@@ -750,19 +771,17 @@ fn protocol_card(game: &GameState, id: ObjectId) -> Option<CardDto> {
         .as_ref()
         .and_then(|combat| combat.attackers.iter().find(|info| info.creature == id))
         .map(|info| {
+            // CR 506.4c: a creature attacking nothing has no attack target.
             let target = match info.target {
-                AttackTarget::Player(player) => player_id(player),
-                AttackTarget::Planeswalker(object) => object_id(game, object),
-                AttackTarget::Battle(object) => object_id(game, object),
-            };
-            let defending_player = match info.target {
                 AttackTarget::Player(player) => Some(player_id(player)),
-                AttackTarget::Planeswalker(object) => game
-                    .object(object)
-                    .map(|object| player_id(game.controller_of(object))),
-                AttackTarget::Battle(object) => game.battle_protector(object).map(player_id),
+                AttackTarget::Planeswalker(object) => Some(object_id(game, object)),
+                AttackTarget::Battle(object) => Some(object_id(game, object)),
+                AttackTarget::Nothing { .. } => None,
             };
-            (true, defending_player, Some(target))
+            let defending_player =
+                ironsmith::combat_state::defending_player_for_attack_target(game, &info.target)
+                    .map(player_id);
+            (true, defending_player, target)
         })
         .unwrap_or((false, None, None));
     let attached_to = object.attached_to.map(|target| match target {
@@ -2170,7 +2189,7 @@ impl WasmGame {
                         let valid_target_ids = option
                             .valid_targets
                             .iter()
-                            .map(|target| {
+                            .filter_map(|target| {
                                 let (id, label, kind) = match target {
                                     AttackTarget::Player(player) => (
                                         player_id(*player),
@@ -2190,6 +2209,8 @@ impl WasmGame {
                                         self.game.current_name(*object).unwrap_or_default(),
                                         AttackTargetKind::Battle,
                                     ),
+                                    // Never a declarable attack target.
+                                    AttackTarget::Nothing { .. } => return None,
                                 };
                                 targets.insert(id.clone(), target.clone());
                                 target_dtos.entry(id.clone()).or_insert(AttackTargetDto {
@@ -2197,7 +2218,7 @@ impl WasmGame {
                                     label,
                                     kind,
                                 });
-                                id
+                                Some(id)
                             })
                             .collect();
                         AttackerOptionDto {
@@ -2883,6 +2904,11 @@ impl WasmGame {
                                     }
                                     AttackTarget::Battle(object) => {
                                         AttackTargetInput::Battle { object: object.0 }
+                                    }
+                                    AttackTarget::Nothing { .. } => {
+                                        return Err(invalid(format!(
+                                            "unknown attack target {target_id}"
+                                        )));
                                     }
                                 };
                             Ok(AttackerDeclarationInput {

@@ -436,6 +436,7 @@ impl AttacksTrigger {
                     ctx.game.battle_protector(*battle)
                 }
             }
+            crate::combat_state::AttackTarget::Nothing { .. } => None,
         };
         attacked_player.is_some_and(|player| {
             crate::filter::player_filter_matches_game(
@@ -494,17 +495,7 @@ impl TriggerMatcher for AttacksTrigger {
         let Some(obj) = ctx.game.object(e.attacker) else {
             return false;
         };
-        let attack_target = match e.target {
-            crate::events::combat::AttackEventTarget::Player(player) => {
-                crate::combat_state::AttackTarget::Player(player)
-            }
-            crate::events::combat::AttackEventTarget::Planeswalker(planeswalker) => {
-                crate::combat_state::AttackTarget::Planeswalker(planeswalker)
-            }
-            crate::events::combat::AttackEventTarget::Battle(battle) => {
-                crate::combat_state::AttackTarget::Battle(battle)
-            }
-        };
+        let attack_target = crate::combat_state::AttackTarget::from(e.target);
         if !self.matches_attacker_object_and_target(obj, &attack_target, ctx) {
             return false;
         }
@@ -799,17 +790,7 @@ impl TriggerMatcher for PlayersAttackedTrigger {
         let Some(e) = event.downcast::<CreatureAttackedEvent>() else {
             return false;
         };
-        let attack_target = match e.target {
-            crate::events::combat::AttackEventTarget::Player(player) => {
-                crate::combat_state::AttackTarget::Player(player)
-            }
-            crate::events::combat::AttackEventTarget::Planeswalker(planeswalker) => {
-                crate::combat_state::AttackTarget::Planeswalker(planeswalker)
-            }
-            crate::events::combat::AttackEventTarget::Battle(battle) => {
-                crate::combat_state::AttackTarget::Battle(battle)
-            }
-        };
+        let attack_target = crate::combat_state::AttackTarget::from(e.target);
         self.is_first_matching_attacker_this_combat(e.attacker, &attack_target, ctx)
     }
 
@@ -840,17 +821,7 @@ impl TriggerMatcher for PlayerAttacksOneOrMoreTrigger {
         if !self.attacker_matches(event.attacker, ctx) {
             return false;
         }
-        let target = match event.target {
-            crate::events::combat::AttackEventTarget::Player(player) => {
-                crate::combat_state::AttackTarget::Player(player)
-            }
-            crate::events::combat::AttackEventTarget::Planeswalker(planeswalker) => {
-                crate::combat_state::AttackTarget::Planeswalker(planeswalker)
-            }
-            crate::events::combat::AttackEventTarget::Battle(battle) => {
-                crate::combat_state::AttackTarget::Battle(battle)
-            }
-        };
+        let target = crate::combat_state::AttackTarget::from(event.target);
         self.target_matches(&target, ctx)
             && self.is_first_matching_attacker_this_combat(event.attacker, &target, ctx)
     }
@@ -877,13 +848,7 @@ fn defending_player_for_attack_target(
     target: &crate::combat_state::AttackTarget,
     game: &crate::game_state::GameState,
 ) -> Option<crate::ids::PlayerId> {
-    match target {
-        crate::combat_state::AttackTarget::Player(player) => Some(*player),
-        crate::combat_state::AttackTarget::Planeswalker(planeswalker) => game
-            .object(*planeswalker)
-            .map(|planeswalker| game.controller_of(planeswalker)),
-        crate::combat_state::AttackTarget::Battle(battle) => game.battle_protector(*battle),
-    }
+    crate::combat_state::defending_player_for_attack_target(game, target)
 }
 
 fn pluralize_one_or_more_attack_subject(subject: &str) -> String {

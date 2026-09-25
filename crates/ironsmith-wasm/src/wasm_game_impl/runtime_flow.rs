@@ -1078,7 +1078,11 @@ impl WasmGame {
             .game
             .stack
             .iter()
-            .any(|current| current.object_id == entry.object_id)
+            // By stack identity: another ability of the same source may
+            // still be on the stack.
+            .any(|current| {
+                current.is_ability == entry.is_ability && current.target_id() == entry.target_id()
+            })
         {
             return None;
         }

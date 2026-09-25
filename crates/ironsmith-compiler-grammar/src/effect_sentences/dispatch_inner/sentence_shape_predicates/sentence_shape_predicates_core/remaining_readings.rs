@@ -509,6 +509,10 @@ fn read_leading_discard(
             .iter()
             .any(|token| token.is_word("if") || token.is_word("unless"))
         && !super::super::super::lex_chain_helpers::has_explicit_comma_then_boundary_lexed(tokens)
+        // "Discard a card and sacrifice a creature": a coordinated second
+        // action is its own instruction, not a trailing discard qualifier.
+        && super::super::super::lex_chain_helpers::split_effect_chain_on_and_lexed(tokens).len()
+            == 1
     {
         let discard_body = crate::util::trim_edge_punctuation_tokens(&tokens[1..]);
         let mut effect = super::super::super::zone_handlers::parse_discard(discard_body, None)?;

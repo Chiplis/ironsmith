@@ -3218,6 +3218,11 @@ fn parse_card_payload_with_fallback(payload: &CardPayload) -> ParseAttempt {
 }
 
 pub fn compile_definition_from_payload(payload: &CardPayload) -> Result<CardDefinition, String> {
+    // Dungeon cards (CR 309) begin outside the game; make their compiled
+    // rooms available to any game built from compiled cards.
+    if let Err(error) = ironsmith_registry::register_builtin_dungeons() {
+        parse_trace::event(format!("dungeon cards failed to compile: {error}"));
+    }
     definition_from_payload(payload, CardId::new())
 }
 

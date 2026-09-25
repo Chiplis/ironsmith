@@ -266,13 +266,7 @@ fn required_attack_cost_message_for_unpreviewed_attack(
     target: &AttackTarget,
 ) -> Option<String> {
     let creature = game.object(creature_id)?;
-    let defending_player = match target {
-        AttackTarget::Player(player_id) => Some(*player_id),
-        AttackTarget::Planeswalker(object_id) => {
-            game.object(*object_id).map(|obj| game.controller_of(obj))
-        }
-        AttackTarget::Battle(object_id) => game.battle_protector(*object_id),
-    }?;
+    let defending_player = crate::combat_state::defending_player_for_attack_target(game, target)?;
     let view = DerivedGameView::new(game);
     if !crate::rules::combat::can_attack_defending_player_with_view(
         creature,
@@ -1060,6 +1054,8 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
         }
         surviving_declarations.push(prepared_decl);
     }
+    // CR 506.4e: remember what each attacked permanent was attacked as.
+    next_combat.record_attacked_permanent_types(game);
 
     *combat = next_combat;
     game.combat = Some(combat.clone());
@@ -1100,11 +1096,7 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
     for prepared_decl in surviving_declarations {
         let decl = &prepared_decl.declaration;
 
-        let event_target = match &decl.target {
-            AttackTarget::Player(pid) => AttackEventTarget::Player(*pid),
-            AttackTarget::Planeswalker(oid) => AttackEventTarget::Planeswalker(*oid),
-            AttackTarget::Battle(oid) => AttackEventTarget::Battle(*oid),
-        };
+        let event_target = AttackEventTarget::from(&decl.target);
 
         let event_provenance = game
             .provenance_graph_mut()
@@ -1991,17 +1983,9 @@ fn apply_prepared_blocker_declarations(
             continue;
         };
         if !blockers.is_empty() {
-            let attack_target = Some(match &attacker_info.target {
-                AttackTarget::Player(player_id) => {
-                    crate::triggers::AttackEventTarget::Player(*player_id)
-                }
-                AttackTarget::Planeswalker(planeswalker_id) => {
-                    crate::triggers::AttackEventTarget::Planeswalker(*planeswalker_id)
-                }
-                AttackTarget::Battle(battle_id) => {
-                    crate::triggers::AttackEventTarget::Battle(*battle_id)
-                }
-            });
+            let attack_target = Some(crate::triggers::AttackEventTarget::from(
+                &attacker_info.target,
+            ));
             let event_provenance = game
                 .provenance_graph_mut()
                 .alloc_root_event(crate::events::EventKind::CreatureBecameBlocked);
@@ -2038,17 +2022,7 @@ fn apply_prepared_blocker_declarations(
             continue;
         }
 
-        let attack_target = match info.target {
-            AttackTarget::Player(player_id) => {
-                crate::triggers::AttackEventTarget::Player(player_id)
-            }
-            AttackTarget::Planeswalker(planeswalker_id) => {
-                crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id)
-            }
-            AttackTarget::Battle(battle_id) => {
-                crate::triggers::AttackEventTarget::Battle(battle_id)
-            }
-        };
+        let attack_target = crate::triggers::AttackEventTarget::from(&info.target);
 
         let event_provenance = game
             .provenance_graph_mut()

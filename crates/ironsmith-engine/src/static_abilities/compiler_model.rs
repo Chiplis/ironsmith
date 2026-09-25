@@ -374,6 +374,9 @@ impl StaticAbility {
             Some(StaticAbilityId::DeckConstructionRuleText) => {
                 Self::deck_construction_rule_text(label)
             }
+            Some(StaticAbilityId::DungeonEntryRestriction) => {
+                Self::dungeon_entry_restriction(label)
+            }
             Some(StaticAbilityId::DraftRuleText) => Self::draft_rule_text(label),
             Some(StaticAbilityId::HiddenAgenda) => Self::hidden_agenda(),
             Some(StaticAbilityId::DoubleAgenda) => Self::double_agenda(),

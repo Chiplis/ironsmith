@@ -169,12 +169,22 @@ impl EffectExecutor for RepeatEffectsEffect {
                         .is_some()
             );
         let pending_token_event_start = game.effect_store.pending_trigger_events.len();
+        // Reported events before this index were matched at a boundary.
+        let mut reported_cursor = 0usize;
 
         for repetition in 0..count {
             // Each repetition is a later instruction (CR 608.2c); a batched
             // vote-token creation is one event and stays together.
-            if repetition > 0 && !batch_vote_tokens {
-                crate::effects::match_triggers_at_instruction_boundary(game, ctx, None);
+            if repetition > 0
+                && !batch_vote_tokens
+                && crate::effects::match_triggers_at_instruction_boundary(
+                    game,
+                    ctx,
+                    None,
+                    all_events[reported_cursor..].iter(),
+                )
+            {
+                reported_cursor = all_events.len();
             }
             let previous_operations = std::mem::take(&mut ctx.shared_team_structure_operations);
             let result = sequence.execute(game, ctx);

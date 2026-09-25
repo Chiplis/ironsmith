@@ -383,9 +383,13 @@ fn spell_put_from_among(
     if let Some((amount, counter_type)) = triple_grammar::parse_looked_move_action_shape(&put.tail)
         .and_then(|shape| shape.entry_counter)
     {
+        // "onto the battlefield with N counters on it": the counters are part
+        // of the entry event (CR 122.6), so mark them for entry fusion.
         chosen_effects.push(EffectAst::subject_verb_put_counters(
             counter_type,
-            Value::Fixed(amount as i32),
+            Value::Fixed(amount as i32).with_surface_hint(
+                ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter,
+            ),
             it(),
             None,
             false,

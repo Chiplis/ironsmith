@@ -141,6 +141,14 @@ impl RawEvent {
         self.provenance = provenance;
     }
 
+    /// Identity of this event occurrence, shared by its clones (they share
+    /// the event payload) and by no equal-looking separate event while this
+    /// one is alive.
+    #[inline]
+    pub(crate) fn occurrence_key(&self) -> usize {
+        Arc::as_ptr(&self.inner) as *const () as usize
+    }
+
     /// Return the simultaneous-action identity attached to this event.
     #[inline]
     pub fn simultaneous_batch(&self) -> Option<ProvNodeId> {

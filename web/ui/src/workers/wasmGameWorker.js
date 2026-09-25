@@ -84,6 +84,17 @@ const RUNTIME_EVALUATION_METHODS = new Set([
   "snapshot",
   "uiState",
 ]);
+// Dungeon cards (CR 309) begin outside the game, so no deck names them. Any
+// method that starts or rebuilds a game loads the baked dungeon routes the
+// card index lists, so venturing into the dungeon has compiled rooms.
+const DUNGEON_LOADING_METHODS = new Set([
+  "importSyncCheckpoint",
+  "loadDecks",
+  "loadDemoDecks",
+  "replayTrustedMatch",
+  "reset",
+  "startMatch",
+]);
 const CARD_ZONE_KEYS = [
   "battlefield",
   "battlefield_cards",
@@ -422,6 +433,18 @@ async function loadCardIndex() {
     });
   }
   return cardIndexPromise;
+}
+
+async function dungeonCardNames() {
+  try {
+    const index = await loadCardIndex();
+    const dungeons = Array.isArray(index?.dungeons) ? index.dungeons : [];
+    return dungeons
+      .map((dungeon) => String(dungeon?.name || "").trim())
+      .filter((name) => name && !registeredCardRoutes.has(cardRouteKey(name)));
+  } catch {
+    return [];
+  }
 }
 
 function fetchCardSource(name) {
@@ -789,7 +812,8 @@ function handleCall(msg) {
     return;
   }
   const enqueuedAt = nowMs();
-  const preparation = prepareCardSourcesForNames(collectNamesForMethod(method, args))
+  const preparation = (DUNGEON_LOADING_METHODS.has(method) ? dungeonCardNames() : Promise.resolve([]))
+    .then(dungeons => prepareCardSourcesForNames([...collectNamesForMethod(method, args), ...dungeons]))
     .then(sources => ({ sources }), error => ({ error }));
   pendingCallCount += 1;
   enqueueCall(async () => {
@@ -813,6 +837,11 @@ function handleCall(msg) {
         const names = [source.canonicalName, source.group?.name, source.group?.combinedName,
           ...(source.group?.faces || []).map(face => face.name)];
         for (const name of names) if (name && cardNameAlreadyKnown(name)) registeredCardRoutes.add(cardRouteKey(name));
+        // Dungeons live in the engine's dungeon catalog, not the card registry.
+        const failed = new Set((registration?.failed || []).map(failure => failure?.name));
+        if (source.group?.kind === "dungeon" && !failed.has(source.group.name)) {
+          registeredCardRoutes.add(cardRouteKey(source.group.name));
+        }
       }
     }
     if (method === "autocompleteCardNames") {

@@ -473,7 +473,14 @@ fn parse_payment_alternative_split_lexed<'a>(
             let comparison_tail = next_word
                 .is_some_and(|word| matches!(word, "less" | "greater" | "more" | "fewer"))
                 || (previous_word == Some("than") && next_word == Some("equal"));
-            if !comparison_tail {
+            // "sacrifice a creature, artifact, or land": an `or` that joins
+            // object nouns is a type union inside one payment, not a choice
+            // between two payments. Alternatives open with their own action.
+            let object_noun_tail = next_word.is_some_and(|word| {
+                leaf::parse_leaf_card_type_complete(word).is_ok()
+                    || matches!(word, "permanent" | "permanents")
+            });
+            if !comparison_tail && !object_noun_tail {
                 let delimiter = initial_len.saturating_sub(input.len());
                 primitives::kw("or").parse_next(input)?;
                 return Ok(PaymentAlternativeSplit { delimiter });

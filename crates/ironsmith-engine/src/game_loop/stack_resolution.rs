@@ -150,6 +150,7 @@ fn attack_target_still_valid(game: &GameState, target: &AttackTarget) -> bool {
                         .is_some_and(|player| player.is_in_game())
                 })
         }),
+        AttackTarget::Nothing { .. } => false,
     }
 }
 
@@ -631,18 +632,20 @@ pub(crate) fn execute_resolution_program_with_trigger_matching(
     valid_target_assignments: &[crate::game_state::TargetAssignment],
     match_triggers_per_instruction: bool,
 ) -> Result<Vec<crate::triggers::TriggerEvent>, GameLoopError> {
-    let previous_matching = game.effect_store.per_event_trigger_matching;
-    game.effect_store.per_event_trigger_matching = match_triggers_per_instruction;
-    let result = execute_resolution_program_inner(
-        game,
-        ctx,
-        program,
-        chosen_modes,
-        valid_target_assignments,
-        match_triggers_per_instruction,
-    );
-    game.effect_store.per_event_trigger_matching = previous_matching;
-    result
+    crate::effects::with_per_event_trigger_matching(game, match_triggers_per_instruction, |game| {
+        let mut events = execute_resolution_program_inner(
+            game,
+            ctx,
+            program,
+            chosen_modes,
+            valid_target_assignments,
+            match_triggers_per_instruction,
+        )?;
+        // Reported events a boundary already matched are not matched again
+        // by whoever consumes this resolution's events.
+        crate::effects::retain_unmatched_outcome_events(game, &mut events);
+        Ok(events)
+    })
 }
 
 fn execute_resolution_program_inner(
@@ -817,7 +820,8 @@ fn execute_resolution_program_inner(
             };
             match outcome {
                 // Per-event matching: the events an instruction reports are
-                // matched with the ones it queued, at its end (CR 603.2).
+                // matched with the ones it queued, at its end (CR 603.2);
+                // the ones its nested steps reported were matched already.
                 Ok(outcome) if match_triggers_per_instruction => {
                     unmatched_outcome_events.extend(outcome.events);
                 }
@@ -844,16 +848,14 @@ fn execute_resolution_program_inner(
             }
             let next = selected_effects.get(effect_index + 1);
             if match_triggers_per_instruction
-                && !next.is_some_and(crate::effects::effect_chooses_new_targets_for_copy)
+                && crate::effects::match_triggers_at_instruction_boundary(
+                    game,
+                    ctx,
+                    next,
+                    unmatched_outcome_events.iter(),
+                )
             {
-                if !unmatched_outcome_events.is_empty() {
-                    let mut matched = TriggerQueue::new();
-                    for event in std::mem::take(&mut unmatched_outcome_events) {
-                        queue_triggers_from_event(game, &mut matched, event, false);
-                    }
-                    game.defer_trigger_entries(matched.take_all());
-                }
-                crate::effects::match_triggers_at_instruction_boundary(game, ctx, None);
+                unmatched_outcome_events.clear();
             }
         }
     }

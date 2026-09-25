@@ -1827,6 +1827,7 @@ pub(super) fn describe_mana_usage_spell_target(
         crate::types::CardType::Vanguard => "vanguard",
         crate::types::CardType::Scheme => "scheme",
         crate::types::CardType::Conspiracy => "conspiracy",
+        crate::types::CardType::Dungeon => "dungeon",
         crate::types::CardType::Planeswalker => "planeswalker",
         crate::types::CardType::Sorcery => "sorcery",
     };

@@ -33,6 +33,13 @@ export function optionForClickedObject(decision, objectId) {
 import { getPlayerAccent } from "./player-colors.js";
 import { getVisibleStackObjects } from "./stack-targets.js";
 
+// An ability is targeted as "<source> ability", the way the engine names it.
+function stackTargetName(stackObject) {
+  const name = String(stackObject?.name || "").trim();
+  if (!name || !stackObject?.ability_kind) return name;
+  return `${name} ability`;
+}
+
 function registerName(map, id, name) {
   if (id == null) return;
   const key = String(id);
@@ -94,6 +101,8 @@ export function buildObjectNameById(state) {
   for (const stackObject of getVisibleStackObjects(state)) {
     registerName(map, stackObject?.id, stackObject?.name);
     registerName(map, stackObject?.inspect_object_id, stackObject?.name);
+    // The id a decision names the entry by (an ability's own stack id).
+    registerName(map, stackObject?.target_object_id, stackTargetName(stackObject));
   }
 
   const viewedCards = decisionViewedCards(state);
@@ -132,6 +141,7 @@ export function buildObjectControllerById(state) {
   for (const stackObject of getVisibleStackObjects(state)) {
     registerController(map, stackObject?.id, stackObject?.controller);
     registerController(map, stackObject?.inspect_object_id, stackObject?.controller);
+    registerController(map, stackObject?.target_object_id, stackObject?.controller);
   }
 
   const viewedCards = decisionViewedCards(state);

@@ -1264,6 +1264,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         }
         TriggerSpec::Expend { player, amount } => Trigger::expend(amount, player),
         TriggerSpec::SagaChapter(chapters) => Trigger::saga_chapter(chapters),
+        TriggerSpec::DungeonRoom { room, leads_to } => Trigger::dungeon_room(room, leads_to),
         TriggerSpec::FinalChapterAbilityResolved(filter) => {
             Trigger::final_chapter_ability_resolved(filter)
         }

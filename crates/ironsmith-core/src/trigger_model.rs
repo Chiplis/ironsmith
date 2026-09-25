@@ -628,6 +628,14 @@ pub enum TriggerKind {
     SagaChapter {
         chapters: Vec<u32>,
     },
+    /// CR 309.4c: a dungeon room ability, "When you move your venture marker
+    /// into this room, [effect]." The printed room name (CR 309.4b) and the
+    /// rooms its arrows lead to (CR 309.5a) travel with the ability, so a
+    /// dungeon's room graph is carried by its compiled room abilities.
+    DungeonRoom {
+        room: String,
+        leads_to: Vec<String>,
+    },
     FinalChapterAbilityResolved {
         filter: ObjectFilter,
     },
@@ -2142,6 +2150,15 @@ impl Trigger {
     }
     pub fn saga_chapter(chapters: Vec<u32>) -> Self {
         Self::typed("saga_chapter", TriggerKind::SagaChapter { chapters })
+    }
+    pub fn dungeon_room(room: impl Into<String>, leads_to: Vec<String>) -> Self {
+        Self::typed(
+            "When you move your venture marker into this room",
+            TriggerKind::DungeonRoom {
+                room: room.into(),
+                leads_to,
+            },
+        )
     }
     pub fn final_chapter_ability_resolved(filter: ObjectFilter) -> Self {
         Self::typed(

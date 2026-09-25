@@ -554,6 +554,8 @@ impl EffectExecutor for DealDamageEffect {
                         &mut *ctx.decision_maker,
                     ));
                 }
+                // CR 506.4c: it isn't attacking anything.
+                AttackEventTarget::Nothing => return Ok(EffectOutcome::target_invalid()),
             }
         }
 

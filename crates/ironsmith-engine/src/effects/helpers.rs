@@ -1101,6 +1101,8 @@ pub fn resolve_player_from_spec(
             Some(AttackEventTarget::Battle(battle_id)) => game
                 .battle_protector(battle_id)
                 .ok_or(ExecutionError::ObjectNotFound(battle_id)),
+            // CR 506.4c: it isn't attacking any player or planeswalker.
+            Some(AttackEventTarget::Nothing) => Err(ExecutionError::InvalidTarget),
             None => ctx.combat.defending_player.ok_or_else(|| {
                 ExecutionError::UnresolvableValue(
                     "Attacked player/planeswalker not set".to_string(),
@@ -2582,7 +2584,9 @@ pub fn resolve_objects_from_spec(
             match attacked_target_from_trigger(ctx) {
                 Some(AttackEventTarget::Planeswalker(object_id))
                 | Some(AttackEventTarget::Battle(object_id)) => return Ok(vec![object_id]),
-                Some(AttackEventTarget::Player(_)) | None => {}
+                Some(AttackEventTarget::Player(_))
+                | Some(AttackEventTarget::Nothing)
+                | None => {}
             }
             Err(ExecutionError::InvalidTarget)
         }
@@ -2700,6 +2704,8 @@ pub fn resolve_players_from_spec(
                 .battle_protector(battle_id)
                 .map(|protector| vec![protector])
                 .ok_or(ExecutionError::ObjectNotFound(battle_id)),
+            // CR 506.4c: it isn't attacking any player or planeswalker.
+            Some(AttackEventTarget::Nothing) => Ok(Vec::new()),
             None => {
                 if let Some(defending) = ctx.combat.defending_player {
                     Ok(vec![defending])
