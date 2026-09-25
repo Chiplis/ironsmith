@@ -295,9 +295,6 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
           label={ui("Deselect {0}", { 0: chosenInPile.name || "card" })}
         />
       ) : null}
-      {zone === "exile" && samePlayerId(player.id ?? player.index, state?.perspective) && (
-        <div className="exile-chat-dock"><LobbyChat /></div>
-      )}
       </div>
       <PopoverContent ref={menuRef} className={`zone-pile-menu${zone === "look" ? " zone-pile-menu--look" : ""}`} side={zone === "look" ? "right" : "left"} align="start" sideOffset={-(stripBounds.cardWidth + 6)} alignOffset={-6} avoidCollisions={false}
         data-local-zone-strip={samePlayerId(player.id ?? player.index, state?.perspective) ? "true" : undefined}
