@@ -1758,7 +1758,13 @@ pub fn tag_object_target_effect(
     let redundant_source_result =
         matches!(spec.base(), ChooseSpec::Source) && ctx.annotation_predicts_no_new_object_result();
     if ctx.auto_tag_object_targets && produces_object_results && !redundant_source_result {
-        let tag = ctx.next_tag(prefix);
+        // Use the result tag reference annotation predicted for this effect,
+        // so later references ("that player" = its owner) name the same tag
+        // even when annotation's id counter ran ahead (e.g. pre-assigned
+        // discard result tags).
+        let tag = ctx
+            .take_reserved_object_result_tag(prefix)
+            .unwrap_or_else(|| ctx.next_tag(prefix));
         ctx.last_object_tag = Some(tag.clone());
         effect.tag(tag)
     } else {

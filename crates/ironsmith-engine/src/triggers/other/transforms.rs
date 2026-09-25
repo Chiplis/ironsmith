@@ -50,6 +50,11 @@ impl Default for TransformsTrigger {
     }
 }
 
+fn destination_is_self_reference(name: &str) -> bool {
+    let lower = name.trim().to_ascii_lowercase();
+    lower == "this" || lower.starts_with("this ")
+}
+
 impl TriggerMatcher for TransformsTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         if event.kind() != EventKind::Transformed {
@@ -61,7 +66,16 @@ impl TriggerMatcher for TransformsTrigger {
         if e.permanent != ctx.source_id {
             return false;
         }
-        if let Some(destination_name) = self.destination_name.as_ref() {
+        // "transforms into [this card's own name]" is compiled as a
+        // self-reference ("this creature"): the face that has this ability.
+        // Triggers are checked against the transformed permanent's current
+        // abilities, so reaching this check already means it transformed
+        // into that face.
+        if let Some(destination_name) = self
+            .destination_name
+            .as_ref()
+            .filter(|name| !destination_is_self_reference(name))
+        {
             return ctx
                 .game
                 .object(e.permanent)

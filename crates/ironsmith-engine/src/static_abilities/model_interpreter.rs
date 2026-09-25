@@ -2180,6 +2180,18 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         Some(&self.model)
     }
 
+    fn dungeon_entry_quality(&self) -> Option<&str> {
+        // CR 701.49d: a compiled "venture into [quality]" restriction.
+        if let Some(quality) = self
+            .leaf_static_ability()
+            .and_then(|ability| ability.dungeon_entry_quality())
+        {
+            return Some(quality);
+        }
+        (self.model.id == Some(StaticAbilityId::DungeonEntryRestriction))
+            .then_some(self.model.label.as_str())
+    }
+
     fn exile_would_die_instead_spec(
         &self,
     ) -> Option<(

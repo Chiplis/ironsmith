@@ -1953,10 +1953,6 @@ pub(super) fn test_echo_trigger_ignores_source_after_zone_change() {
         ])))
         .build();
     let original_id = game.create_object_from_definition(&echo_card, alice, Zone::Battlefield);
-    game.object_mut(original_id)
-        .expect("echo permanent should exist")
-        .counters
-        .insert(CounterType::Echo, 1);
 
     let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
         game.object(original_id)
@@ -1983,10 +1979,6 @@ pub(super) fn test_echo_trigger_ignores_source_after_zone_change() {
     let returned_id = game
         .move_object_by_effect(exiled_id, Zone::Battlefield)
         .expect("echo permanent should return to battlefield");
-    game.object_mut(returned_id)
-        .expect("returned echo permanent should exist")
-        .counters
-        .insert(CounterType::Echo, 1);
     game.push_to_stack(entry);
 
     let mut dm = SelectFirstDecisionMaker;
@@ -2000,15 +1992,7 @@ pub(super) fn test_echo_trigger_ignores_source_after_zone_change() {
         Zone::Battlefield,
         "stale echo trigger should not sacrifice the returned object"
     );
-    assert_eq!(
-        returned
-            .counters
-            .get(&CounterType::Echo)
-            .copied()
-            .unwrap_or(0),
-        1,
-        "stale echo trigger should not remove counters from the returned object"
-    );
+    let _ = CounterType::Echo;
 }
 
 #[test]
@@ -2071,14 +2055,21 @@ pub(super) fn test_enter_as_copy_applies_copied_enters_with_echo_counter() {
         .expect("copied permanent should exist");
 
     assert_eq!(copied.name, "Echo Source");
+    // CR 702.30a: echo is tracked by when the permanent came under your
+    // control, not by an echo counter; the copy has the copied echo trigger.
     assert_eq!(
-        copied
-            .counters
-            .get(&CounterType::Echo)
-            .copied()
-            .unwrap_or(0),
-        1,
-        "a clone entering as an echo permanent should apply the copied enters-with-counter ability"
+        copied.counters.get(&CounterType::Echo).copied().unwrap_or(0),
+        0,
+        "echo no longer uses an echo counter"
+    );
+    assert!(
+        copied.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Triggered(triggered)
+                if triggered.intervening_if
+                    == Some(crate::effect::Condition::SourceCameUnderYourControlSinceYourLastUpkeep)
+        )),
+        "a clone entering as an echo permanent copies the echo trigger"
     );
 }
 
