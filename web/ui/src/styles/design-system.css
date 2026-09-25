@@ -276,10 +276,11 @@
   pointer-events: none;
 }
 .zone-pile-counter-rail .battlefield-counter-chip {
-  width: clamp(32px, calc(var(--zone-strip-card-width, 72px) * 0.52), 46px);
-  min-height: clamp(16px, calc(var(--zone-strip-card-width, 72px) * 0.24), 20px);
-  gap: 2px;
-  padding-inline: 3px;
+  width: clamp(24px, calc(var(--zone-strip-card-width, 72px) * 0.4), 32px);
+  height: clamp(24px, calc(var(--zone-strip-card-width, 72px) * 0.4), 32px);
+  min-height: 0;
+  gap: 1px;
+  padding: 1px;
 }
 .zone-pile-counter-rail .battlefield-counter-amount {
   font-size: clamp(12px, calc(var(--zone-strip-card-width, 72px) * 0.16), 15px);

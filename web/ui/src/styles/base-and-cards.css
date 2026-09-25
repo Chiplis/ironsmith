@@ -1657,24 +1657,35 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(2px, calc(var(--bf-card-width, 124px) * 0.022), 3px);
-  width: clamp(30px, calc(var(--bf-card-width, 124px) * 0.28), 40px);
-  min-height: clamp(15px, calc(var(--bf-card-height, 96px) * 0.18), 20px);
+  gap: clamp(1px, calc(var(--bf-card-width, 124px) * 0.014), 2px);
+  width: clamp(26px, calc(var(--bf-card-width, 124px) * 0.25), 34px);
+  height: clamp(26px, calc(var(--bf-card-width, 124px) * 0.25), 34px);
+  min-height: 0;
+  aspect-ratio: 1;
   box-sizing: border-box;
-  padding: 0
-    clamp(3px, calc(var(--bf-card-width, 124px) * 0.038), 5px);
+  padding: 1px;
   overflow: visible;
   border: 1px solid var(--counter-stroke, #f4d38a);
+  border-radius: 50%;
   background-color: var(--counter-fill, #1f2a38);
   background-image: none;
   color: #fff;
   opacity: 1;
-  clip-path: polygon(10% 0, 90% 0, 100% 32%, 100% 100%, 0 100%, 0 32%);
+  position: relative;
   font-family: Rajdhani, "Avenir Next", "Segoe UI", system-ui, sans-serif;
   line-height: 1;
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--counter-stroke, #f4d38a) 32%, transparent),
     0 2px 7px color-mix(in srgb, var(--counter-accent, #e5b85b) 44%, transparent);
+}
+
+.game-card:hover .battlefield-counter-chip,
+.game-card.hovered .battlefield-counter-chip,
+.game-card.inspected .battlefield-counter-chip {
+  opacity: 1;
+  mix-blend-mode: normal;
+  background-color: var(--counter-fill, #1f2a38);
+  border-color: var(--counter-stroke, #f4d38a);
 }
 
 .battlefield-counter-amount {
