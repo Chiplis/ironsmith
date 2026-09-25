@@ -43,6 +43,22 @@ function replayDecks(match) {
   return replayPlayerNames(match).map(() => []);
 }
 
+// Mirrors publicDecklistsForMatchPayload: the live match derived the Miracle
+// draw reveal seats from the open decklists, so the replay must too.
+function replayPublicDecklists(match) {
+  if (!match?.openDecklists) return undefined;
+  const players = transcriptPlayers(match);
+  if (players.length === 0) return undefined;
+  const cards = (list) => (Array.isArray(list) ? list : [])
+    .map((card) => String(card || "").trim())
+    .filter(Boolean);
+  return players.map((player) => [
+    ...cards(player?.deck),
+    ...cards(player?.sideboard),
+    ...cards(player?.commanders),
+  ]);
+}
+
 function replayMatchConfig(match = {}) {
   return {
     playerNames: replayPlayerNames(match),
@@ -57,6 +73,7 @@ function replayMatchConfig(match = {}) {
         || match.hiddenDeckManifests
         || []
     ),
+    publicDecklists: replayPublicDecklists(match),
     openingHandSize: match.openingHandSize == null
       ? DEFAULT_OPENING_HAND_SIZE
       : Number(match.openingHandSize),

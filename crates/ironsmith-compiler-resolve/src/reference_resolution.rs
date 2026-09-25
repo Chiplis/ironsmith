@@ -2932,6 +2932,8 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::Stack(StackActionAst::CopySpell { .. })
                 | SubjectVerbActionAst::Stack(StackActionAst::CopySpellForEachTarget { .. })
                 | SubjectVerbActionAst::TargetOnly { .. }
+                // "put a name sticker on it. ... unique vowels on that sticker"
+                | SubjectVerbActionAst::PutSticker { .. }
         ),
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {

@@ -289,6 +289,9 @@ fn read_known_spell_cost_fact(
             Fact::OpponentDrewCardsThisTurnOrMore(count) => {
                 ThisSpellCostCondition::OpponentDrewCardsThisTurnOrMore(count)
             }
+            Fact::OpponentHadCardsPutIntoGraveyardThisTurnOrMore(count) => {
+                ThisSpellCostCondition::OpponentHadCardsPutIntoGraveyardThisTurnOrMore(count)
+            }
             Fact::YouWereDealtDamageByCreaturesThisTurnOrMore(count) => {
                 ThisSpellCostCondition::YouWereDealtDamageByCreaturesThisTurnOrMore(count)
             }

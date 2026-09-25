@@ -35,6 +35,8 @@ import {
   isForfeitCommand,
   isProtocolResponseTimeoutForfeitCommand,
   isRejectedActionCheatReason,
+  selectObjectCandidateForId,
+  selectObjectCandidateRevealPolicy,
   isSelfForfeitCommand,
   isSorcerySpeedForfeitState,
   isSupportedZiffleDeckCount,
@@ -73,6 +75,7 @@ import {
   timePeerSyncPhase,
   toErrorMessage,
   useCallback,
+  publicDecklistsForMatchPayload,
   validationCommandersForMatchPayload,
   validationDecksForMatchPayload,
   validationPlanarDecksForMatchPayload,
@@ -572,6 +575,8 @@ export function usePeerLobbyValidation(base, servicesRef) {
         message.audit?.openings || [],
         message.actorIndex
       );
+      applyPhase = markApplyPhase("verify_public_selections_opened");
+      await assertPublicSelectionsOpened(localCommand, liveStateForClock, message.actorIndex);
       applyPhase = markApplyPhase("preview_requirements");
       const cryptoRequirements = filterCryptoRequirementsForCommand(
         localCommand,
@@ -791,6 +796,38 @@ export function usePeerLobbyValidation(base, servicesRef) {
       }
     } finally {
       await releaseValidationSnapshot();
+    }
+  }
+
+  // Forced reveals of a determined set ("reveal the cards you discard",
+  // "discard your hand", "reveal the first card you draw") and every other
+  // selection made under a public reveal policy: the actor must open each
+  // selected card it owns before its answer is replayed. An answer that names
+  // a card without the opening would let the owner move or discard a card
+  // every other peer still holds as a placeholder, so it is a detected cheat.
+  // The engine already requires the full set (min == max, no repeats).
+  async function assertPublicSelectionsOpened(command, uiState, actorIndex) {
+    if (command?.type !== "select_objects" || !Array.isArray(command.object_ids)) return;
+    const currentGame = gameRef.current;
+    if (!currentGame || typeof currentGame.hiddenCardOpenState !== "function") return;
+    const decision = uiState?.decision || null;
+    for (const objectId of command.object_ids) {
+      const candidate = selectObjectCandidateForId(decision, objectId);
+      if (selectObjectCandidateRevealPolicy(decision, candidate) !== "public") continue;
+      const numeric = Number(objectId);
+      if (!Number.isSafeInteger(numeric) || numeric <= 0) continue;
+      let openState = null;
+      try {
+        openState = await currentGame.hiddenCardOpenState(wasmObjectIdArg(numeric));
+      } catch {
+        openState = null;
+      }
+      if (!openState?.tracked || openState.open) continue;
+      if (Number(openState.owner) !== Number(actorIndex)) continue;
+      throw new Error(
+        `Forced public reveal omitted an opening: player ${Number(actorIndex) + 1} `
+        + `selected hidden object ${numeric} without revealing it`
+      );
     }
   }
 
@@ -4309,6 +4346,9 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	        commanders: startCommanders,
 	        planarDecks: startPlanarDecks,
 	        hiddenDeckManifests: verifiedMode ? payload.runtimeHiddenDeckManifests : undefined,
+	        // Identical on every peer: decides which seats get a Miracle draw
+	        // reveal window in hidden-deck matches.
+	        publicDecklists: verifiedMode ? publicDecklistsForMatchPayload(payload) : undefined,
 	        openingHandSize: payload.openingHandSize ?? DEFAULT_OPENING_HAND_SIZE,
 	      });
 	      await currentGame.setPerspective(localEntry.index);

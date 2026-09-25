@@ -35,6 +35,13 @@ const LOADING_CARD_FRAME = {
   style: { "--source-frame-status": "placeholder" },
   artReady: false,
 };
+// A bare art crop says nothing about what the object is -- a stack entry is
+// often an ability. While a frame is prepared, the placeholder frame carries
+// the art itself, so the name, type and text are readable from the start.
+const LOADING_CARD_FRAME_WITH_ART = {
+  ...LOADING_CARD_FRAME,
+  artReady: true,
+};
 
 const ORACLE_TEXT_STYLE = {
   textShadow: "0 0 1px rgba(0, 0, 0, 0.95), 0 1px 2px rgba(0, 0, 0, 0.88)",
@@ -639,7 +646,6 @@ export default function HoverArtOverlay({
   onPreferredInspectorWidthChange = null,
   onInspectorAccentChange = null,
   onCardFrameReadyChange = null,
-  showFramePreview = true,
   enableFramePreparation = true,
   sourceImageUrl = null,
   interactiveActions = [],
@@ -886,7 +892,7 @@ export default function HoverArtOverlay({
   const artUnavailable = !imageUrl && Boolean(sourceImageUrl || artObjectName) && image.ready;
   const showLoadingFrame = isCardFrameMode && enableFramePreparation
     && !artUnavailable && !generatedFrame && Boolean(artObjectName);
-  const preparedFrame = showLoadingFrame ? LOADING_CARD_FRAME
+  const preparedFrame = showLoadingFrame ? (imageUrl ? LOADING_CARD_FRAME_WITH_ART : LOADING_CARD_FRAME)
     : enableFramePreparation && !artUnavailable ? generatedFrame : originalFrame;
   const defaultTypography = useCardTypography(isCardFrameMode ? "" : imageUrl);
   const typography = preparedFrame?.typography || defaultTypography;
@@ -2372,8 +2378,6 @@ export default function HoverArtOverlay({
       <CardFrameStage
         assets={preparedFrame}
         showLoadingFrame={showLoadingFrame}
-        previewUrl={showFramePreview ? sourceImageUrl || imageUrl : null}
-        previewName={objectName}
         preparation={showLoadingFrame || (!isMiniatureFrame && game && detailsObjectIdKey && !details && !sharedDetails?.ready && settledDetailsKey !== detailsObjectIdKey) ? null : preparedFrame}
         onReadyChange={onCardFrameReadyChange}
         className="interactive-card-frame-stage absolute inset-0 z-30 pointer-events-auto"

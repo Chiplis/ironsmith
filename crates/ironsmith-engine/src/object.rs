@@ -1653,13 +1653,16 @@ impl Object {
         self.base_toughness = Some(PtValue::Fixed(2));
         self.base_loyalty = None;
         self.base_defense = None;
-        self.abilities_mut().retain(|ability| {
-            matches!(
-                &ability.kind,
-                crate::ability::AbilityKind::Static(static_ability)
-                    if static_ability.turn_face_up_cost().is_some()
-            )
-        });
+        // CR 708.2: a face-down permanent has no abilities. Morph, megamorph,
+        // and disguise are not kept either: every peer (including those that
+        // hold only a hidden-card placeholder) must derive the same ability
+        // list, or ability-sensitive effects ("creatures with no abilities",
+        // ability counts, keyword checks) diverge. The turn-face-up special
+        // action (CR 702.37e, 702.168d) reads the face-up characteristics
+        // stored in `face_down_cast_state`, which the controller knows and
+        // other peers learn by opening the card before replaying the action.
+        // Ward {2} for disguise is derived from the public cast kind below.
+        self.abilities_mut().clear();
         if disguise_ward {
             self.abilities_mut()
                 .push(Ability::static_ability(StaticAbility::ward(

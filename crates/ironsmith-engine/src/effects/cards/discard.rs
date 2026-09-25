@@ -175,11 +175,15 @@ fn tracks_same_selected_objects(count: &Value, card_filter: Option<&ObjectFilter
 struct DiscardProposal {
     effect: DiscardEffect,
     selected: Vec<crate::ids::ObjectId>,
+    /// Cards chosen under a public selection reveal policy: the peer front
+    /// end opened them before replaying the choice.
+    revealed_by_choice: Vec<crate::ids::ObjectId>,
 }
 
 impl crate::effects::SimultaneousEffectProposal for DiscardProposal {
     fn commit(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
         -> Result<EffectOutcome, ExecutionError> {
+        game.mark_hidden_cards_publicly_revealed(&self.revealed_by_choice);
         let mut effect = self.effect;
         effect.count = Value::Fixed(self.selected.len() as i32);
         let mut filter = ObjectFilter::default();
@@ -211,19 +215,33 @@ impl EffectExecutor for DiscardEffect {
             crate::effects::ResolvedTarget::Object(id) => Some(*id),
             _ => None,
         }).collect::<Vec<_>>();
+        let reveal_chosen_publicly = hand.iter().any(|id| game.hidden_identity_is_private(*id));
+        let mut revealed_by_choice = Vec::new();
         let selected = if count == 0 { Vec::new() }
         else if !explicit.is_empty() { normalize_object_selection(explicit, &hand, count) }
         else {
             let spec = ChooseObjectsSpec::new(ctx.source,
                 format!("Choose {} card{} to discard", count, if count == 1 { "" } else { "s" }),
                 hand.clone(), count, Some(count));
+            // Discarded hidden cards are opened publicly before the answer is
+            // replayed (Madness, discard triggers); see `hidden_hand_choices`.
+            let spec = if reveal_chosen_publicly {
+                spec.with_selection_reveal_policy(
+                    crate::decisions::context::SelectionRevealPolicy::Public,
+                )
+            } else {
+                spec
+            };
             let chosen = make_decision(game, ctx.decision_maker, player, Some(ctx.source), spec);
+            if reveal_chosen_publicly {
+                revealed_by_choice = chosen.iter().copied().filter(|id| hand.contains(id)).collect();
+            }
             if ctx.decision_maker.awaiting_choice() { Vec::new() }
             else { normalize_object_selection(chosen, &hand, count) }
         };
         let mut effect = self.clone();
         effect.player = PlayerFilter::Specific(player);
-        Ok(Box::new(DiscardProposal { effect, selected }))
+        Ok(Box::new(DiscardProposal { effect, selected, revealed_by_choice }))
     }
 
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
@@ -277,12 +295,27 @@ impl EffectExecutor for DiscardEffect {
             } else {
                 Vec::new()
             };
+            let full_hand = hand_cards.clone();
             hand_cards.retain(|card_id| {
                 placeholders.contains(card_id)
                     || game
                         .object(*card_id)
                         .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
             });
+            // "Discard a creature card at random": every peer must shuffle the
+            // same qualifying cards, so the owner reveals them publicly first.
+            if self.random
+                && !game.settle_hidden_hand_random_pool(
+                    &mut *ctx.decision_maker,
+                    ctx.source,
+                    filter,
+                    &filter_ctx,
+                    &full_hand,
+                    &mut hand_cards,
+                )
+            {
+                return Ok(EffectOutcome::count(0));
+            }
             hidden_filter_ctx = Some(filter_ctx);
         }
 
@@ -314,6 +347,14 @@ impl EffectExecutor for DiscardEffect {
             .filter(|id| hand_cards.contains(id))
             .collect();
 
+        // The number of cards the rules require this choice to take; a hidden
+        // hand choice answered with fewer claims no other card matches.
+        let mut rules_min = 0usize;
+        let offered_hand_cards = if hidden_hand_choice {
+            hand_cards.clone()
+        } else {
+            Vec::new()
+        };
         let cards_to_discard = if !self.random
             && !self.any_number
             && required == hand_cards.len()
@@ -340,6 +381,7 @@ impl EffectExecutor for DiscardEffect {
                 return Ok(EffectOutcome::count(0));
             }
             let min_required = usize::from(one_or_more && !hidden_hand_choice);
+            rules_min = usize::from(one_or_more);
             let spec = ChooseObjectsSpec::new(
                 ctx.source,
                 if one_or_more {
@@ -367,7 +409,10 @@ impl EffectExecutor for DiscardEffect {
                 return Ok(EffectOutcome::count(0));
             }
             if reveal_chosen_publicly {
-                game.mark_hidden_cards_publicly_revealed(&chosen);
+                // Only offered candidates are opened by the peer front end.
+                let opened: Vec<_> =
+                    chosen.iter().copied().filter(|id| hand_cards.contains(id)).collect();
+                game.mark_hidden_cards_publicly_revealed(&opened);
             }
             if min_required > 0 {
                 normalize_object_selection(chosen, &hand_cards, min_required)
@@ -383,6 +428,7 @@ impl EffectExecutor for DiscardEffect {
                     })
             }
         } else {
+            rules_min = required;
             let spec = ChooseObjectsSpec::new(
                 ctx.source,
                 format!(
@@ -410,7 +456,10 @@ impl EffectExecutor for DiscardEffect {
                 return Ok(EffectOutcome::count(0));
             }
             if reveal_chosen_publicly {
-                game.mark_hidden_cards_publicly_revealed(&chosen);
+                // Only offered candidates are opened by the peer front end.
+                let opened: Vec<_> =
+                    chosen.iter().copied().filter(|id| hand_cards.contains(id)).collect();
+                game.mark_hidden_cards_publicly_revealed(&opened);
             }
             if hidden_hand_choice {
                 // No fill-up: it would pick different cards on peers that
@@ -435,6 +484,14 @@ impl EffectExecutor for DiscardEffect {
         {
             game.record_hidden_identity_obligations(
                 &cards_to_discard,
+                filter,
+                filter_ctx,
+                "discard a card matching the filter",
+            );
+            game.record_hidden_shortfall_obligations(
+                &offered_hand_cards,
+                &cards_to_discard,
+                rules_min,
                 filter,
                 filter_ctx,
                 "discard a card matching the filter",

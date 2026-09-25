@@ -23,7 +23,7 @@ const MiniatureComposition = memo(function MiniatureComposition({snapshot, image
     perspective: card.controller ?? card.owner,
   }}), [card]);
   return <GameContext.Provider value={context}>
-    <HoverArtOverlay objectId={card.id} sourceImageUrl={imageUrl} displayMode="miniature-frame" showFramePreview={false} />
+    <HoverArtOverlay objectId={card.id} sourceImageUrl={imageUrl} displayMode="miniature-frame" />
   </GameContext.Provider>;
 });
 

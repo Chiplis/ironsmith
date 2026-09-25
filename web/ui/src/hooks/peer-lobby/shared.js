@@ -813,6 +813,12 @@ export function isUnauthorizedAddCardCommand(command) {
 export function isRejectedActionCheatReason(reason) {
   const normalized = String(reason || "").toLowerCase();
   return normalized.includes("invalid priority action ref")
+    // A card opened after it was used while hidden contradicts the owner's
+    // earlier claim (chosen for a filter, withheld from a forced reveal,
+    // cast face down with a keyword it lacks), or a forced reveal named a
+    // card without opening it. See game_state/hidden_hand_choices.rs.
+    || normalized.includes("hidden identity obligation violated")
+    || normalized.includes("forced public reveal omitted an opening")
     || normalized.includes("priority action is no longer available")
     || normalized.includes("does not match pending")
     || normalized.includes("action is no longer available");
@@ -1042,6 +1048,11 @@ export function ziffleDiagnosticNoticeBody(message, diagnostics) {
 
 export function collectCommandObjectIds(command, output = new Set(), uiState = null) {
   if (!command || typeof command !== "object") return output;
+  // A face-down cast (morph, megamorph, disguise) keeps the card hidden: the
+  // command carries only its public cast kind, so its card is never opened
+  // before the command is replayed (CR 708.2; opened later when the rules
+  // reveal it, see isFaceDownCastCommand).
+  if (isFaceDownCastCommand(command)) return output;
   if (command.type === "priority_action" && command.action_ref) {
     const objectId = actionRefObjectId(command.action_ref);
     const numeric = Number(objectId);
@@ -1620,6 +1631,17 @@ export function wasmObjectIdArg(objectId) {
     throw new Error(`Invalid object id: ${objectId}`);
   }
   return BigInt(normalized);
+}
+
+// Whether a command casts a spell face down. Such a command must never open
+// the cast card publicly: peers replay it on their hidden placeholder from the
+// public cast kind the command carries (casting_method.face_down_kind).
+export function isFaceDownCastCommand(command) {
+  if (command?.type !== "priority_action") return false;
+  const actionRef = command.action_ref || command.actionRef || null;
+  if (String(actionRef?.kind || "") !== "cast_spell") return false;
+  const method = actionRef.casting_method || actionRef.castingMethod || null;
+  return String(method?.kind || "") === "face_down";
 }
 
 export function actionRefObjectId(actionRef) {
@@ -3062,6 +3084,19 @@ export function validationDecksForMatchPayload(payload) {
     return payload.players.map((player) => sanitizeCardList(player.deck));
   }
   return payload?.decks;
+}
+
+// Every seat's public card list in an open-decklist match. The engine uses it
+// only to decide, identically on every peer, which seats get an owner draw
+// reveal window for Miracle; closed-decklist matches omit it (every hidden
+// seat then gets the window).
+export function publicDecklistsForMatchPayload(payload) {
+  if (!payload?.openDecklists || !Array.isArray(payload.players)) return undefined;
+  return payload.players.map((player) => [
+    ...sanitizeCardList(player?.deck),
+    ...sanitizeCardList(player?.sideboard),
+    ...sanitizeCardList(player?.commanders),
+  ]);
 }
 
 export function validationSideboardsForMatchPayload(payload) {

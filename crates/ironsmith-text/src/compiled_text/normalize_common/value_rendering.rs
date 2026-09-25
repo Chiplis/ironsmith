@@ -1265,6 +1265,25 @@ pub(crate) fn describe_commander_zone_union_subject(filter: &ObjectFilter) -> Op
     Some(format!("{subject} {}", join_with_and(&zone_phrases)))
 }
 
+/// The noun phrase after "for each" for a prior-effect metric authored as a
+/// per-item count ("for each unique vowel on that sticker").
+pub(crate) fn describe_for_each_effect_metric(value: &Value) -> Option<&'static str> {
+    if !value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach) {
+        return None;
+    }
+    match value.unhinted() {
+        Value::EffectMetric {
+            metric: crate::effect::EffectMetric::NameStickerUniqueVowels,
+            ..
+        }
+        | Value::PendingEffectMetric {
+            metric: crate::effect::EffectMetric::NameStickerUniqueVowels,
+            ..
+        } => Some("unique vowel on that sticker"),
+        _ => None,
+    }
+}
+
 pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
     if filter.attacking
         && filter.attacking_player_only

@@ -2268,6 +2268,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         case "action_quorum_vote_response":
           resolveActionQuorumVote(message);
           return;
+        case "end_of_match_disclosure":
+          await servicesRef.current.handleEndOfMatchDisclosureMessage?.(message);
+          return;
         case "crypto_material_request":
           await answerCryptoMaterialRequest(hostConnectionRef.current, message);
           return;
@@ -2518,6 +2521,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         return;
       case "action_quorum_vote_response":
         resolveActionQuorumVote(message);
+        return;
+      case "end_of_match_disclosure":
+        await servicesRef.current.handleEndOfMatchDisclosureMessage?.(message);
         return;
       case "crypto_material_request":
         await answerCryptoMaterialRequest(conn, message);
@@ -2886,6 +2892,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         return;
       case "action_quorum_vote_request":
         await answerActionQuorumVoteRequest(conn, message);
+        return;
+      case "end_of_match_disclosure":
+        await servicesRef.current.handleEndOfMatchDisclosureMessage?.(message);
         return;
       case "crypto_material_request":
         await answerCryptoMaterialRequest(conn, message);

@@ -1336,6 +1336,27 @@ pub(crate) fn run_choose_objects(
                 }
             }
         }
+        // A random pick among qualifying hand cards ("exile a nonland card at
+        // random from your hand"): every peer must shuffle the same set, so
+        // the owners reveal the qualifying private cards first (see
+        // `game_state::hidden_hand_choices`).
+        if effect.count.is_random()
+            && effective_search_zones(effect, game, chooser_id)?.contains(&Zone::Hand)
+        {
+            let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
+            let hand_ids = hand_candidate_ids(effect, game, ctx, &filter_ctx, chooser_id)?;
+            if !game.settle_hidden_hand_random_pool(
+                &mut *ctx.decision_maker,
+                ctx.source,
+                &hand_zone_filter(effect),
+                &filter_ctx,
+                &hand_ids,
+                &mut candidates,
+            ) {
+                ctx.clear_object_tag(effect.tag.as_str());
+                return Ok(EffectOutcome::count(0));
+            }
+        }
         // Symmetric across peers; see `game_state::hidden_hand_choices`.
         let hidden_hand_choice = hidden_hand_choice(effect, game, ctx, chooser_id)?;
         if candidates.is_empty() && !hidden_hand_choice {
@@ -1636,6 +1657,20 @@ pub(crate) fn run_choose_objects(
                 .collect();
             game.record_hidden_identity_obligations(
                 &hand_placeholders,
+                &hand_zone_filter(effect),
+                &filter_ctx,
+                &description,
+            );
+        }
+        if hidden_hand_choice {
+            // Fewer than the rules require: the owner claims the other
+            // offered hidden hand cards do not match, checked once each is
+            // opened (see `game_state::hidden_hand_choices`).
+            let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
+            game.record_hidden_shortfall_obligations(
+                &candidates,
+                &chosen,
+                min,
                 &hand_zone_filter(effect),
                 &filter_ctx,
                 &description,

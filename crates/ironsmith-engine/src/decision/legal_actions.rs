@@ -574,7 +574,7 @@ fn build_hand_summaries<'a>(game: &'a GameState, hand: &[ObjectId]) -> Vec<HandC
                 is_land: card.is_land(),
                 has_normal_mana_cost: card.mana_cost.is_some(),
                 has_hand_special_actions,
-                can_cast_face_down: spell_can_be_cast_face_down(card),
+                can_cast_face_down: spell_can_be_cast_face_down(game, card),
                 has_split_other_half,
                 has_fuse: card.has_fuse
                     && card.linked_face_layout == crate::card::LinkedFaceLayout::Split,

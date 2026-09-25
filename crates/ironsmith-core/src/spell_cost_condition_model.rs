@@ -15,6 +15,9 @@ pub enum ThisSpellCostCondition {
     TotalCreatureCardsInAllGraveyardsOrMore(u32),
     OpponentCastSpellsThisTurnOrMore(u32),
     OpponentDrewCardsThisTurnOrMore(u32),
+    /// "an opponent had N or more cards put into their graveyard from
+    /// anywhere this turn" (tokens are not cards).
+    OpponentHadCardsPutIntoGraveyardThisTurnOrMore(u32),
     YouWereDealtDamageByCreaturesThisTurnOrMore(u32),
     /// "If this spell is the first spell you've cast this game" (Once Upon a
     /// Time): the caster has cast no other spell this game.

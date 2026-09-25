@@ -202,18 +202,109 @@ pub(crate) fn emit_automatic_draw_reveal_event(
     )
 }
 
-pub(crate) fn automatic_reveal_events_for_draw(
+/// How a "reveal the first card you draw" reveal of a private hidden card
+/// (hidden-information matches) is made public on every peer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HiddenDrawRevealMode {
+    /// Ask the owner right away; the caller stops while the answer is awaited
+    /// and is re-run with it (effect resolution).
+    Inline,
+    /// Defer to the draw reveal windows answered before triggers are put on
+    /// the stack (turn-based draws, which cannot pause mid-step).
+    Defer,
+}
+
+/// The pending reveal record for a candidate whose card is private.
+pub(crate) fn pending_hidden_automatic_draw_reveal(
+    candidate: &AutomaticDrawRevealCandidate,
+) -> crate::game_state::PendingAutomaticDrawReveal {
+    crate::game_state::PendingAutomaticDrawReveal {
+        player: candidate.player_id,
+        card: candidate.card_id,
+        source: candidate.source_id,
+        optional: candidate.optional,
+    }
+}
+
+/// Prompt text of the owner-answered reveal of a private drawn card.
+pub(crate) fn hidden_automatic_draw_reveal_description(optional: bool) -> &'static str {
+    if optional {
+        "You may reveal the first card you drew this turn"
+    } else {
+        "Reveal the first card you drew this turn"
+    }
+}
+
+/// Rebuild a reveal candidate for `pending` from the current (now publicly
+/// opened) card, so its snapshot carries the revealed characteristics.
+pub(crate) fn automatic_draw_reveal_candidate_for_pending(
     game: &GameState,
+    pending: &crate::game_state::PendingAutomaticDrawReveal,
+) -> AutomaticDrawRevealCandidate {
+    AutomaticDrawRevealCandidate {
+        source_id: pending.source,
+        source_name: game
+            .object(pending.source)
+            .map(|source| source.name.to_string())
+            .unwrap_or_default(),
+        player_id: pending.player,
+        card_id: pending.card,
+        zone: Zone::Hand,
+        optional: pending.optional,
+        snapshot: game
+            .object(pending.card)
+            .map(|obj| ObjectSnapshot::from_object(obj, game)),
+    }
+}
+
+pub(crate) fn automatic_reveal_events_for_draw(
+    game: &mut GameState,
     player_id: PlayerId,
     drawn: &[ObjectId],
     draws_before: u32,
     decision_maker: &mut (impl DecisionMaker + ?Sized),
     provenance: ProvNodeId,
+    hidden_mode: HiddenDrawRevealMode,
 ) -> Vec<TriggerEvent> {
     let mut reveal_events = Vec::new();
 
     for candidate in collect_automatic_draw_reveal_candidates(game, player_id, drawn, draws_before)
     {
+        // Hidden-information matches: the drawn card is known to its owner
+        // only, so the reveal (and the "whenever you reveal ... this way"
+        // trigger reading its characteristics) must wait for the owner to
+        // open it publicly on every peer (see `hidden_hand_choices`).
+        if game.hidden_identity_is_private(candidate.card_id) {
+            let pending = pending_hidden_automatic_draw_reveal(&candidate);
+            match hidden_mode {
+                HiddenDrawRevealMode::Defer => {
+                    game.defer_hidden_automatic_draw_reveal(pending);
+                }
+                HiddenDrawRevealMode::Inline => {
+                    let Some(revealed) = game.reveal_private_hidden_cards_publicly(
+                        decision_maker,
+                        candidate.player_id,
+                        candidate.source_id,
+                        &[candidate.card_id],
+                        hidden_automatic_draw_reveal_description(candidate.optional),
+                        candidate.optional,
+                    ) else {
+                        return reveal_events;
+                    };
+                    if revealed.contains(&candidate.card_id) {
+                        let candidate =
+                            automatic_draw_reveal_candidate_for_pending(game, &pending);
+                        reveal_events.push(emit_automatic_draw_reveal_event(
+                            game,
+                            decision_maker,
+                            &candidate,
+                            provenance,
+                        ));
+                    }
+                }
+            }
+            continue;
+        }
         if candidate.optional {
             let reveal = decision_maker
                 .decide_boolean(game, &automatic_draw_reveal_boolean_context(&candidate));
@@ -421,6 +512,7 @@ impl EffectExecutor for DrawCardsEffect {
                 direct_draws_before,
                 &mut *ctx.decision_maker,
                 ctx.provenance,
+                HiddenDrawRevealMode::Inline,
             );
 
             events.push(event);

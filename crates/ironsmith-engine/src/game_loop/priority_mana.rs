@@ -2603,6 +2603,15 @@ pub(crate) fn propose_spell_cast(
         _ => None,
     });
     let selected_method_for_overlay = selected_method.clone();
+    // The public face-down cast kind, read before the card moves: in peer
+    // matches it comes from the cast command, so peers holding only a
+    // placeholder derive the same ward (see `decision::face_down_cast_kind`).
+    let face_down_kind = match casting_method {
+        CastingMethod::FaceDown => game
+            .object(spell_id)
+            .and_then(|obj| crate::decision::face_down_cast_kind(game, obj)),
+        _ => None,
+    };
     let cast_origin_snapshot = game.object(spell_id).map(|obj| {
         crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
     });
@@ -2633,6 +2642,11 @@ pub(crate) fn propose_spell_cast(
         })?;
     if let Some(spell) = game.object_mut(new_id) {
         spell.cast_play_from_constraints = play_from_constraints;
+    }
+    if let Some(kind) = face_down_kind {
+        // A peer that holds only a placeholder must later check that the
+        // opened card really has this keyword.
+        game.record_hidden_face_down_cast_obligation(new_id, kind);
     }
     if let Some(shared_usage_id) = shared_usage_to_consume {
         let consumed = game
@@ -2782,7 +2796,8 @@ pub(crate) fn propose_spell_cast(
 
         match casting_method {
             CastingMethod::FaceDown => {
-                let disguise_ward = crate::decision::face_down_cast_uses_disguise(obj);
+                let disguise_ward =
+                    face_down_kind == Some(crate::game_state::FaceDownCastKind::Disguise);
                 obj.apply_face_down_cast_overlay_with_disguise_ward(disguise_ward);
                 mark_face_down = true;
             }

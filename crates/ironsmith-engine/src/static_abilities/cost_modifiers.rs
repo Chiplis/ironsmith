@@ -2175,6 +2175,9 @@ pub fn describe_this_spell_cost_condition(condition: &ThisSpellCostCondition) ->
         ThisSpellCostCondition::OpponentDrewCardsThisTurnOrMore(n) => {
             Some(format!("an opponent has drawn {n} or more cards this turn"))
         }
+        ThisSpellCostCondition::OpponentHadCardsPutIntoGraveyardThisTurnOrMore(n) => Some(format!(
+            "an opponent had {n} or more cards put into their graveyard from anywhere this turn"
+        )),
         ThisSpellCostCondition::YouWereDealtDamageByCreaturesThisTurnOrMore(n) => Some(format!(
             "you've been dealt damage by {n} or more creatures this turn"
         )),
@@ -2505,6 +2508,16 @@ pub fn this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
                 game.turn_store
                     .turn_history
                     .cards_drawn_by_player(player.id)
+                    >= *n
+            }),
+        ThisSpellCostCondition::OpponentHadCardsPutIntoGraveyardThisTurnOrMore(n) => game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game() && game.are_opponents(player.id, controller))
+            .any(|player| {
+                game.turn_store
+                    .turn_history
+                    .cards_put_into_graveyard_count_this_turn(player.id)
                     >= *n
             }),
         ThisSpellCostCondition::FirstSpellYouCastThisGame => {

@@ -4,6 +4,21 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
     let head = parse_for_each_head(words)?;
     let idx = head.item_start;
 
+    // "for each unique vowel on that sticker": the sticker just placed.
+    if crate::word_primitives::parse_sequence_prefix(
+        &words[idx..],
+        &["unique", "vowel", "on", "that", "sticker"],
+    ) {
+        return Some((
+            Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::NameStickerUniqueVowels,
+            }
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+            idx + 5,
+        ));
+    }
+
     if let Some(value) = parse_mana_from_source_spent_count(words, idx) {
         return Some(value);
     }

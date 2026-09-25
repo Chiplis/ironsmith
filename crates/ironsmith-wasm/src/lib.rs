@@ -1403,7 +1403,36 @@ fn push_hidden_move_requirements(
         );
     }
 
-    if after_card.card.is_some()
+    // CR 708.9 / 708.10: a face-down spell or permanent that leaves the stack
+    // or the battlefield is revealed by its owner, wherever it goes; a
+    // face-down card that reaches a public zone face up is revealed too. Peers
+    // that hold only a placeholder do not know the card, so the requirement
+    // is emitted from public facts alone (the face-down flag and the zones)
+    // and every peer demands the owner's opening, which is then verified
+    // against the card's commitment and its face-down cast obligation.
+    let face_down_left_stack_or_battlefield = before_card.face_down
+        && matches!(before_card.zone, Zone::Stack | Zone::Battlefield)
+        && before_card.zone != after_card.zone;
+    let face_down_became_public = before_card.face_down
+        && !after_card.zone.is_hidden()
+        && before_card.zone != after_card.zone;
+    let reveals_face_down_card = (face_down_left_stack_or_battlefield
+        || face_down_became_public)
+        && !after_card.face_down
+        && !after_card.foretold;
+    if reveals_face_down_card {
+        push_requirement_unique(
+            requirements,
+            seen,
+            CryptoRequirementView::hidden_open(
+                "public_open",
+                after_card,
+                None,
+                "public",
+                "face-down card revealed as it left the stack or battlefield",
+            ),
+        );
+    } else if after_card.card.is_some()
         && !matches!(after_card.zone, Zone::Library | Zone::Hand)
         && !after_card.face_down
         && !after_card.foretold
@@ -2286,7 +2315,15 @@ enum SpecialActionRef {
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum CastingMethodRef {
     Normal,
-    FaceDown,
+    /// Cast face down. `face_down_kind` is the public cast kind ("morph",
+    /// "megamorph", "disguise"): peers that hold only a hidden-card
+    /// placeholder replay the cast from it without learning the card, and
+    /// check it against the card once it is opened. It is ignored when the
+    /// ref is matched against the engine's legal actions.
+    FaceDown {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        face_down_kind: Option<String>,
+    },
     SplitOtherHalf,
     Fuse,
     Alternative {

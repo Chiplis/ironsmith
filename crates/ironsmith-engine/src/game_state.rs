@@ -68,6 +68,10 @@ pub use conspiracy::{
     ConspiracyDraftState, DraftCard, DraftCardView, DraftSelection, DraftVisibility,
 };
 pub use emperor::EmperorState;
+pub use hidden_hand_choices::{
+    DepartedHiddenCard, EndOfMatchDisclosureCard, FaceDownCastKind, PendingAutomaticDrawReveal,
+    HIDDEN_IDENTITY_VIOLATION_PREFIX,
+};
 pub use free_for_all::{FreeForAllAttackOption, FreeForAllState};
 pub use grand_melee::{
     GrandMeleeMarkerRestore, GrandMeleeMarkerStatus, GrandMeleeMarkerView, GrandMeleeRestore,
@@ -597,6 +601,14 @@ struct AuxiliaryTrackingState {
     /// Filters that cards chosen while they were hidden placeholders must
     /// satisfy once their identity is opened on this peer.
     hidden_identity_obligations: Vec<hidden_hand_choices::HiddenIdentityObligation>,
+    /// Public face-down cast kinds carried by face-down cast commands of
+    /// hidden hand cards (morph, megamorph, disguise). Every peer, including
+    /// those that hold only a placeholder, reads the cast's legality and
+    /// disguise's ward from it (see `hidden_hand_choices`).
+    hidden_face_down_cast_claims: HashMap<ObjectId, hidden_hand_choices::FaceDownCastKind>,
+    /// Hidden cards snapshotted as their owner left the game (CR 800.4a),
+    /// for the end-of-match disclosure.
+    departed_hidden_cards: Vec<hidden_hand_choices::DepartedHiddenCard>,
     /// Hidden-tracked hand cards whose identity every peer learned through an
     /// owner-answered public reveal (see `hidden_hand_choices`). Symmetric:
     /// it only changes while a decision answer is replayed.
@@ -607,6 +619,10 @@ struct AuxiliaryTrackingState {
     /// Hidden cards just drawn whose owner has not yet answered the draw
     /// reveal window, in draw order.
     pending_hidden_draw_reveals: Vec<(PlayerId, ObjectId)>,
+    /// "Reveal the first card you draw each turn" reveals of private hidden
+    /// cards, deferred until the owner opens the card publicly so every peer
+    /// reads the same characteristics (see `hidden_hand_choices`).
+    pending_hidden_automatic_draw_reveals: Vec<hidden_hand_choices::PendingAutomaticDrawReveal>,
     /// Noncopiable alpha/beta/gamma designations on battlefield permanents.
     sector_designations: HashMap<ObjectId, crate::marker::SectorDesignation>,
     /// Partially collected asynchronous CR 704.5u choices for the priority driver.

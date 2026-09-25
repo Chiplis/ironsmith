@@ -56,6 +56,13 @@ fn source_filtered_target_restriction(
     };
 
     let source_filter = match envelope {
+        TargetRestrictionEnvelope::ControlledSpellsOrAbilities { opponents } => {
+            ObjectFilter::default().controlled_by(if opponents {
+                PlayerFilter::Opponent
+            } else {
+                PlayerFilter::You
+            })
+        }
         TargetRestrictionEnvelope::FilteredSources {
             spell_descriptor_tokens,
             source_descriptor_tokens,

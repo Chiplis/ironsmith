@@ -1040,6 +1040,8 @@ fn execute_draw_step_for_player_with(
                 current_draws,
                 decision_maker,
                 draw_event_provenance,
+                // The draw step cannot pause mid-step for the owner's answer.
+                crate::effects::cards::HiddenDrawRevealMode::Defer,
             ) {
                 game.stage_turn_history_event(&reveal_event);
                 draw_events.push(reveal_event);

@@ -43,8 +43,58 @@ pub(super) fn build_action_view(
         to_zone: source_visible.then_some(to_zone).flatten(),
         drag_requires_targets: source_visible && drag_requires_targets,
         drag_requires_modes: source_visible && drag_requires_modes,
-        action_ref: priority_action_ref(action),
+        action_ref: priority_action_ref_for_game(game, action),
     }
+}
+
+/// [`priority_action_ref`] plus the public face-down cast kind of a face-down
+/// cast, read from the caster's engine (which knows the card).
+pub(super) fn priority_action_ref_for_game(
+    game: &GameState,
+    action: &LegalAction,
+) -> PriorityActionRef {
+    let mut action_ref = priority_action_ref(action);
+    if let PriorityActionRef::CastSpell {
+        spell_id,
+        casting_method: CastingMethodRef::FaceDown { face_down_kind },
+        ..
+    } = &mut action_ref
+        && let Some(spell) = game.object(ObjectId::from_raw(*spell_id))
+    {
+        *face_down_kind = ironsmith::decision::face_down_cast_kind(game, spell)
+            .map(|kind| kind.as_str().to_string());
+    }
+    action_ref
+}
+
+/// The action ref without the public face-down cast kind, which the engine's
+/// legal actions never carry.
+fn action_ref_for_matching(action_ref: &PriorityActionRef) -> PriorityActionRef {
+    let mut normalized = action_ref.clone();
+    if let PriorityActionRef::CastSpell {
+        casting_method: CastingMethodRef::FaceDown { face_down_kind },
+        ..
+    } = &mut normalized
+    {
+        *face_down_kind = None;
+    }
+    normalized
+}
+
+/// The hidden hand card and public cast kind of a face-down cast ref.
+pub(super) fn face_down_cast_claim_for_action_ref(
+    action_ref: &PriorityActionRef,
+) -> Option<(ObjectId, ironsmith::game_state::FaceDownCastKind)> {
+    let PriorityActionRef::CastSpell {
+        spell_id,
+        casting_method: CastingMethodRef::FaceDown { face_down_kind },
+        ..
+    } = action_ref
+    else {
+        return None;
+    };
+    let kind = ironsmith::game_state::FaceDownCastKind::from_name(face_down_kind.as_deref()?)?;
+    Some((ObjectId::from_raw(*spell_id), kind))
 }
 
 fn activation_mana_payment_available(
@@ -1048,7 +1098,9 @@ pub(super) fn casting_method_ref(
 ) -> CastingMethodRef {
     match method {
         ironsmith::alternative_cast::CastingMethod::Normal => CastingMethodRef::Normal,
-        ironsmith::alternative_cast::CastingMethod::FaceDown => CastingMethodRef::FaceDown,
+        ironsmith::alternative_cast::CastingMethod::FaceDown => CastingMethodRef::FaceDown {
+            face_down_kind: None,
+        },
         ironsmith::alternative_cast::CastingMethod::SplitOtherHalf => {
             CastingMethodRef::SplitOtherHalf
         }
@@ -1094,8 +1146,30 @@ pub(super) fn resolve_priority_action(
     action_ref: Option<&PriorityActionRef>,
 ) -> Option<LegalAction> {
     if let Some(action_ref) = action_ref {
+        let action_ref = &action_ref_for_matching(action_ref);
         if let Some(action) = priority.actions.iter().find(|action| priority_action_ref(action) == *action_ref) {
             return Some(action.clone());
+        }
+        // A face-down cast of a hidden hand card: peers holding a placeholder
+        // computed the priority actions before the command's public cast kind
+        // was recorded, so recompute the source's actions now.
+        let face_down_claim_source = match action_ref {
+            PriorityActionRef::CastSpell {
+                spell_id,
+                casting_method: CastingMethodRef::FaceDown { .. },
+                ..
+            } => {
+                let spell = ObjectId::from_raw(*spell_id);
+                game.hidden_face_down_cast_claim(spell).map(|_| spell)
+            }
+            _ => None,
+        };
+        if let Some(spell) = face_down_claim_source {
+            return game
+                .priority_team_players()
+                .into_iter()
+                .flat_map(|player| ironsmith::decision::compute_actions_for_source(game, player, Some(spell)))
+                .find(|action| priority_action_ref(action) == *action_ref);
         }
         if !priority.analysis_complete {
             let source = match action_ref {
@@ -1558,10 +1632,17 @@ pub(super) fn validate_object_selection(
             "must select at most {max} object(s)"
         )));
     }
-    for object_id in selected {
+    for (index, object_id) in selected.iter().enumerate() {
         if !legal_ids.contains(object_id) {
             return Err(JsValue::from_str(&format!(
                 "object id {object_id} is not legal"
+            )));
+        }
+        // A repeated id would let a forced reveal of every listed card reach
+        // its required count while leaving cards out.
+        if selected[..index].contains(object_id) {
+            return Err(JsValue::from_str(&format!(
+                "object id {object_id} is selected more than once"
             )));
         }
     }

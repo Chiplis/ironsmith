@@ -2130,6 +2130,16 @@ impl TurnRunner {
             .get(pending.next_candidate_index)
             .cloned()
         {
+            // Hidden-information matches: a private drawn card is revealed
+            // through the owner-answered draw reveal windows before triggers
+            // are put on the stack, so every peer reads the same card.
+            if game.hidden_identity_is_private(candidate.card_id) {
+                game.defer_hidden_automatic_draw_reveal(
+                    crate::effects::cards::pending_hidden_automatic_draw_reveal(&candidate),
+                );
+                pending.next_candidate_index += 1;
+                continue;
+            }
             let should_reveal = if candidate.optional {
                 if let Some(answer) = self.pending_boolean.take() {
                     answer

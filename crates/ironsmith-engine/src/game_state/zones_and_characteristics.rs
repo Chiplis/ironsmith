@@ -534,6 +534,7 @@ impl GameState {
             .remove(&old_id);
         // A publicly revealed hidden card becomes a new object (CR 400.7).
         self.forget_public_hidden_card_reveal(old_id);
+        self.clear_hidden_face_down_cast_claim(old_id);
         self.stable_id_index.remove(&old_object.stable_id);
         self.commander_tracking_mut()
             .declined_command_zone_moves
@@ -839,6 +840,9 @@ impl GameState {
                 slot: audit_info.slot,
                 commitment: audit_info.commitment,
             });
+            if new_zone == Zone::Library {
+                self.forget_hidden_identity_obligations_for_library(new_id);
+            }
         }
 
         if new_zone == Zone::Battlefield
@@ -1867,6 +1871,32 @@ impl GameState {
                 .player(controller)
                 .map(|player| player.hand.clone())
                 .unwrap_or_default();
+            // Hidden-information matches: the owner reveals the hand publicly
+            // before any card moves, so every peer applies Madness (CR
+            // 702.35a) and discard triggers to the same identities, as the
+            // discard-hand effect does (see `hidden_hand_choices`). This body
+            // runs on a working copy that is dropped while a decision is
+            // awaited (the Madness choice below already relies on that), so
+            // pausing here and re-running with the owner's answer is safe.
+            // Never prompts outside hidden-information matches.
+            let to_reveal: Vec<ObjectId> =
+                hand.iter().copied().filter(|id| *id != old_id).collect();
+            if to_reveal
+                .iter()
+                .any(|id| self.hidden_identity_is_private(*id))
+                && self
+                    .reveal_private_hidden_cards_publicly(
+                        &mut *decision_maker,
+                        controller,
+                        old_id,
+                        &to_reveal,
+                        "Reveal the cards you discard",
+                        false,
+                    )
+                    .is_none()
+            {
+                return None;
+            }
             for card_id in hand {
                 if card_id == old_id {
                     continue;

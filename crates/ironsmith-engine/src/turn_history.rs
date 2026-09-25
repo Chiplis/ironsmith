@@ -639,6 +639,17 @@ impl TurnHistory {
             .count() as u32
     }
 
+    /// Cards (not tokens) put into `player`'s graveyard from anywhere this
+    /// turn, counted when they moved even if they have since left.
+    pub fn cards_put_into_graveyard_count_this_turn(&self, player: PlayerId) -> u32 {
+        self.projected_records()
+            .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
+            .filter(|event| event.to == Zone::Graveyard)
+            .flat_map(|event| event.snapshots.iter())
+            .filter(|snapshot| snapshot.owner == player && !snapshot.is_token)
+            .count() as u32
+    }
+
     pub fn object_was_put_into_graveyard_from_battlefield_this_turn(
         &self,
         stable_id: StableId,

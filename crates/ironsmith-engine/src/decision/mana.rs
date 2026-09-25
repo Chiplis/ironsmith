@@ -1870,14 +1870,24 @@ pub(crate) fn commander_tax_life_payment_amount(
         .saturating_mul(game.commander_cast_count(spell.id))
 }
 
-pub(crate) fn spell_can_be_cast_face_down(spell: &crate::object::Object) -> bool {
-    spell.abilities.iter().any(|ability| {
-        matches!(
-            &ability.kind,
-            crate::ability::AbilityKind::Static(static_ability)
-                if static_ability.turn_face_up_cost().is_some()
-        )
-    })
+/// The face-down cast kind (morph, megamorph, disguise) `spell` may be cast
+/// with (CR 702.37a, 702.168a).
+///
+/// In hidden-information matches the face-down cast command carries the kind
+/// publicly and every peer records it before replaying the command
+/// ([`GameState::set_hidden_face_down_cast_claim`]); that claim wins, so peers
+/// that hold only a hidden-card placeholder agree with the caster. Peers
+/// holding a placeholder check the claim against the card once it is opened.
+pub fn face_down_cast_kind(
+    game: &GameState,
+    spell: &crate::object::Object,
+) -> Option<crate::game_state::FaceDownCastKind> {
+    game.hidden_face_down_cast_claim(spell.id)
+        .or_else(|| crate::game_state::FaceDownCastKind::of_abilities(&spell.abilities))
+}
+
+pub(crate) fn spell_can_be_cast_face_down(game: &GameState, spell: &crate::object::Object) -> bool {
+    face_down_cast_kind(game, spell).is_some()
 }
 
 /// Resolve the mana cost for a spell cast from a specific zone and method.
@@ -2715,10 +2725,10 @@ pub(crate) fn can_cast_spell_with_context(
     }
     let cast_view = match casting_method {
         CastingMethod::FaceDown => {
-            if !spell_can_be_cast_face_down(spell) {
+            if !spell_can_be_cast_face_down(game, spell) {
                 return false;
             }
-            Some(spell_view_for_face_down_cast(spell))
+            Some(spell_view_for_face_down_cast(game, spell))
         }
         CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { .. } => {
             match spell_view_for_split_other_half_cast(game, spell) {
@@ -3374,10 +3384,11 @@ pub(crate) fn spell_view_for_disturb_cast(
 }
 
 pub(crate) fn spell_view_for_face_down_cast(
+    game: &GameState,
     spell: &crate::object::Object,
 ) -> crate::object::Object {
     let mut view = spell.clone();
-    let disguise_ward = face_down_cast_uses_disguise(spell);
+    let disguise_ward = face_down_cast_uses_disguise(game, spell);
     view.apply_face_down_cast_overlay_with_disguise_ward(disguise_ward);
     view
 }
@@ -3386,12 +3397,12 @@ pub(crate) fn spell_view_for_face_down_cast(
 /// spell has ward {2} (CR 702.168a).
 ///
 /// The caster decides this when choosing the casting permission. In peer
-/// matches the cast command references the spell, so its identity is opened
-/// on every peer before the command is replayed, and every peer reaches the
-/// same answer here. The result is then stored publicly on the face-down
-/// state (`FaceDownCastState::disguise_ward`) and never re-derived.
-pub fn face_down_cast_uses_disguise(spell: &crate::object::Object) -> bool {
-    spell.has_disguise_ability()
+/// matches the face-down cast command carries the kind publicly (the card
+/// itself stays hidden), so every peer reaches the same answer here from
+/// [`face_down_cast_kind`]. The result is then stored publicly on the
+/// face-down state (`FaceDownCastState::disguise_ward`) and never re-derived.
+pub fn face_down_cast_uses_disguise(game: &GameState, spell: &crate::object::Object) -> bool {
+    face_down_cast_kind(game, spell) == Some(crate::game_state::FaceDownCastKind::Disguise)
 }
 
 pub(crate) fn linked_face_definition(

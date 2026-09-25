@@ -720,6 +720,10 @@ impl GameState {
         // control of planar-card abilities before CR 800.4a removes objects.
         self.prepare_planechase_player_departure(player);
 
+        // Hidden cards the player must still disclose at the end of the match
+        // (hand, face-down spells and permanents) are snapshotted first.
+        self.note_departing_hidden_cards(player);
+
         // CR 800.4a first removes every object the player owns. This is not a
         // zone change, so remove_object deliberately emits no zone-change event.
         let owned_objects = self

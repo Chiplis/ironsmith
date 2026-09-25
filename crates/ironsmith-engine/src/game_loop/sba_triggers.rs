@@ -355,19 +355,67 @@ fn resolve_pending_hidden_draw_reveals(
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,
 ) -> bool {
-    while let Some((player, card)) = game.next_pending_hidden_draw_reveal() {
-        let Some(revealed) = game.reveal_private_hidden_cards_publicly(
+    // "Reveal the first card you draw each turn" reveals deferred from a
+    // draw step come first: a card they open publicly no longer needs its own
+    // Miracle question below.
+    while let Some(pending) = game.next_pending_hidden_automatic_draw_reveal() {
+        let revealed = if game.hidden_identity_is_private(pending.card) {
+            let Some(revealed) = game.reveal_private_hidden_cards_publicly(
+                decision_maker,
+                pending.player,
+                pending.source,
+                &[pending.card],
+                crate::effects::cards::hidden_automatic_draw_reveal_description(pending.optional),
+                pending.optional,
+            ) else {
+                return true;
+            };
+            revealed.contains(&pending.card)
+        } else {
+            true
+        };
+        game.finish_pending_hidden_automatic_draw_reveal(&pending);
+        if !revealed {
+            continue;
+        }
+        game.refresh_continuous_state();
+        let candidate =
+            crate::effects::cards::automatic_draw_reveal_candidate_for_pending(game, &pending);
+        let provenance = game
+            .provenance_graph_mut()
+            .alloc_root_event(crate::events::EventKind::CardRevealed);
+        let event = crate::effects::cards::emit_automatic_draw_reveal_event(
+            game,
             decision_maker,
-            player,
-            card,
-            &[card],
-            "You may reveal the first card you drew this turn as you draw it (Miracle)",
-            true,
-        ) else {
-            return true;
+            &candidate,
+            provenance,
+        );
+        game.record_turn_history_event(&event);
+        for trigger in crate::triggers::check_triggers(game, &event) {
+            trigger_queue.add(trigger);
+        }
+    }
+
+    while let Some((player, card)) = game.next_pending_hidden_draw_reveal() {
+        // Already opened publicly by another owner-answered reveal of this
+        // draw: re-check its draw triggers without asking again.
+        let revealed = if game.hidden_identity_is_private(card) {
+            let Some(revealed) = game.reveal_private_hidden_cards_publicly(
+                decision_maker,
+                player,
+                card,
+                &[card],
+                "You may reveal the first card you drew this turn as you draw it (Miracle)",
+                true,
+            ) else {
+                return true;
+            };
+            revealed.contains(&card)
+        } else {
+            game.is_publicly_revealed_hidden_card(card)
         };
         game.finish_pending_hidden_draw_reveal(card);
-        if !revealed.contains(&card) {
+        if !revealed {
             continue;
         }
         let provenance = game

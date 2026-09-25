@@ -3595,6 +3595,12 @@
         {
             target = format!("each of {target}");
         }
+        if let Some(phrase) = describe_for_each_effect_metric(&put_counters.amount) {
+            return format!(
+                "Put {} on {target} for each {phrase}",
+                describe_put_counter_phrase(&Value::Fixed(1), put_counters.counter_type),
+            );
+        }
         if let Value::Count(filter) = &put_counters.amount
             && matches!(
                 put_counters.counter_type,
@@ -4659,6 +4665,12 @@
         {
             return format!(
                 "Add {mana_text} for each counter removed this way{}",
+                describe_add_mana_destination_suffix(&add_scaled.player)
+            );
+        }
+        if let Some(phrase) = describe_for_each_effect_metric(&add_scaled.amount) {
+            return format!(
+                "Add {mana_text} for each {phrase}{}",
                 describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }

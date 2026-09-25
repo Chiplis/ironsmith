@@ -460,7 +460,7 @@ pub(super) fn may_have_multiple_casting_methods(
         return false;
     };
 
-    if crate::decision::spell_can_be_cast_face_down(spell)
+    if crate::decision::spell_can_be_cast_face_down(game, spell)
         || crate::decision::spell_has_castable_linked_other_half(game, spell)
         || spell.has_fuse
         || spell

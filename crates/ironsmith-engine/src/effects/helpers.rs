@@ -1924,6 +1924,21 @@ pub fn resolve_objects_for_effect_with_choice_description(
         // because of the local filter result (see
         // `game_state::hidden_hand_choices`).
         let hidden_filter_ctx = ctx.filter_context(game);
+        // A random pick among qualifying hand cards: every peer must draw it
+        // from the same set, before any bound or early exit reads its size.
+        if count.is_random() && filter.zone == Some(crate::zone::Zone::Hand) {
+            let hand_ids = game.all_hand_card_ids();
+            if !game.settle_hidden_hand_random_pool(
+                &mut *ctx.decision_maker,
+                ctx.source,
+                filter,
+                &hidden_filter_ctx,
+                &hand_ids,
+                &mut candidates,
+            ) {
+                return Ok(Vec::new());
+            }
+        }
         let hidden_hand_choice = !count.is_random()
             && game.hidden_hand_choice_for_filter(filter, &hidden_filter_ctx);
         if hidden_hand_choice {
@@ -2097,6 +2112,16 @@ pub fn resolve_objects_for_effect_with_choice_description(
             let chosen = normalize_objects_for_count(chosen, &candidates, 0, max);
             game.record_hidden_identity_obligations(
                 &chosen,
+                filter,
+                &hidden_filter_ctx,
+                &description,
+            );
+            // Fewer than the rules require: the owner claims the other
+            // offered hidden cards do not match, checked once each is opened.
+            game.record_hidden_shortfall_obligations(
+                &candidates,
+                &chosen,
+                min,
                 filter,
                 &hidden_filter_ctx,
                 &description,

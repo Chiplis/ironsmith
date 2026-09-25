@@ -1736,6 +1736,161 @@ impl WasmGame {
         Ok(())
     }
 
+    /// The hidden cards `player_index` must open publicly at the end of the
+    /// match (end-of-match disclosure), as `public_open` requirements.
+    ///
+    /// Every hidden-tracked card the player owns in its hand, and every
+    /// face-down spell or permanent it owns (including those snapshotted when
+    /// it left the game, CR 800.4a): the cards that may carry pending
+    /// deferred claims (face-down cast kinds, "did not match" answers to
+    /// forced filtered reveals). Libraries are never included. The set is
+    /// derived from public facts only, so it is identical on every peer; the
+    /// owner's engine additionally fills in the card names it knows.
+    #[wasm_bindgen(js_name = endOfMatchDisclosureRequirements)]
+    pub fn end_of_match_disclosure_requirements(
+        &self,
+        player_index: u8,
+    ) -> Result<JsValue, JsValue> {
+        let owner = PlayerId::from_index(player_index);
+        let requirements: Vec<CryptoRequirementView> = self
+            .game
+            .end_of_match_disclosure_cards(owner)
+            .into_iter()
+            .map(|card| {
+                let audit_card = HiddenAuditCard {
+                    object_id: card.object_id,
+                    owner: card.info.owner,
+                    zone: card.zone,
+                    slot: card.info.slot,
+                    commitment: card.info.commitment.clone(),
+                    public_slot: card.info.public_slot,
+                    public_commitment: card.info.public_commitment.clone(),
+                    card: card.known_name,
+                    face_down: card.face_down,
+                    foretold: false,
+                };
+                CryptoRequirementView::hidden_open(
+                    "public_open",
+                    &audit_card,
+                    None,
+                    "public",
+                    "end-of-match disclosure",
+                )
+            })
+            .collect();
+        serde_wasm_bindgen::to_value(&requirements).map_err(|e| {
+            JsValue::from_str(&format!("failed to serialize disclosure requirements: {e}"))
+        })
+    }
+
+    /// Verify a player's end-of-match disclosure against this engine's
+    /// commitments and obligation ledger. The openings' deck-manifest and
+    /// ziffle proofs are verified by the caller first; this binds each
+    /// opening to the hidden card it must open and checks that card's
+    /// pending claims. Does not change state.
+    ///
+    /// Returns `{ missing: [objectId], violations: [message] }`: required
+    /// cards no opening covers, and openings whose card contradicts a claim.
+    #[wasm_bindgen(js_name = verifyEndOfMatchDisclosure)]
+    pub fn verify_end_of_match_disclosure(
+        &mut self,
+        player_index: u8,
+        openings: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct DisclosedOpening {
+            owner: u8,
+            slot: Option<u16>,
+            #[serde(default)]
+            commitment: Option<String>,
+            #[serde(default)]
+            position: Option<u16>,
+            #[serde(default)]
+            position_commitment: Option<String>,
+            card: String,
+        }
+        #[derive(Serialize)]
+        struct DisclosureVerification {
+            missing: Vec<u64>,
+            violations: Vec<String>,
+        }
+        let openings: Vec<DisclosedOpening> = serde_wasm_bindgen::from_value(openings)
+            .map_err(|e| JsValue::from_str(&format!("invalid disclosure openings: {e}")))?;
+        let owner = PlayerId::from_index(player_index);
+        let mut result = DisclosureVerification {
+            missing: Vec::new(),
+            violations: Vec::new(),
+        };
+        if let Some(foreign) = openings.iter().find(|opening| opening.owner != player_index) {
+            result.violations.push(format!(
+                "end-of-match disclosure of player {} opens a card owned by player {}",
+                player_index + 1,
+                foreign.owner + 1
+            ));
+        }
+        for card in self.game.end_of_match_disclosure_cards(owner) {
+            let info = &card.info;
+            let matches_card = |opening: &&DisclosedOpening| {
+                let slot_match = opening.slot == Some(info.slot)
+                    && opening
+                        .commitment
+                        .as_deref()
+                        .is_none_or(|commitment| commitment == info.commitment);
+                let position_match = opening.position == Some(info.slot)
+                    && opening.position_commitment.as_deref() == Some(info.commitment.as_str());
+                let public_match = info.public_slot.is_some()
+                    && opening.position == info.public_slot
+                    && opening.position_commitment.is_some()
+                    && opening.position_commitment.as_deref() == info.public_commitment.as_deref();
+                opening.owner == player_index && (slot_match || position_match || public_match)
+            };
+            let Some(opening) = openings.iter().find(matches_card) else {
+                result.missing.push(card.object_id.0);
+                continue;
+            };
+            self.ensure_card_definitions_loaded([opening.card.as_str()]);
+            let Some(definition) = self.find_card_definition(&opening.card).cloned() else {
+                result
+                    .violations
+                    .push(format!("end-of-match disclosure names an unknown card: {}", opening.card));
+                continue;
+            };
+            if let Some(violation) = self
+                .game
+                .end_of_match_disclosure_violation(card.object_id, &definition)
+            {
+                result.violations.push(violation);
+            }
+        }
+        serde_wasm_bindgen::to_value(&result)
+            .map_err(|e| JsValue::from_str(&format!("failed to serialize disclosure result: {e}")))
+    }
+
+    /// Whether `object_id` is tracked by the mental-poker layer, who owns it,
+    /// and whether this engine can name it (opened here, privately or
+    /// publicly). Used to check that a forced public reveal or an
+    /// end-of-match disclosure opened every card it had to.
+    #[wasm_bindgen(js_name = hiddenCardOpenState)]
+    pub fn hidden_card_open_state(&self, object_id: u64) -> Result<JsValue, JsValue> {
+        let id = ObjectId::from_raw(object_id);
+        let info = self.game.hidden_card_info(id);
+        #[derive(Serialize)]
+        struct HiddenCardOpenState {
+            tracked: bool,
+            owner: Option<u8>,
+            open: bool,
+        }
+        let state = HiddenCardOpenState {
+            tracked: info.is_some(),
+            owner: info.map(|info| info.owner.index() as u8),
+            open: info.is_some()
+                && self.game.object(id).is_some_and(|object| object.card.is_some()),
+        };
+        serde_wasm_bindgen::to_value(&state)
+            .map_err(|e| JsValue::from_str(&format!("failed to serialize hidden card state: {e}")))
+    }
+
     #[wasm_bindgen(js_name = exportHiddenCardOpening)]
     pub fn export_hidden_card_opening(&self, object_id: u64) -> Result<JsValue, JsValue> {
         let opening = self.hidden_card_opening_export(ObjectId::from_raw(object_id))?;
@@ -2033,7 +2188,8 @@ impl WasmGame {
             object_id: object_id.0,
             owner: info.owner.index() as u8,
             slot: info.slot,
-            card: object.name.to_string(),
+            // A face-down object's printed name, not the face-down overlay's.
+            card: object.identity_name().to_string(),
             commitment: info.commitment.clone(),
             public_slot: info.public_slot,
             public_commitment: info.public_commitment.clone(),
@@ -3477,6 +3633,23 @@ impl WasmGame {
         let command: UiCommand = serde_wasm_bindgen::from_value(command)
             .map_err(|e| JsValue::from_str(&format!("invalid command payload: {e}")))?;
         let command_decode_ms = command_decode_started_at.elapsed_ms();
+        // A face-down cast of a hidden hand card carries its public cast kind
+        // (morph, megamorph, disguise). Record it before the command is
+        // replayed so every peer, including those holding only a placeholder
+        // that is never opened for the cast, agrees the cast is legal and on
+        // disguise's ward; placeholder holders check it once the card opens.
+        if let UiCommand::PriorityAction {
+            action_ref: Some(action_ref),
+            ..
+        } = &command
+            && let Some((spell, kind)) = face_down_cast_claim_for_action_ref(action_ref)
+            && self
+                .game
+                .object(spell)
+                .is_some_and(|object| object.zone == Zone::Hand)
+        {
+            self.game.set_hidden_face_down_cast_claim(spell, kind);
+        }
         self.clear_active_resolving_stack_object();
         self.last_crypto_requirements.clear();
         self.pending_crypto_audit_before = Some(self.capture_crypto_audit_state());

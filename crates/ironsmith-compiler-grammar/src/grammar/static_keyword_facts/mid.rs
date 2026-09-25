@@ -77,6 +77,7 @@ pub enum KnownSpellCostConditionFact {
     TotalCreatureCardsInAllGraveyardsOrMore(u32),
     OpponentCastSpellsThisTurnOrMore(u32),
     OpponentDrewCardsThisTurnOrMore(u32),
+    OpponentHadCardsPutIntoGraveyardThisTurnOrMore(u32),
     YouWereDealtDamageByCreaturesThisTurnOrMore(u32),
     AssassinOrCommanderDealtCombatDamage,
 }
@@ -829,6 +830,21 @@ fn parse_remaining_threshold_condition(words: &[&str]) -> Option<KnownSpellCostC
             &[&["cards", "this", "turn"], &["card", "this", "turn"]],
         ) {
             return Some(KnownSpellCostConditionFact::OpponentDrewCardsThisTurnOrMore(count));
+        }
+    }
+    if starts_with_any(words, &[&["an", "opponent", "had"], &["opponent", "had"]]) {
+        let start = if starts_with(words, &["an"]) { 3 } else { 2 };
+        let (count, rest) = at_least_quantity(words, start)?;
+        if exact_any(
+            words.get(rest..)?,
+            &[
+                &["cards", "put", "into", "their", "graveyard", "from", "anywhere", "this", "turn"],
+                &["card", "put", "into", "their", "graveyard", "from", "anywhere", "this", "turn"],
+            ],
+        ) {
+            return Some(
+                KnownSpellCostConditionFact::OpponentHadCardsPutIntoGraveyardThisTurnOrMore(count),
+            );
         }
     }
     let damage_start = if starts_with(words, &["you", "have", "been", "dealt", "damage", "by"]) {

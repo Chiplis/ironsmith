@@ -476,6 +476,25 @@ struct SyncRulesState {
     current_turn_is_extra: bool,
     #[serde(default)]
     combat_phases_started_this_turn: u32,
+    /// Seats whose hidden draws open an owner reveal window (Miracle); fixed
+    /// at match setup from public inputs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    hidden_draw_reveal_players: Vec<u8>,
+    /// Hidden-tracked cards every peer opened through an owner-answered
+    /// public reveal.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    publicly_revealed_hidden_cards: Vec<u64>,
+    /// Unanswered draw reveal windows as `(player, card)`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pending_hidden_draw_reveals: Vec<(u8, u64)>,
+    /// Deferred "reveal the first card you draw" reveals of private cards as
+    /// `(player, card, source, optional)`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pending_hidden_automatic_draw_reveals: Vec<(u8, u64, u64, bool)>,
+    /// Combat damage each player was dealt by each commander (CR 903.10a),
+    /// as `(player, [(commander, damage)])`, sorted for a stable encoding.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    commander_damage: Vec<(u8, Vec<(u64, u32)>)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2184,6 +2203,52 @@ impl WasmGame {
             },
             current_turn_is_extra: self.game.turn_store.current_turn_is_extra,
             combat_phases_started_this_turn: self.game.turn_store.combat_phases_started_this_turn,
+            hidden_draw_reveal_players: self
+                .game
+                .hidden_draw_reveal_players()
+                .into_iter()
+                .map(|player| player.0)
+                .collect(),
+            publicly_revealed_hidden_cards: self
+                .game
+                .publicly_revealed_hidden_cards()
+                .into_iter()
+                .map(|id| id.0)
+                .collect(),
+            pending_hidden_draw_reveals: self
+                .game
+                .pending_hidden_draw_reveals()
+                .into_iter()
+                .map(|(player, card)| (player.0, card.0))
+                .collect(),
+            pending_hidden_automatic_draw_reveals: self
+                .game
+                .pending_hidden_automatic_draw_reveals()
+                .into_iter()
+                .map(|pending| {
+                    (
+                        pending.player.0,
+                        pending.card.0,
+                        pending.source.0,
+                        pending.optional,
+                    )
+                })
+                .collect(),
+            commander_damage: self
+                .game
+                .players
+                .iter()
+                .filter(|player| !player.commander_damage.is_empty())
+                .map(|player| {
+                    let mut damage: Vec<(u64, u32)> = player
+                        .commander_damage
+                        .iter()
+                        .map(|(commander, amount)| (commander.0, *amount))
+                        .collect();
+                    damage.sort_unstable();
+                    (player.id.0, damage)
+                })
+                .collect(),
         }
     }
 
@@ -2207,6 +2272,54 @@ impl WasmGame {
         self.game.turn_store.current_turn_is_extra = rules.current_turn_is_extra;
         self.game.turn_store.combat_phases_started_this_turn =
             rules.combat_phases_started_this_turn;
+        self.game.set_hidden_draw_reveal_players(
+            rules
+                .hidden_draw_reveal_players
+                .iter()
+                .copied()
+                .map(PlayerId::from_index),
+        );
+        self.game.restore_publicly_revealed_hidden_cards(
+            rules
+                .publicly_revealed_hidden_cards
+                .iter()
+                .copied()
+                .map(ObjectId::from_raw),
+        );
+        self.game.restore_pending_hidden_draw_reveals(
+            rules
+                .pending_hidden_draw_reveals
+                .iter()
+                .map(|&(player, card)| (PlayerId::from_index(player), ObjectId::from_raw(card)))
+                .collect(),
+        );
+        self.game.restore_pending_hidden_automatic_draw_reveals(
+            rules
+                .pending_hidden_automatic_draw_reveals
+                .iter()
+                .map(|&(player, card, source, optional)| {
+                    ironsmith::game_state::PendingAutomaticDrawReveal {
+                        player: PlayerId::from_index(player),
+                        card: ObjectId::from_raw(card),
+                        source: ObjectId::from_raw(source),
+                        optional,
+                    }
+                })
+                .collect(),
+        );
+        for player in &mut self.game.players {
+            player.commander_damage = rules
+                .commander_damage
+                .iter()
+                .find(|(seat, _)| *seat == player.id.0)
+                .map(|(_, damage)| {
+                    damage
+                        .iter()
+                        .map(|&(commander, amount)| (ObjectId::from_raw(commander), amount))
+                        .collect()
+                })
+                .unwrap_or_default();
+        }
     }
 
     fn public_audit_exile_ids(&self) -> Vec<ObjectId> {

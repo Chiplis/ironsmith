@@ -44,6 +44,9 @@ pub enum TargetRestrictionEnvelope {
         full_source_tokens: Range<usize>,
         descriptor_tokens: Range<usize>,
     },
+    /// "spells or abilities your opponents control" (`opponents`) or
+    /// "spells or abilities you control".
+    ControlledSpellsOrAbilities { opponents: bool },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -181,8 +184,21 @@ pub fn parse_target_restriction_envelope_tokens(
 ) -> Option<TargetRestrictionEnvelope> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
-    if words.len() < 6 || !prefix(&words, &["be", "the", "target", "of"]) {
+    if words.len() < 6
+        || !(prefix(&words, &["be", "the", "target", "of"])
+            || prefix(&words, &["be", "the", "targets", "of"]))
+    {
         return None;
+    }
+    if words.get(4..7) == Some(&["spells", "or", "abilities"][..]) {
+        let opponents = match words.get(7..) {
+            Some(["your", "opponents", "control"]) => Some(true),
+            Some(["you", "control"]) => Some(false),
+            _ => None,
+        };
+        if let Some(opponents) = opponents {
+            return Some(TargetRestrictionEnvelope::ControlledSpellsOrAbilities { opponents });
+        }
     }
 
     if let Some(marker) = primitives::parse_word_sequence_span(
