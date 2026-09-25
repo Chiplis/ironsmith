@@ -221,6 +221,12 @@ fn lowering_reference_frame(frame: &ReferenceFrame) -> ReferenceEnv {
     ReferenceEnv::from_frame(frame)
 }
 
+/// A mode that merely leaves an outer antecedent in place does not export a
+/// shared result.
+fn saved_mode_tag_is_ambient(tag: &TagKey) -> bool {
+    tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+}
+
 fn next_reference_tag(id_gen: &mut IdGenContext, prefix: &str) -> TagKey {
     let tag = if matches!(prefix, "exiled" | "looked" | "chosen" | "revealed") {
         format!("__sentence_helper_{prefix}_l0_s0_e{}", id_gen.next_tag_id)
@@ -2182,11 +2188,22 @@ fn advance_reference_frame_for_effect(
             // each in an isolated frame so one mode's bindings don't leak into
             // the next or into following effects.
             let saved = frame.clone();
+            let mut mode_objects = Vec::with_capacity(modes.len());
             for mode in modes {
                 let mut mode_frame = saved.clone();
                 advance_reference_frames(&mode.effects, id_gen, &mut mode_frame)?;
+                mode_objects.push(mode_frame.last_object_tag.clone());
             }
             *frame = saved;
+            // Every mode exporting the same object tag ("choose a creature you
+            // control or reveal a creature card") names one object whichever
+            // mode is chosen.
+            if let Some(Some(shared)) = mode_objects.first()
+                && mode_objects.iter().all(|tag| tag.as_ref() == Some(shared))
+                && !saved_mode_tag_is_ambient(shared)
+            {
+                frame.last_object_tag = Some(shared.clone());
+            }
             // Counter alternatives on the source all name the same fixed
             // object. Export that identity, not a mode-local result tag that
             // is absent if the enclosing optional action is declined.

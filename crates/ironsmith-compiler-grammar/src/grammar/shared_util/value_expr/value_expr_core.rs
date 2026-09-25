@@ -155,6 +155,28 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     {
         return Some((Value::EventValue(EventValueSpec::Amount), *used));
     }
+    // The object an additional cost chose or revealed ("the revealed card's
+    // power", "the power of the creature you chose or the card you
+    // revealed"); it resolves through the spell's additional-cost export.
+    if let Some(used) = prefix_len(
+        words,
+        &[
+            &["the", "revealed", "cards", "power"],
+            &["the", "revealed", "card's", "power"],
+            &[
+                "the", "power", "of", "the", "creature", "you", "chose", "or", "the", "card",
+                "you", "revealed",
+            ],
+            &["the", "power", "of", "the", "chosen", "creature", "or", "card"],
+        ],
+    ) {
+        return Some((
+            Value::PowerOf(Box::new(ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::AdditionalCostObject.bind().into(),
+            ))),
+            used,
+        ));
+    }
     if let Some(used) = prefix_len(
         words,
         &[

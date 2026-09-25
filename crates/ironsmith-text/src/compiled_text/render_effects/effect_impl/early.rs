@@ -2784,6 +2784,25 @@
                 );
             }
 
+            // The amount names some other object's power (an additional
+            // cost's revealed or chosen card), not the damage source's.
+            if let Value::PowerOf(spec) | Value::ToughnessOf(spec) = &deal_damage.amount
+                && matches!(spec.base(), ChooseSpec::Tagged(tag)
+                    if tag.as_str().starts_with("__sentence_helper_revealed")
+                        || tag.as_str() == "additional_cost_chosen_object")
+                && !matches!(with_source.source.base(), ChooseSpec::Tagged(source_tag)
+                    if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag == source_tag))
+            {
+                let verb = if choose_spec_is_plural(&with_source.source) {
+                    "deal"
+                } else {
+                    "deals"
+                };
+                return format!(
+                    "{subject} {verb} damage equal to {} to {target}",
+                    describe_value(&deal_damage.amount)
+                );
+            }
             if let Value::PowerOf(_) | Value::ToughnessOf(_) = &deal_damage.amount {
                 let stat = if matches!(&deal_damage.amount, Value::ToughnessOf(_)) {
                     "toughness"

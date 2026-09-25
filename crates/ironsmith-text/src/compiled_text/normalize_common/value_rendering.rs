@@ -5923,6 +5923,17 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::PowerOf(spec) => {
             if let Some(kind) = spec.sacrificed_object_kind() {
                 format!("the sacrificed {}'s power", kind.noun())
+            } else if let ChooseSpec::Tagged(tag) = spec.base()
+                && tag.as_str() == "additional_cost_chosen_object"
+            {
+                // A "choose a creature you control or reveal a creature card"
+                // additional cost's object, whichever option was paid.
+                "the power of the creature you chose or the card you revealed".to_string()
+            } else if let ChooseSpec::Tagged(tag) = spec.base()
+                && (tag.as_str().starts_with("__sentence_helper_revealed")
+                    || tag.as_str().starts_with("revealed_"))
+            {
+                "the revealed card's power".to_string()
             } else if spec.source_reference_surface().is_some() {
                 format!("{} power", describe_possessive_choose_spec(spec))
             } else if let ChooseSpec::Tagged(tag) = spec.base()

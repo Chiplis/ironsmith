@@ -113,7 +113,7 @@ pub(super) fn parse_additional_cost_choice(
     let Some(options) = parse_additional_cost_choice_options_lexed(effect_tokens)? else {
         return Ok(None);
     };
-    let options = options
+    let mut options = options
         .into_iter()
         .map(
             |option| crate::model::compiler_semantic::AdditionalCostChoiceOptionAst {
@@ -121,8 +121,49 @@ pub(super) fn parse_additional_cost_choice(
                 effects: option.effects,
             },
         )
-        .collect();
+        .collect::<Vec<_>>();
+    unify_additional_cost_choice_object_tags(&mut options);
     Ok(ast(LineAst::AdditionalCostChoice { options }))
+}
+
+/// "choose a creature you control or reveal a creature card from your hand":
+/// whichever option is paid, later text names its object with one noun ("the
+/// creature you chose or the card you revealed"), so every object-choosing
+/// option exports the same tag.
+fn unify_additional_cost_choice_object_tags(
+    options: &mut [crate::model::compiler_semantic::AdditionalCostChoiceOptionAst],
+) {
+    let mut branches = options.iter_mut().map(|option| &mut option.effects).collect::<Vec<_>>();
+    unify_object_choice_branch_tags(&mut branches);
+}
+
+/// Every branch that starts by choosing an object exports one shared tag.
+fn unify_object_choice_branch_tags(branches: &mut [&mut Vec<EffectAst>]) {
+    use crate::cards::builders::ObjectChoiceEffectAst;
+    use ironsmith_core::tag::TagKeyWalk as _;
+    let chosen_tags = branches
+        .iter()
+        .map(|effects| match effects.first() {
+            Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })) => {
+                Some(tag.key.clone())
+            }
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>();
+    let Some(chosen_tags) = chosen_tags else {
+        return;
+    };
+    let shared: crate::cards::builders::TagKey =
+        crate::tag::declared_key("additional_cost_chosen_object").into();
+    for (effects, old) in branches.iter_mut().zip(chosen_tags) {
+        for effect in effects.iter_mut() {
+            effect.map_tag_keys(&mut |key| {
+                if *key == old {
+                    *key = shared.clone();
+                }
+            });
+        }
+    }
 }
 
 pub(super) fn parse_additional_cost(
@@ -225,6 +266,15 @@ pub(super) fn parse_additional_cost(
     } else {
         parse_effect_sentences_lexed(effect_tokens)?
     };
+    let mut effects = effects;
+    if let [EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf {
+        modes,
+        ..
+    })] = effects.as_mut_slice()
+    {
+        let mut branches = modes.iter_mut().map(|mode| &mut mode.effects).collect::<Vec<_>>();
+        unify_object_choice_branch_tags(&mut branches);
+    }
     Ok(ast(LineAst::AdditionalCost { effects }))
 }
 
