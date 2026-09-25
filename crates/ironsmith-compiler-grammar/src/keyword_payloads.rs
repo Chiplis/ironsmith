@@ -133,7 +133,10 @@ pub(super) fn parse_additional_cost_choice(
 fn unify_additional_cost_choice_object_tags(
     options: &mut [crate::model::compiler_semantic::AdditionalCostChoiceOptionAst],
 ) {
-    let mut branches = options.iter_mut().map(|option| &mut option.effects).collect::<Vec<_>>();
+    let mut branches = options
+        .iter_mut()
+        .map(|option| &mut option.effects)
+        .collect::<Vec<_>>();
     unify_object_choice_branch_tags(&mut branches);
 }
 
@@ -144,9 +147,9 @@ fn unify_object_choice_branch_tags(branches: &mut [&mut Vec<EffectAst>]) {
     let chosen_tags = branches
         .iter()
         .map(|effects| match effects.first() {
-            Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })) => {
-                Some(tag.key.clone())
-            }
+            Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                tag, ..
+            })) => Some(tag.key.clone()),
             _ => None,
         })
         .collect::<Option<Vec<_>>>();
@@ -267,12 +270,17 @@ pub(super) fn parse_additional_cost(
         parse_effect_sentences_lexed(effect_tokens)?
     };
     let mut effects = effects;
-    if let [EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf {
-        modes,
-        ..
-    })] = effects.as_mut_slice()
+    if let [
+        EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf {
+            modes,
+            ..
+        }),
+    ] = effects.as_mut_slice()
     {
-        let mut branches = modes.iter_mut().map(|mode| &mut mode.effects).collect::<Vec<_>>();
+        let mut branches = modes
+            .iter_mut()
+            .map(|mode| &mut mode.effects)
+            .collect::<Vec<_>>();
         unify_object_choice_branch_tags(&mut branches);
     }
     Ok(ast(LineAst::AdditionalCost { effects }))

@@ -167,12 +167,16 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
                 "the", "power", "of", "the", "creature", "you", "chose", "or", "the", "card",
                 "you", "revealed",
             ],
-            &["the", "power", "of", "the", "chosen", "creature", "or", "card"],
+            &[
+                "the", "power", "of", "the", "chosen", "creature", "or", "card",
+            ],
         ],
     ) {
         return Some((
             Value::PowerOf(Box::new(ChooseSpec::Tagged(
-                crate::tag::CompilerReferenceTag::AdditionalCostObject.bind().into(),
+                crate::tag::CompilerReferenceTag::AdditionalCostObject
+                    .bind()
+                    .into(),
             ))),
             used,
         ));

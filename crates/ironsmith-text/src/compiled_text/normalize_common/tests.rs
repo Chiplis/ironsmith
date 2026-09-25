@@ -4847,3 +4847,16 @@ fn normalize_recent_regression_surfaces() {
         "You may repeat this process any number of times."
     );
 }
+
+#[test]
+fn for_each_named_graveyard_filter_keeps_zone_scope() {
+    let filter = ObjectFilter::default()
+        .named("Undead Servant")
+        .in_zone(Zone::Graveyard)
+        .owned_by(PlayerFilter::You);
+
+    assert_eq!(
+        describe_for_each_count_filter(&filter),
+        "card named Undead Servant in your graveyard"
+    );
+}

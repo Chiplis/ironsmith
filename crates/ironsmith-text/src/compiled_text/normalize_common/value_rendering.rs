@@ -1315,6 +1315,27 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         return subject;
     }
 
+    // ObjectFilter::description() returns immediately after rendering a named
+    // object, which can hide a structured graveyard zone/owner suffix.
+    // Preserve that scope for for-each counts such as
+    // "for each card named Undead Servant in your graveyard."
+    if filter.zone == Some(Zone::Graveyard)
+        && filter.name.is_some()
+        && let Some(owner) = filter.owner.as_ref()
+    {
+        let mut unscoped = filter.clone();
+        unscoped.zone = None;
+        unscoped.owner = None;
+        unscoped.single_graveyard = false;
+        unscoped.set_explicit_card_noun(true);
+
+        let subject = strip_indefinite_article(&unscoped.description())
+            .trim()
+            .to_string();
+
+        return format!("{subject} in {}", describe_card_type_graveyard_scope(owner));
+    }
+
     let tagged_this_way_action = describe_tagged_this_way_action(filter);
     let mut bare = filter.clone();
     if tagged_this_way_action
