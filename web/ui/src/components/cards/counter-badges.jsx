@@ -133,12 +133,19 @@ export function buildCounterBadge(counter) {
   if (!rawKind || !Number.isFinite(amount) || amount <= 0) return null;
 
   const powerToughnessLabel = counterDisplayLabel(rawKind);
+  const normalizedKind = rawKind.toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
+  const variant = normalizedKind === "loyalty"
+    ? "loyalty"
+    : powerToughnessLabel
+      ? "power-toughness"
+      : "standard";
   if (powerToughnessLabel === "+1/+1") {
     return {
       amount,
       fullLabel: `${amount} +1/+1 counter${amount === 1 ? "" : "s"}`,
       displayLabel: "+1/+1",
       shortLabel: "+1",
+      variant,
       palette: counterPalette(rawKind),
       icon: counterSymbolUrl(rawKind),
     };
@@ -149,6 +156,7 @@ export function buildCounterBadge(counter) {
       fullLabel: `${amount} -1/-1 counter${amount === 1 ? "" : "s"}`,
       displayLabel: "-1/-1",
       shortLabel: "-1",
+      variant,
       palette: counterPalette(rawKind),
       icon: counterSymbolUrl(rawKind),
     };
@@ -160,6 +168,7 @@ export function buildCounterBadge(counter) {
     fullLabel: `${amount} ${displayLabel.toLowerCase()} counter${amount === 1 ? "" : "s"}`,
     displayLabel,
     shortLabel: powerToughnessLabel || abbreviateCounterKind(rawKind),
+    variant,
     palette: counterPalette(displayLabel),
     icon: counterSymbolUrl(rawKind),
   };
@@ -168,10 +177,15 @@ export function buildCounterBadge(counter) {
 export function BattlefieldCounterBadge({ badge }) {
   const ui = useUiText();
   const amountLabel = badge.amount > 99 ? "99+" : String(badge.amount);
+  const icon = badge.icon ? (
+    <img className="battlefield-counter-icon" src={badge.icon} alt="" aria-hidden="true" />
+  ) : (
+    <span className="battlefield-counter-symbol" aria-hidden="true">◇</span>
+  );
 
   return (
     <span
-      className="battlefield-counter-chip"
+      className={`battlefield-counter-chip battlefield-counter-chip--${badge.variant || "standard"}`}
       title={ui(badge.fullLabel)}
       role="img"
       aria-label={ui(badge.fullLabel)}
@@ -181,11 +195,21 @@ export function BattlefieldCounterBadge({ badge }) {
         "--counter-stroke": badge.palette.stroke,
       }}
     >
-      <span className="battlefield-counter-amount">{ui(amountLabel)}</span>
-      {badge.icon ? (
-        <img className="battlefield-counter-icon" src={badge.icon} alt="" aria-hidden="true" />
+      {badge.variant === "loyalty" ? (
+        <>
+          {icon}
+          <span className="battlefield-counter-amount">{ui(amountLabel)}</span>
+        </>
+      ) : badge.variant === "power-toughness" ? (
+        <>
+          {icon}
+          <span className="battlefield-counter-amount">{ui(amountLabel)}</span>
+        </>
       ) : (
-        <span className="battlefield-counter-symbol" aria-hidden="true">◇</span>
+        <>
+          <span className="battlefield-counter-amount">{ui(amountLabel)}</span>
+          {icon}
+        </>
       )}
     </span>
   );
