@@ -1,4 +1,3 @@
-import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { manaPaymentActionMap } from "@/lib/mana-payment-actions";
 import { useCastTargeting, useDragSession } from "@/context/DragContext";
@@ -321,7 +320,6 @@ export default function FloatingCardPreview({
   pinnedObjectId = null,
   onRequestClose = null,
 }) {
-  const ui = useUiText();
   const previewSuppressed = useCardPreviewSuppressed();
   const disabled = externallyDisabled || previewSuppressed;
   const { state, dispatch, cancelDecision } = useGame();
@@ -550,11 +548,8 @@ export default function FloatingCardPreview({
   const stackPreview = renderedObjectId != null && getVisibleStackObjects(state).some((entry) =>
     [entry.id, entry.inspect_object_id].some((id) => id != null && String(id) === String(renderedObjectId))
   );
-  const zoneImagePreview = Boolean(renderedImageUrl && (
-    directZoneHover || (anchoredObjectId === renderedObjectId && anchoredCardPreview?.placement === "zone")
-  ));
   const visible = requestedObjectId != null && renderedObjectId === requestedObjectId
-    && (readyObjectId === renderedObjectId || zoneImagePreview);
+    && readyObjectId === renderedObjectId;
   const positionStyle = useMemo(
     () => {
       if (anchoredObjectId != null && renderedObjectId === anchoredObjectId) {
@@ -637,14 +632,6 @@ export default function FloatingCardPreview({
           onCardFrameReadyChange={onCardFrameReadyChange}
           interactiveActions={interactiveActions}
           onInteractiveAction={triggerInteractiveAction}
-        />
-      ) : null}
-      {visible && zoneImagePreview && readyObjectId !== renderedObjectId ? (
-        <img
-          src={renderedImageUrl}
-          alt={preparationName || ui("Card preview")}
-          referrerPolicy="no-referrer"
-          className="absolute inset-0 z-40 h-full w-full object-contain pointer-events-none"
         />
       ) : null}
     </aside>

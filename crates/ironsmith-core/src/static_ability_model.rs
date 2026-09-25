@@ -928,6 +928,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         filter: ObjectFilter,
         graveyard_owner: PlayerFilter,
         exclude_cycled: bool,
+        /// The card has a linked ability using "cards exiled with" its
+        /// source (CR 607.2a), so the replacement records that link.
+        #[cfg_attr(feature = "serde", serde(default))]
+        link_to_source: bool,
     },
     ExileWouldDieInstead {
         filter: ObjectFilter,
@@ -2393,10 +2397,12 @@ where
                 filter,
                 graveyard_owner,
                 exclude_cycled,
+                link_to_source,
             } => StaticAbilityPayload::ExileToExileInsteadOfGraveyard {
                 filter,
                 graveyard_owner,
                 exclude_cycled,
+                link_to_source,
             },
             StaticAbilityPayload::ExileWouldDieInstead {
                 filter,
@@ -6127,6 +6133,7 @@ impl<
                 filter,
                 graveyard_owner,
                 exclude_cycled,
+                link_to_source: false,
             },
         }
     }

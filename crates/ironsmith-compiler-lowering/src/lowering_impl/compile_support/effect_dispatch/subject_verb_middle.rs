@@ -298,7 +298,7 @@ pub(super) fn compile_target_only_action(
     };
     let player = subject_verb.subject.player;
     let role = subject_verb.subject.role;
-    let (mut spec, choices) =
+    let (mut spec, mut choices) =
         resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
     if matches!(spec.base(), ChooseSpec::Source) {
         return Ok((Vec::new(), choices));
@@ -315,11 +315,21 @@ pub(super) fn compile_target_only_action(
         };
     // Keep chooser-relative references ("they control", "their graveyard",
     // and so on) relative until the delegated chooser is concrete.
+    // The declared choice is the same target: rewrite it too, or it keeps the
+    // caster-context binding (e.g. the controller of an earlier tagged
+    // object) and the ability gains a second, unsatisfiable target.
     if let Some(chooser) = delegated_chooser.as_ref()
         && let Some(original_filter) = target_ast_object_filter(target)
-        && let Some(resolved_filter) = choose_spec_object_filter_mut(&mut spec)
     {
-        preserve_chooser_relative_player_filters(original_filter, resolved_filter, chooser);
+        let unrelativized = spec.clone();
+        if let Some(resolved_filter) = choose_spec_object_filter_mut(&mut spec) {
+            preserve_chooser_relative_player_filters(original_filter, resolved_filter, chooser);
+        }
+        for choice in &mut choices {
+            if *choice == unrelativized {
+                *choice = spec.clone();
+            }
+        }
     }
     let mut target_only = if *explicit_declaration {
         crate::effects::TargetOnlyEffect::explicit(spec.clone())

@@ -890,8 +890,12 @@ export default function HoverArtOverlay({
   // arrived yet has not looked anything up, and must keep waiting rather than
   // flash the printing behind a frame that is still being prepared.
   const artUnavailable = !imageUrl && Boolean(sourceImageUrl || artObjectName) && image.ready;
+  // A prepared frame is still held back until the object's details settle;
+  // until then the placeholder frame stands in for it, never a blank stage.
+  const detailsPending = Boolean(!isMiniatureFrame && game && detailsObjectIdKey && !details
+    && !sharedDetails?.ready && settledDetailsKey !== detailsObjectIdKey);
   const showLoadingFrame = isCardFrameMode && enableFramePreparation
-    && !artUnavailable && !generatedFrame && Boolean(artObjectName);
+    && !artUnavailable && (!generatedFrame || detailsPending) && Boolean(artObjectName);
   const preparedFrame = showLoadingFrame ? (imageUrl ? LOADING_CARD_FRAME_WITH_ART : LOADING_CARD_FRAME)
     : enableFramePreparation && !artUnavailable ? generatedFrame : originalFrame;
   const defaultTypography = useCardTypography(isCardFrameMode ? "" : imageUrl);
@@ -2378,7 +2382,7 @@ export default function HoverArtOverlay({
       <CardFrameStage
         assets={preparedFrame}
         showLoadingFrame={showLoadingFrame}
-        preparation={showLoadingFrame || (!isMiniatureFrame && game && detailsObjectIdKey && !details && !sharedDetails?.ready && settledDetailsKey !== detailsObjectIdKey) ? null : preparedFrame}
+        preparation={showLoadingFrame || detailsPending ? null : preparedFrame}
         onReadyChange={onCardFrameReadyChange}
         className="interactive-card-frame-stage absolute inset-0 z-30 pointer-events-auto"
         data-card-frame-tone={frameTone.tone}

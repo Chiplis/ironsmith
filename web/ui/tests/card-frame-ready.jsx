@@ -78,7 +78,7 @@ export default function Fixture() {
         ['art appears while initial card details load', {detailsDelay:900}],
         ['art appears while flavor text loads', {flavorDelay:900}],
         ['texture calculation starts during delay', {textureDelay:900}],
-        ['slow artwork decode stays hidden', {artDelay:900}],
+        ['slow artwork decode shows the placeholder frame', {artDelay:900}],
         ['art appears while fonts load', {fontDelay:900}],
         ['failed assets show a settled fallback', {fail:true}],
       ]) {
@@ -97,24 +97,19 @@ export default function Fixture() {
         if (delays.apiDelay || delays.detailsDelay || delays.flavorDelay || delays.textureDelay || delays.artDelay || delays.fontDelay) {
           await sleep(260);
           const stage = preview()?.querySelector('.interactive-card-frame-stage');
-          check(stage?.dataset.renderReady === 'false', `${label}: unfinished frame revealed`);
-          check(stage.inert, `${label}: unfinished frame accepts interaction`);
-          if (!delays.artDelay) {
-            check(visible(), `${label}: artwork blocked by frame preparation`);
-            check(preview().querySelector('.card-frame-art-preview'), `${label}: artwork missing`);
-          } else check(!visible(), `${label}: undecoded artwork revealed`);
+          check(stage?.dataset.renderReady === 'false', `${label}: unfinished frame reported ready`);
+          // While preparing, the placeholder frame carries the art and the
+          // live text; the bare art is never shown in its place.
+          check(visible(), `${label}: placeholder frame blocked by frame preparation`);
+          check(stage.getAttribute('aria-hidden') === 'false', `${label}: placeholder frame hidden`);
+          check(stage.querySelector('.interactive-card-frame__art'), `${label}: placeholder frame has no art box`);
+          check(!preview().querySelector('.card-frame-art-preview'), `${label}: bare artwork shown`);
         }
         await until(() => visible() && preview().querySelector('.interactive-card-frame-stage')?.dataset.renderReady === 'true');
         const elapsed = performance.now() - started, stage = preview().querySelector('.interactive-card-frame-stage');
         check(stage.dataset.renderReady === 'true' && stage.dataset.printingReady === 'true', `${label}: visible before readiness`);
         check(!stage.inert && !preview().inert, `${label}: ready card remains inert`);
-        const artwork = preview().querySelector('.card-frame-art-preview');
-        if (artwork) {
-          check(artwork.dataset.frameReady === 'true', `${label}: artwork did not dissolve`);
-          await sleep(280);
-          check(getComputedStyle(artwork).opacity === '0', `${label}: artwork remains visible`);
-          check(getComputedStyle(stage).opacity === '1', `${label}: frame did not finish fading`);
-        }
+        check(!preview().querySelector('.card-frame-art-preview'), `${label}: bare artwork shown`);
         check(elapsed >= 490, `${label}: hover delay shortened`);
         if (delays.textureDelay) {
           check(scenario.textureStarted - started < 400, 'Texture preparation started after hover delay');

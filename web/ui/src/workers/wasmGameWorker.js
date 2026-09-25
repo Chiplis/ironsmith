@@ -499,13 +499,15 @@ async function fetchCardSourceUncached(name) {
     return null;
   }
   previewCardSources.set(route, payload);
+  // A prepare card's spell face copies an existing card (Raise Dead,
+  // Lightning Bolt...), so only its creature face may claim a route here.
+  const faces = Array.isArray(payload?.group?.faces) ? payload.group.faces : [];
+  const claimedFaces = payload?.group?.layout === "prepare" ? faces.slice(0, 1) : faces;
   const sourceNames = [
     payload?.canonicalName,
     payload?.group?.name,
     payload?.group?.combinedName,
-    ...(Array.isArray(payload?.group?.faces)
-      ? payload.group.faces.map((face) => face?.name)
-      : []),
+    ...claimedFaces.map((face) => face?.name),
     ...(Array.isArray(payload?.aliases)
       ? payload.aliases.flatMap((alias) => [alias?.alias, alias?.canonical])
       : []),

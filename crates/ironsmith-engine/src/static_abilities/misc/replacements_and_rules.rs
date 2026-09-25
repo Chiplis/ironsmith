@@ -2665,6 +2665,9 @@ pub struct ExileToExileInsteadOfGraveyard {
     pub filter: ObjectFilter,
     pub graveyard_owner: PlayerFilter,
     pub exclude_cycled: bool,
+    /// Record the exiled card as exiled with the source (CR 607.2a), for a
+    /// card whose other ability uses "cards exiled with" it.
+    pub link_to_source: bool,
 }
 
 impl ExileToExileInsteadOfGraveyard {
@@ -2673,6 +2676,7 @@ impl ExileToExileInsteadOfGraveyard {
             filter,
             graveyard_owner,
             exclude_cycled: false,
+            link_to_source: false,
         }
     }
 
@@ -2681,6 +2685,7 @@ impl ExileToExileInsteadOfGraveyard {
             filter,
             graveyard_owner,
             exclude_cycled: true,
+            link_to_source: false,
         }
     }
 
@@ -2752,13 +2757,17 @@ impl StaticAbilityKind for ExileToExileInsteadOfGraveyard {
         if filter.owner.is_none() {
             filter.owner = Some(self.graveyard_owner.clone());
         }
-        // The card is exiled by this source, so linked abilities can find
-        // it as "exiled with" it (CR 607.2a).
+        // With a linked "cards exiled with" ability, the card is exiled by
+        // this source so that ability can find it (CR 607.2a).
         Some(ReplacementEffect::with_matcher(
             source,
             controller,
             WouldGoToGraveyardFromAnywhereMatcher::new(filter, self.exclude_cycled),
-            ReplacementAction::ExileWithSourceLink,
+            if self.link_to_source {
+                ReplacementAction::ExileWithSourceLink
+            } else {
+                ReplacementAction::ChangeDestination(Zone::Exile)
+            },
         ))
     }
 }

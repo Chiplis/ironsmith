@@ -5195,6 +5195,23 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                     source_description
                 );
             }
+            // "spells or abilities your opponents control": only the
+            // controller narrows the sources.
+            let mut uncontrolled = source_filter.clone();
+            let controller = uncontrolled.controller.take();
+            if uncontrolled == crate::target::ObjectFilter::default()
+                && let Some(controller) = controller
+            {
+                let who = match controller {
+                    crate::target::PlayerFilter::Opponent => "your opponents".to_string(),
+                    crate::target::PlayerFilter::You => "you".to_string(),
+                    other => describe_player_filter(&other),
+                };
+                return format!(
+                    "{} can't be the target of spells or abilities {who} control",
+                    filter.description()
+                );
+            }
             let source_description = describe_hexproof_from_filter(source_filter);
             format!(
                 "{} can't be the target of {} spells or abilities from {} sources",

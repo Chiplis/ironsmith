@@ -46,7 +46,12 @@ fn enters_with(sticker: Option<&str>) -> u32 {
     };
     let mut dm = SelectFirstDecisionMaker;
     let mut ctx = ironsmith::effects::EffectContext::new(goblin, alice, &mut dm);
-    for effect in triggered.effects.all_effects() {
+    // The enters event's object is the Goblin itself.
+    let snapshot = ironsmith::snapshot::ObjectSnapshot::from_object(game.object(goblin).unwrap(), &game);
+    ctx.tag_object(ironsmith::TagKey::from("triggering"), snapshot);
+    for effect in triggered.effects.all_effects().into_iter().filter(|effect| {
+        effect.downcast_ref::<ironsmith::effects::TagTriggeringObjectEffect>().is_none()
+    }) {
         ironsmith::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
     }
     game.player(alice).unwrap().mana_pool.amount(ManaSymbol::Red)

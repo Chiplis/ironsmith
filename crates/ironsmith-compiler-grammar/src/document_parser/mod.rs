@@ -4665,6 +4665,8 @@ fn assemble_document_with_symbols(
         }
     }
 
+    link_graveyard_exile_replacements_to_source_exiled_pool(&mut items);
+
     Ok(RewriteSemanticDocument {
         card,
         annotations,
@@ -4675,6 +4677,59 @@ fn assemble_document_with_symbols(
         cleave_items,
         allow_unsupported,
     })
+}
+
+/// CR 607.2a: when a card both exiles cards through a graveyard replacement
+/// and lets its controller use "cards exiled with" it, the replacement's
+/// exiles are the ones that linked ability can find.
+fn link_graveyard_exile_replacements_to_source_exiled_pool(items: &mut [RewriteSemanticItem]) {
+    fn statics_mut<'a>(
+        chunks: &'a mut [crate::cards::builders::LineAst],
+        out: &mut Vec<&'a mut crate::model::CompilerStaticAbilityCore>,
+    ) {
+        use crate::cards::builders::{LineAst, StaticAbilityAst};
+        for chunk in chunks {
+            match chunk {
+                LineAst::Multiple(inner) => statics_mut(inner, out),
+                LineAst::StaticAbility(StaticAbilityAst::Static(ability)) => out.push(ability),
+                LineAst::StaticAbilities(abilities) => {
+                    for ability in abilities {
+                        if let StaticAbilityAst::Static(ability) = ability {
+                            out.push(ability);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut statics = Vec::new();
+    for item in items.iter_mut() {
+        if let RewriteSemanticItem::ParsedLine(line) = item {
+            statics_mut(&mut line.chunks, &mut statics);
+        }
+    }
+    let uses_source_exiled_pool = statics.iter().any(|ability| {
+        matches!(
+            &ability.payload,
+            crate::model::CompilerStaticAbilityPayloadCore::Grants(spec)
+                if spec.filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag.as_str() == ironsmith_core::tag::SOURCE_EXILED_TAG
+                })
+        )
+    });
+    if !uses_source_exiled_pool {
+        return;
+    }
+    for ability in statics {
+        if let crate::model::CompilerStaticAbilityPayloadCore::ExileToExileInsteadOfGraveyard {
+            link_to_source,
+            ..
+        } = &mut ability.payload
+        {
+            *link_to_source = true;
+        }
+    }
 }
 
 fn rewrite_overload_target_tokens(

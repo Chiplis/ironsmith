@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
-test('battlefield hover shows a live frame while card images are still downloading', { timeout: 60000 }, async () => {
+test('battlefield hover shows a live frame with its art while card images are still downloading', { timeout: 60000 }, async () => {
   const vite = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
   await vite.listen();
   const browser = await chromium.launch();
@@ -26,10 +26,17 @@ test('battlefield hover shows a live frame while card images are still downloadi
     assert.match(await frame.innerText(), /Same name, different field images/);
     assert.match(await frame.innerText(), /Flying/);
     assert.match(await frame.innerText(), /Artifact/);
-    assert.equal(await frame.locator('.interactive-card-frame__art-fallback').count(), 1);
+    // The placeholder is our own frame with the art crop in its art box; the
+    // bare printing or art crop is never shown in its place.
+    assert.equal(
+      await frame.locator('.interactive-card-frame__art img').getAttribute('src'),
+      (await page.getByAltText('Field card 1').getAttribute('src')).replace('/normal/', '/art_crop/'),
+    );
+    assert.equal(await page.locator('.card-frame-art-preview').count(), 0);
     releaseImages();
     await page.waitForFunction(() => !document.querySelector('[data-card-hover-preview] [data-loading-frame="true"]'));
-    await page.locator('[data-card-hover-preview][data-visible="true"] .card-frame-art-preview').waitFor();
+    await page.locator('[data-card-hover-preview][data-visible="true"] [data-render-ready="true"]').waitFor();
+    assert.equal(await page.locator('.card-frame-art-preview').count(), 0);
     assert.deepEqual(errors, []);
   } finally { releaseImages(); await browser.close(); await vite.close(); }
 });
@@ -51,12 +58,17 @@ test('hover reuses the displayed object image and follows per-object changes', {
     await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-preview-source.html`);
     const first = page.getByAltText('Field card 1');
     await first.hover();
-    const preview = page.locator('[data-card-hover-preview][data-visible="true"] .card-frame-art-preview');
-    await preview.waitFor();
-    assert.equal(await preview.getAttribute('src'), await first.getAttribute('src'));
-    assert.equal(await page.locator('.interactive-card-frame-stage').getAttribute('data-render-ready'), 'false', 'field image appears before art-crop reconstruction finishes');
+    const placeholderArt = page.locator('[data-card-hover-preview][data-visible="true"] [data-loading-frame="true"] .interactive-card-frame__art img');
+    await placeholderArt.waitFor();
+    assert.equal(await placeholderArt.getAttribute('src'), (await first.getAttribute('src')).replace('/normal/', '/art_crop/'));
+    assert.equal(await page.locator('.interactive-card-frame-stage').getAttribute('data-render-ready'), 'false', 'field art appears in the placeholder frame before art-crop reconstruction finishes');
     await page.getByRole('button', { name: 'Change field image' }).click();
-    await page.waitForFunction(() => document.querySelector('.card-frame-art-preview')?.getAttribute('src') === document.querySelector('[alt="Field card 1"]').getAttribute('src'));
+    await page.waitForFunction(() => {
+      const src = document.querySelector('[alt="Field card 1"]').getAttribute('src');
+      const node = document.querySelector('[data-card-hover-preview][data-visible="true"] .interactive-card-frame-stage');
+      const shown = node?.querySelector('.original-card-fallback > img, .interactive-card-frame__art img')?.getAttribute('src') || node?.style.getPropertyValue('--source-frame-image');
+      return [src, `url("${src}")`].includes(shown);
+    });
     await page.getByAltText('Field card 2').hover();
     await page.waitForFunction(() => document.querySelector('[data-card-hover-preview][data-visible="true"]')?.dataset.previewObjectId === '2');
     // A per-object image remains authoritative in every frame mode, including

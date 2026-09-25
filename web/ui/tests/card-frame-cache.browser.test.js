@@ -19,7 +19,8 @@ test('reopened frames reuse completed assets and never flash the raw image', { t
     await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-preview-source.html`);
     const card = page.getByAltText('Field card 1');
     await card.hover();
-    await page.locator('.card-frame-art-preview').waitFor();
+    await page.locator('[data-card-hover-preview][data-visible="true"] [data-loading-frame="true"]').waitFor();
+    assert.equal(await page.locator('.card-frame-art-preview').count(), 0);
     const stage = page.locator('.interactive-card-frame-stage');
     await page.waitForFunction(() => document.querySelector('.interactive-card-frame-stage')?.dataset.renderReady === 'true');
     assert.equal(await stage.getAttribute('data-frame-reused'), 'false');

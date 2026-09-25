@@ -1613,18 +1613,21 @@ impl StaticAbilityModelInterpreter {
                 filter,
                 graveyard_owner,
                 exclude_cycled,
+                link_to_source,
             } => {
-                if *exclude_cycled {
-                    StaticAbility::exile_to_exile_instead_of_graveyard_unless_cycled(
+                let mut replacement = if *exclude_cycled {
+                    super::misc::ExileToExileInsteadOfGraveyard::unless_cycled(
                         filter.clone(),
                         graveyard_owner.clone(),
                     )
                 } else {
-                    StaticAbility::exile_to_exile_instead_of_graveyard(
+                    super::misc::ExileToExileInsteadOfGraveyard::new(
                         filter.clone(),
                         graveyard_owner.clone(),
                     )
-                }
+                };
+                replacement.link_to_source = *link_to_source;
+                StaticAbility::new(replacement)
             }
             ironsmith_core::StaticAbilityPayload::ExileWouldDieInstead {
                 filter,
