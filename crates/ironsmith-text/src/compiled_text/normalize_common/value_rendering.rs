@@ -5369,6 +5369,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
             crate::static_abilities::StaticAbilityId::Menace => "menace",
             crate::static_abilities::StaticAbilityId::Reach => "reach",
             crate::static_abilities::StaticAbilityId::Trample => "trample",
+            crate::static_abilities::StaticAbilityId::TrampleOverPlaneswalkers => {
+                "trample over planeswalkers"
+            }
             crate::static_abilities::StaticAbilityId::Vigilance => "vigilance",
             _ => "ability",
         }

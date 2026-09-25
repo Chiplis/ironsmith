@@ -72,6 +72,7 @@ pub(super) fn is_keyword_phrase(phrase: &str) -> bool {
             | "skulk"
             | "shroud"
             | "trample"
+            | "trample over planeswalkers"
             | "devoid"
             | "vigilance"
             | "fear"

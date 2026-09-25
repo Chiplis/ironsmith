@@ -1305,11 +1305,13 @@ impl GameState {
                 crate::combat_state::AttackTarget::Planeswalker(id) if id == permanent => {
                     crate::combat_state::AttackTarget::Nothing {
                         defending_player: planeswalker_defender,
+                        was_planeswalker: true,
                     }
                 }
                 crate::combat_state::AttackTarget::Battle(id) if id == permanent => {
                     crate::combat_state::AttackTarget::Nothing {
                         defending_player: battle_defender,
+                        was_planeswalker: false,
                     }
                 }
                 ref other => other.clone(),

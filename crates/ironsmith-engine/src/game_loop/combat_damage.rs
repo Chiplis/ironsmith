@@ -494,148 +494,81 @@ fn plan_general_combat_damage(
         if combat_stat <= 0 {
             continue;
         }
+        let total = combat_stat as u32;
         let controller = game.controller_of(&attacker);
         let cause = combat_damage_cause(game, attacker_id);
 
-        let has_trample = game.object_has_static_ability_id(
-            attacker_id,
-            crate::static_abilities::StaticAbilityId::Trample,
-        );
-        let live_blocker_ids = combat
-            .blockers
-            .get(&attacker_id)
-            .map(|blockers| {
-                blockers
-                    .iter()
-                    .copied()
-                    .filter(|id| game.object(*id).is_some())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        // CR 702.19d: a blocked trampler with no creatures blocking it when
-        // damage is assigned assigns all its damage to what it's attacking,
-        // as though every blocker had been assigned lethal damage.
-        let blocked_with_live_blockers = is_blocked(combat, attacker_id)
-            && !(has_trample && live_blocker_ids.is_empty());
-        if !blocked_with_live_blockers {
-            // CR 510.1b / 800.4e: nothing is assigned to a player who has left
-            // the game.
-            let Some((target, rules_target)) =
-                attack_target_damage_recipient(game, &attacker_info.target)
-            else {
-                continue;
-            };
-            let amount = combat_stat as u32;
-            let result = calculate_damage_with_game(game, &attacker, rules_target, amount, true);
-            planned.push(PlannedCombatDamage {
-                source: attacker_id,
-                target,
-                controller,
-                amount,
-                result,
-                cause,
-            });
+        // CR 510.1b-c, 702.19b-e: what this attacker may assign damage to. A
+        // blocked non-trampler with no creatures blocking it, or a creature
+        // attacking nothing, has nowhere to assign damage.
+        let Some(division) = attacker_damage_division(game, combat, attacker_info) else {
             continue;
-        }
-
-        // CR 510.1c: a blocked creature with no creatures currently blocking
-        // it assigns no combat damage (trample is handled above).
-        if live_blocker_ids.is_empty() {
-            continue;
-        }
+        };
         let explicit_assignments = game.take_combat_damage_assignments(attacker_id);
-        let blocker_pairs = live_blocker_ids
-            .iter()
-            .filter_map(|id| game.object(*id).map(|object| (*id, object)))
-            .collect::<Vec<_>>();
-        let aligned_ids = blocker_pairs.iter().map(|(id, _)| *id).collect::<Vec<_>>();
-        let blockers = blocker_pairs
-            .iter()
-            .map(|(_, object)| *object)
-            .collect::<Vec<_>>();
         let others =
             simultaneous_combat_damage(&attacker_assigners, attacker_id, &known_divisions);
-        let (mut distribution, mut excess) = if explicit_assignments.is_empty() {
-            if has_trample {
-                default_trample_distribution(
+        let allocation = if !explicit_assignments.is_empty() {
+            division
+                .check(
                     game,
-                    &attacker,
-                    &aligned_ids,
-                    combat_stat as u32,
+                    total,
+                    &division.allocations_from_record(total, &explicit_assignments),
                     &others,
                 )
-            } else {
-                (
-                    default_combat_damage_distribution(blockers.len(), combat_stat as u32),
-                    0,
-                )
-            }
+                .map_err(|(kind, _)| {
+                    let illegal = if kind == CombatDamageAssignmentErrorKind::IllegalRecipient {
+                        illegal_assignment_recipients(
+                            &division.damageable_objects(),
+                            &explicit_assignments,
+                        )
+                    } else {
+                        vec![]
+                    };
+                    assignment_error(
+                        attacker_id,
+                        total,
+                        assignment_total(&explicit_assignments),
+                        illegal,
+                        kind,
+                    )
+                })?
+        } else if let Some(target) = division.forced_target() {
+            vec![(target, total)]
         } else {
-            validate_attacker_damage_assignment(
-                game,
-                &attacker,
-                &aligned_ids,
-                &blockers,
-                combat_stat as u32,
-                &explicit_assignments,
-                &others,
-            )?
+            // Without a recorded choice, a trampler spreads lethal damage
+            // first; a plain division keeps the historical all-to-first
+            // default.
+            division.default_allocation(game, total, &others, division.may_trample())
         };
-        // CR 702.19b: an excess with nowhere to go (the creature is attacking
-        // nothing, CR 506.4c) can only be assigned among its blockers.
-        if excess > 0 && attack_target_damage_recipient(game, &attacker_info.target).is_none() {
-            if let Some(first) = distribution.first_mut() {
-                first.0 = first.0.saturating_add(excess);
-            }
-            excess = 0;
-        }
         known_divisions.insert(
             attacker_id,
-            aligned_ids
+            allocation
                 .iter()
-                .zip(&distribution)
-                .map(|(id, (amount, _))| (*id, *amount))
+                .filter_map(|(target, amount)| match target {
+                    Target::Object(object) => Some((*object, *amount)),
+                    Target::Player(_) => None,
+                })
                 .collect(),
         );
-        for (index, (amount, _)) in distribution.into_iter().enumerate() {
+        for (target, amount) in allocation {
             if amount == 0 {
                 continue;
             }
-            let target = aligned_ids[index];
+            let (event_target, rules_target) = match target {
+                Target::Object(object) => {
+                    (EventDamageTarget::Object(object), DamageTarget::Permanent)
+                }
+                Target::Player(player) => {
+                    (EventDamageTarget::Player(player), DamageTarget::Player(player))
+                }
+            };
             planned.push(PlannedCombatDamage {
                 source: attacker_id,
-                target: EventDamageTarget::Object(target),
+                target: event_target,
                 controller,
                 amount,
-                result: calculate_damage_with_game(
-                    game,
-                    &attacker,
-                    DamageTarget::Permanent,
-                    amount,
-                    true,
-                ),
+                result: calculate_damage_with_game(game, &attacker, rules_target, amount, true),
                 cause: cause.clone(),
-            });
-        }
-        // CR 702.19b: trample excess goes to the player, planeswalker, or
-        // battle the creature is attacking.
-        if excess > 0
-            && let Some((target, rules_target)) =
-                attack_target_damage_recipient(game, &attacker_info.target)
-        {
-            planned.push(PlannedCombatDamage {
-                source: attacker_id,
-                target,
-                controller,
-                amount: excess,
-                result: calculate_damage_with_game(
-                    game,
-                    &attacker,
-                    rules_target,
-                    excess,
-                    true,
-                ),
-                cause,
             });
         }
     }
@@ -1444,39 +1377,8 @@ fn validate_nontrample_damage_assignment(
         .collect())
 }
 
-/// The default division for a blocked trampler with no recorded choice:
-/// lethal damage to each blocker in order (counting marked damage and other
-/// creatures' assignments this step, CR 702.19b), then the rest as excess to
-/// what it's attacking.
-fn default_trample_distribution(
-    game: &GameState,
-    attacker: &crate::object::Object,
-    blocker_ids: &[ObjectId],
-    total_damage: u32,
-    others: &std::collections::HashMap<ObjectId, SimultaneousCombatDamage>,
-) -> (Vec<(u32, bool)>, u32) {
-    let has_deathtouch = game.object_has_static_ability_id(
-        attacker.id,
-        crate::static_abilities::StaticAbilityId::Deathtouch,
-    );
-    let mut remaining = total_damage;
-    let distribution = blocker_ids
-        .iter()
-        .map(|blocker_id| {
-            let lethal = remaining_lethal_damage(
-                game,
-                *blocker_id,
-                has_deathtouch,
-                others.get(blocker_id).copied().unwrap_or_default(),
-            );
-            let amount = remaining.min(lethal);
-            remaining -= amount;
-            (amount, amount >= lethal && lethal > 0)
-        })
-        .collect();
-    (distribution, remaining)
-}
-
+// Superseded by `CombatDamageDivision::check`; kept for the retired path.
+#[allow(dead_code)]
 fn validate_attacker_damage_assignment(
     game: &GameState,
     attacker: &crate::object::Object,
@@ -2082,30 +1984,346 @@ fn remaining_lethal_damage(
     }
 }
 
-/// An attacking or blocking creature that assigns combat damage this step to
-/// the creatures it's in combat with (CR 510.1c-d).
+/// How an attacking or blocking creature may divide its combat damage in this
+/// step (CR 510.1, 702.19): among the creatures it's in combat with, then (an
+/// unblocked creature or a trampler) what it's attacking. A creature with
+/// trample over planeswalkers attacking a planeswalker may also assign damage
+/// to that planeswalker's controller (CR 702.19c), and one whose planeswalker
+/// left combat may assign it to the defending player (CR 702.19e).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CombatDamageDivision {
+    /// Creatures it's in combat with, in assignment order. Nothing else may be
+    /// assigned damage until each of them is assigned lethal damage.
+    pub creatures: Vec<ObjectId>,
+    /// Trample over planeswalkers attacking a planeswalker: that planeswalker.
+    /// It may be assigned damage once every creature is assigned lethal.
+    pub planeswalker: Option<ObjectId>,
+    /// Where damage may go beyond the creatures: what an unblocked creature or
+    /// a trampler is attacking; with trample over planeswalkers attacking a
+    /// planeswalker, that planeswalker's controller, once the planeswalker is
+    /// assigned damage at least equal to its loyalty (CR 702.19c); or the
+    /// defending player under CR 702.19e.
+    pub excess_target: Option<Target>,
+    /// Whether the source has deathtouch (1 damage counts as lethal, 702.2c).
+    pub deathtouch: bool,
+}
+
+impl CombatDamageDivision {
+    /// Every legal recipient, in assignment order.
+    pub fn targets(&self) -> Vec<Target> {
+        self.creatures
+            .iter()
+            .copied()
+            .chain(self.planeswalker)
+            .map(Target::Object)
+            .chain(self.excess_target)
+            .collect()
+    }
+
+    /// The permanents among the legal recipients.
+    fn damageable_objects(&self) -> Vec<ObjectId> {
+        self.targets()
+            .into_iter()
+            .filter_map(|target| match target {
+                Target::Object(object) => Some(object),
+                Target::Player(_) => None,
+            })
+            .collect()
+    }
+
+    /// The only recipient, when the rules leave no choice (CR 510.1b-d).
+    fn forced_target(&self) -> Option<Target> {
+        match self.targets().as_slice() {
+            [only] => Some(*only),
+            _ => None,
+        }
+    }
+
+    /// Whether any damage may go beyond the creatures (CR 702.19).
+    fn may_trample(&self) -> bool {
+        self.planeswalker.is_some() || self.excess_target.is_some()
+    }
+
+    /// Lethal damage still needed by each creature (CR 702.19b, 702.2c).
+    fn lethal_amounts(
+        &self,
+        game: &GameState,
+        others: &std::collections::HashMap<ObjectId, SimultaneousCombatDamage>,
+    ) -> Vec<u32> {
+        self.creatures
+            .iter()
+            .map(|creature| {
+                remaining_lethal_damage(
+                    game,
+                    *creature,
+                    self.deathtouch,
+                    others.get(creature).copied().unwrap_or_default(),
+                )
+            })
+            .collect()
+    }
+
+    /// Damage the planeswalker must still be assigned before its controller
+    /// may be: its loyalty, less damage other creatures are assigning to it
+    /// this step (CR 702.19c).
+    fn loyalty_needed(
+        &self,
+        game: &GameState,
+        others: &std::collections::HashMap<ObjectId, SimultaneousCombatDamage>,
+    ) -> u32 {
+        let Some(planeswalker) = self.planeswalker else {
+            return 0;
+        };
+        let loyalty = game
+            .object(planeswalker)
+            .and_then(|object| object.loyalty())
+            .unwrap_or(0);
+        loyalty.saturating_sub(others.get(&planeswalker).map_or(0, |damage| damage.amount))
+    }
+
+    /// The division used without a (legal) choice. When `spread`, lethal
+    /// damage goes to each creature in order, then damage equal to the
+    /// planeswalker's remaining loyalty, then the rest beyond; otherwise, and
+    /// for anything left with nowhere else to go, it lands on the first
+    /// recipient.
+    fn default_allocation(
+        &self,
+        game: &GameState,
+        total: u32,
+        others: &std::collections::HashMap<ObjectId, SimultaneousCombatDamage>,
+        spread: bool,
+    ) -> Vec<(Target, u32)> {
+        let targets = self.targets();
+        if !spread {
+            return targets
+                .first()
+                .map(|first| vec![(*first, total)])
+                .unwrap_or_default();
+        }
+        let mut remaining = total;
+        let mut allocation = self
+            .creatures
+            .iter()
+            .zip(self.lethal_amounts(game, others))
+            .map(|(creature, lethal)| {
+                let amount = remaining.min(lethal);
+                remaining -= amount;
+                (Target::Object(*creature), amount)
+            })
+            .collect::<Vec<_>>();
+        if let Some(planeswalker) = self.planeswalker {
+            let amount = if self.excess_target.is_some() {
+                remaining.min(self.loyalty_needed(game, others))
+            } else {
+                remaining
+            };
+            remaining -= amount;
+            allocation.push((Target::Object(planeswalker), amount));
+        }
+        if let Some(target) = self.excess_target {
+            allocation.push((target, remaining));
+            remaining = 0;
+        }
+        if remaining > 0
+            && let Some(first) = allocation.first_mut()
+        {
+            first.1 += remaining;
+        }
+        allocation.retain(|(_, amount)| *amount > 0);
+        allocation
+    }
+
+    /// Turn a recorded per-permanent division into allocations; damage it
+    /// leaves unassigned goes beyond the creatures (e.g. a trampler's excess
+    /// to the player it's attacking).
+    fn allocations_from_record(
+        &self,
+        total: u32,
+        record: &std::collections::HashMap<ObjectId, u32>,
+    ) -> Vec<(Target, u32)> {
+        let mut allocations = record
+            .iter()
+            .map(|(object, amount)| (Target::Object(*object), *amount))
+            .collect::<Vec<_>>();
+        allocations.sort_by_key(|(target, _)| match target {
+            Target::Object(object) => object.0,
+            Target::Player(_) => u64::MAX,
+        });
+        let assigned = assignment_total(record);
+        if assigned < total {
+            if let Some(target) = self.excess_target {
+                allocations.push((target, total - assigned));
+            } else if let Some(planeswalker) = self.planeswalker {
+                allocations.push((Target::Object(planeswalker), total - assigned));
+            }
+        }
+        allocations
+    }
+
+    /// Check a division against CR 510.1c-e and 702.19b-e, returning it in
+    /// assignment order (every legal recipient, zeros included).
+    fn check(
+        &self,
+        game: &GameState,
+        total: u32,
+        allocations: &[(Target, u32)],
+        others: &std::collections::HashMap<ObjectId, SimultaneousCombatDamage>,
+    ) -> Result<Vec<(Target, u32)>, (CombatDamageAssignmentErrorKind, String)> {
+        let targets = self.targets();
+        let mut amounts = vec![0u32; targets.len()];
+        let mut assigned = 0u32;
+        for (target, amount) in allocations {
+            let Some(index) = targets.iter().position(|candidate| candidate == target) else {
+                return Err((
+                    CombatDamageAssignmentErrorKind::IllegalRecipient,
+                    format!("{target:?} can't be assigned this combat damage"),
+                ));
+            };
+            amounts[index] = amounts[index].saturating_add(*amount);
+            assigned = assigned.saturating_add(*amount);
+        }
+        if assigned != total {
+            return Err((
+                CombatDamageAssignmentErrorKind::WrongTotal,
+                format!("exactly {total} combat damage must be assigned (got {assigned})"),
+            ));
+        }
+        let creature_count = self.creatures.len();
+        let beyond_creatures = amounts[creature_count..].iter().sum::<u32>();
+        if beyond_creatures > 0
+            && amounts[..creature_count]
+                .iter()
+                .zip(self.lethal_amounts(game, others))
+                .any(|(amount, lethal)| *amount < lethal)
+        {
+            // CR 702.19b: nothing beyond the blockers before each blocker is
+            // assigned lethal damage.
+            return Err((
+                CombatDamageAssignmentErrorKind::TrampleBeforeLethal,
+                "combat damage can't trample over before each blocker is assigned lethal damage"
+                    .to_string(),
+            ));
+        }
+        if self.planeswalker.is_some() && self.excess_target.is_some() {
+            let to_planeswalker = amounts[creature_count];
+            let to_controller = amounts[creature_count + 1];
+            // CR 702.19c: the controller gets damage only once the
+            // planeswalker is assigned damage equal to its loyalty.
+            if to_controller > 0 && to_planeswalker < self.loyalty_needed(game, others) {
+                return Err((
+                    CombatDamageAssignmentErrorKind::TrampleBeforeLethal,
+                    "combat damage can't trample over a planeswalker before it's assigned damage equal to its loyalty"
+                        .to_string(),
+                ));
+            }
+        }
+        Ok(targets.into_iter().zip(amounts).collect())
+    }
+}
+
+/// Where an attacking creature may assign combat damage (CR 510.1b-c,
+/// 702.19b-e), or `None` when it assigns none.
+fn attacker_damage_division(
+    game: &GameState,
+    combat: &CombatState,
+    attacker_info: &crate::combat_state::AttackerInfo,
+) -> Option<CombatDamageDivision> {
+    use crate::static_abilities::StaticAbilityId;
+
+    let attacker_id = attacker_info.creature;
+    // CR 702.19g: trample over planeswalkers includes trample's rules, so a
+    // creature with both assigns damage as with trample over planeswalkers.
+    let over_planeswalkers =
+        game.object_has_static_ability_id(attacker_id, StaticAbilityId::TrampleOverPlaneswalkers);
+    let trample = over_planeswalkers
+        || game.object_has_static_ability_id(attacker_id, StaticAbilityId::Trample);
+    let deathtouch = game.object_has_static_ability_id(attacker_id, StaticAbilityId::Deathtouch);
+    let blocked = is_blocked(combat, attacker_id);
+    let creatures = if blocked {
+        combat
+            .blockers
+            .get(&attacker_id)
+            .map(|blockers| {
+                blockers
+                    .iter()
+                    .copied()
+                    .filter(|id| game.object(*id).is_some())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    if blocked && !trample {
+        // CR 510.1c: a blocked creature assigns damage only to its blockers.
+        return (!creatures.is_empty()).then_some(CombatDamageDivision {
+            creatures,
+            planeswalker: None,
+            excess_target: None,
+            deathtouch,
+        });
+    }
+    // Unblocked (CR 510.1b), or a trampler: past its blockers (all of them
+    // assigned lethal damage, or none left, CR 702.19d) to what it's attacking.
+    let (planeswalker, excess_target) = if over_planeswalkers {
+        trample_over_planeswalkers_targets(game, &attacker_info.target)
+    } else {
+        (None, trample_excess_target(game, &attacker_info.target))
+    };
+    if creatures.is_empty() && planeswalker.is_none() && excess_target.is_none() {
+        return None;
+    }
+    Some(CombatDamageDivision {
+        creatures,
+        planeswalker,
+        excess_target,
+        deathtouch,
+    })
+}
+
+/// Recipients beyond the blockers for a creature with trample over
+/// planeswalkers: the planeswalker it's attacking, then its controller
+/// (CR 702.19c); the defending player if that planeswalker was removed from
+/// combat (CR 702.19e, without the creature attacking that player); else what
+/// it's attacking, as with trample.
+fn trample_over_planeswalkers_targets(
+    game: &GameState,
+    target: &AttackTarget,
+) -> (Option<ObjectId>, Option<Target>) {
+    let player_in_game = |player: PlayerId| {
+        game.player(player)
+            .is_some_and(|candidate| candidate.is_in_game())
+            .then_some(Target::Player(player))
+    };
+    match *target {
+        AttackTarget::Planeswalker(planeswalker)
+            if game
+                .object(planeswalker)
+                .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+                && game.object_has_card_type(planeswalker, crate::types::CardType::Planeswalker) =>
+        {
+            (
+                Some(planeswalker),
+                game.controller_of_id(planeswalker).and_then(player_in_game),
+            )
+        }
+        AttackTarget::Nothing {
+            defending_player: Some(defender),
+            was_planeswalker: true,
+        } => (None, player_in_game(defender)),
+        _ => (None, trample_excess_target(game, target)),
+    }
+}
+
+/// An attacking or blocking creature that assigns combat damage this step.
 #[derive(Debug, Clone)]
 struct CombatDamageAssigner {
     source: ObjectId,
     total: u32,
-    /// Creatures still in combat with it, in assignment order.
-    recipients: Vec<ObjectId>,
-    /// For an attacking trampler, what it's attacking, if damage can be
-    /// assigned there (CR 702.19b).
-    trample_target: Option<Target>,
-    deathtouch: bool,
+    division: CombatDamageDivision,
 }
 
-impl CombatDamageAssigner {
-    /// Whether this creature's division is fixed by the rules: exactly one
-    /// creature to assign to, and nothing to trample over to (CR 510.1c-d).
-    fn is_forced(&self) -> bool {
-        self.recipients.len() == 1 && self.trample_target.is_none()
-    }
-}
-
-/// The trample target for an attacker's excess damage: the player,
-/// planeswalker, or battle it's attacking, if damage can be assigned there.
+/// The damage recipient for what an attacker is attacking, as a target.
 fn trample_excess_target(game: &GameState, target: &AttackTarget) -> Option<Target> {
     attack_target_damage_recipient(game, target).map(|(target, _)| match target {
         EventDamageTarget::Player(player) => Target::Player(player),
@@ -2113,8 +2331,8 @@ fn trample_excess_target(game: &GameState, target: &AttackTarget) -> Option<Targ
     })
 }
 
-/// The creatures that assign combat damage to other creatures in this step:
-/// blocked attackers (in declaration order), then blockers (by id).
+/// The creatures that assign combat damage in this step: attackers (in
+/// declaration order), then blockers (by id).
 fn combat_damage_assigners(
     game: &GameState,
     combat: &CombatState,
@@ -2136,42 +2354,22 @@ fn combat_damage_assigners(
             .filter(|stat| *stat > 0)
             .map(|stat| stat as u32)
     };
-    let has = |id: ObjectId, ability: crate::static_abilities::StaticAbilityId| {
-        game.object_has_static_ability_id(id, ability)
-    };
 
     let mut attackers = Vec::new();
     for attacker_info in &combat.attackers {
-        let attacker_id = attacker_info.creature;
-        if !is_blocked(combat, attacker_id) {
-            continue;
-        }
-        let Some(attacker) = game.object(attacker_id) else {
+        let Some(attacker) = game.object(attacker_info.creature) else {
             continue;
         };
         let Some(total) = assigning_stat(attacker) else {
             continue;
         };
-        let recipients = combat
-            .blockers
-            .get(&attacker_id)
-            .map(|blockers| {
-                blockers
-                    .iter()
-                    .copied()
-                    .filter(|id| game.object(*id).is_some())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        let trample_target = has(attacker_id, crate::static_abilities::StaticAbilityId::Trample)
-            .then(|| trample_excess_target(game, &attacker_info.target))
-            .flatten();
+        let Some(division) = attacker_damage_division(game, combat, attacker_info) else {
+            continue;
+        };
         attackers.push(CombatDamageAssigner {
-            source: attacker_id,
+            source: attacker_info.creature,
             total,
-            recipients,
-            trample_target,
-            deathtouch: has(attacker_id, crate::static_abilities::StaticAbilityId::Deathtouch),
+            division,
         });
     }
 
@@ -2197,22 +2395,32 @@ fn combat_damage_assigners(
         };
         attacker_ids.sort_by_key(|id| id.0);
         attacker_ids.retain(|id| game.object(*id).is_some());
+        if attacker_ids.is_empty() {
+            continue;
+        }
         blockers.push(CombatDamageAssigner {
             source: blocker_id,
             total,
-            recipients: attacker_ids,
-            trample_target: None,
-            deathtouch: has(blocker_id, crate::static_abilities::StaticAbilityId::Deathtouch),
+            division: CombatDamageDivision {
+                creatures: attacker_ids,
+                planeswalker: None,
+                excess_target: None,
+                deathtouch: game.object_has_static_ability_id(
+                    blocker_id,
+                    crate::static_abilities::StaticAbilityId::Deathtouch,
+                ),
+            },
         });
     }
     (attackers, blockers)
 }
 
-/// Damage the `assigners` other than `source` are assigning to each creature
-/// this step (CR 702.19b): their `known` divisions (chosen or already
-/// planned), or all the damage of one whose division is forced. A division
-/// not chosen yet counts as nothing: it's announced after this one, and it
-/// sees this one instead (CR 510.1).
+/// Damage the `assigners` other than `source` are assigning to each permanent
+/// this step (CR 702.19b-c): their `known` divisions (chosen or already
+/// planned), or all the damage of one whose division is forced (e.g. an
+/// unblocked creature attacking a planeswalker). A division not chosen yet
+/// counts as nothing: it's announced after this one, and it sees this one
+/// instead (CR 510.1).
 fn simultaneous_combat_damage(
     assigners: &[CombatDamageAssigner],
     source: ObjectId,
@@ -2221,20 +2429,19 @@ fn simultaneous_combat_damage(
     let mut assigned =
         std::collections::HashMap::<ObjectId, SimultaneousCombatDamage>::new();
     for assigner in assigners.iter().filter(|assigner| assigner.source != source) {
+        let deathtouch = assigner.division.deathtouch;
         if let Some(division) = known.get(&assigner.source) {
+            let objects = assigner.division.damageable_objects();
             for (recipient, amount) in division {
-                if assigner.recipients.contains(recipient) {
-                    assigned
-                        .entry(*recipient)
-                        .or_default()
-                        .add(*amount, assigner.deathtouch);
+                if objects.contains(recipient) {
+                    assigned.entry(*recipient).or_default().add(*amount, deathtouch);
                 }
             }
-        } else if assigner.is_forced() {
+        } else if let Some(Target::Object(recipient)) = assigner.division.forced_target() {
             assigned
-                .entry(assigner.recipients[0])
+                .entry(recipient)
                 .or_default()
-                .add(assigner.total, assigner.deathtouch);
+                .add(assigner.total, deathtouch);
         }
     }
     assigned
@@ -2258,7 +2465,7 @@ fn apnap_position(game: &GameState, player: PlayerId) -> usize {
 }
 
 /// A combat-damage division that the assigning player chooses before a
-/// combat-damage step (CR 510.1c-d, 702.19b).
+/// combat-damage step (CR 510.1c-d, 702.19b-e).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CombatDamageAssignmentPrompt {
     /// The attacking or blocking creature assigning its damage.
@@ -2267,28 +2474,14 @@ pub struct CombatDamageAssignmentPrompt {
     pub player: PlayerId,
     /// The combat damage the source assigns.
     pub total: u32,
-    /// Creatures among which the damage is divided, in assignment order.
-    pub recipients: Vec<ObjectId>,
-    /// For an attacking trampler, the player, planeswalker, or battle it's
-    /// attacking, which may receive damage once every blocker has been
-    /// assigned lethal damage.
-    pub trample_target: Option<Target>,
-    /// Whether the source has deathtouch (1 damage counts as lethal, 702.2c).
-    pub deathtouch: bool,
-    /// Per recipient, the damage other creatures are assigning to it in this
-    /// step, which counts toward lethal damage (CR 702.19b).
-    pub assigned_by_others: Vec<SimultaneousCombatDamage>,
+    /// Where the damage may go, and in what order.
+    pub division: CombatDamageDivision,
+    /// Damage other creatures are assigning to each permanent in this step,
+    /// which counts toward lethal damage and loyalty (CR 702.19b-c).
+    pub assigned_by_others: std::collections::HashMap<ObjectId, SimultaneousCombatDamage>,
 }
 
 impl CombatDamageAssignmentPrompt {
-    fn targets(&self) -> Vec<Target> {
-        self.recipients
-            .iter()
-            .map(|recipient| Target::Object(*recipient))
-            .chain(self.trample_target)
-            .collect()
-    }
-
     /// Build the decision context shown to the assigning player.
     pub fn decision_context(&self, game: &GameState) -> crate::decisions::context::DistributeContext {
         let object_name = |id: ObjectId| {
@@ -2297,6 +2490,7 @@ impl CombatDamageAssignmentPrompt {
                 .unwrap_or_else(|| format!("#{}", id.0))
         };
         let targets = self
+            .division
             .targets()
             .into_iter()
             .map(|target| crate::decisions::context::DistributeTarget {
@@ -2324,134 +2518,57 @@ impl CombatDamageAssignmentPrompt {
         )
     }
 
-    /// Lethal damage still needed by each recipient, taking marked damage and
-    /// other creatures' assignments this step into account (CR 702.19b) and
-    /// deathtouch (CR 702.2c).
-    fn lethal_amounts(&self, game: &GameState) -> Vec<u32> {
-        // Mirrors `validate_attacker_damage_assignment`, which checks the
-        // recorded division again when damage is dealt.
-        self.recipients
-            .iter()
-            .enumerate()
-            .map(|(index, recipient)| {
-                remaining_lethal_damage(
-                    game,
-                    *recipient,
-                    self.deathtouch,
-                    self.assigned_by_others
-                        .get(index)
-                        .copied()
-                        .unwrap_or_default(),
-                )
-            })
-            .collect()
-    }
-
     /// The division used when the assigning player makes no (legal) choice:
-    /// lethal damage to each recipient in order, then the rest to what a
-    /// trampler is attacking, or else onto the first recipient.
+    /// lethal damage to each creature in order, then the planeswalker's
+    /// remaining loyalty, then the rest beyond, or else onto the first
+    /// recipient.
     pub fn default_assignment(&self, game: &GameState) -> Vec<(Target, u32)> {
-        let mut remaining = self.total;
-        let mut assignment = self
-            .recipients
-            .iter()
-            .zip(self.lethal_amounts(game))
-            .map(|(recipient, lethal)| {
-                let amount = remaining.min(lethal);
-                remaining -= amount;
-                (Target::Object(*recipient), amount)
-            })
-            .collect::<Vec<_>>();
-        if remaining > 0 {
-            if let Some(target) = self.trample_target {
-                assignment.push((target, remaining));
-            } else if let Some(first) = assignment.first_mut() {
-                first.1 += remaining;
-            }
-        }
-        assignment.retain(|(_, amount)| *amount > 0);
-        assignment
+        self.division
+            .default_allocation(game, self.total, &self.assigned_by_others, true)
     }
 
-    /// Check a proposed division against CR 510.1c-d and 702.19b, returning
-    /// the per-creature assignment to record. Damage not assigned to a
-    /// creature is the trampler's excess to the target it's attacking.
+    /// Check a proposed division against CR 510.1c-d and 702.19b-e, returning
+    /// the per-permanent assignment to record. Damage it leaves to a player
+    /// is what goes beyond the permanents.
     pub fn validate(
         &self,
         game: &GameState,
         allocations: &[(Target, u32)],
     ) -> Result<std::collections::HashMap<ObjectId, u32>, String> {
-        let targets = self.targets();
-        let mut per_creature = self
-            .recipients
-            .iter()
-            .map(|recipient| (*recipient, 0u32))
-            .collect::<std::collections::HashMap<_, _>>();
-        let mut total = 0u32;
-        for (target, amount) in allocations {
-            if !targets.contains(target) {
-                return Err(format!(
-                    "{target:?} can't be assigned combat damage from #{}",
-                    self.source.0
-                ));
-            }
-            total = total.saturating_add(*amount);
-            if let Target::Object(id) = target
-                && let Some(entry) = per_creature.get_mut(id)
-            {
-                *entry = entry.saturating_add(*amount);
-            }
-        }
-        if total != self.total {
-            return Err(format!(
-                "combat damage from #{} must assign exactly {} damage (got {total})",
-                self.source.0, self.total
-            ));
-        }
-        let assigned_to_creatures = per_creature.values().copied().sum::<u32>();
-        if assigned_to_creatures < self.total {
-            if self.trample_target.is_none() {
-                return Err(format!(
-                    "combat damage from #{} can only be assigned to the creatures it's in combat with",
-                    self.source.0
-                ));
-            }
-            // CR 702.19b: the defender gets damage only once every blocker
-            // has been assigned lethal damage.
-            let lethal = self.lethal_amounts(game);
-            if self
-                .recipients
-                .iter()
-                .zip(lethal)
-                .any(|(recipient, lethal)| per_creature[recipient] < lethal)
-            {
-                return Err(format!(
-                    "combat damage from #{} can't trample over before each blocker is assigned lethal damage",
-                    self.source.0
-                ));
-            }
-        }
-        Ok(per_creature)
+        let checked = self
+            .division
+            .check(game, self.total, allocations, &self.assigned_by_others)
+            .map_err(|(_, message)| {
+                format!("combat damage from #{}: {message}", self.source.0)
+            })?;
+        Ok(checked
+            .into_iter()
+            .filter_map(|(target, amount)| match target {
+                Target::Object(object) => Some((object, amount)),
+                Target::Player(_) => None,
+            })
+            .collect())
     }
 
     /// Record the assigning player's division, falling back to the default
     /// division when the proposal is illegal or empty.
     pub fn record(&self, game: &mut GameState, allocations: &[(Target, u32)]) {
-        let per_creature = self
+        let per_permanent = self
             .validate(game, allocations)
             .or_else(|_| self.validate(game, &self.default_assignment(game)))
             .unwrap_or_else(|_| {
-                self.recipients
-                    .iter()
+                self.division
+                    .damageable_objects()
+                    .into_iter()
                     .enumerate()
                     .map(|(index, recipient)| {
-                        (*recipient, if index == 0 { self.total } else { 0 })
+                        (recipient, if index == 0 { self.total } else { 0 })
                     })
                     .collect()
             });
         game.turn_store
             .combat_damage_assignments
-            .insert(self.source, per_creature);
+            .insert(self.source, per_permanent);
     }
 }
 
@@ -2461,9 +2578,10 @@ impl CombatDamageAssignmentPrompt {
 /// CR 510.1: the attacking creatures' assignments are announced first, then
 /// the blocking creatures', each group in APNAP order of the assigning
 /// players. Only sources with a real choice are asked: an attacker blocked
-/// by two or more creatures, a blocked trampler, or a blocker blocking two or
-/// more attackers. Each prompt sees the divisions announced before it, so
-/// lethal-damage checks count other creatures' damage (CR 702.19b).
+/// by two or more creatures, a blocked trampler, a creature with trample over
+/// planeswalkers attacking a planeswalker, or a blocker blocking two or more
+/// attackers. Each prompt sees the divisions announced before it, so lethal
+/// and loyalty checks count other creatures' damage (CR 702.19b-c).
 pub fn next_combat_damage_assignment_prompt(
     game: &GameState,
     combat: &CombatState,
@@ -2495,10 +2613,7 @@ pub fn next_combat_damage_assignment_prompt(
         let mut pending = group
             .iter()
             .filter(|assigner| !known.contains_key(&assigner.source))
-            .filter(|assigner| {
-                !assigner.recipients.is_empty()
-                    && (assigner.recipients.len() >= 2 || assigner.trample_target.is_some())
-            })
+            .filter(|assigner| assigner.division.targets().len() >= 2)
             .map(|assigner| (assigning_player(assigner, is_attacker), assigner))
             .collect::<Vec<_>>();
         // Stable: declaration (attackers) or id (blockers) order within a player.
@@ -2506,19 +2621,12 @@ pub fn next_combat_damage_assignment_prompt(
         let Some((player, assigner)) = pending.into_iter().next() else {
             continue;
         };
-        let others = simultaneous_combat_damage(group, assigner.source, known);
         return Some(CombatDamageAssignmentPrompt {
             source: assigner.source,
             player,
             total: assigner.total,
-            recipients: assigner.recipients.clone(),
-            trample_target: assigner.trample_target,
-            deathtouch: assigner.deathtouch,
-            assigned_by_others: assigner
-                .recipients
-                .iter()
-                .map(|recipient| others.get(recipient).copied().unwrap_or_default())
-                .collect(),
+            division: assigner.division.clone(),
+            assigned_by_others: simultaneous_combat_damage(group, assigner.source, known),
         });
     }
     None

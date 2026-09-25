@@ -189,6 +189,8 @@ pub enum KeywordAction {
     StaticMarkerText(String),
     Marker(&'static str),
     MarkerText(String),
+    /// Trample over planeswalkers (CR 702.19c).
+    TrampleOverPlaneswalkers,
 }
 
 pub fn describe_soulshift_value(value: &Value) -> String {
@@ -223,6 +225,7 @@ impl KeywordAction {
                 | Self::Lifelink
                 | Self::Vigilance
                 | Self::Trample
+                | Self::TrampleOverPlaneswalkers
                 | Self::Reach
                 | Self::Defender
                 | Self::Decayed
@@ -350,6 +353,7 @@ impl KeywordAction {
             Self::Lifelink => "Lifelink".to_string(),
             Self::Vigilance => "Vigilance".to_string(),
             Self::Trample => "Trample".to_string(),
+            Self::TrampleOverPlaneswalkers => "Trample over planeswalkers".to_string(),
             Self::Reach => "Reach".to_string(),
             Self::Defender => "Defender".to_string(),
             Self::Decayed => "Decayed".to_string(),

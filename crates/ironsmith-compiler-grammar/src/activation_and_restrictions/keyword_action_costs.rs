@@ -981,6 +981,7 @@ enum ExactAbilityPhrase {
     AffinityForArtifacts,
     FirstStrike,
     DoubleStrike,
+    TrampleOverPlaneswalkers,
     ForMirrodin,
     LivingWeapon,
     ModularSunburst,
@@ -997,6 +998,10 @@ const EXACT_ABILITY_PHRASES: &[(&[&str], ExactAbilityPhrase)] = &[
     ),
     (&["first", "strike"], ExactAbilityPhrase::FirstStrike),
     (&["double", "strike"], ExactAbilityPhrase::DoubleStrike),
+    (
+        &["trample", "over", "planeswalkers"],
+        ExactAbilityPhrase::TrampleOverPlaneswalkers,
+    ),
     (&["for", "mirrodin"], ExactAbilityPhrase::ForMirrodin),
     (&["living", "weapon"], ExactAbilityPhrase::LivingWeapon),
     (
@@ -1040,6 +1045,7 @@ fn exact_ability_phrase_action(kind: ExactAbilityPhrase) -> KeywordAction {
         ExactAbilityPhrase::AffinityForArtifacts => KeywordAction::AffinityForArtifacts,
         ExactAbilityPhrase::FirstStrike => KeywordAction::FirstStrike,
         ExactAbilityPhrase::DoubleStrike => KeywordAction::DoubleStrike,
+        ExactAbilityPhrase::TrampleOverPlaneswalkers => KeywordAction::TrampleOverPlaneswalkers,
         ExactAbilityPhrase::ForMirrodin => KeywordAction::ForMirrodin,
         ExactAbilityPhrase::LivingWeapon => KeywordAction::LivingWeapon,
         ExactAbilityPhrase::ModularSunburst => KeywordAction::ModularSunburst,
@@ -1212,6 +1218,10 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
         parse_special_ability_phrase(&words).or_else(|| parse_snow_landwalk_phrase(&words))
     {
         return Some(action);
+    }
+    // CR 702.19c: "trample over planeswalkers" is its own keyword, not trample.
+    if words == ["trample", "over", "planeswalkers"] {
+        return Some(KeywordAction::TrampleOverPlaneswalkers);
     }
 
     if let KeywordAbilityHead::CumulativeUpkeep { cost } = &surface.head {

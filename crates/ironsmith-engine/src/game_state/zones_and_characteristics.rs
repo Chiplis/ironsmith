@@ -4356,6 +4356,7 @@ impl GameState {
                 | StaticAbilityId::Protection
                 | StaticAbilityId::Reach
                 | StaticAbilityId::Trample
+                | StaticAbilityId::TrampleOverPlaneswalkers
                 | StaticAbilityId::Vigilance
                 | StaticAbilityId::Fear
                 | StaticAbilityId::Skulk

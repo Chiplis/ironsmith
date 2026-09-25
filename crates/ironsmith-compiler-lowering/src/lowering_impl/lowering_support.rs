@@ -3645,6 +3645,7 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
         KeywordAction::Lifelink => Some(StaticAbility::lifelink()),
         KeywordAction::Vigilance => Some(StaticAbility::vigilance()),
         KeywordAction::Trample => Some(StaticAbility::trample()),
+        KeywordAction::TrampleOverPlaneswalkers => Some(StaticAbility::trample_over_planeswalkers()),
         KeywordAction::Reach => Some(StaticAbility::reach()),
         KeywordAction::Defender => Some(StaticAbility::defender()),
         KeywordAction::Decayed => Some(StaticAbility::cant_block()),

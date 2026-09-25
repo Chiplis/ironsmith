@@ -99,6 +99,14 @@ define_keyword!(Trample, Trample, "Trample",
     has_trample => true
 );
 
+// CR 702.19c: a variant of trample, not trample itself (`has_trample` stays
+// false, so "creatures with trample" checks don't match it).
+define_keyword!(
+    TrampleOverPlaneswalkers,
+    TrampleOverPlaneswalkers,
+    "Trample over planeswalkers"
+);
+
 define_keyword!(Vigilance, Vigilance, "Vigilance",
     has_vigilance => true
 );

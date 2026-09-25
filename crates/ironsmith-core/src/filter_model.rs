@@ -6789,6 +6789,7 @@ pub fn describe_filter_static_ability(ability_id: StaticAbilityId) -> Option<&'s
         Skulk => Some("skulk"),
         Shroud => Some("shroud"),
         Trample => Some("trample"),
+        TrampleOverPlaneswalkers => Some("trample over planeswalkers"),
         Vigilance => Some("vigilance"),
         Fear => Some("fear"),
         Flanking => Some("flanking"),

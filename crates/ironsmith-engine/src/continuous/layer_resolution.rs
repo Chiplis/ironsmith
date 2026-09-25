@@ -1820,6 +1820,9 @@ fn add_ability_from_counter(
             StaticAbilityId::Menace => Some(StaticAbility::menace()),
             StaticAbilityId::Reach => Some(StaticAbility::reach()),
             StaticAbilityId::Trample => Some(StaticAbility::trample()),
+            StaticAbilityId::TrampleOverPlaneswalkers => {
+                Some(StaticAbility::trample_over_planeswalkers())
+            }
             StaticAbilityId::Vigilance => Some(StaticAbility::vigilance()),
             StaticAbilityId::Haste => Some(StaticAbility::haste()),
             _ => None,

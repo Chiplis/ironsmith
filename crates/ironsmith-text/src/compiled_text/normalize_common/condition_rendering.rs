@@ -87,6 +87,7 @@ pub(crate) fn describe_source_condition_static_ability(
         Skulk => Some("skulk"),
         Shroud => Some("shroud"),
         Trample => Some("trample"),
+        TrampleOverPlaneswalkers => Some("trample over planeswalkers"),
         Vigilance => Some("vigilance"),
         Fear => Some("fear"),
         Flanking => Some("flanking"),

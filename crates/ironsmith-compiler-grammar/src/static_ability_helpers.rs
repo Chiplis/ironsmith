@@ -31,6 +31,9 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
         KeywordAction::Lifelink => Some(CompilerStaticAbility::lifelink()),
         KeywordAction::Vigilance => Some(CompilerStaticAbility::vigilance()),
         KeywordAction::Trample => Some(CompilerStaticAbility::trample()),
+        KeywordAction::TrampleOverPlaneswalkers => {
+            Some(CompilerStaticAbility::trample_over_planeswalkers())
+        }
         KeywordAction::Reach => Some(CompilerStaticAbility::reach()),
         KeywordAction::Defender => Some(CompilerStaticAbility::defender()),
         KeywordAction::Decayed => Some(CompilerStaticAbility::cant_block()),

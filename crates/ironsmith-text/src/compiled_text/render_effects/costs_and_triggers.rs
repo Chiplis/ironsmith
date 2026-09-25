@@ -6430,6 +6430,9 @@ pub(crate) fn describe_for_each_chosen_put_counters_then_gain_keywords(
                 crate::static_abilities::StaticAbilityId::Menace => "menace",
                 crate::static_abilities::StaticAbilityId::Reach => "reach",
                 crate::static_abilities::StaticAbilityId::Trample => "trample",
+                crate::static_abilities::StaticAbilityId::TrampleOverPlaneswalkers => {
+                    "trample over planeswalkers"
+                }
                 crate::static_abilities::StaticAbilityId::Vigilance => "vigilance",
                 _ => return None,
             }

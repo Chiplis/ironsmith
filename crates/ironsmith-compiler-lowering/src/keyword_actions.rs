@@ -28,6 +28,9 @@ pub fn apply_keyword_action(
         KeywordAction::Vigilance => builder.vigilance(),
         KeywordAction::Prowess => builder.prowess(),
         KeywordAction::Trample => builder.trample(),
+        KeywordAction::TrampleOverPlaneswalkers => builder.with_ability(
+            crate::ability::Ability::static_ability(StaticAbility::trample_over_planeswalkers()),
+        ),
         KeywordAction::Lifelink => builder.lifelink(),
         KeywordAction::Deathtouch => builder.deathtouch(),
         KeywordAction::Haste => builder.haste(),

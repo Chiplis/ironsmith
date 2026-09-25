@@ -2322,6 +2322,7 @@ fn is_mergeable_keyword_surface(keyword: &str) -> bool {
                 | "double strike"
                 | "vigilance"
                 | "trample"
+                | "trample over planeswalkers"
                 | "haste"
                 | "lifelink"
                 | "deathtouch"
@@ -5216,6 +5217,7 @@ fn static_variant_selector_keyword(
         ProtectionFromColor => Some("protection from any color"),
         Any(Reach) => Some("reach"),
         Any(Trample) => Some("trample"),
+        Any(TrampleOverPlaneswalkers) => Some("trample over planeswalkers"),
         Any(Shroud) => Some("shroud"),
         Any(Vigilance) => Some("vigilance"),
         Any(Hexproof) | Any(HexproofFrom) => Some("hexproof"),

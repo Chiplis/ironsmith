@@ -349,6 +349,9 @@ pub enum StaticAbilityId {
     EntersUnderChosenControl,
     /// Toxic N (CR 702.164). The amount is carried in the ability's label.
     Toxic,
+    /// Trample over planeswalkers (CR 702.19c). A variant of trample, not an
+    /// instance of it: "has trample" checks don't match it.
+    TrampleOverPlaneswalkers,
 }
 
 impl StaticAbilityId {
@@ -691,6 +694,7 @@ impl StaticAbilityId {
             | Grants
             | EntersUnderChosenControl
             | Toxic
+            | TrampleOverPlaneswalkers
             | NativeAlternativeCastFromZone => {}
         }
     }
@@ -755,6 +759,7 @@ impl StaticAbilityId {
                 | ReadAhead
                 | Unleash
                 | Toxic
+                | TrampleOverPlaneswalkers
                 | KeywordText
                 | KeywordMarker
                 | KeywordFallbackText
@@ -849,6 +854,7 @@ impl StaticAbilityId {
                 | CreaturesYouControlAssignCombatDamageUsingToughness
                 | LethalDamageToCreaturesYouControlUsesPower
                 | Toxic
+                | TrampleOverPlaneswalkers
         )
     }
 

@@ -2334,6 +2334,11 @@ impl StaticAbility {
         Self::new(Trample)
     }
 
+    /// Trample over planeswalkers (CR 702.19c).
+    pub fn trample_over_planeswalkers() -> Self {
+        Self::new(TrampleOverPlaneswalkers)
+    }
+
     pub fn vigilance() -> Self {
         Self::new(Vigilance)
     }

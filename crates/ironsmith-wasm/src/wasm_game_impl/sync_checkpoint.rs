@@ -601,6 +601,8 @@ enum SyncGrandMeleeAttackTarget {
     Nothing {
         #[serde(default)]
         defending_player: Option<u8>,
+        #[serde(default)]
+        was_planeswalker: bool,
     },
 }
 
@@ -1074,9 +1076,13 @@ fn sync_grand_melee_combat(combat: &ironsmith::combat_state::CombatState) -> Syn
                     AttackTarget::Battle(object) => {
                         SyncGrandMeleeAttackTarget::Battle { object: object.0 }
                     }
-                    AttackTarget::Nothing { defending_player } => {
+                    AttackTarget::Nothing {
+                        defending_player,
+                        was_planeswalker,
+                    } => {
                         SyncGrandMeleeAttackTarget::Nothing {
                             defending_player: defending_player.map(|player| player.0),
+                            was_planeswalker,
                         }
                     }
                 };
@@ -1137,9 +1143,13 @@ fn grand_melee_combat_from_sync(
                     SyncGrandMeleeAttackTarget::Battle { object } => {
                         AttackTarget::Battle(ObjectId::from_raw(*object))
                     }
-                    SyncGrandMeleeAttackTarget::Nothing { defending_player } => {
+                    SyncGrandMeleeAttackTarget::Nothing {
+                        defending_player,
+                        was_planeswalker,
+                    } => {
                         AttackTarget::Nothing {
                             defending_player: defending_player.map(PlayerId::from_index),
+                            was_planeswalker: *was_planeswalker,
                         }
                     }
                 },

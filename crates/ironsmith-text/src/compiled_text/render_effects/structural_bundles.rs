@@ -11265,6 +11265,9 @@ pub(super) fn keyword_label_from_static_ability_id(
         crate::static_abilities::StaticAbilityId::Menace => "menace",
         crate::static_abilities::StaticAbilityId::Reach => "reach",
         crate::static_abilities::StaticAbilityId::Trample => "trample",
+        crate::static_abilities::StaticAbilityId::TrampleOverPlaneswalkers => {
+            "trample over planeswalkers"
+        }
         crate::static_abilities::StaticAbilityId::Vigilance => "vigilance",
         _ => return None,
     })

@@ -3741,6 +3741,14 @@ impl<
         Self::identified(StaticAbilityId::Trample, "trample")
     }
 
+    /// Trample over planeswalkers (CR 702.19c).
+    pub fn trample_over_planeswalkers() -> Self {
+        Self::identified(
+            StaticAbilityId::TrampleOverPlaneswalkers,
+            "trample over planeswalkers",
+        )
+    }
+
     pub fn menace() -> Self {
         Self::identified(StaticAbilityId::Menace, "menace")
     }

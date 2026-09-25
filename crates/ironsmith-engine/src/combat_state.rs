@@ -110,7 +110,13 @@ pub enum AttackTarget {
     /// battle, so it assigns no combat damage if unblocked (CR 510.1b).
     /// `defending_player` keeps the player it was attacking at declaration
     /// (CR 508.5). Never a legal target to declare an attack against.
-    Nothing { defending_player: Option<PlayerId> },
+    Nothing {
+        defending_player: Option<PlayerId>,
+        /// Whether it was attacking a planeswalker (not a battle) before, so
+        /// trample over planeswalkers can still reach the defending player
+        /// (CR 702.19e).
+        was_planeswalker: bool,
+    },
 }
 
 impl AttackTarget {
@@ -148,6 +154,7 @@ impl From<crate::triggers::AttackEventTarget> for AttackTarget {
             AttackEventTarget::Battle(object) => Self::Battle(object),
             AttackEventTarget::Nothing => Self::Nothing {
                 defending_player: None,
+                was_planeswalker: false,
             },
         }
     }
@@ -1783,7 +1790,9 @@ pub fn defending_player_for_attack_target(
         AttackTarget::Player(player) => Some(*player),
         AttackTarget::Planeswalker(planeswalker) => game.controller_of_id(*planeswalker),
         AttackTarget::Battle(battle) => game.battle_protector(*battle),
-        AttackTarget::Nothing { defending_player } => *defending_player,
+        AttackTarget::Nothing {
+            defending_player, ..
+        } => *defending_player,
     }
 }
 

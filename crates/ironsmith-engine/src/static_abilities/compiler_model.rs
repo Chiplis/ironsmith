@@ -57,6 +57,7 @@ impl StaticAbility {
             Some(StaticAbilityId::Reach) => Self::reach(),
             Some(StaticAbilityId::Shroud) => Self::shroud(),
             Some(StaticAbilityId::Trample) => Self::trample(),
+            Some(StaticAbilityId::TrampleOverPlaneswalkers) => Self::trample_over_planeswalkers(),
             Some(StaticAbilityId::Vigilance) => Self::vigilance(),
             Some(StaticAbilityId::Fear) => Self::fear(),
             Some(StaticAbilityId::Skulk) => Self::skulk(),
