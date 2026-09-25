@@ -1355,9 +1355,81 @@ pub fn execute_discard(
             }
         }
 
-        TraitEventResult::Replaced { .. } => {
-            // Discard replaced with other effects - treat as prevented
-            DiscardResult::prevented()
+        TraitEventResult::Replaced {
+            effects,
+            effect_id,
+            replacement,
+            source: replacement_source,
+            controller: replacement_controller,
+        } => {
+            // "If a card would be put into a graveyard from anywhere, exile it
+            // instead" (Rest in Peace, Leyline of the Void): the card is still
+            // discarded, it just ends up in exile (CR 614.6, 701.9a).
+            let destination = match &replacement {
+                crate::replacement::ReplacementAction::MoveToZoneWithCounters { zone, .. } => {
+                    Some(*zone)
+                }
+                crate::replacement::ReplacementAction::ExileWithSourceLink
+                | crate::replacement::ReplacementAction::ExileWithSourceLinkThen(_)
+                | crate::replacement::ReplacementAction::ExileWithSourceLinkCountersThen {
+                    ..
+                } => Some(Zone::Exile),
+                _ => None,
+            };
+            game.effect_store
+                .replacement_effects
+                .mark_effect_used(effect_id);
+            let Some(destination) = destination else {
+                // Discard replaced with other effects - treat as prevented
+                let mut ctx = crate::effects::ExecutionContext::new(
+                    replacement_source,
+                    replacement_controller,
+                    decision_maker,
+                );
+                for effect in effects {
+                    let _ = crate::effects::execute_effect(game, &effect, &mut ctx);
+                }
+                return DiscardResult::prevented();
+            };
+            let new_id = game.move_object(card_id, destination, cause.clone());
+            if let Some(new_id) = new_id {
+                if destination == Zone::Exile
+                    && !matches!(
+                        replacement,
+                        crate::replacement::ReplacementAction::MoveToZoneWithCounters { .. }
+                    )
+                {
+                    game.add_exiled_with_source_link(replacement_source, new_id);
+                }
+                if !effects.is_empty() {
+                    let mut ctx = crate::effects::ExecutionContext::new(
+                        replacement_source,
+                        replacement_controller,
+                        decision_maker,
+                    );
+                    if let Some(object) = game.object(new_id) {
+                        let snapshot =
+                            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                                object, game,
+                            );
+                        ctx.tag_object(crate::tag::ZONE_REPLACEMENT_OBJECT_TAG, snapshot);
+                    }
+                    for effect in effects {
+                        if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut ctx)
+                        {
+                            for trigger_event in outcome.events {
+                                game.queue_trigger_event(trigger_event.provenance(), trigger_event);
+                            }
+                        }
+                    }
+                }
+            }
+            DiscardResult {
+                new_id,
+                final_zone: destination,
+                type_verifiable: zone_allows_type_verification(destination),
+                prevented: false,
+            }
         }
 
         TraitEventResult::NeedsChoice { .. } => DiscardResult::prevented(),
