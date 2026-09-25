@@ -598,6 +598,22 @@ fn line_paths(payload: &CardPayload, line: &OracleGrammarLine) -> Vec<(Vec<Segme
             ],
             text.clone(),
         )],
+        OracleGrammarLine::DungeonRoom {
+            room,
+            leads_to,
+            text,
+            effects_debug,
+            ..
+        } => vec![(
+            vec![
+                segment("line_family", "DungeonRoom"),
+                segment("room", room),
+                segment("leads_to", leads_to.join(",")),
+                segment("shape", abstract_text(&payload.name, text)),
+                segment("effect_ast", debug_heads(effects_debug)),
+            ],
+            text.clone(),
+        )],
         OracleGrammarLine::Unsupported { info, reason_code } => vec![(
             vec![
                 segment("line_family", "Unsupported"),
@@ -620,6 +636,7 @@ fn line_family(line: &OracleGrammarLine) -> String {
         OracleGrammarLine::Modal { .. } => "Modal",
         OracleGrammarLine::LevelHeader { .. } => "LevelHeader",
         OracleGrammarLine::SagaChapter { .. } => "SagaChapter",
+        OracleGrammarLine::DungeonRoom { .. } => "DungeonRoom",
         OracleGrammarLine::Unsupported { .. } => "Unsupported",
     }
     .to_string()

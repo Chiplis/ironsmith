@@ -1933,6 +1933,36 @@ impl CantEffectTracker {
         })
     }
 
+    /// Whether a permission to target an object "as though it didn't have
+    /// hexproof" covers `target`'s hexproof from a quality. Such a permission
+    /// also allows choosing a creature with "hexproof from [quality]", so a
+    /// permission that names creatures with hexproof counts it as one
+    /// (CR 702.11e).
+    pub fn ignores_hexproof_from_for_object(
+        &self,
+        game: &GameState,
+        target: ObjectId,
+        source_controller: PlayerId,
+    ) -> bool {
+        let Some(target_object) = game.object(target) else {
+            return false;
+        };
+        let hexproof = crate::static_abilities::StaticAbilityId::Hexproof;
+        self.targeting_as_though_overrides.iter().any(|permission| {
+            permission.ignored_ability == hexproof
+                && permission
+                    .allowed_source_controller
+                    .is_none_or(|allowed| allowed == source_controller)
+                && permission.objects.as_ref().is_some_and(|filter| {
+                    let mut filter = filter.clone();
+                    filter.static_abilities.retain(|ability| *ability != hexproof);
+                    let ctx =
+                        game.filter_context_for(permission.controller, Some(permission.source));
+                    filter.matches(target_object, &ctx, game)
+                })
+        })
+    }
+
     pub fn ignores_target_ability_for_player(
         &self,
         game: &GameState,
