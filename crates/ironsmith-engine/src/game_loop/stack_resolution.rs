@@ -945,6 +945,15 @@ pub(super) fn resolve_stack_entry_full(
     mut trigger_queue: Option<&mut TriggerQueue>,
 ) -> Result<(), GameLoopError> {
     game.refresh_continuous_state();
+    // Rebound granted by a static ability (Cast Through Time) applies to
+    // spells on the stack, so read it before the entry is popped.
+    let resolving_spell_has_granted_rebound = game.stack.last().is_some_and(|entry| {
+        !entry.is_ability
+            && game.current_has_static_ability_id(
+                entry.object_id,
+                crate::static_abilities::StaticAbilityId::Rebound,
+            )
+    });
     let entry = game
         .pop_from_stack()
         .ok_or_else(|| GameLoopError::InvalidState("Stack is empty".to_string()))?;
@@ -1796,10 +1805,7 @@ pub(super) fn resolve_stack_entry_full(
                                 if static_ability.id()
                                     == crate::static_abilities::StaticAbilityId::Rebound
                         )
-                }) || game.current_has_static_ability_id(
-                    entry.object_id,
-                    crate::static_abilities::StaticAbilityId::Rebound,
-                ));
+                }) || resolving_spell_has_granted_rebound);
 
             // Only methods which explicitly replace leaving the stack exile the spell.
             let should_exile = match &entry.casting_method {

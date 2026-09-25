@@ -171,15 +171,37 @@ fn ensure_granted_casualty_optional_costs(game: &mut GameState, pending: &mut Pe
     let mut powers: Vec<u32> = abilities
         .iter()
         .filter_map(|ability| match &ability.kind {
-            AbilityKind::Triggered(triggered) => match triggered.presentation_label {
-                Some(PresentationLabel::Keyword(PresentationKeyword::Casualty(power))) => {
-                    Some(power)
-                }
-                _ => None,
-            },
+            AbilityKind::Triggered(triggered) => {
+                // The granted copy trigger checks its own "Granted Casualty N"
+                // label; the presentation label is kept when available.
+                let from_condition = match &triggered.intervening_if {
+                    Some(crate::ConditionExpr::ThisSpellPaidLabel(label))
+                        if label.kind == crate::cost::OptionalCostKind::GrantedCasualty =>
+                    {
+                        label
+                            .discriminator
+                            .as_deref()
+                            .and_then(|text| text.rsplit(' ').next())
+                            .and_then(|power| power.parse::<u32>().ok())
+                    }
+                    _ => None,
+                };
+                from_condition.or(match triggered.presentation_label {
+                    Some(PresentationLabel::Keyword(PresentationKeyword::Casualty(power)))
+                        if triggered.intervening_if.is_some() =>
+                    {
+                        Some(power)
+                    }
+                    _ => None,
+                })
+            }
             _ => None,
         })
         .collect();
+    // The spell isn't a recorded cast yet while it's being cast, so a grant
+    // such as "the first instant or sorcery spell you cast each turn has
+    // casualty 2" is matched against it as the prospective cast (CR 601.2).
+    powers.extend(prospective_granted_casualty_powers(game, pending));
     powers.sort_unstable();
     powers.dedup();
     let Some(spell) = game.object(pending.spell_id) else {
@@ -208,6 +230,63 @@ fn ensure_granted_casualty_optional_costs(game: &mut GameState, pending: &mut Pe
     }
     pending.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&spell.optional_costs);
     true
+}
+
+/// Casualty powers granted to the spell being cast by battlefield statics
+/// whose filter matches it as the prospective cast.
+fn prospective_granted_casualty_powers(game: &GameState, pending: &PendingCast) -> Vec<u32> {
+    let Some(spell) = game.object(pending.spell_id) else {
+        return Vec::new();
+    };
+    let view = crate::derived_view::DerivedGameView::new(game);
+    let mut powers = Vec::new();
+    for &permanent in &game.battlefield {
+        let Some(permanent_object) = game.object(permanent) else {
+            continue;
+        };
+        let Some(static_abilities) = view.static_abilities_rc(permanent) else {
+            continue;
+        };
+        for static_ability in static_abilities.iter() {
+            let Some(ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant)) =
+                static_ability.compiled_model().map(|model| &model.payload)
+            else {
+                continue;
+            };
+            let ability =
+                crate::static_abilities::StaticAbilityModelInterpreter::ability_from_model(
+                    &grant.ability,
+                );
+            let crate::ability::AbilityKind::Triggered(triggered) = &ability.kind else {
+                continue;
+            };
+            let Some(crate::ConditionExpr::ThisSpellPaidLabel(label)) = &triggered.intervening_if
+            else {
+                continue;
+            };
+            if label.kind != crate::cost::OptionalCostKind::GrantedCasualty {
+                continue;
+            }
+            let Some(power) = label
+                .discriminator
+                .as_deref()
+                .and_then(|text| text.rsplit(' ').next())
+                .and_then(|power| power.parse::<u32>().ok())
+            else {
+                continue;
+            };
+            let ctx = game
+                .filter_context_for(game.controller_of(permanent_object), Some(permanent))
+                .with_caster(Some(pending.caster))
+                .with_prospective_cast(pending.spell_id);
+            let mut filter = grant.filter.clone();
+            filter.zone = None;
+            if filter.matches_non_recursive(spell, &ctx, game) {
+                powers.push(power);
+            }
+        }
+    }
+    powers
 }
 
 /// Label of the cast-time "cast it prototyped" announcement.
@@ -1390,6 +1469,15 @@ pub(crate) fn cast_spell_from_resolving_effect_with_context(
         .object(stack_id)
         .map(|object| object.optional_costs_paid.clone())
         .unwrap_or_default();
+    // CR 601.2c: a spell whose required targets can't all be chosen can't be
+    // cast; the proposal is reversed (CR 601.2). Modal spells check their
+    // chosen modes in the modes step.
+    if extract_modal_spec_from_spell(game, stack_id, caster).is_none()
+        && !spell_program_has_legal_targets_with_modes(game, &effects, caster, Some(stack_id), None)
+    {
+        state.rollback_action(game);
+        return Ok(None);
+    }
     let requirements = extract_target_requirements_from_program_with_modes(
         game,
         &effects,

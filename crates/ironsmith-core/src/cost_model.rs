@@ -926,6 +926,11 @@ pub enum OptionalCostKind {
     Suspend,
     CompleatedLifePaid,
     GrantedConspire,
+    /// Casualty granted by another object ("... has casualty N"), paid as a
+    /// cast-time optional cost; the discriminator is the full label.
+    GrantedCasualty,
+    /// The cast-time choice to cast a prototype card prototyped (CR 718.3).
+    Prototype,
     Tribute,
     Surge,
     Spectacle,
@@ -965,11 +970,13 @@ impl OptionalCostKind {
             "suspend" => Self::Suspend,
             "compleatedlifepaid" => Self::CompleatedLifePaid,
             "granted conspire" => Self::GrantedConspire,
+            "prototype" => Self::Prototype,
             "tribute" => Self::Tribute,
             "surge" => Self::Surge,
             "spectacle" => Self::Spectacle,
             "additional" | "additional cost" => Self::Additional,
             "evidence" | "collect evidence" => Self::CollectEvidence,
+            _ if lower.starts_with("granted casualty") => Self::GrantedCasualty,
             _ if lower.starts_with("kicker ") => Self::Kicker,
             _ if lower.starts_with("gift ") => Self::Gift,
             _ if lower.starts_with("conspire") => Self::Conspire,
@@ -1010,6 +1017,8 @@ impl OptionalCostKind {
             Self::Suspend => "Suspend",
             Self::CompleatedLifePaid => "CompleatedLifePaid",
             Self::GrantedConspire => "Granted Conspire",
+            Self::GrantedCasualty => "Granted Casualty",
+            Self::Prototype => "Prototype",
             Self::Tribute => "Tribute",
             Self::Surge => "Surge",
             Self::Spectacle => "Spectacle",
@@ -1091,7 +1100,9 @@ impl OptionalCostRef {
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .map(str::to_string),
-            OptionalCostKind::CustomUnsupported(_) => Some(trimmed.to_string()),
+            OptionalCostKind::CustomUnsupported(_) | OptionalCostKind::GrantedCasualty => {
+                Some(trimmed.to_string())
+            }
             _ => None,
         };
         Self {
