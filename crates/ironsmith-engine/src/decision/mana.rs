@@ -1878,12 +1878,20 @@ pub(crate) fn commander_tax_life_payment_amount(
 /// ([`GameState::set_hidden_face_down_cast_claim`]); that claim wins, so peers
 /// that hold only a hidden-card placeholder agree with the caster. Peers
 /// holding a placeholder check the claim against the card once it is opened.
+///
+/// Without a printed keyword, an effect's face-down cast permission covering
+/// the card allows the cast as [`crate::game_state::FaceDownCastKind::Permission`]
+/// (see [`crate::game_state::FaceDownCastPermission`]).
 pub fn face_down_cast_kind(
     game: &GameState,
     spell: &crate::object::Object,
 ) -> Option<crate::game_state::FaceDownCastKind> {
     game.hidden_face_down_cast_claim(spell.id)
         .or_else(|| crate::game_state::FaceDownCastKind::of_abilities(&spell.abilities))
+        .or_else(|| {
+            game.face_down_cast_permission_source_for(spell)
+                .map(|source| crate::game_state::FaceDownCastKind::Permission { source })
+        })
 }
 
 pub(crate) fn spell_can_be_cast_face_down(game: &GameState, spell: &crate::object::Object) -> bool {

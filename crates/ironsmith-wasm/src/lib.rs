@@ -2320,9 +2320,17 @@ enum CastingMethodRef {
     /// placeholder replay the cast from it without learning the card, and
     /// check it against the card once it is opened. It is ignored when the
     /// ref is matched against the engine's legal actions.
+    ///
+    /// `face_down_permission_source` is set with `face_down_kind:
+    /// "permission"`: the public source of the effect permission the card is
+    /// cast face down through (no printed morph, megamorph, or disguise).
+    /// Peers accept the cast while that permission applies and check its
+    /// filter once the card opens.
     FaceDown {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         face_down_kind: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        face_down_permission_source: Option<u64>,
     },
     SplitOtherHalf,
     Fuse,

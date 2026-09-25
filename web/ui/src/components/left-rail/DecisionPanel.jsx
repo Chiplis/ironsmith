@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Flag, Undo2 } from "lucide-react";
 import { useI18n } from "@/i18n/I18nContext";
+import { endOfMatchDisclosureEntries, endOfMatchDisclosureStatusLabel } from "@/lib/end-of-match-disclosure-view";
 
 const PRIORITY_ACTION_GROUPS = [
   { key: "play", label: "Play", kinds: ["play_land"] },
@@ -99,19 +100,6 @@ function hoveredPriorityActionGroups(decision, hoveredObjectId, suppressBattlefi
   return grouped;
 }
 
-function disclosureStatusLabel(entry) {
-  switch (entry?.status) {
-    case "verified":
-      return entry.reason === "sent" ? "disclosed" : "verified";
-    case "cheat_detected":
-      return `cheat detected${entry.reason ? ` (${entry.reason})` : ""}`;
-    case "missing":
-      return "disclosure missing";
-    default:
-      return "awaiting disclosure";
-  }
-}
-
 export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   const ui = useUiText();
   const {
@@ -145,9 +133,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   const showGameOverPanel = Boolean(gameOver);
   // End-of-match disclosure verdicts (verified multiplayer): every player
   // opens its remaining hidden hand and face-down cards when the match ends.
-  const disclosureEntries = Object.entries(multiplayer?.endOfMatchDisclosure?.byPlayer || {})
-    .map(([player, entry]) => ({ player, ...entry }))
-    .sort((left, right) => Number(left.player) - Number(right.player));
+  const disclosureEntries = endOfMatchDisclosureEntries(multiplayer);
   const canPlayAgain = Boolean(
     gameOver
     && (multiplayer?.matchStarted || multiplayer?.mode === "in_match")
@@ -361,7 +347,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                       className={entry.status === "cheat_detected" ? "text-[#ff8a7a]" : "text-muted-foreground"}
                       title={entry.reason || undefined}
                     >
-                      {entry.name}: {disclosureStatusLabel(entry)}
+                      {entry.name}: {endOfMatchDisclosureStatusLabel(entry)}
                     </div>
                   ))}
                 </div>

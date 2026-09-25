@@ -47,6 +47,7 @@ import {
 import { useHoverSuppressedWhileScrolling } from "@/lib/useHoverSuppressedWhileScrolling";
 import { cn } from "@/lib/utils";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
+import { endOfMatchDisclosureEntries, endOfMatchDisclosureStatusLabel } from "@/lib/end-of-match-disclosure-view";
 import { LoaderCircle, X } from "lucide-react";
 
 const ACTION_STRIP_BODY_CLASS = "min-h-0 h-full";
@@ -3706,7 +3707,7 @@ function GameOverBar({
   portalTarget = null,
   dockHidden = false,
 }) {
-  const { state } = useGame();
+  const { state, multiplayer } = useGame();
   const { t } = useI18n();
   const action = useRematchMainAction();
   const gameOver = state?.game_over || null;
@@ -3719,8 +3720,33 @@ function GameOverBar({
 
   if (mobileBattle) {
     if (dockHidden) return null;
+    // End-of-match disclosure verdicts, as on the desktop game-over panel.
+    const disclosureEntries = endOfMatchDisclosureEntries(multiplayer);
     return renderMobileBattlePortal(
       <div className="mobile-decision-dock mobile-decision-dock--inline">
+        {disclosureEntries.length > 0 ? (
+          // Floats above the slim dock row so it never squeezes the button.
+          <div
+            className="pointer-events-auto absolute bottom-full right-0 mb-1 flex max-h-28 w-max max-w-[min(80vw,320px)] flex-col gap-0.5 overflow-y-auto rounded border border-[#d8bf7a]/40 bg-black/85 px-2 py-1 text-left text-[11px] leading-snug"
+            data-end-of-match-disclosure="true"
+          >
+            <div className="font-bold uppercase tracking-wider text-[#d8bf7a]">
+              Hidden-card disclosure
+            </div>
+            {disclosureEntries.map((entry) => (
+              <div
+                key={entry.player}
+                className={cn(
+                  "break-words",
+                  entry.status === "cheat_detected" ? "text-[#ff8a7a]" : "text-muted-foreground"
+                )}
+                title={entry.reason || undefined}
+              >
+                {entry.name}: {endOfMatchDisclosureStatusLabel(entry)}
+              </div>
+            ))}
+          </div>
+        ) : null}
         <div className="mobile-decision-dock-actions">
           <RematchMainButton variant="mobile" subtitle={gameOverText} />
         </div>

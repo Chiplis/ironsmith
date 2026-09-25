@@ -69,8 +69,10 @@ pub use conspiracy::{
 };
 pub use emperor::EmperorState;
 pub use hidden_hand_choices::{
-    DepartedHiddenCard, EndOfMatchDisclosureCard, FaceDownCastKind, PendingAutomaticDrawReveal,
-    HIDDEN_IDENTITY_VIOLATION_PREFIX,
+    DepartedHiddenCard, EndOfMatchDisclosureCard, FACE_DOWN_CAST_PERMISSION_KIND,
+    FaceDownCastKind, FaceDownCastPermission, HIDDEN_IDENTITY_VIOLATION_PREFIX,
+    HiddenIdentityCheck, HiddenIdentityObligation, HiddenLibraryAnchor,
+    PendingAutomaticDrawReveal,
 };
 pub use free_for_all::{FreeForAllAttackOption, FreeForAllState};
 pub use grand_melee::{
@@ -609,6 +611,17 @@ struct AuxiliaryTrackingState {
     /// Hidden cards snapshotted as their owner left the game (CR 800.4a),
     /// for the end-of-match disclosure.
     departed_hidden_cards: Vec<hidden_hand_choices::DepartedHiddenCard>,
+    /// Hidden cards that are the subject of a pending public claim (chosen
+    /// for a filter, withheld from a forced reveal, cast face down), marked
+    /// identically on every peer. Such a card entering a library is anchored
+    /// to its durable ziffle ciphertext for the end-of-match disclosure.
+    hidden_claim_subjects: BTreeSet<StableId>,
+    /// Durable ziffle ciphertexts of claim subjects that entered a library
+    /// (see `hidden_hand_choices::HiddenLibraryAnchor`). Symmetric.
+    hidden_library_anchors: Vec<hidden_hand_choices::HiddenLibraryAnchor>,
+    /// Effect permissions to cast cards face down without a printed morph,
+    /// megamorph, or disguise (see `hidden_hand_choices`). Public.
+    face_down_cast_permissions: Vec<hidden_hand_choices::FaceDownCastPermission>,
     /// Hidden-tracked hand cards whose identity every peer learned through an
     /// owner-answered public reveal (see `hidden_hand_choices`). Symmetric:
     /// it only changes while a decision answer is replayed.

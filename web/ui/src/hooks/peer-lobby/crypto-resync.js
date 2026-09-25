@@ -58,6 +58,7 @@ import {
   isOwnerPrivateViewRequirement,
   isProtocolResponseTimeoutForfeitCommand,
   isRejectedActionCheatReason,
+  cheatOffenderForError,
   isSelfForfeitCommand,
   isSorcerySpeedForfeitState,
   isTrustedMultiplayerSecurityMode,
@@ -3813,7 +3814,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       if (message?.action && isRejectedActionCheatReason(failureReason)) {
         const actorName = playerNameForIndex(
           multiplayerRef.current.players,
-          message.action.actorIndex
+          cheatOffenderForError(err, failureReason, message.action.actorIndex)
         );
         const status = `Cheat detected from ${actorName}: ${failureReason}`;
         emitSyncFailureNotice("Cheat detected", status);

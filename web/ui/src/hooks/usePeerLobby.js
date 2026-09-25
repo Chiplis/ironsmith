@@ -23,6 +23,7 @@ import {
   buildPeerHeartbeatConfig,
   buildPeerOptions,
   canHostedMatchStart,
+  cheatOffenderForError,
   cloneMultiplayerPayload,
   commandMayProducePostApplyOpenings,
   createEmptyState,
@@ -31,12 +32,14 @@ import {
   deckSlotOpeningsForManifest,
   describePeerServer,
   disconnectCertificateFromCommand,
+  emitSyncFailureNotice,
   expectedLocalPublicOpeningPreviewCount,
   filterCryptoRequirementsForCommand,
   isActionTimeoutForfeitCommand,
   isDecisionCommandCompatible,
   isDisconnectTimeoutForfeitCommand,
   isForfeitCommand,
+  isHiddenIdentityViolationReason,
   isProtocolResponseTimeoutForfeitCommand,
   isSelfForfeitCommand,
   isSorcerySpeedForfeitState,
@@ -1767,6 +1770,25 @@ export function usePeerLobby({
           await submitProtocolResponseTimeoutClaim(protocolTimeoutClaim);
           return;
         }
+        // Applying another player's post opening can expose a hidden-identity
+        // obligation violation (its card contradicts a claim made while it
+        // was hidden). That is that player's cheat, reported exactly as peers
+        // replaying the action report it, not a failure of this submission.
+        const cheatOffender = isHiddenIdentityViolationReason(failureReason)
+          ? cheatOffenderForError(err, failureReason, null)
+          : null;
+        if (cheatOffender != null && cheatOffender !== Number(session.localPlayerIndex)) {
+          const offenderName = playerNameForIndex(multiplayerRef.current.players, cheatOffender);
+          const status = `Cheat detected from ${offenderName}: ${failureReason}`;
+          recordPeerSyncPerf("submit_action:cheat_detected", {
+            command: summarizePeerCommand(command),
+            offender: cheatOffender,
+            error: failureReason,
+          });
+          emitSyncFailureNotice("Cheat detected", status);
+          setStatus(status, true);
+          return;
+        }
         if (
           failureReason.includes("Action quorum certificate")
           || failureReason.includes("action quorum vote")
@@ -2107,10 +2129,15 @@ export function usePeerLobby({
 	        String(disclosure?.matchId || disclosure?.payload?.matchId || "") === matchId
 	      )
 	      .map((disclosure) => cloneMultiplayerPayload(disclosure));
+	    // End-of-match disclosures: every signed disclosure this peer sent or
+	    // received for the match, with its verdict (verified by audit replay).
+	    const endOfMatchDisclosures =
+	      servicesRef.current.endOfMatchDisclosuresForExport?.(matchId) || [];
 	    return {
       ...transcript,
       exportedAt: new Date().toISOString(),
       privateViewDisclosures,
+      endOfMatchDisclosures,
       finalStateHash,
       finalPublicCheckpoint,
       finalPublicCheckpointHash,

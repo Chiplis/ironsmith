@@ -824,6 +824,30 @@ export function isRejectedActionCheatReason(reason) {
     || normalized.includes("action is no longer available");
 }
 
+// Whether a failure is a hidden-identity obligation violation: a card opened
+// after it was used while hidden contradicts its owner's earlier claim.
+export function isHiddenIdentityViolationReason(reason) {
+  return String(reason || "").toLowerCase().includes("hidden identity obligation violated");
+}
+
+// The seat a rejected-action cheat is attributed to. An obligation violation
+// found while applying an opening is the cheat of the player who supplied
+// that opening (revealAuditOpenings tags the error with `openingOwner`),
+// which need not be the actor: a submitter applying another player's post
+// opening, or a peer replaying it. Anything else falls back to the actor.
+export function cheatOffenderForError(err, reason, fallbackPlayer = null) {
+  const owner = err?.openingOwner;
+  if (
+    isHiddenIdentityViolationReason(reason)
+    && owner != null
+    && Number.isInteger(Number(owner))
+    && Number(owner) >= 0
+  ) {
+    return Number(owner);
+  }
+  return fallbackPlayer == null ? null : Number(fallbackPlayer);
+}
+
 export function matchClockActivePlayerFromState(uiState) {
   const decision = uiState?.decision || null;
   if (!decision || uiState?.game_over || decision.player == null) return null;

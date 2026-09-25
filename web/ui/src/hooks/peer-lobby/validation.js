@@ -35,6 +35,7 @@ import {
   isForfeitCommand,
   isProtocolResponseTimeoutForfeitCommand,
   isRejectedActionCheatReason,
+  cheatOffenderForError,
   selectObjectCandidateForId,
   selectObjectCandidateRevealPolicy,
   isSelfForfeitCommand,
@@ -94,6 +95,7 @@ import {
   ziffleRuntimeCommitment,
 } from "./shared.js";
 import { recordDiagnosticEvent } from "../../lib/action-diagnostics.js";
+import { disclosureDueForPlayer } from "./end-of-match-disclosure.js";
 
 export function usePeerLobbyValidation(base, servicesRef) {
   const { actionCryptoRequirementsRef, actionHistoryRef, applySyncedCommand, applyingSequencedActionsRef, auditEncryptionPublicKeyRef, auditPublicKeyRef, auditStateHashRef, awaitingStateResyncRef, clientConnectionsRef, drainingPendingSequencedActionsRef, gameRef, hostConnectionRef, initialPublicCheckpointHashRef, liveAuditTranscriptRef, liveZiffleCeremoniesRef, localRevealedOpeningsRef, localZiffleCeremonyLookupRef, localZiffleRevealInFlightRef, matchClockObservationExemptSequenceRef, matchStartPayloadRef, multiplayerRef, outboundCryptoMaterialRequestsRef, peerConnectionsRef, pendingSequencedActionsRef, privateViewDisclosuresRef, relayedActionIdsRef, rngCommitNoncesRef, rngRevealCommitSetLocksRef, setState, setStatus, signedRngCommitmentsRef, stateRef, verifiedAuditOpeningsRef, verifiedShuffleProofsRef, ziffleHandRevealKeyRef, ziffleHandRevealQuickKeyRef, ziffleOpeningPositionsRef, ziffleRevealTokenCacheRef, ziffleShufflePerfRef } = base;
@@ -766,7 +768,12 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	        if (throwOnFailure) {
 	          throw err;
 	        }
-	        const actorName = playerNameForIndex(multiplayerRef.current.players, message.actorIndex);
+	        // An obligation violation in a post opening is the cheat of the
+	        // seat that supplied the opening, not necessarily the actor's.
+	        const actorName = playerNameForIndex(
+	          multiplayerRef.current.players,
+	          cheatOffenderForError(err, failureReason, message.actorIndex)
+	        );
 	        if (isTrustedMultiplayerSecurityMode(sequencedActionSecurityMode(message, multiplayerRef.current))) {
 	          const status = `Trusted action rejected from ${actorName}: ${failureReason}`;
 	          const resynced = reportSyncFailure(
@@ -1226,6 +1233,25 @@ export function usePeerLobbyValidation(base, servicesRef) {
         publicSlot: hidden.publicSlot ?? hidden.public_slot ?? null,
         publicCommitment: hidden.publicCommitment ?? hidden.public_commitment ?? "",
       });
+    }
+    // End-of-match disclosure: once the owner's part of the match is over on
+    // this engine it must open every card its disclosure lists, including the
+    // library anchors (the durable ziffle ciphertexts of claimed cards that
+    // entered its library, see game_state/hidden_hand_choices.rs). The list
+    // comes from this engine's own state and the game is over for that seat,
+    // so revealing those positions is harmless.
+    if (
+      disclosureDueForPlayer(stateRef.current, owner)
+      && typeof currentGame.endOfMatchDisclosureRequirements === "function"
+    ) {
+      try {
+        const requirements = await currentGame.endOfMatchDisclosureRequirements(Number(owner));
+        for (const requirement of Array.isArray(requirements) ? requirements : []) {
+          addMetadataPosition(requirement);
+        }
+      } catch {
+        // No disclosure positions: the visible-state rules below still apply.
+      }
     }
     const blockedZones = new Set(["library", "outside_game"]);
     for (const object of checkpoint?.objects || []) {

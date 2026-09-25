@@ -24,6 +24,11 @@ const WORKER_METHODS = [
   "dispatch",
   "drawCard",
   "drawOpeningHands",
+  // End-of-match disclosure and forced-reveal completeness checks
+  // (hooks/peer-lobby/end-of-match-disclosure.js, lib/audit-replay.js).
+  "endOfMatchDisclosureRequirements",
+  "verifyEndOfMatchDisclosure",
+  "hiddenCardOpenState",
   "exportHiddenCardOpening",
   "exportPublicAuditCheckpoint",
   "exportRedactedSyncCheckpoint",

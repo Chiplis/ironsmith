@@ -56,13 +56,20 @@ pub(super) fn priority_action_ref_for_game(
     let mut action_ref = priority_action_ref(action);
     if let PriorityActionRef::CastSpell {
         spell_id,
-        casting_method: CastingMethodRef::FaceDown { face_down_kind },
+        casting_method:
+            CastingMethodRef::FaceDown {
+                face_down_kind,
+                face_down_permission_source,
+            },
         ..
     } = &mut action_ref
         && let Some(spell) = game.object(ObjectId::from_raw(*spell_id))
     {
-        *face_down_kind = ironsmith::decision::face_down_cast_kind(game, spell)
-            .map(|kind| kind.as_str().to_string());
+        let kind = ironsmith::decision::face_down_cast_kind(game, spell);
+        *face_down_kind = kind.map(|kind| kind.as_str().to_string());
+        *face_down_permission_source = kind
+            .and_then(|kind| kind.permission_source())
+            .map(|source| source.0);
     }
     action_ref
 }
@@ -72,11 +79,16 @@ pub(super) fn priority_action_ref_for_game(
 fn action_ref_for_matching(action_ref: &PriorityActionRef) -> PriorityActionRef {
     let mut normalized = action_ref.clone();
     if let PriorityActionRef::CastSpell {
-        casting_method: CastingMethodRef::FaceDown { face_down_kind },
+        casting_method:
+            CastingMethodRef::FaceDown {
+                face_down_kind,
+                face_down_permission_source,
+            },
         ..
     } = &mut normalized
     {
         *face_down_kind = None;
+        *face_down_permission_source = None;
     }
     normalized
 }
@@ -87,13 +99,20 @@ pub(super) fn face_down_cast_claim_for_action_ref(
 ) -> Option<(ObjectId, ironsmith::game_state::FaceDownCastKind)> {
     let PriorityActionRef::CastSpell {
         spell_id,
-        casting_method: CastingMethodRef::FaceDown { face_down_kind },
+        casting_method:
+            CastingMethodRef::FaceDown {
+                face_down_kind,
+                face_down_permission_source,
+            },
         ..
     } = action_ref
     else {
         return None;
     };
-    let kind = ironsmith::game_state::FaceDownCastKind::from_name(face_down_kind.as_deref()?)?;
+    let kind = ironsmith::game_state::FaceDownCastKind::from_wire(
+        face_down_kind.as_deref()?,
+        face_down_permission_source.map(ObjectId::from_raw),
+    )?;
     Some((ObjectId::from_raw(*spell_id), kind))
 }
 
@@ -1100,6 +1119,7 @@ pub(super) fn casting_method_ref(
         ironsmith::alternative_cast::CastingMethod::Normal => CastingMethodRef::Normal,
         ironsmith::alternative_cast::CastingMethod::FaceDown => CastingMethodRef::FaceDown {
             face_down_kind: None,
+            face_down_permission_source: None,
         },
         ironsmith::alternative_cast::CastingMethod::SplitOtherHalf => {
             CastingMethodRef::SplitOtherHalf

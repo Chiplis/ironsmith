@@ -827,6 +827,8 @@ impl GameState {
         }
         if let Some(mut info) = hidden_card_info {
             let audit_info = info.clone();
+            let entering_library = (new_zone == Zone::Library && old_zone != Zone::Library)
+                .then(|| audit_info.clone());
             info.zone = new_zone;
             self.auxiliary_tracking_mut()
                 .hidden_cards
@@ -840,8 +842,15 @@ impl GameState {
                 slot: audit_info.slot,
                 commitment: audit_info.commitment,
             });
-            if new_zone == Zone::Library {
-                self.forget_hidden_identity_obligations_for_library(new_id);
+            if let Some(entering) = entering_library {
+                // A claim subject entering a library is anchored to its
+                // durable ziffle ciphertext (checked at the end-of-match
+                // disclosure), since reshuffles break the object link.
+                self.anchor_hidden_card_entering_library(new_id, &entering);
+            } else if new_zone == Zone::Graveyard {
+                // A card put into a graveyard is face up and opened on every
+                // peer, which checks its claims then; it needs no anchor.
+                self.forget_hidden_claim_subject(sticker_identity);
             }
         }
 

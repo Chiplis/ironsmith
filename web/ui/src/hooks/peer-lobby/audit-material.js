@@ -3867,7 +3867,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
           || unappliedPostZiffleOpening
           || (!message.includes("not present") && !message.includes("not a hidden"))
         ) {
-          throw new Error(
+          const openingError = new Error(
             `${message}; opening owner ${Number(opening.owner)} slot ${Number(opening.slot)}`
             + ` object ${opening.objectId == null ? "none" : Number(opening.objectId)}`
             + ` card ${String(opening.card || "")}`
@@ -3884,6 +3884,11 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
             + ` hiddenPublicCommitment ${String(localHiddenMetadata?.publicCommitment || "").slice(0, 32) || "none"}`
             + ` processed ${JSON.stringify(debugProcessedPostOpenings)}`
           );
+          // The seat whose opening failed: a hidden-identity obligation
+          // violation is that seat's cheat, not the submitter's (see
+          // isRejectedActionCheatReason and cheatOffenderForError).
+          openingError.openingOwner = Number(opening.owner);
+          throw openingError;
         }
         console.warn("[ironsmith] audit opening skipped: target is not a hidden card here", {
           timing,

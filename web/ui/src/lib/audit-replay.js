@@ -1,4 +1,10 @@
-import { publicCheckpointHash } from "./multiplayer-audit.js";
+import {
+  importAuditPublicKey,
+  publicCheckpointHash,
+  publicDeckManifest,
+  verifyAuditPayload,
+  verifyCardOpeningAgainstManifest,
+} from "./multiplayer-audit.js";
 import { resolveSyncedCommand } from "./sync-commands.js";
 import { captureEngineRestorePoint, restoreEngineRestorePoint } from "./engine-restore-point.js";
 
@@ -435,6 +441,137 @@ export async function applyAuditReplayActionWithGame({
   };
 }
 
+// Mirrors END_OF_MATCH_DISCLOSURE_DOMAIN in hooks/peer-lobby/end-of-match-disclosure.js.
+const END_OF_MATCH_DISCLOSURE_DOMAIN = "ironsmith-end-of-match-disclosure-v1";
+
+function transcriptPlayerForSeat(match, seat) {
+  return transcriptPlayers(match).find((player, index) =>
+    Number(player?.index ?? index) === Number(seat)
+  ) || null;
+}
+
+function transcriptDeckManifestForSeat(match, seat) {
+  const manifests = Array.isArray(match?.deckAuditManifests) ? match.deckAuditManifests : [];
+  const fromList = manifests.find((manifest) => Number(manifest?.owner) === Number(seat))
+    || manifests[Number(seat)]
+    || null;
+  return publicDeckManifest(fromList || transcriptPlayerForSeat(match, seat)?.deckAuditManifest);
+}
+
+async function replayVerdictForDisclosure(game, match, entry, cryptoImpl, transcriptMatchId = "") {
+  const disclosure = entry?.disclosure || null;
+  if (!disclosure) {
+    return { status: "missing", reason: "no signed end-of-match disclosure in the transcript" };
+  }
+  const player = Number(disclosure.player ?? entry.player);
+  const payload = {
+    domain: END_OF_MATCH_DISCLOSURE_DOMAIN,
+    matchId: String(disclosure.matchId || ""),
+    player,
+    openings: clonePayload(Array.isArray(disclosure.openings) ? disclosure.openings : []),
+  };
+  const expectedMatchId = String(transcriptMatchId || match?.auditMatchId || "");
+  if (String(disclosure.domain || "") !== END_OF_MATCH_DISCLOSURE_DOMAIN) {
+    return { status: "cheat_detected", reason: "End-of-match disclosure has the wrong domain" };
+  }
+  if (expectedMatchId && payload.matchId !== expectedMatchId) {
+    return { status: "cheat_detected", reason: "End-of-match disclosure belongs to a different match" };
+  }
+  const publicKeyHex = String(transcriptPlayerForSeat(match, player)?.auditPublicKey || "");
+  if (!publicKeyHex) {
+    return { status: "unverifiable", reason: `no audit public key for player ${player + 1}` };
+  }
+  const publicKey = await importAuditPublicKey(publicKeyHex, cryptoImpl);
+  const validSignature = await verifyAuditPayload(
+    publicKey,
+    payload,
+    String(disclosure.signature || ""),
+    cryptoImpl,
+  );
+  if (!validSignature) {
+    return { status: "cheat_detected", reason: "End-of-match disclosure signature is invalid" };
+  }
+  // Deck-manifest commitments. Ziffle position proofs are not re-verified
+  // here (the replay reveals every opening by its position, as it does for
+  // the openings of replayed actions).
+  const manifest = transcriptDeckManifestForSeat(match, player);
+  if (manifest) {
+    for (const opening of payload.openings) {
+      if (!opening || opening.slot == null) continue;
+      const valid = await verifyCardOpeningAgainstManifest({
+        manifest,
+        slot: opening.slot,
+        card: opening.card,
+        salt: opening.salt,
+      }, cryptoImpl);
+      if (!valid) {
+        return {
+          status: "cheat_detected",
+          reason: `Card opening for player ${player + 1}, slot ${Number(opening.slot)} `
+            + "does not match its deck commitment",
+        };
+      }
+    }
+  }
+  const verify = optionalGameMethod(game, "verifyEndOfMatchDisclosure");
+  if (!verify) {
+    return { status: "unverifiable", reason: "engine cannot verify end-of-match disclosures" };
+  }
+  const result = await verify(player, payload.openings);
+  const violations = Array.isArray(result?.violations) ? result.violations : [];
+  const missing = Array.isArray(result?.missing) ? result.missing : [];
+  if (violations.length > 0) {
+    return { status: "cheat_detected", reason: violations.join("; ") };
+  }
+  if (missing.length > 0) {
+    return {
+      status: "cheat_detected",
+      reason: `End-of-match disclosure omits ${missing.length} hidden card`
+        + `${missing.length === 1 ? "" : "s"} (objects ${missing.join(", ")})`,
+    };
+  }
+  return { status: "verified", reason: manifest ? "" : "deck manifest unavailable" };
+}
+
+// Re-verify the transcript's end-of-match disclosures against the engine's
+// final replayed state (commitments, obligation ledger, library anchors).
+// Returns one report per disclosure entry: the verdict recorded live and the
+// verdict reached by the replay.
+export async function verifyEndOfMatchDisclosuresWithGame({
+  game,
+  transcript,
+  cryptoImpl = globalThis.crypto,
+} = {}) {
+  const entries = Array.isArray(transcript?.endOfMatchDisclosures)
+    ? transcript.endOfMatchDisclosures
+    : [];
+  const match = transcript?.match || {};
+  const reports = [];
+  for (const entry of entries) {
+    let replayVerdict;
+    try {
+      replayVerdict = await replayVerdictForDisclosure(
+        game,
+        match,
+        entry,
+        cryptoImpl,
+        String(transcript?.matchId || "")
+      );
+    } catch (err) {
+      replayVerdict = {
+        status: "unverifiable",
+        reason: String(err?.message || err || "disclosure verification failed"),
+      };
+    }
+    reports.push({
+      player: Number(entry?.disclosure?.player ?? entry?.player),
+      recordedVerdict: entry?.verdict ? clonePayload(entry.verdict) : null,
+      replayVerdict,
+    });
+  }
+  return reports;
+}
+
 export async function replayAuditTranscriptWithGame({
   game,
   transcript,
@@ -483,6 +620,13 @@ export async function replayAuditTranscriptWithGame({
     const finalPublicCheckpointHash = actions.length > 0
       ? String(actionReports.at(-1)?.publicCheckpointHash || "")
       : await currentPublicCheckpointHash(game, cryptoImpl);
+    // End-of-match disclosures are checked against the final replayed state,
+    // before the caller's game is restored.
+    const endOfMatchDisclosures = await verifyEndOfMatchDisclosuresWithGame({
+      game,
+      transcript,
+      cryptoImpl,
+    });
     report = {
       verified: true,
       replayedActions: actionReports.length,
@@ -490,6 +634,10 @@ export async function replayAuditTranscriptWithGame({
       actionReports,
       initialPublicCheckpointHash,
       finalPublicCheckpointHash,
+      endOfMatchDisclosures,
+      endOfMatchDisclosuresVerified: endOfMatchDisclosures.every(
+        (entry) => entry.replayVerdict?.status === "verified"
+      ),
     };
   } catch (err) {
     replayError = err;

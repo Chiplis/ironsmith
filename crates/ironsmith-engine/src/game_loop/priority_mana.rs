@@ -2612,6 +2612,15 @@ pub(crate) fn propose_spell_cast(
             .and_then(|obj| crate::decision::face_down_cast_kind(game, obj)),
         _ => None,
     };
+    // A face-down cast through an effect's permission: the permission (read
+    // before a single-use one is used up) supplies the claim peers check.
+    let face_down_permission = face_down_kind
+        .and_then(|kind| kind.permission_source())
+        .and_then(|source| {
+            let spell = game.object(spell_id)?;
+            game.active_face_down_cast_permission(source, spell.owner, spell.zone)
+                .cloned()
+        });
     let cast_origin_snapshot = game.object(spell_id).map(|obj| {
         crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
     });
@@ -2645,8 +2654,16 @@ pub(crate) fn propose_spell_cast(
     }
     if let Some(kind) = face_down_kind {
         // A peer that holds only a placeholder must later check that the
-        // opened card really has this keyword.
-        game.record_hidden_face_down_cast_obligation(new_id, kind);
+        // opened card really has this keyword (or is covered by the
+        // permission it was cast through).
+        game.record_hidden_face_down_cast_obligation(new_id, kind, face_down_permission.as_ref());
+    }
+    if let Some(permission) = &face_down_permission {
+        game.consume_face_down_cast_permission(
+            permission.source,
+            permission.player,
+            permission.zone,
+        );
     }
     if let Some(shared_usage_id) = shared_usage_to_consume {
         let consumed = game

@@ -1743,9 +1743,11 @@ impl WasmGame {
     /// face-down spell or permanent it owns (including those snapshotted when
     /// it left the game, CR 800.4a): the cards that may carry pending
     /// deferred claims (face-down cast kinds, "did not match" answers to
-    /// forced filtered reveals). Libraries are never included. The set is
-    /// derived from public facts only, so it is identical on every peer; the
-    /// owner's engine additionally fills in the card names it knows.
+    /// forced filtered reveals). Of its library only the anchors are included:
+    /// the durable ziffle ciphertexts of claimed cards that entered it (see
+    /// `HiddenLibraryAnchor`), requested by public position with no object id.
+    /// The set is derived from public facts only, so it is identical on every
+    /// peer; the owner's engine additionally fills in the card names it knows.
     #[wasm_bindgen(js_name = endOfMatchDisclosureRequirements)]
     pub fn end_of_match_disclosure_requirements(
         &self,
@@ -1769,13 +1771,27 @@ impl WasmGame {
                     face_down: card.face_down,
                     foretold: false,
                 };
-                CryptoRequirementView::hidden_open(
+                let mut requirement = CryptoRequirementView::hidden_open(
                     "public_open",
                     &audit_card,
                     None,
                     "public",
-                    "end-of-match disclosure",
-                )
+                    if card.anchor_only {
+                        "end-of-match disclosure of a claimed card that entered the library"
+                    } else {
+                        "end-of-match disclosure"
+                    },
+                );
+                if let (true, Some(key)) = (card.anchor_only, card.library_anchor.as_deref()) {
+                    // A library anchor names a ciphertext of a verified ziffle
+                    // ceremony, not a live object: the opening is located by
+                    // its public position commitment, never by object id
+                    // (the object that entered the library may since stand
+                    // for another physical card).
+                    requirement.id = format!("public_open:{}:library_anchor:{key}", owner.index());
+                    requirement.object_id = None;
+                }
+                requirement
             })
             .collect();
         serde_wasm_bindgen::to_value(&requirements).map_err(|e| {
@@ -1858,7 +1874,7 @@ impl WasmGame {
             };
             if let Some(violation) = self
                 .game
-                .end_of_match_disclosure_violation(card.object_id, &definition)
+                .end_of_match_disclosure_card_violation(&card, &definition)
             {
                 result.violations.push(violation);
             }
