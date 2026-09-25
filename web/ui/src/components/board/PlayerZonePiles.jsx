@@ -432,14 +432,15 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
     window.addEventListener("resize", schedule);
     return () => { cancelAnimationFrame(frame); observer.disconnect(); mutations.disconnect(); window.removeEventListener("resize", schedule); };
   }, [player]);
-  return <div ref={ref} className="player-zone-piles" data-player-zone-piles
-    data-local-zone-piles={samePlayerId(player.id ?? player.index, state?.perspective) ? "true" : undefined}>
-    {PILE_ZONES.map((zone) => <ZonePile key={zone} player={player} zone={zone}
-      onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />)}
-    {samePlayerId(player.id ?? player.index, state?.perspective) && (
-      <div className="player-zone-chat-dock"><LobbyChat /></div>
-    )}
-    {samePlayerId(player.id ?? player.index, state?.perspective) &&
-      <div className="player-look-pile"><LookPile key={state?.perspective} player={player} onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} /></div>}
-  </div>;
+  const isLocal = samePlayerId(player.id ?? player.index, state?.perspective);
+  return <>
+    <div ref={ref} className="player-zone-piles" data-player-zone-piles
+      data-local-zone-piles={isLocal ? "true" : undefined}>
+      {PILE_ZONES.map((zone) => <ZonePile key={zone} player={player} zone={zone}
+        onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />)}
+      {isLocal &&
+        <div className="player-look-pile"><LookPile key={state?.perspective} player={player} onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} /></div>}
+    </div>
+    {isLocal && <div className="player-zone-chat-dock"><LobbyChat /></div>}
+  </>;
 }

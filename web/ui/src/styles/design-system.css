@@ -123,6 +123,12 @@
   align-items: flex-end;
   pointer-events: none;
 }
+.player-zone-piles[data-local-zone-piles="true"] {
+  /* Keep local Graveyard and Exile above the bottom chat tab. The tab is a
+     sibling anchored to the battlefield shell, so this offset only moves the
+     local piles and their hover/expanded hit area. */
+  bottom: 54px;
+}
 .player-zone-piles > .zone-pile-slot,
 .player-look-pile { pointer-events: auto; }
 .player-look-pile { position: absolute; top: 0; left: 0; }
@@ -4530,22 +4536,32 @@ html[data-hand-pointer-suspended="true"] * {
   padding-block: 4px;
 }
 
-/* Keep the chat tab at the bottom edge; its open panel overlays the local
-   graveyard and exile without moving either pile or the battlefield. */
+/* Keep the chat tab at the bottom edge of the battlefield shell. It is a
+   sibling of the zone piles so their bottom clearance is independent of the
+   panel's open/closed height. */
 .player-zone-chat-dock {
   position: absolute;
-  right: 0;
-  bottom: 0;
+  right: 6px;
+  bottom: -10px;
   width: min(260px, calc(100vw - 24px));
   display: flex;
   justify-content: flex-end;
-  z-index: 40;
+  /* Local Graveyard and Exile stay interactive when the chat is expanded;
+     hovering either zone closes the panel through LobbyChat's surface guard. */
+  z-index: 20;
   pointer-events: auto;
 }
 /* Shrink the message log to fit the board below Exile (28px is the header). */
 .exile-chat-dock .lobby-chat-body,
 .exile-chat-dock .lobby-chat-body-inner {
   height: clamp(56px, calc(var(--exile-chat-room, 160px) - 28px), 132px);
+}
+.player-zone-chat-dock:has(.lobby-chat[data-collapsed="false"]) {
+  z-index: 32000 !important;
+}
+.player-zone-chat-dock:has(.lobby-chat[data-collapsed="false"]) .lobby-chat {
+  position: relative;
+  z-index: 32001 !important;
 }
 
 .lobby-chat {
@@ -4564,6 +4580,8 @@ html[data-hand-pointer-suspended="true"] * {
 .lobby-chat[data-collapsed="true"] { width: max-content; border-bottom: 0; border-radius: 4px 4px 0 0; }
 .lobby-chat-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 28px; flex: none; text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--ui-border-strong); background: rgba(216, 191, 122, 0.08); text-transform: uppercase; letter-spacing: .08em; font-weight: 700; font-size: 10px; cursor: pointer; }
 .lobby-chat[data-collapsed="true"] .lobby-chat-header { width: auto; border-bottom: 0; white-space: nowrap; }
+.lobby-chat-header-actions { display: inline-flex; align-items: center; gap: 6px; }
+.lobby-chat-unread { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 999px; background: #f3c969; box-shadow: 0 0 0 2px rgba(243, 201, 105, 0.16), 0 0 8px rgba(243, 201, 105, 0.78); }
 .lobby-chat-body { height: 132px; overflow: hidden; transition: height 350ms cubic-bezier(.22, 1, .36, 1); }
 .lobby-chat[data-collapsed="true"] .lobby-chat-body { height: 0; }
 .lobby-chat-body-inner { height: 132px; display: flex; flex-direction: column; }
@@ -4579,5 +4597,11 @@ html[data-hand-pointer-suspended="true"] * {
 .lobby-chat-compose input { min-width: 0; width: 100%; padding: 6px; background: transparent; }
 .lobby-chat-compose button { padding: 4px 6px; border-left: 1px solid var(--ui-border-strong); }
 .lobby-chat-compose button:disabled { opacity: .4; }
-.lobby-chat-compose :focus-visible { outline: 1px solid #a9cbe5; outline-offset: -2px; }
+.lobby-chat-compose input:focus,
+.lobby-chat-compose input:focus-visible,
+.lobby-chat-compose button:focus,
+.lobby-chat-compose button:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
 .lobby-chat [role="alert"] { padding: 4px 6px; color: #ffb4a9; }
