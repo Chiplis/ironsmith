@@ -553,11 +553,9 @@ pub(crate) fn move_to_battlefield_batch_with_options(
         .filter(|id| entrant_generates_continuous_effects(&working, *id))
         .collect();
     if relevant_entrants.len() >= 2 {
-        let Some(ordered) = choose_simultaneous_timestamp_order(
-            &working,
-            ctx.decision_maker,
-            &relevant_entrants,
-        ) else {
+        let Some(ordered) =
+            choose_simultaneous_timestamp_order(&working, ctx.decision_maker, &relevant_entrants)
+        else {
             return vec![BattlefieldEntryOutcome::Prevented; requests.len()];
         };
         for id in ordered {
@@ -1317,7 +1315,11 @@ mod tests {
             })
             .collect();
 
-        assert_eq!(dm.prompts.len(), 1, "the active player is asked once per batch");
+        assert_eq!(
+            dm.prompts.len(),
+            1,
+            "the active player is asked once per batch"
+        );
         // The player put the second entrant first, so it holds the older timestamp.
         assert!(
             entry_timestamp(&game, ids[1]) < entry_timestamp(&game, ids[0]),

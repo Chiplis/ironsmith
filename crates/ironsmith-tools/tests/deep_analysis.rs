@@ -36,7 +36,11 @@ struct TargetPlayer(PlayerId);
 
 impl DecisionMaker for TargetPlayer {
     fn decide_targets(&mut self, _game: &GameState, ctx: &TargetsContext) -> Vec<Target> {
-        assert!(ctx.requirements[0].legal_targets.contains(&Target::Player(self.0)));
+        assert!(
+            ctx.requirements[0]
+                .legal_targets
+                .contains(&Target::Player(self.0))
+        );
         vec![Target::Player(self.0)]
     }
 }
@@ -52,7 +56,10 @@ fn setup(zone: Zone, life: i32) -> (GameState, ironsmith::ObjectId) {
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
     game.player_mut(alice).unwrap().life = life;
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Blue, 4);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Blue, 4);
     for player in [alice, PlayerId::from_index(1)] {
         for i in 0..10 {
             let card = CardDefinitionBuilder::new(CardId::new(), &format!("Card {i}"))
@@ -109,7 +116,11 @@ fn hand_cast_makes_the_target_player_draw_two() {
     let stable = game.object(spell).unwrap().stable_id;
     cast(&mut game, spell, bob).unwrap();
     assert_eq!(game.player(bob).unwrap().hand.len(), 2);
-    assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0, "paid {{3}}{{U}}");
+    assert_eq!(
+        game.player(alice).unwrap().mana_pool.total(),
+        0,
+        "paid {{3}}{{U}}"
+    );
     assert_eq!(game.player(alice).unwrap().life, 20);
     let now = game.find_object_by_stable_id(stable).unwrap();
     assert_eq!(game.object(now).unwrap().zone, Zone::Graveyard);
@@ -123,7 +134,11 @@ fn flashback_pays_mana_and_three_life_and_exiles_the_card() {
     cast(&mut game, spell, alice).unwrap();
     assert_eq!(game.player(alice).unwrap().hand.len(), 2);
     assert_eq!(game.player(alice).unwrap().life, 17, "paid 3 life");
-    assert_eq!(game.player(alice).unwrap().mana_pool.total(), 2, "paid {{1}}{{U}}");
+    assert_eq!(
+        game.player(alice).unwrap().mana_pool.total(),
+        2,
+        "paid {{1}}{{U}}"
+    );
     let now = game.find_object_by_stable_id(stable).unwrap();
     assert_eq!(game.object(now).unwrap().zone, Zone::Exile);
 }
@@ -133,7 +148,10 @@ fn flashback_cannot_pay_more_life_than_you_have() {
     let (mut game, spell) = setup(Zone::Graveyard, 2);
     let alice = PlayerId::from_index(0);
     let stable = game.object(spell).unwrap().stable_id;
-    assert!(cast(&mut game, spell, alice).is_err(), "CR 119.4: can't pay 3 life at 2 life");
+    assert!(
+        cast(&mut game, spell, alice).is_err(),
+        "CR 119.4: can't pay 3 life at 2 life"
+    );
     assert_eq!(game.player(alice).unwrap().life, 2);
     let now = game.find_object_by_stable_id(stable).unwrap();
     assert_eq!(game.object(now).unwrap().zone, Zone::Graveyard);

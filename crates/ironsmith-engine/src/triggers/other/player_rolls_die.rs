@@ -17,7 +17,11 @@ pub struct PlayerRollsDieTrigger {
 
 impl PlayerRollsDieTrigger {
     pub fn for_attraction_visit(player: PlayerFilter) -> Self {
-        Self { player, one_or_more: false, attraction_visit_only: true }
+        Self {
+            player,
+            one_or_more: false,
+            attraction_visit_only: true,
+        }
     }
 
     pub fn new(player: PlayerFilter) -> Self {
@@ -52,9 +56,15 @@ impl TriggerMatcher for PlayerRollsDieTrigger {
         if self.attraction_visit_only {
             return match &self.player {
                 PlayerFilter::You => "Whenever you roll to visit your Attractions".to_string(),
-                PlayerFilter::Opponent => "Whenever an opponent rolls to visit their Attractions".to_string(),
-                PlayerFilter::Active => "Whenever the active player rolls to visit their Attractions".to_string(),
-                PlayerFilter::Specific(_) => "Whenever that player rolls to visit their Attractions".to_string(),
+                PlayerFilter::Opponent => {
+                    "Whenever an opponent rolls to visit their Attractions".to_string()
+                }
+                PlayerFilter::Active => {
+                    "Whenever the active player rolls to visit their Attractions".to_string()
+                }
+                PlayerFilter::Specific(_) => {
+                    "Whenever that player rolls to visit their Attractions".to_string()
+                }
                 _ => "Whenever a player rolls to visit their Attractions".to_string(),
             };
         }
@@ -103,7 +113,10 @@ mod tests {
 #[cfg(test)]
 mod attraction_roll_tests {
     use super::*;
-    use crate::{GameState, ids::{ObjectId, PlayerId}};
+    use crate::{
+        GameState,
+        ids::{ObjectId, PlayerId},
+    };
 
     #[test]
     fn attraction_roll_trigger_distinguishes_purpose_and_player() {
@@ -116,18 +129,26 @@ mod attraction_roll_tests {
         let ordinary = PlayerRollsDieTrigger::new(PlayerFilter::You);
         for result in [1, 5, 6] {
             let event = TriggerEvent::new_with_provenance(
-                DieRolledEvent::new(alice, source, result, 6).for_attraction_visit(), Default::default());
+                DieRolledEvent::new(alice, source, result, 6).for_attraction_visit(),
+                Default::default(),
+            );
             assert!(visit.matches(&event, &ctx));
             assert!(ordinary.matches(&event, &ctx));
             let ordinary_event = TriggerEvent::new_with_provenance(
-                DieRolledEvent::new(alice, source, result, 6), Default::default());
+                DieRolledEvent::new(alice, source, result, 6),
+                Default::default(),
+            );
             assert!(!visit.matches(&ordinary_event, &ctx));
         }
         let other_player = TriggerEvent::new_with_provenance(
-            DieRolledEvent::new(bob, source, 6, 6).for_attraction_visit(), Default::default());
+            DieRolledEvent::new(bob, source, 6, 6).for_attraction_visit(),
+            Default::default(),
+        );
         assert!(!visit.matches(&other_player, &ctx));
         let planar = TriggerEvent::new_with_provenance(
-            DieRolledEvent::new_planar(alice, source, 6), Default::default());
+            DieRolledEvent::new_planar(alice, source, 6),
+            Default::default(),
+        );
         assert!(!visit.matches(&planar, &ctx));
     }
 }

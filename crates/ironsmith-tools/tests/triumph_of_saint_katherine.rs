@@ -76,7 +76,10 @@ fn dies() -> (Vec<String>, usize, Zone) {
         .rev()
         .map(|id| game.object(*id).unwrap().name.to_string())
         .collect();
-    let zone = game.object(game.find_object_by_stable_id(stable).unwrap()).unwrap().zone;
+    let zone = game
+        .object(game.find_object_by_stable_id(stable).unwrap())
+        .unwrap()
+        .zone;
     (library, game.exile.len(), zone)
 }
 

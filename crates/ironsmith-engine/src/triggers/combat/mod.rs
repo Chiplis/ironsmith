@@ -76,5 +76,7 @@ pub(crate) fn damage_object_matches_filter(
     if let Some(snapshot) = snapshot.filter(|snapshot| snapshot.object_id == object_id) {
         return filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game);
     }
-    ctx.game.object(object_id).is_some_and(|object| filter.matches(object, &ctx.filter_ctx, ctx.game))
+    ctx.game
+        .object(object_id)
+        .is_some_and(|object| filter.matches(object, &ctx.filter_ctx, ctx.game))
 }

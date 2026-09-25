@@ -283,7 +283,12 @@ pub(super) fn apply_trait_replacement(
 
         ReplacementAction::EnterUnderChosenControl { players } => {
             TraitApplyResult::NeedsInteraction {
-                decision_ctx: super::entry_controller_choice_context(game,effect.source,effect.controller,players),
+                decision_ctx: super::entry_controller_choice_context(
+                    game,
+                    effect.source,
+                    effect.controller,
+                    players,
+                ),
                 redirect_zone: Zone::Battlefield,
                 effect_id: effect.id,
                 object_id: effect.source,
@@ -472,7 +477,9 @@ pub(super) fn apply_trait_replacement(
         }
 
         ReplacementAction::AsEntersProgram(program) => {
-            let Some(etb) = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner()) else {
+            let Some(etb) = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(
+                event.inner(),
+            ) else {
                 return TraitApplyResult::Unchanged(event);
             };
             let mut pending = etb.clone();
@@ -906,7 +913,10 @@ fn queue_damage_prevented_event(
     );
 }
 
-pub(super) fn apply_trait_enter_under_control(event: &Event, controller: PlayerId) -> Option<Event> {
+pub(super) fn apply_trait_enter_under_control(
+    event: &Event,
+    controller: PlayerId,
+) -> Option<Event> {
     use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
 
     match event.kind() {
@@ -1277,7 +1287,14 @@ fn apply_trait_add_counters_to_placement(
             if counter_type.is_none_or(|ct| ct == put_counters.counter_type)
                 && put_counters.count > 0
             {
-                Some(event.rewrap(put_counters.with_count((i64::from(put_counters.count).saturating_add(additional)).clamp(0, i64::from(u32::MAX)) as u32)))
+                Some(
+                    event.rewrap(
+                        put_counters.with_count(
+                            (i64::from(put_counters.count).saturating_add(additional))
+                                .clamp(0, i64::from(u32::MAX)) as u32,
+                        ),
+                    ),
+                )
             } else {
                 None
             }
@@ -1288,7 +1305,9 @@ fn apply_trait_add_counters_to_placement(
             let mut changed = false;
             for (existing_type, count) in &mut increased.enters_with_counters {
                 if *count > 0 && counter_type.is_none_or(|ct| ct == *existing_type) {
-                    *count = i64::from(*count).saturating_add(additional).clamp(0, i64::from(u32::MAX)) as u32;
+                    *count = i64::from(*count)
+                        .saturating_add(additional)
+                        .clamp(0, i64::from(u32::MAX)) as u32;
                     changed = true;
                 }
             }

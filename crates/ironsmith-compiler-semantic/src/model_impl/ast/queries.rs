@@ -133,7 +133,9 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
                 ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target })
-            | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { target })
+            | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
+                target,
+            })
             | SubjectVerbActionAst::PutSticker { target, .. }
             | SubjectVerbActionAst::PermanentState(
                 PermanentStateActionAst::SwitchPowerToughness { target, .. },
@@ -363,9 +365,8 @@ pub fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
                 let mut plain = filter.clone();
                 plain.set_additional_cost_object_surface(None);
                 if plain == ObjectFilter::tagged(constraint.tag.clone()) {
-                    return ChooseSpec::Tagged(constraint.tag.clone()).with_surface_hint(
-                        ChooseSpecSurfaceHint::SacrificedObject(surface.kind),
-                    );
+                    return ChooseSpec::Tagged(constraint.tag.clone())
+                        .with_surface_hint(ChooseSpecSurfaceHint::SacrificedObject(surface.kind));
                 }
             }
             let spec = if filter.source && filter.zone != Some(Zone::Exile) {

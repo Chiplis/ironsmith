@@ -992,7 +992,10 @@ pub(super) fn card_type_line_keeps_subtypes_that_double_as_english_nouns() {
     for (type_line, expected) in [
         ("Land — Urza's Mine", vec![Subtype::Urzas, Subtype::Mine]),
         ("Land — Urza's Tower", vec![Subtype::Urzas, Subtype::Tower]),
-        ("Land — Urza's Power-Plant", vec![Subtype::Urzas, Subtype::PowerPlant]),
+        (
+            "Land — Urza's Power-Plant",
+            vec![Subtype::Urzas, Subtype::PowerPlant],
+        ),
         ("Land — Sphere", vec![Subtype::Sphere]),
     ] {
         let (_, card_types, subtypes) =

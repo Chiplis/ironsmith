@@ -435,9 +435,13 @@ fn parse_roll_result_word_slice(
         (
             primitives::word_slice_exact("to"),
             primitives::word_slice_exact("visit"),
-            alt((primitives::word_slice_exact("your"), primitives::word_slice_exact("their"))),
+            alt((
+                primitives::word_slice_exact("your"),
+                primitives::word_slice_exact("their"),
+            )),
             primitives::word_slice_exact("attractions"),
-        ).value(RollResultShape::ToVisitAttractions),
+        )
+            .value(RollResultShape::ToVisitAttractions),
         (
             primitives::word_slice_exact("one"),
             primitives::word_slice_exact("or"),

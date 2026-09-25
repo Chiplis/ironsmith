@@ -151,7 +151,10 @@ pub fn parse_base_power_toughness_clause_shape(
     } else if has_shared_gain_tail(tail)
         || primitives::parse_prefix(
             tail,
-            alt((primitives::phrase(&["and", "becomes"]), primitives::phrase(&["and", "become"]))),
+            alt((
+                primitives::phrase(&["and", "becomes"]),
+                primitives::phrase(&["and", "become"]),
+            )),
         )
         .is_some()
     {

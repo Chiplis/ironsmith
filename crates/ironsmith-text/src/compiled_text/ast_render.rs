@@ -15,14 +15,14 @@ use super::render_effects::{
     describe_for_players_choose_then_destroy_chosen_collection_pair,
     describe_gain_control_aura_then_chosen_legal_attach_segments,
     describe_gain_life_shuffle_source_and_graveyard,
-    describe_look_hand_choose_then_discard_or_exile,
     describe_look_hand_choose_action_with_exile_boundary,
+    describe_look_hand_choose_then_discard_or_exile,
     describe_optional_looked_entry_with_counter_and_remainder,
     describe_optional_source_exiled_copy_then_cast_pair,
     describe_optional_sticker_aura_return_attach_sequence,
-    describe_quantified_tap_goad_then_watch_set, describe_repeated_die_parity_result_program,
-    describe_return_as_aura_with_granted_abilities, describe_return_then_conditional_animation,
-    describe_return_then_linked_enter_return_pair,
+    describe_quantified_tap_goad_then_watch_set, describe_random_hand_look_setup,
+    describe_repeated_die_parity_result_program, describe_return_as_aura_with_granted_abilities,
+    describe_return_then_conditional_animation, describe_return_then_linked_enter_return_pair,
     describe_reveal_hand_choose_discard_then_adventure_move,
     describe_reveal_hand_choose_graveyard_exile_bundle,
     describe_reveal_hand_choose_graveyard_or_hand_exile,
@@ -36,7 +36,7 @@ use super::render_effects::{
     describe_separated_countered_spell_exile_with_counters_gain_suspend,
     describe_sequenced_d20_numeric_result_table_program,
     describe_shuffle_reveal_repeated_permanent_groups_rest_bottom,
-    describe_single_hand_reveal_same_name_search, describe_single_hand_reveal_setup, describe_random_hand_look_setup,
+    describe_single_hand_reveal_same_name_search, describe_single_hand_reveal_setup,
     describe_source_owner_shuffle_then_reveal_named_to_battlefield,
     describe_tagged_copy_then_plural_retarget_pair, describe_tagged_target_then_conditional_action,
     describe_target_groups_then_random_destroy, describe_target_player_draw_exile_then_copy_result,
@@ -3830,7 +3830,8 @@ fn describe_structural_source_state_conditioned_global_rule(
     ) {
         return None;
     }
-    let rule = crate::static_abilities::StaticAbility::from_model(ability.as_ref().clone()).display();
+    let rule =
+        crate::static_abilities::StaticAbility::from_model(ability.as_ref().clone()).display();
     let rule = rule.trim().trim_end_matches('.');
     if rule.is_empty() {
         return None;
@@ -8430,7 +8431,8 @@ fn describe_cross_segment_conditional_triggering_spell_copy_window(
         let [retarget] = may.effects.as_slice() else {
             return None;
         };
-        let retarget = if let Some(tagged) = retarget.downcast_ref::<crate::effects::TaggedEffect>() {
+        let retarget = if let Some(tagged) = retarget.downcast_ref::<crate::effects::TaggedEffect>()
+        {
             if !tagged.tag.as_str().starts_with("retargeted_") {
                 return None;
             }
@@ -10131,10 +10133,18 @@ fn describe_cross_segment_look_hand_choose_action_window(
 ) -> Option<(String, usize)> {
     for consumed in (2..=3.min(segments.len().saturating_sub(start))).rev() {
         let window = segments.get(start..start + consumed)?;
-        if window.iter().skip(1).any(|segment| segment.starts_new_source_line) { continue; }
+        if window
+            .iter()
+            .skip(1)
+            .any(|segment| segment.starts_new_source_line)
+        {
+            continue;
+        }
         let flattened = flattened_cross_segment_effects(window)?;
         let refs = flattened.iter().collect::<Vec<_>>();
-        if let Some(rendered) = describe_look_hand_choose_action_with_exile_boundary(&refs, consumed == 3) {
+        if let Some(rendered) =
+            describe_look_hand_choose_action_with_exile_boundary(&refs, consumed == 3)
+        {
             return Some((rendered, consumed));
         }
     }
@@ -29289,7 +29299,9 @@ fn is_fading_sacrifice_trigger(
 
 /// Fading's upkeep trigger (CR 702.32a): remove a fade counter; if you
 /// can't, sacrifice the permanent.
-fn is_fading_upkeep_remove_or_sacrifice_trigger(triggered: &crate::ability::TriggeredAbility) -> bool {
+fn is_fading_upkeep_remove_or_sacrifice_trigger(
+    triggered: &crate::ability::TriggeredAbility,
+) -> bool {
     if triggered.intervening_if.is_some()
         || !triggered.choices.is_empty()
         || triggered
@@ -30675,34 +30687,63 @@ fn describe_structural_damage_prevention_follow_up(
     ability: &Ability,
     subject: &str,
 ) -> Option<String> {
-    let AbilityKind::Static(ability) = &ability.kind else {return None;};
+    let AbilityKind::Static(ability) = &ability.kind else {
+        return None;
+    };
     let model = ability.compiled_model()?;
     let ironsmith_core::StaticAbilityPayload::DamagePreventionWithFollowUp {
-        source_filter, target_filter, combat_only, recipient_tag, effects,
-    } = &model.payload else {return None;};
-    let [follow_up] = effects.as_slice() else {return None;};
-    let shuffle = structural_unwrap_render_wrappers(follow_up).downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
+        source_filter,
+        target_filter,
+        combat_only,
+        recipient_tag,
+        effects,
+    } = &model.payload
+    else {
+        return None;
+    };
+    let [follow_up] = effects.as_slice() else {
+        return None;
+    };
+    let shuffle = structural_unwrap_render_wrappers(follow_up)
+        .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
     if shuffle.target != ChooseSpec::Tagged(recipient_tag.clone())
-        || shuffle.player != PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(recipient_tag.clone()))
+        || shuffle.player
+            != PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(recipient_tag.clone()))
         || !shuffle.owner_library_destination
         || !shuffle.possessive_owner_subject
         || shuffle.shuffle_subject_library
-    {return None;}
+    {
+        return None;
+    }
     let source = if source_filter.source {
         let mut stripped = source_filter.clone();
         stripped.source = false;
         stripped.source_surface = None;
-        if stripped != ObjectFilter::default() {return None;}
-        source_filter.source_surface.as_ref().map(|s| s.display_text()).unwrap_or_else(|| subject.to_string())
+        if stripped != ObjectFilter::default() {
+            return None;
+        }
+        source_filter
+            .source_surface
+            .as_ref()
+            .map(|s| s.display_text())
+            .unwrap_or_else(|| subject.to_string())
     } else {
         with_indefinite_article(strip_leading_article(&source_filter.description()))
     };
     let target = with_indefinite_article(strip_leading_article(&target_filter.description()));
     let reference = if target_filter.card_types.len() == 1 {
         target_filter.card_types[0].to_string().to_ascii_lowercase()
-    } else {"permanent".into()};
-    let damage = match combat_only {Some(true) => "combat damage", Some(false) => "noncombat damage", None => "damage"};
-    Some(format!("If {source} would deal {damage} to {target}, prevent that damage and that {reference}'s owner shuffles it into their library"))
+    } else {
+        "permanent".into()
+    };
+    let damage = match combat_only {
+        Some(true) => "combat damage",
+        Some(false) => "noncombat damage",
+        None => "damage",
+    };
+    Some(format!(
+        "If {source} would deal {damage} to {target}, prevent that damage and that {reference}'s owner shuffles it into their library"
+    ))
 }
 
 fn describe_structural_counter_removal_damage_prevention(
@@ -31813,37 +31854,64 @@ fn describe_structural_attached_combat_partner_keyword(ability: &Ability) -> Opt
     {
         (Some(recipient), condition?, keyword)
     } else {
-        if ability.functional_zones.as_slice() != [Zone::Battlefield] { return None; }
-        let AbilityKind::Static(static_ability) = &ability.kind else { return None; };
+        if ability.functional_zones.as_slice() != [Zone::Battlefield] {
+            return None;
+        }
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
         let model = static_ability.compiled_model()?;
         let ironsmith_core::StaticAbilityPayload::AttachedAbilityGrant(grant) = &model.payload
-            else { return None; };
+        else {
+            return None;
+        };
         if !grant.additional_abilities.is_empty()
             || grant.ability.functional_zones.as_slice() != [Zone::Battlefield]
             || grant.protection_does_not_remove_controlled_attachments
-        { return None; }
-        let ironsmith_core::AbilityKind::Static(granted) = &grant.ability.kind
-            else { return None; };
-        (None, grant.condition.as_ref()?, crate::static_abilities::StaticAbility::from_model(granted.clone()))
+        {
+            return None;
+        }
+        let ironsmith_core::AbilityKind::Static(granted) = &grant.ability.kind else {
+            return None;
+        };
+        (
+            None,
+            grant.condition.as_ref()?,
+            crate::static_abilities::StaticAbility::from_model(granted.clone()),
+        )
     };
-    if !keyword.is_keyword() { return None; }
+    if !keyword.is_keyword() {
+        return None;
+    }
     let Condition::CountComparison {
         count: ironsmith_core::AnthemCountExpression::MatchingFilter(partners),
         comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
         ..
-    } = condition else { return None; };
-    let Some(crate::filter::ObjectRef::Tagged(attachment_tag)) = &partners.in_combat_with
-        else { return None; };
+    } = condition
+    else {
+        return None;
+    };
+    let Some(crate::filter::ObjectRef::Tagged(attachment_tag)) = &partners.in_combat_with else {
+        return None;
+    };
     if !matches!(attachment_tag.as_str(), "equipped" | "enchanted")
         || partners.zone != Some(Zone::Battlefield)
-        || partners.blocking || partners.attacking
+        || partners.blocking
+        || partners.attacking
     {
         return None;
     }
     if let Some(recipient) = recipient
-        && recipient != &ObjectFilter::creature().in_zone(Zone::Battlefield)
-            .match_tagged(attachment_tag.clone(), crate::filter::TaggedOpbjectRelation::IsTaggedObject)
-    { return None; }
+        && recipient
+            != &ObjectFilter::creature()
+                .in_zone(Zone::Battlefield)
+                .match_tagged(
+                    attachment_tag.clone(),
+                    crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+                )
+    {
+        return None;
+    }
     Some(format!(
         "{} creature has {} as long as {}",
         capitalize_first(attachment_tag.as_str()),
@@ -31853,16 +31921,31 @@ fn describe_structural_attached_combat_partner_keyword(ability: &Ability) -> Opt
 }
 
 fn describe_structural_attached_characteristic_keyword(ability: &Ability) -> Option<String> {
-    let AbilityKind::Static(static_ability) = &ability.kind else { return None; };
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return None;
+    };
     let model = static_ability.compiled_model()?;
     let ironsmith_core::StaticAbilityPayload::RuleRestriction {
-        restriction: ironsmith_core::Restriction::BeBlocked(filter), additional_restrictions, ..
-    } = &model.payload else { return None; };
-    if ability.functional_zones.as_slice() != [Zone::Battlefield] || !additional_restrictions.is_empty() { return None; }
-    let [attachment] = filter.tagged_constraints.as_slice() else { return None; };
+        restriction: ironsmith_core::Restriction::BeBlocked(filter),
+        additional_restrictions,
+        ..
+    } = &model.payload
+    else {
+        return None;
+    };
+    if ability.functional_zones.as_slice() != [Zone::Battlefield]
+        || !additional_restrictions.is_empty()
+    {
+        return None;
+    }
+    let [attachment] = filter.tagged_constraints.as_slice() else {
+        return None;
+    };
     if attachment.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
         || !matches!(attachment.tag.as_str(), "equipped" | "enchanted")
-    { return None; }
+    {
+        return None;
+    }
     let mut plain = filter.clone();
     plain.tagged_constraints.clear();
     let (characteristic, comparison) = match (plain.power.take(), plain.toughness.take()) {
@@ -31870,8 +31953,14 @@ fn describe_structural_attached_characteristic_keyword(ability: &Ability) -> Opt
         (None, Some(comparison)) => ("toughness", comparison),
         _ => return None,
     };
-    if plain != ObjectFilter::creature().in_zone(Zone::Battlefield) { return None; }
-    Some(format!("{} creature can't be blocked as long as its {characteristic} {}", capitalize_first(attachment.tag.as_str()), describe_filter_comparison_clause(&comparison)))
+    if plain != ObjectFilter::creature().in_zone(Zone::Battlefield) {
+        return None;
+    }
+    Some(format!(
+        "{} creature can't be blocked as long as its {characteristic} {}",
+        capitalize_first(attachment.tag.as_str()),
+        describe_filter_comparison_clause(&comparison)
+    ))
 }
 
 fn describe_structural_attached_zero_life_rule(ability: &Ability) -> Option<String> {
@@ -32466,11 +32555,16 @@ fn is_miracle_linked_trigger(def: &CardDefinition, ability: &Ability) -> bool {
         && triggered
             .trigger
             .downcast_ref::<crate::triggers::KeywordAbilityTrigger>()
-            .is_some_and(|trigger| trigger.kind == crate::triggers::KeywordAbilityTriggerKind::Miracle)
+            .is_some_and(|trigger| {
+                trigger.kind == crate::triggers::KeywordAbilityTriggerKind::Miracle
+            })
         && effect
             .downcast_ref::<crate::effects::player::MayCastForMiracleCostEffect>()
             .is_some()
-        && def.alternative_casts.iter().any(|method| method.is_miracle())
+        && def
+            .alternative_casts
+            .iter()
+            .any(|method| method.is_miracle())
 }
 
 fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
@@ -33865,7 +33959,9 @@ fn describe_source_line_free_cast_and_flash_group(abilities: &[Ability]) -> Opti
     let ironsmith_core::StaticAbilityPayload::Grants(flash) = &flash_model.payload else {
         return None;
     };
-    if free.filter != flash.filter || free.zone != flash.zone || free.beneficiary != flash.beneficiary
+    if free.filter != flash.filter
+        || free.zone != flash.zone
+        || free.beneficiary != flash.beneficiary
     {
         return None;
     }
@@ -34481,13 +34577,24 @@ fn describe_source_line_entry_counter_list(abilities: &[Ability], subject: &str)
     let first = abilities.first()?;
     let mut counters = Vec::new();
     for ability in abilities {
-        if ability.functional_zones != first.functional_zones { return None; }
-        let AbilityKind::Static(ability) = &ability.kind else { return None; };
+        if ability.functional_zones != first.functional_zones {
+            return None;
+        }
+        let AbilityKind::Static(ability) = &ability.kind else {
+            return None;
+        };
         let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { counter, count } =
-            &ability.compiled_model()?.payload else { return None; };
+            &ability.compiled_model()?.payload
+        else {
+            return None;
+        };
         counters.push(describe_put_counter_phrase(count, *counter));
     }
-    Some(format!("{} enters with {} on it", capitalize_first(subject), join_english_list(&counters)))
+    Some(format!(
+        "{} enters with {} on it",
+        capitalize_first(subject),
+        join_english_list(&counters)
+    ))
 }
 
 /// Render additive characteristic changes from a single structural group.
@@ -34502,8 +34609,12 @@ fn describe_source_line_additive_type_loss_group(abilities: &[Ability]) -> Optio
     let mut subtypes = Vec::new();
     let mut base = None;
     for ability in abilities {
-        if &ability.functional_zones != zones { return None; }
-        let AbilityKind::Static(ability) = &ability.kind else { return None; };
+        if &ability.functional_zones != zones {
+            return None;
+        }
+        let AbilityKind::Static(ability) = &ability.kind else {
+            return None;
+        };
         let model = ability.compiled_model()?;
         let filter = match &model.payload {
             P::RemoveAllAbilities(filter) if !loses_abilities => {
@@ -34514,27 +34625,50 @@ fn describe_source_line_additive_type_loss_group(abilities: &[Ability]) -> Optio
                 types = card_types.clone();
                 filter
             }
-            P::AddSubtypes { filter, subtypes: added } if subtypes.is_empty() => {
+            P::AddSubtypes {
+                filter,
+                subtypes: added,
+            } if subtypes.is_empty() => {
                 subtypes = added.clone();
                 filter
             }
-            P::SetBasePowerToughness { filter, power, toughness } if base.is_none() => {
+            P::SetBasePowerToughness {
+                filter,
+                power,
+                toughness,
+            } if base.is_none() => {
                 base = Some((*power, *toughness));
                 filter
             }
             _ => return None,
         };
-        if shared_filter.is_some_and(|shared| shared != filter) { return None; }
+        if shared_filter.is_some_and(|shared| shared != filter) {
+            return None;
+        }
         shared_filter = Some(filter);
     }
-    if !loses_abilities || (types.is_empty() && subtypes.is_empty()) { return None; }
-    let descriptor = subtypes.iter().map(ToString::to_string)
-        .chain(types.iter().map(|kind| kind.to_string().to_ascii_lowercase()))
-        .collect::<Vec<_>>().join(" ");
+    if !loses_abilities || (types.is_empty() && subtypes.is_empty()) {
+        return None;
+    }
+    let descriptor = subtypes
+        .iter()
+        .map(ToString::to_string)
+        .chain(
+            types
+                .iter()
+                .map(|kind| kind.to_string().to_ascii_lowercase()),
+        )
+        .collect::<Vec<_>>()
+        .join(" ");
     let subject = capitalize_first(&shared_filter?.description());
-    let mut text = format!("{subject} loses all abilities and is {}", with_indefinite_article(&descriptor));
+    let mut text = format!(
+        "{subject} loses all abilities and is {}",
+        with_indefinite_article(&descriptor)
+    );
     if let Some((power, toughness)) = base {
-        text.push_str(&format!(" with base power and toughness {power}/{toughness}"));
+        text.push_str(&format!(
+            " with base power and toughness {power}/{toughness}"
+        ));
     }
     text.push_str(" in addition to its other types");
     Some(text)
@@ -34549,8 +34683,11 @@ fn describe_source_line_static_group(
         return None;
     }
     let members = abilities.get(..member_count)?;
-    describe_source_line_additive_type_loss_group(members).or_else(|| describe_structural_attached_subtype_base_pt_keyword_loss_bundle(members)
-        .and_then(|(text, consumed)| (consumed == member_count).then_some(text)))
+    describe_source_line_additive_type_loss_group(members)
+        .or_else(|| {
+            describe_structural_attached_subtype_base_pt_keyword_loss_bundle(members)
+                .and_then(|(text, consumed)| (consumed == member_count).then_some(text))
+        })
         .or_else(|| {
             describe_structural_labeled_animation_grant_bundle(members, subject)
                 .and_then(|(text, consumed)| (consumed == member_count).then_some(text))
@@ -37169,22 +37306,26 @@ mod attached_turtle_transform_bundle_tests {
         };
         // A literal 0/1 compiles to the fixed payload; the dynamic one
         // spells the same numbers. The bundle reader accepts either.
-        assert!(matches!(
-            pt.compiled_model().map(|model| &model.payload),
-            Some(ironsmith_core::StaticAbilityPayload::SetBasePowerToughness {
-                power: 0,
-                toughness: 1,
-                ..
-            })
-        ) || matches!(
-            pt.compiled_model().map(|model| &model.payload),
-            Some(ironsmith_core::StaticAbilityPayload::SetBasePowerToughnessValue {
-                power,
-                toughness,
-                ..
-            }) if power.unhinted() == &Value::Fixed(0)
-                && toughness.unhinted() == &Value::Fixed(1)
-        ));
+        assert!(
+            matches!(
+                pt.compiled_model().map(|model| &model.payload),
+                Some(
+                    ironsmith_core::StaticAbilityPayload::SetBasePowerToughness {
+                        power: 0,
+                        toughness: 1,
+                        ..
+                    }
+                )
+            ) || matches!(
+                pt.compiled_model().map(|model| &model.payload),
+                Some(ironsmith_core::StaticAbilityPayload::SetBasePowerToughnessValue {
+                    power,
+                    toughness,
+                    ..
+                }) if power.unhinted() == &Value::Fixed(0)
+                    && toughness.unhinted() == &Value::Fixed(1)
+            )
+        );
         let (rendered, consumed) = describe_structural_attached_turtle_transform_bundle(&members)
             .expect("exact typed transform should compact");
         assert_eq!(consumed, 5);
@@ -43192,19 +43333,34 @@ mod additive_type_loss_group_tests {
     use super::*;
     #[test]
     fn structural_additive_types_do_not_read_display_text_or_merge_different_subjects() {
-        use crate::static_abilities::{StaticAbility, CompiledStaticAbility};
+        use crate::static_abilities::{CompiledStaticAbility, StaticAbility};
         let wrap = |model| Ability::static_ability(StaticAbility::from_model(model));
         let filter = ObjectFilter::creature();
         let members = vec![
             wrap(CompiledStaticAbility::remove_all_abilities(filter.clone())),
-            wrap(CompiledStaticAbility::add_card_types(filter.clone(), vec![CardType::Artifact])),
-            wrap(CompiledStaticAbility::add_subtypes(filter.clone(), vec![crate::types::Subtype::Vehicle])),
-            wrap(CompiledStaticAbility::set_base_power_toughness(filter.clone(), 3, 5)),
+            wrap(CompiledStaticAbility::add_card_types(
+                filter.clone(),
+                vec![CardType::Artifact],
+            )),
+            wrap(CompiledStaticAbility::add_subtypes(
+                filter.clone(),
+                vec![crate::types::Subtype::Vehicle],
+            )),
+            wrap(CompiledStaticAbility::set_base_power_toughness(
+                filter.clone(),
+                3,
+                5,
+            )),
         ];
-        assert_eq!(describe_source_line_additive_type_loss_group(&members).unwrap(),
-            "Creature loses all abilities and is a Vehicle artifact with base power and toughness 3/5 in addition to its other types");
+        assert_eq!(
+            describe_source_line_additive_type_loss_group(&members).unwrap(),
+            "Creature loses all abilities and is a Vehicle artifact with base power and toughness 3/5 in addition to its other types"
+        );
         let mut mismatched = members;
-        mismatched[1] = wrap(CompiledStaticAbility::add_card_types(ObjectFilter::source(), vec![CardType::Artifact]));
+        mismatched[1] = wrap(CompiledStaticAbility::add_card_types(
+            ObjectFilter::source(),
+            vec![CardType::Artifact],
+        ));
         assert!(describe_source_line_additive_type_loss_group(&mismatched).is_none());
     }
 }

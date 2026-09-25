@@ -27,10 +27,11 @@ use crate::ids::ObjectId;
 use crate::mana::ManaSymbol;
 use crate::player::ManaPool;
 
+use super::ManaPaymentRequest;
 use super::PlannedManaActivation;
-use super::planner::{ActivationChoice, can_pay_request, collect_activation_choices,
-    prepare_activation};
-use super::{ManaPaymentRequest};
+use super::planner::{
+    ActivationChoice, can_pay_request, collect_activation_choices, prepare_activation,
+};
 
 /// One pip that still needs a mana unit, as a set of acceptable symbols.
 type PipSlot = Vec<ManaSymbol>;
@@ -98,8 +99,7 @@ fn request_shape_is_supported(request: &ManaPaymentRequest) -> bool {
     // Reserved resources belong to an alternative payment (convoke, delve,
     // improvise) that is being solved around this mana cost.
     // collect_activation_choices already excludes reserved tap sources.
-    request.reserved_graveyard_sources.is_empty()
-        && request.reserved_permanent_sources.is_empty()
+    request.reserved_graveyard_sources.is_empty() && request.reserved_permanent_sources.is_empty()
 }
 
 /// Expand the request's cost into one slot per pip that must be paid.
@@ -124,7 +124,10 @@ fn expand_pip_slots(request: &ManaPaymentRequest) -> Option<Vec<PipSlot>> {
                 // Snow asks where mana came from, and a life alternative is a
                 // cost trade; neither is a symbol comparison.
                 if alternatives.iter().any(|symbol| {
-                    matches!(symbol, ManaSymbol::Snow | ManaSymbol::Life(_) | ManaSymbol::X)
+                    matches!(
+                        symbol,
+                        ManaSymbol::Snow | ManaSymbol::Life(_) | ManaSymbol::X
+                    )
                 }) {
                     return None;
                 }
@@ -181,7 +184,11 @@ fn choice_produces_plain_mana(
     choice: &ActivationChoice,
 ) -> bool {
     use crate::ability::AbilityKind;
-    if request.preferences.excluded_sources.contains(&choice.source) {
+    if request
+        .preferences
+        .excluded_sources
+        .contains(&choice.source)
+    {
         return false;
     }
     let Some(ability) = game.current_ability(choice.source, choice.ability_index) else {
@@ -459,8 +466,18 @@ mod tests {
     fn scarce_colour_is_not_stranded_by_an_earlier_assignment() {
         let (mut game, alice) = game();
         // A dual-ish source that can cover either pip, plus a green-only one.
-        add_source(&mut game, alice, crate::costs::Cost::tap(), vec![ManaSymbol::Green]);
-        add_source(&mut game, alice, crate::costs::Cost::tap(), vec![ManaSymbol::Green]);
+        add_source(
+            &mut game,
+            alice,
+            crate::costs::Cost::tap(),
+            vec![ManaSymbol::Green],
+        );
+        add_source(
+            &mut game,
+            alice,
+            crate::costs::Cost::tap(),
+            vec![ManaSymbol::Green],
+        );
         let request = request(
             &mut game,
             alice,
@@ -483,7 +500,11 @@ mod tests {
             crate::costs::Cost::sacrifice_self(),
             vec![ManaSymbol::Green],
         );
-        let request = request(&mut game, alice, ManaCost::from_pips(vec![vec![ManaSymbol::Green]]));
+        let request = request(
+            &mut game,
+            alice,
+            ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
+        );
         assert!(
             try_candidates(&game, &request).is_none(),
             "sacrifice-for-mana must not be answered by the assignment"
@@ -496,7 +517,12 @@ mod tests {
     #[test]
     fn unpayable_cost_is_declined_not_reported_unpayable() {
         let (mut game, alice) = game();
-        add_source(&mut game, alice, crate::costs::Cost::tap(), vec![ManaSymbol::Green]);
+        add_source(
+            &mut game,
+            alice,
+            crate::costs::Cost::tap(),
+            vec![ManaSymbol::Green],
+        );
         let request = request(
             &mut game,
             alice,
@@ -570,7 +596,12 @@ mod quality_tests {
     use crate::types::CardType;
     use crate::zone::Zone;
 
-    fn land(game: &mut GameState, owner: PlayerId, name: &str, produces: Vec<ManaSymbol>) -> ObjectId {
+    fn land(
+        game: &mut GameState,
+        owner: PlayerId,
+        name: &str,
+        produces: Vec<ManaSymbol>,
+    ) -> ObjectId {
         let definition = CardBuilder::new(CardId::new(), name)
             .card_types(vec![CardType::Land])
             .build();
@@ -588,7 +619,12 @@ mod quality_tests {
     /// Add a source in the shape real dual lands compile to: one
     /// single-colour mana ability per colour, rather than one ability listing
     /// both. Per-ability flexibility cannot tell this apart from a basic.
-    fn split_dual(game: &mut GameState, owner: PlayerId, name: &str, colours: Vec<ManaSymbol>) -> ObjectId {
+    fn split_dual(
+        game: &mut GameState,
+        owner: PlayerId,
+        name: &str,
+        colours: Vec<ManaSymbol>,
+    ) -> ObjectId {
         let definition = CardBuilder::new(CardId::new(), name)
             .card_types(vec![CardType::Land])
             .build();
@@ -613,7 +649,12 @@ mod quality_tests {
         let mut game = GameState::new(vec!["Alice".to_string()], 20);
         let alice = PlayerId::from_index(0);
         for name in ["Tomb A", "Tomb B", "Tomb C"] {
-            split_dual(&mut game, alice, name, vec![ManaSymbol::Black, ManaSymbol::Green]);
+            split_dual(
+                &mut game,
+                alice,
+                name,
+                vec![ManaSymbol::Black, ManaSymbol::Green],
+            );
         }
         let swamp = land(&mut game, alice, "Swamp", vec![ManaSymbol::Black]);
 
@@ -641,9 +682,24 @@ mod quality_tests {
     fn single_colour_sources_are_spent_before_duals() {
         let mut game = GameState::new(vec!["Alice".to_string()], 20);
         let alice = PlayerId::from_index(0);
-        let dual_a = land(&mut game, alice, "Dual A", vec![ManaSymbol::Black, ManaSymbol::Green]);
-        let dual_b = land(&mut game, alice, "Dual B", vec![ManaSymbol::Black, ManaSymbol::Green]);
-        let dual_c = land(&mut game, alice, "Dual C", vec![ManaSymbol::Black, ManaSymbol::Green]);
+        let dual_a = land(
+            &mut game,
+            alice,
+            "Dual A",
+            vec![ManaSymbol::Black, ManaSymbol::Green],
+        );
+        let dual_b = land(
+            &mut game,
+            alice,
+            "Dual B",
+            vec![ManaSymbol::Black, ManaSymbol::Green],
+        );
+        let dual_c = land(
+            &mut game,
+            alice,
+            "Dual C",
+            vec![ManaSymbol::Black, ManaSymbol::Green],
+        );
         let swamp = land(&mut game, alice, "Swamp", vec![ManaSymbol::Black]);
 
         let spell = game.new_object_id();

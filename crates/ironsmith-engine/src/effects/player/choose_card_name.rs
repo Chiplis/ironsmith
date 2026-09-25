@@ -155,7 +155,11 @@ impl EffectExecutor for ChooseCardNameEffect {
         // The resolution tag names this choice only. Persistent source names
         // may include other choices made by its abilities, but must not leak
         // into a later resolution's singular chosen-name comparison.
-        let snapshots = vec![synthetic_chosen_name_snapshot(ctx.source, chooser, canonical_name)];
+        let snapshots = vec![synthetic_chosen_name_snapshot(
+            ctx.source,
+            chooser,
+            canonical_name,
+        )];
         ctx.set_tagged_objects(self.tag.clone(), snapshots);
         Ok(EffectOutcome::count(1))
     }

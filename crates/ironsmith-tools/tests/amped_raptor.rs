@@ -89,7 +89,10 @@ fn run(spell: &str, from_hand: bool, starting_energy: u32) -> Outcome {
     let mut queue = TriggerQueue::new();
     let mut dm = Accept;
     if from_hand {
-        game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Red, 2);
+        game.player_mut(alice)
+            .unwrap()
+            .mana_pool
+            .add(ManaSymbol::Red, 2);
         let action = compute_legal_actions(&game, alice)
             .into_iter()
             .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == raptor))
@@ -116,7 +119,8 @@ fn run(spell: &str, from_hand: bool, starting_energy: u32) -> Outcome {
         assert_eq!(game.stack.len(), 1, "{progress:?}");
         ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
     } else {
-        game.move_object_by_effect(raptor, Zone::Battlefield).unwrap();
+        game.move_object_by_effect(raptor, Zone::Battlefield)
+            .unwrap();
     }
     ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
     assert_eq!(game.stack.len(), 1, "enter trigger");
@@ -142,8 +146,16 @@ fn run(spell: &str, from_hand: bool, starting_energy: u32) -> Outcome {
 fn cast_from_hand_exiles_to_a_nonland_card_and_casts_it_for_energy() {
     // Opt ({U}): scry 1, then draw a card. Mana value 1.
     let outcome = run("Opt", true, 0);
-    assert_eq!(outcome.land_zone, Zone::Exile, "the land is exiled on the way");
-    assert_eq!(outcome.spell_zone, Zone::Graveyard, "Opt was cast and resolved");
+    assert_eq!(
+        outcome.land_zone,
+        Zone::Exile,
+        "the land is exiled on the way"
+    );
+    assert_eq!(
+        outcome.spell_zone,
+        Zone::Graveyard,
+        "Opt was cast and resolved"
+    );
     assert_eq!(outcome.energy, 1, "two energy gained, one paid for Opt");
     assert_eq!(outcome.hand_size, 1, "Opt drew a card");
 }

@@ -49,8 +49,9 @@ fn tron_bonus_applies(land: (&str, &str, &str), companions: &[(&str, &str, &str)
     let [branch] = segment.self_replacements.as_slice() else {
         panic!("{}: expected one 'instead' branch", land.0);
     };
-    let selected =
-        crate::ability::selected_resolution_effects_for_current_state(program, &game, source, alice);
+    let selected = crate::ability::selected_resolution_effects_for_current_state(
+        program, &game, source, alice,
+    );
     let is_selected = |effects: &[crate::effect::Effect]| {
         selected.len() == effects.len()
             && selected
@@ -115,10 +116,22 @@ fn assembled_tron_selects_the_bonus_and_partial_tron_does_not() {
     assert!(tron_bonus_applies(MINE, &[POWER_PLANT, TOWER]));
     assert!(tron_bonus_applies(POWER_PLANT, &[MINE, TOWER]));
 
-    assert!(!tron_bonus_applies(TOWER, &[MINE]), "Tower needs a Power-Plant too");
-    assert!(!tron_bonus_applies(TOWER, &[MINE, MINE]), "two Mines are not a Power-Plant");
-    assert!(!tron_bonus_applies(MINE, &[TOWER]), "Mine needs a Power-Plant too");
-    assert!(!tron_bonus_applies(POWER_PLANT, &[MINE]), "Power Plant needs a Tower too");
+    assert!(
+        !tron_bonus_applies(TOWER, &[MINE]),
+        "Tower needs a Power-Plant too"
+    );
+    assert!(
+        !tron_bonus_applies(TOWER, &[MINE, MINE]),
+        "two Mines are not a Power-Plant"
+    );
+    assert!(
+        !tron_bonus_applies(MINE, &[TOWER]),
+        "Mine needs a Power-Plant too"
+    );
+    assert!(
+        !tron_bonus_applies(POWER_PLANT, &[MINE]),
+        "Power Plant needs a Tower too"
+    );
     assert!(!tron_bonus_applies(TOWER, &[]));
 }
 

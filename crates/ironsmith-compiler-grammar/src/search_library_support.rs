@@ -151,12 +151,28 @@ pub fn parse_restriction_duration_lexed(
         // while the restricted object keeps the named counter.
         let suffix_words = token_word_refs(suffix_tokens);
         if suffix_words == ["for", "as", "long", "as", "it", "remains", "tapped"] {
-            return Ok(Some((Until::ForAsLongAs(ironsmith_core::ContinuousDurationPredicate::ObjectTapped(
-                ironsmith_core::ContinuousDurationObject::Tagged(crate::tag::CompilerReferenceTag::It.bind().into()),
-            )), trim_lexed_commas(&tokens[..token_idx]).to_vec())));
+            return Ok(Some((
+                Until::ForAsLongAs(ironsmith_core::ContinuousDurationPredicate::ObjectTapped(
+                    ironsmith_core::ContinuousDurationObject::Tagged(
+                        crate::tag::CompilerReferenceTag::It.bind().into(),
+                    ),
+                )),
+                trim_lexed_commas(&tokens[..token_idx]).to_vec(),
+            )));
         }
-        if let ["for", "as", "long", "as", "it", "has", article, counter_word, "counter", "on", "it"] =
-            suffix_words.as_slice()
+        if let [
+            "for",
+            "as",
+            "long",
+            "as",
+            "it",
+            "has",
+            article,
+            counter_word,
+            "counter",
+            "on",
+            "it",
+        ] = suffix_words.as_slice()
             && matches!(*article, "a" | "an")
             && let Some(counter_type) = super::grammar::filters::parse_counter_type_from_tokens(
                 &crate::lexer::synthetic_word_tokens([*counter_word]),

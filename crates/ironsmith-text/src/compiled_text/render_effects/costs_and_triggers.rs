@@ -3377,12 +3377,23 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
     // Coordinated color adjectives modify the following noun; they are not
     // separate nouns to pluralize ("black or red card" -> "black or red cards").
     let words: Vec<&str> = base.split_whitespace().collect();
-    if words.first().is_some_and(|word| crate::color::Color::from_name(word).is_some()) {
+    if words
+        .first()
+        .is_some_and(|word| crate::color::Color::from_name(word).is_some())
+    {
         let mut end = 1;
-        while end + 1 < words.len() && matches!(words[end], "or" | "and")
-            && crate::color::Color::from_name(words[end + 1]).is_some() { end += 2; }
+        while end + 1 < words.len()
+            && matches!(words[end], "or" | "and")
+            && crate::color::Color::from_name(words[end + 1]).is_some()
+        {
+            end += 2;
+        }
         if end > 1 && end < words.len() {
-            return format!("{} {}{trailing}", words[..end].join(" "), pluralize_noun_phrase(&words[end..].join(" ")));
+            return format!(
+                "{} {}{trailing}",
+                words[..end].join(" "),
+                pluralize_noun_phrase(&words[end..].join(" "))
+            );
         }
     }
     if let Some(rest) = base.strip_prefix("another ") {

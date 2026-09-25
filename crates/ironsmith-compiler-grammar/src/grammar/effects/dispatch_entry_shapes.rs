@@ -254,16 +254,29 @@ pub fn parse_where_x_usage_shape_tokens(tokens: &[OwnedLexToken]) -> Option<Wher
     let (leading, full_binding_tokens) =
         crate::grammar::primitives::probe_all(tokens, where_x_split, "where X binding")?;
     let mut inside_quote = false;
-    let followup = full_binding_tokens.iter().enumerate().find_map(|(index, token)| {
-        if token.kind == TokenKind::Quote { inside_quote = !inside_quote; }
-        if inside_quote || !token.is_comma() { return None; }
-        let remaining = full_binding_tokens.get(index + 1..)?;
-        let body = if remaining.first().is_some_and(|t| t.is_any_word(&["and", "then"])) {
-            &remaining[1..]
-        } else { return None };
-        super::chain_splitting::starts_effect_clause_tokens(body).then_some(index)
-    });
-    let binding_tokens = followup.map_or(full_binding_tokens, |index| &full_binding_tokens[..index]);
+    let followup = full_binding_tokens
+        .iter()
+        .enumerate()
+        .find_map(|(index, token)| {
+            if token.kind == TokenKind::Quote {
+                inside_quote = !inside_quote;
+            }
+            if inside_quote || !token.is_comma() {
+                return None;
+            }
+            let remaining = full_binding_tokens.get(index + 1..)?;
+            let body = if remaining
+                .first()
+                .is_some_and(|t| t.is_any_word(&["and", "then"]))
+            {
+                &remaining[1..]
+            } else {
+                return None;
+            };
+            super::chain_splitting::starts_effect_clause_tokens(body).then_some(index)
+        });
+    let binding_tokens =
+        followup.map_or(full_binding_tokens, |index| &full_binding_tokens[..index]);
     let followup_tokens = followup.map(|index| &full_binding_tokens[index..]);
     let damage_or_life = marker_present(
         leading,

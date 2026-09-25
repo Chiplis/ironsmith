@@ -178,8 +178,13 @@ impl GameState {
             return Ok(AsEntersProgramExecution::default());
         }
 
-        let initial_effect_ids: std::collections::HashSet<_> = self.effect_store
-            .continuous_effects.effects().iter().map(|effect| effect.id).collect();
+        let initial_effect_ids: std::collections::HashSet<_> = self
+            .effect_store
+            .continuous_effects
+            .effects()
+            .iter()
+            .map(|effect| effect.id)
+            .collect();
         let mut execution = AsEntersProgramExecution {
             ran: true,
             ..AsEntersProgramExecution::default()
@@ -210,9 +215,14 @@ impl GameState {
                 None,
                 &[],
             )?;
-            execution.continuous_effects = self.effect_store.continuous_effects.effects()
-                .iter().filter(|effect| !initial_effect_ids.contains(&effect.id))
-                .map(|effect| effect.id).collect();
+            execution.continuous_effects = self
+                .effect_store
+                .continuous_effects
+                .effects()
+                .iter()
+                .filter(|effect| !initial_effect_ids.contains(&effect.id))
+                .map(|effect| effect.id)
+                .collect();
             let awaiting_choice = context.decision_maker.awaiting_choice();
             merge_retained_tagged_objects(&mut execution.tagged_objects, &context.tagged_objects);
             if awaiting_choice {
@@ -231,13 +241,20 @@ impl GameState {
         dm: &mut dyn crate::decision::DecisionMaker,
     ) -> Option<PreparedEtbChoices> {
         let before = self.object(source)?.counters.clone();
-        let execution = self.execute_immediate_effect_programs(source, controller, programs, true, entry_event, dm).ok()?;
-        if dm.awaiting_choice() { return None; }
+        let execution = self
+            .execute_immediate_effect_programs(source, controller, programs, true, entry_event, dm)
+            .ok()?;
+        if dm.awaiting_choice() {
+            return None;
+        }
         let after = self.object(source)?.counters.clone();
-        let counters = after.iter().filter_map(|(kind, count)| {
-            let previous = before.get(kind).copied().unwrap_or(0);
-            (*count > previous).then(|| (*kind, *count - previous))
-        }).collect();
+        let counters = after
+            .iter()
+            .filter_map(|(kind, count)| {
+                let previous = before.get(kind).copied().unwrap_or(0);
+                (*count > previous).then(|| (*kind, *count - previous))
+            })
+            .collect();
         self.object_mut(source)?.counters = before;
         Some(PreparedEtbChoices {
             as_enters_counters: counters,
@@ -250,12 +267,16 @@ impl GameState {
 
     fn entry_text_abilities(&self, source: ObjectId) -> Option<Vec<crate::ability::Ability>> {
         let from = self.object(source)?.zone;
-        let preview = crate::events::EnterBattlefieldEvent::new(source, from)
-            .prospective_game_state(self)?;
+        let preview =
+            crate::events::EnterBattlefieldEvent::new(source, from).prospective_game_state(self)?;
         let effects = preview.all_continuous_effects();
         let chars = crate::continuous::text_box_characteristics_with_effects(
-            source, preview.objects_map(), &effects, &preview.battlefield,
-            preview.commander_objects(), &preview,
+            source,
+            preview.objects_map(),
+            &effects,
+            &preview.battlefield,
+            preview.commander_objects(),
+            &preview,
         )?;
         Some(chars.abilities.iter().cloned().collect())
     }
@@ -273,31 +294,59 @@ impl GameState {
         let mut combined = AsEntersProgramExecution::default();
         loop {
             let next = current_abilities.iter().find_map(|ability| {
-                let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else { return None; };
-                if applied.contains(&static_ability.instance_id()) { return None; }
-                let (program, also_face_up, only_face_up) = as_enters_effect_program_from_ability(ability)?;
-                let applies = if for_turn_face_up { also_face_up } else { !only_face_up };
+                let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                    return None;
+                };
+                if applied.contains(&static_ability.instance_id()) {
+                    return None;
+                }
+                let (program, also_face_up, only_face_up) =
+                    as_enters_effect_program_from_ability(ability)?;
+                let applies = if for_turn_face_up {
+                    also_face_up
+                } else {
+                    !only_face_up
+                };
                 applies.then_some((static_ability.instance_id(), program))
             });
-            let Some((identity, program)) = next else { break; };
+            let Some((identity, program)) = next else {
+                break;
+            };
             applied.insert(identity);
             let execution = self.execute_immediate_effect_programs(
-                source, controller, vec![program], !for_turn_face_up, None, decision_maker,
+                source,
+                controller,
+                vec![program],
+                !for_turn_face_up,
+                None,
+                decision_maker,
             )?;
             combined.ran |= execution.ran;
-            combined.continuous_effects.extend(execution.continuous_effects.iter().copied());
+            combined
+                .continuous_effects
+                .extend(execution.continuous_effects.iter().copied());
             merge_retained_tagged_objects(&mut combined.tagged_objects, &execution.tagged_objects);
-            if decision_maker.awaiting_choice() { return Ok(combined); }
+            if decision_maker.awaiting_choice() {
+                return Ok(combined);
+            }
             // A text exchange can remove a not-yet-applied program and supply
             // another one. Each ability instance applies at most once to this
             // event, even if a later exchange brings its text back.
-            let changed_text = self.effect_store.continuous_effects.effects().iter().any(|effect| {
-                execution.continuous_effects.contains(&effect.id)
-                    && matches!(effect.modification, crate::continuous::Modification::SetTextBox(_))
-                    && matches!(&effect.source_type,
+            let changed_text =
+                self.effect_store
+                    .continuous_effects
+                    .effects()
+                    .iter()
+                    .any(|effect| {
+                        execution.continuous_effects.contains(&effect.id)
+                            && matches!(
+                                effect.modification,
+                                crate::continuous::Modification::SetTextBox(_)
+                            )
+                            && matches!(&effect.source_type,
                         crate::continuous::EffectSourceType::Resolution { locked_targets }
                         if locked_targets.contains(&source))
-            });
+                    });
             if changed_text {
                 if let Some(abilities) = self.entry_text_abilities(source) {
                     current_abilities = abilities;
@@ -777,7 +826,10 @@ impl GameState {
         // printed ability and must not follow the card (CR 400.7, 702.62a).
         if old_zone == Zone::Stack
             && new_zone != Zone::Stack
-            && new_object.alternative_casts.iter().any(is_synthetic_granted_suspend)
+            && new_object
+                .alternative_casts
+                .iter()
+                .any(is_synthetic_granted_suspend)
         {
             new_object.alternative_casts = new_object
                 .alternative_casts
@@ -1198,7 +1250,13 @@ impl GameState {
         entering_controller: Option<PlayerId>,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Option<PreparedEtbEntry> {
-        self.prepare_etb_entry_after_programs(old_id, result, entering_controller, decision_maker, None)
+        self.prepare_etb_entry_after_programs(
+            old_id,
+            result,
+            entering_controller,
+            decision_maker,
+            None,
+        )
     }
 
     pub(crate) fn prepare_etb_entry_after_programs(
@@ -1223,7 +1281,8 @@ impl GameState {
             .enters_as_copy_of
             .and_then(|copy_source| self.object(copy_source))
             .or_else(|| self.object(old_id));
-        let prospective_controller = result.controller_override
+        let prospective_controller = result
+            .controller_override
             .or(entering_controller)
             .or_else(|| self.current_controller(old_id))
             .or_else(|| self.object(old_id).map(|object| object.owner))?;
@@ -1259,11 +1318,21 @@ impl GameState {
             prospective_abilities = abilities;
             choices
         } else {
-            let programs = prospective_abilities.iter().filter_map(|ability| {
-                let (program, _, face_up_only) = as_enters_effect_program_from_ability(ability)?;
-                (!face_up_only).then_some(program)
-            }).collect();
-            let choices = self.execute_entry_programs(old_id, prospective_controller, programs, None, decision_maker)?;
+            let programs = prospective_abilities
+                .iter()
+                .filter_map(|ability| {
+                    let (program, _, face_up_only) =
+                        as_enters_effect_program_from_ability(ability)?;
+                    (!face_up_only).then_some(program)
+                })
+                .collect();
+            let choices = self.execute_entry_programs(
+                old_id,
+                prospective_controller,
+                programs,
+                None,
+                decision_maker,
+            )?;
             if !choices.as_enters_continuous_effects.is_empty() {
                 if let Some(abilities) = self.entry_text_abilities(old_id) {
                     prospective_abilities = abilities;
@@ -1872,7 +1941,8 @@ impl GameState {
         let aura_entry_checkpoint = prospective_aura_entry.then(|| self.clone());
 
         if choices.discard_hand {
-            let controller = result.controller_override
+            let controller = result
+                .controller_override
                 .or(entering_controller)
                 .or_else(|| self.current_controller(old_id))
                 .or_else(|| self.object(old_id).map(|object| object.owner))?;
@@ -1937,7 +2007,9 @@ impl GameState {
             );
         }
         self.effect_store.continuous_effects.retarget_entry_effects(
-            &choices.as_enters_continuous_effects, old_id, new_id,
+            &choices.as_enters_continuous_effects,
+            old_id,
+            new_id,
         );
         // As-enters effect programs execute against the pre-move object id;
         // migrate any choices they recorded to the battlefield id.
@@ -2536,7 +2608,8 @@ impl GameState {
                 // A spell leaving the stack also leaves its zone index.
                 // Triggered/activated abilities sharing its source ID remain
                 // independent stack objects and must survive that move.
-                self.stack.retain(|entry| entry.object_id != id || entry.is_ability);
+                self.stack
+                    .retain(|entry| entry.object_id != id || entry.is_ability);
                 removed = self.stack.len() != before;
             }
         }
@@ -3913,7 +3986,10 @@ impl GameState {
                         .is_some_and(|grant| grant.filter.matches(object, &filter_ctx, self))
             };
             let granted = if let Some(chars) = self.calculated_characteristics(perm_id) {
-                chars.static_abilities.iter().any(|ability| matches_grant(ability))
+                chars
+                    .static_abilities
+                    .iter()
+                    .any(|ability| matches_grant(ability))
             } else {
                 perm.abilities.iter().any(|ability| {
                     matches!(&ability.kind, crate::ability::AbilityKind::Static(static_ability)
@@ -4026,12 +4102,22 @@ impl GameState {
         use crate::static_abilities::StaticAbility;
 
         // A duration ends permanently at its first false transition.
-        let expired: std::collections::HashSet<usize> = self.effect_store.restriction_effects.iter().enumerate()
+        let expired: std::collections::HashSet<usize> = self
+            .effect_store
+            .restriction_effects
+            .iter()
+            .enumerate()
             .filter_map(|(index, effect)| match &effect.duration {
                 crate::effect::Until::ForAsLongAs(predicate)
-                    if !crate::continuous::continuous_duration_predicate_matches(predicate, self) => Some(index),
+                    if !crate::continuous::continuous_duration_predicate_matches(
+                        predicate, self,
+                    ) =>
+                {
+                    Some(index)
+                }
                 _ => None,
-            }).collect();
+            })
+            .collect();
         let mut index = 0;
         self.effect_store.restriction_effects.retain(|_| {
             let retain = !expired.contains(&index);
@@ -4625,7 +4711,9 @@ mod chosen_option_tests {
 
 /// The zero-time, zero-cost suspend entry `CastSourceEffect` adds for a card
 /// cast via granted suspend (no printed card has "Suspend 0—{0}").
-fn is_synthetic_granted_suspend(method: &crate::alternative_cast::AlternativeCastingMethod) -> bool {
+fn is_synthetic_granted_suspend(
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+) -> bool {
     matches!(
         method,
         crate::alternative_cast::AlternativeCastingMethod::Suspend { cost, time: 0 }

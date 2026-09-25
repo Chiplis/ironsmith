@@ -61,7 +61,8 @@ fn cast_and_resolve(instant_speed: bool, graveyard_owner: PlayerId) -> Resolved 
         .card_types(vec![CardType::Creature])
         .power_toughness(ironsmith::card::PowerToughness::fixed(4, 4))
         .build();
-    let buried = game.create_object_from_definition(&creature_def, graveyard_owner, Zone::Graveyard);
+    let buried =
+        game.create_object_from_definition(&creature_def, graveyard_owner, Zone::Graveyard);
     let creature = game.object(buried).unwrap().stable_id;
     game.player_mut(alice)
         .unwrap()
@@ -100,7 +101,10 @@ fn cast_and_resolve(instant_speed: bool, graveyard_owner: PlayerId) -> Resolved 
     }
     assert_eq!(game.stack.len(), 1);
     ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
-    assert_eq!(game.object(find(&game, necro)).unwrap().zone, Zone::Battlefield);
+    assert_eq!(
+        game.object(find(&game, necro)).unwrap().zone,
+        Zone::Battlefield
+    );
     ironsmith::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
     assert_eq!(game.stack.len(), 1, "the enter trigger");
     ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
@@ -118,7 +122,11 @@ fn assert_reanimated_and_attached(resolved: &mut Resolved) {
     let necro = find(game, resolved.necro);
     let creature = find(game, resolved.creature);
     assert_eq!(game.object(creature).unwrap().zone, Zone::Battlefield);
-    assert_eq!(game.controller_of_id(creature), Some(alice), "under Necromancy's controller");
+    assert_eq!(
+        game.controller_of_id(creature),
+        Some(alice),
+        "under Necromancy's controller"
+    );
     assert_eq!(
         game.object(necro).unwrap().attached_to,
         Some(AttachmentTarget::Object(creature))
@@ -158,7 +166,11 @@ fn sorcery_speed_cast_reanimates_from_any_graveyard_and_stays() {
     for owner in [PlayerId::from_index(0), PlayerId::from_index(1)] {
         let mut resolved = cast_and_resolve(false, owner);
         assert_reanimated_and_attached(&mut resolved);
-        assert_eq!(run_cleanup(&mut resolved.game, &mut resolved.queue), 0, "no cleanup sacrifice");
+        assert_eq!(
+            run_cleanup(&mut resolved.game, &mut resolved.queue),
+            0,
+            "no cleanup sacrifice"
+        );
     }
 }
 
@@ -189,12 +201,26 @@ fn instant_speed_cast_is_sacrificed_at_the_next_cleanup_and_takes_the_creature()
         necro,
         creature,
     } = resolved;
-    assert_eq!(run_cleanup(&mut game, &mut queue), 1, "the delayed cleanup sacrifice");
+    assert_eq!(
+        run_cleanup(&mut game, &mut queue),
+        1,
+        "the delayed cleanup sacrifice"
+    );
     ironsmith::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
     ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
-    assert_eq!(game.object(find(&game, necro)).unwrap().zone, Zone::Graveyard);
+    assert_eq!(
+        game.object(find(&game, necro)).unwrap().zone,
+        Zone::Graveyard
+    );
     ironsmith::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
-    assert_eq!(game.stack.len(), 1, "Necromancy leaving triggers the creature sacrifice");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Necromancy leaving triggers the creature sacrifice"
+    );
     ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
-    assert_eq!(game.object(find(&game, creature)).unwrap().zone, Zone::Graveyard);
+    assert_eq!(
+        game.object(find(&game, creature)).unwrap().zone,
+        Zone::Graveyard
+    );
 }

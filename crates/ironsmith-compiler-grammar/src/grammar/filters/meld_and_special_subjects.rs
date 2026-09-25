@@ -1164,11 +1164,21 @@ mod tests {
 
     #[test]
     fn source_link_does_not_add_source_types_to_the_selected_creature() {
-        for source in ["aura", "artifact", "creature", "land", "planeswalker", "battle"] {
+        for source in [
+            "aura",
+            "artifact",
+            "creature",
+            "land",
+            "planeswalker",
+            "battle",
+        ] {
             let text = format!("creature put onto the battlefield with this {source}");
             let tokens = lex_line(&text, 0).unwrap();
             let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
-            assert!(filter.put_onto_battlefield_with_source, "{source}: {filter:#?}");
+            assert!(
+                filter.put_onto_battlefield_with_source,
+                "{source}: {filter:#?}"
+            );
             assert_eq!(filter.card_types, [CardType::Creature]);
             assert!(filter.subtypes.is_empty(), "{source}: {filter:#?}");
         }

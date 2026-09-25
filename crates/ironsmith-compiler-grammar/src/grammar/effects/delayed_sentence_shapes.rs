@@ -186,20 +186,28 @@ pub fn parse_delayed_tagged_leaves_shape(
 pub fn parse_delayed_source_leaves_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
-    let (header, effects) = primitives::split_lexed_once_on_separator(
-        trimmed(tokens), || primitives::comma().void(),
-    )?;
+    let (header, effects) =
+        primitives::split_lexed_once_on_separator(trimmed(tokens), || primitives::comma().void())?;
     let (_, body) = primitives::parse_prefix(header, trigger_intro)?;
-    primitives::probe_all(body, (
-        primitives::kw("this"),
-        opt(alt((
-            primitives::kw("aura"), primitives::kw("artifact"),
-            primitives::kw("creature"), primitives::kw("enchantment"),
-            primitives::kw("land"), primitives::kw("permanent"),
-            primitives::kw("planeswalker"), primitives::kw("battle"),
-        ))),
-        primitives::phrase(&["leaves", "the", "battlefield"]), eof,
-    ), "delayed source leaves trigger")?;
+    primitives::probe_all(
+        body,
+        (
+            primitives::kw("this"),
+            opt(alt((
+                primitives::kw("aura"),
+                primitives::kw("artifact"),
+                primitives::kw("creature"),
+                primitives::kw("enchantment"),
+                primitives::kw("land"),
+                primitives::kw("permanent"),
+                primitives::kw("planeswalker"),
+                primitives::kw("battle"),
+            ))),
+            primitives::phrase(&["leaves", "the", "battlefield"]),
+            eof,
+        ),
+        "delayed source leaves trigger",
+    )?;
     let effects = trimmed(effects);
     (!effects.is_empty()).then_some((body, effects))
 }

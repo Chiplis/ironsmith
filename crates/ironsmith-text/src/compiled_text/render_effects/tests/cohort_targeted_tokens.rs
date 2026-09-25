@@ -41,6 +41,11 @@ fn cohort_targeted_tokens_iterate_only_announced_targets_with_dynamic_limit() {
         .collect::<Vec<_>>();
     assert_eq!(auras.len(), 2);
     for target in targets {
-        assert!(auras.iter().any(|aura| aura.attached_to == Some(crate::object::AttachmentTarget::Object(target))));
+        assert!(
+            auras
+                .iter()
+                .any(|aura| aura.attached_to
+                    == Some(crate::object::AttachmentTarget::Object(target)))
+        );
     }
 }

@@ -89,17 +89,44 @@ fn cascade_threshold_uses_total_opponent_loss_and_only_your_turn() {
         game.turn.active_player = if own_turn { alice } else { bob };
         game.turn.phase = ironsmith::game_state::Phase::FirstMain;
         game.turn.priority_player = Some(caster);
-        let fixture_builder = CardDefinitionBuilder::new(CardId::new(), "Threshold instant fixture")
-            .card_types(vec![CardType::Instant]);
-        let fixture_builder=if regain==1 {fixture_builder} else {fixture_builder.mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(mana_value)]))};
-        let fixture = if expected==2 {fixture_builder.with_ability(ironsmith::ability::Ability::static_ability(ironsmith::static_abilities::StaticAbility::cascade()))} else {fixture_builder}.build();
+        let fixture_builder =
+            CardDefinitionBuilder::new(CardId::new(), "Threshold instant fixture")
+                .card_types(vec![CardType::Instant]);
+        let fixture_builder = if regain == 1 {
+            fixture_builder
+        } else {
+            fixture_builder.mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(
+                mana_value,
+            )]))
+        };
+        let fixture = if expected == 2 {
+            fixture_builder.with_ability(ironsmith::ability::Ability::static_ability(
+                ironsmith::static_abilities::StaticAbility::cascade(),
+            ))
+        } else {
+            fixture_builder
+        }
+        .build();
         let spell = game.create_object_from_definition(&fixture, caster, origin);
-        if regain==1 {
+        if regain == 1 {
             assert!(game.object(spell).unwrap().mana_cost.is_none());
-            game.effect_store.grant_registry.grant_alternative_cast_to_card(spell,origin,caster,
-                ironsmith::alternative_cast::AlternativeCastingMethod::Composed {
-                    name:"Fixture free cast".into(),total_cost:ironsmith::cost::TotalCost::mana(ManaCost::new()),condition:None,prototype_power_toughness:None
-                },ironsmith::grant_registry::GrantSource::Effect{source_id:source,expires_end_of_turn:game.turn.turn_number});
+            game.effect_store
+                .grant_registry
+                .grant_alternative_cast_to_card(
+                    spell,
+                    origin,
+                    caster,
+                    ironsmith::alternative_cast::AlternativeCastingMethod::Composed {
+                        name: "Fixture free cast".into(),
+                        total_cost: ironsmith::cost::TotalCost::mana(ManaCost::new()),
+                        condition: None,
+                        prototype_power_toughness: None,
+                    },
+                    ironsmith::grant_registry::GrantSource::Effect {
+                        source_id: source,
+                        expires_end_of_turn: game.turn.turn_number,
+                    },
+                );
         }
         if origin != Zone::Hand {
             game.effect_store.grant_registry.grant_play_from_to_card(
@@ -162,7 +189,12 @@ fn cascade_threshold_uses_total_opponent_loss_and_only_your_turn() {
             "casting must finish before cascade inspection: {progress:?}"
         );
         let stack_object = game.object(game.stack[0].object_id).unwrap();
-        if regain==1 {assert!(stack_object.mana_cost.is_none(),"alternative payment must not change printed mana cost");}
+        if regain == 1 {
+            assert!(
+                stack_object.mana_cost.is_none(),
+                "alternative payment must not change printed mana cost"
+            );
+        }
         let chars = game.calculated_characteristics(stack_object.id);
         let cascades = game
             .stack
@@ -181,28 +213,65 @@ fn cascade_threshold_uses_total_opponent_loss_and_only_your_turn() {
             cascades, expected,
             "loss={bob_loss}+{cara_loss}, regained={regain}, own_turn={own_turn}, stack={stack_object:#?}, derived={chars:#?}"
         );
-        if mana_value==0 && expected==1 {
+        if mana_value == 0 && expected == 1 {
             assert!(game.player(alice).unwrap().library.is_empty());
-            ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();
-            assert_eq!(game.stack.len(),1,"empty library finishes cascade without a cast");
+            ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+            assert_eq!(
+                game.stack.len(),
+                1,
+                "empty library finishes cascade without a cast"
+            );
         }
         if opponent_casts {
             ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
-            game.set_current_controller(source,bob);
-            game.turn.active_player=bob;
-            game.turn.priority_player=Some(bob);
-            let next_spell=game.create_object_from_definition(&fixture,bob,Zone::Hand);
-            game.player_mut(bob).unwrap().mana_pool.add(ManaSymbol::Colorless,3);
-            let action=compute_legal_actions(&game,bob).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..} if *spell_id==next_spell)).unwrap();
-            let mut state=PriorityLoopState::new(game.players_in_game());
-            let mut progress=ironsmith::game_loop::apply_priority_response_with_dm(&mut game,&mut queue,&mut state,&PriorityResponse::PriorityAction(action),&mut dm).unwrap();
+            game.set_current_controller(source, bob);
+            game.turn.active_player = bob;
+            game.turn.priority_player = Some(bob);
+            let next_spell = game.create_object_from_definition(&fixture, bob, Zone::Hand);
+            game.player_mut(bob)
+                .unwrap()
+                .mana_pool
+                .add(ManaSymbol::Colorless, 3);
+            let action = compute_legal_actions(&game, bob)
+                .into_iter()
+                .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..} if *spell_id==next_spell))
+                .unwrap();
+            let mut state = PriorityLoopState::new(game.players_in_game());
+            let mut progress = ironsmith::game_loop::apply_priority_response_with_dm(
+                &mut game,
+                &mut queue,
+                &mut state,
+                &PriorityResponse::PriorityAction(action),
+                &mut dm,
+            )
+            .unwrap();
             for _ in 0..24 {
-                if !game.stack.is_empty(){break;}
-                let GameProgress::NeedsDecisionCtx(ctx)=progress else{panic!("{progress:?}");};
-                progress=ironsmith::game_loop::apply_decision_context_with_dm(&mut game,&mut queue,&mut state,&ctx,&mut dm).unwrap();
+                if !game.stack.is_empty() {
+                    break;
+                }
+                let GameProgress::NeedsDecisionCtx(ctx) = progress else {
+                    panic!("{progress:?}");
+                };
+                progress = ironsmith::game_loop::apply_decision_context_with_dm(
+                    &mut game, &mut queue, &mut state, &ctx, &mut dm,
+                )
+                .unwrap();
             }
-            assert_eq!(game.stack.len(),2,"new controller's turn and opponents must determine grant");
-            assert!(game.stack[1].ability_effects.as_ref().unwrap().iter().any(|effect|effect.downcast_ref::<ironsmith::effects::CascadeEffect>().is_some()));
+            assert_eq!(
+                game.stack.len(),
+                2,
+                "new controller's turn and opponents must determine grant"
+            );
+            assert!(
+                game.stack[1]
+                    .ability_effects
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .any(|effect| effect
+                        .downcast_ref::<ironsmith::effects::CascadeEffect>()
+                        .is_some())
+            );
         }
         if bob_loss == 3 && own_turn && !opponent_casts && origin == Zone::Hand {
             // Cascade must survive the loss of the permanent that granted it.
@@ -221,30 +290,44 @@ fn cascade_threshold_uses_total_opponent_loss_and_only_your_turn() {
             let land_id = game.create_object_from_definition(&land, alice, Zone::Library);
             let land_stable = game.object(land_id).unwrap().stable_id;
             assert_eq!(game.player(alice).unwrap().library.last(), Some(&land_id));
-            for original_leaves in [false,true] {
-                for decline in [false,true] {
-                    let mut branch=game.clone();
+            for original_leaves in [false, true] {
+                for decline in [false, true] {
+                    let mut branch = game.clone();
                     if original_leaves {
-                        let original=branch.stack.remove(0).object_id;
-                        branch.move_object_by_effect(original,Zone::Graveyard);
+                        let original = branch.stack.remove(0).object_id;
+                        branch.move_object_by_effect(original, Zone::Graveyard);
                     }
                     if decline {
                         ironsmith::game_loop::resolve_stack_entry(&mut branch).unwrap();
                     } else {
-                        ironsmith::game_loop::resolve_stack_entry_with(&mut branch,&mut dm).unwrap();
+                        ironsmith::game_loop::resolve_stack_entry_with(&mut branch, &mut dm)
+                            .unwrap();
                     }
-                    assert_eq!(branch.stack.len(),usize::from(!original_leaves)+usize::from(!decline),"original leaves={original_leaves}, decline={decline}");
-                    let retained=branch.find_object_by_stable_id(cheap_stable).unwrap();
-                    assert_eq!(branch.object(retained).unwrap().zone,if decline {Zone::Library} else {Zone::Stack});
-                    for stable in [equal_stable,land_stable] {
-                        let returned=branch.find_object_by_stable_id(stable).unwrap();
-                        assert_eq!(branch.object(returned).unwrap().zone,Zone::Library);
+                    assert_eq!(
+                        branch.stack.len(),
+                        usize::from(!original_leaves) + usize::from(!decline),
+                        "original leaves={original_leaves}, decline={decline}"
+                    );
+                    let retained = branch.find_object_by_stable_id(cheap_stable).unwrap();
+                    assert_eq!(
+                        branch.object(retained).unwrap().zone,
+                        if decline { Zone::Library } else { Zone::Stack }
+                    );
+                    for stable in [equal_stable, land_stable] {
+                        let returned = branch.find_object_by_stable_id(stable).unwrap();
+                        assert_eq!(branch.object(returned).unwrap().zone, Zone::Library);
                     }
-                    assert_eq!(branch.player(alice).unwrap().library.len(),2+usize::from(decline));
-                    assert_eq!(branch.player(alice).unwrap().mana_pool.total(),0,"cascade pays no mana");
+                    assert_eq!(
+                        branch.player(alice).unwrap().library.len(),
+                        2 + usize::from(decline)
+                    );
+                    assert_eq!(
+                        branch.player(alice).unwrap().mana_pool.total(),
+                        0,
+                        "cascade pays no mana"
+                    );
                 }
             }
-
         }
     }
 }
@@ -281,8 +364,12 @@ fn cascade_threshold_counts_chosen_x_on_the_stack() {
             .record_event(&event, None, None);
         if next_turn {
             game.turn_store.turn_history.clear_for_new_turn();
-            game.turn.turn_number+=1;
-            assert_eq!(game.player(bob).unwrap().life,17,"lost life remains reflected in life total");
+            game.turn.turn_number += 1;
+            assert_eq!(
+                game.player(bob).unwrap().life,
+                17,
+                "lost life remains reflected in life total"
+            );
         }
         game.turn.active_player = alice;
         game.turn.phase = ironsmith::game_state::Phase::FirstMain;
@@ -344,27 +431,37 @@ fn cascade_threshold_counts_chosen_x_on_the_stack() {
 
 #[test]
 fn abaddon_trample_assigns_only_damage_beyond_lethal_to_player() {
-    use ironsmith::{GameState,PlayerId,Zone,CardType};
     use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::combat_state::{AttackTarget, AttackerInfo, CombatState};
     use ironsmith::ids::CardId;
-    use ironsmith::combat_state::{AttackTarget,AttackerInfo,CombatState};
-    let payloads=load_card_payloads_by_name(default_cards_path().to_str().unwrap(),"Abaddon the Despoiler").unwrap();
-    let def=ironsmith_tools::compile_definition_from_payload(&payloads[0]).unwrap();
-    let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
-    for toughness in [2,5,7] {
-        let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);
-        let source=game.create_object_from_definition(&def,alice,Zone::Battlefield);
-        assert_eq!(game.calculated_power(source),Some(5));
-        assert_eq!(game.calculated_toughness(source),Some(5));
-        let blocker=CardDefinitionBuilder::new(CardId::new(),"Trample blocker fixture")
-            .card_types(vec![CardType::Creature]).power_toughness(ironsmith::card::PowerToughness::fixed(1,toughness)).build();
-        let blocker=game.create_object_from_definition(&blocker,bob,Zone::Battlefield);
-        let mut combat=CombatState::default();
-        combat.attackers.push(AttackerInfo{creature:source,target:AttackTarget::Player(bob)});
-        combat.blockers.insert(source,vec![blocker]);
-        ironsmith::game_loop::execute_combat_damage_step(&mut game,&combat,false);
-        assert_eq!(game.damage_on(blocker),std::cmp::min(5,toughness) as u32);
-        assert_eq!(game.damage_on(source),1);
-        assert_eq!(game.player(bob).unwrap().life,20-(5-toughness).max(0));
+    use ironsmith::{CardType, GameState, PlayerId, Zone};
+    let payloads = load_card_payloads_by_name(
+        default_cards_path().to_str().unwrap(),
+        "Abaddon the Despoiler",
+    )
+    .unwrap();
+    let def = ironsmith_tools::compile_definition_from_payload(&payloads[0]).unwrap();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    for toughness in [2, 5, 7] {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+        assert_eq!(game.calculated_power(source), Some(5));
+        assert_eq!(game.calculated_toughness(source), Some(5));
+        let blocker = CardDefinitionBuilder::new(CardId::new(), "Trample blocker fixture")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(ironsmith::card::PowerToughness::fixed(1, toughness))
+            .build();
+        let blocker = game.create_object_from_definition(&blocker, bob, Zone::Battlefield);
+        let mut combat = CombatState::default();
+        combat.attackers.push(AttackerInfo {
+            creature: source,
+            target: AttackTarget::Player(bob),
+        });
+        combat.blockers.insert(source, vec![blocker]);
+        ironsmith::game_loop::execute_combat_damage_step(&mut game, &combat, false);
+        assert_eq!(game.damage_on(blocker), std::cmp::min(5, toughness) as u32);
+        assert_eq!(game.damage_on(source), 1);
+        assert_eq!(game.player(bob).unwrap().life, 20 - (5 - toughness).max(0));
     }
 }

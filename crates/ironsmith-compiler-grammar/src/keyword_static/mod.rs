@@ -463,12 +463,23 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("if"),
             StaticAbilityLineHeadHint::Pair("if", "this"),
         ],
-        "parse_damage_prevention_with_owner_shuffle_line" => vec![StaticAbilityLineHeadHint::Single("if")],
+        "parse_damage_prevention_with_owner_shuffle_line" => {
+            vec![StaticAbilityLineHeadHint::Single("if")]
+        }
         "parse_damage_amount_replacement_line" => vec![StaticAbilityLineHeadHint::Single("if")],
-        "parse_prevent_half_damage_replacement_line" => vec![StaticAbilityLineHeadHint::Single("if")],
-        "parse_if_you_would_draw_instead_effects_line" => vec![StaticAbilityLineHeadHint::Single("if")],
-        "parse_activate_abilities_as_though_haste_line" => vec![StaticAbilityLineHeadHint::Single("you")],
-        "parse_loyalty_abilities_any_time_line" => vec![StaticAbilityLineHeadHint::Single("you"), StaticAbilityLineHeadHint::Single("as")],
+        "parse_prevent_half_damage_replacement_line" => {
+            vec![StaticAbilityLineHeadHint::Single("if")]
+        }
+        "parse_if_you_would_draw_instead_effects_line" => {
+            vec![StaticAbilityLineHeadHint::Single("if")]
+        }
+        "parse_activate_abilities_as_though_haste_line" => {
+            vec![StaticAbilityLineHeadHint::Single("you")]
+        }
+        "parse_loyalty_abilities_any_time_line" => vec![
+            StaticAbilityLineHeadHint::Single("you"),
+            StaticAbilityLineHeadHint::Single("as"),
+        ],
         "parse_play_from_top_pay_life_line" => vec![StaticAbilityLineHeadHint::Single("you")],
         "parse_double_counters_replacement_line" => vec![StaticAbilityLineHeadHint::Single("if")],
         "parse_players_skip_extra_turns_line" => vec![
@@ -603,12 +614,12 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "have"),
         ],
-        "parse_opponents_must_target_flagbearers_line" => vec![
-            StaticAbilityLineHeadHint::Pair("while", "an"),
-        ],
-        "parse_prevent_all_damage_to_you_line" => vec![
-            StaticAbilityLineHeadHint::Pair("prevent", "all"),
-        ],
+        "parse_opponents_must_target_flagbearers_line" => {
+            vec![StaticAbilityLineHeadHint::Pair("while", "an")]
+        }
+        "parse_prevent_all_damage_to_you_line" => {
+            vec![StaticAbilityLineHeadHint::Pair("prevent", "all")]
+        }
         "parse_prevent_damage_to_you_from_source_filter_line" => vec![
             StaticAbilityLineHeadHint::Pair("if", "a"),
             StaticAbilityLineHeadHint::Pair("if", "an"),
@@ -718,9 +729,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
-        "parse_during_your_turn_graveyard_cards_have_retrace_line" => vec![
-            StaticAbilityLineHeadHint::Single("during"),
-        ],
+        "parse_during_your_turn_graveyard_cards_have_retrace_line" => {
+            vec![StaticAbilityLineHeadHint::Single("during")]
+        }
         "parse_graveyard_cards_have_retrace_line" => vec![
             StaticAbilityLineHeadHint::Single("instant"),
             StaticAbilityLineHeadHint::Single("instants"),
@@ -985,14 +996,27 @@ mod registry_head_hint_tests {
     #[test]
     fn untap_step_limit_rule_is_reachable_and_typed() {
         for (text, head, second, max) in [
-            ("Players can't untap more than one nonbasic land during their untap steps.", "players", "cant", 1),
-            ("You can't untap more than two permanents during your untap step.", "you", "cant", 2),
+            (
+                "Players can't untap more than one nonbasic land during their untap steps.",
+                "players",
+                "cant",
+                1,
+            ),
+            (
+                "You can't untap more than two permanents during your untap step.",
+                "you",
+                "cant",
+                2,
+            ),
         ] {
             let tokens = crate::lexer::lex_line(text, 0).expect("untap limit line should lex");
             let direct = parse_untap_step_limit_line(&tokens)
                 .expect("direct untap limit parse should not error")
                 .expect("direct untap limit parser should claim the line");
-            assert!(format!("{direct:?}").contains(&format!("max: {max}")), "{direct:?}");
+            assert!(
+                format!("{direct:?}").contains(&format!("max: {max}")),
+                "{direct:?}"
+            );
             let rule_idx = static_ability_ast_line_rules()
                 .iter()
                 .position(|rule| rule.id.as_str() == "parse_untap_step_limit_line")
@@ -1006,7 +1030,10 @@ mod registry_head_hint_tests {
             let parsed = registry_result(&tokens)
                 .expect("untap limit registry parse should not error")
                 .expect("untap limit registry should claim the line");
-            assert!(format!("{parsed:?}").contains("UntapStepLimit"), "{parsed:?}");
+            assert!(
+                format!("{parsed:?}").contains("UntapStepLimit"),
+                "{parsed:?}"
+            );
         }
     }
 
@@ -2230,9 +2257,16 @@ mod conditional_flash_permission_tests {
 
     #[test]
     fn target_dependent_flash_retains_a_structured_object_filter() {
-        let parsed = parse_line("You may cast this spell as though it had flash if it targets a permanent you control.");
-        let [StaticAbilityAst::Static(ability)] = parsed.as_slice() else { panic!("{parsed:#?}"); };
-        let ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(filter) = &ability.payload else { panic!("{ability:#?}"); };
+        let parsed = parse_line(
+            "You may cast this spell as though it had flash if it targets a permanent you control.",
+        );
+        let [StaticAbilityAst::Static(ability)] = parsed.as_slice() else {
+            panic!("{parsed:#?}");
+        };
+        let ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(filter) = &ability.payload
+        else {
+            panic!("{ability:#?}");
+        };
         assert_eq!(filter.zone, Some(crate::zone::Zone::Battlefield));
         assert_eq!(filter.controller, Some(PlayerFilter::You));
     }
@@ -3442,7 +3476,9 @@ pub fn parse_filter_dont_untap_during_controllers_untap_steps_line(
     // "Enchanted creature gets +1/+1 and doesn't untap ...": the subject
     // phrase carries another predicate; a filter parse would silently drop it.
     if subject_tokens.iter().any(|token| {
-        token.is_any_word(&["gets", "get", "has", "have", "gains", "gain", "loses", "lose", "and"])
+        token.is_any_word(&[
+            "gets", "get", "has", "have", "gains", "gain", "loses", "lose", "and",
+        ])
     }) {
         return Ok(None);
     }
@@ -4292,16 +4328,17 @@ pub fn parse_double_damage_amount_replacement_line(
     let Some(spec) = keyword_static_lines::parse_damage_multiplier_tokens(&tokens) else {
         return Ok(None);
     };
-    let (target_player_filter, target_object_filter) = if let Some(damaged_tokens) = spec.damaged_tokens {
-        let damaged_words = parser_token_word_refs(damaged_tokens);
-        let filters = parse_damage_amount_replacement_target_filters(&damaged_words)?;
-        if filters.0.is_none() && filters.1.is_none() {
-            return Ok(None);
-        }
-        filters
-    } else {
-        (Some(PlayerFilter::Any), Some(ObjectFilter::default()))
-    };
+    let (target_player_filter, target_object_filter) =
+        if let Some(damaged_tokens) = spec.damaged_tokens {
+            let damaged_words = parser_token_word_refs(damaged_tokens);
+            let filters = parse_damage_amount_replacement_target_filters(&damaged_words)?;
+            if filters.0.is_none() && filters.1.is_none() {
+                return Ok(None);
+            }
+            filters
+        } else {
+            (Some(PlayerFilter::Any), Some(ObjectFilter::default()))
+        };
 
     let source_filter = damage_source_filter_from_shape(spec.source)?;
 
@@ -4370,7 +4407,8 @@ fn damage_source_filter_from_shape(
     if shape.source_noun && filter.zone == Some(Zone::Battlefield) {
         let mut source_words = parser_token_word_refs(shape.filter_tokens);
         source_words.extend(parser_token_word_refs(shape.trailing_filter_tokens));
-        let explicitly_battlefield = source_words.iter()
+        let explicitly_battlefield = source_words
+            .iter()
             .any(|word| matches!(*word, "battlefield" | "permanent" | "permanents"));
         if !explicitly_battlefield {
             filter.zone = None;
@@ -4673,8 +4711,9 @@ pub fn parse_enter_as_copy_as_enters_line(
             let mut added_abilities = Vec::new();
             let mut additional_counters = Vec::new();
             let mut additional_counters_source_filter = None;
-            let mut conditional_additional_counters: Vec<ironsmith_core::ConditionalAdditionalCounters> =
-                Vec::new();
+            let mut conditional_additional_counters: Vec<
+                ironsmith_core::ConditionalAdditionalCounters,
+            > = Vec::new();
             let mut added_abilities_source_filter = None;
             let mut set_base_power_toughness = None;
             let mut set_base_power_toughness_from_self = false;
@@ -4700,7 +4739,8 @@ pub fn parse_enter_as_copy_as_enters_line(
                                 ironsmith_core::ConditionalAdditionalCounters {
                                     counter_type: entry.counter_type,
                                     count: entry.count,
-                                    source_filter: ObjectFilter::default().with_type(entry.card_type),
+                                    source_filter: ObjectFilter::default()
+                                        .with_type(entry.card_type),
                                 },
                             );
                         }
@@ -4783,8 +4823,13 @@ pub fn parse_enter_as_copy_as_enters_line(
                                 cursor += 1;
                                 continue;
                             }
-                            if let Some(supertype) = crate::util::parse_supertype_word(characteristic_words[cursor]) {
-                                crate::slice_primitives::push_unique(&mut added_supertypes, supertype);
+                            if let Some(supertype) =
+                                crate::util::parse_supertype_word(characteristic_words[cursor])
+                            {
+                                crate::slice_primitives::push_unique(
+                                    &mut added_supertypes,
+                                    supertype,
+                                );
                                 parsed_type_or_subtype = true;
                                 cursor += 1;
                                 continue;
@@ -5993,16 +6038,33 @@ mod imperative_multiplier_source_scope_tests {
     use super::*;
     #[test]
     fn imperative_multiplier_source_scope_preserves_explicit_zone_restrictions() {
-        for (text,zone) in [
-            ("Double all damage that creature sources you control would deal.",None),
-            ("If a creature would deal damage to a player, it deals double that damage instead.",Some(Zone::Battlefield)),
-            ("If a creature source on the battlefield would deal damage to a player, it deals double that damage instead.",Some(Zone::Battlefield)),
+        for (text, zone) in [
+            (
+                "Double all damage that creature sources you control would deal.",
+                None,
+            ),
+            (
+                "If a creature would deal damage to a player, it deals double that damage instead.",
+                Some(Zone::Battlefield),
+            ),
+            (
+                "If a creature source on the battlefield would deal damage to a player, it deals double that damage instead.",
+                Some(Zone::Battlefield),
+            ),
         ] {
-            let tokens=crate::lexer::lex_line(text,0).unwrap();
-            let ability=parse_double_damage_amount_replacement_line(&tokens).unwrap().expect(text);
-            let ironsmith_core::StaticAbilityPayload::DoubleDamageAmountReplacement{source_filter,..}=ability.payload else {panic!("expected multiplier")};
-            assert_eq!(source_filter.zone,zone,"{text}");
-            assert_eq!(source_filter.card_types,vec![CardType::Creature]);
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let ability = parse_double_damage_amount_replacement_line(&tokens)
+                .unwrap()
+                .expect(text);
+            let ironsmith_core::StaticAbilityPayload::DoubleDamageAmountReplacement {
+                source_filter,
+                ..
+            } = ability.payload
+            else {
+                panic!("expected multiplier")
+            };
+            assert_eq!(source_filter.zone, zone, "{text}");
+            assert_eq!(source_filter.card_types, vec![CardType::Creature]);
         }
     }
 }

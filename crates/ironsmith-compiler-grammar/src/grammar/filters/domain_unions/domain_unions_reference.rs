@@ -61,21 +61,41 @@ pub(super) fn contains_target_player_or_planeswalker_controller_relation(
 // entire list: "blue permanent, spell, or card in a graveyard". Independently
 // qualified arms ("blue permanent or a red spell") do not share the adjective.
 fn leading_shared_domain_colors(segments: &[&[OwnedLexToken]]) -> Option<crate::color::ColorSet> {
-    if segments.len() < 2 { return None; }
-    let domain = |word: &str| matches!(word, "permanent" | "permanents" | "spell" | "spells" | "card" | "cards");
+    if segments.len() < 2 {
+        return None;
+    }
+    let domain = |word: &str| {
+        matches!(
+            word,
+            "permanent" | "permanents" | "spell" | "spells" | "card" | "cards"
+        )
+    };
     if !segments.iter().skip(1).all(|segment| {
-        TokenWordView::new(segment).word_refs().first().is_some_and(|word| domain(word))
-    }) { return None; }
+        TokenWordView::new(segment)
+            .word_refs()
+            .first()
+            .is_some_and(|word| domain(word))
+    }) {
+        return None;
+    }
     let view = TokenWordView::new(segments[0]);
     let words = view.word_refs();
     let noun = words.iter().position(|word| domain(word))?;
     let mut prefix = &words[..noun];
-    if prefix.first().is_some_and(|word| matches!(*word, "a" | "an")) { prefix = &prefix[1..]; }
+    if prefix
+        .first()
+        .is_some_and(|word| matches!(*word, "a" | "an"))
+    {
+        prefix = &prefix[1..];
+    }
     let mut colors = crate::color::ColorSet::COLORLESS;
     let mut next_color = true;
     for word in prefix {
-        if next_color { colors = colors.union(crate::util::parse_color(word)?); }
-        else if *word != "or" { return None; }
+        if next_color {
+            colors = colors.union(crate::util::parse_color(word)?);
+        } else if *word != "or" {
+            return None;
+        }
         next_color = !next_color;
     }
     (!next_color && !colors.is_empty()).then_some(colors)

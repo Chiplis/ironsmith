@@ -38,10 +38,12 @@ fn trailing_they_pay_keeps_the_each_player_ast_and_payer_reference() {
         matches!(
             effects.as_slice(),
             [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. })]
-                | [EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
-                    filter: crate::target::PlayerFilter::Any,
-                    ..
-                })]
+                | [EffectAst::ForEach(
+                    ForEachEffectAst::ForEachPlayersFiltered {
+                        filter: crate::target::PlayerFilter::Any,
+                        ..
+                    }
+                )]
         ),
         "expected the consequence to retain its each-player loop, got {effects:#?}"
     );

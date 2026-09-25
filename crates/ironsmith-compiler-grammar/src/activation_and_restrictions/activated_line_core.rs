@@ -968,18 +968,38 @@ pub fn parse_compiler_activation_cost(
     if let Some(index) = tokens.iter().position(|token| token.is_word("collect")) {
         let words = crate::lexer::parser_token_word_refs(&tokens[index..]);
         if let ["collect", "evidence", amount] = words.as_slice() {
-            let minimum = if *amount == "x" { Value::X } else {
-                Value::Fixed(crate::util::parse_number_word_u32(amount).ok_or_else(|| CardTextError::ParseError("collect evidence requires a number or X".into()))? as i32)
+            let minimum = if *amount == "x" {
+                Value::X
+            } else {
+                Value::Fixed(crate::util::parse_number_word_u32(amount).ok_or_else(|| {
+                    CardTextError::ParseError("collect evidence requires a number or X".into())
+                })? as i32)
             };
-            let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard).owned_by(PlayerFilter::You);
+            let mut filter = ObjectFilter::default()
+                .in_zone(Zone::Graveyard)
+                .owned_by(PlayerFilter::You);
             filter.other = true;
-            filter.target_set_aggregate_constraint = Some(Box::new(ironsmith_core::ChoiceAggregateConstraint::total_mana_value_at_least(minimum)));
-            let prefix_end = if index > 0 && tokens[index - 1].is_comma() { index - 1 } else { index };
-            let mut costs = if prefix_end == 0 { Vec::new() } else {
-                parse_compiler_activation_cost(&tokens[..prefix_end])?.costs().to_vec()
+            filter.target_set_aggregate_constraint = Some(Box::new(
+                ironsmith_core::ChoiceAggregateConstraint::total_mana_value_at_least(minimum),
+            ));
+            let prefix_end = if index > 0 && tokens[index - 1].is_comma() {
+                index - 1
+            } else {
+                index
+            };
+            let mut costs = if prefix_end == 0 {
+                Vec::new()
+            } else {
+                parse_compiler_activation_cost(&tokens[..prefix_end])?
+                    .costs()
+                    .to_vec()
             };
             costs.push(crate::model::CompilerCost::ExileChosen {
-                count: ChoiceCount::any_number(), filter, top_only: false, turn_face_up: false, binding: None,
+                count: ChoiceCount::any_number(),
+                filter,
+                top_only: false,
+                turn_face_up: false,
+                binding: None,
             });
             return Ok(ironsmith_core::TotalCost::from_costs(costs));
         }
@@ -1054,12 +1074,12 @@ pub fn parse_enters_prepared_line(
 
 /// "This creature enters tapped if it's not your turn." / "... unless it's
 /// your turn." (Eddymurk Crab): a fixed turn condition gates the tapped entry.
-fn parse_enters_tapped_turn_condition_line(
-    tokens: &[OwnedLexToken],
-) -> Option<StaticAbility> {
+fn parse_enters_tapped_turn_condition_line(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
     use crate::grammar::anthem_grants::FixedStaticConditionKind;
 
-    let marker = tokens.iter().position(|token| token.is_any_word(&["if", "unless"]))?;
+    let marker = tokens
+        .iter()
+        .position(|token| token.is_any_word(&["if", "unless"]))?;
     let unless = tokens[marker].is_word("unless");
     let head = crate::lexer::trim_lexed_commas(&tokens[..marker]);
     if !matches!(
@@ -1076,46 +1096,45 @@ fn parse_enters_tapped_turn_condition_line(
         .unwrap_or(condition_tokens);
     // The runtime ability states the condition under which the permanent
     // enters untapped; "tapped if it's not your turn" is "unless your turn".
-    let condition = match crate::grammar::anthem_grants::parse_fixed_static_condition_kind(
-        condition_tokens,
-    ) {
-        Some(FixedStaticConditionKind::NotYourTurn) => {
-            if unless {
-                PredicateAst::Not(Box::new(PredicateAst::YourTurn))
-            } else {
-                PredicateAst::YourTurn
+    let condition =
+        match crate::grammar::anthem_grants::parse_fixed_static_condition_kind(condition_tokens) {
+            Some(FixedStaticConditionKind::NotYourTurn) => {
+                if unless {
+                    PredicateAst::Not(Box::new(PredicateAst::YourTurn))
+                } else {
+                    PredicateAst::YourTurn
+                }
             }
-        }
-        Some(FixedStaticConditionKind::YourTurn) => {
-            if unless {
-                PredicateAst::YourTurn
-            } else {
-                PredicateAst::Not(Box::new(PredicateAst::YourTurn))
+            Some(FixedStaticConditionKind::YourTurn) => {
+                if unless {
+                    PredicateAst::YourTurn
+                } else {
+                    PredicateAst::Not(Box::new(PredicateAst::YourTurn))
+                }
             }
-        }
-        _ => {
-            // "unless your opponents control eight or more lands" (Turbulent
-            // Fen): any static condition clause the anthem grammar reads.
-            // Lines the dedicated unless-rule already recognizes ("unless you
-            // control a black permanent", Spymaster's Vault) stay with it, or
-            // the registry would see two readings.
-            if unless
-                && matches!(
-                    crate::keyword_static::parse_conditional_enters_tapped_unless_line(tokens),
-                    Ok(Some(_))
-                )
-            {
-                return None;
+            _ => {
+                // "unless your opponents control eight or more lands" (Turbulent
+                // Fen): any static condition clause the anthem grammar reads.
+                // Lines the dedicated unless-rule already recognizes ("unless you
+                // control a black permanent", Spymaster's Vault) stay with it, or
+                // the registry would see two readings.
+                if unless
+                    && matches!(
+                        crate::keyword_static::parse_conditional_enters_tapped_unless_line(tokens),
+                        Ok(Some(_))
+                    )
+                {
+                    return None;
+                }
+                let predicate =
+                    crate::keyword_static::parse_static_condition_clause(condition_tokens).ok()?;
+                if unless {
+                    predicate
+                } else {
+                    PredicateAst::Not(Box::new(predicate))
+                }
             }
-            let predicate =
-                crate::keyword_static::parse_static_condition_clause(condition_tokens).ok()?;
-            if unless {
-                predicate
-            } else {
-                PredicateAst::Not(Box::new(predicate))
-            }
-        }
-    };
+        };
     Some(StaticAbility::enters_tapped_unless_condition(
         condition,
         crate::lexer::render_token_slice(tokens),
@@ -1301,11 +1320,18 @@ pub fn parse_cost_reduction_line(
                     ))
                 }
                 ThisAbilityReductionRemainder::ForEach { filter_tokens } => {
-                    if crate::lexer::parser_token_word_refs(filter_tokens) == ["color", "of", "the", "creature", "it", "targets"] {
-                        let mut ability = StaticAbility::reduce_activated_ability_costs_with_display(
-                            ObjectFilter::source(), reduction, None,
-                            format!("This ability costs {{{reduction}}} less to activate for each color of the creature it targets"),
-                        );
+                    if crate::lexer::parser_token_word_refs(filter_tokens)
+                        == ["color", "of", "the", "creature", "it", "targets"]
+                    {
+                        let mut ability =
+                            StaticAbility::reduce_activated_ability_costs_with_display(
+                                ObjectFilter::source(),
+                                reduction,
+                                None,
+                                format!(
+                                    "This ability costs {{{reduction}}} less to activate for each color of the creature it targets"
+                                ),
+                            );
                         if let ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostReduction { multiplier, .. } = &mut ability.payload {
                             *multiplier = Some(Value::ColorsOf(Box::new(crate::target::ChooseSpec::target(
                                 crate::target::ChooseSpec::Object(ObjectFilter::creature()),

@@ -1,7 +1,9 @@
 //! Venture into a dungeon by starting or advancing dungeon progress.
 
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
-use crate::dungeon::{ActiveDungeonProgress, first_room_name, next_room_names, venture_dungeon_names};
+use crate::dungeon::{
+    ActiveDungeonProgress, first_room_name, next_room_names, venture_dungeon_names,
+};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
@@ -247,12 +249,23 @@ pub(crate) fn advance_player_dungeon(
         ActiveDungeonProgress::new(dungeon_name.clone(), room_name.clone()),
     );
     let venture_event = TriggerEvent::new_with_provenance(
-        KeywordActionEvent::new(KeywordActionKind::VentureIntoDungeon, player_id, ctx.source, 1),
+        KeywordActionEvent::new(
+            KeywordActionKind::VentureIntoDungeon,
+            player_id,
+            ctx.source,
+            1,
+        ),
         ctx.provenance,
     );
     // CR 309.4c: moving the venture marker into a room triggers its room
     // ability. Completing the dungeon waits for that ability (CR 704.5t).
-    queue_room_ability(game, player_id, &dungeon_name, &room_name, venture_event.clone());
+    queue_room_ability(
+        game,
+        player_id,
+        &dungeon_name,
+        &room_name,
+        venture_event.clone(),
+    );
 
     Ok(outcome.with_event(venture_event))
 }
@@ -302,10 +315,12 @@ mod tests {
             ("Right", vec!["Vault"]),
             ("Vault", vec![]),
         ] {
-            definition.abilities.push(crate::ability::Ability::triggered(
-                Trigger::dungeon_room(room, leads_to.into_iter().map(String::from).collect()),
-                vec![crate::effect::Effect::gain_life(1)],
-            ));
+            definition
+                .abilities
+                .push(crate::ability::Ability::triggered(
+                    Trigger::dungeon_room(room, leads_to.into_iter().map(String::from).collect()),
+                    vec![crate::effect::Effect::gain_life(1)],
+                ));
         }
         crate::dungeon::register_dungeon_definition(&definition)
             .expect("test dungeon should be valid");

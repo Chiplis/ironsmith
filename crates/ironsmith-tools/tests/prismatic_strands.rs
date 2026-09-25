@@ -51,7 +51,12 @@ impl DecisionMaker for Choices {
             .map(|o| o.index)
             .collect();
         if picked.is_empty() {
-            ctx.options.iter().filter(|o| o.legal).take(ctx.min.max(1)).map(|o| o.index).collect()
+            ctx.options
+                .iter()
+                .filter(|o| o.legal)
+                .take(ctx.min.max(1))
+                .map(|o| o.index)
+                .collect()
         } else {
             picked
         }
@@ -80,10 +85,26 @@ fn setup() -> (GameState, ObjectId, ObjectId, ObjectId, ObjectId) {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
-    let red = game.create_object_from_definition(&creature("Red Source", Color::Red), bob, Zone::Battlefield);
-    let green = game.create_object_from_definition(&creature("Green Source", Color::Green), bob, Zone::Battlefield);
-    let white = game.create_object_from_definition(&creature("White Knight", Color::White), alice, Zone::Battlefield);
-    let target = game.create_object_from_definition(&creature("Alice Bear", Color::Green), alice, Zone::Battlefield);
+    let red = game.create_object_from_definition(
+        &creature("Red Source", Color::Red),
+        bob,
+        Zone::Battlefield,
+    );
+    let green = game.create_object_from_definition(
+        &creature("Green Source", Color::Green),
+        bob,
+        Zone::Battlefield,
+    );
+    let white = game.create_object_from_definition(
+        &creature("White Knight", Color::White),
+        alice,
+        Zone::Battlefield,
+    );
+    let target = game.create_object_from_definition(
+        &creature("Alice Bear", Color::Green),
+        alice,
+        Zone::Battlefield,
+    );
     (game, red, green, white, target)
 }
 
@@ -109,7 +130,9 @@ fn cast(game: &mut GameState, spell: ObjectId, dm: &mut Choices) {
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            game, &mut queue, &mut state, &ctx, dm,
+        );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
     ironsmith::game_loop::resolve_stack_entry_with(game, dm).unwrap();
@@ -119,7 +142,8 @@ fn hit(game: &mut GameState, source: ObjectId, target: ChooseSpec) {
     let bob = PlayerId::from_index(1);
     let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
     let mut ctx = ironsmith::effects::EffectContext::new(source, bob, &mut dm);
-    ironsmith::effects::execute_effect(game, &ironsmith::Effect::deal_damage(2, target), &mut ctx).unwrap();
+    ironsmith::effects::execute_effect(game, &ironsmith::Effect::deal_damage(2, target), &mut ctx)
+        .unwrap();
 }
 
 #[test]
@@ -127,14 +151,32 @@ fn prevents_damage_from_sources_of_the_chosen_color_only() {
     let def = ironsmith_tools::compile_definition_from_payload(&payload()).unwrap();
     let (mut game, red, green, _white, bear) = setup();
     let alice = PlayerId::from_index(0);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::White, 3);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::White, 3);
     let hand = game.create_object_from_definition(&def, alice, Zone::Hand);
-    cast(&mut game, hand, &mut Choices { color: "red", tapper: None });
+    cast(
+        &mut game,
+        hand,
+        &mut Choices {
+            color: "red",
+            tapper: None,
+        },
+    );
 
     hit(&mut game, red, ChooseSpec::SpecificObject(bear));
     hit(&mut game, red, ChooseSpec::Player(PlayerFilter::You));
-    assert_eq!(game.damage_on(bear), 0, "red damage to creatures is prevented");
-    assert_eq!(game.player(alice).unwrap().life, 20, "red damage to players is prevented");
+    assert_eq!(
+        game.damage_on(bear),
+        0,
+        "red damage to creatures is prevented"
+    );
+    assert_eq!(
+        game.player(alice).unwrap().life,
+        20,
+        "red damage to players is prevented"
+    );
 
     hit(&mut game, green, ChooseSpec::SpecificObject(bear));
     assert_eq!(game.damage_on(bear), 2, "green damage is not prevented");
@@ -151,13 +193,26 @@ fn flashback_by_tapping_an_untapped_white_creature() {
     let (mut game, _red, green, white, bear) = setup();
     let alice = PlayerId::from_index(0);
     let grave = game.create_object_from_definition(&def, alice, Zone::Graveyard);
-    cast(&mut game, grave, &mut Choices { color: "green", tapper: Some(white) });
+    cast(
+        &mut game,
+        grave,
+        &mut Choices {
+            color: "green",
+            tapper: Some(white),
+        },
+    );
     assert!(game.is_tapped(white), "tapped for flashback");
-    assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0, "no mana needed");
+    assert_eq!(
+        game.player(alice).unwrap().mana_pool.total(),
+        0,
+        "no mana needed"
+    );
     hit(&mut game, green, ChooseSpec::SpecificObject(bear));
     assert_eq!(game.damage_on(bear), 0);
     assert!(
-        game.exile.iter().any(|id| game.object(*id).is_some_and(|o| o.name == "Prismatic Strands")),
+        game.exile.iter().any(|id| game
+            .object(*id)
+            .is_some_and(|o| o.name == "Prismatic Strands")),
         "exiled after flashback"
     );
 }

@@ -499,7 +499,10 @@ fn parse_conjoined_payment_clause_as_total_cost(
         };
         let right = match parse_payment_clause_as_total_cost(&right_tokens) {
             Ok(Some(right)) => right,
-            _ if left_tokens.first().is_some_and(|token| token.is_word("discard")) => {
+            _ if left_tokens
+                .first()
+                .is_some_and(|token| token.is_word("discard")) =>
+            {
                 // Coordinated discard objects share their action verb:
                 // "discard a creature card and another card" pays both costs.
                 // Each half still must parse as a complete payment.
@@ -1229,9 +1232,9 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
             strip_leading_keyword_cost_separator(&trim_commas(&tokens[cost.clone()])).to_vec();
         let text = cumulative_upkeep_text(&cost_tokens);
 
-        match parse_compiler_activation_cost(&cost_tokens).or_else(|error| {
-            parse_payment_clause_as_total_cost(&cost_tokens)?.ok_or(error)
-        }) {
+        match parse_compiler_activation_cost(&cost_tokens)
+            .or_else(|error| parse_payment_clause_as_total_cost(&cost_tokens)?.ok_or(error))
+        {
             Ok(total_cost) => {
                 return Some(KeywordAction::CumulativeUpkeep { total_cost, text });
             }
@@ -1762,12 +1765,14 @@ mod tests {
     #[test]
     fn conjoined_discard_payment_keeps_subtype_and_second_card() {
         let filtered = parse_payment_clause_as_total_cost(&lex("discard an Island card"))
-            .unwrap().expect("a subtype-filtered discard should parse");
+            .unwrap()
+            .expect("a subtype-filtered discard should parse");
         assert!(format!("{filtered:#?}").contains("Island"));
-        let total = parse_payment_clause_as_total_cost(&lex("discard an Island card and another card"))
-            .unwrap().expect("coordinated discard objects should inherit the verb");
+        let total =
+            parse_payment_clause_as_total_cost(&lex("discard an Island card and another card"))
+                .unwrap()
+                .expect("coordinated discard objects should inherit the verb");
         assert_eq!(total.costs().len(), 2, "{total:#?}");
         assert!(format!("{total:#?}").contains("Island"));
     }
-
 }

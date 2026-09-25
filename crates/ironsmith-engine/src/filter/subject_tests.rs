@@ -149,11 +149,28 @@ fn shared_subject_other_retains_stable_identity_after_zone_change() {
 #[test]
 fn prospective_spell_can_match_its_cast_origin_before_entering_the_stack() {
     let (mut game, source, candidate, alice) = fixture();
-    let candidate = game.move_object_by_effect(candidate, Zone::Graveyard).unwrap();
+    let candidate = game
+        .move_object_by_effect(candidate, Zone::Graveyard)
+        .unwrap();
     let filter = ObjectFilter::spell().in_zone(Zone::Graveyard);
-    let context = FilterContext::new(alice).with_source(source).with_caster(Some(alice));
-    assert!(!filter.matches(game.object(candidate).unwrap(), &context, &game), "an ordinary graveyard card is not a spell");
+    let context = FilterContext::new(alice)
+        .with_source(source)
+        .with_caster(Some(alice));
+    assert!(
+        !filter.matches(game.object(candidate).unwrap(), &context, &game),
+        "an ordinary graveyard card is not a spell"
+    );
     let context = context.with_prospective_cast(candidate);
-    assert!(filter.matches(game.object(candidate).unwrap(), &context, &game), "cost preview explicitly identifies the proposed spell");
-    assert!(!ObjectFilter::spell().in_zone(Zone::Exile).matches(game.object(candidate).unwrap(), &context, &game), "the original zone constraint still applies");
+    assert!(
+        filter.matches(game.object(candidate).unwrap(), &context, &game),
+        "cost preview explicitly identifies the proposed spell"
+    );
+    assert!(
+        !ObjectFilter::spell().in_zone(Zone::Exile).matches(
+            game.object(candidate).unwrap(),
+            &context,
+            &game
+        ),
+        "the original zone constraint still applies"
+    );
 }

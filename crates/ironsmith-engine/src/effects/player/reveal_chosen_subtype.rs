@@ -96,7 +96,9 @@ mod tests {
                 .record_event(&event, None, None);
         }
         assert_eq!(game.secret_chosen_subtype(departed, alice), None);
-        assert!(CostExecutableEffect::can_execute_as_cost(&effect, &game, departed, alice).is_err());
+        assert!(
+            CostExecutableEffect::can_execute_as_cost(&effect, &game, departed, alice).is_err()
+        );
         assert!(CostExecutableEffect::can_execute_as_cost(&effect, &game, source, bob).is_err());
         effect
             .execute(

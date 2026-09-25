@@ -118,12 +118,14 @@ pub fn parse_sentence_must_attack_filter_this_turn(
     use crate::effect::Until;
 
     let tokens = clause.tokens();
-    let Some((suffix_start, (), suffix_rest)) = crate::grammar::primitives::find_prefix(tokens, || {
-        winnow::combinator::alt((
-            crate::grammar::primitives::phrase(&["attack", "this", "turn", "if", "able"]),
-            crate::grammar::primitives::phrase(&["attacks", "this", "turn", "if", "able"]),
-        ))
-    }) else {
+    let Some((suffix_start, (), suffix_rest)) =
+        crate::grammar::primitives::find_prefix(tokens, || {
+            winnow::combinator::alt((
+                crate::grammar::primitives::phrase(&["attack", "this", "turn", "if", "able"]),
+                crate::grammar::primitives::phrase(&["attacks", "this", "turn", "if", "able"]),
+            ))
+        })
+    else {
         return Ok(None);
     };
     if !crate::lexer::trim_lexed_commas(suffix_rest).is_empty() {
@@ -158,23 +160,25 @@ pub fn parse_sentence_goad_requirement_filter(
     use winnow::prelude::*;
 
     let tokens = clause.tokens();
-    let Some((suffix_start, (), suffix_rest)) = crate::grammar::primitives::find_prefix(tokens, || {
-        (
-            winnow::combinator::alt((
-                crate::grammar::primitives::kw("attack"),
-                crate::grammar::primitives::kw("attacks"),
-            )),
-            crate::grammar::primitives::phrase(&["each", "combat", "if", "able", "and"]),
-            winnow::combinator::alt((
-                crate::grammar::primitives::kw("attack"),
-                crate::grammar::primitives::kw("attacks"),
-            )),
-            crate::grammar::primitives::phrase(&[
-                "a", "player", "other", "than", "you", "if", "able",
-            ]),
-        )
-            .void()
-    }) else {
+    let Some((suffix_start, (), suffix_rest)) =
+        crate::grammar::primitives::find_prefix(tokens, || {
+            (
+                winnow::combinator::alt((
+                    crate::grammar::primitives::kw("attack"),
+                    crate::grammar::primitives::kw("attacks"),
+                )),
+                crate::grammar::primitives::phrase(&["each", "combat", "if", "able", "and"]),
+                winnow::combinator::alt((
+                    crate::grammar::primitives::kw("attack"),
+                    crate::grammar::primitives::kw("attacks"),
+                )),
+                crate::grammar::primitives::phrase(&[
+                    "a", "player", "other", "than", "you", "if", "able",
+                ]),
+            )
+                .void()
+        })
+    else {
         return Ok(None);
     };
     if !crate::lexer::trim_lexed_commas(suffix_rest).is_empty() {

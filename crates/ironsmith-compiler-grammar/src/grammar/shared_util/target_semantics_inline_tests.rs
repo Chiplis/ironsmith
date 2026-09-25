@@ -18,7 +18,10 @@ fn enchanted_creature_card_reference_is_not_limited_to_battlefield() {
     assert_eq!(filter.card_types, vec![CardType::Creature]);
     assert!(filter.has_explicit_card_noun());
     assert_eq!(filter.tagged_constraints.len(), 1);
-    assert_eq!(filter.tagged_constraints[0].tag, crate::tag::CompilerReferenceTag::Enchanted.bind().into());
+    assert_eq!(
+        filter.tagged_constraints[0].tag,
+        crate::tag::CompilerReferenceTag::Enchanted.bind().into()
+    );
 }
 
 #[test]

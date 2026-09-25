@@ -192,9 +192,12 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
             ],
         ],
     ) {
-        return Some((Value::ManaSpentToCast(Box::new(crate::target::ChooseSpec::Tagged(
-            (crate::tag::CompilerReferenceTag::It.bind()).into(),
-        ))), used));
+        return Some((
+            Value::ManaSpentToCast(Box::new(crate::target::ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            ))),
+            used,
+        ));
     }
     if words.len() >= 5
         && (permission_shapes::prefix_words(words, &["the", "number", "of"])
@@ -337,10 +340,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
             &["each", "other", "creature", "power"],
         ],
     ) {
-        return Some((
-            Value::GreatestPower(ObjectFilter::creature().other()),
-            used,
-        ));
+        return Some((Value::GreatestPower(ObjectFilter::creature().other()), used));
     }
     // "the amount of life you lost this turn" (Betor, Ancestor's Voice)
     if let Some(used) = prefix_len(
@@ -624,9 +624,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         let tag = tagged_characteristic_reference_tag(&words[..used]);
         return Some((
             with_sacrificed_object_surface(
-                Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-                    tag.bind().into(),
-                ))),
+                Value::ManaValueOf(Box::new(ChooseSpec::Tagged(tag.bind().into()))),
                 &words[..used],
             ),
             used,
@@ -915,12 +913,22 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
     // If a complete simple prefix already describes exactly the same filter,
     // report only that proven prefix as consumed so enclosing grammars reject
     // or explicitly handle the remaining clause.
-    let filter_end = if crate::grammar::filters::parse_simple_object_filter_words(filter_words, false).is_none() {
-        (1..filter_words.len()).rev().find_map(|end| {
-            let prefix = crate::grammar::filters::parse_simple_object_filter_words(&filter_words[..end], false)?;
-            (prefix == filter).then_some(filter_start + end)
-        }).unwrap_or(filter_end)
-    } else { filter_end };
+    let filter_end =
+        if crate::grammar::filters::parse_simple_object_filter_words(filter_words, false).is_none()
+        {
+            (1..filter_words.len())
+                .rev()
+                .find_map(|end| {
+                    let prefix = crate::grammar::filters::parse_simple_object_filter_words(
+                        &filter_words[..end],
+                        false,
+                    )?;
+                    (prefix == filter).then_some(filter_start + end)
+                })
+                .unwrap_or(filter_end)
+        } else {
+            filter_end
+        };
     let mut value = Value::Count(filter);
     if value_helper_shapes::has_that_player_possessive(filter_words) {
         value = value.with_surface_hint(ValueSurfaceHint::ThatPlayerPossessive);

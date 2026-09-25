@@ -14,9 +14,13 @@ fn parse_trigger_roll_result_predicate(
         | TriggerSpec::PlayerRollsResult { player, .. } => player,
         _ => return None,
     };
-    let TriggerSpec::PlayerRollsResult { player: result_player, result } =
-        crate::clause_support::parse_trigger_clause_lexed(predicate_tokens).ok()?
-    else { return None; };
+    let TriggerSpec::PlayerRollsResult {
+        player: result_player,
+        result,
+    } = crate::clause_support::parse_trigger_clause_lexed(predicate_tokens).ok()?
+    else {
+        return None;
+    };
     if player != result_player {
         return None;
     }
@@ -137,8 +141,10 @@ pub fn split_triggered_conditional_clause_lexed<'a>(
         ) {
             continue;
         }
-        if let Some(predicate) = parse_trigger_roll_result_predicate(trigger_tokens, predicate_tokens)
-            .or_else(|| parse_modeled_predicate(predicate_tokens)) {
+        if let Some(predicate) =
+            parse_trigger_roll_result_predicate(trigger_tokens, predicate_tokens)
+                .or_else(|| parse_modeled_predicate(predicate_tokens))
+        {
             if let Some(next_comma_position) =
                 crate::slice_primitives::select_position(&comma_indices, |next_idx| {
                     *next_idx > comma_idx
@@ -224,11 +230,14 @@ mod roll_result_tests {
         let tokens = crate::lexer::lex_line(
             "Whenever you roll to visit your Attractions, if you roll a 6, you may return this card from your graveyard to the battlefield.", 0).unwrap();
         let spec = split_triggered_conditional_clause_lexed(&tokens, 1).unwrap();
-        assert_eq!(spec.predicate, PredicateAst::ValueComparison {
-            left: Value::EventValue(crate::effect::EventValueSpec::DieResult),
-            operator: ValueComparisonOperator::Equal,
-            right: Value::Fixed(6),
-        });
+        assert_eq!(
+            spec.predicate,
+            PredicateAst::ValueComparison {
+                left: Value::EventValue(crate::effect::EventValueSpec::DieResult),
+                operator: ValueComparisonOperator::Equal,
+                right: Value::Fixed(6),
+            }
+        );
         assert_eq!(spec.effects_tokens[0].parser_text(), "you");
         assert_eq!(spec.effects_tokens[1].parser_text(), "may");
         for predicate in ["an opponent rolls a 6", "you roll a 6 and draw a card"] {

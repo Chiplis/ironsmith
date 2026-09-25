@@ -1722,7 +1722,9 @@ pub struct FlipCoinEffect {
     pub forced_loser: Option<PlayerFilter>,
 }
 
-fn single_coin_count() -> u32 { 1 }
+fn single_coin_count() -> u32 {
+    1
+}
 
 impl FlipCoinEffect {
     pub fn new(player: PlayerFilter) -> Self {
@@ -3311,7 +3313,10 @@ pub struct ExchangeTextBoxesEffect {
     /// Exchange the source with the single selected object. Otherwise select two objects.
     #[cfg_attr(feature = "serde", serde(default))]
     pub include_source: bool,
-    #[cfg_attr(feature = "serde", serde(default = "exchange_text_box_default_duration"))]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default = "exchange_text_box_default_duration")
+    )]
     pub duration: crate::effect::Until,
 }
 
@@ -3321,7 +3326,11 @@ fn exchange_text_box_default_duration() -> crate::effect::Until {
 
 impl ExchangeTextBoxesEffect {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target, include_source: false, duration: exchange_text_box_default_duration() }
+        Self {
+            target,
+            include_source: false,
+            duration: exchange_text_box_default_duration(),
+        }
     }
 
     pub fn with_source(mut self) -> Self {

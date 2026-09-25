@@ -71,8 +71,13 @@ pub fn parse_exchange(
         ExchangeClauseShape::SourceTextBox { other_tokens } => {
             let mut other_tokens = other_tokens.to_vec();
             if let Some(last) = other_tokens.last_mut() {
-                let stem = last.as_word().and_then(|word| word.strip_suffix("'s").or_else(|| word.strip_suffix("’s"))).map(str::to_owned);
-                if let Some(stem) = stem { last.replace_word(&stem); }
+                let stem = last
+                    .as_word()
+                    .and_then(|word| word.strip_suffix("'s").or_else(|| word.strip_suffix("’s")))
+                    .map(str::to_owned);
+                if let Some(stem) = stem {
+                    last.replace_word(&stem);
+                }
             }
             let target = parse_target_phrase(&other_tokens)?;
             Ok(EffectAst::subject_verb_exchange_source_text_box(target))

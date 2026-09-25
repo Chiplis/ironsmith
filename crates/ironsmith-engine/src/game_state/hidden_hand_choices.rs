@@ -162,7 +162,9 @@ pub enum FaceDownCastKind {
     /// [`FaceDownCastPermission`]) rather than a printed keyword. `source` is
     /// the permission's public source; the claim checked once the card opens
     /// is the permission's filter.
-    Permission { source: ObjectId },
+    Permission {
+        source: ObjectId,
+    },
 }
 
 /// Wire name of [`FaceDownCastKind::Permission`].
@@ -191,7 +193,10 @@ impl FaceDownCastKind {
 
     /// Parse the public kind a face-down cast command carries.
     pub fn from_wire(name: &str, permission_source: Option<ObjectId>) -> Option<Self> {
-        if name.trim().eq_ignore_ascii_case(FACE_DOWN_CAST_PERMISSION_KIND) {
+        if name
+            .trim()
+            .eq_ignore_ascii_case(FACE_DOWN_CAST_PERMISSION_KIND)
+        {
             return permission_source.map(|source| Self::Permission { source });
         }
         Self::from_name(name)
@@ -784,7 +789,10 @@ impl GameState {
     ) {
         let mut restored: Vec<HiddenIdentityObligation> = Vec::new();
         for obligation in obligations {
-            if restored.iter().any(|existing| existing.same_claim(&obligation)) {
+            if restored
+                .iter()
+                .any(|existing| existing.same_claim(&obligation))
+            {
                 continue;
             }
             let keep = match obligation.library_anchor.as_deref() {
@@ -797,14 +805,14 @@ impl GameState {
                     let live_placeholder = self
                         .find_object_by_stable_id(obligation.stable_id)
                         .is_some_and(|id| self.is_hidden_card_placeholder(id));
-                    let departed = self
-                        .auxiliary_tracking
-                        .departed_hidden_cards
-                        .iter()
-                        .any(|departed| {
-                            departed.object.stable_id == obligation.stable_id
-                                && departed.object.card.is_none()
-                        });
+                    let departed =
+                        self.auxiliary_tracking
+                            .departed_hidden_cards
+                            .iter()
+                            .any(|departed| {
+                                departed.object.stable_id == obligation.stable_id
+                                    && departed.object.card.is_none()
+                            });
                     live_placeholder || departed
                 }
             };
@@ -1315,7 +1323,8 @@ impl GameState {
         let first = obligations.iter().find(|obligation| anchored(obligation))?;
         // The anchored card has no live object here; evaluate its printed
         // characteristics on a fresh placeholder owned by its owner.
-        let mut base = crate::object::Object::new_hidden_card(card.object_id, first.owner, Zone::Library);
+        let mut base =
+            crate::object::Object::new_hidden_card(card.object_id, first.owner, Zone::Library);
         base.stable_id = first.stable_id;
         self.hidden_identity_violation_among(&base, def, anchored)
     }
@@ -1514,7 +1523,10 @@ impl GameState {
     /// Defer a "reveal the first card you draw" reveal of a private hidden
     /// card until the owner opens it publicly (see
     /// [`PendingAutomaticDrawReveal`]).
-    pub(crate) fn defer_hidden_automatic_draw_reveal(&mut self, pending: PendingAutomaticDrawReveal) {
+    pub(crate) fn defer_hidden_automatic_draw_reveal(
+        &mut self,
+        pending: PendingAutomaticDrawReveal,
+    ) {
         if self
             .auxiliary_tracking
             .pending_hidden_automatic_draw_reveals
@@ -1539,9 +1551,9 @@ impl GameState {
                 .pending_hidden_automatic_draw_reveals
                 .first()
                 .copied()?;
-            let in_hand = self.object(next.card).is_some_and(|object| {
-                object.zone == Zone::Hand && object.owner == next.player
-            });
+            let in_hand = self
+                .object(next.card)
+                .is_some_and(|object| object.zone == Zone::Hand && object.owner == next.player);
             if in_hand {
                 return Some(next);
             }
@@ -1659,10 +1671,7 @@ impl GameState {
             let owned: Vec<ObjectId> = private
                 .iter()
                 .copied()
-                .filter(|id| {
-                    self.object(*id)
-                        .is_some_and(|object| object.owner == owner)
-                })
+                .filter(|id| self.object(*id).is_some_and(|object| object.owner == owner))
                 .collect();
             if self
                 .reveal_private_hidden_cards_publicly(

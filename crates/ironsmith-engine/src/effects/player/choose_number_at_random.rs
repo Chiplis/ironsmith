@@ -28,6 +28,7 @@ impl EffectExecutor for ChooseNumberAtRandomEffect {
         let Some(&chosen) = choices.first() else {
             return Ok(EffectOutcome::count(0));
         };
-        Ok(EffectOutcome::count(chosen as i32).with_execution_fact(ExecutionFact::ChosenNumber(chosen)))
+        Ok(EffectOutcome::count(chosen as i32)
+            .with_execution_fact(ExecutionFact::ChosenNumber(chosen)))
     }
 }

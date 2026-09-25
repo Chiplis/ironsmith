@@ -75,13 +75,20 @@ pub(crate) fn resolve(
             Ok(context.aggregate(filter, NumericProperty::ManaValue, Reduction::Sum))
         }
         Value::AnnouncedTargetTotal(metric) => {
-            let Some(ctx) = context.execution() else { return Ok(0); };
+            let Some(ctx) = context.execution() else {
+                return Ok(0);
+            };
             let targets = ctx.announced_targets.as_deref().unwrap_or(&ctx.targets);
-            let ids: std::collections::HashSet<_> = targets.iter().filter_map(|target| match target {
-                ResolvedTarget::Object(id) => Some(*id),
-                ResolvedTarget::Player(_) => None,
-            }).collect();
-            Ok(crate::targeting::aggregate_object_set_value(game, ids, *metric))
+            let ids: std::collections::HashSet<_> = targets
+                .iter()
+                .filter_map(|target| match target {
+                    ResolvedTarget::Object(id) => Some(*id),
+                    ResolvedTarget::Player(_) => None,
+                })
+                .collect();
+            Ok(crate::targeting::aggregate_object_set_value(
+                game, ids, *metric,
+            ))
         }
         Value::GreatestPower(filter) => {
             Ok(context.aggregate(filter, NumericProperty::Power, Reduction::Max))
@@ -277,7 +284,9 @@ pub(crate) fn resolve(
         Value::ToughnessOf(target_spec) => {
             context.object_number(target_spec, NumericProperty::Toughness)
         }
-        Value::ManaSpentToCast(target_spec) => context.object_number(target_spec, NumericProperty::ManaSpent),
+        Value::ManaSpentToCast(target_spec) => {
+            context.object_number(target_spec, NumericProperty::ManaSpent)
+        }
         Value::ManaValueOf(target_spec) => {
             context.object_number(target_spec, NumericProperty::ManaValue)
         }
@@ -726,11 +735,15 @@ pub(crate) fn resolve(
             Ok(devotion as i32)
         }
         Value::ManaSpentToCastThisSpell => {
-            let spent = game.object(context.source)
+            let spent = game
+                .object(context.source)
                 .map(|source| &source.mana_spent_to_cast)
-                .or_else(|| context.execution()
-                    .and_then(|ctx| ctx.source_snapshot.as_ref())
-                    .map(|snapshot| &snapshot.mana_spent_to_cast));
+                .or_else(|| {
+                    context
+                        .execution()
+                        .and_then(|ctx| ctx.source_snapshot.as_ref())
+                        .map(|snapshot| &snapshot.mana_spent_to_cast)
+                });
             Ok(spent.map_or(0, |mana| mana.total() as i32))
         }
         Value::ManaSymbolSpentToCastThisSpell { symbol, .. } => {
@@ -887,9 +900,11 @@ pub(crate) fn resolve(
                 "pending effect metric was not bound to a prior effect".to_string(),
             ))
         }
-        Value::PendingComparisonLeft | Value::PendingComparisonRight | Value::PendingComparisonDifference => {
-            Err(ExecutionError::UnresolvableValue("comparison reference was not bound by the compiler".into()))
-        }
+        Value::PendingComparisonLeft
+        | Value::PendingComparisonRight
+        | Value::PendingComparisonDifference => Err(ExecutionError::UnresolvableValue(
+            "comparison reference was not bound by the compiler".into(),
+        )),
         Value::PendingPriorEffectMetric(_) => {
             let _ctx = context.require_execution(value, RESOLUTION_ONLY);
             Err(ExecutionError::UnresolvableValue(
@@ -897,9 +912,11 @@ pub(crate) fn resolve(
             ))
         }
         Value::HalfRoundedDown(inner) => Ok(resolve(inner, context)?.div_euclid(2)),
-        Value::EventValue(spec) => {
-            resolve_event_value(game, context.require_execution(value, RESOLUTION_ONLY), spec)
-        }
+        Value::EventValue(spec) => resolve_event_value(
+            game,
+            context.require_execution(value, RESOLUTION_ONLY),
+            spec,
+        ),
         Value::EventValueOffset(spec, offset) => Ok(resolve_event_value(
             game,
             context.require_execution(value, RESOLUTION_ONLY),
@@ -1098,15 +1115,22 @@ fn resolve_event_value(
 ) -> Result<i32, ExecutionError> {
     match spec {
         EventValueSpec::DieResult => {
-            let roll = ctx.triggering_event.as_ref()
+            let roll = ctx
+                .triggering_event
+                .as_ref()
                 .and_then(|event| event.downcast::<crate::events::other::DieRolledEvent>())
                 .filter(|event| !event.is_planar)
-                .ok_or_else(|| ExecutionError::UnresolvableValue(
-                    "EventValue(DieResult) requires a numeric die-roll triggering event".to_string()
-                ))?;
-            i32::try_from(roll.result).map_err(|_| ExecutionError::UnresolvableValue(
-                "die-roll result exceeds the supported value range".to_string()
-            ))
+                .ok_or_else(|| {
+                    ExecutionError::UnresolvableValue(
+                        "EventValue(DieResult) requires a numeric die-roll triggering event"
+                            .to_string(),
+                    )
+                })?;
+            i32::try_from(roll.result).map_err(|_| {
+                ExecutionError::UnresolvableValue(
+                    "die-roll result exceeds the supported value range".to_string(),
+                )
+            })
         }
         EventValueSpec::Amount | EventValueSpec::LifeAmount => {
             if let Some(amount) = ctx.event_value_amount {
@@ -1161,15 +1185,12 @@ fn resolve_event_value(
                     .as_ref()
                     .filter(|combat| crate::combat_state::is_attacking(combat, event.attacker))
                     .map(|combat| {
-                        combat
-                            .blockers
-                            .get(&event.attacker)
-                            .map_or(0, |blockers| {
-                                blockers
-                                    .iter()
-                                    .filter(|blocker| game.object(**blocker).is_some())
-                                    .count() as u32
-                            })
+                        combat.blockers.get(&event.attacker).map_or(0, |blockers| {
+                            blockers
+                                .iter()
+                                .filter(|blocker| game.object(**blocker).is_some())
+                                .count() as u32
+                        })
                     })
                     .unwrap_or(event.blocker_count);
                 let beyond_first = blocker_count.saturating_sub(1) as i32;

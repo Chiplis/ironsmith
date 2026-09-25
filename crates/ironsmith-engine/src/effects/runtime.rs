@@ -156,10 +156,7 @@ pub(crate) fn match_triggers_at_instruction_boundary<'a>(
 }
 
 /// Whether a boundary inside the current resolution already matched `event`.
-fn outcome_event_already_matched(
-    game: &GameState,
-    event: &crate::triggers::TriggerEvent,
-) -> bool {
+fn outcome_event_already_matched(game: &GameState, event: &crate::triggers::TriggerEvent) -> bool {
     game.effect_store
         .matched_outcome_events
         .contains_key(&event.occurrence_key())

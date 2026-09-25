@@ -62,15 +62,24 @@ fn selected_targets_satisfy_distinct_player_group(
     if let Some(relation) = &req.shared_player_group {
         let mut chosen_player = used_by_group.players.get(&relation.group).copied();
         for target in selected {
-            let Some((_, player)) = relation.target_players.iter().find(|(candidate, _)| candidate == target) else { return false; };
-            if chosen_player.is_some_and(|chosen| chosen != *player) { return false; }
+            let Some((_, player)) = relation
+                .target_players
+                .iter()
+                .find(|(candidate, _)| candidate == target)
+            else {
+                return false;
+            };
+            if chosen_player.is_some_and(|chosen| chosen != *player) {
+                return false;
+            }
             chosen_player = Some(*player);
         }
     }
     // CR 115.3: one instance of "target" cannot select an object/player
     // twice, even without an authored cross-requirement distinctness group.
     // Separate requirements may still reuse a target unless grouped.
-    let already_used = req.distinct_player_group
+    let already_used = req
+        .distinct_player_group
         .and_then(|group| used_by_group.distinct.get(&group));
     let mut selected_in_requirement = HashSet::new();
 
@@ -87,13 +96,18 @@ fn add_distinct_player_group_targets(
 ) {
     if let Some(relation) = &req.shared_player_group {
         for target in selected {
-            if let Some((_, player)) = relation.target_players.iter().find(|(candidate, _)| candidate == target) {
+            if let Some((_, player)) = relation
+                .target_players
+                .iter()
+                .find(|(candidate, _)| candidate == target)
+            {
                 used_by_group.players.insert(relation.group, *player);
             }
         }
     }
     if let Some(group) = req.distinct_player_group {
-        used_by_group.distinct
+        used_by_group
+            .distinct
             .entry(group)
             .or_default()
             .extend(selected.iter().copied());

@@ -59,11 +59,18 @@ impl DecisionMaker for Choices {
         ctx.requirements
             .iter()
             .map(|requirement| {
-                if requirement.legal_targets.contains(&Target::Player(self.player)) {
+                if requirement
+                    .legal_targets
+                    .contains(&Target::Player(self.player))
+                {
                     self.requirement_kinds.push("player");
                     Target::Player(self.player)
                 } else {
-                    assert!(requirement.legal_targets.contains(&Target::Object(self.creature)));
+                    assert!(
+                        requirement
+                            .legal_targets
+                            .contains(&Target::Object(self.creature))
+                    );
                     self.requirement_kinds.push("creature");
                     Target::Object(self.creature)
                 }
@@ -91,12 +98,19 @@ fn cast(kick: bool) -> ([bool; 3], Vec<&'static str>) {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::White, 2);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Colorless, 2);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::White, 2);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
     let spell = game.create_object_from_definition(&def, alice, Zone::Hand);
     let first = game.create_object_from_definition(&creature("Bob Bear"), bob, Zone::Battlefield);
     let second = game.create_object_from_definition(&creature("Bob Wolf"), bob, Zone::Battlefield);
-    let mine = game.create_object_from_definition(&creature("Alice Bear"), alice, Zone::Battlefield);
+    let mine =
+        game.create_object_from_definition(&creature("Alice Bear"), alice, Zone::Battlefield);
 
     let action = compute_legal_actions(&game, alice)
         .into_iter()
@@ -152,5 +166,8 @@ fn unkicked_phases_out_only_the_target_creature() {
 fn kicked_phases_out_each_creature_the_target_player_controls_instead() {
     let (phased, kinds) = cast(true);
     assert_eq!(phased, [true, true, false]);
-    assert!(kinds.contains(&"player"), "kicked targets a player: {kinds:?}");
+    assert!(
+        kinds.contains(&"player"),
+        "kicked targets a player: {kinds:?}"
+    );
 }

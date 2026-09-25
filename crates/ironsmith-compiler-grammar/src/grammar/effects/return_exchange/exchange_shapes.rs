@@ -402,11 +402,14 @@ pub fn parse_exchange_clause_shape(tokens: &[OwnedLexToken]) -> Option<ExchangeC
         )?));
     }
     for possessive in ["its", "his", "her"] {
-        if let Some((_, other_tokens)) = primitives::parse_prefix(
-            tokens, dynamic_phrase(&[possessive, "text", "box", "and"]),
-        ) {
-            if other_tokens.last().and_then(OwnedLexToken::as_word)
-                .is_some_and(|word| word.ends_with("'s") || word.ends_with("’s")) {
+        if let Some((_, other_tokens)) =
+            primitives::parse_prefix(tokens, dynamic_phrase(&[possessive, "text", "box", "and"]))
+        {
+            if other_tokens
+                .last()
+                .and_then(OwnedLexToken::as_word)
+                .is_some_and(|word| word.ends_with("'s") || word.ends_with("’s"))
+            {
                 return Some(ExchangeClauseShape::SourceTextBox { other_tokens });
             }
         }

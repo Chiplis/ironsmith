@@ -173,11 +173,16 @@ fn parse_life_equal_payment<'a>(input: &mut LexStream<'a>) -> WResult<Activation
     // Pronoun-relative amounts ("life equal to its toughness") are resolved by
     // the target-aware unless-cost grammar; this segment reads only
     // self-contained value phrases.
-    if words
-        .iter()
-        .any(|word| matches!(*word, "its" | "it" | "it's" | "their" | "that" | "this" | "his" | "her"))
-    {
-        return Err(primitives::backtrack_err("life payment", "self-contained value phrase"));
+    if words.iter().any(|word| {
+        matches!(
+            *word,
+            "its" | "it" | "it's" | "their" | "that" | "this" | "his" | "her"
+        )
+    }) {
+        return Err(primitives::backtrack_err(
+            "life payment",
+            "self-contained value phrase",
+        ));
     }
     let value = if matches!(
         words.as_slice(),
@@ -189,7 +194,10 @@ fn parse_life_equal_payment<'a>(input: &mut LexStream<'a>) -> WResult<Activation
         let (value, used) = crate::grammar::shared_util::value_expr::parse_value_expr_tokens(rest)
             .ok_or_else(|| primitives::backtrack_err("life payment", "value expression"))?;
         if used != rest.len() {
-            return Err(primitives::backtrack_err("life payment", "complete value expression"));
+            return Err(primitives::backtrack_err(
+                "life payment",
+                "complete value expression",
+            ));
         }
         value
     };

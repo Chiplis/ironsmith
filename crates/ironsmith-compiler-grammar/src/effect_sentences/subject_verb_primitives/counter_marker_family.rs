@@ -173,22 +173,24 @@ pub fn parse_put_counter_choice_sequence(
             .counter_types
             .iter()
             .zip(shape.counter_counts.iter())
-            .map(|(counter_type, count)| crate::cards::builders::ChooseOneModeAst {
-                description: format!(
-                    "Put {} on {target_phrase}",
-                    super::super::zone_counter_helpers::describe_counter_phrase_for_mode(
-                        *count,
+            .map(
+                |(counter_type, count)| crate::cards::builders::ChooseOneModeAst {
+                    description: format!(
+                        "Put {} on {target_phrase}",
+                        super::super::zone_counter_helpers::describe_counter_phrase_for_mode(
+                            *count,
+                            *counter_type,
+                        )
+                    ),
+                    effects: vec![EffectAst::subject_verb_put_counters(
                         *counter_type,
-                    )
-                ),
-                effects: vec![EffectAst::subject_verb_put_counters(
-                    *counter_type,
-                    Value::Fixed(*count as i32),
-                    TargetAst::Tagged(tag.clone(), None),
-                    None,
-                    false,
-                )],
-            })
+                        Value::Fixed(*count as i32),
+                        TargetAst::Tagged(tag.clone(), None),
+                        None,
+                        false,
+                    )],
+                },
+            )
             .collect();
         return Ok(Some(vec![
             EffectAst::TagAffected {
@@ -334,8 +336,8 @@ fn lower_counter_placements(
         } else {
             (parse_target_phrase(placement.target_tokens)?, None)
         };
-        let declares_target = crate::lexer::parser_token_word_refs(placement.target_tokens)
-            .contains(&"target");
+        let declares_target =
+            crate::lexer::parser_token_word_refs(placement.target_tokens).contains(&"target");
         let effect = EffectAst::subject_verb_put_counters(
             placement.descriptor.counter_type,
             Value::Fixed(placement.descriptor.count as i32),
@@ -821,7 +823,9 @@ pub fn replace_target_subtype(target: &mut TargetAst, subtype: Subtype) -> bool 
     match target {
         TargetAst::Object(filter, _, _) => {
             filter.subtypes = vec![subtype];
-            filter.excluded_subtypes.retain(|excluded| *excluded != subtype);
+            filter
+                .excluded_subtypes
+                .retain(|excluded| *excluded != subtype);
             true
         }
         TargetAst::WithCount(inner, _) => replace_target_subtype(inner, subtype),

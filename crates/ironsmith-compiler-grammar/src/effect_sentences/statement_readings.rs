@@ -193,7 +193,8 @@ const STATEMENT_READINGS: &[Reading] = &[
             !sentence
                 .iter()
                 .any(|token| token.kind == crate::lexer::TokenKind::Quote)
-                && !(effect_grammar::choice_damage_shapes::parse_unless_sentence_shape(sentence).is_some())
+                && !(effect_grammar::choice_damage_shapes::parse_unless_sentence_shape(sentence)
+                    .is_some())
                 && !(sentence
                     .first()
                     .is_some_and(|token| token.is_any_word(&["if", "unless"])))
@@ -219,11 +220,14 @@ const STATEMENT_READINGS: &[Reading] = &[
     Reading {
         id: RuleId::new("sentence-each-opponent-draws-then-you-draw-per-opponent"),
         head: HeadDiscriminator::Any,
-        admits: |input| input.sentence.first().is_some_and(|token| token.is_word("each")),
+        admits: |input| {
+            input
+                .sentence
+                .first()
+                .is_some_and(|token| token.is_word("each"))
+        },
         read: |input| {
-            input.outcome(read_sentence_each_opponent_draws_then_you_draw_per_opponent(
-                input,
-            ))
+            input.outcome(read_sentence_each_opponent_draws_then_you_draw_per_opponent(input))
         },
     },
     Reading {
@@ -694,17 +698,25 @@ fn read_complete_simple_subject_verb(
     {
         return Ok(Some(effects));
     }
-    if let Some(effects) = super::subject_verb_primitives::parse_sentence_put_fixed_and_counter_choice(
-        super::SubjectVerbPrimitiveClause::new(sentence),
-    )? {
+    if let Some(effects) =
+        super::subject_verb_primitives::parse_sentence_put_fixed_and_counter_choice(
+            super::SubjectVerbPrimitiveClause::new(sentence),
+        )?
+    {
         return Ok(Some(effects));
     }
-    if (crate::grammar::effects::counter_marker_shapes::parse_shared_counter_target_tokens(sentence)
+    if (crate::grammar::effects::counter_marker_shapes::parse_shared_counter_target_tokens(
+        sentence,
+    )
+    .is_some()
+        || crate::grammar::effects::counter_marker_shapes::parse_put_counter_choice_tokens(
+            sentence,
+        )
         .is_some()
-        || crate::grammar::effects::counter_marker_shapes::parse_put_counter_choice_tokens(sentence)
-            .is_some()
-        || crate::grammar::effects::counter_marker_shapes::parse_counter_placement_sequence_tokens(sentence)
-            .is_some())
+        || crate::grammar::effects::counter_marker_shapes::parse_counter_placement_sequence_tokens(
+            sentence,
+        )
+        .is_some())
         && let Some(effects) = super::subject_verb_primitives::parse_sentence_put_counter_sequence(
             super::SubjectVerbPrimitiveClause::new(sentence),
         )?
@@ -998,16 +1010,20 @@ fn read_leading_result_prefix(
     };
     // A value definition can sit between two actions in this consequence.
     // The single-verb shortcut below cannot consume that whole action chain.
-    if effect_grammar::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(prefix.trailing_tokens)
-        .is_some_and(|shape| shape.followup_tokens.is_some())
+    if effect_grammar::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(
+        prefix.trailing_tokens,
+    )
+    .is_some_and(|shape| shape.followup_tokens.is_some())
     {
         let effects = super::parse_effect_chain_lexed(prefix.trailing_tokens)?;
         return Ok(Some(vec![EffectAst::Conditionals(match prefix.kind {
             LeadingResultPrefixKind::If => ConditionalEffectAst::IfResult {
-                predicate: prefix.predicate, effects,
+                predicate: prefix.predicate,
+                effects,
             },
             LeadingResultPrefixKind::When => ConditionalEffectAst::WhenResult {
-                predicate: prefix.predicate, effects,
+                predicate: prefix.predicate,
+                effects,
             },
         })]));
     }

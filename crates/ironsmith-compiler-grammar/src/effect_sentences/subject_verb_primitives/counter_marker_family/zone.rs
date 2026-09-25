@@ -28,7 +28,9 @@ pub fn clone_return_effect_with_subtype(base: &EffectAst, subtype: Subtype) -> O
             }) => {
                 let mut cloned_filter = filter.clone();
                 cloned_filter.subtypes = vec![subtype];
-                cloned_filter.excluded_subtypes.retain(|excluded| *excluded != subtype);
+                cloned_filter
+                    .excluded_subtypes
+                    .retain(|excluded| *excluded != subtype);
                 Some(
                     EffectAst::subject_verb_return_all_to_hand(cloned_filter)
                         .with_return_destination_player_surface(*destination_player_surface)
@@ -76,7 +78,9 @@ pub fn clone_return_effect_with_subtype(base: &EffectAst, subtype: Subtype) -> O
             }) => {
                 let mut cloned_filter = filter.clone();
                 cloned_filter.subtypes = vec![subtype];
-                cloned_filter.excluded_subtypes.retain(|excluded| *excluded != subtype);
+                cloned_filter
+                    .excluded_subtypes
+                    .retain(|excluded| *excluded != subtype);
                 Some(
                     EffectAst::subject_verb_return_all_to_battlefield(
                         cloned_filter,

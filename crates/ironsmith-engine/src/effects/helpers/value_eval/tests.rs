@@ -214,11 +214,21 @@ fn triggering_die_result_uses_its_event_and_rejects_missing_or_planar_rolls() {
         Default::default(),
     ));
     game.turn_store.turn_history.record_die_roll(alice, 2);
-    assert_eq!(resolve(&value, &EvaluationContext::execution_context(&game, &exec)).unwrap(), 6);
-    assert_eq!(resolve(&Value::EventValueOffset(EventValueSpec::DieResult, -1),
-        &EvaluationContext::execution_context(&game, &exec)).unwrap(), 5);
+    assert_eq!(
+        resolve(&value, &EvaluationContext::execution_context(&game, &exec)).unwrap(),
+        6
+    );
+    assert_eq!(
+        resolve(
+            &Value::EventValueOffset(EventValueSpec::DieResult, -1),
+            &EvaluationContext::execution_context(&game, &exec)
+        )
+        .unwrap(),
+        5
+    );
     exec.triggering_event = Some(TriggerEvent::new_with_provenance(
-        DieRolledEvent::new_planar(alice, source, 6), Default::default(),
+        DieRolledEvent::new_planar(alice, source, 6),
+        Default::default(),
     ));
     assert!(resolve(&value, &EvaluationContext::execution_context(&game, &exec)).is_err());
 }

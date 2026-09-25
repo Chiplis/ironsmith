@@ -665,7 +665,9 @@ fn parse_compound_subtype_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjec
 
 /// Normalized document tokens can split a hyphenated subtype into two words.
 /// Only join a pair when the subtype vocabulary recognizes the whole name.
-fn parse_split_hyphenated_subtype_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {
+fn parse_split_hyphenated_subtype_atom(
+    input: &mut WordInput<'_>,
+) -> WResult<SimpleObjectFilterAtom> {
     if let [first, second, rest @ ..] = *input
         && let Some(subtype) = parse_subtype_flexible(&format!("{first}-{second}"))
     {

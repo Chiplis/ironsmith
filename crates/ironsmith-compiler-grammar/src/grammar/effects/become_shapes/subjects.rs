@@ -146,8 +146,13 @@ fn parse_become_target_subject_shape_with_optional_context<'a>(
             token.as_word().is_some_and(|word| {
                 matches!(
                     word,
-                    "artifacts" | "creatures" | "lands" | "permanents" | "enchantments"
-                        | "planeswalkers" | "tokens"
+                    "artifacts"
+                        | "creatures"
+                        | "lands"
+                        | "permanents"
+                        | "enchantments"
+                        | "planeswalkers"
+                        | "tokens"
                 )
             }) && !token.literal_surface().contains(['\'', '’'])
         })

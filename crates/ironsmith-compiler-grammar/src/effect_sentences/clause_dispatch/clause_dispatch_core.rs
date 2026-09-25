@@ -151,10 +151,10 @@ pub(super) fn parse_effect_clause_unstacked(
                     let words = crate::lexer::parser_token_word_refs(rest);
                     (words.as_slice()
                         == [
-                            "it", "into", "their", "library", "second", "from", "the", "top",
-                            "or", "on", "the", "bottom",
+                            "it", "into", "their", "library", "second", "from", "the", "top", "or",
+                            "on", "the", "bottom",
                         ])
-                        .then_some(1)
+                    .then_some(1)
                 };
                 if let Some(top_position) = top_position {
                     return Ok(EffectAst::subject_verb(
@@ -349,8 +349,8 @@ pub(super) fn parse_effect_clause_unstacked(
         return Ok(EffectAst::subject_verb_return_all_to_hand(filter));
     }
     let relative_player_subject = if subject_tokens
-            .first()
-            .is_some_and(|token| token.is_word(TARGET_WORD))
+        .first()
+        .is_some_and(|token| token.is_word(TARGET_WORD))
     {
         match parse_target_phrase(subject_tokens) {
             Ok(target) => match &target {

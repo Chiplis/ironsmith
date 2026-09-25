@@ -385,7 +385,10 @@ pub fn parse_damage_source_surface(
 /// control": the kind of targeting stack object and its controller.
 pub fn parse_targeting_source_controller_tail(
     words: &[&str],
-) -> Option<(ironsmith_core::filter_model::StackObjectKind, TriggerControllerReference)> {
+) -> Option<(
+    ironsmith_core::filter_model::StackObjectKind,
+    TriggerControllerReference,
+)> {
     use ironsmith_core::filter_model::StackObjectKind;
     let (kind, prefix_words) = if word_slice_has_prefix(words, &["a", "spell", "or", "ability"]) {
         (StackObjectKind::SpellOrAbility, 4)

@@ -86,7 +86,10 @@ fn cast_overload(kick: bool, mana_value: u32) -> (bool, u32) {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Red, 3);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Red, 3);
     let spell = game.create_object_from_definition(&def, alice, Zone::Hand);
     let target = game.create_object_from_definition(&artifact(mana_value), bob, Zone::Battlefield);
     let target_stable = game.object(target).unwrap().stable_id;
@@ -122,7 +125,11 @@ fn cast_overload(kick: bool, mana_value: u32) -> (bool, u32) {
         );
     }
     assert!(dm.offered_kicker, "kicker must be offered");
-    assert_eq!(game.stack.len(), 1, "kick={kick} mv={mana_value} result={result:?}");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "kick={kick} mv={mana_value} result={result:?}"
+    );
     assert_eq!(game.stack[0].optional_costs_paid.was_kicked(), kick);
     let mana_left = game.player(alice).unwrap().mana_pool.total();
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
@@ -150,4 +157,3 @@ fn kicked_destroys_mana_value_five_or_less_instead() {
         assert_eq!(mana_left, 0, "kicked costs R plus 2");
     }
 }
-

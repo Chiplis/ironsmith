@@ -31,7 +31,11 @@ fn strict_snapshot_and_full_quality_gate() {
     .unwrap()
     .remove(0);
     let snapshot = ironsmith_tools::compile_authoritative_snapshot_from_payload(&payload);
-    assert_eq!(snapshot.parse_status, ironsmith_tools::ParseStatus::StrictCompiled, "{snapshot:#?}");
+    assert_eq!(
+        snapshot.parse_status,
+        ironsmith_tools::ParseStatus::StrictCompiled,
+        "{snapshot:#?}"
+    );
     assert!(
         snapshot.parse_error.is_none() && !snapshot.parse_lossy && !snapshot.has_unimplemented,
         "{snapshot:#?}"
@@ -76,7 +80,10 @@ fn shock_can_target_after_vines(owner: PlayerId, caster: PlayerId) -> bool {
     game.refresh_continuous_state();
     game.update_cant_effects();
     let shock: ObjectId = game.create_object_from_definition(&load("Shock"), caster, Zone::Hand);
-    game.player_mut(caster).unwrap().mana_pool.add(ManaSymbol::Red, 1);
+    game.player_mut(caster)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
     let action = compute_legal_actions(&game, caster)
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == shock))
@@ -98,7 +105,9 @@ fn shock_can_target_after_vines(owner: PlayerId, caster: PlayerId) -> bool {
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            &mut game, &mut queue, &mut state, &ctx, &mut dm,
+        );
     }
     dm.0.contains(&Target::Object(bear))
 }

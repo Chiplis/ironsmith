@@ -55,10 +55,14 @@ fn destroy(victim_type: CardType, destroyer: PlayerId) -> Zone {
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
     let def = ironsmith_tools::compile_definition_from_payload(&payload()).unwrap();
     game.create_object_from_definition(&def, alice, Zone::Battlefield);
-    let victim = game.create_object_from_definition(&card("Victim", victim_type), alice, Zone::Battlefield);
+    let victim =
+        game.create_object_from_definition(&card("Victim", victim_type), alice, Zone::Battlefield);
     let victim_stable: StableId = game.object(victim).unwrap().stable_id;
-    let source: ObjectId =
-        game.create_object_from_definition(&card("Destroyer", CardType::Artifact), destroyer, Zone::Battlefield);
+    let source: ObjectId = game.create_object_from_definition(
+        &card("Destroyer", CardType::Artifact),
+        destroyer,
+        Zone::Battlefield,
+    );
     let mut dm = SelectFirstDecisionMaker;
     let mut ctx = ironsmith::effects::EffectContext::new(source, destroyer, &mut dm);
     ironsmith::effects::execute_effect(
@@ -75,22 +79,35 @@ fn destroy(victim_type: CardType, destroyer: PlayerId) -> Zone {
     let id = game.find_object_by_stable_id(victim_stable).unwrap();
     let object = game.object(id).unwrap();
     if object.zone == Zone::Battlefield {
-        assert_eq!(game.controller_of_id(id), Some(alice), "returns under its owner's control");
+        assert_eq!(
+            game.controller_of_id(id),
+            Some(alice),
+            "returns under its owner's control"
+        );
     }
     object.zone
 }
 
 #[test]
 fn an_opponents_destruction_of_your_land_is_undone() {
-    assert_eq!(destroy(CardType::Land, PlayerId::from_index(1)), Zone::Battlefield);
+    assert_eq!(
+        destroy(CardType::Land, PlayerId::from_index(1)),
+        Zone::Battlefield
+    );
 }
 
 #[test]
 fn your_own_effects_do_not_trigger_it() {
-    assert_eq!(destroy(CardType::Land, PlayerId::from_index(0)), Zone::Graveyard);
+    assert_eq!(
+        destroy(CardType::Land, PlayerId::from_index(0)),
+        Zone::Graveyard
+    );
 }
 
 #[test]
 fn only_lands_return() {
-    assert_eq!(destroy(CardType::Creature, PlayerId::from_index(1)), Zone::Graveyard);
+    assert_eq!(
+        destroy(CardType::Creature, PlayerId::from_index(1)),
+        Zone::Graveyard
+    );
 }

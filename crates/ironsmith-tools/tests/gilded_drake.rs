@@ -45,7 +45,11 @@ impl DecisionMaker for Choose {
     fn decide_targets(&mut self, _game: &GameState, ctx: &TargetsContext) -> Vec<Target> {
         match self.0 {
             Some(id) => {
-                assert!(ctx.requirements[0].legal_targets.contains(&Target::Object(id)));
+                assert!(
+                    ctx.requirements[0]
+                        .legal_targets
+                        .contains(&Target::Object(id))
+                );
                 vec![Target::Object(id)]
             }
             None => {
@@ -74,7 +78,10 @@ fn cast_drake(target_ogre: bool) -> Board {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Blue, 2);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Blue, 2);
     let ogre_def = CardDefinitionBuilder::new(CardId::new(), "Ogre")
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(3, 3))
@@ -131,8 +138,16 @@ fn exchanges_control_with_the_target_creature() {
     let bob = PlayerId::from_index(1);
     let drake = drake_id(&board);
     assert_eq!(board.game.object(drake).unwrap().zone, Zone::Battlefield);
-    assert_eq!(board.game.controller_of_id(drake), Some(bob), "Bob now controls the Drake");
-    assert_eq!(board.game.controller_of_id(board.ogre), Some(alice), "Alice now controls the Ogre");
+    assert_eq!(
+        board.game.controller_of_id(drake),
+        Some(bob),
+        "Bob now controls the Drake"
+    );
+    assert_eq!(
+        board.game.controller_of_id(board.ogre),
+        Some(alice),
+        "Alice now controls the Ogre"
+    );
     let _ = &mut board.queue;
 }
 
@@ -142,7 +157,10 @@ fn choosing_no_target_sacrifices_the_drake() {
     ironsmith::game_loop::resolve_stack_entry(&mut board.game).unwrap();
     let drake = drake_id(&board);
     assert_eq!(board.game.object(drake).unwrap().zone, Zone::Graveyard);
-    assert_eq!(board.game.controller_of_id(board.ogre), Some(PlayerId::from_index(1)));
+    assert_eq!(
+        board.game.controller_of_id(board.ogre),
+        Some(PlayerId::from_index(1))
+    );
 }
 
 #[test]

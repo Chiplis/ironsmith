@@ -1524,7 +1524,10 @@ pub(super) fn compile_subject_verb_middle(
                 if let Some(as_aura) = as_aura {
                     let attachment_filter = as_aura.attachment_filter.clone();
                     if !as_aura.granted_abilities.is_empty() {
-                        let returned_tag = result_tag.as_ref().map(|tag| tag.key.clone()).unwrap_or_else(|| reserved_or_next_object_tag(ctx, "returned"));
+                        let returned_tag = result_tag
+                            .as_ref()
+                            .map(|tag| tag.key.clone())
+                            .unwrap_or_else(|| reserved_or_next_object_tag(ctx, "returned"));
                         aura_return_tag = Some(returned_tag.clone());
                         for modification in
                             lower_granted_ability_grant_modifications(&as_aura.granted_abilities)?
@@ -3515,9 +3518,9 @@ fn lower_ability_removal_modifications(
         .map(crate::continuous::Modification::RemoveAbility)
         .collect::<Vec<_>>();
     removals.extend(families.into_iter().filter_map(|family| match family {
-        GrantedAbilityAst::StaticAbilityFamily(id) => {
-            Some(crate::continuous::Modification::RemoveStaticAbilityFamily(id))
-        }
+        GrantedAbilityAst::StaticAbilityFamily(id) => Some(
+            crate::continuous::Modification::RemoveStaticAbilityFamily(id),
+        ),
         _ => None,
     }));
     Ok(removals)

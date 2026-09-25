@@ -453,9 +453,11 @@ pub struct GrantSpec<SA, E, C, Cond> {
 fn is_source_exiled_card_pool(filter: &ObjectFilter) -> bool {
     let mut normalized = filter.clone();
     normalized.zone = None;
-    let Some(index) = normalized.tagged_constraints.iter().position(|constraint| {
-        constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
-    }) else {
+    let Some(index) = normalized
+        .tagged_constraints
+        .iter()
+        .position(|constraint| constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+    else {
         return false;
     };
     normalized.tagged_constraints.remove(index);
@@ -1022,8 +1024,9 @@ where
                     "That player may".to_string()
                 }
                 PlayerFilter::ControlsMost { .. } => "That player may".to_string(),
-                PlayerFilter::OpponentOf(_)
-                | PlayerFilter::MaxSpeed { .. } => "That player may".to_string(),
+                PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
+                    "That player may".to_string()
+                }
                 PlayerFilter::ChosenPlayer => "The chosen player may".to_string(),
                 PlayerFilter::TaggedPlayer(_)
                 | PlayerFilter::IteratedPlayer
@@ -1305,7 +1308,8 @@ where
         {
             may_prefix = format!("During your turn, you may{rest}");
         }
-        if matches!(self.grantable, Grantable::PlayFrom) && self.zone == Zone::OutsideGame
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::OutsideGame
             && self.filter == ObjectFilter::default().owned_by(PlayerFilter::You)
             && self.max_plays == Some(1)
         {
@@ -1740,7 +1744,9 @@ where
         {
             let mut cast_filter = self.filter.clone();
             cast_filter.zone = None;
-            if cast_filter.owner == Some(PlayerFilter::You) { cast_filter.owner = None; }
+            if cast_filter.owner == Some(PlayerFilter::You) {
+                cast_filter.owner = None;
+            }
             let filter_desc = castable_filter_description(&cast_filter);
             let cost_text = graveyard_cast_cost_text(additional_costs);
             if self.filter == ObjectFilter::source() {

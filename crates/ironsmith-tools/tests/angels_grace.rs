@@ -49,9 +49,12 @@ fn resolved(life: i32) -> GameState {
 fn damage(game: &mut GameState, player: PlayerId, amount: i32) {
     let bob = PlayerId::from_index(1);
     let source = game.create_object_from_definition(
-        &ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::ids::CardId::new(), "Shock Source")
-            .card_types(vec![ironsmith::CardType::Instant])
-            .build(),
+        &ironsmith::cards::builders::CardDefinitionBuilder::new(
+            ironsmith::ids::CardId::new(),
+            "Shock Source",
+        )
+        .card_types(vec![ironsmith::CardType::Instant])
+        .build(),
         bob,
         Zone::Stack,
     );
@@ -59,7 +62,10 @@ fn damage(game: &mut GameState, player: PlayerId, amount: i32) {
     let mut ctx = ironsmith::effects::EffectContext::new(source, bob, &mut dm);
     ironsmith::effects::execute_effect(
         game,
-        &ironsmith::Effect::deal_damage(amount, ChooseSpec::Player(ironsmith::PlayerFilter::Specific(player))),
+        &ironsmith::Effect::deal_damage(
+            amount,
+            ChooseSpec::Player(ironsmith::PlayerFilter::Specific(player)),
+        ),
         &mut ctx,
     )
     .unwrap();
@@ -70,7 +76,10 @@ fn you_cannot_lose_and_opponents_cannot_win_this_turn() {
     let game = resolved(20);
     assert!(!game.can_lose_game(PlayerId::from_index(0)));
     assert!(!game.can_win_game(PlayerId::from_index(1)));
-    assert!(game.can_lose_game(PlayerId::from_index(1)), "only you are protected");
+    assert!(
+        game.can_lose_game(PlayerId::from_index(1)),
+        "only you are protected"
+    );
     assert!(game.can_win_game(PlayerId::from_index(0)));
 }
 

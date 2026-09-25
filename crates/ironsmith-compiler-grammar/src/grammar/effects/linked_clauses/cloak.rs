@@ -100,9 +100,7 @@ fn parse_cloak_pile_exile<'a>(input: &mut LexStream<'a>) -> WResult<CloakPileExi
     Ok(shape)
 }
 
-fn parse_standalone_pile_exile<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<CloakPileExileShape<'a>> {
+fn parse_standalone_pile_exile<'a>(input: &mut LexStream<'a>) -> WResult<CloakPileExileShape<'a>> {
     let shape = parse_face_down_pile_exile_prefix.parse_next(input)?;
     opt(primitives::period()).parse_next(input)?;
     eof.void().parse_next(input)?;
@@ -113,8 +111,10 @@ fn parse_standalone_pile_exile<'a>(
 fn parse_pile_restack(input: &mut LexStream<'_>) -> WResult<()> {
     primitives::phrase(&["if", "you", "do"]).parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
-    primitives::phrase(&["shuffle", "that", "pile", "and", "put", "it", "back", "on", "top", "of", "your", "library"])
-        .parse_next(input)?;
+    primitives::phrase(&[
+        "shuffle", "that", "pile", "and", "put", "it", "back", "on", "top", "of", "your", "library",
+    ])
+    .parse_next(input)?;
     opt(primitives::period()).parse_next(input)?;
     eof.void().parse_next(input)?;
     Ok(())

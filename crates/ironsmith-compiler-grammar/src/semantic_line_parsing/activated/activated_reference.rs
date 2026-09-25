@@ -173,31 +173,50 @@ fn recognize_delayed_source_characteristic_surface(info: &LineInfo, effects: &mu
     fn value(v: &mut Value, power: bool, visit: &mut impl FnMut(&mut Value)) {
         if let Value::SurfaceHinted { value: inner, .. } = v {
             value(inner, power, visit);
-        } else if matches!((&*v, power), (Value::SourcePower, true) | (Value::SourceToughness, false))
-            || matches!((&*v, power), (Value::PowerOf(spec), true) | (Value::ToughnessOf(spec), false) if matches!(spec.base(), ChooseSpec::Source))
+        } else if matches!(
+            (&*v, power),
+            (Value::SourcePower, true) | (Value::SourceToughness, false)
+        ) || matches!((&*v, power), (Value::PowerOf(spec), true) | (Value::ToughnessOf(spec), false) if matches!(spec.base(), ChooseSpec::Source))
         {
             visit(v);
         }
     }
     fn filter(f: &mut ObjectFilter, power: bool, visit: &mut impl FnMut(&mut Value)) {
-        for comparison in [&mut f.mana_value, &mut f.power, &mut f.toughness].into_iter().flatten() {
+        for comparison in [&mut f.mana_value, &mut f.power, &mut f.toughness]
+            .into_iter()
+            .flatten()
+        {
             match comparison {
-                Comparison::EqualExpr(v) | Comparison::NotEqualExpr(v)
-                | Comparison::LessThanExpr(v) | Comparison::LessThanOrEqualExpr(v)
-                | Comparison::GreaterThanExpr(v) | Comparison::GreaterThanOrEqualExpr(v) => value(v, power, visit),
+                Comparison::EqualExpr(v)
+                | Comparison::NotEqualExpr(v)
+                | Comparison::LessThanExpr(v)
+                | Comparison::LessThanOrEqualExpr(v)
+                | Comparison::GreaterThanExpr(v)
+                | Comparison::GreaterThanOrEqualExpr(v) => value(v, power, visit),
                 _ => {}
             }
         }
-        for branch in &mut f.any_of { filter(branch, power, visit); }
+        for branch in &mut f.any_of {
+            filter(branch, power, visit);
+        }
     }
     fn trigger(t: &mut TriggerSpec, power: bool, visit: &mut impl FnMut(&mut Value)) {
         match t {
             TriggerSpec::WithIntro { trigger: inner, .. }
-            | TriggerSpec::ConditionQualified { trigger: inner, .. } => trigger(inner, power, visit),
-            TriggerSpec::AnyOf(branches) => {
-                for branch in branches { trigger(branch, power, visit); }
+            | TriggerSpec::ConditionQualified { trigger: inner, .. } => {
+                trigger(inner, power, visit)
             }
-            TriggerSpec::SpellCast { filter: Some(f), .. } | TriggerSpec::SpellCastSameNameCardInZone { filter: Some(f), .. } => filter(f, power, visit),
+            TriggerSpec::AnyOf(branches) => {
+                for branch in branches {
+                    trigger(branch, power, visit);
+                }
+            }
+            TriggerSpec::SpellCast {
+                filter: Some(f), ..
+            }
+            | TriggerSpec::SpellCastSameNameCardInZone {
+                filter: Some(f), ..
+            } => filter(f, power, visit),
             _ => {}
         }
     }
@@ -205,26 +224,37 @@ fn recognize_delayed_source_characteristic_surface(info: &LineInfo, effects: &mu
         for effect in effects {
             if let EffectAst::Delayed(
                 DelayedEffectAst::DelayedTriggerThisTurn { trigger: t, .. }
-                | DelayedEffectAst::DelayedTriggerForDuration { trigger: t, .. }
-            ) = effect {
+                | DelayedEffectAst::DelayedTriggerForDuration { trigger: t, .. },
+            ) = effect
+            {
                 trigger(t, power, visit);
             }
             for_each_nested_effects_mut(effect, true, |nested| walk(nested, power, visit));
         }
     }
     for (characteristic, power) in [("power", true), ("toughness", false)] {
-        let Some(shape) = crate::grammar::source_surface_shapes::parse_unique_named_characteristic_operand(
-            &info.source_tokens, characteristic,
-        ) else { continue };
+        let Some(shape) =
+            crate::grammar::source_surface_shapes::parse_unique_named_characteristic_operand(
+                &info.source_tokens,
+                characteristic,
+            )
+        else {
+            continue;
+        };
         let mut count = 0;
         walk(effects, power, &mut |_| count += 1);
-        if count != 1 { continue; }
+        if count != 1 {
+            continue;
+        }
         let surface: SourceReferenceSurface = shape.surface;
         walk(effects, power, &mut |value| {
-            let spec = ChooseSpec::Source.with_surface_hint(
-                ChooseSpecSurfaceHint::SourceReference(surface.clone()),
-            );
-            *value = if power { Value::PowerOf(Box::new(spec)) } else { Value::ToughnessOf(Box::new(spec)) };
+            let spec = ChooseSpec::Source
+                .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface.clone()));
+            *value = if power {
+                Value::PowerOf(Box::new(spec))
+            } else {
+                Value::ToughnessOf(Box::new(spec))
+            };
         });
     }
 }

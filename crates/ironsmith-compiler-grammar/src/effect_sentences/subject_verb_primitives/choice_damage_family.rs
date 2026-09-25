@@ -441,7 +441,9 @@ fn lower_selected_hand_reveal(
         return Ok(None);
     }
 
-    if shape.random { count = count.at_random(); }
+    if shape.random {
+        count = count.at_random();
+    }
 
     let mut filter = match parse_object_filter(descriptor_clause.tokens(), false) {
         Ok(filter) => filter,

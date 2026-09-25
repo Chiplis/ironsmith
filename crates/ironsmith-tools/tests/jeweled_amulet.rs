@@ -2,7 +2,9 @@
 //! type of mana spent to pay this activation cost. Activate only if there are
 //! no charge counters on this artifact. {T}, Remove a charge counter from this
 //! artifact: Add one mana of this artifact's last noted type."
-use ironsmith::decision::{GameProgress, LegalAction, SelectFirstDecisionMaker, compute_legal_actions};
+use ironsmith::decision::{
+    GameProgress, LegalAction, SelectFirstDecisionMaker, compute_legal_actions,
+};
 use ironsmith::game_loop::{PriorityLoopState, PriorityResponse};
 use ironsmith::mana::ManaSymbol;
 use ironsmith::{CounterType, GameState, ObjectId, PlayerId, Zone};
@@ -68,7 +70,9 @@ fn charge(game: &mut GameState, amulet: ObjectId) {
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, &mut dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            game, &mut queue, &mut state, &ctx, &mut dm,
+        );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
     ironsmith::game_loop::resolve_stack_entry_with(game, &mut dm).unwrap();
@@ -99,13 +103,25 @@ fn noted_type_round_trip(paid_with: ManaSymbol) {
     game.player_mut(alice).unwrap().mana_pool.add(paid_with, 1);
     charge(&mut game, amulet);
     assert_eq!(game.counter_count(amulet, CounterType::Charge), 1);
-    assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0, "paid {{1}}");
+    assert_eq!(
+        game.player(alice).unwrap().mana_pool.total(),
+        0,
+        "paid {{1}}"
+    );
 
     game.untap(amulet);
     tap_for_mana(&mut game, amulet);
-    assert_eq!(game.counter_count(amulet, CounterType::Charge), 0, "counter removed");
+    assert_eq!(
+        game.counter_count(amulet, CounterType::Charge),
+        0,
+        "counter removed"
+    );
     let pool = &game.player(alice).unwrap().mana_pool;
-    assert_eq!(pool.amount(paid_with), 1, "added one mana of the noted type");
+    assert_eq!(
+        pool.amount(paid_with),
+        1,
+        "added one mana of the noted type"
+    );
     assert_eq!(pool.total(), 1);
 }
 
@@ -123,11 +139,20 @@ fn stores_colorless_and_later_adds_colorless() {
 fn charge_ability_only_without_charge_counters() {
     let (mut game, amulet) = setup();
     let alice = PlayerId::from_index(0);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Blue, 1);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
     charge(&mut game, amulet);
     game.untap(amulet);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Blue, 1);
-    assert!(charge_action(&game, amulet).is_none(), "already has a charge counter");
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+    assert!(
+        charge_action(&game, amulet).is_none(),
+        "already has a charge counter"
+    );
 }
 
 #[test]

@@ -1,11 +1,11 @@
 //! Sephiroth's death trigger targets an opponent. The UI auto-places a target
 //! only when the requirement leaves no choice, so what the engine reports as
 //! legal is exactly what decides whether that happens.
+use ironsmith::card::PowerToughness;
 use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::decision::DecisionMaker;
 use ironsmith::decisions::context::TargetsContext;
 use ironsmith::game_state::Target;
-use ironsmith::card::PowerToughness;
 use ironsmith::ids::CardId;
 use ironsmith::{CardType, GameState, PlayerId, Zone};
 

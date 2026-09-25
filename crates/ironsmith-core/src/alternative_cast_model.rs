@@ -242,7 +242,9 @@ where
             Self::Harmonize { total_cost } => non_mana_components(total_cost),
             Self::Retrace { total_cost } => non_mana_components(total_cost),
             Self::JumpStart { additional_cost }
-            | Self::Warp { additional_cost, .. }
+            | Self::Warp {
+                additional_cost, ..
+            }
             | Self::Escape {
                 additional_cost, ..
             } => non_mana_components(additional_cost),
@@ -274,7 +276,9 @@ where
     pub fn additional_cost(&self) -> Option<&TotalCost<C>> {
         match self {
             Self::JumpStart { additional_cost }
-            | Self::Warp { additional_cost, .. }
+            | Self::Warp {
+                additional_cost, ..
+            }
             | Self::Escape {
                 additional_cost, ..
             } => Some(additional_cost),
@@ -562,7 +566,10 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
             Self::Blitz { total_cost } => AlternativeCastingMethod::Blitz {
                 total_cost: map_total_cost(total_cost)?,
             },
-            Self::Warp { cost, additional_cost } => AlternativeCastingMethod::Warp {
+            Self::Warp {
+                cost,
+                additional_cost,
+            } => AlternativeCastingMethod::Warp {
                 cost,
                 additional_cost: map_total_cost(additional_cost)?,
             },

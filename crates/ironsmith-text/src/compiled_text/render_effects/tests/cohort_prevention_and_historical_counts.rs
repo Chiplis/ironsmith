@@ -552,22 +552,53 @@ fn cohort_prevention_followup_regression_gains_only_actual_prevented_damage_once
             let creature = crate::CardDefinitionBuilder::new(CardId::new(), "Ravelon Attacker")
                 .card_types(vec![CardType::Creature])
                 .power_toughness(PowerToughness::fixed(5, 5))
-                .parse_text(if unpreventable { "Damage can't be prevented." } else { "" }).unwrap();
-            let attackers = (0..2).map(|_| game.create_object_from_definition(&creature, bob, Zone::Battlefield)).collect::<Vec<_>>();
+                .parse_text(if unpreventable {
+                    "Damage can't be prevented."
+                } else {
+                    ""
+                })
+                .unwrap();
+            let attackers = (0..2)
+                .map(|_| game.create_object_from_definition(&creature, bob, Zone::Battlefield))
+                .collect::<Vec<_>>();
             let source = game.create_object_from_definition(&spell, alice, Zone::Stack);
-            game.stack.push(StackEntry::new(source, alice).with_targets(vec![crate::game_state::Target::Object(attackers[protected])]));
+            game.stack
+                .push(StackEntry::new(source, alice).with_targets(vec![
+                    crate::game_state::Target::Object(attackers[protected]),
+                ]));
             crate::game_loop::resolve_stack_entry(&mut game).unwrap();
-            assert_eq!(game.player(alice).unwrap().life, 2, "life gain waits for prevention");
+            assert_eq!(
+                game.player(alice).unwrap().life,
+                2,
+                "life gain waits for prevention"
+            );
             let combat = crate::combat_state::CombatState {
-                attackers: attackers.iter().map(|id| crate::combat_state::AttackerInfo { creature: *id, target: crate::combat_state::AttackTarget::Player(alice) }).collect(),
+                attackers: attackers
+                    .iter()
+                    .map(|id| crate::combat_state::AttackerInfo {
+                        creature: *id,
+                        target: crate::combat_state::AttackTarget::Player(alice),
+                    })
+                    .collect(),
                 ..Default::default()
             };
             let events = crate::game_loop::execute_combat_damage_step(&mut game, &combat, false);
-            assert_eq!(events.iter().map(|event| event.amount).sum::<u32>(), if unpreventable { 10 } else { 5 });
-            assert_eq!(game.player(alice).unwrap().life, if unpreventable { -8 } else { 2 }, "protected={protected}, unpreventable={unpreventable}");
+            assert_eq!(
+                events.iter().map(|event| event.amount).sum::<u32>(),
+                if unpreventable { 10 } else { 5 }
+            );
+            assert_eq!(
+                game.player(alice).unwrap().life,
+                if unpreventable { -8 } else { 2 },
+                "protected={protected}, unpreventable={unpreventable}"
+            );
             let before = game.player(alice).unwrap().life;
             crate::game_loop::execute_combat_damage_step(&mut game, &combat, false);
-            assert_eq!(game.player(alice).unwrap().life, before - 10, "next-time prevention is consumed");
+            assert_eq!(
+                game.player(alice).unwrap().life,
+                before - 10,
+                "next-time prevention is consumed"
+            );
         }
     }
 }

@@ -159,7 +159,10 @@ impl DealDistributedDamageEffect {
         // Keep allocations in the order targets were chosen (first mention wins)
         // so damage events apply in the same order on every peer.
         fn allocation_slot(allocations: &mut Vec<(Target, u32)>, target: Target) -> &mut u32 {
-            let index = match allocations.iter().position(|(existing, _)| *existing == target) {
+            let index = match allocations
+                .iter()
+                .position(|(existing, _)| *existing == target)
+            {
                 Some(index) => index,
                 None => {
                     allocations.push((target, 0));

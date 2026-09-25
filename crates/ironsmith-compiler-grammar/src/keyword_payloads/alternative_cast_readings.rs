@@ -538,7 +538,21 @@ fn read_blitz_from_graveyard(
 ) -> Result<Option<KeywordLinePayload>, CardTextError> {
     let tokens = input.tokens;
     let words = crate::lexer::parser_token_word_refs(tokens);
-    if let ["you", "may", "cast", "this", "card", "from", "your", "graveyard", "using", "its", keyword, "ability"] = words.as_slice() {
+    if let [
+        "you",
+        "may",
+        "cast",
+        "this",
+        "card",
+        "from",
+        "your",
+        "graveyard",
+        "using",
+        "its",
+        keyword,
+        "ability",
+    ] = words.as_slice()
+    {
         use ironsmith_core::alternative_cast_model::AlternativeCastKeyword;
         let method = match *keyword {
             "bestow" => AlternativeCastKeyword::Bestow,
@@ -546,7 +560,10 @@ fn read_blitz_from_graveyard(
             "warp" => AlternativeCastKeyword::Warp,
             _ => return Ok(None),
         };
-        let ability = crate::model::CompilerStaticAbilityCore::native_alternative_cast_from_zone(crate::zone::Zone::Graveyard, method);
+        let ability = crate::model::CompilerStaticAbilityCore::native_alternative_cast_from_zone(
+            crate::zone::Zone::Graveyard,
+            method,
+        );
         return Ok(ast(LineAst::StaticAbility(ability.into())));
     }
     Ok(None)

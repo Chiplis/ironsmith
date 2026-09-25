@@ -37,14 +37,14 @@ mod subject;
 pub(crate) use subject::ObjectSubject;
 
 mod descriptions;
-pub use descriptions::describe_player_filter;
 pub(crate) use descriptions::describe_comparison;
+pub use descriptions::describe_player_filter;
 use descriptions::*;
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod subject_tests;
+#[cfg(test)]
+mod tests;
 
 fn ensure_filter_indefinite_article(text: String) -> String {
     let trimmed = text.trim();
@@ -256,7 +256,13 @@ fn matching_spell_cast_ordinal_each_turn_matches(
     game: &GameState,
     fallback_cast_player: Option<PlayerId>,
 ) -> bool {
-    let ordinal_matches = |actual: u32| if at_least { actual >= ordinal } else { actual == ordinal };
+    let ordinal_matches = |actual: u32| {
+        if at_least {
+            actual >= ordinal
+        } else {
+            actual == ordinal
+        }
+    };
     let mut matching_filter = filter.clone();
     matching_filter.first_spell_cast_each_turn = false;
     matching_filter.spell_cast_ordinal_each_turn = None;
@@ -845,9 +851,10 @@ fn subject_creature_subtypes(
 /// A spell's creature types for cost conditions such as prowl, including
 /// every creature type for changeling (CR 702.73a applies in all zones).
 pub(crate) fn object_creature_subtypes_for_cost(object: &Object, game: &GameState) -> Vec<Subtype> {
-    let can_have_creature_types = object.card_types.iter().any(|card_type| {
-        matches!(card_type, CardType::Creature | CardType::Kindred)
-    });
+    let can_have_creature_types = object
+        .card_types
+        .iter()
+        .any(|card_type| matches!(card_type, CardType::Creature | CardType::Kindred));
     if can_have_creature_types && object.has_changeling() {
         return Subtype::all_creature_types().to_vec();
     }
@@ -919,8 +926,9 @@ fn object_subtypes_in_family(
 /// An object's current mana value, reading layer-1 copy effects (CR 202.3,
 /// 707.2): emerge and offering reduce by this, not by the raw printed cost.
 pub(crate) fn object_current_mana_value(game: &GameState, id: ObjectId) -> u32 {
-    game.object(id)
-        .map_or(0, |object| object_current_mana_value_for_relation(object, game).max(0) as u32)
+    game.object(id).map_or(0, |object| {
+        object_current_mana_value_for_relation(object, game).max(0) as u32
+    })
 }
 
 /// An object's current mana cost, reading layer-1 copy effects.
@@ -930,7 +938,10 @@ pub(crate) fn object_current_mana_cost(
 ) -> Option<crate::mana::ManaCost> {
     game.current_characteristics(id)
         .and_then(|characteristics| characteristics.mana_cost.clone())
-        .or_else(|| game.object(id).and_then(|object| object.mana_cost.as_deref().cloned()))
+        .or_else(|| {
+            game.object(id)
+                .and_then(|object| object.mana_cost.as_deref().cloned())
+        })
 }
 
 fn object_current_mana_value_for_relation(object: &Object, game: &GameState) -> i32 {
@@ -1665,11 +1676,13 @@ fn resolve_filter_comparison_rhs_value(
         Value::XTimes(multiplier) => {
             resolve_x_value(game, ctx, stack_entry).map(|value| value * multiplier)
         }
-        Value::EffectMetric { .. } | Value::EffectMetricOffset { .. }
+        Value::EffectMetric { .. }
+        | Value::EffectMetricOffset { .. }
         | Value::PriorEffectMetric { .. } => {
             // Metrics describe a previous instruction, not the candidate
             // object's characteristics. Retain the producer's outcome memory.
-            let mut execution = crate::effects::ExecutionContext::new_default(ctx.source?, ctx.you?);
+            let mut execution =
+                crate::effects::ExecutionContext::new_default(ctx.source?, ctx.you?);
             execution.effect_outcomes = ctx.effect_outcomes.clone();
             execution.tagged_objects = ctx.tagged_objects.clone();
             execution.source_snapshot = ctx.source_snapshot.clone();
@@ -1865,19 +1878,31 @@ fn resolve_filter_comparison_rhs_value(
                 return None;
             }
             let mut seen_teams = std::collections::HashSet::new();
-            let count = game.players.iter()
+            let count = game
+                .players
+                .iter()
                 .filter(|candidate| player_filter_matches_game(player, candidate.id, game, ctx))
                 .filter(|candidate| {
-                    *counter_type != CounterType::Poison || game.two_headed_giant().is_none()
-                        || game.team_index_for(candidate.id).is_none_or(|team| seen_teams.insert(team))
+                    *counter_type != CounterType::Poison
+                        || game.two_headed_giant().is_none()
+                        || game
+                            .team_index_for(candidate.id)
+                            .is_none_or(|team| seen_teams.insert(team))
                 })
-                .fold(0u32, |count, candidate| count.saturating_add(candidate.counter_count(*counter_type)));
+                .fold(0u32, |count, candidate| {
+                    count.saturating_add(candidate.counter_count(*counter_type))
+                });
             Some(i32::try_from(count).unwrap_or(i32::MAX))
         }
         Value::CountersOnSource(counter_type) => {
-            let counters = game.object(ctx.source?)
+            let counters = game
+                .object(ctx.source?)
                 .map(|source| &source.counters)
-                .or_else(|| ctx.source_snapshot.as_ref().map(|snapshot| &snapshot.counters))?;
+                .or_else(|| {
+                    ctx.source_snapshot
+                        .as_ref()
+                        .map(|snapshot| &snapshot.counters)
+                })?;
             Some(counters.get(counter_type).copied().unwrap_or(0) as i32)
         }
         Value::SourcePower => current_object_pt(game, ctx.source?, true).or_else(|| {
@@ -1940,11 +1965,19 @@ fn resolve_filter_comparison_rhs_value(
             _ => None,
         },
         Value::LifeLostThisTurn(player_filter) => {
-            let players = game.players.iter()
-                .filter(|player| player.is_in_game() && player_filter.matches_player(player.id, ctx))
+            let players = game
+                .players
+                .iter()
+                .filter(|player| {
+                    player.is_in_game() && player_filter.matches_player(player.id, ctx)
+                })
                 .map(|player| player.id)
                 .collect::<Vec<_>>();
-            Some(game.turn_store.turn_history.total_life_lost_for_players(&players) as i32)
+            Some(
+                game.turn_store
+                    .turn_history
+                    .total_life_lost_for_players(&players) as i32,
+            )
         }
         Value::UnspentMana(player_filter) => Some(
             game.players
@@ -2266,8 +2299,7 @@ impl PlayerFilterExt for PlayerFilter {
             PlayerFilter::HasMoreLifeThanYou { base } => base.matches_player(player, ctx),
             PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => false,
             PlayerFilter::ControlsMost { .. } => false,
-            PlayerFilter::OpponentOf(_)
-            | PlayerFilter::MaxSpeed { .. } => false,
+            PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => false,
             PlayerFilter::ChosenPlayer => ctx.chosen_player.is_some_and(|chosen| chosen == player),
             PlayerFilter::TaggedPlayer(tag) => ctx
                 .tagged_players
@@ -2919,7 +2951,8 @@ impl ObjectFilterExt for ObjectFilter {
             if constraint.tag.as_str() == crate::tag::CHOSEN_OBJECTS_TAG
                 && matches!(
                     constraint.relation,
-                    TaggedOpbjectRelation::IsTaggedObject | TaggedOpbjectRelation::IsNotTaggedObject
+                    TaggedOpbjectRelation::IsTaggedObject
+                        | TaggedOpbjectRelation::IsNotTaggedObject
                 )
             {
                 let is_chosen = tagged_snapshots
@@ -3186,7 +3219,14 @@ impl ObjectFilterExt for ObjectFilter {
         {
             return false;
         }
-        matching::matches_subject(self, ObjectSubject::Snapshot(snapshot), ctx, game, false, None)
+        matching::matches_subject(
+            self,
+            ObjectSubject::Snapshot(snapshot),
+            ctx,
+            game,
+            false,
+            None,
+        )
     }
 
     /// Generate a human-readable description of this filter.
@@ -3372,8 +3412,7 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::ControlsMost { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
-                PlayerFilter::OpponentOf(_)
-                | PlayerFilter::MaxSpeed { .. } => {
+                PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 PlayerFilter::CastCardTypeThisTurn(card_type) => parts.push(format!(
@@ -3532,8 +3571,7 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::ControlsMost { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
-                PlayerFilter::OpponentOf(_)
-                | PlayerFilter::MaxSpeed { .. } => {
+                PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::CastCardTypeThisTurn(card_type) => format!(

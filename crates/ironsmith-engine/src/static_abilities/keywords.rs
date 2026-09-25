@@ -280,7 +280,8 @@ impl StaticAbilityKind for Defender {
     }
 
     fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, _controller: PlayerId) {
-        if game.current_has_static_ability_id(source, StaticAbilityId::CanAttackAsThoughNoDefender) {
+        if game.current_has_static_ability_id(source, StaticAbilityId::CanAttackAsThoughNoDefender)
+        {
             return;
         }
         let mut tracker = CantEffectTracker::default();

@@ -135,8 +135,12 @@ pub fn parse_reveal_selected_hand_tail_shape(
     }
     let mut descriptor_tokens = trim_lexed_commas(body.get(..suffix_offset)?);
     let mut random = false;
-    if let Some((offset, _, remaining)) = primitives::find_prefix(descriptor_tokens, || primitives::phrase(&["at", "random"])) {
-        if !crate::util::trim_edge_punctuation_tokens(remaining).is_empty() { return None; }
+    if let Some((offset, _, remaining)) =
+        primitives::find_prefix(descriptor_tokens, || primitives::phrase(&["at", "random"]))
+    {
+        if !crate::util::trim_edge_punctuation_tokens(remaining).is_empty() {
+            return None;
+        }
         descriptor_tokens = trim_lexed_commas(descriptor_tokens.get(..offset)?);
         random = true;
     }

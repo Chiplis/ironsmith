@@ -2826,8 +2826,7 @@ pub(super) fn describe_may_cast_target_graveyard_spell_then_exile_replacement(
                 && match &followup.predicate {
                     crate::effect::EffectPredicate::Happened => true,
                     crate::effect::EffectPredicate::PriorEffectResult(surface) => {
-                        !surface.negated
-                            && surface.action == crate::effect::PriorEffectAction::Cast
+                        !surface.negated && surface.action == crate::effect::PriorEffectAction::Cast
                     }
                     _ => false,
                 }
@@ -3706,13 +3705,10 @@ pub(super) fn describe_attack_block_if_able_grant(
     }
 
     let plural = crate::compiled_text::merge_passes::subject_is_plural(subject)
-        || subject
-            .split_whitespace()
-            .next()
-            .is_some_and(|first| {
-                let first = first.to_ascii_lowercase();
-                first.ends_with('s') && !matches!(first.as_str(), "this" | "its" | "his")
-            });
+        || subject.split_whitespace().next().is_some_and(|first| {
+            let first = first.to_ascii_lowercase();
+            first.ends_with('s') && !matches!(first.as_str(), "this" | "its" | "his")
+        });
     let (attack, block) = if plural {
         ("attack", "block")
     } else {

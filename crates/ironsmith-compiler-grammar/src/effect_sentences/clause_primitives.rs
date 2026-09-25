@@ -15,9 +15,9 @@ use super::super::permission_helpers::{
 use super::super::util::{
     parse_subject, parse_target_phrase, source_reference_surface_for_words, span_from_tokens,
 };
+use super::clause_pattern_helpers::parse_airbend_clause;
 use super::parse_restriction_duration;
 use super::sentence_helpers::*;
-use super::clause_pattern_helpers::parse_airbend_clause;
 use super::subject_verb_primitives::SubjectVerbPrimitiveClause;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
@@ -531,11 +531,7 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             &[],
             parse_keyword_mechanic_clause,
         ),
-        specific_primitive!(
-            "airbend-clause",
-            &["airbend"],
-            parse_airbend_clause,
-        ),
+        specific_primitive!("airbend-clause", &["airbend"], parse_airbend_clause,),
         specific_primitive!(
             "connive-clause",
             // The verb follows an object subject ("it", "each creature", ...).
@@ -1049,10 +1045,9 @@ pub fn parse_must_block_if_able_clause(
             let subject_words = crate::lexer::parser_token_word_refs(subject_clause.tokens());
             // "up to one target creature blocks it this combat if able"
             // (Fighter Class): a counted target phrase is still a target.
-            let counted_target = crate::word_primitives::parse_sequence_prefix(
-                &subject_words,
-                &["up", "to"],
-            ) && subject_words.contains(&"target");
+            let counted_target =
+                crate::word_primitives::parse_sequence_prefix(&subject_words, &["up", "to"])
+                    && subject_words.contains(&"target");
             let blocker_is_target =
                 super::super::grammar::activation_restrictions::parse_target_indicator_tokens(
                     subject_clause.tokens(),
@@ -1417,7 +1412,10 @@ pub fn parse_deal_damage_equal_to_power_clause(
             Ok(TargetAst::Object(filter, count, span))
                 if filter.tagged_constraints.iter().any(|constraint| {
                     constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-                }) => TargetAst::Object(filter, count, span),
+                }) =>
+            {
+                TargetAst::Object(filter, count, span)
+            }
             _ => return Ok(None),
         }
     } else {
@@ -1518,7 +1516,9 @@ pub fn parse_deal_damage_equal_to_power_clause(
         clause_shapes::PowerDamageTargetShape::Tokens(target_tokens) => {
             // "to each other creature and each opponent" (Chandra's Ignition):
             // the object set and the player set are damaged independently.
-            if target_tokens.first().is_some_and(|token| token.is_word("each"))
+            if target_tokens
+                .first()
+                .is_some_and(|token| token.is_word("each"))
                 && let Some((and_idx, opponents, after)) =
                     crate::grammar::primitives::find_prefix(target_tokens, || {
                         winnow::combinator::alt((
@@ -1557,7 +1557,9 @@ pub fn parse_deal_damage_equal_to_power_clause(
                 }));
             }
             let mut target = parse_target_phrase(target_tokens)?;
-            if target_tokens.first().is_some_and(|token| token.is_word("each"))
+            if target_tokens
+                .first()
+                .is_some_and(|token| token.is_word("each"))
                 && let TargetAst::Object(filter, None, _) = &mut target
             {
                 // Preserve the universal recipient set when this explicit
@@ -1680,12 +1682,10 @@ pub fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
         if crate::word_primitives::parse_any_sequence_complete(
             &left_words,
             &[&["it"], &["he"], &["she"]],
-        )
-            || crate::word_primitives::parse_sequence_suffix(
-                &left_words,
-                &["you", "may", "have", "it"],
-            )
-        {
+        ) || crate::word_primitives::parse_sequence_suffix(
+            &left_words,
+            &["you", "may", "have", "it"],
+        ) {
             TargetAst::Tagged(
                 crate::tag::CompilerReferenceTag::It.bind(),
                 span_from_tokens(left_tokens),
@@ -2025,17 +2025,24 @@ mod result_subject_tests {
     fn fight_pronouns_keep_anaphoric_actor_binding() {
         for pronoun in ["It", "He", "She"] {
             let tokens = crate::lexer::lex_line(
-                &format!("{pronoun} fights up to one target creature an opponent controls."), 0).unwrap();
+                &format!("{pronoun} fights up to one target creature an opponent controls."),
+                0,
+            )
+            .unwrap();
             let effect = super::parse_fight_clause(&tokens).unwrap().unwrap();
-            let EffectAst::SubjectVerb(subject_verb) = effect else { panic!("expected fight") };
+            let EffectAst::SubjectVerb(subject_verb) = effect else {
+                panic!("expected fight")
+            };
             let crate::cards::builders::SubjectVerbActionAst::KeywordActions(
-                crate::cards::builders::KeywordActionAst::Fight { creature1, .. }
-            ) = subject_verb.action else { panic!("expected fight action") };
+                crate::cards::builders::KeywordActionAst::Fight { creature1, .. },
+            ) = subject_verb.action
+            else {
+                panic!("expected fight action")
+            };
             let TargetAst::Tagged(tag, _) = creature1 else {
                 panic!("pronoun must resolve through its antecedent, never a source default")
             };
-            assert_eq!(tag.as_str(),crate::tag::CompilerReferenceTag::It.as_str());
+            assert_eq!(tag.as_str(), crate::tag::CompilerReferenceTag::It.as_str());
         }
     }
-
 }

@@ -205,7 +205,10 @@ pub fn format_negated_restriction_display(tokens: &[OwnedLexToken]) -> String {
             }
         })
         .collect::<Vec<_>>();
-    let words = display_tokens.iter().map(String::as_str).collect::<Vec<_>>();
+    let words = display_tokens
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
     let mut out = Vec::with_capacity(words.len());
     let mut idx = 0usize;
     while idx < words.len() {
@@ -507,16 +510,22 @@ pub fn strip_static_restriction_condition(
             };
             let condition = match condition {
                 PredicateAst::TaggedMatches(tag, filter)
-                    if matches!(tag.as_str(), "enchanted" | "equipped") => {
-                        PredicateAst::AttachedToSourceMatches(filter)
-                    }
+                    if matches!(tag.as_str(), "enchanted" | "equipped") =>
+                {
+                    PredicateAst::AttachedToSourceMatches(filter)
+                }
                 other => other,
             };
             let mut remainder = trim_commas(&tokens[remainder_first..]).to_vec();
             // A dependent subject refers to the attachment named by the
             // condition, not to an unbound event-object tag.
-            if remainder.first().is_some_and(|token| token.is_word("it") || token.is_word("they"))
-                && let Some((subject, _)) = crate::grammar::attached_object_static_lines::split_attached_subject_tokens(&condition_tokens)
+            if remainder
+                .first()
+                .is_some_and(|token| token.is_word("it") || token.is_word("they"))
+                && let Some((subject, _)) =
+                    crate::grammar::attached_object_static_lines::split_attached_subject_tokens(
+                        &condition_tokens,
+                    )
             {
                 let mut bound = subject.to_vec();
                 bound.extend_from_slice(&remainder[1..]);
@@ -1434,12 +1443,18 @@ mod blocker_union_tests {
     #[test]
     fn negated_restriction_display_preserves_mana_symbols() {
         for (text, expected) in [
-            ("noncreature spells with {X} in their mana costs can't be cast.",
-             "noncreature spells with {X} in their mana costs can't be cast"),
-            ("activated abilities with {T} in their costs can't be activated.",
-             "activated abilities with {T} in their costs can't be activated"),
-            ("spells with {W/U} in their mana costs can't be cast.",
-             "spells with {W/U} in their mana costs can't be cast"),
+            (
+                "noncreature spells with {X} in their mana costs can't be cast.",
+                "noncreature spells with {X} in their mana costs can't be cast",
+            ),
+            (
+                "activated abilities with {T} in their costs can't be activated.",
+                "activated abilities with {T} in their costs can't be activated",
+            ),
+            (
+                "spells with {W/U} in their mana costs can't be cast.",
+                "spells with {W/U} in their mana costs can't be cast",
+            ),
         ] {
             let tokens = lex_line(text, 0).expect("restriction should lex");
             assert_eq!(format_negated_restriction_display(&tokens), expected);
@@ -1600,7 +1615,11 @@ mod stack_ability_subject_tests {
         let tokens = crate::lexer::lex_line("Spells and abilities can't be countered.", 0).unwrap();
         let restrictions = parse_cant_restrictions(&tokens).unwrap().unwrap();
         assert!(!restrictions.is_empty());
-        assert!(restrictions.iter().all(|r| matches!(r.restriction, crate::effect::Restriction::BeCountered(_))));
+        assert!(
+            restrictions
+                .iter()
+                .all(|r| matches!(r.restriction, crate::effect::Restriction::BeCountered(_)))
+        );
     }
 }
 
@@ -1609,9 +1628,20 @@ mod conditional_attachment_subject_tests {
     use super::*;
     #[test]
     fn binds_attachment_pronoun_in_conditional_restriction() {
-        let tokens = crate::lexer::lex_line("As long as enchanted creature is face down, it can't be turned face up.", 0).unwrap();
-        let (condition, remainder) = strip_static_restriction_condition(&tokens).unwrap().unwrap();
-        assert!(matches!(condition, PredicateAst::AttachedToSourceMatches(filter) if filter.face_down == Some(true)));
-        assert_eq!(&crate::lexer::parser_token_word_refs(&remainder)[..2], &["enchanted", "creature"]);
+        let tokens = crate::lexer::lex_line(
+            "As long as enchanted creature is face down, it can't be turned face up.",
+            0,
+        )
+        .unwrap();
+        let (condition, remainder) = strip_static_restriction_condition(&tokens)
+            .unwrap()
+            .unwrap();
+        assert!(
+            matches!(condition, PredicateAst::AttachedToSourceMatches(filter) if filter.face_down == Some(true))
+        );
+        assert_eq!(
+            &crate::lexer::parser_token_word_refs(&remainder)[..2],
+            &["enchanted", "creature"]
+        );
     }
 }

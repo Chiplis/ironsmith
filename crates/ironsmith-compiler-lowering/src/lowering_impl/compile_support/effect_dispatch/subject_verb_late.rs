@@ -29,7 +29,9 @@ fn sacrifice_incarnation_reference(mut spec: ChooseSpec) -> ChooseSpec {
         }
     }
     match &mut spec {
-        ChooseSpec::Tagged(tag) => return ChooseSpec::Object(ObjectFilter::exact_tagged(tag.clone())),
+        ChooseSpec::Tagged(tag) => {
+            return ChooseSpec::Object(ObjectFilter::exact_tagged(tag.clone()));
+        }
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => exact_filter(filter),
         ChooseSpec::SurfaceHinted { spec, .. }
         | ChooseSpec::Target(spec)
@@ -1802,9 +1804,9 @@ pub(super) fn compile_subject_verb_late(
             if count_names_complete_discard_set && let Some(filter) = resolved_filter.as_ref() {
                 replace_complete_discard_count_filter(&mut resolved_count, filter);
             }
-            let tag = tag
-                .clone()
-                .unwrap_or_else(|| crate::tag::TagRef::of(reserved_or_next_object_tag(ctx, "discarded")));
+            let tag = tag.clone().unwrap_or_else(|| {
+                crate::tag::TagRef::of(reserved_or_next_object_tag(ctx, "discarded"))
+            });
             ctx.last_object_tag = Some(tag.clone().into());
             let effect = Effect::new(
                 crate::effects::DiscardEffect::new_with_filter(
@@ -2312,8 +2314,12 @@ pub(super) fn compile_subject_verb_late(
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { target }) => {
-            let (spec, choices) = resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            Ok((vec![Effect::new(crate::effects::BecomePlottedEffect::new(spec))], choices))
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            Ok((
+                vec![Effect::new(crate::effects::BecomePlottedEffect::new(spec))],
+                choices,
+            ))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target }) => {
             let (spec, choices) =
@@ -2464,7 +2470,8 @@ pub(super) fn compile_subject_verb_late(
                 if let TargetAst::Object(filter, ..) = &mut target
                     && filter.controller.is_none()
                     && filter.tagged_constraints.iter().any(|constraint| {
-                        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
+                        constraint.tag.as_str()
+                            == crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
                             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                     })
                 {

@@ -480,7 +480,8 @@ impl CostPayer for CostEffect {
             // Resolution choices may do as much as possible, but a cost must
             // select the full required amount before subsequent steps pay it.
             let required = if choose.count.up_to_x
-                || (choose.is_search && choose.search_mode == crate::effect::SearchSelectionMode::Optional)
+                || (choose.is_search
+                    && choose.search_mode == crate::effect::SearchSelectionMode::Optional)
             {
                 0
             } else if let Some(value) = choose.count_value.as_ref() {
@@ -488,7 +489,9 @@ impl CostPayer for CostEffect {
                     .map_err(|error| CostPaymentError::Other(format!("{error:?}")))?
                     .max(0) as usize
             } else if choose.count.dynamic_x {
-                ctx.x_value.ok_or_else(|| CostPaymentError::Other("X value not set for cost".into()))? as usize
+                ctx.x_value
+                    .ok_or_else(|| CostPaymentError::Other("X value not set for cost".into()))?
+                    as usize
             } else {
                 choose.count.min
             };

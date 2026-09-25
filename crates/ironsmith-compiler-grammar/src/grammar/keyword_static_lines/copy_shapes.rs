@@ -5,8 +5,8 @@ use winnow::stream::Stream;
 use winnow::token::any;
 
 use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
-use super::super::primitives;
 use super::super::leaf;
+use super::super::primitives;
 use crate::object::CounterType;
 use crate::types::CardType;
 
@@ -534,16 +534,21 @@ fn parse_copy_characteristic_remainder<'a>(
             repeat_till::<_, _, (), _, _, _, _>(
                 1..,
                 any.void(),
-                peek(alt((loses_other_card_types_tail, primitives::sentence_end().void()))),
+                peek(alt((
+                    loses_other_card_types_tail,
+                    primitives::sentence_end().void(),
+                ))),
             )
             .take(),
             opt(loses_other_card_types_tail),
             opt(primitives::sentence_end()),
         )
-            .map(|(_, abilities, loses, _)| CopyCharacteristicRemainder::WithAbilities {
-                abilities: trim_lexed_commas(abilities),
-                loses_other_card_types: loses.is_some(),
-            }),
+            .map(
+                |(_, abilities, loses, _)| CopyCharacteristicRemainder::WithAbilities {
+                    abilities: trim_lexed_commas(abilities),
+                    loses_other_card_types: loses.is_some(),
+                },
+            ),
         loses_other_card_types_tail.value(CopyCharacteristicRemainder::LosesOtherCardTypes),
         (
             primitives::kw("and"),

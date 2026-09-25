@@ -269,12 +269,16 @@ fn parse_object_entry_this_turn(tokens: &[OwnedLexToken]) -> Option<EntryShape<'
     let object_tokens = crate::grammar::primitives::take_leaf(&mut input, take_until_entry_verb)?;
     crate::grammar::primitives::take_leaf(&mut input, parse_entry_verb)?;
     crate::grammar::primitives::take_leaf(&mut input, opt(primitives::kw("the")))?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("battlefield"))?;
+    let face_down = crate::grammar::primitives::take_leaf(
+        &mut input,
+        opt(primitives::phrase(&["face", "down"])),
+    )?
+    .is_some();
     crate::grammar::primitives::take_leaf(
         &mut input,
-        primitives::kw("battlefield"),
+        primitives::phrase(&["under", "your", "control", "this", "turn"]),
     )?;
-    let face_down = crate::grammar::primitives::take_leaf(&mut input, opt(primitives::phrase(&["face", "down"])))?.is_some();
-    crate::grammar::primitives::take_leaf(&mut input, primitives::phrase(&["under", "your", "control", "this", "turn"]))?;
     crate::grammar::primitives::take_leaf(&mut input, parse_end)?;
     Some(EntryShape::Object {
         object_tokens,

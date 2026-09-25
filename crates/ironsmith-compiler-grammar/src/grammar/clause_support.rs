@@ -17,11 +17,17 @@ pub use ability_shapes::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProtectionTargetKind {
-    EachManaValueAmong { filter_word_first: usize },
+    EachManaValueAmong {
+        filter_word_first: usize,
+    },
     Spell,
     PermanentCastThisTurn,
-    ManaValue { comparison_word_first: usize },
-    PermanentWithCounter { counter_word_first: usize },
+    ManaValue {
+        comparison_word_first: usize,
+    },
+    PermanentWithCounter {
+        counter_word_first: usize,
+    },
     ChosenPlayer,
     ChosenColor,
     /// "protection from the chosen card type" (Serra's Emissary).

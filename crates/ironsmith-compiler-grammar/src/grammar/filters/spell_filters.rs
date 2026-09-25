@@ -181,25 +181,37 @@ pub fn parse_object_filter_with_grammar_entrypoint(
     if let Some((index, introducer_len)) = tokens.iter().enumerate().find_map(|(index, token)| {
         if token.is_word("that's") || token.is_word("thats") {
             Some((index, 1))
-        } else if token.is_word("that") && tokens.get(index + 1).is_some_and(|next| next.is_word("is") || next.is_word("are")) {
+        } else if token.is_word("that")
+            && tokens
+                .get(index + 1)
+                .is_some_and(|next| next.is_word("is") || next.is_word("are"))
+        {
             Some((index, 2))
-        } else { None }
+        } else {
+            None
+        }
     }) {
         let tail = &tokens[index + introducer_len..];
         let mut colors = crate::ColorSet::new();
         let mut expect_color = true;
-        let complete_colors = !tail.is_empty() && tail.iter().all(|token| {
-            if expect_color {
-                if let Some(color) = crate::util::parse_color(token.parser_text()) {
-                    colors = colors.union(color);
-                    expect_color = false;
+        let complete_colors = !tail.is_empty()
+            && tail.iter().all(|token| {
+                if expect_color {
+                    if let Some(color) = crate::util::parse_color(token.parser_text()) {
+                        colors = colors.union(color);
+                        expect_color = false;
+                        true
+                    } else {
+                        false
+                    }
+                } else if token.is_word("or") {
+                    expect_color = true;
                     true
-                } else { false }
-            } else if token.is_word("or") {
-                expect_color = true;
-                true
-            } else { false }
-        }) && !expect_color;
+                } else {
+                    false
+                }
+            })
+            && !expect_color;
         if complete_colors {
             let mut filter = parse_object_filter_with_grammar_entrypoint(&tokens[..index], other)?;
             if filter.colors.is_none() {

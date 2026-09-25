@@ -731,7 +731,8 @@ mod tests {
             alice,
             crate::zone::Zone::Battlefield,
         );
-        let alices = game.create_object_from_card(&creature(21), alice, crate::zone::Zone::Battlefield);
+        let alices =
+            game.create_object_from_card(&creature(21), alice, crate::zone::Zone::Battlefield);
         let bobs = game.create_object_from_card(&creature(22), bob, crate::zone::Zone::Battlefield);
 
         let trigger = KeywordActionTrigger::matching_object(

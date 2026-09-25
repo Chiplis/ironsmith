@@ -34,9 +34,18 @@ pub(super) fn open_flashback_grant(
     let Some(next) = sentences.get(sentence_idx + 1) else {
         return Ok(None);
     };
-    if let Some(shape) = sequence_grammar::parse_flashback_grant_shape(sentence.lowered(), next.lowered()) {
-        let collective = shape.target_tokens.first().is_some_and(|t| t.is_word("each") || t.is_word("all"));
-        let target_tokens = if collective { &shape.target_tokens[1..] } else { shape.target_tokens };
+    if let Some(shape) =
+        sequence_grammar::parse_flashback_grant_shape(sentence.lowered(), next.lowered())
+    {
+        let collective = shape
+            .target_tokens
+            .first()
+            .is_some_and(|t| t.is_word("each") || t.is_word("all"));
+        let target_tokens = if collective {
+            &shape.target_tokens[1..]
+        } else {
+            shape.target_tokens
+        };
         let grantable = crate::model::CompilerGrantableCore::flashback_from_cards_mana_cost();
         let effect = if collective {
             let filter = crate::object_filters::parse_object_filter(target_tokens, false)?;
@@ -44,11 +53,16 @@ pub(super) fn open_flashback_grant(
                 filter,
                 effects: vec![EffectAst::subject_verb_grant_to_target(
                     TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
-                    grantable, crate::grant::GrantDuration::UntilEndOfTurn,
+                    grantable,
+                    crate::grant::GrantDuration::UntilEndOfTurn,
                 )],
             })
         } else {
-            EffectAst::subject_verb_grant_to_target(crate::effect_sentences::parse_target_phrase(target_tokens)?, grantable, crate::grant::GrantDuration::UntilEndOfTurn)
+            EffectAst::subject_verb_grant_to_target(
+                crate::effect_sentences::parse_target_phrase(target_tokens)?,
+                grantable,
+                crate::grant::GrantDuration::UntilEndOfTurn,
+            )
         };
         return Ok(Some(Pair::FlashbackGrant(effect)));
     }
@@ -443,10 +457,15 @@ mod catalog_grant_tests {
     #[test]
     fn collective_flashback_grant_is_a_snapshot_iteration() {
         let tokens = crate::lexer::lex_line("Each instant and sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost.", 0).unwrap();
-        let sentences = crate::lexer::split_lexed_sentences(&tokens).into_iter()
-            .map(SentenceInput::from_lexed).collect::<Vec<_>>();
+        let sentences = crate::lexer::split_lexed_sentences(&tokens)
+            .into_iter()
+            .map(SentenceInput::from_lexed)
+            .collect::<Vec<_>>();
         assert!(open_flashback_grant(&sentences, 0).unwrap().is_some());
         let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
-        assert!(format!("{effects:?}").contains("ForEachObject"), "{effects:#?}");
+        assert!(
+            format!("{effects:?}").contains("ForEachObject"),
+            "{effects:#?}"
+        );
     }
 }

@@ -134,7 +134,9 @@ fn similarity_score(stdout: &str) -> f32 {
         .lines()
         .find_map(|line| line.strip_prefix("Similarity: "))
         .and_then(|value| value.parse::<f32>().ok())
-        .unwrap_or_else(|| panic!("compile output should include a numeric similarity score: {stdout}"))
+        .unwrap_or_else(|| {
+            panic!("compile output should include a numeric similarity score: {stdout}")
+        })
 }
 
 fn query_count(db_path: &Path, sql: &str) -> i64 {

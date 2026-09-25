@@ -712,9 +712,7 @@ impl Effect {
 
     /// The endure keyword action's choose-one (CR 701.63a).
     pub fn choose_one_endure(modes: Vec<EffectMode>) -> Self {
-        Self::new(
-            ChooseModeEffect::new(modes, Value::Fixed(1), Value::Fixed(1), false).as_endure(),
-        )
+        Self::new(ChooseModeEffect::new(modes, Value::Fixed(1), Value::Fixed(1), false).as_endure())
     }
 
     pub fn villainous_choice(
@@ -2013,7 +2011,9 @@ impl Effect {
     }
 
     pub fn add_mana_of_noted_type(amount: Value, player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::AddManaOfNotedTypeEffect::new(amount, player))
+        Self::new(crate::effects::AddManaOfNotedTypeEffect::new(
+            amount, player,
+        ))
     }
 
     pub fn choose_number_at_random(choices: Vec<u32>) -> Self {

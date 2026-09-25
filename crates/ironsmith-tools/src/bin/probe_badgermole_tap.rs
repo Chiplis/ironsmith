@@ -126,7 +126,8 @@ fn main() {
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let alice = PlayerId::from_index(0);
 
-    let swamp = game.create_object_from_definition(&compile(&index, "Swamp"), alice, Zone::Battlefield);
+    let swamp =
+        game.create_object_from_definition(&compile(&index, "Swamp"), alice, Zone::Battlefield);
 
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);

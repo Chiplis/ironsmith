@@ -44,7 +44,12 @@ impl DecisionMaker for Pay {
     }
 
     fn decide_options(&mut self, _game: &GameState, ctx: &SelectOptionsContext) -> Vec<usize> {
-        ctx.options.iter().filter(|o| o.legal).take(ctx.min.max(1)).map(|o| o.index).collect()
+        ctx.options
+            .iter()
+            .filter(|o| o.legal)
+            .take(ctx.min.max(1))
+            .map(|o| o.index)
+            .collect()
     }
 }
 
@@ -67,8 +72,12 @@ fn enter(entering: Subtype, pay: bool) -> (u32, u32) {
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
     game.create_object_from_definition(&def, alice, Zone::Battlefield);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Green, 1);
-    let hand = game.create_object_from_definition(&creature("Newcomer", entering), alice, Zone::Hand);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Green, 1);
+    let hand =
+        game.create_object_from_definition(&creature("Newcomer", entering), alice, Zone::Hand);
     let mut dm = Pay(pay);
     let entered: ObjectId = game
         .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
@@ -116,10 +125,19 @@ fn three_mana_blinks_another_creature_you_control() {
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
     let emiel = game.create_object_from_definition(&def, alice, Zone::Battlefield);
-    let bear = game.create_object_from_definition(&creature("Bear", Subtype::Bear), alice, Zone::Battlefield);
-    game.object_mut(bear).unwrap().add_counters(CounterType::PlusOnePlusOne, 1);
+    let bear = game.create_object_from_definition(
+        &creature("Bear", Subtype::Bear),
+        alice,
+        Zone::Battlefield,
+    );
+    game.object_mut(bear)
+        .unwrap()
+        .add_counters(CounterType::PlusOnePlusOne, 1);
     let stable = game.object(bear).unwrap().stable_id;
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Colorless, 3);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Colorless, 3);
     let action = compute_legal_actions(&game, alice)
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == emiel))
@@ -141,12 +159,18 @@ fn three_mana_blinks_another_creature_you_control() {
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            &mut game, &mut queue, &mut state, &ctx, &mut dm,
+        );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
     let returned = game.find_object_by_stable_id(stable).expect("returned");
     assert_eq!(game.object(returned).unwrap().zone, Zone::Battlefield);
     assert_ne!(returned, bear, "a new object");
-    assert_eq!(game.counter_count(returned, CounterType::PlusOnePlusOne), 0, "counters are lost");
+    assert_eq!(
+        game.counter_count(returned, CounterType::PlusOnePlusOne),
+        0,
+        "counters are lost"
+    );
 }

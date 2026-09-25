@@ -766,7 +766,9 @@ pub fn strip_search_library_suffix_lexed(
 /// for up to three basic Forest cards instead of two." The trailing phrase
 /// names the count being replaced, not a characteristic of the cards being
 /// searched for, so the filter grammar must never see it.
-pub fn strip_search_library_instead_of_count_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub fn strip_search_library_instead_of_count_tokens(
+    tokens: &[OwnedLexToken],
+) -> Vec<OwnedLexToken> {
     let trimmed = trim_commas(tokens);
     let positions = parser_token_word_positions(&trimmed);
     let [.., (instead_index, "instead"), (_, "of"), (_, count)] = positions.as_slice() else {
@@ -1617,10 +1619,12 @@ pub fn parse_search_library_object_filter_lexed(
     {
         let mut filter =
             parse_search_library_object_filter_lexed(&filter_tokens[position..], clause_display)?;
-        filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.bind().into(),
-            relation: crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
-        });
+        filter
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: crate::tag::CompilerReferenceTag::It.bind().into(),
+                relation: crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
+            });
         return Ok(filter);
     }
     let filter_tokens = &strip_search_library_instead_of_count_tokens(filter_tokens);

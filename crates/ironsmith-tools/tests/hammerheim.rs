@@ -59,12 +59,16 @@ fn target_creature_loses_every_landwalk_ability_until_end_of_turn() {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
-    let hammerheim = game.create_object_from_definition(&load("Hammerheim"), alice, Zone::Battlefield);
+    let hammerheim =
+        game.create_object_from_definition(&load("Hammerheim"), alice, Zone::Battlefield);
     // Bog Wraith: swampwalk.
     let wraith = game.create_object_from_definition(&load("Bog Wraith"), bob, Zone::Battlefield);
     let angel = game.create_object_from_definition(&load("Serra Angel"), bob, Zone::Battlefield);
     game.refresh_continuous_state();
-    assert!(has(&game, wraith, StaticAbilityId::Landwalk), "Bog Wraith has swampwalk");
+    assert!(
+        has(&game, wraith, StaticAbilityId::Landwalk),
+        "Bog Wraith has swampwalk"
+    );
 
     let action = compute_legal_actions(&game, alice)
         .into_iter()
@@ -90,15 +94,26 @@ fn target_creature_loses_every_landwalk_ability_until_end_of_turn() {
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            &mut game, &mut queue, &mut state, &ctx, &mut dm,
+        );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
     game.refresh_continuous_state();
-    assert!(!has(&game, wraith, StaticAbilityId::Landwalk), "swampwalk is gone");
-    assert!(has(&game, angel, StaticAbilityId::Flying), "other creatures are untouched");
+    assert!(
+        !has(&game, wraith, StaticAbilityId::Landwalk),
+        "swampwalk is gone"
+    );
+    assert!(
+        has(&game, angel, StaticAbilityId::Flying),
+        "other creatures are untouched"
+    );
     // The effect ends at end of turn.
     ironsmith::turn::execute_cleanup_step(&mut game);
     game.refresh_continuous_state();
-    assert!(has(&game, wraith, StaticAbilityId::Landwalk), "swampwalk returns after the turn");
+    assert!(
+        has(&game, wraith, StaticAbilityId::Landwalk),
+        "swampwalk returns after the turn"
+    );
 }

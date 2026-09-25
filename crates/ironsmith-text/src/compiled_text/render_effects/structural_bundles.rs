@@ -3196,11 +3196,19 @@ pub(in crate::compiled_text) fn describe_single_hand_reveal_setup(
 
 /// A random hand selection followed by a private view is one look action.
 /// Keep owner, viewer, selection count, and reference identity in the model.
-pub(in crate::compiled_text) fn describe_random_hand_look_setup(effects: &[&Effect]) -> Option<String> {
+pub(in crate::compiled_text) fn describe_random_hand_look_setup(
+    effects: &[&Effect],
+) -> Option<String> {
     let (target, choose_effect, look_effect) = match effects {
         [choose, look] => (None, *choose, *look),
-        [target, choose, look] => (Some(structural_unwrap_render_wrappers(target)
-            .downcast_ref::<crate::effects::TargetOnlyEffect>()?), *choose, *look),
+        [target, choose, look] => (
+            Some(
+                structural_unwrap_render_wrappers(target)
+                    .downcast_ref::<crate::effects::TargetOnlyEffect>()?,
+            ),
+            *choose,
+            *look,
+        ),
         _ => return None,
     };
     let choose = structural_unwrap_render_wrappers(choose_effect)
@@ -3209,23 +3217,34 @@ pub(in crate::compiled_text) fn describe_random_hand_look_setup(effects: &[&Effe
         .downcast_ref::<crate::effects::LookAtObjectsEffect>()?;
     let owner = choose.filter.owner.as_ref()?;
     if let Some(target) = target {
-        if target.chooser.is_some() || choose_spec_player_filter(&target.target).as_ref() != Some(owner) {
+        if target.chooser.is_some()
+            || choose_spec_player_filter(&target.target).as_ref() != Some(owner)
+        {
             return None;
         }
     }
-    if choose.is_search || choose.reveal || choose.top_only
+    if choose.is_search
+        || choose.reveal
+        || choose.top_only
         || !choose.additional_zones.is_empty()
-        || !choose.count.is_random() || choose_exact_count(choose) != Some(1)
+        || !choose.count.is_random()
+        || choose_exact_count(choose) != Some(1)
         || choose.count_value.is_some()
         || choose_primary_zone(choose) != Some(Zone::Hand)
         || &choose.chooser != owner
-        || look.viewer != PlayerFilter::You || look.subject != PlayerFilter::You
+        || look.viewer != PlayerFilter::You
+        || look.subject != PlayerFilter::You
         || look.filter != ObjectFilter::tagged(choose.tag.clone())
-    { return None; }
+    {
+        return None;
+    }
     let selection = describe_choose_selection(choose);
-    selection.contains("card").then(|| format!(
-        "Look at {selection} in {} hand", describe_possessive_player_filter(owner)
-    ))
+    selection.contains("card").then(|| {
+        format!(
+            "Look at {selection} in {} hand",
+            describe_possessive_player_filter(owner)
+        )
+    })
 }
 
 fn describe_search_exile_shuffle_tail_view<'a>(
@@ -3755,10 +3774,15 @@ pub(in crate::compiled_text) fn describe_reveal_hand_choose_graveyard_exile_bund
         graveyard_choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let exiles_chosen = if let Some(exile) = downcast_search_split_move_to_zone(exile_effect) {
         search_split_move_to_zone_uses_tag(exile, hand_choose.tag.as_str(), Zone::Exile)
-    } else if let Some(exile) = unwrap_basic_tag_wrappers(exile_effect).downcast_ref::<crate::effects::ExileEffect>() {
-        !exile.face_down && !exile.turn_face_up
+    } else if let Some(exile) =
+        unwrap_basic_tag_wrappers(exile_effect).downcast_ref::<crate::effects::ExileEffect>()
+    {
+        !exile.face_down
+            && !exile.turn_face_up
             && exile_uses_chosen_tag(&exile.spec, hand_choose.tag.as_str())
-    } else { false };
+    } else {
+        false
+    };
 
     if !look.reveal
         || !matches!(
@@ -13863,35 +13887,75 @@ pub(in crate::compiled_text) fn describe_surviving_chosen_count_search(
     ))
 }
 
-pub(super) fn describe_target_combat_and_activation_restrictions(effects: &[Effect]) -> Option<String> {
-    let [declaration, combat, activation] = effects else { return None; };
+pub(super) fn describe_target_combat_and_activation_restrictions(
+    effects: &[Effect],
+) -> Option<String> {
+    let [declaration, combat, activation] = effects else {
+        return None;
+    };
     let tagged = declaration.downcast_ref::<crate::effects::TaggedEffect>()?;
-    let target = tagged.effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
-    let ChooseSpec::Object(selected) = target.target.base() else { return None; };
-    if !target.target.is_target() || target.target.count() != ChoiceCount::exactly(1) || target.chooser.is_some() { return None; }
+    let target = tagged
+        .effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    let ChooseSpec::Object(selected) = target.target.base() else {
+        return None;
+    };
+    if !target.target.is_target()
+        || target.target.count() != ChoiceCount::exactly(1)
+        || target.chooser.is_some()
+    {
+        return None;
+    }
     let combat = combat.downcast_ref::<crate::effects::CantEffect>()?;
     let activation = activation.downcast_ref::<crate::effects::CantEffect>()?;
-    let crate::effect::Restriction::AttackOrBlock(combat_filter) = &combat.restriction else { return None; };
-    let crate::effect::Restriction::ActivateAbilitiesOf(activation_filter) = &activation.restriction else { return None; };
-    if combat.duration != Until::YourNextTurn || activation.duration != combat.duration || activation.start != combat.start || combat.start != crate::effect::RestrictionStart::Immediate { return None; }
+    let crate::effect::Restriction::AttackOrBlock(combat_filter) = &combat.restriction else {
+        return None;
+    };
+    let crate::effect::Restriction::ActivateAbilitiesOf(activation_filter) =
+        &activation.restriction
+    else {
+        return None;
+    };
+    if combat.duration != Until::YourNextTurn
+        || activation.duration != combat.duration
+        || activation.start != combat.start
+        || combat.start != crate::effect::RestrictionStart::Immediate
+    {
+        return None;
+    }
     for filter in [combat_filter, activation_filter] {
-        let [constraint] = filter.tagged_constraints.as_slice() else { return None; };
-        if constraint.tag != tagged.tag || constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject { return None; }
+        let [constraint] = filter.tagged_constraints.as_slice() else {
+            return None;
+        };
+        if constraint.tag != tagged.tag
+            || constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        {
+            return None;
+        }
         let mut plain = filter.clone();
         plain.tagged_constraints.clear();
         plain.union_surface = Default::default();
         let mut expected = selected.clone();
         expected.union_surface = Default::default();
-        if plain != expected { return None; }
+        if plain != expected {
+            return None;
+        }
     }
-    Some(format!("Until your next turn, {} can't attack or block and its activated abilities can't be activated", describe_choose_spec(&target.target)))
+    Some(format!(
+        "Until your next turn, {} can't attack or block and its activated abilities can't be activated",
+        describe_choose_spec(&target.target)
+    ))
 }
 
 /// Two restrictions sharing one duration read as one coordinated sentence:
 /// "You can't lose the game this turn and your opponents can't win the game
 /// this turn."
-pub(super) fn describe_coordinated_same_duration_restrictions(effects: &[Effect]) -> Option<String> {
-    let [first, second] = effects else { return None; };
+pub(super) fn describe_coordinated_same_duration_restrictions(
+    effects: &[Effect],
+) -> Option<String> {
+    let [first, second] = effects else {
+        return None;
+    };
     let left = first.downcast_ref::<crate::effects::CantEffect>()?;
     let right = second.downcast_ref::<crate::effects::CantEffect>()?;
     if left.duration != right.duration
@@ -13905,21 +13969,45 @@ pub(super) fn describe_coordinated_same_duration_restrictions(effects: &[Effect]
     let right_text = describe_effect(second);
     let left_text = left_text.trim().trim_end_matches('.');
     let right_text = right_text.trim().trim_end_matches('.');
-    if left_text.is_empty() || right_text.is_empty() || left_text.contains(". ") || right_text.contains(". ") {
+    if left_text.is_empty()
+        || right_text.is_empty()
+        || left_text.contains(". ")
+        || right_text.contains(". ")
+    {
         return None;
     }
-    Some(format!("{} and {}", capitalize_first(left_text), lowercase_first(right_text)))
+    Some(format!(
+        "{} and {}",
+        capitalize_first(left_text),
+        lowercase_first(right_text)
+    ))
 }
 
 pub(super) fn describe_restricted_player_target_life_loss(effects: &[Effect]) -> Option<String> {
-    let [target_effect, life_effect] = effects else { return None; };
+    let [target_effect, life_effect] = effects else {
+        return None;
+    };
     let target = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
     let loss = life_effect.downcast_ref::<crate::effects::LoseLifeEffect>()?;
-    let ChooseSpec::Player(filter) = target.target.base() else { return None; };
-    if !target.target.is_target() || target.target.count() != ChoiceCount::exactly(1) || target.explicit_declaration || target.chooser.is_some() || loss.player != ChooseSpec::Player(PlayerFilter::AliasedTarget(Box::new(filter.clone()))) { return None; }
+    let ChooseSpec::Player(filter) = target.target.base() else {
+        return None;
+    };
+    if !target.target.is_target()
+        || target.target.count() != ChoiceCount::exactly(1)
+        || target.explicit_declaration
+        || target.chooser.is_some()
+        || loss.player != ChooseSpec::Player(PlayerFilter::AliasedTarget(Box::new(filter.clone())))
+    {
+        return None;
+    }
     let rendered = describe_effect(life_effect);
-    let consequence = rendered.strip_prefix("That player ").or_else(|| rendered.strip_prefix("that player "))?;
-    Some(format!("{} {consequence}", capitalize_first(&describe_choose_spec(&target.target))))
+    let consequence = rendered
+        .strip_prefix("That player ")
+        .or_else(|| rendered.strip_prefix("that player "))?;
+    Some(format!(
+        "{} {consequence}",
+        capitalize_first(&describe_choose_spec(&target.target))
+    ))
 }
 
 #[cfg(test)]
@@ -13929,15 +14017,38 @@ mod nested_hand_reveal_tests {
     fn nested_hand_reveal_preserves_randomness_and_tag_identity() {
         for random in [false, true] {
             let tag = TagKey::from("hand_reveal_probe");
-            let count = if random { crate::ChoiceCount::exactly(1).at_random() } else { crate::ChoiceCount::exactly(1) };
-            let choose = Effect::new(crate::effects::ChooseObjectsEffect::new(
-                ObjectFilter::default().in_zone(Zone::Hand).owned_by(PlayerFilter::You),
-                count, PlayerFilter::You, tag.clone(),
-            ).in_zone(Zone::Hand));
+            let count = if random {
+                crate::ChoiceCount::exactly(1).at_random()
+            } else {
+                crate::ChoiceCount::exactly(1)
+            };
+            let choose = Effect::new(
+                crate::effects::ChooseObjectsEffect::new(
+                    ObjectFilter::default()
+                        .in_zone(Zone::Hand)
+                        .owned_by(PlayerFilter::You),
+                    count,
+                    PlayerFilter::You,
+                    tag.clone(),
+                )
+                .in_zone(Zone::Hand),
+            );
             let reveal = Effect::new(crate::effects::RevealTaggedEffect::new(tag));
-            let sequence = Effect::new(crate::effects::SequenceEffect::new(vec![choose.clone(), reveal]));
-            assert_eq!(describe_effect(&sequence), if random { "Reveal a card at random from your hand" } else { "Reveal a card from your hand" });
-            let unrelated = Effect::new(crate::effects::RevealTaggedEffect::new(TagKey::from("other")));
+            let sequence = Effect::new(crate::effects::SequenceEffect::new(vec![
+                choose.clone(),
+                reveal,
+            ]));
+            assert_eq!(
+                describe_effect(&sequence),
+                if random {
+                    "Reveal a card at random from your hand"
+                } else {
+                    "Reveal a card from your hand"
+                }
+            );
+            let unrelated = Effect::new(crate::effects::RevealTaggedEffect::new(TagKey::from(
+                "other",
+            )));
             assert!(describe_single_hand_reveal_setup(&[&choose, &unrelated]).is_none());
         }
     }
@@ -13948,23 +14059,58 @@ mod random_hand_look_tests {
     use super::*;
     #[test]
     fn private_random_hand_look_preserves_owner_viewer_and_tag() {
-        for (owner, expected) in [(PlayerFilter::You, "your"), (PlayerFilter::target_player(), "target player's"), (PlayerFilter::target_opponent(), "target opponent's")] {
+        for (owner, expected) in [
+            (PlayerFilter::You, "your"),
+            (PlayerFilter::target_player(), "target player's"),
+            (PlayerFilter::target_opponent(), "target opponent's"),
+        ] {
             let tag = TagKey::from("random_look_probe");
-            let choose = Effect::new(crate::effects::ChooseObjectsEffect::new(
-                ObjectFilter::default().in_zone(Zone::Hand).owned_by(owner.clone()),
-                crate::ChoiceCount::exactly(1).at_random(), owner.clone(), tag.clone(),
-            ).in_zone(Zone::Hand));
-            let look = Effect::new(crate::effects::LookAtObjectsEffect::new(ObjectFilter::tagged(tag.clone()), PlayerFilter::You, PlayerFilter::You));
-            assert_eq!(describe_random_hand_look_setup(&[&choose, &look]), Some(format!("Look at a card at random in {expected} hand")));
+            let choose = Effect::new(
+                crate::effects::ChooseObjectsEffect::new(
+                    ObjectFilter::default()
+                        .in_zone(Zone::Hand)
+                        .owned_by(owner.clone()),
+                    crate::ChoiceCount::exactly(1).at_random(),
+                    owner.clone(),
+                    tag.clone(),
+                )
+                .in_zone(Zone::Hand),
+            );
+            let look = Effect::new(crate::effects::LookAtObjectsEffect::new(
+                ObjectFilter::tagged(tag.clone()),
+                PlayerFilter::You,
+                PlayerFilter::You,
+            ));
+            assert_eq!(
+                describe_random_hand_look_setup(&[&choose, &look]),
+                Some(format!("Look at a card at random in {expected} hand"))
+            );
             if let PlayerFilter::Target(inner) = &owner {
-                let target = Effect::new(crate::effects::TargetOnlyEffect::new(ChooseSpec::target(ChooseSpec::Player(inner.as_ref().clone()))));
-                assert_eq!(describe_random_hand_look_setup(&[&target, &choose, &look]), Some(format!("Look at a card at random in {expected} hand")));
-                let other_target = Effect::new(crate::effects::TargetOnlyEffect::new(ChooseSpec::Player(PlayerFilter::You)));
-                assert!(describe_random_hand_look_setup(&[&other_target, &choose, &look]).is_none());
+                let target = Effect::new(crate::effects::TargetOnlyEffect::new(
+                    ChooseSpec::target(ChooseSpec::Player(inner.as_ref().clone())),
+                ));
+                assert_eq!(
+                    describe_random_hand_look_setup(&[&target, &choose, &look]),
+                    Some(format!("Look at a card at random in {expected} hand"))
+                );
+                let other_target = Effect::new(crate::effects::TargetOnlyEffect::new(
+                    ChooseSpec::Player(PlayerFilter::You),
+                ));
+                assert!(
+                    describe_random_hand_look_setup(&[&other_target, &choose, &look]).is_none()
+                );
             }
-            let other_viewer = Effect::new(crate::effects::LookAtObjectsEffect::new(ObjectFilter::tagged(tag), PlayerFilter::Opponent, PlayerFilter::You));
+            let other_viewer = Effect::new(crate::effects::LookAtObjectsEffect::new(
+                ObjectFilter::tagged(tag),
+                PlayerFilter::Opponent,
+                PlayerFilter::You,
+            ));
             assert!(describe_random_hand_look_setup(&[&choose, &other_viewer]).is_none());
-            let other_tag = Effect::new(crate::effects::LookAtObjectsEffect::new(ObjectFilter::tagged(TagKey::from("other")), PlayerFilter::You, PlayerFilter::You));
+            let other_tag = Effect::new(crate::effects::LookAtObjectsEffect::new(
+                ObjectFilter::tagged(TagKey::from("other")),
+                PlayerFilter::You,
+                PlayerFilter::You,
+            ));
             assert!(describe_random_hand_look_setup(&[&choose, &other_tag]).is_none());
         }
     }

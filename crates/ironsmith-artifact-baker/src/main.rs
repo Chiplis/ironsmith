@@ -43,10 +43,7 @@ enum CardSourceGroup {
     /// A dungeon card (CR 309). It compiles exactly like a single card; its
     /// room abilities come from the printed "Room — effect. (Leads to: ...)"
     /// lines. Dungeons are not playable cards, so there is no semantic score.
-    Dungeon {
-        name: String,
-        block: String,
-    },
+    Dungeon { name: String, block: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -233,7 +233,9 @@ impl EffectExecutor for ConniveEffect {
                     &applied_effect_keys,
                 ) {
                     crate::events::processing::TraitEventResult::Replaced {
-                        effects, effect_id, ..
+                        effects,
+                        effect_id,
+                        ..
                     } => {
                         let replacement_outcome = crate::effects::composition::mechanic_actions::execute_keyword_action_replacement_effects(
                             game,
@@ -576,7 +578,11 @@ mod tests {
             .filter(|event| event.action == KeywordActionKind::Connive)
             .map(|event| event.source)
             .collect::<Vec<_>>();
-        assert_eq!(connives, vec![creature], "the creature connives exactly once");
+        assert_eq!(
+            connives,
+            vec![creature],
+            "the creature connives exactly once"
+        );
         assert_eq!(
             game.object(creature)
                 .and_then(|obj| obj

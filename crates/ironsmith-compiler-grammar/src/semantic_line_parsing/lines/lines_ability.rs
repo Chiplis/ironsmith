@@ -38,15 +38,34 @@ pub(super) fn parse_static_line_impl(
     let chosen_option = line.chosen_option.as_ref();
     if parse_tokens.first().is_some_and(|token| token.is_word("∞")) {
         let mut body = &parse_tokens[1..];
-        if body.first().is_some_and(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash)) { body = &body[1..]; }
-        let granted = crate::keyword_static_helpers::parse_granted_activated_or_triggered_ability_for_gain(body, &crate::lexer::token_word_refs(body))?;
-        let Some(crate::cards::builders::GrantedAbilityAst::ParsedObjectAbility { ability, display }) = granted else {
-            return Err(CardTextError::ParseError("unsupported infinity ability".into()));
+        if body
+            .first()
+            .is_some_and(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
+        {
+            body = &body[1..];
+        }
+        let granted =
+            crate::keyword_static_helpers::parse_granted_activated_or_triggered_ability_for_gain(
+                body,
+                &crate::lexer::token_word_refs(body),
+            )?;
+        let Some(crate::cards::builders::GrantedAbilityAst::ParsedObjectAbility {
+            ability,
+            display,
+        }) = granted
+        else {
+            return Err(CardTextError::ParseError(
+                "unsupported infinity ability".into(),
+            ));
         };
-        return Ok(LineAst::StaticAbility(crate::cards::builders::StaticAbilityAst::GrantObjectAbility {
-            filter: ObjectFilter::source(), ability: *ability, display: format!("∞ — {display}"),
-            condition: Some(PredicateAst::Source(SourcePredicateAst::SourceIsHarnessed)),
-        }));
+        return Ok(LineAst::StaticAbility(
+            crate::cards::builders::StaticAbilityAst::GrantObjectAbility {
+                filter: ObjectFilter::source(),
+                ability: *ability,
+                display: format!("∞ — {display}"),
+                condition: Some(PredicateAst::Source(SourcePredicateAst::SourceIsHarnessed)),
+            },
+        ));
     }
 
     if crate::grammar::abilities::is_cast_as_though_flash_with_next_cleanup_sacrifice_line_lexed(

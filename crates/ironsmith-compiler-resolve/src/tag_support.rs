@@ -361,7 +361,9 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target })
-            | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { target })
+            | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
+                target,
+            })
             | SubjectVerbActionAst::PutSticker { target, .. }
             | SubjectVerbActionAst::PermanentState(
                 PermanentStateActionAst::SwitchPowerToughness { target, .. },
@@ -1024,9 +1026,7 @@ pub fn value_references_tag(value: &Value, tag: &str) -> bool {
         Value::ManaSpentToCast(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
-        | Value::ManaSymbolsInManaCostOf { spec, .. } => {
-            choose_spec_references_tag(spec, tag)
-        }
+        | Value::ManaSymbolsInManaCostOf { spec, .. } => choose_spec_references_tag(spec, tag),
         Value::CountersOn(spec, _) => choose_spec_references_tag(spec, tag),
         Value::DamageDealtThisTurnByTaggedSpellCast(t) => t.as_str() == tag,
         Value::PriorEffectMetric { query, .. } | Value::PendingPriorEffectMetric(query) => {
@@ -1401,7 +1401,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Exploit)
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ConniveIterated)
@@ -1417,7 +1417,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
         | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
-            | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
+        | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
@@ -1473,7 +1473,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot)
         | SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer { .. })
         | SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { .. })
-            | SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn { .. })
+        | SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn { .. })
         | SubjectVerbActionAst::Stack(StackActionAst::ReduceMatchingSpellCostThisTurn { .. })
         | SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RingTemptsYou)

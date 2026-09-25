@@ -1383,7 +1383,10 @@ impl Trigger {
         )
     }
     pub fn player_rolls_to_visit_attractions(player: PlayerFilter) -> Self {
-        Self::typed("player_rolls_to_visit_attractions", TriggerKind::PlayerRollsToVisitAttractions { player })
+        Self::typed(
+            "player_rolls_to_visit_attractions",
+            TriggerKind::PlayerRollsToVisitAttractions { player },
+        )
     }
     pub fn player_rolls_result(player: PlayerFilter, result: u32) -> Self {
         Self::typed(

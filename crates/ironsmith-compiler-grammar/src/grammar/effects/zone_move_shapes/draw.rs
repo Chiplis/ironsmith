@@ -573,7 +573,15 @@ pub fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Option<Valu
         counter_words,
         &[
             &["card", "type", "among", "cards", "discarded", "this", "way"],
-            &["card", "types", "among", "cards", "discarded", "this", "way"],
+            &[
+                "card",
+                "types",
+                "among",
+                "cards",
+                "discarded",
+                "this",
+                "way",
+            ],
         ],
     ) && counter_words.len() == 7
     {

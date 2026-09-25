@@ -62,11 +62,13 @@ fn functional_zones_survive_all_conversion_paths_and_explicit_overrides() {
                 "nested ability: {:?}",
                 model.id
             );
-            let built =
-                ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Native fixture")
-                    .with_ability(runtime.clone())
-                    .with_abilities(vec![runtime])
-                    .build();
+            let built = ironsmith::cards::builders::CardDefinitionBuilder::new(
+                CardId::new(),
+                "Native fixture",
+            )
+            .with_ability(runtime.clone())
+            .with_abilities(vec![runtime])
+            .build();
             assert!(built.abilities.iter().all(|a| a.functional_zones == zones));
         }
     }
@@ -177,9 +179,10 @@ fn functional_zones_voidwalker_library_and_departure_do_not_replace_sacrifices()
         "Dauthi Voidwalker",
         "Type: Creature — Dauthi Rogue\nPower/Toughness: 3/2\nShadow\nIf a card would be put into an opponent's graveyard from anywhere, instead exile it with a void counter on it.",
     );
-    let land = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Fetchland fixture")
-        .card_types(vec![CardType::Land])
-        .build();
+    let land =
+        ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Fetchland fixture")
+            .card_types(vec![CardType::Land])
+            .build();
     let alice = PlayerId::from_index(0);
     for battlefield_count in 0..=2 {
         let mut game = GameState::new(

@@ -406,7 +406,9 @@ fn parse_exile_top_library_then_play_bundle(
 
     let mut look_at_collection = face_down
         && !matches!(exile_effect, EffectAst::ForEach(_))
-        && words(permission_sentence).windows(3).any(|words| words == ["look", "at", "and"]);
+        && words(permission_sentence)
+            .windows(3)
+            .any(|words| words == ["look", "at", "and"]);
     // Face-down collection permissions can spell out that the controller may
     // "look at and play" the cards. Some generic surfaces preserve the look as
     // an explicit action before the persistent grant. Here the top-library
@@ -481,9 +483,12 @@ fn parse_exile_top_library_then_play_bundle(
         return Ok(None);
     };
 
-    let look_effect = look_at_collection.then(|| EffectAst::subject_verb_look_at_objects(
-        PlayerAst::You, ObjectFilter::tagged(tag.key.clone()).in_zone(Zone::Exile),
-    ));
+    let look_effect = look_at_collection.then(|| {
+        EffectAst::subject_verb_look_at_objects(
+            PlayerAst::You,
+            ObjectFilter::tagged(tag.key.clone()).in_zone(Zone::Exile),
+        )
+    });
     let (permission_tag, inline_choice_effect) = if let Some(choice_tokens) = inline_choice_tokens {
         let chosen_tag = helper_tag_for_tokens(&choice_tokens, "chosen_exiled");
         let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
@@ -543,9 +548,17 @@ fn parse_exile_top_library_then_play_bundle(
             }),
         ),
         EffectAst::SubjectVerb(mut subject)
-            if matches!(subject.action, SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn { .. })) =>
+            if matches!(
+                subject.action,
+                SubjectVerbActionAst::Grants(
+                    GrantActionAst::GrantPlayTaggedUntilYourNextTurn { .. }
+                )
+            ) =>
         {
-            if let SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. }) = &mut subject.action {
+            if let SubjectVerbActionAst::Grants(
+                GrantActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. },
+            ) = &mut subject.action
+            {
                 *tag = permission_tag;
             }
             EffectAst::SubjectVerb(subject)
@@ -594,7 +607,9 @@ fn parse_exile_top_library_then_play_bundle(
     };
 
     leading_effects.push(exile_effect);
-    if let Some(look_effect) = look_effect { leading_effects.push(look_effect); }
+    if let Some(look_effect) = look_effect {
+        leading_effects.push(look_effect);
+    }
     if let Some(choice_effect) = inline_choice_effect {
         leading_effects.push(choice_effect);
     }
@@ -1075,18 +1090,37 @@ enum MixedTargetIteration {
     Object,
 }
 
-fn bind_prior_mixed_target_reference(target: &mut TargetAst, iteration: MixedTargetIteration, tokens: &[OwnedLexToken]) {
+fn bind_prior_mixed_target_reference(
+    target: &mut TargetAst,
+    iteration: MixedTargetIteration,
+    tokens: &[OwnedLexToken],
+) {
     // A demonstrative union has the same ordinary anaphoric tag as "that
     // card". Within this grammar production, its source span distinguishes
     // the loop recipient from an object produced inside the loop.
     if let TargetAst::Tagged(tag, Some(span)) = target
         && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     {
-        let words: Vec<_> = tokens.iter().filter(|token| token.span.line == span.line && token.span.start >= span.start && token.span.end <= span.end).flat_map(|token| crate::lexer::parser_token_word_refs(std::slice::from_ref(token))).collect();
-        if matches!(words.as_slice(), ["that", "permanent" | "creature", "or", "player"]) {
+        let words: Vec<_> = tokens
+            .iter()
+            .filter(|token| {
+                token.span.line == span.line
+                    && token.span.start >= span.start
+                    && token.span.end <= span.end
+            })
+            .flat_map(|token| crate::lexer::parser_token_word_refs(std::slice::from_ref(token)))
+            .collect();
+        if matches!(
+            words.as_slice(),
+            ["that", "permanent" | "creature", "or", "player"]
+        ) {
             *target = match iteration {
-                MixedTargetIteration::Player => TargetAst::Player(PlayerFilter::IteratedPlayer, None),
-                MixedTargetIteration::Object => TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), Some(*span)),
+                MixedTargetIteration::Player => {
+                    TargetAst::Player(PlayerFilter::IteratedPlayer, None)
+                }
+                MixedTargetIteration::Object => {
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), Some(*span))
+                }
             };
             return;
         }
@@ -1114,7 +1148,11 @@ fn bind_prior_mixed_target_reference(target: &mut TargetAst, iteration: MixedTar
 /// to the current member of the corresponding loop so every chosen target,
 /// rather than the first target in the shared resolution context, receives
 /// its own result.
-fn bind_mixed_target_iteration_damage(effects: &mut [EffectAst], iteration: MixedTargetIteration, tokens: &[OwnedLexToken]) {
+fn bind_mixed_target_iteration_damage(
+    effects: &mut [EffectAst],
+    iteration: MixedTargetIteration,
+    tokens: &[OwnedLexToken],
+) {
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. }),
@@ -1184,36 +1222,74 @@ fn parse_choose_mixed_targets_then_for_each_bundle(
     if loop_body.is_empty() {
         return Ok(None);
     }
-    let mut trailing = third.map(effect_sentences::parse_effect_sentence_lexed).transpose()?.unwrap_or_default();
+    let mut trailing = third
+        .map(effect_sentences::parse_effect_sentence_lexed)
+        .transpose()?
+        .unwrap_or_default();
     if let [EffectAst::SubjectVerb(grant)] = trailing.as_mut_slice()
-        && let SubjectVerbActionAst::Grants(crate::cards::builders::GrantActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. }) = &mut grant.action
+        && let SubjectVerbActionAst::Grants(
+            crate::cards::builders::GrantActionAst::GrantPlayTaggedUntilYourNextTurn {
+                tag, ..
+            },
+        ) = &mut grant.action
         && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     {
         fn exile_count(effects: &mut [EffectAst]) -> usize {
             let mut count = 0;
             for effect in effects {
-                if matches!(effect, EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::ExileTopOfLibrary { .. }), .. })) { count += 1; }
+                if matches!(
+                    effect,
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::Library(
+                            crate::cards::builders::LibraryActionAst::ExileTopOfLibrary { .. }
+                        ),
+                        ..
+                    })
+                ) {
+                    count += 1;
+                }
                 for_each_nested_effects_mut(effect, true, |nested| count += exile_count(nested));
             }
             count
         }
         fn accumulate_exile(effects: &mut [EffectAst], tag: &crate::tag::TagRef) {
             for effect in effects {
-                if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::ExileTopOfLibrary { accumulated_tags, .. }), .. }) = effect {
+                if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::Library(
+                            crate::cards::builders::LibraryActionAst::ExileTopOfLibrary {
+                                accumulated_tags,
+                                ..
+                            },
+                        ),
+                    ..
+                }) = effect
+                {
                     accumulated_tags.push(tag.clone());
                 }
                 for_each_nested_effects_mut(effect, true, |nested| accumulate_exile(nested, tag));
             }
         }
         if exile_count(&mut loop_body) == 1 {
-            *tag = crate::tag::TagRef::of(helper_tag_for_tokens(second, "exiled_across_target_iterations"));
+            *tag = crate::tag::TagRef::of(helper_tag_for_tokens(
+                second,
+                "exiled_across_target_iterations",
+            ));
             accumulate_exile(&mut loop_body, tag);
         }
     }
     let mut player_body = loop_body.clone();
-    bind_mixed_target_iteration_damage(&mut player_body, MixedTargetIteration::Player, loop_shape.body);
+    bind_mixed_target_iteration_damage(
+        &mut player_body,
+        MixedTargetIteration::Player,
+        loop_shape.body,
+    );
     let mut object_body = loop_body;
-    bind_mixed_target_iteration_damage(&mut object_body, MixedTargetIteration::Object, loop_shape.body);
+    bind_mixed_target_iteration_damage(
+        &mut object_body,
+        MixedTargetIteration::Object,
+        loop_shape.body,
+    );
 
     let object_targets_tag = helper_tag_for_tokens(first, "chosen_target_objects");
     let declaration = EffectAst::subject_verb_explicit_target_only(target);

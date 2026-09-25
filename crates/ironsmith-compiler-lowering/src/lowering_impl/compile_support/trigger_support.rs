@@ -995,9 +995,12 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             exact_spells_this_turn,
             from_not_hand,
         ),
-        TriggerSpec::SpellCastSameNameCardInZone { filter, caster, zone, owner } => {
-            Trigger::spell_cast_same_name_card_in_zone(filter, caster, zone, owner)
-        }
+        TriggerSpec::SpellCastSameNameCardInZone {
+            filter,
+            caster,
+            zone,
+            owner,
+        } => Trigger::spell_cast_same_name_card_in_zone(filter, caster, zone, owner),
         TriggerSpec::NthSpellOfTurnCast { spell_number } => {
             Trigger::nth_spell_of_turn_cast(spell_number)
         }
@@ -1417,7 +1420,11 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
             TriggerSpec::SpellCast {
                 filter: Some(filter),
                 ..
-            } | TriggerSpec::SpellCastSameNameCardInZone { filter: Some(filter), .. } if spell_cast_filter_binds_target_count(filter) => true,
+            }
+            | TriggerSpec::SpellCastSameNameCardInZone {
+                filter: Some(filter),
+                ..
+            } if spell_cast_filter_binds_target_count(filter) => true,
             TriggerSpec::YouGainLife
             | TriggerSpec::YouGainLifeCausedBy(_)
             | TriggerSpec::YouGainLifeDuringTurn(_)

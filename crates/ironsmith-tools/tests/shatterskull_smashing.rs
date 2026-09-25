@@ -52,12 +52,20 @@ impl DecisionMaker for Caster {
 
     fn decide_targets(&mut self, _game: &GameState, ctx: &TargetsContext) -> Vec<Target> {
         for id in &self.targets {
-            assert!(ctx.requirements[0].legal_targets.contains(&Target::Object(*id)));
+            assert!(
+                ctx.requirements[0]
+                    .legal_targets
+                    .contains(&Target::Object(*id))
+            );
         }
         self.targets.iter().map(|id| Target::Object(*id)).collect()
     }
 
-    fn decide_distribute(&mut self, game: &GameState, ctx: &DistributeContext) -> Vec<(Target, u32)> {
+    fn decide_distribute(
+        &mut self,
+        game: &GameState,
+        ctx: &DistributeContext,
+    ) -> Vec<(Target, u32)> {
         self.prompts.push((ctx.total, game.stack.len()));
         let first = self.first_share.min(ctx.total);
         let mut shares = vec![(Target::Object(self.targets[0]), first)];
@@ -88,7 +96,10 @@ fn cast(x: u32, both: bool, first_share: u32) -> (u32, u32, Vec<(u32, usize)>) {
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
     let a = game.create_object_from_definition(&creature("Wall A", 30), bob, Zone::Battlefield);
     let b = game.create_object_from_definition(&creature("Wall B", 30), bob, Zone::Battlefield);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Red, x + 2);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Red, x + 2);
     let hand = game.create_object_from_definition(&def, alice, Zone::Hand);
     let action = compute_legal_actions(&game, alice)
         .into_iter()
@@ -121,7 +132,11 @@ fn cast(x: u32, both: bool, first_share: u32) -> (u32, u32, Vec<(u32, usize)>) {
         );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
-    assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0, "paid X + {{R}}{{R}}");
+    assert_eq!(
+        game.player(alice).unwrap().mana_pool.total(),
+        0,
+        "paid X + {{R}}{{R}}"
+    );
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
     (game.damage_on(a), game.damage_on(b), dm.prompts)
 }
@@ -130,14 +145,26 @@ fn cast(x: u32, both: bool, first_share: u32) -> (u32, u32, Vec<(u32, usize)>) {
 fn x_below_six_divides_x_as_announced_while_casting() {
     let (a, b, prompts) = cast(5, true, 2);
     assert_eq!((a, b), (2, 3));
-    assert_eq!(prompts, vec![(5, 0)], "divided once, during casting (CR 601.2d)");
+    assert_eq!(
+        prompts,
+        vec![(5, 0)],
+        "divided once, during casting (CR 601.2d)"
+    );
 }
 
 #[test]
 fn x_six_or_more_divides_twice_x_among_the_same_targets() {
     let (a, b, prompts) = cast(6, true, 1);
-    assert_eq!((a, b), (1, 11), "twice X = 12 split as announced; prompts {prompts:?}");
-    assert_eq!(prompts, vec![(12, 0)], "the doubled total is announced while casting");
+    assert_eq!(
+        (a, b),
+        (1, 11),
+        "twice X = 12 split as announced; prompts {prompts:?}"
+    );
+    assert_eq!(
+        prompts,
+        vec![(12, 0)],
+        "the doubled total is announced while casting"
+    );
 }
 
 #[test]

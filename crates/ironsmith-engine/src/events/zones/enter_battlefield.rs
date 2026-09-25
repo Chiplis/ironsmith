@@ -223,7 +223,10 @@ impl EnterBattlefieldEvent {
                 added_supertypes.push(*supertype);
             }
         }
-        Self { added_supertypes, ..self.clone() }
+        Self {
+            added_supertypes,
+            ..self.clone()
+        }
     }
 
     /// Return a new event with supertypes removed as it enters.

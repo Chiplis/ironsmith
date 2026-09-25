@@ -325,7 +325,10 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         ));
     }
     if let Some(enchanted) = parse_enchanted_object_target_kind(&remaining_words) {
-        if matches!(enchanted, EnchantedObjectTargetKind::Creature | EnchantedObjectTargetKind::CreatureCard) {
+        if matches!(
+            enchanted,
+            EnchantedObjectTargetKind::Creature | EnchantedObjectTargetKind::CreatureCard
+        ) {
             let mut filter =
                 ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Enchanted.bind());
             filter.card_types.push(CardType::Creature);
@@ -1052,7 +1055,9 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             if filter.zone == Some(Zone::Battlefield)
                 && words.len() >= 2
                 && matches!(words.last(), Some(&"card" | &"cards"))
-                && words[1..words.len() - 1].iter().all(|word| crate::util::parse_card_type(word).is_some())
+                && words[1..words.len() - 1]
+                    .iter()
+                    .all(|word| crate::util::parse_card_type(word).is_some())
             {
                 filter.zone = None;
             }

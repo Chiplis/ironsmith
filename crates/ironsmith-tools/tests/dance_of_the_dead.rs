@@ -73,7 +73,10 @@ fn reanimate() -> Board {
         .build();
     let buried = game.create_object_from_definition(&fixture, bob, Zone::Graveyard);
     let creature = game.object(buried).unwrap().stable_id;
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Black, 2);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Black, 2);
     let hand = game.create_object_from_definition(&def, alice, Zone::Hand);
     let aura_stable = game.object(hand).unwrap().stable_id;
     let action = compute_legal_actions(&game, alice)
@@ -97,7 +100,9 @@ fn reanimate() -> Board {
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = progress else {
             break;
         };
-        progress = ironsmith::game_loop::apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm);
+        progress = ironsmith::game_loop::apply_decision_context_with_dm(
+            &mut game, &mut queue, &mut state, &ctx, &mut dm,
+        );
     }
     assert_eq!(game.stack.len(), 1, "{progress:?}");
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
@@ -119,7 +124,10 @@ fn returns_tapped_under_your_control_attached_with_plus_one() {
     let game = &board.game;
     let returned = game.find_object_by_stable_id(board.creature).unwrap();
     assert_eq!(game.object(returned).unwrap().zone, Zone::Battlefield);
-    assert_eq!(game.controller_of_id(returned), Some(PlayerId::from_index(0)));
+    assert_eq!(
+        game.controller_of_id(returned),
+        Some(PlayerId::from_index(0))
+    );
     assert!(game.is_tapped(returned), "enters tapped");
     assert_eq!(
         game.object(board.aura).unwrap().attached_to,
@@ -139,20 +147,44 @@ fn doesnt_untap_normally_but_upkeep_payment_untaps_it() {
         board.game.turn.phase = ironsmith::game_state::Phase::Beginning;
         board.game.turn.step = Some(ironsmith::game_state::Step::Untap);
         ironsmith::turn::execute_untap_step(&mut board.game);
-        assert!(board.game.is_tapped(returned), "doesn't untap during untap step");
+        assert!(
+            board.game.is_tapped(returned),
+            "doesn't untap during untap step"
+        );
         board.game.turn.step = Some(ironsmith::game_state::Step::Upkeep);
-        board.game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Black, 1);
-        board.game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Colorless, 1);
-        for event in ironsmith::triggers::generate_step_trigger_events_for_active_players(&board.game) {
+        board
+            .game
+            .player_mut(alice)
+            .unwrap()
+            .mana_pool
+            .add(ManaSymbol::Black, 1);
+        board
+            .game
+            .player_mut(alice)
+            .unwrap()
+            .mana_pool
+            .add(ManaSymbol::Colorless, 1);
+        for event in
+            ironsmith::triggers::generate_step_trigger_events_for_active_players(&board.game)
+        {
             for entry in ironsmith::triggers::check_triggers(&board.game, &event) {
                 board.queue.add(entry);
             }
         }
         let mut dm = Pay(pay);
-        ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut board.game, &mut board.queue, &mut dm).unwrap();
+        ironsmith::game_loop::put_triggers_on_stack_with_dm(
+            &mut board.game,
+            &mut board.queue,
+            &mut dm,
+        )
+        .unwrap();
         assert_eq!(board.game.stack.len(), 1, "upkeep trigger");
         ironsmith::game_loop::resolve_stack_entry_with(&mut board.game, &mut dm).unwrap();
-        assert_eq!(!board.game.is_tapped(returned), pay, "untaps only if {{1}}{{B}} is paid");
+        assert_eq!(
+            !board.game.is_tapped(returned),
+            pay,
+            "untaps only if {{1}}{{B}} is paid"
+        );
         let pool = board.game.player(alice).unwrap().mana_pool.total();
         assert_eq!(pool, if pay { 0 } else { 2 });
     }
@@ -162,12 +194,22 @@ fn doesnt_untap_normally_but_upkeep_payment_untaps_it() {
 fn aura_leaving_makes_the_creatures_controller_sacrifice_it() {
     let mut board = reanimate();
     let returned = board.game.find_object_by_stable_id(board.creature).unwrap();
-    board.game.set_current_controller(returned, PlayerId::from_index(1));
-    board.game.move_object_by_effect(board.aura, Zone::Graveyard).unwrap();
+    board
+        .game
+        .set_current_controller(returned, PlayerId::from_index(1));
+    board
+        .game
+        .move_object_by_effect(board.aura, Zone::Graveyard)
+        .unwrap();
     let mut dm = Pay(false);
-    ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut board.game, &mut board.queue, &mut dm).unwrap();
+    ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut board.game, &mut board.queue, &mut dm)
+        .unwrap();
     assert_eq!(board.game.stack.len(), 1, "leave trigger");
     ironsmith::game_loop::resolve_stack_entry_with(&mut board.game, &mut dm).unwrap();
     let now = board.game.find_object_by_stable_id(board.creature).unwrap();
-    assert_eq!(board.game.object(now).unwrap().zone, Zone::Graveyard, "sacrificed by its controller");
+    assert_eq!(
+        board.game.object(now).unwrap().zone,
+        Zone::Graveyard,
+        "sacrificed by its controller"
+    );
 }

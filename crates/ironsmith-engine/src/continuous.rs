@@ -885,21 +885,33 @@ impl ContinuousEffectManager {
         new: ObjectId,
     ) {
         let mut changed = false;
-        for effect in Arc::make_mut(&mut self.effects).iter_mut().filter(|e| ids.contains(&e.id)) {
-            if effect.source == old { effect.source = new; changed = true; }
+        for effect in Arc::make_mut(&mut self.effects)
+            .iter_mut()
+            .filter(|e| ids.contains(&e.id))
+        {
+            if effect.source == old {
+                effect.source = new;
+                changed = true;
+            }
             match &mut effect.applies_to {
                 EffectTarget::Specific(id) | EffectTarget::AttachedTo(id) if *id == old => {
-                    *id = new; changed = true;
+                    *id = new;
+                    changed = true;
                 }
                 _ => {}
             }
             if let EffectSourceType::Resolution { locked_targets } = &mut effect.source_type {
                 for target in locked_targets {
-                    if *target == old { *target = new; changed = true; }
+                    if *target == old {
+                        *target = new;
+                        changed = true;
+                    }
                 }
             }
         }
-        if changed { self.revision += 1; }
+        if changed {
+            self.revision += 1;
+        }
     }
 
     /// CR 702.140f: effects that modified a mutating creature spell apply to
@@ -1476,7 +1488,11 @@ pub(crate) fn subtype_families_of(subtypes: &[Subtype]) -> Vec<SubtypeFamily> {
     ];
     FAMILIES
         .into_iter()
-        .filter(|family| subtypes.iter().any(|subtype| subtype.belongs_to_family(*family)))
+        .filter(|family| {
+            subtypes
+                .iter()
+                .any(|subtype| subtype.belongs_to_family(*family))
+        })
         .collect()
 }
 
@@ -1486,7 +1502,11 @@ pub(crate) fn subtype_families_of(subtypes: &[Subtype]) -> Vec<SubtypeFamily> {
 /// Conspiracy replaces creature types but keeps an Equipment an Equipment.
 pub(crate) fn replace_subtypes_for_set(subtypes: &mut SharedVec<Subtype>, replacement: &[Subtype]) {
     let families = subtype_families_of(replacement);
-    subtypes.retain(|subtype| !families.iter().any(|family| subtype.belongs_to_family(*family)));
+    subtypes.retain(|subtype| {
+        !families
+            .iter()
+            .any(|family| subtype.belongs_to_family(*family))
+    });
     for subtype in replacement {
         if !subtypes.contains(subtype) {
             subtypes.push(*subtype);
@@ -1637,10 +1657,14 @@ fn replace_enchant_metadata(
     chars: &mut CalculatedCharacteristics,
     filter: &crate::object::AuraAttachmentFilter,
 ) {
-    chars.abilities.retain(|ability| !matches!(
-        &ability.kind, AbilityKind::Static(ability) if ability.enchant_filter().is_some()
-    ));
-    chars.static_abilities.retain(|ability| ability.enchant_filter().is_none());
+    chars.abilities.retain(|ability| {
+        !matches!(
+            &ability.kind, AbilityKind::Static(ability) if ability.enchant_filter().is_some()
+        )
+    });
+    chars
+        .static_abilities
+        .retain(|ability| ability.enchant_filter().is_none());
     chars.aura_attach_filter = Some(filter.clone());
     install_enchant_metadata(chars);
 }
@@ -1659,7 +1683,9 @@ fn retain_active_static_abilities(
     // by `push_static_ability_once`; retaining a prior cache entry here loses
     // its originating effect duration (for example, EOT unblockability).
     chars.static_abilities = extract_static_abilities(&chars.abilities).into();
-    chars.aura_attach_filter = chars.static_abilities.iter()
+    chars.aura_attach_filter = chars
+        .static_abilities
+        .iter()
         .find_map(|ability| ability.enchant_filter().cloned());
 }
 
@@ -4838,7 +4864,9 @@ fn apply_modification_to_chars(
             chars.abilities.retain(|candidate| {
                 !matches!(&candidate.kind, AbilityKind::Static(ability) if ability.id() == *id)
             });
-            chars.static_abilities.retain(|candidate| candidate.id() != *id);
+            chars
+                .static_abilities
+                .retain(|candidate| candidate.id() != *id);
         }
         Modification::RemoveAllAbilities => {
             chars.abilities.clear();

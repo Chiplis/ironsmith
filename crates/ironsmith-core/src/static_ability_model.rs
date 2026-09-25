@@ -3055,8 +3055,11 @@ impl<
     ) -> Self {
         Self {
             id: Some(StaticAbilityId::NativeAlternativeCastFromZone),
-            label: format!("You may cast this card from your {} using its {} ability.",
-                format!("{zone:?}").to_lowercase(), format!("{method:?}").to_lowercase()),
+            label: format!(
+                "You may cast this card from your {} using its {} ability.",
+                format!("{zone:?}").to_lowercase(),
+                format!("{method:?}").to_lowercase()
+            ),
             payload: StaticAbilityPayload::NativeAlternativeCastFromZone { zone, method },
         }
     }
@@ -3072,7 +3075,10 @@ impl<
     pub fn flash_if_targets_matching(filter: ObjectFilter) -> Self {
         Self {
             id: Some(StaticAbilityId::Flash),
-            label: format!("You may cast this spell as though it had flash if it targets {}", filter.description()),
+            label: format!(
+                "You may cast this spell as though it had flash if it targets {}",
+                filter.description()
+            ),
             payload: StaticAbilityPayload::FlashIfTargetsMatching(filter),
         }
     }
@@ -4932,7 +4938,11 @@ impl<
             id: Some(StaticAbilityId::DamagePreventionWithFollowUp),
             label: "damage prevention with follow-up".into(),
             payload: StaticAbilityPayload::DamagePreventionWithFollowUp {
-                source_filter, target_filter, combat_only, recipient_tag, effects,
+                source_filter,
+                target_filter,
+                combat_only,
+                recipient_tag,
+                effects,
             },
         }
     }
@@ -5077,7 +5087,8 @@ impl<
             crate::AuraAttachmentFilter::Object(filter) => filter.description(),
             crate::AuraAttachmentFilter::Player(filter) => filter.description(),
         };
-        let description = description.strip_prefix("an ")
+        let description = description
+            .strip_prefix("an ")
             .or_else(|| description.strip_prefix("a "))
             .unwrap_or(&description);
         Self {
@@ -5504,7 +5515,8 @@ impl<
     pub fn loyalty_abilities_any_time(filter: ObjectFilter) -> Self {
         Self {
             id: Some(StaticAbilityId::LoyaltyAbilitiesAnyTime),
-            label: "You may activate loyalty abilities any time you could cast an instant".to_string(),
+            label: "You may activate loyalty abilities any time you could cast an instant"
+                .to_string(),
             payload: StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter },
         }
     }
@@ -5520,7 +5532,11 @@ impl<
             payload: StaticAbilityPayload::ActivateAbilitiesAsThoughHaste { filter, display },
         }
     }
-    pub fn cost_increase_life(filter: ObjectFilter, amount: u32, display: impl Into<String>) -> Self {
+    pub fn cost_increase_life(
+        filter: ObjectFilter,
+        amount: u32,
+        display: impl Into<String>,
+    ) -> Self {
         let display = display.into();
         Self {
             id: Some(StaticAbilityId::CostIncreaseLife),
@@ -6152,7 +6168,10 @@ impl<
             id: Some(StaticAbilityId::RedirectZoneChange),
             label: "zone-change replacement".into(),
             payload: StaticAbilityPayload::RedirectZoneChange {
-                filter, from_zone, to_zone, destination,
+                filter,
+                from_zone,
+                to_zone,
+                destination,
             },
         }
     }
@@ -6819,7 +6838,11 @@ impl<
     }
 
     pub fn enters_under_chosen_control(players: PlayerFilter) -> Self {
-        Self { id:Some(StaticAbilityId::EntersUnderChosenControl), label:"enters under chosen control".into(), payload:StaticAbilityPayload::EntersUnderChosenControl(players) }
+        Self {
+            id: Some(StaticAbilityId::EntersUnderChosenControl),
+            label: "enters under chosen control".into(),
+            payload: StaticAbilityPayload::EntersUnderChosenControl(players),
+        }
     }
     pub fn enters_tapped_for_filter(filter: ObjectFilter) -> Self {
         Self {

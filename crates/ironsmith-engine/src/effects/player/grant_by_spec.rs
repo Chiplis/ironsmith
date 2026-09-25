@@ -78,18 +78,26 @@ impl EffectExecutor for GrantBySpecEffect {
 
         let grant_source = grant_duration_source(self.duration, game, ctx.source, player_id);
 
-        if matches!(self.spec.grantable, Grantable::PlayFrom) && let Some(max_plays) = self.spec.max_plays {
-            game.effect_store.grant_registry.grant_play_from_to_filter_with_budget(
-                self.spec.filter.clone(), self.spec.zone, player_id, grant_source, max_plays,
-            );
+        if matches!(self.spec.grantable, Grantable::PlayFrom)
+            && let Some(max_plays) = self.spec.max_plays
+        {
+            game.effect_store
+                .grant_registry
+                .grant_play_from_to_filter_with_budget(
+                    self.spec.filter.clone(),
+                    self.spec.zone,
+                    player_id,
+                    grant_source,
+                    max_plays,
+                );
         } else {
-        game.effect_store.grant_registry.grant_to_filter(
-            self.spec.filter.clone(),
-            self.spec.zone,
-            player_id,
-            self.spec.grantable.clone(),
-            grant_source,
-        );
+            game.effect_store.grant_registry.grant_to_filter(
+                self.spec.filter.clone(),
+                self.spec.zone,
+                player_id,
+                self.spec.grantable.clone(),
+                grant_source,
+            );
         }
         if let Some(grant) = game.effect_store.grant_registry.grants.last_mut() {
             grant.cast_this_way_grants = self.spec.cast_this_way_grants.clone();

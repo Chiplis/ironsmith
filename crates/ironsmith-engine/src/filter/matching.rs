@@ -499,7 +499,9 @@ pub(super) fn matches_subject(
                 return false;
             }
         } else if let Some(chosen_type) = game.chosen_subtype(source).or_else(|| {
-            ctx.source_snapshot.as_ref().filter(|snapshot| snapshot.object_id == source)
+            ctx.source_snapshot
+                .as_ref()
+                .filter(|snapshot| snapshot.object_id == source)
                 .and_then(|snapshot| snapshot.chosen_subtype)
         }) {
             if !object_subtypes.contains(&chosen_type) {

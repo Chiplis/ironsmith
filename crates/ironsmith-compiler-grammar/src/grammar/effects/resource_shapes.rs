@@ -31,7 +31,9 @@ pub enum ResourceLookShape<'a> {
         followup: ResourceLookHandFollowup,
     },
     EachPlayerHand,
-    RandomHandCard { player: PlayerAst },
+    RandomHandCard {
+        player: PlayerAst,
+    },
     Object {
         kind: ResourceLookObjectKind,
         surface_tokens: &'a [OwnedLexToken],
@@ -47,13 +49,22 @@ pub enum ResourceLookShape<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResourceShuffleShape {
-    HandIntoLibrary { player: PlayerAst },
+    HandIntoLibrary {
+        player: PlayerAst,
+    },
     /// "Shuffle this creature and target creature with a stun counter on it
     /// into their owners' libraries." (Floodpits Drowner): the first
     /// `target_len` tokens name the shuffled objects.
-    ObjectsIntoOwnersLibraries { target_len: usize },
-    TaggedIntoLibrary { player: PlayerAst, to_bottom: bool },
-    ShuffleLibrary { player: PlayerAst },
+    ObjectsIntoOwnersLibraries {
+        target_len: usize,
+    },
+    TaggedIntoLibrary {
+        player: PlayerAst,
+        to_bottom: bool,
+    },
+    ShuffleLibrary {
+        player: PlayerAst,
+    },
     SimpleLibrary,
 }
 
@@ -483,7 +494,9 @@ pub fn parse_resource_look_shape<'a>(
     let hand_surface = strip_articles(clause);
     if let Some(((), rest)) = primitives::parse_prefix(hand_surface, |input: &mut LexStream<'_>| {
         primitives::phrase(&["card", "at", "random"]).parse_next(input)?;
-        alt((primitives::kw("in"), primitives::kw("from"))).void().parse_next(input)
+        alt((primitives::kw("in"), primitives::kw("from")))
+            .void()
+            .parse_next(input)
     }) {
         let (player, rest) = primitives::parse_prefix(rest, hand_owner)?;
         if !matches!(player, PlayerAst::Any) && sentence_finished(rest) {

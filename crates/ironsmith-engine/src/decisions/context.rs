@@ -1898,10 +1898,7 @@ pub fn enrich_display_hints(
     ctx
 }
 
-fn add_display_hints(
-    game: &crate::game_state::GameState,
-    ctx: DecisionContext,
-) -> DecisionContext {
+fn add_display_hints(game: &crate::game_state::GameState, ctx: DecisionContext) -> DecisionContext {
     let mut ctx = ctx;
     scrub_compiled_structure(&mut ctx);
     let source_text = ctx.context_text().map(str::to_string).or_else(|| {
@@ -2110,13 +2107,13 @@ mod tests {
     fn enrich_display_hints_scrubs_compiled_structure_from_every_visible_string() {
         let game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
-        let debug_text =
-            r#"Effect(WithIdEffect { id: EffectId(0), effect: Effect(CopySpellEffect { copier: You }) })"#;
+        let debug_text = r#"Effect(WithIdEffect { id: EffectId(0), effect: Effect(CopySpellEffect { copier: You }) })"#;
 
         let mut boolean = BooleanContext::new(alice, None, debug_text);
         boolean.ui_hints.context_text = Some(debug_text.to_string());
         boolean.ui_hints.consequence_text = Some(debug_text.to_string());
-        let enriched = enrich_display_hints(&game, DecisionContext::Boolean(boolean)).into_boolean();
+        let enriched =
+            enrich_display_hints(&game, DecisionContext::Boolean(boolean)).into_boolean();
         assert_eq!(enriched.description, "Perform the effect");
         assert_eq!(enriched.ui_hints.context_text, None);
         assert_eq!(enriched.ui_hints.consequence_text, None);

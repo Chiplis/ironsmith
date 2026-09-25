@@ -200,7 +200,7 @@ impl GrantPlayTaggedEffect {
             GrantPlayTaggedDuration::UntilEndOfTurn => game.turn.turn_number,
             GrantPlayTaggedDuration::UntilYourNextTurnStart => {
                 Self::next_turn_number_for_player(game, player).saturating_sub(1)
-            },
+            }
             GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
                 Self::next_turn_number_for_player(game, player)
             }
@@ -292,7 +292,9 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 continue;
             }
             let object_is_land = object.is_land();
-            if (!self.allow_land && object_is_land && self.spell_filter.is_none()) || !seen.insert(object_id) {
+            if (!self.allow_land && object_is_land && self.spell_filter.is_none())
+                || !seen.insert(object_id)
+            {
                 continue;
             }
             let object_stable_id = object.stable_id;
@@ -332,7 +334,11 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                     game.exiled_with_source_revision(ctx.source),
                 )
             } else if self.duration == GrantPlayTaggedDuration::UntilYourNextTurnStart {
-                GrantSource::until_player_next_turn_start(ctx.source, player_id, game.turn.turn_number)
+                GrantSource::until_player_next_turn_start(
+                    ctx.source,
+                    player_id,
+                    game.turn.turn_number,
+                )
             } else if self.duration == GrantPlayTaggedDuration::UntilYourNextTurnEnd {
                 GrantSource::until_player_next_turn_end(ctx.source, player_id, expires_end_of_turn)
             } else {
@@ -419,8 +425,12 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             if let Some(filter) = &self.spell_filter {
                 // Every path above creates exactly one permission for this
                 // card. Its filter is evaluated against the proposed face.
-                game.effect_store.grant_registry.grants.last_mut()
-                    .expect("created tagged play grant").filter = Some(filter.clone());
+                game.effect_store
+                    .grant_registry
+                    .grants
+                    .last_mut()
+                    .expect("created tagged play grant")
+                    .filter = Some(filter.clone());
             }
             granted += 1;
         }

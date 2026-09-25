@@ -172,21 +172,36 @@ pub(super) fn parse_activated_line_impl(
         line.compiler_cost.to_core_total_cost(),
         x_definition_value,
     );
-    let normalized_cost = if line.presentation_kind == Some(crate::ir::ActivatedPresentationKind::PowerUp) {
-        normalized_cost.try_map(|component| {
-            let mut dynamic = match component {
-                crate::model::CompilerCost::Mana(base) => ironsmith_core::DynamicManaCost::new(
-                    base, None, None, None, ironsmith_core::DynamicManaDisplayHint::Default),
-                crate::model::CompilerCost::DynamicMana(dynamic) => dynamic,
-                other => return Ok(other),
-            };
-            dynamic.source_mana_cost_reduction_condition = Some(Box::new(
-                ironsmith_core::Condition::TurnHistory(ironsmith_core::TurnHistoryCondition::SourceEnteredBattlefieldThisTurn {
-                    surface: ironsmith_core::SourceReferenceSurface::ThisPermanentType("this permanent".into()),
-                })));
-            Ok(crate::model::CompilerCost::DynamicMana(dynamic))
-        }).unwrap_or_else(|_: std::convert::Infallible| unreachable!())
-    } else { normalized_cost };
+    let normalized_cost = if line.presentation_kind
+        == Some(crate::ir::ActivatedPresentationKind::PowerUp)
+    {
+        normalized_cost
+            .try_map(|component| {
+                let mut dynamic = match component {
+                    crate::model::CompilerCost::Mana(base) => ironsmith_core::DynamicManaCost::new(
+                        base,
+                        None,
+                        None,
+                        None,
+                        ironsmith_core::DynamicManaDisplayHint::Default,
+                    ),
+                    crate::model::CompilerCost::DynamicMana(dynamic) => dynamic,
+                    other => return Ok(other),
+                };
+                dynamic.source_mana_cost_reduction_condition =
+                    Some(Box::new(ironsmith_core::Condition::TurnHistory(
+                        ironsmith_core::TurnHistoryCondition::SourceEnteredBattlefieldThisTurn {
+                            surface: ironsmith_core::SourceReferenceSurface::ThisPermanentType(
+                                "this permanent".into(),
+                            ),
+                        },
+                    )));
+                Ok(crate::model::CompilerCost::DynamicMana(dynamic))
+            })
+            .unwrap_or_else(|_: std::convert::Infallible| unreachable!())
+    } else {
+        normalized_cost
+    };
     let original_effect_mentions_where_x =
         activated_grammar::contains_where_x_definition(original_effect_parse_tokens);
     let presentation_display = activated_presentation_display(line);

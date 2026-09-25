@@ -45,7 +45,11 @@ struct TargetIt(Option<ObjectId>);
 impl DecisionMaker for TargetIt {
     fn decide_targets(&mut self, _game: &GameState, ctx: &TargetsContext) -> Vec<Target> {
         let id = self.0.expect("targeted activation");
-        assert!(ctx.requirements[0].legal_targets.contains(&Target::Object(id)));
+        assert!(
+            ctx.requirements[0]
+                .legal_targets
+                .contains(&Target::Object(id))
+        );
         vec![Target::Object(id)]
     }
 }
@@ -90,9 +94,16 @@ fn board() -> (GameState, ObjectId, ObjectId) {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
-    let familiar = game.create_object_from_definition(&load("Biomancer's Familiar"), alice, Zone::Battlefield);
-    let guardian = game.create_object_from_definition(&load("Growth-Chamber Guardian"), alice, Zone::Battlefield);
-    game.object_mut(guardian).unwrap().add_counters(CounterType::PlusOnePlusOne, 1);
+    let familiar =
+        game.create_object_from_definition(&load("Biomancer's Familiar"), alice, Zone::Battlefield);
+    let guardian = game.create_object_from_definition(
+        &load("Growth-Chamber Guardian"),
+        alice,
+        Zone::Battlefield,
+    );
+    game.object_mut(guardian)
+        .unwrap()
+        .add_counters(CounterType::PlusOnePlusOne, 1);
     for id in [familiar, guardian] {
         game.remove_summoning_sickness(id);
     }
@@ -111,22 +122,39 @@ fn marked_creature_adapts_once_despite_existing_counters_at_reduced_cost() {
     assert!(game.is_tapped(familiar));
 
     // {2}{G} costs {2} less: only {G} is needed.
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Green, 1);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Green, 1);
     activate(&mut game, guardian, None);
     assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
-    assert_eq!(counters(&game, guardian), 3, "adapted as though it had no counters");
+    assert_eq!(
+        counters(&game, guardian),
+        3,
+        "adapted as though it had no counters"
+    );
 
     // The effect applies only to the next adapt.
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Green, 1);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Green, 1);
     activate(&mut game, guardian, None);
-    assert_eq!(counters(&game, guardian), 3, "a second adapt sees the counters again");
+    assert_eq!(
+        counters(&game, guardian),
+        3,
+        "a second adapt sees the counters again"
+    );
 }
 
 #[test]
 fn without_the_familiars_tap_adapt_does_nothing_with_counters() {
     let (mut game, _familiar, guardian) = board();
     let alice = PlayerId::from_index(0);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Green, 1);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Green, 1);
     activate(&mut game, guardian, None);
     assert_eq!(counters(&game, guardian), 1);
 }
@@ -137,7 +165,10 @@ fn the_mark_expires_at_end_of_turn() {
     let alice = PlayerId::from_index(0);
     activate(&mut game, familiar, Some(guardian));
     game.turn.turn_number += 2;
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Green, 1);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Green, 1);
     activate(&mut game, guardian, None);
     assert_eq!(counters(&game, guardian), 1, "only this turn");
 }

@@ -359,7 +359,7 @@ impl StaticAbilityModelInterpreter {
             zone: spec.zone,
             beneficiary: spec.beneficiary.clone(),
             usage_limit: spec.usage_limit,
-                max_plays: spec.max_plays,
+            max_plays: spec.max_plays,
             cast_this_way_filter: spec.cast_this_way_filter.clone(),
             source_exiled_surface: spec.source_exiled_surface.clone(),
             cast_this_way_grants: spec
@@ -439,7 +439,9 @@ impl StaticAbilityModelInterpreter {
                         .collect(),
                     set_base_power_toughness: spec.set_base_power_toughness,
                     additional_counters: spec.additional_counters.clone(),
-                    additional_counters_source_filter: spec.additional_counters_source_filter.clone(),
+                    additional_counters_source_filter: spec
+                        .additional_counters_source_filter
+                        .clone(),
                     conditional_additional_counters: spec.conditional_additional_counters.clone(),
                     added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                     set_base_power_toughness_from_self: spec.set_base_power_toughness_from_self,
@@ -648,9 +650,7 @@ impl StaticAbilityModelInterpreter {
         }
     }
 
-    fn cached_cost_increase_life(
-        model: &CompiledStaticAbility,
-    ) -> Option<super::CostIncreaseLife> {
+    fn cached_cost_increase_life(model: &CompiledStaticAbility) -> Option<super::CostIncreaseLife> {
         match &model.payload {
             ironsmith_core::StaticAbilityPayload::CostIncreaseLife {
                 filter,
@@ -2237,9 +2237,12 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn display(&self) -> String {
         if let ironsmith_core::StaticAbilityPayload::RedirectZoneChange {
-            filter, from_zone: Some(crate::zone::Zone::Battlefield), to_zone: None,
+            filter,
+            from_zone: Some(crate::zone::Zone::Battlefield),
+            to_zone: None,
             destination: crate::zone::Zone::Exile,
-        } = &self.model.payload {
+        } = &self.model.payload
+        {
             return format!(
                 "If {} would leave the battlefield, exile it instead of putting it anywhere else.",
                 filter.description(),
@@ -2425,7 +2428,11 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn untap_step_limit(
         &self,
-    ) -> Option<(&crate::target::PlayerFilter, &crate::target::ObjectFilter, u32)> {
+    ) -> Option<(
+        &crate::target::PlayerFilter,
+        &crate::target::ObjectFilter,
+        u32,
+    )> {
         self.leaf_static_ability()?.untap_step_limit_spec()
     }
 
@@ -2439,13 +2446,19 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
         if let ironsmith_core::StaticAbilityPayload::RedirectZoneChange {
-            filter, from_zone, to_zone, destination,
-        } = &self.model.payload {
+            filter,
+            from_zone,
+            to_zone,
+            destination,
+        } = &self.model.payload
+        {
             return Some(ReplacementEffect::with_matcher(
                 source,
                 controller,
                 crate::events::zones::matchers::WouldChangeZoneMatcher::new(
-                    filter.clone(), *from_zone, *to_zone,
+                    filter.clone(),
+                    *from_zone,
+                    *to_zone,
                 ),
                 crate::replacement::ReplacementAction::ChangeDestination(*destination),
             ));
@@ -2839,7 +2852,9 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         else {
             return None;
         };
-        Some(super::ChooseColorAsEntersSpec { excluded: *excluded })
+        Some(super::ChooseColorAsEntersSpec {
+            excluded: *excluded,
+        })
     }
 
     fn player_choice_as_enters(&self) -> Option<super::ChoosePlayerAsEntersSpec> {
@@ -3116,9 +3131,7 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         self.cost_increase_life.as_ref()
     }
 
-    fn activate_abilities_as_though_haste(
-        &self,
-    ) -> Option<&super::ActivateAbilitiesAsThoughHaste> {
+    fn activate_abilities_as_though_haste(&self) -> Option<&super::ActivateAbilitiesAsThoughHaste> {
         self.activate_abilities_as_though_haste.as_ref()
     }
 

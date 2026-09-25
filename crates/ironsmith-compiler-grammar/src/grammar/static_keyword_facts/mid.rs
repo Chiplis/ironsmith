@@ -838,8 +838,28 @@ fn parse_remaining_threshold_condition(words: &[&str]) -> Option<KnownSpellCostC
         if exact_any(
             words.get(rest..)?,
             &[
-                &["cards", "put", "into", "their", "graveyard", "from", "anywhere", "this", "turn"],
-                &["card", "put", "into", "their", "graveyard", "from", "anywhere", "this", "turn"],
+                &[
+                    "cards",
+                    "put",
+                    "into",
+                    "their",
+                    "graveyard",
+                    "from",
+                    "anywhere",
+                    "this",
+                    "turn",
+                ],
+                &[
+                    "card",
+                    "put",
+                    "into",
+                    "their",
+                    "graveyard",
+                    "from",
+                    "anywhere",
+                    "this",
+                    "turn",
+                ],
             ],
         ) {
             return Some(

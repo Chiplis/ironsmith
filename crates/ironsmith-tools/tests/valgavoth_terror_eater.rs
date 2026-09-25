@@ -37,7 +37,10 @@ fn strict_snapshot_and_full_quality_gate() {
 fn sorcery(name: &str) -> ironsmith::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), name)
         .card_types(vec![CardType::Sorcery])
-        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)], vec![ManaSymbol::Red]]))
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+        ]))
         .build()
 }
 
@@ -70,7 +73,8 @@ fn setup() -> (GameState, [ObjectId; 3]) {
     };
     let bobs = game.create_object_from_definition(&creature("Bob's Bear"), bob, Zone::Battlefield);
     let bobs_stable = game.object(bobs).unwrap().stable_id;
-    let stolen = game.create_object_from_definition(&creature("Stolen Bear"), bob, Zone::Battlefield);
+    let stolen =
+        game.create_object_from_definition(&creature("Stolen Bear"), bob, Zone::Battlefield);
     let stolen_stable = game.object(stolen).unwrap().stable_id;
     let mut dm = SelectFirstDecisionMaker;
     let mut ctx = ironsmith::effects::EffectContext::new(valgavoth, alice, &mut dm);
@@ -108,8 +112,16 @@ fn setup() -> (GameState, [ObjectId; 3]) {
 fn cards_an_opponent_would_lose_to_the_graveyard_are_exiled_unless_you_controlled_them() {
     let (game, [sorcery, bobs, stolen]) = setup();
     assert_eq!(game.object(sorcery).unwrap().zone, Zone::Exile, "milled");
-    assert_eq!(game.object(bobs).unwrap().zone, Zone::Exile, "destroyed under Bob's control");
-    assert_eq!(game.object(stolen).unwrap().zone, Zone::Graveyard, "you controlled it");
+    assert_eq!(
+        game.object(bobs).unwrap().zone,
+        Zone::Exile,
+        "destroyed under Bob's control"
+    );
+    assert_eq!(
+        game.object(stolen).unwrap().zone,
+        Zone::Graveyard,
+        "you controlled it"
+    );
 }
 
 #[test]
@@ -122,7 +134,10 @@ fn exiled_cards_are_playable_on_your_turn_for_life() {
             .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == card))
     };
     let action = cast(&game, sorcery).expect("castable from exile without mana");
-    assert!(cast(&game, bobs).is_some(), "any card exiled with Valgavoth");
+    assert!(
+        cast(&game, bobs).is_some(),
+        "any card exiled with Valgavoth"
+    );
     let mut queue = ironsmith::triggers::TriggerQueue::new();
     let mut state = ironsmith::game_loop::PriorityLoopState::new(game.players_in_game());
     let mut dm = SelectFirstDecisionMaker;
@@ -140,10 +155,16 @@ fn exiled_cards_are_playable_on_your_turn_for_life() {
         let Ok(ironsmith::decision::GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            &mut game, &mut queue, &mut state, &ctx, &mut dm,
+        );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
-    assert_eq!(game.player(alice).unwrap().life, 17, "paid life equal to mana value 3");
+    assert_eq!(
+        game.player(alice).unwrap().life,
+        17,
+        "paid life equal to mana value 3"
+    );
 }
 
 #[test]
@@ -151,7 +172,9 @@ fn not_during_an_opponents_turn() {
     let (mut game, [sorcery, _, _]) = setup();
     game.turn.active_player = PlayerId::from_index(1);
     let actions = compute_legal_actions(&game, PlayerId::from_index(0));
-    assert!(!actions
-        .iter()
-        .any(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == sorcery)));
+    assert!(
+        !actions
+            .iter()
+            .any(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == sorcery))
+    );
 }

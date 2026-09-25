@@ -1017,7 +1017,8 @@ fn compile_effect_inner(
         };
         return Ok((vec![Effect::new(sequence)], choices));
     }
-    if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { chooser, modes }) = effect {
+    if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { chooser, modes }) = effect
+    {
         use crate::effect::EffectMode;
         let mut lowered_modes = Vec::with_capacity(modes.len());
         let mut choices = Vec::new();

@@ -807,7 +807,9 @@ fn replace_modal_header_x_in_effect_ast(
                 ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
+                ..
+            })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { .. })
             | SubjectVerbActionAst::Game(GameActionAst::ExtraTurnAfterTurn { .. })

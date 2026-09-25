@@ -43,9 +43,7 @@ pub fn requires_target_selection(spec: &ChooseSpec) -> bool {
         ChooseSpec::Target(_) => true,
         ChooseSpec::SurfaceHinted { spec: inner, .. }
         | ChooseSpec::WithCount(inner, _)
-        | ChooseSpec::WithCountValue(inner, _, _) => {
-            requires_target_selection(inner)
-        }
+        | ChooseSpec::WithCountValue(inner, _, _) => requires_target_selection(inner),
         // These require target selection during casting
         ChooseSpec::AnyTarget
         | ChooseSpec::AnyOtherTarget
@@ -142,21 +140,27 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                 .simultaneous_trigger_key(&trigger.triggering_event)
             {
                 let key = (trigger.source_stable_id, trigger.trigger_identity, group);
-                if group == crate::triggers::matcher_trait::SimultaneousTriggerKey::ZoneChangeBatch {
+                if group == crate::triggers::matcher_trait::SimultaneousTriggerKey::ZoneChangeBatch
+                {
                     // Identical ability instances remain separate; match each
                     // occurrence to its corresponding entry from earlier events.
                     let occurrence = zone_occurrences.entry(key).or_insert(0usize);
                     let instance_key = (key, *occurrence);
                     *occurrence += 1;
                     if let Some(&index) = zone_groups.get(&instance_key) {
-                        let previous: &mut crate::triggers::TriggeredAbilityEntry = &mut trigger_queue.entries[index];
+                        let previous: &mut crate::triggers::TriggeredAbilityEntry =
+                            &mut trigger_queue.entries[index];
                         if let Some(amount) = trigger.event_value_amount {
-                            previous.event_value_amount = Some(previous.event_value_amount.unwrap_or(0) + amount);
+                            previous.event_value_amount =
+                                Some(previous.event_value_amount.unwrap_or(0) + amount);
                         }
                         for (tag, snapshots) in trigger.tagged_objects {
                             let combined = previous.tagged_objects.entry(tag).or_default();
                             for snapshot in snapshots {
-                                if !combined.iter().any(|old| old.object_id == snapshot.object_id) {
+                                if !combined
+                                    .iter()
+                                    .any(|old| old.object_id == snapshot.object_id)
+                                {
                                     combined.push(snapshot);
                                 }
                             }
@@ -570,7 +574,9 @@ pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut Tr
             if let Some(batch) = event.simultaneous_batch()
                 && matches!(
                     event.kind(),
-                    crate::events::EventKind::Damage | crate::events::EventKind::LifeLoss | crate::events::EventKind::ZoneChange
+                    crate::events::EventKind::Damage
+                        | crate::events::EventKind::LifeLoss
+                        | crate::events::EventKind::ZoneChange
                 )
             {
                 let mut simultaneous = vec![event];
@@ -1441,8 +1447,15 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
 ) -> bool {
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
         return spell_effect_has_legal_targets_internal_with_preview_mode_selection(
-            game, &with_id.effect, caster, source_id, chosen_modes,
-            consumed_modal_selection, declared_targets, require_full_mode_selection, view,
+            game,
+            &with_id.effect,
+            caster,
+            source_id,
+            chosen_modes,
+            consumed_modal_selection,
+            declared_targets,
+            require_full_mode_selection,
+            view,
         );
     }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
@@ -1548,7 +1561,12 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
             let candidate_spec = relax_target_player_relation(&spec);
             let mut legal_targets =
                 crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
-                    game, &candidate_spec, caster, source_id, None, view,
+                    game,
+                    &candidate_spec,
+                    caster,
+                    source_id,
+                    None,
+                    view,
                 );
             retain_targets_satisfying_announcement_condition(
                 game,
@@ -1632,8 +1650,14 @@ pub(super) fn extract_target_requirements_from_effect_internal(
 ) {
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
         extract_target_requirements_from_effect_internal(
-            game, &with_id.effect, caster, source_id, chosen_modes,
-            consumed_modal_selection, declared_targets, requirements,
+            game,
+            &with_id.effect,
+            caster,
+            source_id,
+            chosen_modes,
+            consumed_modal_selection,
+            declared_targets,
+            requirements,
         );
         return;
     }
@@ -1799,7 +1823,9 @@ pub(super) fn extract_target_requirements_from_effect_internal(
         let relaxed_spec = if matches!(extracted.spec.base(), ChooseSpec::Object(_))
             && prior_relative_target_requirement(extracted.spec, requirements).is_some()
         {
-            Some(relax_relative_object_target_source_exclusion(extracted.spec))
+            Some(relax_relative_object_target_source_exclusion(
+                extracted.spec,
+            ))
         } else if prior_shared_player_requirement(extracted.spec, requirements).is_some() {
             // "target artifact card in that player's graveyard": which player
             // is fixed by the earlier target; the shared-player group below
@@ -1809,7 +1835,10 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             None
         };
         let mut legal_targets = compute_legal_targets(
-            game, relaxed_spec.as_ref().unwrap_or(extracted.spec), caster, source_id,
+            game,
+            relaxed_spec.as_ref().unwrap_or(extracted.spec),
+            caster,
+            source_id,
         );
         retain_targets_satisfying_announcement_condition(
             game,
@@ -1842,7 +1871,12 @@ pub(super) fn extract_target_requirements_from_effect_internal(
         if has_enough_targets || extracted.chooser.is_some() {
             let distinct_player_group =
                 link_relative_target_to_prior_requirement(extracted.spec, requirements);
-            let shared_player_group = link_target_controller_requirement(game, extracted.spec, &legal_targets, requirements);
+            let shared_player_group = link_target_controller_requirement(
+                game,
+                extracted.spec,
+                &legal_targets,
+                requirements,
+            );
             requirements.push(TargetRequirement {
                 spec: extracted.spec.clone(),
                 chooser: extracted.chooser.cloned(),
@@ -1864,29 +1898,57 @@ pub(super) fn extract_target_requirements_from_effect_internal(
 /// The earlier requirement whose player a `TargetPlayerOrControllerOfTarget`
 /// relation refers to: a player target, else (for an owner relation such as
 /// "a card in that player's graveyard") an earlier object target's controller.
-fn prior_shared_player_requirement(spec: &ChooseSpec, requirements: &[TargetRequirement]) -> Option<usize> {
-    let ChooseSpec::Object(filter) = spec.base() else { return None; };
+fn prior_shared_player_requirement(
+    spec: &ChooseSpec,
+    requirements: &[TargetRequirement],
+) -> Option<usize> {
+    let ChooseSpec::Object(filter) = spec.base() else {
+        return None;
+    };
     let relation = Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
-    if filter.controller != relation && filter.owner != relation { return None; }
-    requirements.iter().rposition(|r| matches!(r.spec.base(),
-        ChooseSpec::Player(_) | ChooseSpec::PlayerOrPlaneswalker(_)))
-        .or_else(|| (filter.owner == relation)
-            .then(|| requirements.iter().rposition(|r| matches!(r.spec.base(), ChooseSpec::Object(_))))
-            .flatten())
+    if filter.controller != relation && filter.owner != relation {
+        return None;
+    }
+    requirements
+        .iter()
+        .rposition(|r| {
+            matches!(
+                r.spec.base(),
+                ChooseSpec::Player(_) | ChooseSpec::PlayerOrPlaneswalker(_)
+            )
+        })
+        .or_else(|| {
+            (filter.owner == relation)
+                .then(|| {
+                    requirements
+                        .iter()
+                        .rposition(|r| matches!(r.spec.base(), ChooseSpec::Object(_)))
+                })
+                .flatten()
+        })
 }
 
 pub(super) fn relax_target_player_relation(spec: &ChooseSpec) -> ChooseSpec {
     match spec {
-        ChooseSpec::Target(inner) => ChooseSpec::Target(Box::new(relax_target_player_relation(inner))),
-        ChooseSpec::WithCount(inner, count) => ChooseSpec::WithCount(Box::new(relax_target_player_relation(inner)), *count),
+        ChooseSpec::Target(inner) => {
+            ChooseSpec::Target(Box::new(relax_target_player_relation(inner)))
+        }
+        ChooseSpec::WithCount(inner, count) => {
+            ChooseSpec::WithCount(Box::new(relax_target_player_relation(inner)), *count)
+        }
         ChooseSpec::SurfaceHinted { spec, hints } => ChooseSpec::SurfaceHinted {
-            spec: Box::new(relax_target_player_relation(spec)), hints: hints.clone(),
+            spec: Box::new(relax_target_player_relation(spec)),
+            hints: hints.clone(),
         },
         ChooseSpec::Object(filter) => {
             let mut filter = filter.clone();
             let relation = Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
-            if filter.controller == relation { filter.controller = None; }
-            if filter.owner == relation { filter.owner = None; }
+            if filter.controller == relation {
+                filter.controller = None;
+            }
+            if filter.owner == relation {
+                filter.owner = None;
+            }
             ChooseSpec::Object(filter)
         }
         _ => spec.clone(),
@@ -1899,24 +1961,42 @@ fn link_target_controller_requirement(
     candidates: &[Target],
     requirements: &mut [TargetRequirement],
 ) -> Option<crate::decisions::context::SharedTargetPlayerGroup> {
-    let ChooseSpec::Object(filter) = spec.base() else { return None; };
+    let ChooseSpec::Object(filter) = spec.base() else {
+        return None;
+    };
     let prior_index = prior_shared_player_requirement(spec, requirements)?;
     let by_owner = filter.controller != Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
-    let group = requirements.iter().filter_map(|r| r.shared_player_group.as_ref().map(|g| g.group)).max().map_or(0, |g| g + 1);
-    let map_players = |targets: &[Target], by_owner: bool| targets.iter().filter_map(|target| {
-        let player = match target {
-            Target::Player(player) => *player,
-            Target::Object(id) if by_owner => game.object(*id)?.owner,
-            Target::Object(id) => game.current_controller(*id)?,
-        };
-        Some((*target, player))
-    }).collect::<Vec<_>>();
+    let group = requirements
+        .iter()
+        .filter_map(|r| r.shared_player_group.as_ref().map(|g| g.group))
+        .max()
+        .map_or(0, |g| g + 1);
+    let map_players = |targets: &[Target], by_owner: bool| {
+        targets
+            .iter()
+            .filter_map(|target| {
+                let player = match target {
+                    Target::Player(player) => *player,
+                    Target::Object(id) if by_owner => game.object(*id)?.owner,
+                    Target::Object(id) => game.current_controller(*id)?,
+                };
+                Some((*target, player))
+            })
+            .collect::<Vec<_>>()
+    };
     let prior = &mut requirements[prior_index];
-    let group = prior.shared_player_group.as_ref().map_or(group, |g| g.group);
+    let group = prior
+        .shared_player_group
+        .as_ref()
+        .map_or(group, |g| g.group);
     prior.shared_player_group = Some(crate::decisions::context::SharedTargetPlayerGroup {
-        group, target_players: map_players(&prior.legal_targets, false),
+        group,
+        target_players: map_players(&prior.legal_targets, false),
     });
-    Some(crate::decisions::context::SharedTargetPlayerGroup { group, target_players: map_players(candidates, by_owner) })
+    Some(crate::decisions::context::SharedTargetPlayerGroup {
+        group,
+        target_players: map_players(candidates, by_owner),
+    })
 }
 
 fn relative_target_player_exclusion_base(filter: &PlayerFilter) -> Option<&PlayerFilter> {
@@ -1925,11 +2005,21 @@ fn relative_target_player_exclusion_base(filter: &PlayerFilter) -> Option<&Playe
 
 fn relax_relative_object_target_source_exclusion(spec: &ChooseSpec) -> ChooseSpec {
     match spec {
-        ChooseSpec::Target(inner) => ChooseSpec::Target(Box::new(relax_relative_object_target_source_exclusion(inner))),
-        ChooseSpec::WithCount(inner, count) => ChooseSpec::WithCount(Box::new(relax_relative_object_target_source_exclusion(inner)), *count),
-        ChooseSpec::WithCountValue(inner, count, value) => ChooseSpec::WithCountValue(Box::new(relax_relative_object_target_source_exclusion(inner)), *count, value.clone()),
+        ChooseSpec::Target(inner) => ChooseSpec::Target(Box::new(
+            relax_relative_object_target_source_exclusion(inner),
+        )),
+        ChooseSpec::WithCount(inner, count) => ChooseSpec::WithCount(
+            Box::new(relax_relative_object_target_source_exclusion(inner)),
+            *count,
+        ),
+        ChooseSpec::WithCountValue(inner, count, value) => ChooseSpec::WithCountValue(
+            Box::new(relax_relative_object_target_source_exclusion(inner)),
+            *count,
+            value.clone(),
+        ),
         ChooseSpec::SurfaceHinted { spec, hints } => ChooseSpec::SurfaceHinted {
-            spec: Box::new(relax_relative_object_target_source_exclusion(spec)), hints: hints.clone(),
+            spec: Box::new(relax_relative_object_target_source_exclusion(spec)),
+            hints: hints.clone(),
         },
         ChooseSpec::Object(filter) => {
             let mut filter = filter.clone();
@@ -1940,15 +2030,25 @@ fn relax_relative_object_target_source_exclusion(spec: &ChooseSpec) -> ChooseSpe
     }
 }
 
-fn prior_relative_target_requirement(spec: &ChooseSpec, requirements: &[TargetRequirement]) -> Option<usize> {
+fn prior_relative_target_requirement(
+    spec: &ChooseSpec,
+    requirements: &[TargetRequirement],
+) -> Option<usize> {
     match spec.base() {
         ChooseSpec::Player(filter) => {
             relative_target_player_exclusion_base(filter)?;
-            requirements.iter().rposition(|requirement| matches!(requirement.spec.base(), ChooseSpec::Player(_)))
+            requirements
+                .iter()
+                .rposition(|requirement| matches!(requirement.spec.base(), ChooseSpec::Player(_)))
         }
-        ChooseSpec::Object(filter) if filter.other && filter.source_surface.is_none()
-            && filter.tagged_constraints.is_empty() => {
-            requirements.iter().rposition(|requirement| matches!(requirement.spec.base(), ChooseSpec::Object(_)))
+        ChooseSpec::Object(filter)
+            if filter.other
+                && filter.source_surface.is_none()
+                && filter.tagged_constraints.is_empty() =>
+        {
+            requirements
+                .iter()
+                .rposition(|requirement| matches!(requirement.spec.base(), ChooseSpec::Object(_)))
         }
         _ => None,
     }
@@ -3801,18 +3901,25 @@ pub(super) fn validate_stack_entry_targets_with_view(
                 prior_player_or_planeswalker_target(game, entry, assignment_index, view)
             {
                 specialize_target_player_relation_in_choose_spec(&mut resolved_spec, player);
-            } else if let Some(player) = prior_object_targets.first().and_then(|target| match target {
-                // "a card in that player's graveyard" after an object target:
-                // that player is the earlier target's current controller.
-                Target::Object(id) => view.current_controller(*id),
-                Target::Player(_) => None,
-            }) {
+            } else if let Some(player) =
+                prior_object_targets
+                    .first()
+                    .and_then(|target| match target {
+                        // "a card in that player's graveyard" after an object target:
+                        // that player is the earlier target's current controller.
+                        Target::Object(id) => view.current_controller(*id),
+                        Target::Player(_) => None,
+                    })
+            {
                 specialize_target_player_relation_in_choose_spec(&mut resolved_spec, player);
             }
             // Reflexive entries retain the resolving parent's results. Use
             // them again when rechecking legality after players can respond.
             let legal_targets = if !entry.effect_outcomes.is_empty() {
-                let mut ctx = crate::effects::ExecutionContext::new_default(entry.object_id, entry.controller);
+                let mut ctx = crate::effects::ExecutionContext::new_default(
+                    entry.object_id,
+                    entry.controller,
+                );
                 ctx.x_value = entry.x_value;
                 ctx.effect_outcomes = entry.effect_outcomes.clone();
                 ctx.tagged_objects = entry.tagged_objects.clone();
@@ -3822,28 +3929,37 @@ pub(super) fn validate_stack_entry_targets_with_view(
                 ctx.combat.defending_player = entry.defending_player;
                 ctx.combat.attacking_player = combat_attacking_player_for_entry(game, entry);
                 crate::targeting::compute_legal_targets_with_execution_context_and_view(
-                    game, &resolved_spec, &ctx, view,
+                    game,
+                    &resolved_spec,
+                    &ctx,
+                    view,
                 )
             } else if entry.defending_player.is_some() {
                 compute_legal_targets_with_tagged_objects_combat_context_and_view(
-                    game, &resolved_spec, entry.controller, Some(entry.object_id),
-                    entry.source_snapshot.as_ref(), Some(&entry.tagged_objects),
-                    entry.defending_player, combat_attacking_player_for_entry(game, entry), view,
+                    game,
+                    &resolved_spec,
+                    entry.controller,
+                    Some(entry.object_id),
+                    entry.source_snapshot.as_ref(),
+                    Some(&entry.tagged_objects),
+                    entry.defending_player,
+                    combat_attacking_player_for_entry(game, entry),
+                    view,
                 )
             } else {
                 compute_legal_targets_with_source_snapshot_and_view(
-                game,
-                &resolved_spec,
-                entry.controller,
-                Some(entry.object_id),
-                entry.source_snapshot.as_ref(),
-                if entry.tagged_objects.is_empty() {
-                    None
-                } else {
-                    Some(&entry.tagged_objects)
-                },
-                view,
-            )
+                    game,
+                    &resolved_spec,
+                    entry.controller,
+                    Some(entry.object_id),
+                    entry.source_snapshot.as_ref(),
+                    if entry.tagged_objects.is_empty() {
+                        None
+                    } else {
+                        Some(&entry.tagged_objects)
+                    },
+                    view,
+                )
             };
 
             let start = valid_targets.len();

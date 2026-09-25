@@ -397,9 +397,7 @@ impl GrantObjectAbilityForFilter {
     }
 
     /// The static ability this grant carries, when it carries one.
-    pub(crate) fn granted_static_ability(
-        &self,
-    ) -> Option<&crate::static_abilities::StaticAbility> {
+    pub(crate) fn granted_static_ability(&self) -> Option<&crate::static_abilities::StaticAbility> {
         match &self.ability.kind {
             AbilityKind::Static(static_ability) => Some(static_ability),
             _ => None,

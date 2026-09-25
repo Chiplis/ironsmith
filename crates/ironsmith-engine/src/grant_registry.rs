@@ -566,7 +566,13 @@ impl GrantRegistry {
         source: GrantSource,
     ) {
         let budget = self.create_shared_usage_budget(1);
-        self.grant_to_filter(filter, zone, player, Grantable::AlternativeCast(method), source);
+        self.grant_to_filter(
+            filter,
+            zone,
+            player,
+            Grantable::AlternativeCast(method),
+            source,
+        );
         let grant = self.grants.last_mut().expect("just inserted");
         grant.shared_usage_id = Some(budget);
         grant.ends_on_next_matching_cast = true;
@@ -789,10 +795,20 @@ impl GrantRegistry {
     }
 
     /// A single budget covers every matching card, including cards added later.
-    pub fn grant_play_from_to_filter_with_budget(&mut self, filter: ObjectFilter, zone: Zone, player: PlayerId, source: GrantSource, max_plays: u32) {
+    pub fn grant_play_from_to_filter_with_budget(
+        &mut self,
+        filter: ObjectFilter,
+        zone: Zone,
+        player: PlayerId,
+        source: GrantSource,
+        max_plays: u32,
+    ) {
         let budget = self.create_shared_usage_budget(max_plays);
         self.grant_to_filter(filter, zone, player, Grantable::PlayFrom, source);
-        self.grants.last_mut().expect("just inserted").shared_usage_id = Some(budget);
+        self.grants
+            .last_mut()
+            .expect("just inserted")
+            .shared_usage_id = Some(budget);
     }
 
     /// Add a filter grant from a resolving effect until end of turn.
@@ -1382,8 +1398,8 @@ impl GrantRegistry {
                         usage_limit: spec.usage_limit,
                         available_starting_turn: None,
                         play_from_constraints: PlayFromConstraints::default(),
-            cast_this_way_grants: Vec::new(),
-            cast_this_way_filter: None,
+                        cast_this_way_grants: Vec::new(),
+                        cast_this_way_filter: None,
                         shared_usage_id: None,
                         ends_on_next_matching_cast: false,
                         source: GrantSource::StaticAbility { source_id },

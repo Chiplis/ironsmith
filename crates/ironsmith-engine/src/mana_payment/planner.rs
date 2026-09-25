@@ -1,6 +1,6 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet, VecDeque};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
 
 use crate::ability::{AbilityKind, ActivatedAbilityRuntimeExt as _};
@@ -121,7 +121,8 @@ pub fn plan_first_mana_payment(
         lazy_candidates: true,
         preview_assignment: true,
         ..Default::default()
-    }.first_plan(game, request)
+    }
+    .first_plan(game, request)
 }
 
 /// Check for one valid payment without ranking plans for display or execution.
@@ -2351,13 +2352,13 @@ fn safe_search_state_key(game: &GameState, payer: crate::ids::PlayerId) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-use std::collections::hash_map::DefaultHasher;
     use crate::card::CardBuilder;
     use crate::decision::SelectFirstDecisionMaker;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaCost;
     use crate::types::CardType;
     use crate::zone::Zone;
+    use std::collections::hash_map::DefaultHasher;
 
     fn game() -> (GameState, PlayerId) {
         (
@@ -2532,7 +2533,10 @@ use std::collections::hash_map::DefaultHasher;
             }
         }
         assert!(checked > 500, "matrix should be broad, checked {checked}");
-        assert!(vetoed > 50, "matrix should exercise the veto, vetoed {vetoed}");
+        assert!(
+            vetoed > 50,
+            "matrix should exercise the veto, vetoed {vetoed}"
+        );
     }
 
     /// Convoke, Delve and Improvise pay pips without producing mana, so the
@@ -2545,20 +2549,19 @@ use std::collections::hash_map::DefaultHasher;
                 .card_types(vec![CardType::Sorcery])
                 .build();
             let spell = game.create_object_from_card(&definition, alice, Zone::Stack);
-            game.object_mut(spell)
-                .unwrap()
-                .abilities_mut()
-                .push(crate::ability::Ability::static_ability(match keyword {
+            game.object_mut(spell).unwrap().abilities_mut().push(
+                crate::ability::Ability::static_ability(match keyword {
                     "Convoke" => crate::static_abilities::StaticAbility::new(
                         crate::static_abilities::Convoke,
                     ),
-                    "Delve" => crate::static_abilities::StaticAbility::new(
-                        crate::static_abilities::Delve,
-                    ),
+                    "Delve" => {
+                        crate::static_abilities::StaticAbility::new(crate::static_abilities::Delve)
+                    }
                     _ => crate::static_abilities::StaticAbility::new(
                         crate::static_abilities::Improvise,
                     ),
-                }));
+                }),
+            );
             game.refresh_continuous_state();
             let mut request = ManaPaymentRequest::new(
                 alice,
@@ -2615,7 +2618,14 @@ use std::collections::hash_map::DefaultHasher;
         use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
 
         let (mut game, alice) = game();
-        mana_land(&mut game, alice, "Plain", &[vec![ManaSymbol::Green]], false, Some(false));
+        mana_land(
+            &mut game,
+            alice,
+            "Plain",
+            &[vec![ManaSymbol::Green]],
+            false,
+            Some(false),
+        );
         game.refresh_continuous_state();
         assert!(
             !game.continuous_effects_are_tap_sensitive(),

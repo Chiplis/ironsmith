@@ -455,11 +455,23 @@ pub fn parse_restriction_subject_surface_words(
     words: &[&str],
 ) -> Option<RestrictionSubjectSurface> {
     if exact_any(words, &[&["ability"], &["abilities"]]) {
-        Some(RestrictionSubjectSurface::StackAbility(crate::filter::StackObjectKind::Ability))
-    } else if exact_any(words, &[&["activated", "ability"], &["activated", "abilities"]]) {
-        Some(RestrictionSubjectSurface::StackAbility(crate::filter::StackObjectKind::ActivatedAbility))
-    } else if exact_any(words, &[&["triggered", "ability"], &["triggered", "abilities"]]) {
-        Some(RestrictionSubjectSurface::StackAbility(crate::filter::StackObjectKind::TriggeredAbility))
+        Some(RestrictionSubjectSurface::StackAbility(
+            crate::filter::StackObjectKind::Ability,
+        ))
+    } else if exact_any(
+        words,
+        &[&["activated", "ability"], &["activated", "abilities"]],
+    ) {
+        Some(RestrictionSubjectSurface::StackAbility(
+            crate::filter::StackObjectKind::ActivatedAbility,
+        ))
+    } else if exact_any(
+        words,
+        &[&["triggered", "ability"], &["triggered", "abilities"]],
+    ) {
+        Some(RestrictionSubjectSurface::StackAbility(
+            crate::filter::StackObjectKind::TriggeredAbility,
+        ))
     } else if exact_any(
         words,
         &[&["damage"], &["the", "damage"], &["that", "damage"]],

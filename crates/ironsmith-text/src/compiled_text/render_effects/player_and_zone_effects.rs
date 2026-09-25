@@ -2975,7 +2975,11 @@ pub(super) fn describe_exiled_with_source_move(
         ReferenceSurface::It => " exiled with it".to_string(),
         ReferenceSurface::Omitted => String::new(),
     };
-    let library_position = if library_placement.is_some_and(|(top, _)| top) { "top" } else { "bottom" };
+    let library_position = if library_placement.is_some_and(|(top, _)| top) {
+        "top"
+    } else {
+        "bottom"
+    };
     let library_order = match library_placement.and_then(|(_, order)| order) {
         Some(crate::effects::LibraryPlacementOrder::Random) => " in a random order",
         Some(crate::effects::LibraryPlacementOrder::ChosenBy(_)) => " in any order",
@@ -3048,7 +3052,9 @@ pub(super) fn describe_exiled_with_source_move(
         ironsmith_core::ExiledWithSourceMoveVerbSurface::Return => "Return",
     };
     if zone == Zone::Library && library_placement.is_some() {
-        return format!("{verb} {subject}{source} on the {library_position} of {destination}{library_order}");
+        return format!(
+            "{verb} {subject}{source} on the {library_position} of {destination}{library_order}"
+        );
     }
     format!("{verb} {subject}{source} {preposition} {destination}")
 }
@@ -4482,7 +4488,10 @@ pub(super) fn describe_exile_top_then_play(
     }
     if grant_play.spell_filter.is_some() {
         let (exile_clause, _) = describe_exile_top_clause(exile_top, suppress_count_where_clause)?;
-        return Some(format!("{exile_clause}. {}", describe_effect(&Effect::new(grant_play.clone()))));
+        return Some(format!(
+            "{exile_clause}. {}",
+            describe_effect(&Effect::new(grant_play.clone()))
+        ));
     }
     let duration_text = match grant_play.duration {
         crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => "Until end of turn",
@@ -4712,9 +4721,7 @@ pub(crate) fn describe_look_at_top_exile_face_down_then_play_while_exiled(
     let cast_ref = if singular_count { "that spell" } else { "them" };
     let player = describe_player_filter(&grant.player);
     let verb = if grant.allow_land { "play" } else { "cast" };
-    let mana_suffix = grant
-        .mana_spend_cast_suffix(cast_ref)
-        .unwrap_or_default();
+    let mana_suffix = grant.mana_spend_cast_suffix(cast_ref).unwrap_or_default();
 
     Some(format!(
         "{look_clause}, then exile {object_ref} face down. For as long as {duration_ref} remains exiled, {player} may {verb} {object_ref}{mana_suffix}"

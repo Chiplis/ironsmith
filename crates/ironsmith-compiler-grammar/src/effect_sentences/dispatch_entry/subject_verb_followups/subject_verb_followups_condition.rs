@@ -8,8 +8,9 @@ pub(super) fn pre_rule_conditional_optional_result_followup(
     _sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    let continuation =
-        super::super::super::super::token_primitives::strip_leading_if_you_do_lexed(sentence_tokens);
+    let continuation = super::super::super::super::token_primitives::strip_leading_if_you_do_lexed(
+        sentence_tokens,
+    );
     let is_when_you_do = sentence_tokens.len() >= 3
         && sentence_tokens[0].is_word("when")
         && sentence_tokens[1].is_word("you")
@@ -23,17 +24,27 @@ pub(super) fn pre_rule_conditional_optional_result_followup(
     }
     let effects = match state.effects.last_mut() {
         Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })) => effects,
-        Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, if_false, .. }))
-            if if_false.is_empty() => if_true,
+        Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            if_true,
+            if_false,
+            ..
+        })) if if_false.is_empty() => if_true,
         _ => return Ok(None),
     };
     // Both acceptance and refusal continuations belong to the optional action's
     // branch. A skipped outer condition must not execute the refusal outcome.
-    let producer = effects.iter().rev().find(|effect| !matches!(effect,
-        EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. })));
-    if !matches!(producer, Some(EffectAst::Permissions(
-        PermissionEffectAst::May { .. } | PermissionEffectAst::MayByPlayer { .. }
-    ))) {
+    let producer = effects.iter().rev().find(|effect| {
+        !matches!(
+            effect,
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. })
+        )
+    });
+    if !matches!(
+        producer,
+        Some(EffectAst::Permissions(
+            PermissionEffectAst::May { .. } | PermissionEffectAst::MayByPlayer { .. }
+        ))
+    ) {
         return Ok(None);
     }
 
@@ -254,8 +265,10 @@ pub(in super::super) fn post_rule_future_zone_and_self_replacement(
         Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. }))
             if effects.len() == 1
     ) {
-        let Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, mut effects })) =
-            state.effects.pop()
+        let Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+            predicate,
+            mut effects,
+        })) = state.effects.pop()
         else {
             unreachable!("checked above");
         };

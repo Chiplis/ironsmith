@@ -638,16 +638,38 @@ fn copying_deadpool_before_entry_exchanges_the_copied_text_box() {
     };
     let clone = CardDefinitionBuilder::new(CardId::new(), "Unprinted replica")
         .card_types(vec![CardType::Creature])
-        .with_ability(Ability::static_ability(StaticAbility::with_enter_as_copy_as_enters(
-            spec, "Enter as a copy of the matching creature.".into(),
-        )))
+        .with_ability(Ability::static_ability(
+            StaticAbility::with_enter_as_copy_as_enters(
+                spec,
+                "Enter as a copy of the matching creature.".into(),
+            ),
+        ))
         .build();
     let hand = game.create_object_from_definition(&clone, alice, Zone::Hand);
     let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
-    let entered = game.move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).unwrap().new_id;
+    let entered = game
+        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+        .unwrap()
+        .new_id;
     assert!(game.object_has_static_ability_id(entered, StaticAbilityId::Flying));
-    let partner_abilities = game.calculated_characteristics(partner).unwrap().abilities.clone();
-    assert_eq!(partner_abilities.len(), 3, "the partner receives Deadpool's copied text, not the replica's printed copy replacement");
-    assert!(partner_abilities.iter().any(|ability| matches!(ability.kind, ironsmith::ability::AbilityKind::Triggered(_))));
-    assert!(partner_abilities.iter().any(|ability| matches!(ability.kind, ironsmith::ability::AbilityKind::Activated(_))));
+    let partner_abilities = game
+        .calculated_characteristics(partner)
+        .unwrap()
+        .abilities
+        .clone();
+    assert_eq!(
+        partner_abilities.len(),
+        3,
+        "the partner receives Deadpool's copied text, not the replica's printed copy replacement"
+    );
+    assert!(
+        partner_abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, ironsmith::ability::AbilityKind::Triggered(_)))
+    );
+    assert!(
+        partner_abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, ironsmith::ability::AbilityKind::Activated(_)))
+    );
 }

@@ -31,7 +31,8 @@ fn strict_snapshot_and_full_quality_gate() {
 fn battlefield_nexus() -> (GameState, ironsmith::ObjectId) {
     let def = ironsmith_tools::compile_definition_from_payload(&payload()).unwrap();
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
-    let nexus = game.create_object_from_definition(&def, PlayerId::from_index(0), Zone::Battlefield);
+    let nexus =
+        game.create_object_from_definition(&def, PlayerId::from_index(0), Zone::Battlefield);
     (game, nexus)
 }
 
@@ -40,7 +41,10 @@ fn has_every_nonbasic_land_type_and_no_basic_type() {
     let (game, nexus) = battlefield_nexus();
     let subtypes = game.calculated_subtypes(nexus);
     for nonbasic in Subtype::nonbasic_land_types() {
-        assert!(subtypes.contains(nonbasic), "missing {nonbasic:?}: {subtypes:?}");
+        assert!(
+            subtypes.contains(nonbasic),
+            "missing {nonbasic:?}: {subtypes:?}"
+        );
     }
     assert!(
         subtypes.iter().all(|subtype| !subtype.is_basic_land_type()),
@@ -61,8 +65,18 @@ fn counts_for_land_type_filters_such_as_locus_desert_gate_and_urzas() {
         )
         .unwrap()
     };
-    for subtype in [Subtype::Locus, Subtype::Desert, Subtype::Gate, Subtype::Urzas, Subtype::Cave] {
-        assert_eq!(count(subtype), 1, "{subtype:?} land count should include Planar Nexus");
+    for subtype in [
+        Subtype::Locus,
+        Subtype::Desert,
+        Subtype::Gate,
+        Subtype::Urzas,
+        Subtype::Cave,
+    ] {
+        assert_eq!(
+            count(subtype),
+            1,
+            "{subtype:?} land count should include Planar Nexus"
+        );
     }
     assert_eq!(count(Subtype::Forest), 0);
 }
@@ -81,5 +95,8 @@ fn has_colorless_and_filtered_any_color_mana_abilities() {
     assert_eq!(mana_abilities.len(), 2, "{mana_abilities:#?}");
     let debug = format!("{mana_abilities:#?}");
     assert!(debug.contains("Colorless"), "{{T}}: Add {{C}}");
-    assert!(debug.contains("AddManaOfAnyColorEffect"), "{{1}}, {{T}}: any color");
+    assert!(
+        debug.contains("AddManaOfAnyColorEffect"),
+        "{{1}}, {{T}}: any color"
+    );
 }

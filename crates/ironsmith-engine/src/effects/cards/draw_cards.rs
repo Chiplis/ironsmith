@@ -292,8 +292,7 @@ pub(crate) fn automatic_reveal_events_for_draw(
                         return reveal_events;
                     };
                     if revealed.contains(&candidate.card_id) {
-                        let candidate =
-                            automatic_draw_reveal_candidate_for_pending(game, &pending);
+                        let candidate = automatic_draw_reveal_candidate_for_pending(game, &pending);
                         reveal_events.push(emit_automatic_draw_reveal_event(
                             game,
                             decision_maker,

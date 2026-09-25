@@ -18,7 +18,11 @@ fn payload() -> ironsmith_tools::CardPayload {
 #[test]
 fn strict_snapshot_and_full_quality_gate() {
     let snapshot = ironsmith_tools::compile_authoritative_snapshot_from_payload(&payload());
-    assert_eq!(snapshot.parse_status, ironsmith_tools::ParseStatus::StrictCompiled, "{snapshot:#?}");
+    assert_eq!(
+        snapshot.parse_status,
+        ironsmith_tools::ParseStatus::StrictCompiled,
+        "{snapshot:#?}"
+    );
     assert!(
         snapshot.parse_error.is_none() && !snapshot.parse_lossy && !snapshot.has_unimplemented,
         "{snapshot:#?}"
@@ -54,8 +58,12 @@ fn free_castable(milled: i32, player: PlayerFilter) -> bool {
     );
     let mut dm = SelectFirstDecisionMaker;
     let mut ctx = ironsmith::effects::EffectContext::new(trap, alice, &mut dm);
-    ironsmith::effects::execute_effect(&mut game, &ironsmith::Effect::mill_player(milled, player), &mut ctx)
-        .unwrap();
+    ironsmith::effects::execute_effect(
+        &mut game,
+        &ironsmith::Effect::mill_player(milled, player),
+        &mut ctx,
+    )
+    .unwrap();
     let _ = bob;
     compute_legal_actions(&game, alice)
         .into_iter()
@@ -64,15 +72,24 @@ fn free_castable(milled: i32, player: PlayerFilter) -> bool {
 
 #[test]
 fn free_after_an_opponent_had_three_cards_put_into_their_graveyard() {
-    assert!(free_castable(3, PlayerFilter::Specific(PlayerId::from_index(1))));
+    assert!(free_castable(
+        3,
+        PlayerFilter::Specific(PlayerId::from_index(1))
+    ));
 }
 
 #[test]
 fn two_cards_are_not_enough() {
-    assert!(!free_castable(2, PlayerFilter::Specific(PlayerId::from_index(1))));
+    assert!(!free_castable(
+        2,
+        PlayerFilter::Specific(PlayerId::from_index(1))
+    ));
 }
 
 #[test]
 fn your_own_graveyard_does_not_count() {
-    assert!(!free_castable(3, PlayerFilter::Specific(PlayerId::from_index(0))));
+    assert!(!free_castable(
+        3,
+        PlayerFilter::Specific(PlayerId::from_index(0))
+    ));
 }

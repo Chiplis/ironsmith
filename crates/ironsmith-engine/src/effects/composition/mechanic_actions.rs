@@ -495,7 +495,8 @@ impl EffectExecutor for ExploreEffect {
                         );
                     } else {
                         if game.object(instruction.object_id).is_some()
-                            && let Some(event) = put_explore_counter(game, ctx, instruction.object_id)
+                            && let Some(event) =
+                                put_explore_counter(game, ctx, instruction.object_id)
                         {
                             events.push(event);
                         }
@@ -642,7 +643,9 @@ impl EffectExecutor for OpenAttractionEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ManifestDreadEffect { pub player: PlayerFilter }
+pub struct ManifestDreadEffect {
+    pub player: PlayerFilter,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ManifestTopCardOfLibraryEffect {
@@ -678,8 +681,14 @@ impl Default for ManifestDreadEffect {
 }
 
 impl ManifestDreadEffect {
-    pub fn new() -> Self { Self { player: PlayerFilter::You } }
-    pub fn for_player(player: PlayerFilter) -> Self { Self { player } }
+    pub fn new() -> Self {
+        Self {
+            player: PlayerFilter::You,
+        }
+    }
+    pub fn for_player(player: PlayerFilter) -> Self {
+        Self { player }
+    }
 }
 
 impl Default for ManifestCardFromHandEffect {
@@ -998,13 +1007,8 @@ impl EffectExecutor for ManifestDreadEffect {
             graveyard_snapshots,
         )]);
         outcome.events.push(TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(
-                KeywordActionKind::ManifestDread,
-                player,
-                ctx.source,
-                1,
-            )
-            .with_object_tags(object_tags),
+            KeywordActionEvent::new(KeywordActionKind::ManifestDread, player, ctx.source, 1)
+                .with_object_tags(object_tags),
             ctx.provenance,
         ));
 
@@ -1881,14 +1885,17 @@ impl EffectExecutor for AdaptEffect {
         // "The next time target creature adapts this turn, it adapts as though
         // it had no +1/+1 counters on it" is consumed by this adapt.
         let turn = game.turn.turn_number;
-        let ignores_counters = game.object(source_id).map(|o| o.stable_id).is_some_and(|stable| {
-            let store = &mut game.turn_store.adapt_ignores_counters;
-            let found = store.iter().position(|(id, t)| *id == stable && *t == turn);
-            if let Some(index) = found {
-                store.remove(index);
-            }
-            found.is_some()
-        });
+        let ignores_counters = game
+            .object(source_id)
+            .map(|o| o.stable_id)
+            .is_some_and(|stable| {
+                let store = &mut game.turn_store.adapt_ignores_counters;
+                let found = store.iter().position(|(id, t)| *id == stable && *t == turn);
+                if let Some(index) = found {
+                    store.remove(index);
+                }
+                found.is_some()
+            });
         if !ignores_counters && game.counter_count(source_id, CounterType::PlusOnePlusOne) > 0 {
             return Ok(EffectOutcome::count(0));
         }

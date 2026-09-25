@@ -108,7 +108,9 @@ fn cast(game: &mut GameState, action: LegalAction, dm: &mut impl DecisionMaker) 
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            game, &mut queue, &mut state, &ctx, dm,
+        );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
     ironsmith::game_loop::resolve_stack_entry_with(game, dm).unwrap();
@@ -121,11 +123,23 @@ fn first_spell_of_the_game_is_free_and_finds_a_creature() {
     let action = castable(&game, spell).expect("free as the first spell of the game");
     cast(&mut game, action, &mut Take("Bear"));
     let player = game.player(alice).unwrap();
-    let hand: Vec<String> = player.hand.iter().map(|id| game.object(*id).unwrap().name.to_string()).collect();
+    let hand: Vec<String> = player
+        .hand
+        .iter()
+        .map(|id| game.object(*id).unwrap().name.to_string())
+        .collect();
     assert_eq!(hand, vec!["Bear".to_string()]);
-    let library: Vec<String> = player.library.iter().map(|id| game.object(*id).unwrap().name.to_string()).collect();
+    let library: Vec<String> = player
+        .library
+        .iter()
+        .map(|id| game.object(*id).unwrap().name.to_string())
+        .collect();
     assert_eq!(library.len(), 5);
-    assert_eq!(library.last().map(String::as_str), Some("Bottom Card"), "the rest go under it: {library:?}");
+    assert_eq!(
+        library.last().map(String::as_str),
+        Some("Bottom Card"),
+        "the rest go under it: {library:?}"
+    );
 }
 
 #[test]
@@ -137,11 +151,17 @@ fn not_free_after_you_have_cast_another_spell_this_game() {
         .card_types(vec![CardType::Sorcery])
         .build();
     let opening = game.create_object_from_definition(&cheap, alice, Zone::Hand);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Colorless, 1);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Colorless, 1);
     let action = castable(&game, opening).expect("opening spell castable");
     cast(&mut game, action, &mut Take("none"));
     // A later turn: the count is per game, not per turn.
     game.turn_store.turn_history.clear_for_new_turn();
     game.turn.turn_number += 2;
-    assert!(castable(&game, spell).is_none(), "no longer the first spell, and no mana");
+    assert!(
+        castable(&game, spell).is_none(),
+        "no longer the first spell, and no mana"
+    );
 }

@@ -2961,7 +2961,13 @@ pub struct GoadMatching {
 }
 
 impl StaticAbilityKind for GoadMatching {
-    fn id(&self) -> StaticAbilityId { StaticAbilityId::GoadMatching }
-    fn display(&self) -> String { "Matching permanents are goaded".into() }
-    fn goads_matching(&self) -> Option<&crate::target::ObjectFilter> { Some(&self.filter) }
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::GoadMatching
+    }
+    fn display(&self) -> String {
+        "Matching permanents are goaded".into()
+    }
+    fn goads_matching(&self) -> Option<&crate::target::ObjectFilter> {
+        Some(&self.filter)
+    }
 }

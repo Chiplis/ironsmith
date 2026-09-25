@@ -13,13 +13,21 @@ impl EffectExecutor for LookAtHandEffect {
     /// "Reveal your hand" can be paid as a cost (Land Grant's alternative
     /// cost); an empty hand can still be revealed.
     fn as_cost_executable(&self) -> Option<&dyn crate::effects::CostExecutableEffect> {
-        (self.reveal && matches!(self.target, ChooseSpec::Player(crate::target::PlayerFilter::You)))
-            .then_some(self as &dyn crate::effects::CostExecutableEffect)
+        (self.reveal
+            && matches!(
+                self.target,
+                ChooseSpec::Player(crate::target::PlayerFilter::You)
+            ))
+        .then_some(self as &dyn crate::effects::CostExecutableEffect)
     }
 
     fn cost_description(&self) -> Option<String> {
-        (self.reveal && matches!(self.target, ChooseSpec::Player(crate::target::PlayerFilter::You)))
-            .then(|| "Reveal your hand".to_string())
+        (self.reveal
+            && matches!(
+                self.target,
+                ChooseSpec::Player(crate::target::PlayerFilter::You)
+            ))
+        .then(|| "Reveal your hand".to_string())
     }
 
     fn supports_simultaneous_player_action(&self) -> bool {

@@ -238,9 +238,9 @@ pub(crate) fn schedule_token_cleanup(
             token_id,
             controller_id,
             Trigger::end_of_combat(),
-            vec![Effect::new(SacrificeTargetEffect::new(
-                ChooseSpec::All(crate::target::ObjectFilter::specific(token_id).you_control()),
-            ))],
+            vec![Effect::new(SacrificeTargetEffect::new(ChooseSpec::All(
+                crate::target::ObjectFilter::specific(token_id).you_control(),
+            )))],
         )?;
     }
 
@@ -251,9 +251,9 @@ pub(crate) fn schedule_token_cleanup(
             token_id,
             controller_id,
             Trigger::beginning_of_end_step(options.next_end_step_player.clone()),
-            vec![Effect::new(SacrificeTargetEffect::new(
-                ChooseSpec::All(crate::target::ObjectFilter::specific(token_id).you_control()),
-            ))],
+            vec![Effect::new(SacrificeTargetEffect::new(ChooseSpec::All(
+                crate::target::ObjectFilter::specific(token_id).you_control(),
+            )))],
         )?;
     }
 

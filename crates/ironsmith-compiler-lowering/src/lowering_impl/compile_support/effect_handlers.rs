@@ -142,9 +142,9 @@ pub fn compile_delayed_trigger_spec(
         TriggerSpec::Attacks(filter) => {
             Ok(ironsmith_core::DelayedTriggerSpec::Attacks(filter.clone()))
         }
-        TriggerSpec::AttacksYouOrPlaneswalkerYouControl(filter) => {
-            Ok(ironsmith_core::DelayedTriggerSpec::AttacksYou(filter.clone()))
-        }
+        TriggerSpec::AttacksYouOrPlaneswalkerYouControl(filter) => Ok(
+            ironsmith_core::DelayedTriggerSpec::AttacksYou(filter.clone()),
+        ),
         TriggerSpec::PlayerTapsForMana { player, filter } => {
             Ok(ironsmith_core::DelayedTriggerSpec::PlayerTapsForMana {
                 player: player.clone(),
@@ -1610,10 +1610,12 @@ pub(super) fn try_compile_stack_and_condition_effect(
             // branches, which may have moved the player context elsewhere.
             let predicate_names_target_player = matches!(
                 predicate,
-                PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerControlsMoreThanYou {
-                    player: PlayerAst::Target | PlayerAst::TargetOpponent,
-                    ..
-                })
+                PredicateAst::Player(
+                    crate::cards::builders::PlayerPredicateAst::PlayerControlsMoreThanYou {
+                        player: PlayerAst::Target | PlayerAst::TargetOpponent,
+                        ..
+                    }
+                )
             );
             let branch_last_player = predicate_names_target_player
                 .then(|| std::mem::replace(&mut ctx.last_player_filter, saved_last_player));

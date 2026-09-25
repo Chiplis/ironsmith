@@ -76,7 +76,8 @@ impl CombatState {
 
     pub fn remember_blocked_attackers(&mut self) {
         self.blocked_attackers.extend(
-            self.blockers.iter()
+            self.blockers
+                .iter()
                 .filter(|(_, blockers)| !blockers.is_empty())
                 .map(|(attacker, _)| *attacker),
         );
@@ -629,7 +630,6 @@ pub fn declare_attackers(
                 additional_attack_mana_cost = additional_attack_mana_cost.saturating_add(cost);
             }
         }
-
     }
 
     if let Some(max_attackers) = max_creatures_can_attack_each_combat(game)
@@ -1727,10 +1727,11 @@ pub fn get_blocked_attacker(combat: &CombatState, blocker: ObjectId) -> Option<O
 
 /// Blocked status lasts until the attacker leaves combat, even with no blockers left.
 pub fn is_blocked(combat: &CombatState, attacker: ObjectId) -> bool {
-    combat.blocked_attackers.contains(&attacker) || combat
-        .blockers
-        .get(&attacker)
-        .is_some_and(|blockers| !blockers.is_empty())
+    combat.blocked_attackers.contains(&attacker)
+        || combat
+            .blockers
+            .get(&attacker)
+            .is_some_and(|blockers| !blockers.is_empty())
 }
 
 /// Returns true if the attacker is unblocked (no blockers assigned and is attacking).

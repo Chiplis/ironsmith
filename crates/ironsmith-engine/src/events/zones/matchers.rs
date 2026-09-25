@@ -79,7 +79,9 @@ impl WouldEnterBattlefieldMatcher {
 }
 
 impl ReplacementMatcher for WouldEnterBattlefieldMatcher {
-    fn applies_from_entering_source(&self) -> bool { self.filter.source }
+    fn applies_from_entering_source(&self) -> bool {
+        self.filter.source
+    }
 
     fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
         match event.event_kind() {
@@ -117,7 +119,9 @@ impl ReplacementMatcher for WouldEnterBattlefieldMatcher {
 pub struct ThisWouldEnterBattlefieldMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterBattlefieldMatcher {
-    fn applies_from_entering_source(&self) -> bool { true }
+    fn applies_from_entering_source(&self) -> bool {
+        true
+    }
 
     fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
         let object_id = match event.event_kind() {
@@ -530,7 +534,9 @@ impl WouldChangeZoneMatcher {
 }
 
 impl ReplacementMatcher for WouldChangeZoneMatcher {
-    fn applies_from_entering_source(&self) -> bool { self.filter.source }
+    fn applies_from_entering_source(&self) -> bool {
+        self.filter.source
+    }
 
     fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {

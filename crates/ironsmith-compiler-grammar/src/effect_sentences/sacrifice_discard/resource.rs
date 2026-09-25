@@ -108,8 +108,17 @@ pub fn parse_sacrifice(
     // object; it does not ask the player to make a new sacrifice choice.
     if let Some(chosen) = crate::grammar::targets::parse_chosen_object_target(tokens) {
         let noun = crate::lexer::token_word_refs(chosen.filter_tokens);
-        if matches!(noun.as_slice(), ["creature" | "artifact" | "enchantment" | "land" | "planeswalker" | "battle" | "permanent" | "object"])
-        {
+        if matches!(
+            noun.as_slice(),
+            ["creature"
+                | "artifact"
+                | "enchantment"
+                | "land"
+                | "planeswalker"
+                | "battle"
+                | "permanent"
+                | "object"]
+        ) {
             let target = parse_target_phrase(tokens)?;
             return Ok(wrap_unless_escaped(
                 EffectAst::subject_verb_sacrifice(player, ObjectFilter::default(), 1, Some(target)),

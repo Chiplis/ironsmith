@@ -410,7 +410,10 @@ fn compose_reveal_top_choose_card_type_put_to_hand_rest_bottom(
         })
         .collect();
 
-    EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { chooser: crate::target::PlayerFilter::You, modes })
+    EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
+        chooser: crate::target::PlayerFilter::You,
+        modes,
+    })
 }
 
 pub fn parse_choose_creature_type_phrase_words(

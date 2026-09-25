@@ -218,7 +218,10 @@ pub(crate) fn spell_prototype_characteristics(
     spell: &crate::object::Object,
 ) -> Option<(crate::mana::ManaCost, crate::card::PowerToughness)> {
     spell.alternative_casts.iter().find_map(|method| {
-        Some((method.mana_cost()?.clone(), method.prototype_power_toughness()?))
+        Some((
+            method.mana_cost()?.clone(),
+            method.prototype_power_toughness()?,
+        ))
     })
 }
 
@@ -245,14 +248,13 @@ fn ensure_prototype_choice_optional_cost(game: &mut GameState, pending: &mut Pen
     let normal_cast_from_hand = matches!(pending.casting_method, CastingMethod::Normal)
         && pending.from_zone == Zone::Hand
         && !pending.base_mana_cost_waived;
-    let already_prototyped =
-        crate::decision::alternative_method_for_casting_method(
-            game,
-            pending.caster,
-            spell,
-            &pending.casting_method,
-        )
-        .is_some_and(|method| method.prototype_power_toughness().is_some());
+    let already_prototyped = crate::decision::alternative_method_for_casting_method(
+        game,
+        pending.caster,
+        spell,
+        &pending.casting_method,
+    )
+    .is_some_and(|method| method.prototype_power_toughness().is_some());
     if normal_cast_from_hand || already_prototyped {
         return false;
     }

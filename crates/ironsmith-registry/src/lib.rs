@@ -48,13 +48,12 @@ pub fn register_builtin_dungeons() -> Result<usize, String> {
         .get_or_init(|| {
             let sources = ironsmith_card_source::dungeon_sources();
             for source in &sources {
-                let definition =
-                    ironsmith_compiler_runtime::compile_to_runtime_definition(
-                        &source.name,
-                        source.block.clone(),
-                        false,
-                    )
-                    .map_err(|error| format!("{}: {error}", source.name))?;
+                let definition = ironsmith_compiler_runtime::compile_to_runtime_definition(
+                    &source.name,
+                    source.block.clone(),
+                    false,
+                )
+                .map_err(|error| format!("{}: {error}", source.name))?;
                 ironsmith::dungeon::register_dungeon_definition(&definition)?;
             }
             Ok(sources.len())

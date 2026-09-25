@@ -110,18 +110,15 @@ fn parse_create_value_binding(tokens: &[OwnedLexToken]) -> Result<Option<Value>,
 /// (Quartzwood Crasher): the triggering damage event's amount.
 fn parse_where_x_is_triggering_damage_amount(tokens: &[OwnedLexToken]) -> Option<Value> {
     let words = crate::lexer::token_word_refs(tokens);
-    let words = crate::word_primitives::strip_any_prefix(
-        &words,
-        &[&["where", "x", "is"], &["x", "is"]],
-    )
-    .map_or(words.as_slice(), |(_, rest)| rest);
+    let words =
+        crate::word_primitives::strip_any_prefix(&words, &[&["where", "x", "is"], &["x", "is"]])
+            .map_or(words.as_slice(), |(_, rest)| rest);
     let words = crate::word_primitives::strip_any_prefix(&words, &[&["the"]])
         .map_or(words, |(_, rest)| rest);
-    let is_dealt_damage_amount = crate::word_primitives::parse_sequence_prefix(
-        words,
-        &["amount", "of", "damage"],
-    ) && crate::word_primitives::sequence_occurs(words, &["dealt"])
-        && words.ends_with(&["that", "player"]);
+    let is_dealt_damage_amount =
+        crate::word_primitives::parse_sequence_prefix(words, &["amount", "of", "damage"])
+            && crate::word_primitives::sequence_occurs(words, &["dealt"])
+            && words.ends_with(&["that", "player"]);
     is_dealt_damage_amount.then(|| {
         Value::EventValue(ironsmith_core::EventValueSpec::Amount)
             .with_surface_hint(ValueSurfaceHint::WhereXIs)
@@ -1385,7 +1382,7 @@ pub fn parse_create(
     let mut for_each_dynamic_count: Option<Value> = None;
     let mut for_each_object_filter: Option<ObjectFilter> = None;
     let mut for_each_player_condition: Option<(PlayerFilter, PredicateAst)> = None;
-    if let Some(for_each_clause) = for_each_clause {
+    if let Some(for_each_clause) = for_each_clause.as_ref() {
         let filter_tokens = for_each_clause.filter_tokens;
         if filter_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
@@ -1484,13 +1481,22 @@ pub fn parse_create(
     }
     let mut raw_name_override = authored_appositive_name;
     let mut rules_text_range: Option<(usize, usize)> = None;
-    if let Some(named) = creation_grammar::parse_named_token_clause_tokens(&tail_tokens) {
-        let named_words = token_word_refs(&tail_tokens[named.name.clone()]);
+
+    // A `for each ...` suffix describes how many tokens to create. Any
+    // `named ...` inside that count filter belongs to the counted card/object,
+    // not to the token being created.
+    let named_token_tokens = for_each_clause
+        .as_ref()
+        .map(|clause| clause.prefix_tokens)
+        .unwrap_or(&tail_tokens);
+
+    if let Some(named) = creation_grammar::parse_named_token_clause_tokens(named_token_tokens) {
+        let named_words = token_word_refs(&named_token_tokens[named.name.clone()]);
         if !named_words.is_empty() {
-            let authored_name = render_token_slice(&tail_tokens[named.name.clone()])
+            let authored_name = render_token_slice(&named_token_tokens[named.name.clone()])
                 .trim()
                 .to_string();
-            if tail_tokens[named.name.clone()]
+            if named_token_tokens[named.name.clone()]
                 .iter()
                 .any(OwnedLexToken::is_comma)
             {
@@ -1498,7 +1504,7 @@ pub fn parse_create(
             }
             name_words.push("named");
             name_words.extend(named_words);
-            definition_tokens.extend_from_slice(&tail_tokens[named.clause]);
+            definition_tokens.extend_from_slice(&named_token_tokens[named.clause]);
         }
     }
     name_words.retain(|word| {
@@ -2495,7 +2501,8 @@ mod tests {
         let tokens = lex_line("Create a Food token or a Treasure token.", 0)
             .expect("token alternative should lex");
         let parsed = parse_create(&tokens, None).expect("token creation alternative should parse");
-        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. }) = parsed else {
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. }) = parsed
+        else {
             panic!("expected a typed token-creation choice, got {parsed:#?}");
         };
         assert_eq!(modes.len(), 2);
@@ -3221,6 +3228,49 @@ mod tests {
     }
 
     #[test]
+    fn undead_servant_for_each_name_stays_in_count_filter() {
+        let tokens = lex_line(
+            "Create a 2/2 black Zombie creature token for each card named Undead Servant in your graveyard.",
+            0,
+        )
+        .expect("Undead Servant token creation should lex");
+
+        let effect =
+            parse_create(&tokens, None).expect("Undead Servant token creation should parse");
+
+        let EffectAst::SubjectVerb(effect) = effect else {
+            panic!("expected subject-verb token creation");
+        };
+
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
+            definition,
+            count,
+            ..
+        }) = effect.action
+        else {
+            panic!("expected token creation with modifiers");
+        };
+
+        let crate::model::token_definition::TokenDefinitionSpec::Creature(token) = definition
+        else {
+            panic!("expected creature token definition");
+        };
+
+        assert_eq!(
+            token.name, "Zombie",
+            "the counted card's name must not become the token's name"
+        );
+
+        let Value::Count(filter) = count.unhinted() else {
+            panic!("expected a dynamic named-card count, got {count:#?}");
+        };
+
+        assert_eq!(filter.name.as_deref(), Some("Undead Servant"));
+        assert_eq!(filter.zone, Some(crate::Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+    }
+
+    #[test]
     fn dynamic_token_count_cards_keep_equal_to_and_for_each_semantics() {
         let shared_graveyard_union = parse_token_count(
             "Create a 1/1 green Insect creature token for each artifact and/or creature card in your graveyard.",
@@ -3496,17 +3546,25 @@ mod mana_spent_token_count_tests {
     #[test]
     fn create_count_keeps_exact_mana_spent_reference_and_rejects_residue() {
         let tokens=crate::lexer::lex_line("Create a number of 1/1 black Fungus Zombie creature tokens named Cordyceps Infected equal to the amount of mana spent to cast it.",0).unwrap();
-        let effect=parse_create(&tokens,None).expect("complete mana-spent token clause");
-        let debug=format!("{effect:#?}");
-        for required in ["ManaSpentToCastThisSpell","Cordyceps Infected","Fungus","Zombie"] {
-            assert!(debug.contains(required),"missing {required}: {debug}");
+        let effect = parse_create(&tokens, None).expect("complete mana-spent token clause");
+        let debug = format!("{effect:#?}");
+        for required in [
+            "ManaSpentToCastThisSpell",
+            "Cordyceps Infected",
+            "Fungus",
+            "Zombie",
+        ] {
+            assert!(debug.contains(required), "missing {required}: {debug}");
         }
         for text in [
             "equal to the amount of mana spent to cast that permanent",
             "equal to the amount of mana spent to cast it nonsense",
         ] {
-            let tokens=crate::lexer::lex_line(text,0).unwrap();
-            assert!(!matches!(parse_create_equal_to_dynamic_count(&tokens),Ok(Some(_))),"accepted wrong reference or residue: {text}");
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(
+                !matches!(parse_create_equal_to_dynamic_count(&tokens), Ok(Some(_))),
+                "accepted wrong reference or residue: {text}"
+            );
         }
     }
 }

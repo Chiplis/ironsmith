@@ -47,7 +47,12 @@ impl DecisionMaker for Aim {
     }
 }
 
-fn creature(name: &str, power: i32, toughness: i32, trample: bool) -> ironsmith::cards::CardDefinition {
+fn creature(
+    name: &str,
+    power: i32,
+    toughness: i32,
+    trample: bool,
+) -> ironsmith::cards::CardDefinition {
     let mut builder = CardDefinitionBuilder::new(CardId::new(), name)
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(power, toughness));
@@ -67,16 +72,30 @@ fn ram(trample: bool) -> (Zone, i32, u32) {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
-    let rammer = game.create_object_from_definition(&creature("Rammer", 5, 5, trample), alice, Zone::Battlefield);
-    let victim = game.create_object_from_definition(&creature("Victim", 2, 2, false), bob, Zone::Battlefield);
+    let rammer = game.create_object_from_definition(
+        &creature("Rammer", 5, 5, trample),
+        alice,
+        Zone::Battlefield,
+    );
+    let victim = game.create_object_from_definition(
+        &creature("Victim", 2, 2, false),
+        bob,
+        Zone::Battlefield,
+    );
     let victim_stable: StableId = game.object(victim).unwrap().stable_id;
     let spell = game.create_object_from_definition(
         &ironsmith_tools::compile_definition_from_payload(&payload()).unwrap(),
         alice,
         Zone::Hand,
     );
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Green, 1);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Colorless, 1);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Green, 1);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Colorless, 1);
     let action = compute_legal_actions(&game, alice)
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
@@ -98,13 +117,19 @@ fn ram(trample: bool) -> (Zone, i32, u32) {
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            &mut game, &mut queue, &mut state, &ctx, &mut dm,
+        );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
     let id = game.find_object_by_stable_id(victim_stable).unwrap();
     let marked = game.damage_on(id);
-    (game.object(id).unwrap().zone, game.player(bob).unwrap().life, marked)
+    (
+        game.object(id).unwrap().zone,
+        game.player(bob).unwrap().life,
+        marked,
+    )
 }
 
 #[test]

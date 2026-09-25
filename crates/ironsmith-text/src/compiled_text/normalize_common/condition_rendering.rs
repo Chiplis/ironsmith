@@ -531,9 +531,13 @@ fn describe_turn_history_value_comparison(
         }
         ironsmith_core::TurnHistoryCount::TurnedFaceUp(player) => {
             let player = describe_history_player_subject(player);
-            Some(if is_present { format!("{player} turned a permanent face up this turn") }
-                else if is_absent { format!("{player} didn't turn a permanent face up this turn") }
-                else { format!("{player} turned {count_text} or more permanents face up this turn") })
+            Some(if is_present {
+                format!("{player} turned a permanent face up this turn")
+            } else if is_absent {
+                format!("{player} didn't turn a permanent face up this turn")
+            } else {
+                format!("{player} turned {count_text} or more permanents face up this turn")
+            })
         }
         ironsmith_core::TurnHistoryCount::TokensCreated(player) => {
             let player = describe_history_player_subject(player);
@@ -1326,13 +1330,18 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
     } = condition
         && filter.zone == Some(Zone::Battlefield)
         && matches!(&filter.in_combat_with, Some(crate::filter::ObjectRef::Tagged(tag)) if matches!(tag.as_str(), "equipped" | "enchanted"))
-        && !filter.blocking && !filter.attacking
+        && !filter.blocking
+        && !filter.attacking
     {
         let mut partner = filter.clone();
         partner.zone = None;
         partner.in_combat_with = None;
         let described = partner.description();
-        let article = if described.starts_with("a ") || described.starts_with("an ") { "" } else { "a " };
+        let article = if described.starts_with("a ") || described.starts_with("an ") {
+            ""
+        } else {
+            "a "
+        };
         return format!("it's blocking or blocked by {article}{described}");
     }
     if let Some(attachment) = describe_attachment_state_disjunction(condition) {
@@ -6087,8 +6096,14 @@ mod chosen_name_condition_tests {
             crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
         );
         let tag = TagKey::from("observed_card");
-        assert_eq!(describe_condition(&Condition::TaggedObjectMatches(tag.clone(), filter.clone())), "that card has the chosen name");
+        assert_eq!(
+            describe_condition(&Condition::TaggedObjectMatches(tag.clone(), filter.clone())),
+            "that card has the chosen name"
+        );
         filter.card_types.push(CardType::Creature);
-        assert_ne!(describe_condition(&Condition::TaggedObjectMatches(tag, filter)), "that card has the chosen name");
+        assert_ne!(
+            describe_condition(&Condition::TaggedObjectMatches(tag, filter)),
+            "that card has the chosen name"
+        );
     }
 }

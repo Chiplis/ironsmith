@@ -81,9 +81,9 @@ pub use special_grant_shapes::{
     parse_unblockable_keyword_fragment_tokens,
 };
 pub use static_grant_facts::{
-    parse_every_basic_land_type_tokens,
-    GrantedAlternativeCastKeyword, parse_every_subtype_family_tokens,
-    parse_granted_alternative_cast_keyword_tokens, parse_static_grant_duration_fact,
+    GrantedAlternativeCastKeyword, parse_every_basic_land_type_tokens,
+    parse_every_subtype_family_tokens, parse_granted_alternative_cast_keyword_tokens,
+    parse_static_grant_duration_fact,
 };
 pub use subject_shapes::{
     AnthemSubjectGrammarMatch, object_filter_specificity_score, parse_exact_anthem_subject_grammar,
@@ -999,8 +999,13 @@ pub fn parse_lose_all_transform_shape(tokens: &[OwnedLexToken]) -> Option<LoseAl
         descriptor_words: is_word + 1..with_word,
         power_toughness_word,
         name_words,
-        preserve_other_types: word_phrase_occurs(&words, &["in", "addition", "to", "its", "other", "types"])
-            || word_phrase_occurs(&words, &["in", "addition", "to", "their", "other", "types"]),
+        preserve_other_types: word_phrase_occurs(
+            &words,
+            &["in", "addition", "to", "its", "other", "types"],
+        ) || word_phrase_occurs(
+            &words,
+            &["in", "addition", "to", "their", "other", "types"],
+        ),
         except_mana_abilities: word_phrase_occurs(&words, &["except", "mana", "abilities"]),
     })
 }
@@ -1449,7 +1454,10 @@ pub fn parse_subject_every_subtype_shape(
     let subject_tokens = trim_lexed_commas(&clause_tokens[..be_token]);
     let family_tokens = trim_lexed_commas(&clause_tokens[be_token + 1..]);
     let basic_land_types = parse_every_basic_land_type_tokens(family_tokens);
-    let nonbasic_land_types = super::anthem_grants::static_grant_facts::parse_every_nonbasic_land_type_tokens(family_tokens);
+    let nonbasic_land_types =
+        super::anthem_grants::static_grant_facts::parse_every_nonbasic_land_type_tokens(
+            family_tokens,
+        );
     let family = if basic_land_types || nonbasic_land_types {
         crate::types::SubtypeFamily::Land
     } else {

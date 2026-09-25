@@ -420,7 +420,9 @@ impl CardDefinitionBuilder {
                 "this creature",
                 false,
                 false,
-                Some(PresentationLabel::Keyword(PresentationKeyword::Amplify(amount))),
+                Some(PresentationLabel::Keyword(PresentationKeyword::Amplify(
+                    amount,
+                ))),
             ),
         ))
     }
@@ -435,7 +437,9 @@ impl CardDefinitionBuilder {
                 "this creature",
                 false,
                 false,
-                Some(PresentationLabel::Keyword(PresentationKeyword::Devour(multiplier))),
+                Some(PresentationLabel::Keyword(PresentationKeyword::Devour(
+                    multiplier,
+                ))),
             ),
         ))
     }
@@ -1225,7 +1229,10 @@ impl CardDefinitionBuilder {
 
     pub fn warp(mut self, cost: ManaCost) -> Self {
         self.alternative_casts
-            .push(crate::alternative_cast::AlternativeCastingMethod::Warp { cost, additional_cost: Default::default() });
+            .push(crate::alternative_cast::AlternativeCastingMethod::Warp {
+                cost,
+                additional_cost: Default::default(),
+            });
         self
     }
 
@@ -1684,10 +1691,9 @@ impl CardDefinitionBuilder {
             crate::target::ObjectFilter::creature()
                 .controlled_by(crate::target::PlayerFilter::Defending),
         ));
-        let declare_target = crate::effect::Effect::new(crate::effects::TargetOnlyEffect::new(
-            target_spec.clone(),
-        ))
-        .tag(PROVOKED_TAG);
+        let declare_target =
+            crate::effect::Effect::new(crate::effects::TargetOnlyEffect::new(target_spec.clone()))
+                .tag(PROVOKED_TAG);
         // The requirement names this attacker, so blocking a different
         // attacker doesn't satisfy it (CR 509.1c).
         let must_block_this = crate::effect::Effect::cant_until(
@@ -1704,9 +1710,9 @@ impl CardDefinitionBuilder {
         let untap = crate::effect::Effect::if_then(
             0,
             crate::effect::EffectPredicate::Happened,
-            vec![crate::effect::Effect::untap(crate::target::ChooseSpec::tagged(
-                PROVOKED_TAG,
-            ))],
+            vec![crate::effect::Effect::untap(
+                crate::target::ChooseSpec::tagged(PROVOKED_TAG),
+            )],
         );
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {

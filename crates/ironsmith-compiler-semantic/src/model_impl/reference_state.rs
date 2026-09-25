@@ -474,7 +474,10 @@ impl ReferenceExports {
     pub fn join(left: &Self, right: &Self) -> Self {
         Self {
             last_object_tag: RefState::join(&left.last_object_tag, &right.last_object_tag),
-            last_value_comparison: RefState::join(&left.last_value_comparison, &right.last_value_comparison),
+            last_value_comparison: RefState::join(
+                &left.last_value_comparison,
+                &right.last_value_comparison,
+            ),
             recent_object_target_bindings: join_object_target_bindings(
                 &left.recent_object_target_bindings,
                 &right.recent_object_target_bindings,

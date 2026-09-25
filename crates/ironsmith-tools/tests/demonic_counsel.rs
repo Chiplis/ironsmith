@@ -58,7 +58,11 @@ impl DecisionMaker for Search {
     }
 }
 
-fn card(name: &str, card_type: CardType, subtypes: Vec<Subtype>) -> ironsmith::cards::CardDefinition {
+fn card(
+    name: &str,
+    card_type: CardType,
+    subtypes: Vec<Subtype>,
+) -> ironsmith::cards::CardDefinition {
     let mut builder = CardDefinitionBuilder::new(CardId::new(), name)
         .card_types(vec![card_type])
         .subtypes(subtypes);
@@ -88,19 +92,36 @@ fn cast(graveyard_types: usize, want: &'static str) -> (Vec<String>, Vec<String>
     {
         game.create_object_from_definition(&card(name, card_type, vec![]), alice, Zone::Graveyard);
     }
-    game.create_object_from_definition(&card("Demon", CardType::Creature, vec![Subtype::Demon]), alice, Zone::Library);
-    game.create_object_from_definition(&card("Tutor Target", CardType::Sorcery, vec![]), alice, Zone::Library);
+    game.create_object_from_definition(
+        &card("Demon", CardType::Creature, vec![Subtype::Demon]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_definition(
+        &card("Tutor Target", CardType::Sorcery, vec![]),
+        alice,
+        Zone::Library,
+    );
     let def = ironsmith_tools::compile_definition_from_payload(&payload()).unwrap();
     let spell = game.create_object_from_definition(&def, alice, Zone::Hand);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Black, 1);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Colorless, 1);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Black, 1);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Colorless, 1);
     let action = compute_legal_actions(&game, alice)
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
         .expect("castable");
     let mut queue = ironsmith::triggers::TriggerQueue::new();
     let mut state = PriorityLoopState::new(game.players_in_game());
-    let mut dm = Search { want, offered: Vec::new() };
+    let mut dm = Search {
+        want,
+        offered: Vec::new(),
+    };
     let mut result = ironsmith::game_loop::apply_priority_response_with_dm(
         &mut game,
         &mut queue,
@@ -115,7 +136,9 @@ fn cast(graveyard_types: usize, want: &'static str) -> (Vec<String>, Vec<String>
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            &mut game, &mut queue, &mut state, &ctx, &mut dm,
+        );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
@@ -141,6 +164,13 @@ fn without_delirium_only_a_demon_can_be_found() {
 #[test]
 fn with_delirium_any_card_can_be_found_instead() {
     let (offered, hand) = cast(4, "Tutor Target");
-    assert_eq!(offered, vec!["Demon".to_string(), "Tutor Target".to_string()]);
-    assert_eq!(hand, vec!["Tutor Target".to_string()], "one search, not two");
+    assert_eq!(
+        offered,
+        vec!["Demon".to_string(), "Tutor Target".to_string()]
+    );
+    assert_eq!(
+        hand,
+        vec!["Tutor Target".to_string()],
+        "one search, not two"
+    );
 }

@@ -1103,7 +1103,11 @@ fn spell_cast_trigger_targets_source(trigger: &TriggerSpec) -> bool {
         TriggerSpec::SpellCast {
             filter: Some(filter),
             ..
-        } | TriggerSpec::SpellCastSameNameCardInZone { filter: Some(filter), .. } => filter
+        }
+        | TriggerSpec::SpellCastSameNameCardInZone {
+            filter: Some(filter),
+            ..
+        } => filter
             .targets_object
             .as_deref()
             .is_some_and(|target_filter| target_filter.source),
@@ -1114,7 +1118,9 @@ fn spell_cast_trigger_targets_source(trigger: &TriggerSpec) -> bool {
 fn trigger_is_spell_cast(trigger: &TriggerSpec) -> bool {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => trigger_is_spell_cast(trigger),
-        TriggerSpec::SpellCast { .. } | TriggerSpec::SpellCastSameNameCardInZone { .. } | TriggerSpec::NthSpellOfTurnCast { .. } => true,
+        TriggerSpec::SpellCast { .. }
+        | TriggerSpec::SpellCastSameNameCardInZone { .. }
+        | TriggerSpec::NthSpellOfTurnCast { .. } => true,
         _ => false,
     }
 }
@@ -1209,7 +1215,8 @@ fn spell_cast_trigger_caster(trigger: &TriggerSpec) -> Option<&PlayerFilter> {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. }
         | TriggerSpec::ConditionQualified { trigger, .. } => spell_cast_trigger_caster(trigger),
-        TriggerSpec::SpellCast { caster, .. } | TriggerSpec::SpellCastSameNameCardInZone { caster, .. } => Some(caster),
+        TriggerSpec::SpellCast { caster, .. }
+        | TriggerSpec::SpellCastSameNameCardInZone { caster, .. } => Some(caster),
         _ => None,
     }
 }
@@ -1678,7 +1685,9 @@ fn resolve_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
 fn trigger_provides_stack_object(trigger: &TriggerSpec) -> bool {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => trigger_provides_stack_object(trigger),
-        TriggerSpec::SpellCast { .. } | TriggerSpec::SpellCastSameNameCardInZone { .. } | TriggerSpec::AbilityActivated { .. } => true,
+        TriggerSpec::SpellCast { .. }
+        | TriggerSpec::SpellCastSameNameCardInZone { .. }
+        | TriggerSpec::AbilityActivated { .. } => true,
         // Becomes-targeted triggers record the TARGETING spell or ability as
         // the triggering event object ("counter that spell", "choose new
         // targets for that spell").
@@ -2849,7 +2858,9 @@ pub fn stage_owned_triggered_effects_for_lowering(
     fn trigger_object_is_stack_object(trigger: &TriggerSpec) -> bool {
         match trigger {
             TriggerSpec::WithIntro { trigger, .. } => trigger_object_is_stack_object(trigger),
-            TriggerSpec::SpellCast { .. } | TriggerSpec::SpellCastSameNameCardInZone { .. } | TriggerSpec::NthSpellOfTurnCast { .. } => true,
+            TriggerSpec::SpellCast { .. }
+            | TriggerSpec::SpellCastSameNameCardInZone { .. }
+            | TriggerSpec::NthSpellOfTurnCast { .. } => true,
             _ => false,
         }
     }
@@ -3030,13 +3041,19 @@ pub fn stage_owned_triggered_effects_for_lowering(
     fn has_single_creature_antecedent(trigger: &TriggerSpec) -> bool {
         match trigger {
             TriggerSpec::WithIntro { trigger, .. }
-            | TriggerSpec::ConditionQualified { trigger, .. } => has_single_creature_antecedent(trigger),
+            | TriggerSpec::ConditionQualified { trigger, .. } => {
+                has_single_creature_antecedent(trigger)
+            }
             TriggerSpec::Attacks(_)
             | TriggerSpec::AttacksAlone(_)
             | TriggerSpec::AttacksWhileSaddled(_)
             | TriggerSpec::AttacksAndIsntBlocked(_) => true,
             TriggerSpec::EntersBattlefield { filter, .. }
-            | TriggerSpec::EntersBattlefieldFromZone { filter, one_or_more: false, .. }
+            | TriggerSpec::EntersBattlefieldFromZone {
+                filter,
+                one_or_more: false,
+                ..
+            }
             | TriggerSpec::EntersBattlefieldTapped { filter, .. }
             | TriggerSpec::EntersBattlefieldUntapped { filter, .. } => {
                 filter.card_types == [crate::types::CardType::Creature]
@@ -3645,7 +3662,9 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
         KeywordAction::Lifelink => Some(StaticAbility::lifelink()),
         KeywordAction::Vigilance => Some(StaticAbility::vigilance()),
         KeywordAction::Trample => Some(StaticAbility::trample()),
-        KeywordAction::TrampleOverPlaneswalkers => Some(StaticAbility::trample_over_planeswalkers()),
+        KeywordAction::TrampleOverPlaneswalkers => {
+            Some(StaticAbility::trample_over_planeswalkers())
+        }
         KeywordAction::Reach => Some(StaticAbility::reach()),
         KeywordAction::Defender => Some(StaticAbility::defender()),
         KeywordAction::Decayed => Some(StaticAbility::cant_block()),
@@ -3840,12 +3859,15 @@ fn printed_functional_zones(
         ),
         action.clone(),
     );
-    printed.abilities.iter().find_map(|ability| match &ability.kind {
-        AbilityKind::Static(printed_static) if printed_static.id() == granted_static.id() => {
-            Some(ability.functional_zones.clone())
-        }
-        _ => None,
-    })
+    printed
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(printed_static) if printed_static.id() == granted_static.id() => {
+                Some(ability.functional_zones.clone())
+            }
+            _ => None,
+        })
 }
 
 fn bind_source_grant_condition(condition: crate::ConditionExpr) -> crate::ConditionExpr {
@@ -4435,21 +4457,43 @@ pub(crate) fn lower_compiler_static_ability_core(
     let crate::model::CompilerStaticAbilityCore { id, label, payload } = ability;
     match payload {
         crate::model::CompilerStaticAbilityPayloadCore::ExileWouldDieInstead {
-            filter, damaged_by, damager_filter, damager_filter_surface, exile_with_counters, follow_up_effects,
+            filter,
+            damaged_by,
+            damager_filter,
+            damager_filter_surface,
+            exile_with_counters,
+            follow_up_effects,
         } => {
             let mut ctx = crate::model::facts::EffectLoweringContext::new();
             ctx.last_effect_id = Some(crate::effect::EffectId::REPLACED_EVENT);
             ctx.last_object_tag = Some(ironsmith_core::tag::ZONE_REPLACEMENT_OBJECT_TAG.into());
-            let (follow_up_effects, choices) = crate::compile_support::compile_effects(&follow_up_effects, &mut ctx)?;
+            let (follow_up_effects, choices) =
+                crate::compile_support::compile_effects(&follow_up_effects, &mut ctx)?;
             if !choices.is_empty() {
-                return Err(CardTextError::InvariantViolation("replacement follow-up cannot announce targets outside a reflexive trigger".into()));
+                return Err(CardTextError::InvariantViolation(
+                    "replacement follow-up cannot announce targets outside a reflexive trigger"
+                        .into(),
+                ));
             }
-            Ok(StaticAbility { id, label, payload: crate::static_abilities::StaticAbilityPayload::ExileWouldDieInstead {
-                filter, damaged_by, damager_filter, damager_filter_surface, exile_with_counters, follow_up_effects,
-            } })
+            Ok(StaticAbility {
+                id,
+                label,
+                payload: crate::static_abilities::StaticAbilityPayload::ExileWouldDieInstead {
+                    filter,
+                    damaged_by,
+                    damager_filter,
+                    damager_filter_surface,
+                    exile_with_counters,
+                    follow_up_effects,
+                },
+            })
         }
         crate::model::CompilerStaticAbilityPayloadCore::DamagePreventionWithFollowUp {
-            source_filter, target_filter, combat_only, recipient_tag, effects,
+            source_filter,
+            target_filter,
+            combat_only,
+            recipient_tag,
+            effects,
         } => {
             let mut ctx = crate::model::facts::EffectLoweringContext::new();
             ctx.last_object_tag = Some(recipient_tag.clone());
@@ -4457,12 +4501,18 @@ pub(crate) fn lower_compiler_static_ability_core(
             for effect in effects {
                 let (effects, choices) = crate::compile_support::compile_effect(&effect, &mut ctx)?;
                 if !choices.is_empty() {
-                    return Err(CardTextError::InvariantViolation("damage prevention follow-up cannot announce targets".into()));
+                    return Err(CardTextError::InvariantViolation(
+                        "damage prevention follow-up cannot announce targets".into(),
+                    ));
                 }
                 lowered.extend(effects);
             }
             Ok(StaticAbility::damage_prevention_with_follow_up(
-                source_filter, target_filter, combat_only, recipient_tag, lowered,
+                source_filter,
+                target_filter,
+                combat_only,
+                recipient_tag,
+                lowered,
             ))
         }
 
@@ -4509,10 +4559,14 @@ pub(crate) fn lower_compiler_static_ability_core(
                         added_abilities,
                         set_base_power_toughness: spec.set_base_power_toughness,
                         additional_counters: spec.additional_counters.clone(),
-                        additional_counters_source_filter: spec.additional_counters_source_filter.clone(),
+                        additional_counters_source_filter: spec
+                            .additional_counters_source_filter
+                            .clone(),
                         added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                         set_base_power_toughness_from_self: spec.set_base_power_toughness_from_self,
-                        conditional_additional_counters: spec.conditional_additional_counters.clone(),
+                        conditional_additional_counters: spec
+                            .conditional_additional_counters
+                            .clone(),
                     },
                     display,
                 },

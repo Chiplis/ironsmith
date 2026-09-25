@@ -175,13 +175,20 @@ pub fn parse_unique_named_characteristic_operand(
             continue;
         }
         let possessive = &tokens[index - 1];
-        let name = possessive.slice.strip_suffix("'s")
+        let name = possessive
+            .slice
+            .strip_suffix("'s")
             .or_else(|| possessive.slice.strip_suffix("’s"))
             .or_else(|| possessive.slice.strip_suffix('\''))
             .or_else(|| possessive.slice.strip_suffix('’'));
         let Some(name) = name else { continue };
         for start in 0..index {
-            if !tokens[start].slice.chars().next().is_some_and(char::is_uppercase) {
+            if !tokens[start]
+                .slice
+                .chars()
+                .next()
+                .is_some_and(char::is_uppercase)
+            {
                 continue;
             }
             let mut candidate = tokens[start..index].to_vec();

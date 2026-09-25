@@ -50,7 +50,12 @@ impl DecisionMaker for Caster {
     }
 
     fn decide_objects(&mut self, _game: &GameState, ctx: &SelectObjectsContext) -> Vec<ObjectId> {
-        let legal: Vec<ObjectId> = ctx.candidates.iter().filter(|c| c.legal).map(|c| c.id).collect();
+        let legal: Vec<ObjectId> = ctx
+            .candidates
+            .iter()
+            .filter(|c| c.legal)
+            .map(|c| c.id)
+            .collect();
         self.searches.push(legal.clone());
         legal.into_iter().take(1).collect()
     }
@@ -84,22 +89,35 @@ fn cast(alice_lands: usize, bob_lands: usize) -> (Vec<String>, usize) {
         game.create_object_from_definition(&land("Wastes", None), bob, Zone::Battlefield);
     }
     for name in ["Plains A", "Plains B", "Plains C"] {
-        game.create_object_from_definition(&land(name, Some(Subtype::Plains)), alice, Zone::Library);
+        game.create_object_from_definition(
+            &land(name, Some(Subtype::Plains)),
+            alice,
+            Zone::Library,
+        );
     }
-    game.create_object_from_definition(&land("Forest", Some(Subtype::Forest)), alice, Zone::Library);
+    game.create_object_from_definition(
+        &land("Forest", Some(Subtype::Forest)),
+        alice,
+        Zone::Library,
+    );
     let spell = game.create_object_from_definition(
         &ironsmith_tools::compile_definition_from_payload(&payload()).unwrap(),
         alice,
         Zone::Hand,
     );
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::White, 1);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::White, 1);
     let action = compute_legal_actions(&game, alice)
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
         .expect("castable");
     let mut queue = ironsmith::triggers::TriggerQueue::new();
     let mut state = PriorityLoopState::new(game.players_in_game());
-    let mut dm = Caster { searches: Vec::new() };
+    let mut dm = Caster {
+        searches: Vec::new(),
+    };
     let mut result = ironsmith::game_loop::apply_priority_response_with_dm(
         &mut game,
         &mut queue,
@@ -114,7 +132,9 @@ fn cast(alice_lands: usize, bob_lands: usize) -> (Vec<String>, usize) {
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            &mut game, &mut queue, &mut state, &ctx, &mut dm,
+        );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
@@ -140,7 +160,10 @@ fn opponent_with_more_lands_allows_an_additional_plains() {
     let (hand, searches) = cast(1, 3);
     assert_eq!(searches, 2);
     assert_eq!(hand.len(), 2, "{hand:?}");
-    assert!(hand.iter().all(|name| name.starts_with("Plains")), "{hand:?}");
+    assert!(
+        hand.iter().all(|name| name.starts_with("Plains")),
+        "{hand:?}"
+    );
 }
 
 #[test]

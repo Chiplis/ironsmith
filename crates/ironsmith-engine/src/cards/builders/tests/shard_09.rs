@@ -230,7 +230,9 @@ pub(super) fn parse_ad_nauseam_style_optional_repeat_process() {
             .unwrap()
             .flattened_default_effects()
             .iter()
-            .any(|effect| effect.downcast_ref::<crate::effects::RepeatProcessEffect>().is_some()),
+            .any(|effect| effect
+                .downcast_ref::<crate::effects::RepeatProcessEffect>()
+                .is_some()),
         "expected repeat-process lowering in compiled card definition, got {debug}"
     );
     assert!(

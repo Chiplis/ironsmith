@@ -51,10 +51,15 @@ fn setup() -> (GameState, ObjectId, ObjectId) {
     let hullbreacher = game.create_object_from_definition(&def, alice(), Zone::Battlefield);
     for player in [alice(), bob()] {
         for i in 0..10 {
-            game.create_object_from_definition(&filler(&format!("Card {i}")), player, Zone::Library);
+            game.create_object_from_definition(
+                &filler(&format!("Card {i}")),
+                player,
+                Zone::Library,
+            );
         }
     }
-    let bob_source = game.create_object_from_definition(&filler("Bob's Spell"), bob(), Zone::Battlefield);
+    let bob_source =
+        game.create_object_from_definition(&filler("Bob's Spell"), bob(), Zone::Battlefield);
     // Past the starting player's skipped first draw.
     game.turn.turn_number = 3;
     (game, hullbreacher, bob_source)
@@ -88,7 +93,11 @@ fn opponents_first_draw_step_draw_is_kept_and_later_draws_become_treasures() {
     game.turn.step = Some(Step::Draw);
 
     ironsmith::turn::execute_draw_step(&mut game);
-    assert_eq!(hand_size(&game, bob()), 1, "the draw-step draw is not replaced");
+    assert_eq!(
+        hand_size(&game, bob()),
+        1,
+        "the draw-step draw is not replaced"
+    );
     assert_eq!(treasures(&game, alice()), 0);
 
     // An additional draw during that same draw step is replaced.
@@ -96,8 +105,16 @@ fn opponents_first_draw_step_draw_is_kept_and_later_draws_become_treasures() {
     game.turn_store.tracked_draw_step_player = Some(bob());
     game.turn_store.cards_drawn_this_draw_step = 1;
     draw(&mut game, bob(), bob_source, 2);
-    assert_eq!(hand_size(&game, bob()), 1, "extra draw-step draws are replaced");
-    assert_eq!(treasures(&game, alice()), 2, "each replaced draw makes a Treasure for Hullbreacher's controller");
+    assert_eq!(
+        hand_size(&game, bob()),
+        1,
+        "extra draw-step draws are replaced"
+    );
+    assert_eq!(
+        treasures(&game, alice()),
+        2,
+        "each replaced draw makes a Treasure for Hullbreacher's controller"
+    );
     assert_eq!(treasures(&game, bob()), 0);
 
     // Draws in Bob's main phase are replaced too.
@@ -116,7 +133,11 @@ fn opponent_draws_on_controllers_turn_are_replaced_but_controller_draws_normally
     game.turn.step = Some(Step::Draw);
 
     ironsmith::turn::execute_draw_step(&mut game);
-    assert_eq!(hand_size(&game, alice()), 1, "Hullbreacher never affects its controller");
+    assert_eq!(
+        hand_size(&game, alice()),
+        1,
+        "Hullbreacher never affects its controller"
+    );
 
     game.turn.phase = Phase::FirstMain;
     game.turn.step = None;
@@ -136,7 +157,11 @@ fn replacement_stops_when_hullbreacher_leaves() {
     game.turn.active_player = alice();
     game.turn.phase = Phase::FirstMain;
     game.turn.step = None;
-    game.move_object(hullbreacher, Zone::Graveyard, ironsmith::events::cause::EventCause::effect());
+    game.move_object(
+        hullbreacher,
+        Zone::Graveyard,
+        ironsmith::events::cause::EventCause::effect(),
+    );
     draw(&mut game, bob(), bob_source, 1);
     assert_eq!(hand_size(&game, bob()), 1);
     assert_eq!(treasures(&game, alice()), 0);

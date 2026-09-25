@@ -357,10 +357,7 @@ fn trigger_limits_are_checked_at_registration_without_rejecting_resolution() {
         trigger_identity: Some(identity),
         ..Default::default()
     };
-    let conditions = [
-        Condition::FirstTimeThisTurn,
-        Condition::MaxTimesEachTurn(1),
-    ];
+    let conditions = [Condition::FirstTimeThisTurn, Condition::MaxTimesEachTurn(1)];
     for condition in &conditions {
         assert!(evaluate_condition_external(&game, condition, &external));
     }

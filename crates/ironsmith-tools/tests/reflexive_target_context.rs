@@ -10,8 +10,10 @@ use ironsmith::{CardType, GameState, ObjectId, PlayerId, Zone};
 
 fn definition(name: &str) -> CardDefinition {
     // Compile the recorded Oracle source afresh; do not depend on generated browser assets.
-    let sources: serde_json::Value =
-        serde_json::from_str(include_str!("fixtures/reflexive_target_context.json.fixture")).unwrap();
+    let sources: serde_json::Value = serde_json::from_str(include_str!(
+        "fixtures/reflexive_target_context.json.fixture"
+    ))
+    .unwrap();
     let block = sources[name].as_str().expect("card source fixture");
     let payload = ironsmith_tools::CardPayload {
         name: name.into(),
@@ -68,6 +70,13 @@ fn fixture(
         .power_toughness(ironsmith::card::PowerToughness::fixed(2, 2))
         .build();
     game.create_object_from_definition(&def, owner, zone)
+}
+/// CR 603.12, 603.3: a reflexive trigger is put on the stack the next time a
+/// player would receive priority; its targets are chosen then.
+fn stack_reflexive(game: &mut GameState, dm: &mut dyn DecisionMaker) {
+    let mut queue = ironsmith::triggers::TriggerQueue::new();
+    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
+    ironsmith::game_loop::put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
 }
 struct Pick {
     expected: Vec<Target>,
@@ -180,6 +189,7 @@ fn aggregate_reflexive_limits_keep_roll_or_paid_x_and_damaged_player() {
         );
         r.execute(&mut game, &mut ctx).unwrap();
         drop(ctx);
+        stack_reflexive(&mut game, &mut pick);
         assert_eq!(pick.calls, 1);
         assert_eq!(game.stack.len(), 1);
         ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
@@ -232,6 +242,7 @@ fn paid_x_reflexive_targets_are_available_and_survive_revalidation() {
             "the follow-up must not overwrite its parent's X"
         );
         drop(ctx);
+        stack_reflexive(&mut game, &mut pick);
         assert_eq!(pick.calls, 1);
         assert_eq!(game.stack[0].x_value, Some(x));
         if name == "Isareth the Awakener" {
@@ -305,6 +316,7 @@ fn excess_damage_limit_applies_to_both_artifacts_and_enchantments() {
         );
         r.execute(&mut game, &mut ctx).unwrap();
         drop(ctx);
+        stack_reflexive(&mut game, &mut pick);
         assert_eq!(pick.calls, 1);
         ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
         assert!(
@@ -364,9 +376,11 @@ fn over_budget_reflexive_selection_is_rejected() {
         trigger.condition,
         EffectOutcome::count(16).with_execution_fact(ExecutionFact::Accepted),
     );
-    assert!(matches!(
-        trigger.execute(&mut game, &mut ctx),
-        Err(ironsmith::effects::ExecutionError::InvalidTarget)
-    ));
-    assert!(game.stack.is_empty());
+    trigger.execute(&mut game, &mut ctx).unwrap();
+    drop(ctx);
+    stack_reflexive(&mut game, &mut pick);
+    assert!(
+        game.stack.iter().all(|entry| entry.targets.len() < 3),
+        "an over-budget selection is never put on the stack"
+    );
 }

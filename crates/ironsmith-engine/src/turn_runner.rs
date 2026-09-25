@@ -2302,9 +2302,8 @@ impl TurnRunner {
             // check, including the legend-rule removals, simultaneously.
             // Violations arrive in APNAP order.
             let legend_specs = legend_rule_specs_from_actions(&actions);
-            self.resolved_legend_keeps.retain(|(_, group)| {
-                legend_specs.iter().any(|(_, spec)| spec.legends == *group)
-            });
+            self.resolved_legend_keeps
+                .retain(|(_, group)| legend_specs.iter().any(|(_, spec)| spec.legends == *group));
             if let Some((player, spec)) = legend_specs.into_iter().find(|(_, spec)| {
                 !self
                     .resolved_legend_keeps

@@ -63,7 +63,10 @@ pub enum ObjectChoiceEffectAst {
     },
     /// A player-facing modal choice: the player picks one mode, and only that
     /// mode's effects resolve. Lowers to `Effect::choose_one`.
-    ChooseOneOf { chooser: PlayerFilter, modes: Vec<ChooseOneModeAst> },
+    ChooseOneOf {
+        chooser: PlayerFilter,
+        modes: Vec<ChooseOneModeAst>,
+    },
     /// A resolution-time villainous choice made by the specified player.
     VillainousChoice {
         player: PlayerFilter,

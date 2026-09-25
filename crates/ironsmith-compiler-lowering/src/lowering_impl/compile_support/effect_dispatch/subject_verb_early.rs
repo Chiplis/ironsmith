@@ -767,7 +767,9 @@ pub(super) fn compile_subject_verb_early(
                 crate::grant::Grantable::AlternativeCast(
                     crate::alternative_cast::AlternativeCastingMethod::alternative_cost(
                         "Airbend",
-                        Some(crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Generic(2)]])),
+                        Some(crate::mana::ManaCost::from_pips(vec![vec![
+                            crate::mana::ManaSymbol::Generic(2),
+                        ]])),
                         vec![],
                     ),
                 ),
@@ -804,11 +806,19 @@ pub(super) fn compile_subject_verb_early(
             let event = Effect::conditional(
                 Condition::TaggedObjectMatchedLastKnown(tag.clone().into(), exiled),
                 vec![Effect::new(crate::effects::EmitKeywordActionEffect::new(
-                    crate::events::KeywordActionKind::Airbend, 1,
+                    crate::events::KeywordActionKind::Airbend,
+                    1,
                 ))],
                 Vec::new(),
             );
-            Ok((vec![move_effect, Effect::for_each_tagged(tag, vec![grant]), event], choices))
+            Ok((
+                vec![
+                    move_effect,
+                    Effect::for_each_tagged(tag, vec![grant]),
+                    event,
+                ],
+                choices,
+            ))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target }) => {
             let (spec, choices) =
@@ -996,7 +1006,9 @@ pub(super) fn compile_subject_verb_early(
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestDread) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
-            let mut effect = Effect::new(crate::effects::ManifestDreadEffect::for_player(subject.into_player_filter()));
+            let mut effect = Effect::new(crate::effects::ManifestDreadEffect::for_player(
+                subject.into_player_filter(),
+            ));
             if ctx.auto_tag_object_targets {
                 let tag = reserved_or_next_object_tag(ctx, "manifested");
                 effect = effect.tag(tag.clone());
@@ -1055,7 +1067,8 @@ pub(super) fn compile_subject_verb_early(
         }
         SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count }) => {
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
-                let mut effect = crate::effects::FlipCoinEffect::face_only(subject.into_player_filter());
+                let mut effect =
+                    crate::effects::FlipCoinEffect::face_only(subject.into_player_filter());
                 effect.count = *count;
                 Effect::new(effect)
             })
@@ -1128,7 +1141,8 @@ pub(super) fn compile_subject_verb_early(
             })
         }
         SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType {
-            allowed_subtypes, secretly,
+            allowed_subtypes,
+            secretly,
             excluded_subtypes,
             family,
         }) => compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
@@ -1459,9 +1473,10 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeLifeTotals { player2 }) => {
             compile_exchange_life_totals_effect(player, *player2, ctx)
         }
-        SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes { target, include_source }) => {
-            compile_exchange_text_boxes_effect(target, *include_source, ctx)
-        }
+        SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes {
+            target,
+            include_source,
+        }) => compile_exchange_text_boxes_effect(target, *include_source, ctx),
         SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeZones { zone1, zone2 }) => {
             compile_exchange_zones_effect(player, *zone1, *zone2, ctx)
         }
@@ -2648,7 +2663,9 @@ pub(super) fn compile_subject_verb_early(
                 if target_is_any_damage_target(target) {
                     let tag = ctx.next_tag("targeted");
                     ctx.last_object_tag = Some(tag.clone());
-                    if let Some(effect) = effects.pop() { effects.push(effect.tag(tag)); }
+                    if let Some(effect) = effects.pop() {
+                        effects.push(effect.tag(tag));
+                    }
                 }
                 if !follow_up_effects.is_empty() {
                     choices.extend(follow_up_choices);

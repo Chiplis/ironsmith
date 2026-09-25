@@ -1,7 +1,9 @@
 //! Standstill: "When a player casts a spell, sacrifice this enchantment. If
 //! you do, each of that player's opponents draws three cards."
 use ironsmith::cards::builders::CardDefinitionBuilder;
-use ironsmith::decision::{GameProgress, LegalAction, SelectFirstDecisionMaker, compute_legal_actions};
+use ironsmith::decision::{
+    GameProgress, LegalAction, SelectFirstDecisionMaker, compute_legal_actions,
+};
 use ironsmith::game_loop::{PriorityLoopState, PriorityResponse};
 use ironsmith::ids::CardId;
 use ironsmith::mana::{ManaCost, ManaSymbol};
@@ -63,7 +65,10 @@ fn cast_by(caster: PlayerId) -> (Vec<usize>, Zone) {
         caster,
         Zone::Hand,
     );
-    game.player_mut(caster).unwrap().mana_pool.add(ManaSymbol::Red, 1);
+    game.player_mut(caster)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
     let action = compute_legal_actions(&game, caster)
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
@@ -85,7 +90,9 @@ fn cast_by(caster: PlayerId) -> (Vec<usize>, Zone) {
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            &mut game, &mut queue, &mut state, &ctx, &mut dm,
+        );
     }
     ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
     assert_eq!(game.stack.len(), 2, "the spell and Standstill's trigger");
@@ -94,7 +101,10 @@ fn cast_by(caster: PlayerId) -> (Vec<usize>, Zone) {
     let hands = (0..3)
         .map(|p| game.player(PlayerId::from_index(p)).unwrap().hand.len())
         .collect();
-    let zone = game.object(game.find_object_by_stable_id(stable).unwrap()).unwrap().zone;
+    let zone = game
+        .object(game.find_object_by_stable_id(stable).unwrap())
+        .unwrap()
+        .zone;
     (hands, zone)
 }
 

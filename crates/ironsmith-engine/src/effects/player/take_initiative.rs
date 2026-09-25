@@ -37,10 +37,17 @@ impl EffectExecutor for TakeInitiativeEffect {
         // ventures into Undercity" is an inherent triggered ability, so the
         // venture waits for the stack instead of happening mid-resolution.
         // Retaking the initiative triggers it again (CR 725.5).
-        Ok(EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(KeywordActionKind::TakeInitiative, player_id, ctx.source, 1),
-            ctx.provenance,
-        )))
+        Ok(
+            EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
+                KeywordActionEvent::new(
+                    KeywordActionKind::TakeInitiative,
+                    player_id,
+                    ctx.source,
+                    1,
+                ),
+                ctx.provenance,
+            )),
+        )
     }
 }
 
@@ -65,9 +72,10 @@ mod tests {
         // The Undercity venture is a triggered ability (CR 725.2), not part
         // of this effect's resolution.
         assert!(game.active_dungeon(alice).is_none());
-        assert!(outcome.events.iter().any(|event| event
-            .downcast::<KeywordActionEvent>()
-            .is_some_and(|event| event.action == KeywordActionKind::TakeInitiative
-                && event.player == alice)));
+        assert!(outcome.events.iter().any(|event| {
+            event.downcast::<KeywordActionEvent>().is_some_and(|event| {
+                event.action == KeywordActionKind::TakeInitiative && event.player == alice
+            })
+        }));
     }
 }

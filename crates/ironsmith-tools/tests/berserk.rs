@@ -4,7 +4,9 @@
 //! attacked this turn."
 use ironsmith::card::PowerToughness;
 use ironsmith::cards::builders::CardDefinitionBuilder;
-use ironsmith::decision::{GameProgress, LegalAction, SelectFirstDecisionMaker, compute_legal_actions};
+use ironsmith::decision::{
+    GameProgress, LegalAction, SelectFirstDecisionMaker, compute_legal_actions,
+};
 use ironsmith::game_loop::{PriorityLoopState, PriorityResponse};
 use ironsmith::ids::{CardId, StableId};
 use ironsmith::mana::ManaSymbol;
@@ -35,7 +37,10 @@ fn strict_snapshot_and_full_quality_gate() {
     assert!(snapshot.similarity_score >= 0.99, "{snapshot:#?}");
 }
 
-fn setup(phase: ironsmith::game_state::Phase, step: Option<ironsmith::game_state::Step>) -> (GameState, ObjectId, ObjectId) {
+fn setup(
+    phase: ironsmith::game_state::Phase,
+    step: Option<ironsmith::game_state::Step>,
+) -> (GameState, ObjectId, ObjectId) {
     let alice = PlayerId::from_index(0);
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     game.turn.turn_number = 3;
@@ -56,7 +61,10 @@ fn setup(phase: ironsmith::game_state::Phase, step: Option<ironsmith::game_state
         alice,
         Zone::Hand,
     );
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Green, 1);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Green, 1);
     (game, spell, creature)
 }
 
@@ -91,7 +99,9 @@ fn berserk(attacks: bool) -> (Option<i32>, bool, Zone) {
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            &mut game, &mut queue, &mut state, &ctx, &mut dm,
+        );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
@@ -140,7 +150,16 @@ fn cannot_be_cast_after_combat_damage() {
         ironsmith::game_state::Phase::Combat,
         Some(ironsmith::game_state::Step::CombatDamage),
     );
-    assert!(castable(&game, spell).is_none(), "only before the combat damage step");
-    let (game, spell, _) = setup(ironsmith::game_state::Phase::Combat, Some(ironsmith::game_state::Step::DeclareBlockers));
-    assert!(castable(&game, spell).is_some(), "declare blockers is before combat damage");
+    assert!(
+        castable(&game, spell).is_none(),
+        "only before the combat damage step"
+    );
+    let (game, spell, _) = setup(
+        ironsmith::game_state::Phase::Combat,
+        Some(ironsmith::game_state::Step::DeclareBlockers),
+    );
+    assert!(
+        castable(&game, spell).is_some(),
+        "declare blockers is before combat damage"
+    );
 }

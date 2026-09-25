@@ -170,7 +170,11 @@ pub fn parse_for_each_targeted_object_subject(
     let Some(shape) = for_each_shapes::parse_for_each_target_subject_shape(subject_tokens) else {
         return Ok(None);
     };
-    if !shape.target_tokens.iter().any(|token| token.is_word("target")) {
+    if !shape
+        .target_tokens
+        .iter()
+        .any(|token| token.is_word("target"))
+    {
         return Ok(None);
     }
     let target = parse_target_phrase(shape.target_tokens)?;
@@ -835,11 +839,9 @@ fn rewrite_difference_bounded_search(tokens: &[OwnedLexToken]) -> Option<Vec<Own
 /// Besieged by Time): toughness minus power of the referenced creature.
 fn parse_power_toughness_difference_binding(binding_tokens: &[OwnedLexToken]) -> Option<Value> {
     let words = crate::lexer::token_word_refs(binding_tokens);
-    let words = crate::word_primitives::strip_any_prefix(
-        &words,
-        &[&["where", "x", "is"], &["x", "is"]],
-    )
-    .map_or(words.as_slice(), |(_, rest)| rest);
+    let words =
+        crate::word_primitives::strip_any_prefix(&words, &[&["where", "x", "is"], &["x", "is"]])
+            .map_or(words.as_slice(), |(_, rest)| rest);
     let object = |reference: &str| match reference {
         "its" => Some(crate::target::ChooseSpec::Tagged(
             (crate::tag::CompilerReferenceTag::It.bind()).into(),

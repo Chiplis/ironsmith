@@ -231,7 +231,8 @@ pub fn parse_cant_conjunction_expansion_tokens(
     // noun is never a restriction subject of its own, so distributing the
     // tail over it would invent "libraries can't enter the battlefield".
     if negated_anchor > 0
-        && let anchor_subject = trim_lexed_commas(&segments[negated_anchor][..anchor_negation.first])
+        && let anchor_subject =
+            trim_lexed_commas(&segments[negated_anchor][..anchor_negation.first])
         && let [zone_noun] = anchor_subject
         && zone_noun
             .as_word()
@@ -341,10 +342,18 @@ pub fn parse_generic_negated_cant_action_tokens(
         });
     }
 
-    if !subject_tokens.is_empty() && crate::grammar::primitives::probe_all(
-        tail_tokens, parse_turn_face_up_tail_lexed, "cant turn face up tail",
-    ).is_some() {
-        return Some(GenericNegatedCantAction::SubjectCantTurnFaceUp { subject_tokens, negation_tokens });
+    if !subject_tokens.is_empty()
+        && crate::grammar::primitives::probe_all(
+            tail_tokens,
+            parse_turn_face_up_tail_lexed,
+            "cant turn face up tail",
+        )
+        .is_some()
+    {
+        return Some(GenericNegatedCantAction::SubjectCantTurnFaceUp {
+            subject_tokens,
+            negation_tokens,
+        });
     }
 
     crate::grammar::primitives::probe_all(

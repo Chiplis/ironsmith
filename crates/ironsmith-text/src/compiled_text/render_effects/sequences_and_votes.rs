@@ -18,7 +18,10 @@ pub(super) fn describe_consult_stop_text(
     max_exposed: Option<&Value>,
 ) -> String {
     let match_text = match stop_rule {
-        crate::effects::ConsultTopOfLibraryStopRule::TotalManaValue(value) => format!("cards with total mana value {} or greater", describe_value(value)),
+        crate::effects::ConsultTopOfLibraryStopRule::TotalManaValue(value) => format!(
+            "cards with total mana value {} or greater",
+            describe_value(value)
+        ),
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
         | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
             ensure_indefinite_article(selection)
@@ -6130,7 +6133,8 @@ pub(in crate::compiled_text) fn describe_look_hand_choose_action_with_exile_boun
             ));
         }
         if let Some(exile) = action_effect.downcast_ref::<crate::effects::ExileEffect>()
-            && !exile.face_down && !exile.turn_face_up
+            && !exile.face_down
+            && !exile.turn_face_up
             && (exile_uses_chosen_tag(&exile.spec, choose.tag.as_str())
                 || matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "__it__"))
         {
@@ -6162,9 +6166,10 @@ pub(in crate::compiled_text) fn describe_look_hand_choose_action_with_exile_boun
     }
 
     if let Some(exile) = action_effect.downcast_ref::<crate::effects::ExileEffect>()
-        && !exile.face_down && !exile.turn_face_up
-            && (exile_uses_chosen_tag(&exile.spec, choose.tag.as_str())
-                || matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "__it__"))
+        && !exile.face_down
+        && !exile.turn_face_up
+        && (exile_uses_chosen_tag(&exile.spec, choose.tag.as_str())
+            || matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "__it__"))
     {
         return Some(if exile_new_sentence {
             format!("{reveal_text}. You choose {choice_from_it}. Exile that card")

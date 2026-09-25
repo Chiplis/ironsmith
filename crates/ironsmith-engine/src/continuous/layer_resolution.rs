@@ -279,7 +279,11 @@ pub(super) fn calculate_with_layers(
                     }
                 }
                 Modification::RemoveCardTypes(types) => {
-                    remove_card_types_and_prune_subtypes(&mut chars.card_types, &mut chars.subtypes, types);
+                    remove_card_types_and_prune_subtypes(
+                        &mut chars.card_types,
+                        &mut chars.subtypes,
+                        types,
+                    );
                 }
                 Modification::SetCardTypes(types) => {
                     replace_card_types_and_prune_subtypes(
@@ -431,7 +435,8 @@ pub(super) fn calculate_with_layers(
                             continue;
                         }
 
-                        for (ability_index, ability) in candidate_chars.abilities.iter().enumerate() {
+                        for (ability_index, ability) in candidate_chars.abilities.iter().enumerate()
+                        {
                             let AbilityKind::Activated(activated) = &ability.kind else {
                                 continue;
                             };
@@ -449,10 +454,20 @@ pub(super) fn calculate_with_layers(
                             {
                                 activated.timing = crate::ability::ActivationTiming::OncePerTurn;
                             }
-                            chars.abilities.push_with_origin(copied, AbilityOrigin::Borrowed {
-                        effect: effect.into(), source: candidate.id,
-                        origin: Box::new(candidate_chars.abilities.origin(ability_index).unwrap().clone()),
-                    });
+                            chars.abilities.push_with_origin(
+                                copied,
+                                AbilityOrigin::Borrowed {
+                                    effect: effect.into(),
+                                    source: candidate.id,
+                                    origin: Box::new(
+                                        candidate_chars
+                                            .abilities
+                                            .origin(ability_index)
+                                            .unwrap()
+                                            .clone(),
+                                    ),
+                                },
+                            );
                         }
                     }
                 }
@@ -551,7 +566,9 @@ pub(super) fn calculate_with_layers(
                     chars.abilities.retain(|candidate| {
                         !matches!(&candidate.kind, AbilityKind::Static(ability) if ability.id() == *id)
                     });
-                    chars.static_abilities.retain(|candidate| candidate.id() != *id);
+                    chars
+                        .static_abilities
+                        .retain(|candidate| candidate.id() != *id);
                 }
                 Modification::RemoveAbilityGeneric { ability, .. } => {
                     chars
@@ -2042,7 +2059,10 @@ mod baseline_scope_tests {
             Zone::Exile,
             Zone::Command,
         ] {
-            assert!(covers(&scope, zone), "an unrestricted filter must cover {zone:?}");
+            assert!(
+                covers(&scope, zone),
+                "an unrestricted filter must cover {zone:?}"
+            );
         }
     }
 

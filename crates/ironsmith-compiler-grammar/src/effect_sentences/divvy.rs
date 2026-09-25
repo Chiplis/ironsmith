@@ -52,8 +52,21 @@ fn parse_cross_zone_target_swap(
     let declare_words = crate::lexer::parser_token_word_refs(declare);
     let swap_words = crate::lexer::parser_token_word_refs(swap);
     const SWAP_HEAD: &[&str] = &[
-        "if", "both", "targets", "are", "still", "legal", "as", "this", "ability", "resolves",
-        "that", "player", "simultaneously", "sacrifices", "the",
+        "if",
+        "both",
+        "targets",
+        "are",
+        "still",
+        "legal",
+        "as",
+        "this",
+        "ability",
+        "resolves",
+        "that",
+        "player",
+        "simultaneously",
+        "sacrifices",
+        "the",
     ];
     if declare_words.first() != Some(&"choose")
         || !declare_words.ends_with(&["in", "that", "players", "graveyard"])
@@ -104,7 +117,10 @@ fn parse_cross_zone_target_swap(
                     PlayerAst::Implicit,
                     ObjectFilter::default(),
                     1,
-                    Some(TargetAst::Tagged(crate::tag::TagRef::of(first_tag.key.clone()), None)),
+                    Some(TargetAst::Tagged(
+                        crate::tag::TagRef::of(first_tag.key.clone()),
+                        None,
+                    )),
                 ),
                 EffectAst::subject_verb_return_to_battlefield(
                     TargetAst::Tagged(crate::tag::TagRef::of(second_tag.key.clone()), None),
@@ -212,23 +228,46 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         return Ok(Some(effects));
     }
 
-    if let DivvySequenceShape::FixedExilePiles { first_count, second_count, first_face_down, second_face_down } = shape {
+    if let DivvySequenceShape::FixedExilePiles {
+        first_count,
+        second_count,
+        first_face_down,
+        second_face_down,
+    } = shape
+    {
         use crate::tag::CompilerReferenceTag;
         let first = CompilerReferenceTag::DivvySource.bind();
         let second = CompilerReferenceTag::DivvyPile.bind();
         let opponent = CompilerReferenceTag::DivvyOpponent.bind();
         let mut effects = Vec::new();
-        for (count, face_down, tag) in [(first_count, first_face_down, first.clone()), (second_count, second_face_down, second.clone())] {
+        for (count, face_down, tag) in [
+            (first_count, first_face_down, first.clone()),
+            (second_count, second_face_down, second.clone()),
+        ] {
             effects.push(EffectAst::subject_verb(
-                SubjectVerbRoleAst::LibraryOwner, PlayerAst::You,
+                SubjectVerbRoleAst::LibraryOwner,
+                PlayerAst::You,
                 SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
-                    count: Value::Fixed(count), surface: None, tags: vec![tag], accumulated_tags: vec![], face_down,
+                    count: Value::Fixed(count),
+                    surface: None,
+                    tags: vec![tag],
+                    accumulated_tags: vec![],
+                    face_down,
                 }),
             ));
         }
-        effects.push(EffectAst::subject_verb_choose_player(PlayerAst::You, PlayerFilter::Opponent, opponent.clone(), false, 0));
+        effects.push(EffectAst::subject_verb_choose_player(
+            PlayerAst::You,
+            PlayerFilter::Opponent,
+            opponent.clone(),
+            false,
+            0,
+        ));
         let mut modes = Vec::new();
-        for (chosen, other, label) in [(first.clone(), second.clone(), "First pile"), (second, first, "Second pile")] {
+        for (chosen, other, label) in [
+            (first.clone(), second.clone(), "First pile"),
+            (second, first, "Second pile"),
+        ] {
             let mut chosen_filter = ObjectFilter::tagged(chosen);
             chosen_filter.zone = Some(Zone::Exile);
             let mut other_filter = ObjectFilter::tagged(other);
@@ -236,16 +275,37 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             modes.push(crate::cards::builders::ChooseOneModeAst {
                 description: label.to_string(),
                 effects: vec![
-                    EffectAst::subject_verb_move_all_to_zone(TargetAst::Object(chosen_filter, None, None), Zone::Graveyard, false, ReturnControllerAst::Preserve, false, None),
+                    EffectAst::subject_verb_move_all_to_zone(
+                        TargetAst::Object(chosen_filter, None, None),
+                        Zone::Graveyard,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    ),
                     EffectAst::subject_verb_look_at_objects(PlayerAst::You, other_filter.clone()),
-                    EffectAst::may_cast_matching_spell_without_paying_mana_cost(PlayerAst::You, other_filter.clone(), Zone::Exile),
-                    EffectAst::subject_verb_move_all_to_zone(TargetAst::Object(other_filter, None, None), Zone::Hand, false, ReturnControllerAst::Preserve, false, None),
+                    EffectAst::may_cast_matching_spell_without_paying_mana_cost(
+                        PlayerAst::You,
+                        other_filter.clone(),
+                        Zone::Exile,
+                    ),
+                    EffectAst::subject_verb_move_all_to_zone(
+                        TargetAst::Object(other_filter, None, None),
+                        Zone::Hand,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    ),
                 ],
             });
         }
-        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
-            chooser: PlayerFilter::TaggedPlayer(opponent.into()), modes,
-        }));
+        effects.push(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseOneOf {
+                chooser: PlayerFilter::TaggedPlayer(opponent.into()),
+                modes,
+            },
+        ));
         return Ok(Some(effects));
     }
 

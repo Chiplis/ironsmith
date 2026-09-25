@@ -783,20 +783,23 @@ pub(super) fn run_champion_line_family(
     // not an "until" duration: the championed card returns through a
     // leaves-the-battlefield trigger that can be responded to, and if the
     // champion left before its ETB trigger resolved the card stays exiled.
-    let mut return_tokens = synthetic_word_tokens(&[
-        "When",
-        "this",
-        "permanent",
-        "leaves",
-        "the",
-        "battlefield",
-    ]);
+    let mut return_tokens =
+        synthetic_word_tokens(&["When", "this", "permanent", "leaves", "the", "battlefield"]);
     return_tokens.push(OwnedLexToken::comma(TextSpan::synthetic()));
     push_synthetic_words(
         &mut return_tokens,
         &[
-            "return", "the", "exiled", "card", "to", "the", "battlefield", "under", "its",
-            "owner's", "control",
+            "return",
+            "the",
+            "exiled",
+            "card",
+            "to",
+            "the",
+            "battlefield",
+            "under",
+            "its",
+            "owner's",
+            "control",
         ],
     );
     return_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
@@ -894,9 +897,11 @@ pub(super) fn run_station_line_family(
         })
         .any(|line| line_grammar::parse_station_threshold_line(&line.tokens).is_some());
     if !has_explicit_station_threshold_rows
-        && let Some(threshold) = station_shape
-            .creature_threshold
-            .or(ctx.line.info.semantic_facts.station_creature_threshold)
+        && let Some(threshold) = station_shape.creature_threshold.or(ctx
+            .line
+            .info
+            .semantic_facts
+            .station_creature_threshold)
         && let Some(pt) = ctx.preprocessed.card.power_toughness_ref()
     {
         let chosen_option = ChosenOptionContext::StationThresholdSupport(threshold);
@@ -1090,11 +1095,13 @@ fn station_threshold_is_creature_pt_threshold(
         let PreprocessedItem::Line(line) = item else {
             return false;
         };
-        line_grammar::parse_station_keyword_line(&line.tokens, &line.info.source_tokens)
-            .and_then(|shape| {
-                shape.creature_threshold.or(line.info.semantic_facts.station_creature_threshold)
-            })
-            == Some(threshold)
+        line_grammar::parse_station_keyword_line(&line.tokens, &line.info.source_tokens).and_then(
+            |shape| {
+                shape
+                    .creature_threshold
+                    .or(line.info.semantic_facts.station_creature_threshold)
+            },
+        ) == Some(threshold)
     })
 }
 
@@ -2234,7 +2241,13 @@ pub(super) fn run_statement_probe_line_family(
     }
     // A reflexive follow-up belongs to the replacement's performed action,
     // not to a separate spell statement without an antecedent.
-    if line_family_try!(ctx, rule, crate::keyword_static::parse_exile_would_die_instead_line(&ctx.line.tokens)).is_some() {
+    if line_family_try!(
+        ctx,
+        rule,
+        crate::keyword_static::parse_exile_would_die_instead_line(&ctx.line.tokens)
+    )
+    .is_some()
+    {
         return ParseOutcome::NoMatch;
     }
     let replacement_sentences = split_lexed_sentences(&ctx.line.tokens);
@@ -2315,11 +2328,24 @@ pub(super) fn run_static_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
     let rule = RuleId::new("static-line");
-    if ctx.line.tokens.first().is_some_and(|token| token.is_word("∞")) {
-        return line_family_match(ctx, LineDispatchResult::single(
-            RecognizedLine::Static(RecognizedStaticLine {
-                info: ctx.line.info.clone(), parse_tokens: ctx.line.tokens.clone(), chosen_option: None, parsed: None,
-            }), ctx.idx + 1));
+    if ctx
+        .line
+        .tokens
+        .first()
+        .is_some_and(|token| token.is_word("∞"))
+    {
+        return line_family_match(
+            ctx,
+            LineDispatchResult::single(
+                RecognizedLine::Static(RecognizedStaticLine {
+                    info: ctx.line.info.clone(),
+                    parse_tokens: ctx.line.tokens.clone(),
+                    chosen_option: None,
+                    parsed: None,
+                }),
+                ctx.idx + 1,
+            ),
+        );
     }
 
     if line_family_claimed!(rule, run_keyword_line_family(ctx))

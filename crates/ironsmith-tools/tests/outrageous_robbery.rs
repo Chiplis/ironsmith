@@ -74,7 +74,8 @@ fn apply(game: &mut GameState, queue: &mut TriggerQueue, action: LegalAction, dm
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(game, queue, &mut state, &ctx, dm);
+        result =
+            ironsmith::game_loop::apply_decision_context_with_dm(game, queue, &mut state, &ctx, dm);
     }
     assert!(result.is_ok(), "{result:?}");
 }
@@ -112,19 +113,35 @@ fn rob() -> Board {
         game.create_object_from_definition(&filler, alice, Zone::Library);
     }
     let stable = |game: &GameState, id: ObjectId| game.object(id).unwrap().stable_id;
-    let (opt, forest, third) = (stable(&game, opt), stable(&game, forest), stable(&game, third));
+    let (opt, forest, third) = (
+        stable(&game, opt),
+        stable(&game, forest),
+        stable(&game, third),
+    );
     let spell = game.create_object_from_definition(&load("Outrageous Robbery"), alice, Zone::Hand);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Black, 4);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Black, 4);
     let action = compute_legal_actions(&game, alice)
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
         .expect("castable");
     let mut queue = TriggerQueue::new();
-    let mut dm = Caster { x: 2, opponent: bob };
+    let mut dm = Caster {
+        x: 2,
+        opponent: bob,
+    };
     apply(&mut game, &mut queue, action, &mut dm);
     assert_eq!(game.stack.len(), 1);
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
-    Board { game, queue, opt, forest, third }
+    Board {
+        game,
+        queue,
+        opt,
+        forest,
+        third,
+    }
 }
 
 fn current(game: &GameState, stable: StableId) -> ObjectId {
@@ -140,7 +157,10 @@ fn the_top_x_cards_are_exiled_face_down() {
         assert_eq!(object.zone, Zone::Exile);
         assert!(game.is_face_down(object.id), "exiled face down");
     }
-    assert_eq!(game.object(current(game, board.third)).unwrap().zone, Zone::Library);
+    assert_eq!(
+        game.object(current(game, board.third)).unwrap().zone,
+        Zone::Library
+    );
 }
 
 #[test]
@@ -148,18 +168,30 @@ fn you_may_cast_an_exiled_spell_with_mana_of_any_type() {
     let mut board = rob();
     let alice = PlayerId::from_index(0);
     // Opt costs {U}; Alice has only black mana.
-    board.game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Black, 1);
+    board
+        .game
+        .player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Black, 1);
     let opt = current(&board.game, board.opt);
     let action = compute_legal_actions(&board.game, alice)
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == opt))
         .expect("Opt is castable from exile with black mana");
-    let mut dm = Caster { x: 0, opponent: PlayerId::from_index(1) };
+    let mut dm = Caster {
+        x: 0,
+        opponent: PlayerId::from_index(1),
+    };
     apply(&mut board.game, &mut board.queue, action, &mut dm);
     assert_eq!(board.game.stack.len(), 1, "Opt is on the stack");
     assert_eq!(board.game.player(alice).unwrap().mana_pool.total(), 0);
     ironsmith::game_loop::resolve_stack_entry_with(&mut board.game, &mut dm).unwrap();
-    assert_eq!(board.game.player(alice).unwrap().hand.len(), 1, "Opt drew Alice a card");
+    assert_eq!(
+        board.game.player(alice).unwrap().hand.len(),
+        1,
+        "Opt drew Alice a card"
+    );
 }
 
 #[test]

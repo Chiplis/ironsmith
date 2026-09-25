@@ -1,7 +1,9 @@
 //! Hope of Ghirapur: "Flying. Sacrifice Hope of Ghirapur: Until your next
 //! turn, target player who was dealt combat damage by Hope of Ghirapur this
 //! turn can't cast noncreature spells."
-use ironsmith::decision::{DecisionMaker, GameProgress, LegalAction, SelectFirstDecisionMaker, compute_legal_actions};
+use ironsmith::decision::{
+    DecisionMaker, GameProgress, LegalAction, SelectFirstDecisionMaker, compute_legal_actions,
+};
 use ironsmith::decisions::context::TargetsContext;
 use ironsmith::game_loop::{PriorityLoopState, PriorityResponse};
 use ironsmith::game_state::Target;
@@ -49,7 +51,11 @@ impl DecisionMaker for Aim {
     fn decide_targets(&mut self, _game: &GameState, ctx: &TargetsContext) -> Vec<Target> {
         self.legal = ctx.requirements[0].legal_targets.clone();
         let bob = Target::Player(PlayerId::from_index(1));
-        if self.legal.contains(&bob) { vec![bob] } else { Vec::new() }
+        if self.legal.contains(&bob) {
+            vec![bob]
+        } else {
+            Vec::new()
+        }
     }
 }
 
@@ -67,9 +73,13 @@ fn setup(hope_hit_bob: bool) -> Board {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::NextMain;
-    let hope = game.create_object_from_definition(&load("Hope of Ghirapur"), alice, Zone::Battlefield);
+    let hope =
+        game.create_object_from_definition(&load("Hope of Ghirapur"), alice, Zone::Battlefield);
     let opt = game.create_object_from_definition(&load("Opt"), bob, Zone::Hand);
-    game.player_mut(bob).unwrap().mana_pool.add(ManaSymbol::Blue, 1);
+    game.player_mut(bob)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
     if hope_hit_bob {
         let mut dm = SelectFirstDecisionMaker;
         let mut ctx = ironsmith::effects::EffectContext::new(hope, alice, &mut dm);
@@ -78,7 +88,12 @@ fn setup(hope_hit_bob: bool) -> Board {
             ChooseSpec::Player(PlayerFilter::Specific(bob)),
         );
         combat_hit.source_is_combat = true;
-        ironsmith::effects::execute_effect(&mut game, &ironsmith::Effect::new(combat_hit), &mut ctx).unwrap();
+        ironsmith::effects::execute_effect(
+            &mut game,
+            &ironsmith::Effect::new(combat_hit),
+            &mut ctx,
+        )
+        .unwrap();
         assert_eq!(game.player(bob).unwrap().life, 19);
     }
     Board { game, hope, opt }
@@ -112,7 +127,13 @@ fn sacrifice(board: &mut Board) -> (Vec<Target>, bool) {
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(&mut board.game, &mut queue, &mut state, &ctx, &mut dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            &mut board.game,
+            &mut queue,
+            &mut state,
+            &ctx,
+            &mut dm,
+        );
     }
     let on_stack = board.game.stack.len() == 1;
     if on_stack {
@@ -134,15 +155,28 @@ fn bob_can_cast_opt(board: &Board) -> bool {
 #[test]
 fn only_a_player_it_hit_can_be_targeted_and_then_cant_cast_noncreature_spells() {
     let mut board = setup(true);
-    assert!(bob_can_cast_opt(&board), "Opt is castable before the ability");
+    assert!(
+        bob_can_cast_opt(&board),
+        "Opt is castable before the ability"
+    );
     let (legal, on_stack) = sacrifice(&mut board);
     assert!(on_stack);
-    assert_eq!(legal, vec![Target::Player(PlayerId::from_index(1))], "Alice was not hit");
+    assert_eq!(
+        legal,
+        vec![Target::Player(PlayerId::from_index(1))],
+        "Alice was not hit"
+    );
     assert!(
-        board.game.object(board.hope).is_none_or(|o| o.zone != Zone::Battlefield),
+        board
+            .game
+            .object(board.hope)
+            .is_none_or(|o| o.zone != Zone::Battlefield),
         "Hope was sacrificed"
     );
-    assert!(!bob_can_cast_opt(&board), "Bob can't cast noncreature spells");
+    assert!(
+        !bob_can_cast_opt(&board),
+        "Bob can't cast noncreature spells"
+    );
 }
 
 #[test]

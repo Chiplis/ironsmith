@@ -47,13 +47,15 @@ pub(crate) fn riot_ability() -> Ability {
         },
         EffectMode {
             source_text: "This creature gains haste".to_string(),
-            effects: vec![Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
-                ChooseSpec::Source,
-                crate::continuous::Modification::AddAbilityGeneric(
-                    Ability::static_ability(StaticAbility::haste()),
+            effects: vec![Effect::new(
+                crate::effects::ApplyContinuousEffect::with_spec(
+                    ChooseSpec::Source,
+                    crate::continuous::Modification::AddAbilityGeneric(Ability::static_ability(
+                        StaticAbility::haste(),
+                    )),
+                    Until::Forever,
                 ),
-                Until::Forever,
-            ))],
+            )],
         },
     ];
 
@@ -1777,12 +1779,14 @@ impl CardDefinitionBuilder {
             KeywordAction::Cipher => self.cipher(),
             KeywordAction::Dash(cost) => self.dash(cost),
             KeywordAction::Blitz(cost) => self.blitz(cost),
-            KeywordAction::BlitzFromGraveyard => self.with_ability(Ability::static_ability(
-                StaticAbility::from_model(ironsmith_core::StaticAbility::native_alternative_cast_from_zone(
-                    Zone::Graveyard,
-                    ironsmith_core::alternative_cast_model::AlternativeCastKeyword::Blitz,
-                )),
-            )),
+            KeywordAction::BlitzFromGraveyard => {
+                self.with_ability(Ability::static_ability(StaticAbility::from_model(
+                    ironsmith_core::StaticAbility::native_alternative_cast_from_zone(
+                        Zone::Graveyard,
+                        ironsmith_core::alternative_cast_model::AlternativeCastKeyword::Blitz,
+                    ),
+                )))
+            }
             KeywordAction::Warp(cost) => self.warp(cost),
             KeywordAction::Plot(cost) => self.plot(cost),
             KeywordAction::Melee => self.melee(),
@@ -4347,8 +4351,10 @@ impl CardDefinitionBuilder {
 
     /// Add warp with the given cost.
     pub fn warp(mut self, cost: ManaCost) -> Self {
-        self.alternative_casts
-            .push(AlternativeCastingMethod::Warp { cost, additional_cost: Default::default() });
+        self.alternative_casts.push(AlternativeCastingMethod::Warp {
+            cost,
+            additional_cost: Default::default(),
+        });
         self
     }
 

@@ -81,7 +81,10 @@ pub fn parse_damage_multiplier_tokens(
 ) -> Option<DamageMultiplierSpec<'_>> {
     crate::grammar::primitives::probe_all(
         tokens,
-        alt((parse_imperative_damage_multiplier_lexed, parse_damage_multiplier_lexed)),
+        alt((
+            parse_imperative_damage_multiplier_lexed,
+            parse_damage_multiplier_lexed,
+        )),
         "damage multiplier line",
     )
 }
@@ -146,7 +149,11 @@ pub fn parse_combat_maximum_tail_tokens(tokens: &[OwnedLexToken]) -> Option<Comb
 fn parse_imperative_damage_multiplier_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<DamageMultiplierSpec<'a>> {
-    let factor = alt((primitives::kw("double").value(2), primitives::kw("triple").value(3))).parse_next(input)?;
+    let factor = alt((
+        primitives::kw("double").value(2),
+        primitives::kw("triple").value(3),
+    ))
+    .parse_next(input)?;
     primitives::phrase(&["all", "damage"]).parse_next(input)?;
     let source = if opt(primitives::kw("that")).parse_next(input)?.is_some() {
         parse_explicit_damage_source_shape_lexed(input)?
@@ -328,11 +335,14 @@ fn parse_damage_source_shape_lexed<'a>(
 fn parse_explicit_damage_source_shape_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<DamageSourceShape<'a>> {
-    let filter_tokens =
-        repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), peek(alt((primitives::kw("source"), primitives::kw("sources")))))
-            .map(|((), _)| ())
-            .take()
-            .parse_next(input)?;
+    let filter_tokens = repeat_till::<_, _, (), _, _, _, _>(
+        0..,
+        any.void(),
+        peek(alt((primitives::kw("source"), primitives::kw("sources")))),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
     alt((primitives::kw("source"), primitives::kw("sources"))).parse_next(input)?;
     let controller = opt(alt((
         primitives::phrase(&["you", "control"]).value(DamageSourceControllerKind::You),
@@ -628,13 +638,30 @@ mod imperative_multiplier_tests {
     use super::*;
     #[test]
     fn imperative_multiplier_preserves_source_and_rejects_missing_or_extra_clauses() {
-        let tokens=crate::lexer::lex_line("Double all damage that creature sources you control would deal.",0).unwrap();
-        let spec=parse_damage_multiplier_tokens(&tokens).unwrap();
-        assert_eq!(spec.factor,2);assert!(!spec.combat_only);assert!(spec.damaged_tokens.is_none());
-        assert_eq!(spec.source.controller,DamageSourceControllerKind::You);assert!(spec.source.source_noun);
-        assert_eq!(crate::lexer::parser_token_word_refs(spec.source.filter_tokens),vec!["creature"]);
-        for text in ["Double all damage that creature sources you control.","Double all damage that would deal.","Double all damage that creature sources you control would deal and draw a card."] {
-            assert!(parse_damage_multiplier_tokens(&crate::lexer::lex_line(text,0).unwrap()).is_none(),"{text}");
+        let tokens = crate::lexer::lex_line(
+            "Double all damage that creature sources you control would deal.",
+            0,
+        )
+        .unwrap();
+        let spec = parse_damage_multiplier_tokens(&tokens).unwrap();
+        assert_eq!(spec.factor, 2);
+        assert!(!spec.combat_only);
+        assert!(spec.damaged_tokens.is_none());
+        assert_eq!(spec.source.controller, DamageSourceControllerKind::You);
+        assert!(spec.source.source_noun);
+        assert_eq!(
+            crate::lexer::parser_token_word_refs(spec.source.filter_tokens),
+            vec!["creature"]
+        );
+        for text in [
+            "Double all damage that creature sources you control.",
+            "Double all damage that would deal.",
+            "Double all damage that creature sources you control would deal and draw a card.",
+        ] {
+            assert!(
+                parse_damage_multiplier_tokens(&crate::lexer::lex_line(text, 0).unwrap()).is_none(),
+                "{text}"
+            );
         }
     }
 }

@@ -734,16 +734,26 @@ impl ZoneChangeTrigger {
                 ZonePattern::OneOf(zones) => zones.clone(),
                 _ => return None,
             };
-            (!zones.is_empty() && zones.iter().all(|zone| matches!(zone, Zone::Hand | Zone::Library | Zone::Graveyard)))
-                .then_some(zones)
+            (!zones.is_empty()
+                && zones
+                    .iter()
+                    .all(|zone| matches!(zone, Zone::Hand | Zone::Library | Zone::Graveyard)))
+            .then_some(zones)
         }
 
         fn source_zone_phrase(trigger: &ZoneChangeTrigger) -> Option<String> {
             if let Some(zones) = private_origin_zones(trigger) {
-                let origins = zones.iter().map(|zone| {
-                    let name = match zone { Zone::Hand => "hand", Zone::Library => "library", _ => "graveyard" };
-                    owned_zone_phrase(trigger.object_filter.owner.as_ref(), name)
-                }).collect::<Vec<_>>();
+                let origins = zones
+                    .iter()
+                    .map(|zone| {
+                        let name = match zone {
+                            Zone::Hand => "hand",
+                            Zone::Library => "library",
+                            _ => "graveyard",
+                        };
+                        owned_zone_phrase(trigger.object_filter.owner.as_ref(), name)
+                    })
+                    .collect::<Vec<_>>();
                 return Some(format!("from {}", origins.join(" and/or ")));
             }
             match &trigger.from {
@@ -954,7 +964,8 @@ impl ZoneChangeTrigger {
             display_filter.controller = None;
         }
         let mut filter_desc = if self.to == ZonePattern::Specific(Zone::Graveyard)
-            || (self.to == ZonePattern::Specific(Zone::Exile) && private_origin_zones(self).is_some())
+            || (self.to == ZonePattern::Specific(Zone::Exile)
+                && private_origin_zones(self).is_some())
         {
             card_zone_subject_description(self)
         } else if is_nontoken_card_subject_from_card_zones(self) {
@@ -1530,7 +1541,10 @@ impl TriggerMatcher for ZoneChangeTrigger {
         (count > 0).then_some(count as i32)
     }
 
-    fn simultaneous_trigger_key(&self, event: &TriggerEvent) -> Option<crate::triggers::matcher_trait::SimultaneousTriggerKey> {
+    fn simultaneous_trigger_key(
+        &self,
+        event: &TriggerEvent,
+    ) -> Option<crate::triggers::matcher_trait::SimultaneousTriggerKey> {
         (self.count_mode == CountMode::OneOrMore && event.downcast::<ZoneChangeEvent>().is_some())
             .then_some(crate::triggers::matcher_trait::SimultaneousTriggerKey::ZoneChangeBatch)
     }
@@ -2321,16 +2335,29 @@ mod tests {
     #[test]
     fn exile_owned_origin_union_display_preserves_origin_and_subject() {
         for (zones, origin) in [
-            (vec![Zone::Library, Zone::Graveyard], "your library and/or your graveyard"),
-            (vec![Zone::Hand, Zone::Library], "your hand and/or your library"),
+            (
+                vec![Zone::Library, Zone::Graveyard],
+                "your library and/or your graveyard",
+            ),
+            (
+                vec![Zone::Hand, Zone::Library],
+                "your hand and/or your library",
+            ),
             (vec![Zone::Library], "your library"),
         ] {
             let trigger = ZoneChangeTrigger::new()
                 .from(ZonePattern::OneOf(zones))
                 .to(Zone::Exile)
-                .filter(ObjectFilter::default().nontoken().owned_by(PlayerFilter::You))
+                .filter(
+                    ObjectFilter::default()
+                        .nontoken()
+                        .owned_by(PlayerFilter::You),
+                )
                 .count(CountMode::OneOrMore);
-            assert_eq!(trigger.display(), format!("Whenever one or more cards are put into exile from {origin}"));
+            assert_eq!(
+                trigger.display(),
+                format!("Whenever one or more cards are put into exile from {origin}")
+            );
         }
     }
 

@@ -57,7 +57,11 @@ fn damage_to_you_is_prevented_but_not_to_your_creatures() {
     let (mut game, _) = setup();
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-    let bolt_source = game.create_object_from_definition(&card("Shock Source", CardType::Artifact), bob, Zone::Battlefield);
+    let bolt_source = game.create_object_from_definition(
+        &card("Shock Source", CardType::Artifact),
+        bob,
+        Zone::Battlefield,
+    );
     let bear = game.create_object_from_definition(
         &CardDefinitionBuilder::new(CardId::new(), "Bear")
             .card_types(vec![CardType::Creature])
@@ -80,7 +84,11 @@ fn damage_to_you_is_prevented_but_not_to_your_creatures() {
         &mut ctx,
     )
     .unwrap();
-    assert_eq!(game.player(alice).unwrap().life, 20, "damage to Alice is prevented");
+    assert_eq!(
+        game.player(alice).unwrap().life,
+        20,
+        "damage to Alice is prevented"
+    );
     assert_eq!(game.damage_on(bear), 3, "only damage to Alice is prevented");
 }
 
@@ -89,12 +97,29 @@ fn you_have_shroud() {
     let (mut game, confinement) = setup();
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-    let bob_source = game.create_object_from_definition(&card("Bob Source", CardType::Artifact), bob, Zone::Battlefield);
-    let alice_source = game.create_object_from_definition(&card("Alice Source", CardType::Artifact), alice, Zone::Battlefield);
+    let bob_source = game.create_object_from_definition(
+        &card("Bob Source", CardType::Artifact),
+        bob,
+        Zone::Battlefield,
+    );
+    let alice_source = game.create_object_from_definition(
+        &card("Alice Source", CardType::Artifact),
+        alice,
+        Zone::Battlefield,
+    );
     game.refresh_continuous_state();
-    assert!(!game.can_target_player_from_source(alice, bob_source), "opponents can't target Alice");
-    assert!(!game.can_target_player_from_source(alice, alice_source), "nor can Alice's own sources");
-    assert!(game.can_target_player_from_source(bob, bob_source), "Bob has no shroud");
+    assert!(
+        !game.can_target_player_from_source(alice, bob_source),
+        "opponents can't target Alice"
+    );
+    assert!(
+        !game.can_target_player_from_source(alice, alice_source),
+        "nor can Alice's own sources"
+    );
+    assert!(
+        game.can_target_player_from_source(bob, bob_source),
+        "Bob has no shroud"
+    );
     let _ = confinement;
 }
 
@@ -112,7 +137,11 @@ fn upkeep(hand: usize, discard: bool) -> (bool, usize) {
     let (mut game, confinement) = setup();
     let alice = PlayerId::from_index(0);
     for i in 0..hand {
-        game.create_object_from_definition(&card(&format!("Card {i}"), CardType::Sorcery), alice, Zone::Hand);
+        game.create_object_from_definition(
+            &card(&format!("Card {i}"), CardType::Sorcery),
+            alice,
+            Zone::Hand,
+        );
     }
     game.turn.phase = Phase::Beginning;
     game.turn.step = Some(Step::Upkeep);
@@ -126,7 +155,9 @@ fn upkeep(hand: usize, discard: bool) -> (bool, usize) {
     ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
     assert_eq!(game.stack.len(), 1, "upkeep trigger");
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
-    let alive = game.object(confinement).is_some_and(|o| o.zone == Zone::Battlefield);
+    let alive = game
+        .object(confinement)
+        .is_some_and(|o| o.zone == Zone::Battlefield);
     (alive, game.player(alice).unwrap().hand.len())
 }
 
@@ -141,7 +172,11 @@ fn upkeep_discard_keeps_it_otherwise_it_is_sacrificed() {
 fn draw_step_is_skipped() {
     let (mut game, _) = setup();
     let alice = PlayerId::from_index(0);
-    game.create_object_from_definition(&card("Library Card", CardType::Sorcery), alice, Zone::Library);
+    game.create_object_from_definition(
+        &card("Library Card", CardType::Sorcery),
+        alice,
+        Zone::Library,
+    );
     assert!(game.player_skips_draw_step(alice), "Skip your draw step");
     ironsmith::turn::execute_draw_step(&mut game);
     assert!(game.player(alice).unwrap().hand.is_empty(), "no draw");

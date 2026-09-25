@@ -150,22 +150,49 @@ pub(super) fn parse_additional_cost(
     };
     let words = crate::lexer::parser_token_word_refs(effect_tokens);
     if matches!(words.as_slice(), ["you", "may", "collect", "evidence", _]) {
-        let collect = effect_tokens.iter().position(|token| token.is_word("collect")).unwrap();
+        let collect = effect_tokens
+            .iter()
+            .position(|token| token.is_word("collect"))
+            .unwrap();
         let cost = crate::activation_and_restrictions::activated_line_core::parse_compiler_activation_cost(&effect_tokens[collect..])?;
         let mut optional = crate::model::CompilerOptionalCost::custom("Collect evidence", cost);
         optional.reference = "Evidence".into();
         return Ok(ast(LineAst::OptionalCost(optional)));
     }
     let evidence_minimum = match words.as_slice() {
-        ["collect", "evidence", "x", "where", "x", "is", "the", "total", "mana", "value", "of", "the", "permanents", "this", "spell", "targets"] => {
-            Some(Value::AnnouncedTargetTotal(ironsmith_core::ChoiceAggregateMetric::ManaValue))
+        [
+            "collect",
+            "evidence",
+            "x",
+            "where",
+            "x",
+            "is",
+            "the",
+            "total",
+            "mana",
+            "value",
+            "of",
+            "the",
+            "permanents",
+            "this",
+            "spell",
+            "targets",
+        ] => Some(Value::AnnouncedTargetTotal(
+            ironsmith_core::ChoiceAggregateMetric::ManaValue,
+        )),
+        ["collect", "evidence", amount] => {
+            crate::util::parse_number_word_u32(amount).map(|amount| Value::Fixed(amount as i32))
         }
-        ["collect", "evidence", amount] => crate::util::parse_number_word_u32(amount).map(|amount| Value::Fixed(amount as i32)),
         _ => None,
     };
     if let Some(minimum) = evidence_minimum {
-        let tag = crate::tag::TagRef::of(crate::util::helper_tag_for_tokens(effect_tokens, "evidence_cost"));
-        let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard).owned_by(PlayerFilter::You);
+        let tag = crate::tag::TagRef::of(crate::util::helper_tag_for_tokens(
+            effect_tokens,
+            "evidence_cost",
+        ));
+        let mut filter = ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You);
         filter.other = true;
         return Ok(ast(LineAst::AdditionalCost { effects: vec![
             EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
@@ -411,10 +438,11 @@ pub(super) fn parse_teamwork(
     let Some(amount) = crate::util::parse_number_word_u32(amount) else {
         return Ok(None);
     };
-    let cost = ironsmith_core::TotalCost::from_costs(vec![crate::model::CompilerCost::Crew {
-        amount,
-    }]);
-    Ok(ast(LineAst::OptionalCost(crate::model::CompilerOptionalCost::teamwork(cost))))
+    let cost =
+        ironsmith_core::TotalCost::from_costs(vec![crate::model::CompilerCost::Crew { amount }]);
+    Ok(ast(LineAst::OptionalCost(
+        crate::model::CompilerOptionalCost::teamwork(cost),
+    )))
 }
 
 pub(super) fn parse_squad(
@@ -505,7 +533,7 @@ mod tests;
 #[path = "keyword_payloads/core.rs"]
 mod core_programs;
 pub(super) use core_programs::{
-    parse_epic, parse_paradigm, parse_escalate, parse_eternalize, parse_evoke, parse_exploit,
+    parse_epic, parse_escalate, parse_eternalize, parse_evoke, parse_exploit, parse_paradigm,
 };
 #[path = "keyword_payloads/combat.rs"]
 mod combat_programs;

@@ -100,7 +100,11 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
         TriggerSpec::SpellCast {
             filter: Some(filter),
             ..
-        } | TriggerSpec::SpellCastSameNameCardInZone { filter: Some(filter), .. } => spell_cast_filter_binds_target_count(filter),
+        }
+        | TriggerSpec::SpellCastSameNameCardInZone {
+            filter: Some(filter),
+            ..
+        } => spell_cast_filter_binds_target_count(filter),
         trigger => {
             matches!(
                 trigger,
@@ -189,18 +193,24 @@ pub fn annotate_effect_sequence_owned(
     fn assign_persistent_result_tags(effects: &mut Vec<EffectAst>, ids: &mut IdGenContext) {
         for effect in effects {
             if let EffectAst::SubjectVerb(subject) = effect
-                && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { tag, .. }) = &mut subject.action
+                && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { tag, .. }) =
+                    &mut subject.action
                 && tag.is_none()
             {
                 *tag = Some(crate::tag::TagRef::of(next_reference_tag(ids, "discarded")));
             }
             if let EffectAst::SubjectVerb(subject) = effect
-                && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { result_tag, .. }) = &mut subject.action
+                && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
+                    result_tag,
+                    ..
+                }) = &mut subject.action
                 && result_tag.is_none()
             {
                 *result_tag = Some(crate::tag::TagRef::of(next_reference_tag(ids, "returned")));
             }
-            for_each_nested_effect_vec_mut(effect, false, |nested| assign_persistent_result_tags(nested, ids));
+            for_each_nested_effect_vec_mut(effect, false, |nested| {
+                assign_persistent_result_tags(nested, ids)
+            });
         }
     }
     assign_persistent_result_tags(&mut effects, &mut id_gen);
@@ -637,7 +647,8 @@ fn resolve_spell_demonstrative_name_reference(
     filter: &mut ObjectFilter,
     bindings: &[ObjectTargetBinding],
 ) {
-    if filter.same_name_antecedent_surface() != Some(ironsmith_core::SameNameAntecedentSurface::Spell)
+    if filter.same_name_antecedent_surface()
+        != Some(ironsmith_core::SameNameAntecedentSurface::Spell)
     {
         return;
     }
@@ -2273,7 +2284,10 @@ fn advance_reference_frame_for_effect(
 
 fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResolutionState<'_> {
     EffectReferenceResolutionState {
-        last_value_comparison: match &env.last_value_comparison { RefState::Known(values) => Some(values), _ => None },
+        last_value_comparison: match &env.last_value_comparison {
+            RefState::Known(values) => Some(values),
+            _ => None,
+        },
         last_effect_id: env.last_effect_id.clone().into_option(),
         pinned_effect_metric_id: None,
         last_library_search_effect_id: env.last_library_search_effect_id.clone().into_option(),
@@ -2453,18 +2467,34 @@ fn annotate_effect_sequence_with_env_internal(
 
         let comparison_antecedent = match &effect {
             EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                predicate: PredicateAst::ValueComparison { left, right, .. }, ..
-            }) if !matches!(left.unhinted(), Value::PendingComparisonLeft | Value::PendingComparisonRight | Value::PendingComparisonDifference)
-                && !matches!(right.unhinted(), Value::PendingComparisonLeft | Value::PendingComparisonRight | Value::PendingComparisonDifference) => {
+                predicate: PredicateAst::ValueComparison { left, right, .. },
+                ..
+            }) if !matches!(
+                left.unhinted(),
+                Value::PendingComparisonLeft
+                    | Value::PendingComparisonRight
+                    | Value::PendingComparisonDifference
+            ) && !matches!(
+                right.unhinted(),
+                Value::PendingComparisonLeft
+                    | Value::PendingComparisonRight
+                    | Value::PendingComparisonDifference
+            ) =>
+            {
                 use ironsmith_core::tag::TagKeyWalk;
                 let mut values = (left.clone(), right.clone());
                 for value in [&mut values.0, &mut values.1] {
                     value.map_tag_keys(&mut |tag| {
                         if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
-                            && let Some(bound) = resolution_env.known_last_object_tag() {
+                            && let Some(bound) = resolution_env.known_last_object_tag()
+                        {
                             *tag = bound.clone();
                         }
-                        if let Some((_, bound)) = resolution_env.snapshot_tag_aliases.iter().find(|(alias, _)| alias == tag) {
+                        if let Some((_, bound)) = resolution_env
+                            .snapshot_tag_aliases
+                            .iter()
+                            .find(|(alias, _)| alias == tag)
+                        {
                             *tag = bound.clone();
                         }
                     });
@@ -2488,12 +2518,15 @@ fn annotate_effect_sequence_with_env_internal(
         // coordination/sentence wrappers are annotated again during lowering;
         // allocating a second name there disconnects already-bound consumers.
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { tag, .. }), ..
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { tag, .. }),
+            ..
         }) = &mut effect
             && tag.is_none()
             && let Some(result_tag) = out_env.known_last_object_tag()
         {
-            *tag = Some(ironsmith_compiler_semantic::tag::TagRef::of(result_tag.clone()));
+            *tag = Some(ironsmith_compiler_semantic::tag::TagRef::of(
+                result_tag.clone(),
+            ));
         }
         if is_offer_followup {
             // The participant is local to the positive branch. In
@@ -3774,7 +3807,8 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
             ..
         }) => {
             if let crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value)
-                | crate::cards::builders::LibraryConsultStopRuleAst::TotalManaValue(value) = stop_rule
+            | crate::cards::builders::LibraryConsultStopRuleAst::TotalManaValue(value) =
+                stop_rule
             {
                 visit(value);
             }
@@ -4283,25 +4317,48 @@ fn resolve_effect_result_values_in_fields(
     effect: &mut EffectAst,
     state: EffectReferenceResolutionState,
 ) -> Result<(), CardTextError> {
-    fn comparison_value(value: &mut Value, state: EffectReferenceResolutionState) -> Result<(), CardTextError> {
+    fn comparison_value(
+        value: &mut Value,
+        state: EffectReferenceResolutionState,
+    ) -> Result<(), CardTextError> {
         match value {
-            Value::PendingComparisonLeft | Value::PendingComparisonRight | Value::PendingComparisonDifference => resolve_effect_result_value(value, state),
-            Value::SurfaceHinted { value, .. } | Value::Scaled(value, _) | Value::DividedRoundedDown(value, _) | Value::HalfRoundedDown(value) => comparison_value(value, state),
-            Value::Add(left, right) | Value::Min(left, right) => { comparison_value(left, state)?; comparison_value(right, state) }
+            Value::PendingComparisonLeft
+            | Value::PendingComparisonRight
+            | Value::PendingComparisonDifference => resolve_effect_result_value(value, state),
+            Value::SurfaceHinted { value, .. }
+            | Value::Scaled(value, _)
+            | Value::DividedRoundedDown(value, _)
+            | Value::HalfRoundedDown(value) => comparison_value(value, state),
+            Value::Add(left, right) | Value::Min(left, right) => {
+                comparison_value(left, state)?;
+                comparison_value(right, state)
+            }
             _ => Ok(()),
         }
     }
-    fn comparison_predicate(predicate: &mut PredicateAst, state: EffectReferenceResolutionState) -> Result<(), CardTextError> {
+    fn comparison_predicate(
+        predicate: &mut PredicateAst,
+        state: EffectReferenceResolutionState,
+    ) -> Result<(), CardTextError> {
         match predicate {
-            PredicateAst::ValueComparison { left, right, .. } => { comparison_value(left, state)?; comparison_value(right, state) }
+            PredicateAst::ValueComparison { left, right, .. } => {
+                comparison_value(left, state)?;
+                comparison_value(right, state)
+            }
             PredicateAst::Not(inner) => comparison_predicate(inner, state),
-            PredicateAst::And(left, right) | PredicateAst::Or(left, right) => { comparison_predicate(left, state)?; comparison_predicate(right, state) }
+            PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+                comparison_predicate(left, state)?;
+                comparison_predicate(right, state)
+            }
             _ => Ok(()),
         }
     }
-    if let EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. }
+    if let EffectAst::Conditionals(
+        ConditionalEffectAst::Conditional { predicate, .. }
         | ConditionalEffectAst::TrailingIf { predicate, .. }
-        | ConditionalEffectAst::TrailingUnless { predicate, .. }) = effect {
+        | ConditionalEffectAst::TrailingUnless { predicate, .. },
+    ) = effect
+    {
         comparison_predicate(predicate, state)?;
     }
     fn resolve_target_count(
@@ -4633,7 +4690,9 @@ fn resolve_effect_result_values_in_fields(
                 ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
+                ..
+            })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { .. })
             | SubjectVerbActionAst::Game(GameActionAst::ExtraTurnAfterTurn { .. })
@@ -5068,15 +5127,20 @@ fn resolve_effect_result_value(
     state: EffectReferenceResolutionState,
 ) -> Result<(), CardTextError> {
     match value {
-        Value::PendingComparisonLeft | Value::PendingComparisonRight | Value::PendingComparisonDifference => {
+        Value::PendingComparisonLeft
+        | Value::PendingComparisonRight
+        | Value::PendingComparisonDifference => {
             // Transparent wrappers undergo an initial result-ID pass before
             // their lexical reference environments are available. Defer until
             // annotation supplies the antecedent; lowering rejects leftovers.
-            let Some((left, right)) = state.last_value_comparison else { return Ok(()); };
+            let Some((left, right)) = state.last_value_comparison else {
+                return Ok(());
+            };
             *value = match value {
                 Value::PendingComparisonLeft => left.clone(),
                 Value::PendingComparisonRight => right.clone(),
-                _ => Value::absolute_difference(left.clone(), right.clone()).with_surface_hint(ValueSurfaceHint::Difference),
+                _ => Value::absolute_difference(left.clone(), right.clone())
+                    .with_surface_hint(ValueSurfaceHint::Difference),
             };
         }
 
@@ -5101,11 +5165,20 @@ fn resolve_effect_result_value(
         Value::SurfaceHinted { value, hints } => {
             if hints.contains(&ValueSurfaceHint::LifeGainedAmount)
                 && !state.allow_life_event_value
-                && matches!(value.unhinted(), Value::EventValue(EventValueSpec::LifeAmount))
+                && matches!(
+                    value.unhinted(),
+                    Value::EventValue(EventValueSpec::LifeAmount)
+                )
             {
-                let id = state.pinned_effect_metric_id.or(state.last_effect_id).ok_or_else(|| {
-                    CardTextError::ParseError("life-gain amount requires a triggering event or prior effect".to_string())
-                })?;
+                let id = state
+                    .pinned_effect_metric_id
+                    .or(state.last_effect_id)
+                    .ok_or_else(|| {
+                        CardTextError::ParseError(
+                            "life-gain amount requires a triggering event or prior effect"
+                                .to_string(),
+                        )
+                    })?;
                 **value = Value::EffectMetric {
                     effect_id: id,
                     source: EffectMetricSource::Outcome,
@@ -5717,9 +5790,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     + bind_unresolved_it_in_target(to, seed_tag)
             }
             SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target })
-            | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { target }) => {
-                bind_unresolved_it_in_target(target, seed_tag)
-            }
+            | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
+                target,
+            }) => bind_unresolved_it_in_target(target, seed_tag),
             SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
                 target,
                 counter_source,
@@ -5976,9 +6049,10 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Control(ControlActionAst::ControlCombatChoicesThisTurn {
                 ..
             }) => 0,
-            SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes { target, .. }) => {
-                bind_unresolved_it_in_target(target, seed_tag)
-            }
+            SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes {
+                target,
+                ..
+            }) => bind_unresolved_it_in_target(target, seed_tag),
             SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeValues {
                 left,
                 right,
@@ -9024,24 +9098,44 @@ mod fixed_source_reference_tests {
     fn nested_return_result_keeps_its_identity_when_reannotated() {
         let returned = EffectAst::subject_verb_return_to_battlefield(
             TargetAst::Object(ObjectFilter::tagged("enchanted"), None, None),
-            false, false, false,
+            false,
+            false,
+            false,
             crate::cards::builders::ReturnControllerAst::Preserve,
             None,
         );
         let annotated = annotate_effect_sequence(
-            &[EffectAst::Sequence { effects: vec![returned] }],
+            &[EffectAst::Sequence {
+                effects: vec![returned],
+            }],
             &ModelReferenceImports::default(),
-            EffectReferenceResolutionConfig { force_auto_tag_object_targets: true, ..Default::default() },
+            EffectReferenceResolutionConfig {
+                force_auto_tag_object_targets: true,
+                ..Default::default()
+            },
             IdGenContext::default(),
-        ).unwrap();
-        let EffectAst::Sequence { effects } = &annotated.effects[0].effect else { panic!("sequence"); };
+        )
+        .unwrap();
+        let EffectAst::Sequence { effects } = &annotated.effects[0].effect else {
+            panic!("sequence");
+        };
         let nested = annotate_effect_sequence(
             effects,
             &ModelReferenceImports::default(),
-            EffectReferenceResolutionConfig { force_auto_tag_object_targets: true, ..Default::default() },
-            IdGenContext { next_tag_id: 42, ..Default::default() },
-        ).unwrap();
-        assert_eq!(nested.final_env.last_object_tag, annotated.final_env.last_object_tag);
+            EffectReferenceResolutionConfig {
+                force_auto_tag_object_targets: true,
+                ..Default::default()
+            },
+            IdGenContext {
+                next_tag_id: 42,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            nested.final_env.last_object_tag,
+            annotated.final_env.last_object_tag
+        );
         assert!(nested.final_env.known_last_object_tag().is_some());
     }
 
@@ -9215,31 +9309,68 @@ mod fixed_source_reference_tests {
 #[cfg(test)]
 #[test]
 fn comparison_antecedent_binds_operands_and_difference_across_clauses() {
-    let condition = |left, right| EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-        predicate: PredicateAst::ValueComparison {
-            left, right, operator: ironsmith_core::ValueComparisonOperator::GreaterThan,
-        },
-        if_true: vec![], if_false: vec![],
-    });
+    let condition = |left, right| {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::ValueComparison {
+                left,
+                right,
+                operator: ironsmith_core::ValueComparisonOperator::GreaterThan,
+            },
+            if_true: vec![],
+            if_false: vec![],
+        })
+    };
     let draw = EffectAst::SubjectVerb(SubjectVerbEffectAst {
         subject: crate::cards::builders::SubjectVerbSubjectAst {
             role: crate::cards::builders::SubjectVerbRoleAst::Actor,
             player: PlayerAst::You,
         },
-        action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: Value::PendingComparisonDifference }),
+        action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
+            count: Value::PendingComparisonDifference,
+        }),
     });
     let effects = vec![
         condition(Value::Fixed(7), Value::Fixed(4)),
         condition(Value::PendingComparisonLeft, Value::PendingComparisonRight),
         draw,
     ];
-    let annotated = annotate_effect_sequence(&effects, &ReferenceImports::default(), Default::default(), IdGenContext::default()).unwrap();
+    let annotated = annotate_effect_sequence(
+        &effects,
+        &ReferenceImports::default(),
+        Default::default(),
+        IdGenContext::default(),
+    )
+    .unwrap();
     let debug = format!("{annotated:#?}");
     assert!(!debug.contains("PendingComparison"), "{debug}");
-    let EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. }) = &annotated.effects[1].effect else { panic!("{debug}"); };
-    assert!(matches!(predicate, PredicateAst::ValueComparison { left: Value::Fixed(7), right: Value::Fixed(4), .. }), "{debug}");
-    let EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count }), .. }) = &annotated.effects[2].effect else { panic!("{debug}"); };
-    assert_eq!(count, &Value::absolute_difference(Value::Fixed(7), Value::Fixed(4)).with_surface_hint(ValueSurfaceHint::Difference));
+    let EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. }) =
+        &annotated.effects[1].effect
+    else {
+        panic!("{debug}");
+    };
+    assert!(
+        matches!(
+            predicate,
+            PredicateAst::ValueComparison {
+                left: Value::Fixed(7),
+                right: Value::Fixed(4),
+                ..
+            }
+        ),
+        "{debug}"
+    );
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count }),
+        ..
+    }) = &annotated.effects[2].effect
+    else {
+        panic!("{debug}");
+    };
+    assert_eq!(
+        count,
+        &Value::absolute_difference(Value::Fixed(7), Value::Fixed(4))
+            .with_surface_hint(ValueSurfaceHint::Difference)
+    );
 }
 
 #[cfg(test)]
@@ -9247,24 +9378,45 @@ fn comparison_antecedent_binds_operands_and_difference_across_clauses() {
 fn comparison_antecedent_retains_its_object_across_later_reference_changes() {
     let earlier = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate: PredicateAst::ValueComparison {
-            left: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key()))),
+            left: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+            ))),
             operator: ironsmith_core::ValueComparisonOperator::LessThanOrEqual,
             right: Value::Fixed(3),
-        }, if_true: vec![], if_false: vec![],
+        },
+        if_true: vec![],
+        if_false: vec![],
     });
     let imports = ReferenceImports::with_last_object_tag("searched_card");
-    let first = annotate_effect_sequence(&[earlier], &imports, Default::default(), IdGenContext::default()).unwrap();
+    let first = annotate_effect_sequence(
+        &[earlier],
+        &imports,
+        Default::default(),
+        IdGenContext::default(),
+    )
+    .unwrap();
     let mut later = ReferenceImports::from_frame(&first.final_env.to_frame(false, false));
     later.last_object_tag = Some("unrelated_later_object".into());
     let env = ReferenceEnv::from_imports(&later, false, false, false, None);
-    let value = super::reference_helpers::resolve_value_it_tag(&Value::PendingComparisonLeft, &env).unwrap();
-    assert_eq!(value, Value::ManaValueOf(Box::new(ChooseSpec::Tagged("searched_card".into()))));
+    let value = super::reference_helpers::resolve_value_it_tag(&Value::PendingComparisonLeft, &env)
+        .unwrap();
+    assert_eq!(
+        value,
+        Value::ManaValueOf(Box::new(ChooseSpec::Tagged("searched_card".into())))
+    );
 }
 
 #[cfg(test)]
 #[test]
 fn comparison_references_without_an_antecedent_are_rejected() {
-    for value in [Value::PendingComparisonLeft, Value::PendingComparisonRight, Value::PendingComparisonDifference] {
-        assert!(super::reference_helpers::resolve_value_it_tag(&value, &ReferenceEnv::default()).is_err());
+    for value in [
+        Value::PendingComparisonLeft,
+        Value::PendingComparisonRight,
+        Value::PendingComparisonDifference,
+    ] {
+        assert!(
+            super::reference_helpers::resolve_value_it_tag(&value, &ReferenceEnv::default())
+                .is_err()
+        );
     }
 }

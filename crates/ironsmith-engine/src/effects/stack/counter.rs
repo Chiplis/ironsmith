@@ -21,7 +21,9 @@ fn counter_one_stack_object(
 }
 
 /// The stack-object kind a stack-targeting effect's target is restricted to.
-pub(crate) fn counter_target_stack_kind(spec: &ChooseSpec) -> Option<crate::filter::StackObjectKind> {
+pub(crate) fn counter_target_stack_kind(
+    spec: &ChooseSpec,
+) -> Option<crate::filter::StackObjectKind> {
     match spec.base() {
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter.stack_kind,
         _ => None,
@@ -109,7 +111,11 @@ fn counter_one_stack_object_of_kind(
     }
 
     // Find the stack entry for this object
-    if game.stack.iter().any(|e| e.object_id == target_id && !e.is_ability) {
+    if game
+        .stack
+        .iter()
+        .any(|e| e.object_id == target_id && !e.is_ability)
+    {
         // Capture identity before the countered spell changes zones.
         let countered_info = game.object(target_id).map(|obj| {
             (
@@ -176,7 +182,11 @@ fn counter_one_stack_object_of_kind(
             EventOutcome::NotApplicable => return EffectOutcome::target_invalid(),
         }
 
-        if !game.stack.iter().any(|e| e.object_id == target_id && !e.is_ability) {
+        if !game
+            .stack
+            .iter()
+            .any(|e| e.object_id == target_id && !e.is_ability)
+        {
             if let Some((stable_id, controller)) = countered_info {
                 game.record_ui_effect_event(
                     "spell_countered",

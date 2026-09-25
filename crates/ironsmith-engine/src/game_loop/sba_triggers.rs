@@ -42,8 +42,10 @@ pub fn check_and_apply_sbas_with(
     game.refresh_continuous_state();
     // Day/night transformations happen outside any resolution; finish their
     // "As this transforms" choices before anyone receives priority.
+    let awaiting_before = decision_maker.awaiting_choice();
     game.apply_pending_day_night_as_transforms(decision_maker)?;
-    if decision_maker.awaiting_choice() {
+    // Stop only for a choice those transforms just asked for.
+    if !awaiting_before && decision_maker.awaiting_choice() {
         return Ok(());
     }
     let mut seen_mandatory_states = std::collections::HashSet::new();
@@ -777,13 +779,12 @@ fn describe_trigger_for_ordering(game: &GameState, trigger: &TriggeredAbilityEnt
     // some condition-qualified triggers. Drop that line rather than let it cost
     // the whole label at the display boundary.
     let trigger_text = trigger.ability.trigger.display();
-    let trigger_text = if crate::runtime_display::effect_sentences::looks_like_compiled_structure(
-        &trigger_text,
-    ) {
-        String::new()
-    } else {
-        trigger_text
-    };
+    let trigger_text =
+        if crate::runtime_display::effect_sentences::looks_like_compiled_structure(&trigger_text) {
+            String::new()
+        } else {
+            trigger_text
+        };
     // The ability's own printed sentences, never the compiled structure: these
     // labels are what a player picks a trigger order from.
     let effect_text = crate::runtime_display::effect_sentences::effect_summary_text(
@@ -1138,8 +1139,9 @@ pub(super) fn can_stack_trigger_this_turn(
     // triggers of the same ability can wait in the queue together.
     fn once_per_turn_limits(condition: &crate::ConditionExpr, out: &mut Vec<crate::ConditionExpr>) {
         match condition {
-            crate::ConditionExpr::FirstTimeThisTurn
-            | crate::ConditionExpr::MaxTimesEachTurn(_) => out.push(condition.clone()),
+            crate::ConditionExpr::FirstTimeThisTurn | crate::ConditionExpr::MaxTimesEachTurn(_) => {
+                out.push(condition.clone())
+            }
             crate::ConditionExpr::And(first, second) => {
                 once_per_turn_limits(first, out);
                 once_per_turn_limits(second, out);
@@ -1714,14 +1716,12 @@ fn choose_trigger_targets(
         if let Some(group) = requirement.distinct_player_group
             && let Some(already_selected) = selected_distinct_targets.get(&group)
         {
-            context.legal_targets.retain(|target| {
-                !already_selected.contains(target)
-            });
-            context.legal_target_sets.retain(|set| {
-                set.iter().all(|target| {
-                    !already_selected.contains(target)
-                })
-            });
+            context
+                .legal_targets
+                .retain(|target| !already_selected.contains(target));
+            context
+                .legal_target_sets
+                .retain(|set| set.iter().all(|target| !already_selected.contains(target)));
         }
 
         let ctx = crate::decisions::context::TargetsContext::new(
@@ -1950,7 +1950,11 @@ pub(super) fn triggered_to_stack_entry_with_effects(
             // is the one it was attacking when declared.
             AttackEventTarget::Nothing => {
                 if let Some(defending_player) = game.combat.as_ref().and_then(|combat| {
-                    crate::combat_state::defending_player_for_attacker(game, combat, attacked.attacker)
+                    crate::combat_state::defending_player_for_attacker(
+                        game,
+                        combat,
+                        attacked.attacker,
+                    )
                 }) {
                     entry = entry.with_defending_player(defending_player);
                 }
@@ -1980,7 +1984,11 @@ pub(super) fn triggered_to_stack_entry_with_effects(
             // is the one it was attacking when declared.
             AttackEventTarget::Nothing => {
                 if let Some(defending_player) = game.combat.as_ref().and_then(|combat| {
-                    crate::combat_state::defending_player_for_attacker(game, combat, attacked.attacker)
+                    crate::combat_state::defending_player_for_attacker(
+                        game,
+                        combat,
+                        attacked.attacker,
+                    )
                 }) {
                     entry = entry.with_defending_player(defending_player);
                 }
@@ -2011,7 +2019,11 @@ pub(super) fn triggered_to_stack_entry_with_effects(
             // is the one it was attacking when declared.
             AttackEventTarget::Nothing => {
                 if let Some(defending_player) = game.combat.as_ref().and_then(|combat| {
-                    crate::combat_state::defending_player_for_attacker(game, combat, blocked.attacker)
+                    crate::combat_state::defending_player_for_attacker(
+                        game,
+                        combat,
+                        blocked.attacker,
+                    )
                 }) {
                     entry = entry.with_defending_player(defending_player);
                 }
@@ -2655,7 +2667,11 @@ mod tests {
         }
         put_triggers_on_stack(&mut game, &mut trigger_queue).expect("next turn trigger");
         crate::game_loop::resolve_stack_entry_with(&mut game, &mut dm).expect("resolves");
-        assert_eq!((dm.prompts, life(&game)), (3, 22), "the limit resets each turn");
+        assert_eq!(
+            (dm.prompts, life(&game)),
+            (3, 22),
+            "the limit resets each turn"
+        );
     }
 
     #[test]

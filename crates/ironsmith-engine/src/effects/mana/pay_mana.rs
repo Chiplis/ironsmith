@@ -202,7 +202,9 @@ impl EffectExecutor for PayManaEffect {
             let semantic_maximum = if let Some(maximum) = &self.x_maximum {
                 resolve_value(game, maximum, ctx)?.max(0) as u32
             } else {
-                crate::derived_view::DerivedGameView::new(game).potential_mana(player_id).total()
+                crate::derived_view::DerivedGameView::new(game)
+                    .potential_mana(player_id)
+                    .total()
             };
             let Some(affordable_maximum) =
                 maximum_affordable_bounded_x(self, game, ctx, player_id, semantic_maximum)

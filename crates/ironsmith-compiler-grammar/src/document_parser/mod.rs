@@ -58,11 +58,11 @@ use super::preprocess::{
 #[cfg(test)]
 use super::recognized_document::KeywordLineKind;
 use super::recognized_document::{
-    LevelItemKind, RecognizedActivatedLine, RecognizedDocument, RecognizedLevelHeader,
-    RecognizedLevelItem, RecognizedLine, RecognizedMetadataLine, RecognizedModalBlock,
-    RecognizedDungeonRoomLine, RecognizedModalMode, RecognizedSagaChapterLine,
-    RecognizedStatementLine, RecognizedStaticLine,
-    RecognizedTriggerIntro, RecognizedTriggeredLine, RecognizedUnsupportedLine,
+    LevelItemKind, RecognizedActivatedLine, RecognizedDocument, RecognizedDungeonRoomLine,
+    RecognizedLevelHeader, RecognizedLevelItem, RecognizedLine, RecognizedMetadataLine,
+    RecognizedModalBlock, RecognizedModalMode, RecognizedSagaChapterLine, RecognizedStatementLine,
+    RecognizedStaticLine, RecognizedTriggerIntro, RecognizedTriggeredLine,
+    RecognizedUnsupportedLine,
 };
 use super::semantic_assembly::assemble_non_metadata_line;
 use super::token_primitives::{
@@ -2259,7 +2259,8 @@ fn is_delayed_when_that_dies_this_turn_followup_sentence(tokens: &[OwnedLexToken
 
 fn is_delayed_when_that_leaves_battlefield_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
     effect_grammar::delayed_sentence_shapes::parse_delayed_tagged_leaves_shape(tokens).is_some()
-        || effect_grammar::delayed_sentence_shapes::parse_delayed_source_leaves_shape(tokens).is_some()
+        || effect_grammar::delayed_sentence_shapes::parse_delayed_source_leaves_shape(tokens)
+            .is_some()
 }
 
 fn is_delayed_next_end_step_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
@@ -2417,12 +2418,21 @@ fn try_parse_labeled_line_dispatch(
             return Ok(None);
         }
         if label == "∞" {
-            return Ok(Some(LineDispatchResult::single(RecognizedLine::Static(RecognizedStaticLine {
-                info: line.info.clone(), parse_tokens: line.info.source_tokens.clone(), chosen_option: None, parsed: None,
-            }), idx + 1)));
+            return Ok(Some(LineDispatchResult::single(
+                RecognizedLine::Static(RecognizedStaticLine {
+                    info: line.info.clone(),
+                    parse_tokens: line.info.source_tokens.clone(),
+                    chosen_option: None,
+                    parsed: None,
+                }),
+                idx + 1,
+            )));
         }
         if let Some(triggered) = recognize_case_to_solve_line(line, label_tokens, body_tokens)? {
-            return Ok(Some(LineDispatchResult::single(RecognizedLine::Triggered(triggered), idx + 1)));
+            return Ok(Some(LineDispatchResult::single(
+                RecognizedLine::Triggered(triggered),
+                idx + 1,
+            )));
         }
         let body_line = rewrite_line_tokens(line, body_tokens);
         let is_eminence = label.eq_ignore_ascii_case("eminence");
@@ -3635,7 +3645,10 @@ fn document_is_dungeon(preprocessed: &PreprocessedDocument) -> bool {
 /// "You can't enter this dungeon unless you "venture into [quality].""
 /// (CR 701.49d). Returns the quality.
 fn dungeon_entry_restriction_quality(raw_line: &str) -> Option<String> {
-    let normalized = raw_line.trim().replace(['’', '‘'], "'").replace(['“', '”'], "\"");
+    let normalized = raw_line
+        .trim()
+        .replace(['’', '‘'], "'")
+        .replace(['“', '”'], "\"");
     let rest = normalized
         .strip_prefix("You can't enter this dungeon unless you ")?
         .trim_start_matches('"');
@@ -4132,7 +4145,8 @@ fn try_push_complete_typed_statement(
     // static ability rather than a one-shot resolution program.
     let typed_persistent_anthem =
         crate::keyword_static::parse_enchanted_land_is_chosen_type_line(&line.tokens)?.is_some()
-            || crate::keyword_static::parse_source_land_is_chosen_type_line(&line.tokens)?.is_some()
+            || crate::keyword_static::parse_source_land_is_chosen_type_line(&line.tokens)?
+                .is_some()
             || crate::keyword_static::parse_enchanted_creature_has_line(&line.tokens)?.is_some()
             || (line
                 .tokens
@@ -5213,16 +5227,19 @@ mod tests {
     #[test]
     fn mixed_flashback_cost_stays_a_structured_keyword() -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
-            CardBuilder::new(CardId::new(), "Mixed Cost Probe")
-                .card_types(vec![CardType::Instant]),
+            CardBuilder::new(CardId::new(), "Mixed Cost Probe").card_types(vec![CardType::Instant]),
             "Flashback—{1}{U}, Exile X blue cards from your graveyard.",
         )?;
         let recognized = super::recognize_document(&preprocessed, false)?;
-        assert!(matches!(
-            recognized.lines.as_slice(),
-            [super::RecognizedLine::Keyword(keyword)]
-                if keyword.kind == KeywordLineKind::Flashback
-        ), "{:#?}", recognized.lines);
+        assert!(
+            matches!(
+                recognized.lines.as_slice(),
+                [super::RecognizedLine::Keyword(keyword)]
+                    if keyword.kind == KeywordLineKind::Flashback
+            ),
+            "{:#?}",
+            recognized.lines
+        );
         Ok(())
     }
 

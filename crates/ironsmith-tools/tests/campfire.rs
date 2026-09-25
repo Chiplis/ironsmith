@@ -59,7 +59,12 @@ impl DecisionMaker for KeepInHand {
             .take(ctx.min.max(1))
             .collect();
         if keep.is_empty() {
-            ctx.options.iter().filter(|o| o.legal).take(ctx.min.max(1)).map(|o| o.index).collect()
+            ctx.options
+                .iter()
+                .filter(|o| o.legal)
+                .take(ctx.min.max(1))
+                .map(|o| o.index)
+                .collect()
         } else {
             keep
         }
@@ -67,7 +72,9 @@ impl DecisionMaker for KeepInHand {
 }
 
 fn names(game: &GameState, ids: impl Iterator<Item = ObjectId>) -> Vec<String> {
-    let mut names: Vec<String> = ids.map(|id| game.object(id).unwrap().name.to_string()).collect();
+    let mut names: Vec<String> = ids
+        .map(|id| game.object(id).unwrap().name.to_string())
+        .collect();
     names.sort();
     names
 }
@@ -98,7 +105,9 @@ fn activate(game: &mut GameState, source: ObjectId, ability_index: usize) {
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, &mut dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            game, &mut queue, &mut state, &ctx, &mut dm,
+        );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
     ironsmith::game_loop::resolve_stack_entry_with(game, &mut dm).unwrap();
@@ -114,7 +123,10 @@ fn gains_two_life() {
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
     let campfire = game.create_object_from_definition(&def, alice, Zone::Battlefield);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Colorless, 1);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Colorless, 1);
     activate(&mut game, campfire, 0);
     assert_eq!(game.player(alice).unwrap().life, 22);
     assert!(game.is_tapped(campfire));
@@ -131,9 +143,12 @@ fn returns_owned_commanders_from_command_zone_and_graveyard_then_shuffles_gravey
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
     let campfire = game.create_object_from_definition(&def, alice, Zone::Battlefield);
-    let in_command = game.create_object_from_definition(&creature("Commander A"), alice, Zone::Command);
-    let in_graveyard = game.create_object_from_definition(&creature("Commander B"), alice, Zone::Graveyard);
-    let on_battlefield = game.create_object_from_definition(&creature("Commander C"), alice, Zone::Battlefield);
+    let in_command =
+        game.create_object_from_definition(&creature("Commander A"), alice, Zone::Command);
+    let in_graveyard =
+        game.create_object_from_definition(&creature("Commander B"), alice, Zone::Graveyard);
+    let on_battlefield =
+        game.create_object_from_definition(&creature("Commander C"), alice, Zone::Battlefield);
     let bobs = game.create_object_from_definition(&creature("Bob Commander"), bob, Zone::Command);
     for id in [in_command, in_graveyard, on_battlefield] {
         game.player_mut(alice).unwrap().add_commander(id);
@@ -141,7 +156,10 @@ fn returns_owned_commanders_from_command_zone_and_graveyard_then_shuffles_gravey
     game.player_mut(bob).unwrap().add_commander(bobs);
     game.create_object_from_definition(&creature("Graveyard Bear"), alice, Zone::Graveyard);
     game.create_object_from_definition(&creature("Library Bear"), alice, Zone::Library);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Colorless, 2);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
 
     assert!(game.is_commander(in_graveyard));
     activate(&mut game, campfire, 1);
@@ -157,10 +175,19 @@ fn returns_owned_commanders_from_command_zone_and_graveyard_then_shuffles_gravey
         names(&game, player.library.iter().copied()),
         vec!["Graveyard Bear".to_string(), "Library Bear".to_string()]
     );
-    assert!(game.battlefield.iter().any(|id| game.object(*id).is_some_and(|o| o.name == "Commander C")));
-    assert!(game.player(bob).unwrap().hand.is_empty(), "only commanders you own");
     assert!(
-        game.exile.iter().any(|id| game.object(*id).is_some_and(|o| o.name == "Campfire")),
+        game.battlefield
+            .iter()
+            .any(|id| game.object(*id).is_some_and(|o| o.name == "Commander C"))
+    );
+    assert!(
+        game.player(bob).unwrap().hand.is_empty(),
+        "only commanders you own"
+    );
+    assert!(
+        game.exile
+            .iter()
+            .any(|id| game.object(*id).is_some_and(|o| o.name == "Campfire")),
         "exiled as a cost"
     );
 }

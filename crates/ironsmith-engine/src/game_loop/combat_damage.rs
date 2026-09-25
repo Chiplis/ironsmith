@@ -172,14 +172,23 @@ fn try_execute_combat_damage_step_with_dm_and_first_step_snapshot(
 ) -> Result<Vec<CombatDamageEvent>, CombatDamageAssignmentError> {
     crate::events::processing::with_deferred_prevention_follow_ups(game, dm, |game, dm| {
         let mut result = apply_combat_damage_step_with_dm_and_first_step_snapshot(
-            game, combat, first_strike, first_step_strikers, dm,
+            game,
+            combat,
+            first_strike,
+            first_step_strikers,
+            dm,
         );
-        if game.effect_store.prevention_effects.has_pending_follow_ups()
+        if game
+            .effect_store
+            .prevention_effects
+            .has_pending_follow_ups()
             && let Ok(events) = &mut result
         {
             for event in events.iter_mut().filter(|event| event.amount > 0) {
                 event.source_snapshot = game.object(event.source).map(|obj| {
-                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                        obj, game,
+                    )
                 });
                 if let DamageEventTarget::Object(target) = event.target {
                     event.target_snapshot = game.object(target).map(|obj| {
@@ -505,8 +514,7 @@ fn plan_general_combat_damage(
             continue;
         };
         let explicit_assignments = game.take_combat_damage_assignments(attacker_id);
-        let others =
-            simultaneous_combat_damage(&attacker_assigners, attacker_id, &known_divisions);
+        let others = simultaneous_combat_damage(&attacker_assigners, attacker_id, &known_divisions);
         let allocation = if !explicit_assignments.is_empty() {
             division
                 .check(
@@ -558,9 +566,10 @@ fn plan_general_combat_damage(
                 Target::Object(object) => {
                     (EventDamageTarget::Object(object), DamageTarget::Permanent)
                 }
-                Target::Player(player) => {
-                    (EventDamageTarget::Player(player), DamageTarget::Player(player))
-                }
+                Target::Player(player) => (
+                    EventDamageTarget::Player(player),
+                    DamageTarget::Player(player),
+                ),
             };
             planned.push(PlannedCombatDamage {
                 source: attacker_id,
@@ -1973,10 +1982,9 @@ fn remaining_lethal_damage(
     else {
         return 0;
     };
-    let remaining = (i64::from(threshold)
-        - i64::from(game.damage_on(recipient))
-        - i64::from(others.amount))
-    .max(0) as u32;
+    let remaining =
+        (i64::from(threshold) - i64::from(game.damage_on(recipient)) - i64::from(others.amount))
+            .max(0) as u32;
     if source_has_deathtouch {
         remaining.min(1)
     } else {
@@ -2300,7 +2308,8 @@ fn trample_over_planeswalkers_targets(
             if game
                 .object(planeswalker)
                 .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
-                && game.object_has_card_type(planeswalker, crate::types::CardType::Planeswalker) =>
+                && game
+                    .object_has_card_type(planeswalker, crate::types::CardType::Planeswalker) =>
         {
             (
                 Some(planeswalker),
@@ -2426,15 +2435,20 @@ fn simultaneous_combat_damage(
     source: ObjectId,
     known: &std::collections::HashMap<ObjectId, std::collections::HashMap<ObjectId, u32>>,
 ) -> std::collections::HashMap<ObjectId, SimultaneousCombatDamage> {
-    let mut assigned =
-        std::collections::HashMap::<ObjectId, SimultaneousCombatDamage>::new();
-    for assigner in assigners.iter().filter(|assigner| assigner.source != source) {
+    let mut assigned = std::collections::HashMap::<ObjectId, SimultaneousCombatDamage>::new();
+    for assigner in assigners
+        .iter()
+        .filter(|assigner| assigner.source != source)
+    {
         let deathtouch = assigner.division.deathtouch;
         if let Some(division) = known.get(&assigner.source) {
             let objects = assigner.division.damageable_objects();
             for (recipient, amount) in division {
                 if objects.contains(recipient) {
-                    assigned.entry(*recipient).or_default().add(*amount, deathtouch);
+                    assigned
+                        .entry(*recipient)
+                        .or_default()
+                        .add(*amount, deathtouch);
                 }
             }
         } else if let Some(Target::Object(recipient)) = assigner.division.forced_target() {
@@ -2483,7 +2497,10 @@ pub struct CombatDamageAssignmentPrompt {
 
 impl CombatDamageAssignmentPrompt {
     /// Build the decision context shown to the assigning player.
-    pub fn decision_context(&self, game: &GameState) -> crate::decisions::context::DistributeContext {
+    pub fn decision_context(
+        &self,
+        game: &GameState,
+    ) -> crate::decisions::context::DistributeContext {
         let object_name = |id: ObjectId| {
             game.object(id)
                 .map(|object| object.name.to_string())
@@ -2538,9 +2555,7 @@ impl CombatDamageAssignmentPrompt {
         let checked = self
             .division
             .check(game, self.total, allocations, &self.assigned_by_others)
-            .map_err(|(_, message)| {
-                format!("combat damage from #{}: {message}", self.source.0)
-            })?;
+            .map_err(|(_, message)| format!("combat damage from #{}: {message}", self.source.0))?;
         Ok(checked
             .into_iter()
             .filter_map(|(target, amount)| match target {
@@ -2561,9 +2576,7 @@ impl CombatDamageAssignmentPrompt {
                     .damageable_objects()
                     .into_iter()
                     .enumerate()
-                    .map(|(index, recipient)| {
-                        (recipient, if index == 0 { self.total } else { 0 })
-                    })
+                    .map(|(index, recipient)| (recipient, if index == 0 { self.total } else { 0 }))
                     .collect()
             });
         game.turn_store

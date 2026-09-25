@@ -106,9 +106,9 @@ fn effect_depends_on_with_baseline_and_started_groups(
     // condition could read what B writes. A group that already started applying
     // in an earlier layer keeps applying regardless (CR 613.6).
     if !effect_group_has_started(a, started_groups)
-        && a.condition.as_ref().is_some_and(|condition| {
-            condition_could_be_affected_by(condition, &b.modification)
-        })
+        && a.condition
+            .as_ref()
+            .is_some_and(|condition| condition_could_be_affected_by(condition, &b.modification))
         && effect_applies_to_any_object(b, baseline, objects, game)
     {
         return true;
@@ -146,10 +146,7 @@ fn effect_applies_to_any_object(
 }
 
 fn is_characteristic_defining_effect(effect: &ContinuousEffect) -> bool {
-    matches!(
-        effect.source_type,
-        EffectSourceType::CharacteristicDefining
-    )
+    matches!(effect.source_type, EffectSourceType::CharacteristicDefining)
 }
 
 fn effect_group_has_started(
@@ -1411,9 +1408,9 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
             chars.static_abilities.retain(|sa| sa != ability);
         }
         Modification::RemoveStaticAbilityFamily(id) => {
-            chars.abilities.retain(|a| {
-                !matches!(&a.kind, crate::ability::AbilityKind::Static(sa) if sa.id() == *id)
-            });
+            chars.abilities.retain(
+                |a| !matches!(&a.kind, crate::ability::AbilityKind::Static(sa) if sa.id() == *id),
+            );
             chars.static_abilities.retain(|sa| sa.id() != *id);
         }
         Modification::RemoveAbilityGeneric { ability, .. } => {
@@ -1477,7 +1474,8 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
         }
         Modification::ChangeText { .. }
         | Modification::SetTextBox(_)
-        | Modification::SetName(_) | Modification::InsertNameWords { .. }
+        | Modification::SetName(_)
+        | Modification::InsertNameWords { .. }
         | Modification::CantBeBlocked
         | Modification::CantAttack
         | Modification::CantBlock
@@ -1501,7 +1499,11 @@ fn evaluate_value_simple(value: &Value, chars: &CalculatedCharacteristics) -> Va
 /// power, it depends on effects that modify that creature's power.
 fn value_references_pt(value: &Value) -> bool {
     match value {
-        Value::AnnouncedTargetTotal(metric) => matches!(metric, ironsmith_core::ChoiceAggregateMetric::Power | ironsmith_core::ChoiceAggregateMetric::Toughness),
+        Value::AnnouncedTargetTotal(metric) => matches!(
+            metric,
+            ironsmith_core::ChoiceAggregateMetric::Power
+                | ironsmith_core::ChoiceAggregateMetric::Toughness
+        ),
         Value::SurfaceHinted { value, .. } => value_references_pt(value),
         // These directly reference P/T of objects
         Value::SourcePower | Value::SourceToughness => true,
@@ -1719,7 +1721,8 @@ fn non_pt_group_has_trivial_ordering(effects: &[&ContinuousEffect], game: &GameS
                 effect.modification,
                 Modification::ChangeText { .. }
                     | Modification::SetTextBox(_)
-                    | Modification::SetName(_) | Modification::InsertNameWords { .. }
+                    | Modification::SetName(_)
+                    | Modification::InsertNameWords { .. }
             )
     }) {
         return true;
@@ -1909,8 +1912,7 @@ fn non_pt_group_has_no_dynamic_dependencies(effects: &[&ContinuousEffect]) -> bo
             {
                 return false;
             }
-            if a
-                .condition
+            if a.condition
                 .as_ref()
                 .is_some_and(|condition| condition_could_be_affected_by(condition, &b.modification))
             {
@@ -1952,8 +1954,8 @@ pub(crate) fn condition_could_be_affected_by(
     };
     let pt_affected = modification.layer() == Layer::PowerToughness;
     let types_affected = modification_can_change_type_characteristics(modification);
-    let any_characteristic_affected = pt_affected
-        || modification_can_change_abilities_or_matching_characteristics(modification);
+    let any_characteristic_affected =
+        pt_affected || modification_can_change_abilities_or_matching_characteristics(modification);
 
     match condition {
         C::Not(inner) => condition_could_be_affected_by(inner, modification),
@@ -1990,9 +1992,7 @@ pub(crate) fn condition_could_be_affected_by(
         C::PlayerHasAtLeastWithDifferentPowers { filter, .. } => {
             pt_affected || filters_affected(&[filter])
         }
-        C::CreatureDealtDamageBySourceDiedThisTurn { victim, .. } => {
-            filters_affected(&[victim])
-        }
+        C::CreatureDealtDamageBySourceDiedThisTurn { victim, .. } => filters_affected(&[victim]),
         C::AttachmentCount { attachment, .. } => filters_affected(&[attachment]),
         C::CountComparison { count, .. } | C::CountParity { count, .. } => {
             anthem_count_could_be_affected_by(count, modification)
@@ -2294,15 +2294,14 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::DistinctCounterTypesAmong(filter) => {
             modification_can_affect_filter(modification, filter)
                 || modification_can_change_type_characteristics(modification)
-                    && matches!(
-                        value,
-                        Value::GreatestSharedCreatureTypeCount(_)
-                    )
-                || matches!(modification, Modification::SetName(_) | Modification::InsertNameWords { .. })
-                    && matches!(
-                        value,
-                        Value::GreatestSharedNameCount(_) | Value::DistinctNames(_)
-                    )
+                    && matches!(value, Value::GreatestSharedCreatureTypeCount(_))
+                || matches!(
+                    modification,
+                    Modification::SetName(_) | Modification::InsertNameWords { .. }
+                ) && matches!(
+                    value,
+                    Value::GreatestSharedNameCount(_) | Value::DistinctNames(_)
+                )
         }
         Value::TotalPower(filter)
         | Value::TotalToughness(filter)
@@ -2344,7 +2343,10 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         }
         Value::PartySize(_) => modification_can_change_type_characteristics(modification),
         Value::NameStickerCharacterCountOnSource { .. } => {
-            matches!(modification, Modification::SetName(_) | Modification::InsertNameWords { .. })
+            matches!(
+                modification,
+                Modification::SetName(_) | Modification::InsertNameWords { .. }
+            )
         }
         Value::SpellsCastThisTurnMatching { .. }
         | Value::TotalManaValueOfSpellsCastThisTurnMatching { .. }
@@ -2366,7 +2368,8 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::PendingComparisonRight
         | Value::PendingComparisonDifference
         | Value::PendingPriorEffectMetric(_) => {
-            pt_affected || modification_can_change_abilities_or_matching_characteristics(modification)
+            pt_affected
+                || modification_can_change_abilities_or_matching_characteristics(modification)
         }
     }
 }
@@ -2416,7 +2419,8 @@ fn modification_can_change_abilities_or_matching_characteristics(
         Modification::CopyOf { .. }
             | Modification::ChangeController(_)
             | Modification::SetTextBox(_)
-            | Modification::SetName(_) | Modification::InsertNameWords { .. }
+            | Modification::SetName(_)
+            | Modification::InsertNameWords { .. }
             | Modification::AddCardTypes(_)
             | Modification::RemoveCardTypes(_)
             | Modification::SetCardTypes(_)
@@ -2518,7 +2522,8 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
                     || (subtypes.iter().any(|subtype| subtype.is_basic_land_type())
                         && filter_uses_ability_characteristics(filter))
             }
-            Modification::AddSupertypes(supertypes) | Modification::RemoveSupertypes(supertypes) => {
+            Modification::AddSupertypes(supertypes)
+            | Modification::RemoveSupertypes(supertypes) => {
                 filter_mentions_supertypes(filter, supertypes)
             }
             Modification::AddColors(_)
@@ -4114,14 +4119,18 @@ mod tests {
         game.object_mut(aura).unwrap().attached_to =
             Some(crate::object::AttachmentTarget::Object(land));
 
-        let mut effect =
-            create_test_effect(1, 1, Modification::SetSubtypes(vec![Subtype::Island]));
+        let mut effect = create_test_effect(1, 1, Modification::SetSubtypes(vec![Subtype::Island]));
         effect.source = aura;
         effect.applies_to = EffectTarget::AttachedTo(aura);
 
         let land_object = game.object(land).unwrap();
         let chars = chars_for(land_object);
-        assert!(effect_applies_with_chars(&effect, land_object, &chars, &game));
+        assert!(effect_applies_with_chars(
+            &effect,
+            land_object,
+            &chars,
+            &game
+        ));
         assert!(!modification_can_affect_effect_target(
             &Modification::AddCardTypes(vec![CardType::Creature]),
             &effect.applies_to
@@ -4373,8 +4382,7 @@ mod tests {
             &HashSet::new(),
             None,
         ));
-        let sorted =
-            sort_layer_effects_with_baseline(&[&copy, &grant], &baseline, &objects, &game);
+        let sorted = sort_layer_effects_with_baseline(&[&copy, &grant], &baseline, &objects, &game);
         let ids: Vec<u64> = sorted.iter().map(|effect| effect.id.0).collect();
         assert_eq!(ids, vec![2, 1]);
     }

@@ -231,8 +231,7 @@ impl DamageAmountReplacementMatcher {
             };
             return self.source_filter.matches(source, &filter_ctx, ctx.game);
         }
-        ctx
-            .event_source_snapshot
+        ctx.event_source_snapshot
             .filter(|snapshot| snapshot.object_id == damage.source)
             .is_some_and(|snapshot| {
                 let filter_ctx = if snapshot.zone == Zone::Stack {
@@ -692,10 +691,7 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
                     return false;
                 }
                 if self.actor.is_some()
-                    && !self.actor_matches(
-                        ctx.game.controller_of_id(etb.object),
-                        ctx.game,
-                    )
+                    && !self.actor_matches(ctx.game.controller_of_id(etb.object), ctx.game)
                 {
                     return false;
                 }
@@ -715,7 +711,8 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
                 // on the battlefield, including other entry replacements.
                 crate::events::zones::matchers::WouldEnterBattlefieldMatcher::new(
                     self.filter.clone(),
-                ).matches_event(event, ctx)
+                )
+                .matches_event(event, ctx)
             }
             _ => false,
         }
@@ -974,9 +971,10 @@ impl StaticAbilityKind for MultiplyTokenCreationReplacement {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
-        let mut matcher = crate::events::tokens::matchers::WouldCreateTokensUnderControlMatcher::new(
-            self.controller.clone(),
-        );
+        let mut matcher =
+            crate::events::tokens::matchers::WouldCreateTokensUnderControlMatcher::new(
+                self.controller.clone(),
+            );
         if let Some(token_filter) = &self.token_filter {
             matcher = matcher.with_token_filter(token_filter.clone());
         }
@@ -2214,7 +2212,10 @@ pub struct CreateOneOfEachTokenReplacement {
 }
 
 impl CreateOneOfEachTokenReplacement {
-    pub fn new(kinds: Vec<ironsmith_core::AdditionalTokenKind>, display: impl Into<String>) -> Self {
+    pub fn new(
+        kinds: Vec<ironsmith_core::AdditionalTokenKind>,
+        display: impl Into<String>,
+    ) -> Self {
         Self {
             kinds,
             display: display.into(),
@@ -2243,9 +2244,13 @@ impl StaticAbilityKind for CreateOneOfEachTokenReplacement {
             .map(|kind| {
                 let mut branch = ObjectFilter::default();
                 branch.subtypes.push(match kind {
-                    ironsmith_core::AdditionalTokenKind::Treasure => crate::types::Subtype::Treasure,
+                    ironsmith_core::AdditionalTokenKind::Treasure => {
+                        crate::types::Subtype::Treasure
+                    }
                     ironsmith_core::AdditionalTokenKind::Food => crate::types::Subtype::Food,
-                    ironsmith_core::AdditionalTokenKind::Squirrel => crate::types::Subtype::Squirrel,
+                    ironsmith_core::AdditionalTokenKind::Squirrel => {
+                        crate::types::Subtype::Squirrel
+                    }
                     ironsmith_core::AdditionalTokenKind::Clue => crate::types::Subtype::Clue,
                 });
                 branch
@@ -2276,7 +2281,11 @@ pub struct RedirectDrawReplacement {
 }
 
 impl RedirectDrawReplacement {
-    pub fn new(drawer: PlayerFilter, except_first_of_draw_step: bool, display: impl Into<String>) -> Self {
+    pub fn new(
+        drawer: PlayerFilter,
+        except_first_of_draw_step: bool,
+        display: impl Into<String>,
+    ) -> Self {
         Self {
             drawer,
             except_first_of_draw_step,
@@ -2728,7 +2737,9 @@ impl ExileToExileInsteadOfGraveyard {
 }
 
 impl StaticAbilityKind for ExileToExileInsteadOfGraveyard {
-    fn is_source_only_graveyard_replacement(&self) -> bool { self.filter.source }
+    fn is_source_only_graveyard_replacement(&self) -> bool {
+        self.filter.source
+    }
 
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::ExileToExileInsteadOfGraveyard

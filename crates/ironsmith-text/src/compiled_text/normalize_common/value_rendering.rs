@@ -4691,11 +4691,16 @@ pub(crate) fn describe_prior_effect_metric_basis(
         let noun = if plural { "cards" } else { "card" };
         return format!("{noun} returned to your hand this way");
     }
-    if matches!(query.action, Some(crate::effect::PriorEffectAction::PutIntoGraveyard | crate::effect::PriorEffectAction::Destroyed))
-        && let Some(controller) = query
-            .filter
-            .as_ref()
-            .and_then(|filter| filter.controller.as_ref())
+    if matches!(
+        query.action,
+        Some(
+            crate::effect::PriorEffectAction::PutIntoGraveyard
+                | crate::effect::PriorEffectAction::Destroyed
+        )
+    ) && let Some(controller) = query
+        .filter
+        .as_ref()
+        .and_then(|filter| filter.controller.as_ref())
     {
         // This query matches captured pre-move characteristics, so control
         // is historical rather than ownership in the destination graveyard.
@@ -4820,8 +4825,14 @@ pub(crate) fn describe_prior_effect_metric_value(
 
 pub(crate) fn describe_explicit_where_x_surface(value: &Value) -> Option<&'static str> {
     if value.has_surface_hint(ValueSurfaceHint::LifeGainedAmount)
-        && matches!(value.unhinted(), Value::EventValue(EventValueSpec::LifeAmount)
-            | Value::EffectMetric { metric: crate::effect::EffectMetric::LifeGained, .. })
+        && matches!(
+            value.unhinted(),
+            Value::EventValue(EventValueSpec::LifeAmount)
+                | Value::EffectMetric {
+                    metric: crate::effect::EffectMetric::LifeGained,
+                    ..
+                }
+        )
     {
         return Some("the amount of life you gained");
     }
@@ -5115,7 +5126,10 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
                 None => format!("the number of {subject} that entered the battlefield this turn"),
             }
         }
-        TurnHistoryCount::TurnedFaceUp(player) => format!("the number of permanents {} turned face up this turn", describe_player_filter(player)),
+        TurnHistoryCount::TurnedFaceUp(player) => format!(
+            "the number of permanents {} turned face up this turn",
+            describe_player_filter(player)
+        ),
         TurnHistoryCount::TokensCreated(player) => match player {
             PlayerFilter::You => "the number of tokens you created this turn".to_string(),
             _ => format!(

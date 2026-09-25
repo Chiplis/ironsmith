@@ -34,7 +34,8 @@ impl AttacksAndIsntBlockedTrigger {
     /// The grouped form reads its attacked-player constraint ("attack you")
     /// against the combat declaration, like the grouped attack trigger.
     fn grouped_matches(&self, attacker: crate::ids::ObjectId, ctx: &TriggerContext) -> bool {
-        let (Some(attacker_obj), Some(combat)) = (ctx.game.object(attacker), ctx.game.combat.as_ref())
+        let (Some(attacker_obj), Some(combat)) =
+            (ctx.game.object(attacker), ctx.game.combat.as_ref())
         else {
             return false;
         };

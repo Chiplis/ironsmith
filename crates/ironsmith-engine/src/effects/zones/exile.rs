@@ -210,215 +210,233 @@ impl EffectExecutor for ExileEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let pending_start = game.effect_store.pending_trigger_events.len();
         let outcome = (|| -> Result<EffectOutcome, ExecutionError> {
-        // Handle targeted effects with special single-target behavior
-        // BUT skip for special specs (Tagged, Source, SpecificObject) which don't use ctx.targets
-        if self.spec.is_target() && uses_ctx_targets(self) {
-            let count = self.spec.count();
-            if count.is_single() {
-                let pre_memory = ctx.targets.iter().find_map(|target| match target {
-                    ResolvedTarget::Object(object_id) => {
-                        OutcomeObjectMemory::from_object_id(game, *object_id)
-                    }
-                    ResolvedTarget::Player(_) => None,
-                });
-                let outcome =
-                    apply_single_target_object_from_context(game, ctx, |game, ctx, object_id| {
-                        exile_object(game, ctx, object_id, self.face_down)
-                    })?;
+            // Handle targeted effects with special single-target behavior
+            // BUT skip for special specs (Tagged, Source, SpecificObject) which don't use ctx.targets
+            if self.spec.is_target() && uses_ctx_targets(self) {
+                let count = self.spec.count();
+                if count.is_single() {
+                    let pre_memory = ctx.targets.iter().find_map(|target| match target {
+                        ResolvedTarget::Object(object_id) => {
+                            OutcomeObjectMemory::from_object_id(game, *object_id)
+                        }
+                        ResolvedTarget::Player(_) => None,
+                    });
+                    let outcome = apply_single_target_object_from_context(
+                        game,
+                        ctx,
+                        |game, ctx, object_id| exile_object(game, ctx, object_id, self.face_down),
+                    )?;
 
-                // Reflexive follow-ups such as "when a creature card is
-                // exiled this way" inspect the moved object's LKI. The
-                // generic single-target helper only preserves the status, so
-                // restore the pre-zone-change memory here for successful and
-                // replaced exiles.
-                if matches!(
-                    outcome.status,
-                    OutcomeStatus::Succeeded | OutcomeStatus::Replaced
-                ) {
-                    if let Some(memory) = pre_memory {
-                        return Ok(outcome.with_affected_object_memory(vec![memory]));
-                    }
-                }
-                return Ok(outcome);
-            }
-            // Multi-target with count - handle "any number" specially
-            if count.min == 0 {
-                // "any number" effects - 0 targets is valid
-                let mut exiled_count = 0;
-                let mut affected_ids = Vec::new();
-                let mut affected_memory = Vec::new();
-                // Inside a per-player iteration the announced targets belong
-                // to different players, so this iteration may only exile the
-                // ones its own filter accepts — and never more than the
-                // authored maximum.
-                let selected = {
-                    let mut selected = if let ChooseSpec::Object(filter) = self.spec.base() {
-                        let filter_ctx = ctx.filter_context(game);
-                        // Target legality already checked the relative "other"
-                        // restriction. Rechecking it against the announced set
-                        // would exclude every selected target from itself.
-                        let mut filter = filter.clone();
-                        filter.other = false;
-                        ctx.targets
-                            .iter()
-                            .filter(|target| match target {
-                                ResolvedTarget::Object(object_id) => game
-                                    .object(*object_id)
-                                    .is_some_and(|object| filter.matches(object, &filter_ctx, game)),
-                                ResolvedTarget::Player(_) => false,
-                            })
-                            .cloned()
-                            .collect::<Vec<_>>()
-                    } else {
-                        ctx.targets.clone()
-                    };
-                    if let Some(max) = count.max {
-                        selected.truncate(max);
-                    }
-                    selected
-                };
-                for target in selected {
-                    if let ResolvedTarget::Object(object_id) = target {
-                        let pre_memory = OutcomeObjectMemory::from_object_id(game, object_id);
-                        match exile_object(game, ctx, object_id, self.face_down)? {
-                            None => {
-                                exiled_count += 1;
-                                if let Some(memory) = pre_memory.as_ref() {
-                                    affected_memory.push(memory.clone());
-                                }
-                                if let Some(result) = take_recorded_zone_change(game, object_id) {
-                                    affected_ids.extend(result.new_object_ids);
-                                }
-                            }
-                            Some(OutcomeStatus::Replaced) => {
-                                if let Some(memory) = pre_memory.as_ref() {
-                                    affected_memory.push(memory.clone());
-                                }
-                                if let Some(result) = take_recorded_zone_change(game, object_id) {
-                                    affected_ids.extend(result.new_object_ids);
-                                }
-                            }
-                            Some(_) => {}
+                    // Reflexive follow-ups such as "when a creature card is
+                    // exiled this way" inspect the moved object's LKI. The
+                    // generic single-target helper only preserves the status, so
+                    // restore the pre-zone-change memory here for successful and
+                    // replaced exiles.
+                    if matches!(
+                        outcome.status,
+                        OutcomeStatus::Succeeded | OutcomeStatus::Replaced
+                    ) {
+                        if let Some(memory) = pre_memory {
+                            return Ok(outcome.with_affected_object_memory(vec![memory]));
                         }
                     }
+                    return Ok(outcome);
                 }
-                return Ok(EffectOutcome::count(exiled_count)
-                    .with_affected_objects(affected_ids)
-                    .with_affected_object_memory(affected_memory));
-            }
-        }
-
-        // For all/non-targeted effects and special specs (Tagged, Source, etc.),
-        // count successful moves to exile.
-        let mut affected_ids = Vec::new();
-        let mut affected_memory = Vec::new();
-        let mut moved_source = None;
-        let apply_result = match apply_to_selected_objects(
-            game,
-            ctx,
-            &self.spec,
-            ObjectApplyResultPolicy::CountApplied,
-            |game, ctx, object_id| {
-                let Some(obj) = game.object(object_id) else {
-                    return Ok(false);
-                };
-                let from_zone = obj.zone;
-                let requested_zone = ctx
-                    .simultaneous_zone_destination(object_id)
-                    .unwrap_or(Zone::Exile);
-                let pre_snapshot =
-                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
-                let additional_effects = ctx.additional_replacement_effects_snapshot();
-                match apply_zone_change_with_additional_effects(
-                    game,
-                    object_id,
-                    from_zone,
-                    requested_zone,
-                    ctx.cause.clone(),
-                    &mut ctx.decision_maker,
-                    &additional_effects,
-                ) {
-                    EventOutcome::Proceed(result) => {
-                        if !result.new_object_ids.is_empty() {
-                            ctx.refresh_target_snapshot(pre_snapshot.clone());
-                            if pre_snapshot.object_id == ctx.source {
-                                ctx.refresh_source_snapshot(pre_snapshot.clone());
-                                if matches!(self.spec.base(), ChooseSpec::Source) {
-                                    moved_source = result.new_object_ids.first().copied();
-                                }
-                            }
-                            affected_memory.push(OutcomeObjectMemory::from_snapshot(&pre_snapshot));
-                            affected_ids.extend(result.new_object_ids.iter().copied());
-                            for &new_id in &result.new_object_ids {
-                                if self.face_down && result.final_zone == Zone::Exile {
-                                    game.set_face_down(new_id);
-                                    if let Some(viewers) =
-                                        ctx.face_down_exile_viewers_for(object_id)
+                // Multi-target with count - handle "any number" specially
+                if count.min == 0 {
+                    // "any number" effects - 0 targets is valid
+                    let mut exiled_count = 0;
+                    let mut affected_ids = Vec::new();
+                    let mut affected_memory = Vec::new();
+                    // Inside a per-player iteration the announced targets belong
+                    // to different players, so this iteration may only exile the
+                    // ones its own filter accepts — and never more than the
+                    // authored maximum.
+                    let selected = {
+                        let mut selected = if let ChooseSpec::Object(filter) = self.spec.base() {
+                            let filter_ctx = ctx.filter_context(game);
+                            // Target legality already checked the relative "other"
+                            // restriction. Rechecking it against the announced set
+                            // would exclude every selected target from itself.
+                            let mut filter = filter.clone();
+                            filter.other = false;
+                            ctx.targets
+                                .iter()
+                                .filter(|target| match target {
+                                    ResolvedTarget::Object(object_id) => {
+                                        game.object(*object_id).is_some_and(|object| {
+                                            filter.matches(object, &filter_ctx, game)
+                                        })
+                                    }
+                                    ResolvedTarget::Player(_) => false,
+                                })
+                                .cloned()
+                                .collect::<Vec<_>>()
+                        } else {
+                            ctx.targets.clone()
+                        };
+                        if let Some(max) = count.max {
+                            selected.truncate(max);
+                        }
+                        selected
+                    };
+                    for target in selected {
+                        if let ResolvedTarget::Object(object_id) = target {
+                            let pre_memory = OutcomeObjectMemory::from_object_id(game, object_id);
+                            match exile_object(game, ctx, object_id, self.face_down)? {
+                                None => {
+                                    exiled_count += 1;
+                                    if let Some(memory) = pre_memory.as_ref() {
+                                        affected_memory.push(memory.clone());
+                                    }
+                                    if let Some(result) = take_recorded_zone_change(game, object_id)
                                     {
-                                        for &viewer in viewers {
-                                            game.grant_face_down_exile_view(new_id, viewer);
+                                        affected_ids.extend(result.new_object_ids);
+                                    }
+                                }
+                                Some(OutcomeStatus::Replaced) => {
+                                    if let Some(memory) = pre_memory.as_ref() {
+                                        affected_memory.push(memory.clone());
+                                    }
+                                    if let Some(result) = take_recorded_zone_change(game, object_id)
+                                    {
+                                        affected_ids.extend(result.new_object_ids);
+                                    }
+                                }
+                                Some(_) => {}
+                            }
+                        }
+                    }
+                    return Ok(EffectOutcome::count(exiled_count)
+                        .with_affected_objects(affected_ids)
+                        .with_affected_object_memory(affected_memory));
+                }
+            }
+
+            // For all/non-targeted effects and special specs (Tagged, Source, etc.),
+            // count successful moves to exile.
+            let mut affected_ids = Vec::new();
+            let mut affected_memory = Vec::new();
+            let mut moved_source = None;
+            let apply_result = match apply_to_selected_objects(
+                game,
+                ctx,
+                &self.spec,
+                ObjectApplyResultPolicy::CountApplied,
+                |game, ctx, object_id| {
+                    let Some(obj) = game.object(object_id) else {
+                        return Ok(false);
+                    };
+                    let from_zone = obj.zone;
+                    let requested_zone = ctx
+                        .simultaneous_zone_destination(object_id)
+                        .unwrap_or(Zone::Exile);
+                    let pre_snapshot =
+                        ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
+                    let additional_effects = ctx.additional_replacement_effects_snapshot();
+                    match apply_zone_change_with_additional_effects(
+                        game,
+                        object_id,
+                        from_zone,
+                        requested_zone,
+                        ctx.cause.clone(),
+                        &mut ctx.decision_maker,
+                        &additional_effects,
+                    ) {
+                        EventOutcome::Proceed(result) => {
+                            if !result.new_object_ids.is_empty() {
+                                ctx.refresh_target_snapshot(pre_snapshot.clone());
+                                if pre_snapshot.object_id == ctx.source {
+                                    ctx.refresh_source_snapshot(pre_snapshot.clone());
+                                    if matches!(self.spec.base(), ChooseSpec::Source) {
+                                        moved_source = result.new_object_ids.first().copied();
+                                    }
+                                }
+                                affected_memory
+                                    .push(OutcomeObjectMemory::from_snapshot(&pre_snapshot));
+                                affected_ids.extend(result.new_object_ids.iter().copied());
+                                for &new_id in &result.new_object_ids {
+                                    if self.face_down && result.final_zone == Zone::Exile {
+                                        game.set_face_down(new_id);
+                                        if let Some(viewers) =
+                                            ctx.face_down_exile_viewers_for(object_id)
+                                        {
+                                            for &viewer in viewers {
+                                                game.grant_face_down_exile_view(new_id, viewer);
+                                            }
+                                        }
+                                    }
+                                    if result.final_zone == Zone::Exile {
+                                        game.add_exiled_with_source_link(ctx.source, new_id);
+                                        if let Some(object) = game.object(new_id) {
+                                            ctx.tag_object(
+                                                crate::tag::SOURCE_EXILED_TAG,
+                                                ObjectSnapshot::from_object(object, game),
+                                            );
                                         }
                                     }
                                 }
-                                if result.final_zone == Zone::Exile {
-                                    game.add_exiled_with_source_link(ctx.source, new_id);
-                                    if let Some(object) = game.object(new_id) {
-                                        ctx.tag_object(
-                                            crate::tag::SOURCE_EXILED_TAG,
-                                            ObjectSnapshot::from_object(object, game),
-                                        );
-                                    }
-                                }
+                                Ok(true)
+                            } else {
+                                Ok(false)
                             }
-                            Ok(true)
-                        } else {
+                        }
+                        EventOutcome::Prevented | EventOutcome::NotApplicable => Ok(false),
+                        EventOutcome::Replaced => {
+                            affected_memory.push(OutcomeObjectMemory::from_snapshot(&pre_snapshot));
+                            if let Some(result) = take_recorded_zone_change(game, object_id) {
+                                affected_ids.extend(result.new_object_ids);
+                            }
                             Ok(false)
                         }
                     }
-                    EventOutcome::Prevented | EventOutcome::NotApplicable => Ok(false),
-                    EventOutcome::Replaced => {
-                        affected_memory.push(OutcomeObjectMemory::from_snapshot(&pre_snapshot));
-                        if let Some(result) = take_recorded_zone_change(game, object_id) {
-                            affected_ids.extend(result.new_object_ids);
-                        }
-                        Ok(false)
-                    }
-                }
-            },
-        ) {
-            Ok(result) => result,
-            Err(_) => return Ok(EffectOutcome::target_invalid()),
-        };
+                },
+            ) {
+                Ok(result) => result,
+                Err(_) => return Ok(EffectOutcome::target_invalid()),
+            };
 
-        // An explicit self-exile in this resolution exports its new identity
-        // to subsequent instructions (e.g. "return it transformed"). Do not
-        // follow unrelated zone changes that happened before resolution.
-        if let Some(new_source) = moved_source {
-            ctx.source = new_source;
-        }
-        Ok(apply_result
-            .outcome
-            .with_affected_objects(affected_ids)
-            .with_affected_object_memory(affected_memory))
+            // An explicit self-exile in this resolution exports its new identity
+            // to subsequent instructions (e.g. "return it transformed"). Do not
+            // follow unrelated zone changes that happened before resolution.
+            if let Some(new_source) = moved_source {
+                ctx.source = new_source;
+            }
+            Ok(apply_result
+                .outcome
+                .with_affected_objects(affected_ids)
+                .with_affected_object_memory(affected_memory))
         })();
         // A single exile instruction moves its selected objects simultaneously.
         // Keep the original event payloads and their per-object replacement
         // outcomes, while giving this instruction a unique grouping identity.
         if let Ok(result) = &outcome {
-            let selected: Vec<_> = result.affected_object_memory().unwrap_or_default().iter()
-                .map(|memory| memory.object_id).collect();
+            let selected: Vec<_> = result
+                .affected_object_memory()
+                .unwrap_or_default()
+                .iter()
+                .map(|memory| memory.object_id)
+                .collect();
             if selected.len() > 1 {
-                let batch = game.provenance_graph_mut().alloc_root_event(crate::events::EventKind::ZoneChange);
+                let batch = game
+                    .provenance_graph_mut()
+                    .alloc_root_event(crate::events::EventKind::ZoneChange);
                 let pending_start =
                     pending_start.min(game.effect_store.pending_trigger_events.len());
                 for event in &mut game.effect_store.pending_trigger_events[pending_start..] {
-                    if event.downcast::<crate::events::ZoneChangeEvent>().is_some_and(|change| {
-                        if change.snapshots().is_empty() {
-                            change.objects.iter().all(|id| selected.contains(id))
-                        } else {
-                            change.snapshots().iter().all(|snapshot| selected.contains(&snapshot.object_id))
-                        }
-                    }) {
+                    if event
+                        .downcast::<crate::events::ZoneChangeEvent>()
+                        .is_some_and(|change| {
+                            if change.snapshots().is_empty() {
+                                change.objects.iter().all(|id| selected.contains(id))
+                            } else {
+                                change
+                                    .snapshots()
+                                    .iter()
+                                    .all(|snapshot| selected.contains(&snapshot.object_id))
+                            }
+                        })
+                    {
                         *event = event.clone().with_simultaneous_batch(batch);
                     }
                 }

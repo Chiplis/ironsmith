@@ -306,7 +306,11 @@ fn swift_airbend_can_decline_or_exile_a_creature_or_noncreature_spell() {
                 }])
                 .power_toughness(ironsmith::card::PowerToughness::fixed(2, 2))
                 .build();
-        if mode == 3 { fixture.abilities.push(ironsmith::Ability::static_ability(ironsmith::static_abilities::StaticAbility::uncounterable())); }
+        if mode == 3 {
+            fixture.abilities.push(ironsmith::Ability::static_ability(
+                ironsmith::static_abilities::StaticAbility::uncounterable(),
+            ));
+        }
         let target = game.create_object_from_definition(
             &fixture,
             bob,
@@ -430,23 +434,30 @@ fn swift_flash_and_face_combat_keywords_change_legal_actions() {
 #[test]
 fn ocean_trample_deals_only_damage_beyond_lethal_to_defending_player() {
     use ironsmith::combat_state::{AttackTarget, AttackerInfo, CombatState};
-    let defs=definitions();
-    let back=defs.iter().find(|d| d.card.name=="Aang and La, Ocean's Fury").unwrap();
-    let alice=PlayerId::from_index(0);
-    let bob=PlayerId::from_index(1);
-    for toughness in [2,5,7] {
-        let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);
-        let source=game.create_object_from_definition(back,alice,Zone::Battlefield);
-        let blocker=CardDefinitionBuilder::new(CardId::new(),"Ocean trample blocker")
+    let defs = definitions();
+    let back = defs
+        .iter()
+        .find(|d| d.card.name == "Aang and La, Ocean's Fury")
+        .unwrap();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    for toughness in [2, 5, 7] {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let source = game.create_object_from_definition(back, alice, Zone::Battlefield);
+        let blocker = CardDefinitionBuilder::new(CardId::new(), "Ocean trample blocker")
             .card_types(vec![CardType::Creature])
-            .power_toughness(ironsmith::card::PowerToughness::fixed(1,toughness)).build();
-        let blocker=game.create_object_from_definition(&blocker,bob,Zone::Battlefield);
-        let mut combat=CombatState::default();
-        combat.attackers.push(AttackerInfo{creature:source,target:AttackTarget::Player(bob)});
-        combat.blockers.insert(source,vec![blocker]);
-        ironsmith::game_loop::execute_combat_damage_step(&mut game,&combat,false);
-        assert_eq!(game.damage_on(blocker),std::cmp::min(5,toughness) as u32);
-        assert_eq!(game.damage_on(source),1);
-        assert_eq!(game.player(bob).unwrap().life,20-(5-toughness).max(0));
+            .power_toughness(ironsmith::card::PowerToughness::fixed(1, toughness))
+            .build();
+        let blocker = game.create_object_from_definition(&blocker, bob, Zone::Battlefield);
+        let mut combat = CombatState::default();
+        combat.attackers.push(AttackerInfo {
+            creature: source,
+            target: AttackTarget::Player(bob),
+        });
+        combat.blockers.insert(source, vec![blocker]);
+        ironsmith::game_loop::execute_combat_damage_step(&mut game, &combat, false);
+        assert_eq!(game.damage_on(blocker), std::cmp::min(5, toughness) as u32);
+        assert_eq!(game.damage_on(source), 1);
+        assert_eq!(game.player(bob).unwrap().life, 20 - (5 - toughness).max(0));
     }
 }

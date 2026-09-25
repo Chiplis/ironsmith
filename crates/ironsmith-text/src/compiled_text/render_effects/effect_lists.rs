@@ -124,8 +124,8 @@ pub(super) use helpers_01::describe_countered_spell_exile_replacement_followup;
 pub(in crate::compiled_text) use helpers_01::describe_create_token_then_set_base_pt_bundle;
 pub(in crate::compiled_text) use helpers_01::describe_declared_target_for_each_pump_unblockable_bundle;
 use helpers_01::describe_linked_graveyard_choices_then_may_return_bundle as describe_effect_list_linked_graveyard_choices_then_may_return_bundle;
-pub(in crate::compiled_text) use helpers_01::describe_reveal_hand_choose_shuffle_into_library_bundle;
 pub(in crate::compiled_text) use helpers_01::describe_reveal_hand_choose_prefix;
+pub(in crate::compiled_text) use helpers_01::describe_reveal_hand_choose_shuffle_into_library_bundle;
 pub(in crate::compiled_text) use helpers_01::describe_tagged_die_exile_replacement_followup;
 pub(in crate::compiled_text) use helpers_01::describe_target_pump_unblockable_bundle;
 pub(in crate::compiled_text) use helpers_01::render_remove_abilities_then_destroy_matching_creatures;
@@ -848,9 +848,14 @@ fn describe_attributed_target_choice_pair(effects: &[Effect]) -> Option<(String,
 
 /// "Draw three cards and reveal them": the reveal names the drawn cards, so a
 /// plural draw takes a plural pronoun.
-pub(crate) fn describe_draw_then_reveal_drawn(draw_effect: &Effect, reveal_effect: &Effect) -> Option<String> {
+pub(crate) fn describe_draw_then_reveal_drawn(
+    draw_effect: &Effect,
+    reveal_effect: &Effect,
+) -> Option<String> {
     let tagged = draw_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-    let draw = tagged.effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    let draw = tagged
+        .effect
+        .downcast_ref::<crate::effects::DrawCardsEffect>()?;
     let reveal = structural_unwrap_render_wrappers(reveal_effect)
         .downcast_ref::<crate::effects::RevealTaggedEffect>()?;
     if reveal.tag != tagged.tag || draw.player != PlayerFilter::You {
@@ -930,7 +935,8 @@ fn describe_sacrifice_chosen_object_list(effects: &[&Effect]) -> Option<(String,
             || tag.as_ref().is_some_and(|tag| tag != &choose.tag)
             || !choose.filter.tagged_constraints.iter().any(|constraint| {
                 constraint.tag == choose.tag
-                    && constraint.relation == crate::target::TaggedOpbjectRelation::IsNotTaggedObject
+                    && constraint.relation
+                        == crate::target::TaggedOpbjectRelation::IsNotTaggedObject
             })
         {
             return None;
@@ -956,10 +962,14 @@ fn describe_sacrifice_chosen_object_list(effects: &[&Effect]) -> Option<(String,
     let sacrifice = structural_unwrap_render_wrappers(effects.get(phrases.len())?)
         .downcast_ref::<crate::effects::zones::SacrificePlayerEffect>()?;
     if sacrifice.player != PlayerFilter::You
-        || !sacrifice.filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag == tag
-                && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
-        })
+        || !sacrifice
+            .filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| {
+                constraint.tag == tag
+                    && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+            })
     {
         return None;
     }
@@ -1186,12 +1196,21 @@ pub(super) fn describe_temporary_tagged_permission_surface(
         clause.push_str(&source.display_text());
         return Some(clause);
     }
-    let next_turn = permission.duration == crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnStart;
+    let next_turn =
+        permission.duration == crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnStart;
     if surface.leading_duration {
-        let duration = if next_turn { "Until your next turn" } else { "Until end of turn" };
+        let duration = if next_turn {
+            "Until your next turn"
+        } else {
+            "Until end of turn"
+        };
         clause = format!("{duration}, {clause}");
     } else {
-        clause.push_str(if next_turn { " until your next turn" } else { " this turn" });
+        clause.push_str(if next_turn {
+            " until your next turn"
+        } else {
+            " this turn"
+        });
     }
     if without_paying_mana_cost {
         clause.push_str(if plural {
@@ -5249,9 +5268,7 @@ pub(super) fn describe_choose_top_exile_then_play_structural(effects: &[Effect])
     } else {
         "that card"
     };
-    let mana_suffix = grant
-        .mana_spend_cast_suffix(spell_ref)
-        .unwrap_or_default();
+    let mana_suffix = grant.mana_spend_cast_suffix(spell_ref).unwrap_or_default();
     let permission = if let Some(counter_type) = grant.during_turns_counter_put_on_source {
         format!(
             "During any turn you put {} on this Saga, you may {verb} that card{mana_suffix}",
@@ -12957,14 +12974,19 @@ fn describe_complementary_subtype_returns(effects: &[Effect]) -> Option<String> 
 }
 
 pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
-    if let Some(text) =
-        describe_cross_zone_target_swap_bundle(&effects.iter().collect::<Vec<_>>())
+    if let Some(text) = describe_cross_zone_target_swap_bundle(&effects.iter().collect::<Vec<_>>())
     {
         return text;
     }
-    if let Some(text) = describe_restricted_player_target_life_loss(effects) { return text; }
-    if let Some(text) = describe_coordinated_same_duration_restrictions(effects) { return text; }
-    if let Some(text) = describe_target_combat_and_activation_restrictions(effects) { return text; }
+    if let Some(text) = describe_restricted_player_target_life_loss(effects) {
+        return text;
+    }
+    if let Some(text) = describe_coordinated_same_duration_restrictions(effects) {
+        return text;
+    }
+    if let Some(text) = describe_target_combat_and_activation_restrictions(effects) {
+        return text;
+    }
     if let Some(compact) = describe_chosen_object_type_qualified_counters(effects) {
         return compact;
     }
@@ -13946,8 +13968,7 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
-        if let Some((compact, consumed)) = describe_sacrifice_chosen_object_list(&filtered[idx..])
-        {
+        if let Some((compact, consumed)) = describe_sacrifice_chosen_object_list(&filtered[idx..]) {
             parts.push(compact);
             idx += consumed;
             continue;
@@ -17886,8 +17907,12 @@ fn describe_search_reveal_nested_may_move_else_hand(effects: &[Effect]) -> Optio
 pub(in crate::compiled_text) fn describe_linked_resolution_program(
     effects: &[Effect],
 ) -> Option<String> {
-    if let Some(text) = describe_restricted_player_target_life_loss(effects) { return Some(text); }
-    if let Some(text) = describe_target_combat_and_activation_restrictions(effects) { return Some(text); }
+    if let Some(text) = describe_restricted_player_target_life_loss(effects) {
+        return Some(text);
+    }
+    if let Some(text) = describe_target_combat_and_activation_restrictions(effects) {
+        return Some(text);
+    }
     if let Some(text) = describe_chosen_object_type_qualified_counters(effects) {
         return Some(text);
     }
@@ -17931,9 +17956,7 @@ pub(in crate::compiled_text) fn describe_linked_resolution_program(
             ));
         }
     }
-    if let Some(text) =
-        describe_hand_choose_then_zone_move(&effects.iter().collect::<Vec<_>>())
-    {
+    if let Some(text) = describe_hand_choose_then_zone_move(&effects.iter().collect::<Vec<_>>()) {
         return Some(text);
     }
     if let [effect] = effects

@@ -4,14 +4,18 @@ use crate::game_state::{GameState, StackEntry};
 use crate::ids::CardId;
 
 fn body(name: &str, kind: CardType) -> crate::cards::CardDefinition {
-    crate::CardDefinitionBuilder::new(CardId::new(), name).card_types(vec![kind])
-        .power_toughness(PowerToughness::fixed(3, 3)).build()
+    crate::CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![kind])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build()
 }
 
 #[test]
 fn cohort_corpus_all_creatures_go_below_existing_library_cards_for_their_owners() {
-    let card = crate::CardDefinitionBuilder::new(CardId::new(), "Ravelon Burial").card_types(vec![CardType::Sorcery])
-        .parse_text("Put all creatures on the bottom of their owners' libraries.").unwrap();
+    let card = crate::CardDefinitionBuilder::new(CardId::new(), "Ravelon Burial")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Put all creatures on the bottom of their owners' libraries.")
+        .unwrap();
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let (alice, bob) = (game.players[0].id, game.players[1].id);
     let creature = body("Creature", CardType::Creature);
@@ -21,9 +25,14 @@ fn cohort_corpus_all_creatures_go_below_existing_library_cards_for_their_owners(
         creatures.push((owner, game.object(id).unwrap().stable_id));
         game.set_current_controller(id, bob);
     }
-    let artifact = game.create_object_from_definition(&body("Artifact", CardType::Artifact), alice, Zone::Battlefield);
+    let artifact = game.create_object_from_definition(
+        &body("Artifact", CardType::Artifact),
+        alice,
+        Zone::Battlefield,
+    );
     let tops = [alice, bob].map(|owner| {
-        let id = game.create_object_from_definition(&body("Top", CardType::Land), owner, Zone::Library);
+        let id =
+            game.create_object_from_definition(&body("Top", CardType::Land), owner, Zone::Library);
         (owner, game.object(id).unwrap().stable_id)
     });
     let source = game.create_object_from_definition(&card, alice, Zone::Stack);
@@ -36,7 +45,13 @@ fn cohort_corpus_all_creatures_go_below_existing_library_cards_for_their_owners(
         assert_eq!(game.object(drawn[0]).unwrap().stable_id, stable);
     }
     for (owner, stable) in creatures {
-        assert!(game.player(owner).unwrap().library.iter().any(|id| game.object(*id).unwrap().stable_id == stable));
+        assert!(
+            game.player(owner).unwrap().library.iter().any(|id| game
+                .object(*id)
+                .unwrap()
+                .stable_id
+                == stable)
+        );
     }
 }
 
@@ -44,7 +59,11 @@ fn cohort_corpus_all_creatures_go_below_existing_library_cards_for_their_owners(
 fn cohort_corpus_requantified_destroy_disjunction_selects_one_complete_set() {
     struct Pick(usize);
     impl crate::decision::DecisionMaker for Pick {
-        fn decide_options(&mut self, _: &GameState, ctx: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+        fn decide_options(
+            &mut self,
+            _: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
             assert_eq!(ctx.options.iter().filter(|option| option.legal).count(), 2);
             vec![self.0]
         }
@@ -57,14 +76,28 @@ fn cohort_corpus_requantified_destroy_disjunction_selects_one_complete_set() {
         let mut objects = Vec::new();
         for owner in [alice, bob] {
             for kind in [CardType::Land, CardType::Creature, CardType::Artifact] {
-                objects.push((kind, game.create_object_from_definition(&body("Permanent", kind), owner, Zone::Battlefield)));
+                objects.push((
+                    kind,
+                    game.create_object_from_definition(
+                        &body("Permanent", kind),
+                        owner,
+                        Zone::Battlefield,
+                    ),
+                ));
             }
         }
         let source = game.create_object_from_definition(&card, alice, Zone::Stack);
         game.stack.push(StackEntry::new(source, alice));
         crate::game_loop::resolve_stack_entry_with(&mut game, &mut Pick(choice)).unwrap();
         for (kind, id) in objects {
-            assert_eq!(game.battlefield.contains(&id), kind != if choice == 0 { CardType::Land } else { CardType::Creature });
+            assert_eq!(
+                game.battlefield.contains(&id),
+                kind != if choice == 0 {
+                    CardType::Land
+                } else {
+                    CardType::Creature
+                }
+            );
         }
     }
 }
@@ -74,17 +107,34 @@ fn cohort_corpus_attack_unless_requires_a_flying_creature_controlled_by_defender
     let card = crate::CardDefinitionBuilder::new(CardId::new(), "Ravelon Dragon").card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(4, 4))
         .parse_text("Flying\nThis creature can't attack unless defending player controls a creature with flying.").unwrap();
-    for enemy in [false, true] { for flying in [false, true] {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
-        let (alice, bob) = (game.players[0].id, game.players[1].id);
-        let source = game.create_object_from_definition(&card, alice, Zone::Battlefield);
-        game.remove_summoning_sickness(source);
-        let other = crate::CardDefinitionBuilder::new(CardId::new(), "Other creature").card_types(vec![CardType::Creature])
-            .power_toughness(PowerToughness::fixed(2, 2)).parse_text(if flying {"Flying"} else {""}).unwrap();
-        game.create_object_from_definition(&other, if enemy {bob} else {alice}, Zone::Battlefield);
-        let mut combat = crate::combat_state::CombatState::default();
-        assert_eq!(crate::combat_state::declare_attackers(&mut game, &mut combat, vec![(source, crate::combat_state::AttackTarget::Player(bob))]).is_ok(), enemy && flying);
-    }}
+    for enemy in [false, true] {
+        for flying in [false, true] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let (alice, bob) = (game.players[0].id, game.players[1].id);
+            let source = game.create_object_from_definition(&card, alice, Zone::Battlefield);
+            game.remove_summoning_sickness(source);
+            let other = crate::CardDefinitionBuilder::new(CardId::new(), "Other creature")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .parse_text(if flying { "Flying" } else { "" })
+                .unwrap();
+            game.create_object_from_definition(
+                &other,
+                if enemy { bob } else { alice },
+                Zone::Battlefield,
+            );
+            let mut combat = crate::combat_state::CombatState::default();
+            assert_eq!(
+                crate::combat_state::declare_attackers(
+                    &mut game,
+                    &mut combat,
+                    vec![(source, crate::combat_state::AttackTarget::Player(bob))]
+                )
+                .is_ok(),
+                enemy && flying
+            );
+        }
+    }
 }
 
 #[test]
@@ -97,50 +147,97 @@ fn cohort_corpus_card_type_threshold_on_attack_is_checked_at_event_time() {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         let (alice, bob) = (game.players[0].id, game.players[1].id);
         let source = game.create_object_from_definition(&card, alice, Zone::Battlefield);
-        let kinds = [CardType::Artifact, CardType::Land, CardType::Instant, CardType::Sorcery];
-        let cards = kinds[..count].iter().map(|kind| game.create_object_from_definition(&body("Grave card", *kind), alice, Zone::Graveyard)).collect::<Vec<_>>();
-        game.create_object_from_definition(&body("Enemy sorcery", CardType::Sorcery), bob, Zone::Graveyard);
-        let event = crate::triggers::TriggerEvent::new_with_provenance(crate::events::combat::CreatureAttackedEvent::new(source, crate::triggers::AttackEventTarget::Player(bob)), crate::provenance::ProvNodeId::default());
+        let kinds = [
+            CardType::Artifact,
+            CardType::Land,
+            CardType::Instant,
+            CardType::Sorcery,
+        ];
+        let cards = kinds[..count]
+            .iter()
+            .map(|kind| {
+                game.create_object_from_definition(
+                    &body("Grave card", *kind),
+                    alice,
+                    Zone::Graveyard,
+                )
+            })
+            .collect::<Vec<_>>();
+        game.create_object_from_definition(
+            &body("Enemy sorcery", CardType::Sorcery),
+            bob,
+            Zone::Graveyard,
+        );
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::combat::CreatureAttackedEvent::new(
+                source,
+                crate::triggers::AttackEventTarget::Player(bob),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
         let triggers = crate::triggers::check_triggers(&game, &event);
         assert_eq!(triggers.len(), usize::from(count == 4));
         if count == 4 {
             let mut queue = crate::triggers::TriggerQueue::new();
-            for trigger in triggers { queue.add(trigger); }
+            for trigger in triggers {
+                queue.add(trigger);
+            }
             crate::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
-            for id in cards { game.move_object_by_effect(id, Zone::Exile).unwrap(); }
+            for id in cards {
+                game.move_object_by_effect(id, Zone::Exile).unwrap();
+            }
             crate::game_loop::resolve_stack_entry(&mut game).unwrap();
             assert_eq!(game.current_power(source), Some(4));
-            assert!(game.current_has_static_ability_id(source, crate::static_abilities::StaticAbilityId::Menace));
+            assert!(game.current_has_static_ability_id(
+                source,
+                crate::static_abilities::StaticAbilityId::Menace
+            ));
         }
     }
-    assert!(text.contains("card types among cards in your graveyard"), "{text}");
+    assert!(
+        text.contains("card types among cards in your graveyard"),
+        "{text}"
+    );
 }
 
 #[test]
 fn cohort_corpus_graveyard_entry_checks_creatures_owner_and_source_enchantment_condition() {
-    for enemy_owner in [false, true] { for enchantment in [false, true] {
-        let card = crate::CardDefinitionBuilder::new(CardId::new(), "Ravelon Lurker")
+    for enemy_owner in [false, true] {
+        for enchantment in [false, true] {
+            let card = crate::CardDefinitionBuilder::new(CardId::new(), "Ravelon Lurker")
             .card_types(vec![if enchantment {CardType::Enchantment} else {CardType::Creature}])
             .parse_text("When a creature is put into an opponent's graveyard from the battlefield, if this permanent is an enchantment, it becomes a 3/2 Phyrexian Imp creature with flying.").unwrap();
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
-        let (alice, bob) = (game.players[0].id, game.players[1].id);
-        let source = game.create_object_from_definition(&card, alice, Zone::Battlefield);
-        let victim = game.create_object_from_definition(&body("Dying creature", CardType::Creature), if enemy_owner {bob} else {alice}, Zone::Battlefield);
-        game.set_current_controller(victim, if enemy_owner {alice} else {bob});
-        game.take_pending_trigger_events();
-        game.move_object_by_effect(victim, Zone::Graveyard).unwrap();
-        let events = game.take_pending_trigger_events();
-        let mut triggers = Vec::new();
-        for event in events { triggers.extend(crate::triggers::check_triggers(&game, &event)); }
-        assert_eq!(triggers.len(), usize::from(enemy_owner && enchantment));
-        if !triggers.is_empty() {
-            let mut queue = crate::triggers::TriggerQueue::new();
-            for trigger in triggers {queue.add(trigger);}
-            crate::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
-            crate::game_loop::resolve_stack_entry(&mut game).unwrap();
-            assert_eq!(game.current_power(source), Some(3));
-            assert_eq!(game.current_toughness(source), Some(2));
-            assert!(game.current_has_static_ability_id(source, crate::static_abilities::StaticAbilityId::Flying));
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let (alice, bob) = (game.players[0].id, game.players[1].id);
+            let source = game.create_object_from_definition(&card, alice, Zone::Battlefield);
+            let victim = game.create_object_from_definition(
+                &body("Dying creature", CardType::Creature),
+                if enemy_owner { bob } else { alice },
+                Zone::Battlefield,
+            );
+            game.set_current_controller(victim, if enemy_owner { alice } else { bob });
+            game.take_pending_trigger_events();
+            game.move_object_by_effect(victim, Zone::Graveyard).unwrap();
+            let events = game.take_pending_trigger_events();
+            let mut triggers = Vec::new();
+            for event in events {
+                triggers.extend(crate::triggers::check_triggers(&game, &event));
+            }
+            assert_eq!(triggers.len(), usize::from(enemy_owner && enchantment));
+            if !triggers.is_empty() {
+                let mut queue = crate::triggers::TriggerQueue::new();
+                for trigger in triggers {
+                    queue.add(trigger);
+                }
+                crate::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
+                crate::game_loop::resolve_stack_entry(&mut game).unwrap();
+                assert_eq!(game.current_power(source), Some(3));
+                assert_eq!(game.current_toughness(source), Some(2));
+                assert!(game.current_has_static_ability_id(
+                    source,
+                    crate::static_abilities::StaticAbilityId::Flying
+                ));
+            }
         }
-    }}
+    }
 }

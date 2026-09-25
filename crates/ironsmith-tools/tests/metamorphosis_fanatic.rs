@@ -92,7 +92,11 @@ fn zone_of(game: &GameState, stable: ironsmith::ids::StableId) -> Zone {
         .zone
 }
 
-fn queue_and_stack(game: &mut GameState, events: Vec<ironsmith::triggers::TriggerEvent>, dm: &mut Choices) -> usize {
+fn queue_and_stack(
+    game: &mut GameState,
+    events: Vec<ironsmith::triggers::TriggerEvent>,
+    dm: &mut Choices,
+) -> usize {
     let mut queue = TriggerQueue::new();
     for event in events {
         for entry in check_triggers(game, &event) {
@@ -120,21 +124,41 @@ fn first_draw_of_the_turn_can_be_cast_for_its_miracle_cost() {
     };
     let events = ironsmith::turn::execute_draw_step(&mut game);
     assert_eq!(zone_of(&game, fanatic_stable), Zone::Hand);
-    assert_eq!(queue_and_stack(&mut game, events, &mut dm), 1, "miracle triggers on the first draw");
+    assert_eq!(
+        queue_and_stack(&mut game, events, &mut dm),
+        1,
+        "miracle triggers on the first draw"
+    );
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
     assert_eq!(dm.miracle_prompts, 1);
-    assert_eq!(zone_of(&game, fanatic_stable), Zone::Stack, "cast for its miracle cost");
-    assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0, "paid {{1}}{{B}}, not its mana cost");
+    assert_eq!(
+        zone_of(&game, fanatic_stable),
+        Zone::Stack,
+        "cast for its miracle cost"
+    );
+    assert_eq!(
+        game.player(alice).unwrap().mana_pool.total(),
+        0,
+        "paid {{1}}{{B}}, not its mana cost"
+    );
 
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
     assert_eq!(zone_of(&game, fanatic_stable), Zone::Battlefield);
     let pending = game.take_pending_trigger_events();
-    assert_eq!(queue_and_stack(&mut game, pending, &mut dm), 1, "the enters trigger");
+    assert_eq!(
+        queue_and_stack(&mut game, pending, &mut dm),
+        1,
+        "the enters trigger"
+    );
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
     let bear = game.find_object_by_stable_id(old_bear_stable).unwrap();
     assert_eq!(game.object(bear).unwrap().zone, Zone::Battlefield);
     assert_eq!(
-        game.object(bear).unwrap().counters.get(&CounterType::Lifelink).copied(),
+        game.object(bear)
+            .unwrap()
+            .counters
+            .get(&CounterType::Lifelink)
+            .copied(),
         Some(1),
         "returned with a lifelink counter"
     );
@@ -189,6 +213,10 @@ fn a_second_draw_in_the_turn_does_not_trigger_miracle() {
     ironsmith::effects::execute_effect(&mut game, &Effect::draw(1), &mut ctx).unwrap();
     assert_eq!(zone_of(&game, fanatic_stable), Zone::Hand);
     let pending = game.take_pending_trigger_events();
-    assert_eq!(queue_and_stack(&mut game, pending, &mut dm), 0, "not the first card drawn this turn");
+    assert_eq!(
+        queue_and_stack(&mut game, pending, &mut dm),
+        0,
+        "not the first card drawn this turn"
+    );
     assert_eq!(dm.miracle_prompts, 0);
 }

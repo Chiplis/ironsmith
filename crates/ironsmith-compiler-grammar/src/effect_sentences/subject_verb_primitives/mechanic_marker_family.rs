@@ -305,10 +305,15 @@ pub const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
         "comma-then-chain-special",
         180,
         PreDiagnostic,
-        &[LexRuleHeadHint::Single("target"), LexRuleHeadHint::Single("draw"), LexRuleHeadHint::Single("tap"), LexRuleHeadHint::Single("untap"), LexRuleHeadHint::Single("look")],
+        &[
+            LexRuleHeadHint::Single("target"),
+            LexRuleHeadHint::Single("draw"),
+            LexRuleHeadHint::Single("tap"),
+            LexRuleHeadHint::Single("untap"),
+            LexRuleHeadHint::Single("look")
+        ],
         parse_sentence_comma_then_chain_special
     ),
-
 ];
 
 pub static PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX: LazyLock<LexRuleHintIndex> =

@@ -12,22 +12,34 @@ pub struct AnyOfTrigger {
 
 impl AnyOfTrigger {
     fn play_card_display(&self) -> Option<String> {
-        let [cast, land] = self.branches.as_slice() else { return None; };
+        let [cast, land] = self.branches.as_slice() else {
+            return None;
+        };
         let cast = cast.downcast_ref::<crate::triggers::SpellCastTrigger>()?;
         let land = land.downcast_ref::<crate::triggers::PlayerPlaysLandTrigger>()?;
-        let ordinary_cast = crate::triggers::SpellCastTrigger::new(
-            Some(land.filter.clone()), land.player.clone(),
-        );
+        let ordinary_cast =
+            crate::triggers::SpellCastTrigger::new(Some(land.filter.clone()), land.player.clone());
         if cast != &ordinary_cast {
             return None;
         }
         let mut object = land.filter.description().replacen("permanent", "card", 1);
         if !object.starts_with("a ") && !object.starts_with("an ") {
-            let article = if object.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" };
+            let article = if object.starts_with(['a', 'e', 'i', 'o', 'u']) {
+                "an"
+            } else {
+                "a"
+            };
             object = format!("{article} {object}");
         }
-        let verb = if land.player == crate::target::PlayerFilter::You { "play" } else { "plays" };
-        Some(format!("Whenever {} {verb} {object}", land.player.description()))
+        let verb = if land.player == crate::target::PlayerFilter::You {
+            "play"
+        } else {
+            "plays"
+        };
+        Some(format!(
+            "Whenever {} {verb} {object}",
+            land.player.description()
+        ))
     }
 
     fn passive_sacrificed_or_destroyed_display(&self) -> Option<String> {

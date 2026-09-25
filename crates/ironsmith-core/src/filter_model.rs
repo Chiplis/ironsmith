@@ -1620,8 +1620,7 @@ impl PlayerFilter {
                 player.mentions_iterated_player() || filter.mentions_iterated_player()
             }
             Self::ControlsMost { filter } => filter.mentions_iterated_player(),
-            Self::OpponentOf(base)
-            | Self::MaxSpeed { base, .. } => base.mentions_iterated_player(),
+            Self::OpponentOf(base) | Self::MaxSpeed { base, .. } => base.mentions_iterated_player(),
             Self::Excluding { base, excluded } => {
                 base.mentions_iterated_player() || excluded.mentions_iterated_player()
             }
@@ -3572,8 +3571,12 @@ impl ObjectFilter {
     }
 
     pub fn description(&self) -> String {
-        if let Some(description) = describe_nonbattlefield_card_union(self) { return description; }
-        if let Some(grouped) = group_nonbattlefield_card_domains(self) { return grouped.description(); }
+        if let Some(description) = describe_nonbattlefield_card_union(self) {
+            return description;
+        }
+        if let Some(grouped) = group_nonbattlefield_card_domains(self) {
+            return grouped.description();
+        }
         if let Some(description) = describe_shared_combat_role_union(self) {
             return description;
         }
@@ -3610,13 +3613,19 @@ impl ObjectFilter {
         }
         if any_of_keyword_clause.is_none() && !self.any_of.is_empty() {
             let explicit_branch_articles = self.has_explicit_union_branch_articles();
-            let shared_colors = self.colors.filter(|colors| self.any_of.iter().all(|branch| branch.colors.is_none() || branch.colors == Some(*colors)));
+            let shared_colors = self.colors.filter(|colors| {
+                self.any_of
+                    .iter()
+                    .all(|branch| branch.colors.is_none() || branch.colors == Some(*colors))
+            });
             let branch_descriptions = self
                 .any_of
                 .iter()
                 .map(|branch| {
                     let mut described_branch = branch.clone();
-                    if shared_colors.is_some() { described_branch.colors = None; }
+                    if shared_colors.is_some() {
+                        described_branch.colors = None;
+                    }
                     if described_branch.controller.is_none() {
                         described_branch.controller = self.controller.clone();
                     }
@@ -3647,8 +3656,15 @@ impl ObjectFilter {
                 )
             };
             if let Some(colors) = shared_colors {
-                let colors = Color::ALL.into_iter().filter(|color| colors.contains(*color)).map(|color| color.name().to_string()).collect();
-                description = format!("{} {description}", describe_filter_union_list(colors, ObjectFilterUnionConnective::Or, false));
+                let colors = Color::ALL
+                    .into_iter()
+                    .filter(|color| colors.contains(*color))
+                    .map(|color| color.name().to_string())
+                    .collect();
+                description = format!(
+                    "{} {description}",
+                    describe_filter_union_list(colors, ObjectFilterUnionConnective::Or, false)
+                );
             }
             if let Some(attached_to) = &self.attached_to_object {
                 description.push_str(&format!(
@@ -3791,8 +3807,7 @@ impl ObjectFilter {
                 PlayerFilter::ControlsMost { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
-                PlayerFilter::OpponentOf(_)
-                | PlayerFilter::MaxSpeed { .. } => {
+                PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 PlayerFilter::ChosenPlayer => parts.push("the chosen player's".to_string()),
@@ -3907,7 +3922,9 @@ impl ObjectFilter {
             post_noun_qualifiers.push("first spell cast each turn".to_string());
         }
         if let Some(minimum) = self.spell_cast_minimum_each_turn {
-            post_noun_qualifiers.push(format!("with matching cast ordinal at least {minimum} this turn"));
+            post_noun_qualifiers.push(format!(
+                "with matching cast ordinal at least {minimum} this turn"
+            ));
         }
         if let Some(ordinal) = self.spell_cast_ordinal_each_turn {
             let word = match ordinal {
@@ -3982,8 +3999,7 @@ impl ObjectFilter {
                 PlayerFilter::ControlsMost { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
-                PlayerFilter::OpponentOf(_)
-                | PlayerFilter::MaxSpeed { .. } => {
+                PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::ChosenPlayer => "the chosen player owns".to_string(),
@@ -4700,7 +4716,10 @@ impl ObjectFilter {
                 Some((true, card_type_phrase))
             }
         } else if has_chosen_tag && self.explicit_card_type_noun().is_some() {
-            Some((true, self.explicit_card_type_noun().unwrap().name().to_string()))
+            Some((
+                true,
+                self.explicit_card_type_noun().unwrap().name().to_string(),
+            ))
         } else if !self.token && !subtype_implies_type {
             let default_noun = if self.source {
                 match self.zone {
@@ -5759,31 +5778,51 @@ fn group_nonbattlefield_card_domains(filter: &ObjectFilter) -> Option<ObjectFilt
     }
     fn basis(arm: &ObjectFilter) -> Option<ObjectFilter> {
         let zone = arm.zone?;
-        if zone == Zone::Battlefield || !arm.has_explicit_card_noun() { return None; }
+        if zone == Zone::Battlefield || !arm.has_explicit_card_noun() {
+            return None;
+        }
         let mut result = arm.clone();
         result.zone = None;
         if zone == Zone::Stack {
-            if result.stack_kind != Some(StackObjectKind::Spell) { return None; }
+            if result.stack_kind != Some(StackObjectKind::Spell) {
+                return None;
+            }
             result.stack_kind = None;
         }
         Some(result)
     }
     for seed in &filter.any_of {
-        let Some(common) = basis(seed) else { continue; };
-        let indices: Vec<_> = filter.any_of.iter().enumerate()
+        let Some(common) = basis(seed) else {
+            continue;
+        };
+        let indices: Vec<_> = filter
+            .any_of
+            .iter()
+            .enumerate()
             .filter_map(|(i, arm)| (basis(arm).as_ref() == Some(&common)).then_some(i))
             .collect();
         let grouped = ObjectFilter {
             any_of: indices.iter().map(|&i| filter.any_of[i].clone()).collect(),
             ..ObjectFilter::default()
         };
-        if describe_nonbattlefield_card_union(&grouped).is_none() { continue; }
+        if describe_nonbattlefield_card_union(&grouped).is_none() {
+            continue;
+        }
         let mut result = filter.clone();
-        result.any_of = filter.any_of.iter().enumerate().filter_map(|(i, arm)| {
-            if i == indices[0] { Some(grouped.clone()) }
-            else if indices.contains(&i) { None }
-            else { Some(arm.clone()) }
-        }).collect();
+        result.any_of = filter
+            .any_of
+            .iter()
+            .enumerate()
+            .filter_map(|(i, arm)| {
+                if i == indices[0] {
+                    Some(grouped.clone())
+                } else if indices.contains(&i) {
+                    None
+                } else {
+                    Some(arm.clone())
+                }
+            })
+            .collect();
         return Some(result);
     }
     None
@@ -5798,23 +5837,33 @@ fn group_nonbattlefield_card_domains(filter: &ObjectFilter) -> Option<ObjectFilt
 /// Compact a complete nonbattlefield card-domain union, retaining every
 /// shared predicate. Stack arms select spells rather than stack abilities.
 fn describe_nonbattlefield_card_union(filter: &ObjectFilter) -> Option<String> {
-    if filter.union_connective() != ObjectFilterUnionConnective::Or || filter.any_of.len() != 8 { return None; }
+    if filter.union_connective() != ObjectFilterUnionConnective::Or || filter.any_of.len() != 8 {
+        return None;
+    }
     let mut outer = filter.clone();
     outer.any_of.clear();
     outer.union_surface = ObjectFilterUnionSurface::default();
-    if outer != ObjectFilter::default() { return None; }
+    if outer != ObjectFilter::default() {
+        return None;
+    }
     let mut zones = std::collections::HashSet::new();
     let mut basis: Option<ObjectFilter> = None;
     for arm in &filter.any_of {
         let zone = arm.zone?;
-        if zone == Zone::Battlefield || !zones.insert(zone) { return None; }
+        if zone == Zone::Battlefield || !zones.insert(zone) {
+            return None;
+        }
         let mut candidate = arm.clone();
         candidate.zone = None;
         if zone == Zone::Stack {
-            if candidate.stack_kind != Some(StackObjectKind::Spell) { return None; }
+            if candidate.stack_kind != Some(StackObjectKind::Spell) {
+                return None;
+            }
             candidate.stack_kind = None;
         }
-        if !candidate.has_explicit_card_noun() { return None; }
+        if !candidate.has_explicit_card_noun() {
+            return None;
+        }
         match &basis {
             Some(base) if *base != candidate => return None,
             None => basis = Some(candidate),
@@ -8215,22 +8264,43 @@ mod nonbattlefield_union_rendering_tests {
     #[test]
     fn complete_card_domain_complement_compacts_but_partial_union_does_not() {
         let mut filter = ObjectFilter::default();
-        filter.any_of = [Zone::Hand, Zone::Library, Zone::Graveyard, Zone::Exile, Zone::Command, Zone::Stack, Zone::Ante, Zone::OutsideGame].into_iter().map(|zone| {
+        filter.any_of = [
+            Zone::Hand,
+            Zone::Library,
+            Zone::Graveyard,
+            Zone::Exile,
+            Zone::Command,
+            Zone::Stack,
+            Zone::Ante,
+            Zone::OutsideGame,
+        ]
+        .into_iter()
+        .map(|zone| {
             let mut arm = ObjectFilter::default().in_zone(zone);
             arm.set_explicit_card_noun(true);
-            if zone == Zone::Stack { arm.stack_kind = Some(StackObjectKind::Spell); }
+            if zone == Zone::Stack {
+                arm.stack_kind = Some(StackObjectKind::Spell);
+            }
             arm
-        }).collect();
+        })
+        .collect();
         assert_eq!(filter.description(), "card not on the battlefield");
         let mut enclosing = filter.clone();
         enclosing.any_of.insert(0, ObjectFilter::creature());
-        assert_eq!(enclosing.description(), "creature or card not on the battlefield");
+        assert_eq!(
+            enclosing.description(),
+            "creature or card not on the battlefield"
+        );
         filter.any_of.pop();
         assert!(!filter.description().contains("not on the battlefield"));
     }
     #[test]
     fn common_color_predicate_is_rendered_over_coordinated_domains() {
-        let filter = ObjectFilter { colors: Some(ColorSet::BLUE), any_of: vec![ObjectFilter::creature(), ObjectFilter::spell()], ..ObjectFilter::default() };
+        let filter = ObjectFilter {
+            colors: Some(ColorSet::BLUE),
+            any_of: vec![ObjectFilter::creature(), ObjectFilter::spell()],
+            ..ObjectFilter::default()
+        };
         assert_eq!(filter.description(), "blue creature or spell");
     }
 }

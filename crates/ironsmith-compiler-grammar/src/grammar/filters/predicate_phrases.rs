@@ -2576,8 +2576,7 @@ fn parse_player_controls_predicate(
         &["with", "the", "same", "name", "as", "one", "another"];
     {
         let words = crate::lexer::token_word_refs(tokens);
-        if words.len() > SAME_NAME_AS_ONE_ANOTHER.len()
-            && words.ends_with(SAME_NAME_AS_ONE_ANOTHER)
+        if words.len() > SAME_NAME_AS_ONE_ANOTHER.len() && words.ends_with(SAME_NAME_AS_ONE_ANOTHER)
         {
             let view = crate::lexer::TokenWordView::new(tokens);
             let cut = words.len() - SAME_NAME_AS_ONE_ANOTHER.len();
@@ -3326,15 +3325,18 @@ fn parse_active_this_way_discard_predicate(
 
 fn parse_positive_put_tagged_object_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let tokens = primitives::strip_lexed_prefix_phrase(tokens, &["you", "put"])?;
-    let object_tokens = primitives::strip_lexed_suffix_phrase(tokens, &["into", "your", "hand", "this", "way"])?;
+    let object_tokens =
+        primitives::strip_lexed_suffix_phrase(tokens, &["into", "your", "hand", "this", "way"])?;
     let mut filter = parse_this_way_object_filter_clause(LexedClause::new(object_tokens))?;
     filter.zone = Some(Zone::Hand);
-    Some(PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
-        player: PlayerAst::You,
-        tag: crate::tag::CompilerReferenceTag::It.bind(),
-        filter,
-        mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
-    }))
+    Some(PredicateAst::Player(
+        PlayerPredicateAst::PlayerTaggedObjectMatches {
+            player: PlayerAst::You,
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            filter,
+            mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
+        },
+    ))
 }
 
 fn parse_negative_put_tagged_object_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {

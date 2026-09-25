@@ -40,18 +40,31 @@ fn parse_repeated_spell_domain_union(tokens: &[OwnedLexToken]) -> Option<ObjectF
     {
         return None;
     }
-    let arms = tokens.split(|token| token.is_word("or"))
-        .map(trim_lexed_commas).collect::<Vec<_>>();
-    if arms.len() < 2 || !arms.iter().all(|arm| {
-        arm.iter().any(|token| token.is_any_word(&["spell", "spells"]))
-    }) {
+    let arms = tokens
+        .split(|token| token.is_word("or"))
+        .map(trim_lexed_commas)
+        .collect::<Vec<_>>();
+    if arms.len() < 2
+        || !arms.iter().all(|arm| {
+            arm.iter()
+                .any(|token| token.is_any_word(&["spell", "spells"]))
+        })
+    {
         return None;
     }
-    let branches = arms.into_iter().map(|arm| {
-        let filter = crate::grammar::filters::parse_object_filter_with_grammar_entrypoint(arm, false).ok()?;
-        (filter.zone == Some(Zone::Stack)).then_some(filter)
-    }).collect::<Option<Vec<_>>>()?;
-    Some(ObjectFilter { any_of: branches, ..ObjectFilter::default() })
+    let branches = arms
+        .into_iter()
+        .map(|arm| {
+            let filter =
+                crate::grammar::filters::parse_object_filter_with_grammar_entrypoint(arm, false)
+                    .ok()?;
+            (filter.zone == Some(Zone::Stack)).then_some(filter)
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(ObjectFilter {
+        any_of: branches,
+        ..ObjectFilter::default()
+    })
 }
 
 pub(super) fn parse_simple_subtype_spell_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {

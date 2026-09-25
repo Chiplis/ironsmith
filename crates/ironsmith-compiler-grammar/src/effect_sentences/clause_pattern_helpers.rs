@@ -1214,21 +1214,21 @@ fn parse_prevention_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst,
 fn parse_damage_sources_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<(ObjectFilter, bool), CardTextError> {
-    let (tokens, of_chosen_color) = match crate::grammar::primitives::split_lexed_once_before_suffix(
-        tokens,
-        0,
-        || crate::grammar::primitives::phrase(&["of", "the", "color", "of", "your", "choice"]),
-    ) {
-        Some((base, ())) => (base, true),
-        None => (tokens, false),
-    };
-    let is_source_noun = |token: &OwnedLexToken| token.is_word("sources") || token.is_word("source");
-    let parts: Vec<&[OwnedLexToken]> = tokens
-        .split(|token| token.is_word("and"))
-        .collect();
+    let (tokens, of_chosen_color) =
+        match crate::grammar::primitives::split_lexed_once_before_suffix(tokens, 0, || {
+            crate::grammar::primitives::phrase(&["of", "the", "color", "of", "your", "choice"])
+        }) {
+            Some((base, ())) => (base, true),
+            None => (tokens, false),
+        };
+    let is_source_noun =
+        |token: &OwnedLexToken| token.is_word("sources") || token.is_word("source");
+    let parts: Vec<&[OwnedLexToken]> = tokens.split(|token| token.is_word("and")).collect();
     let parse_part = |part: &[OwnedLexToken]| -> Result<ObjectFilter, CardTextError> {
         let Some((last, descriptor)) = part.split_last() else {
-            return Err(CardTextError::ParseError("missing damage source".to_string()));
+            return Err(CardTextError::ParseError(
+                "missing damage source".to_string(),
+            ));
         };
         if !is_source_noun(last) {
             return Err(CardTextError::ParseError(format!(
@@ -1242,7 +1242,11 @@ fn parse_damage_sources_filter(
         parse_object_filter(descriptor, false)
     };
     // "black sources and red sources": two independently described sets.
-    if parts.len() > 1 && parts.iter().all(|part| part.last().is_some_and(is_source_noun)) {
+    if parts.len() > 1
+        && parts
+            .iter()
+            .all(|part| part.last().is_some_and(is_source_noun))
+    {
         let mut filter = ObjectFilter::default();
         filter.any_of = parts
             .into_iter()
@@ -1904,20 +1908,36 @@ mod choose_target_prelude_tests {
     #[test]
     fn target_declaration_does_not_consume_comma_then_roll() {
         let standalone = crate::lexer::lex_line(
-            "Choose target instant or sorcery card in your graveyard.", 0,
-        ).unwrap();
-        assert!(parse_choose_target_prelude_sentence(&standalone).unwrap().is_some());
+            "Choose target instant or sorcery card in your graveyard.",
+            0,
+        )
+        .unwrap();
+        assert!(
+            parse_choose_target_prelude_sentence(&standalone)
+                .unwrap()
+                .is_some()
+        );
         for continuation in ["roll a d20", "draw a card", "unrecognized instruction"] {
-            let tokens = crate::lexer::lex_line(&format!(
-                "Choose target instant or sorcery card in your graveyard, then {continuation}."
-            ), 0).unwrap();
-            assert!(parse_choose_target_prelude_sentence(&tokens).unwrap().is_none(),
-                "a target-only reading cannot swallow continuation: {continuation}");
-            assert!(crate::grammar::effects::clause_dispatch_shapes::parse_choose_target_shape(&tokens).is_none(),
-                "the direct target shape cannot consume continuation: {continuation}");
+            let tokens = crate::lexer::lex_line(
+                &format!(
+                    "Choose target instant or sorcery card in your graveyard, then {continuation}."
+                ),
+                0,
+            )
+            .unwrap();
+            assert!(
+                parse_choose_target_prelude_sentence(&tokens)
+                    .unwrap()
+                    .is_none(),
+                "a target-only reading cannot swallow continuation: {continuation}"
+            );
+            assert!(
+                crate::grammar::effects::clause_dispatch_shapes::parse_choose_target_shape(&tokens)
+                    .is_none(),
+                "the direct target shape cannot consume continuation: {continuation}"
+            );
         }
     }
-
 
     #[test]
     fn preserves_three_repeated_optional_target_slots_under_one_chosen_tag() {
@@ -2140,10 +2160,16 @@ pub fn parse_keyword_mechanic_clause(
                 false,
             )
         }
-        clause_shapes::KeywordMechanicShape::ManifestDread { repeat, source_exiled_owner } => {
+        clause_shapes::KeywordMechanicShape::ManifestDread {
+            repeat,
+            source_exiled_owner,
+        } => {
             let manifest = if source_exiled_owner {
                 EffectAst::ForEach(ForEachEffectAst::ForEachObject {
-                    filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind()).in_zone(Zone::Exile),
+                    filter: ObjectFilter::tagged(
+                        crate::tag::CompilerReferenceTag::SourceExiled.bind(),
+                    )
+                    .in_zone(Zone::Exile),
                     effects: vec![EffectAst::subject_verb_manifest_dread(PlayerAst::ItsOwner)],
                 })
             } else {
@@ -2272,7 +2298,9 @@ pub fn parse_airbend_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
     }
     let target_tokens = &tokens[1..];
     if target_tokens.is_empty() {
-        return Err(CardTextError::ParseError("airbend requires an object".into()));
+        return Err(CardTextError::ParseError(
+            "airbend requires an object".into(),
+        ));
     }
     let target = parse_target_phrase(target_tokens)?;
     Ok(Some(EffectAst::subject_verb_airbend(target)))

@@ -241,51 +241,70 @@ impl ManaCost {
     pub fn reduced_by_mana_cost_options(&self, reduction: &ManaCost) -> Vec<ManaCost> {
         fn rank(symbol: &ManaSymbol) -> (u8, u8) {
             match symbol {
-                ManaSymbol::Generic(n) => (0,*n), ManaSymbol::White => (1,0),
-                ManaSymbol::Blue => (2,0), ManaSymbol::Black => (3,0),
-                ManaSymbol::Red => (4,0), ManaSymbol::Green => (5,0),
-                ManaSymbol::Colorless => (6,0), ManaSymbol::Snow => (7,0),
-                ManaSymbol::Life(n) => (8,*n), ManaSymbol::X => (9,0),
+                ManaSymbol::Generic(n) => (0, *n),
+                ManaSymbol::White => (1, 0),
+                ManaSymbol::Blue => (2, 0),
+                ManaSymbol::Black => (3, 0),
+                ManaSymbol::Red => (4, 0),
+                ManaSymbol::Green => (5, 0),
+                ManaSymbol::Colorless => (6, 0),
+                ManaSymbol::Snow => (7, 0),
+                ManaSymbol::Life(n) => (8, *n),
+                ManaSymbol::X => (9, 0),
             }
         }
         fn expand(cost: &ManaCost, reduction: bool) -> Vec<Vec<ManaSymbol>> {
             let mut states = vec![Vec::new()];
             for pip in cost.pips() {
-                let options = pip.iter().copied().filter(|symbol| !reduction || !matches!(symbol,ManaSymbol::Life(_))).collect::<Vec<_>>();
+                let options = pip
+                    .iter()
+                    .copied()
+                    .filter(|symbol| !reduction || !matches!(symbol, ManaSymbol::Life(_)))
+                    .collect::<Vec<_>>();
                 let mut next = Vec::new();
                 for state in &states {
                     for option in &options {
                         let mut branch = state.clone();
                         branch.push(*option);
                         branch.sort_by_key(rank);
-                        if !next.contains(&branch) {next.push(branch);}
+                        if !next.contains(&branch) {
+                            next.push(branch);
+                        }
                     }
                 }
                 states = next;
             }
             states
         }
-        if reduction.pips().is_empty() {return vec![self.clone()];}
+        if reduction.pips().is_empty() {
+            return vec![self.clone()];
+        }
         let mut results = Vec::new();
-        for base in expand(self,false) {
-            for selected in expand(reduction,true) {
+        for base in expand(self, false) {
+            for selected in expand(reduction, true) {
                 let mut remaining = base.clone();
                 let mut generic_reduction = 0u32;
                 for symbol in selected {
                     match symbol {
                         ManaSymbol::Generic(n) => generic_reduction += u32::from(n),
                         ManaSymbol::Snow => generic_reduction += 1,
-                        ManaSymbol::X => {},
+                        ManaSymbol::X => {}
                         ManaSymbol::Life(_) => unreachable!("reduction cannot spend life"),
                         colored => {
-                            if let Some(index) = remaining.iter().position(|symbol| *symbol==colored) {
+                            if let Some(index) =
+                                remaining.iter().position(|symbol| *symbol == colored)
+                            {
                                 remaining.remove(index);
-                            } else {generic_reduction += 1;}
+                            } else {
+                                generic_reduction += 1;
+                            }
                         }
                     }
                 }
                 let cost = ManaCost::from_symbols(remaining).reduce_generic(generic_reduction);
-                if !results.contains(&cost) {results.push(cost);}
+                if !results.contains(&cost) {
+                    results.push(cost);
+                }
             }
         }
         results
@@ -528,26 +547,38 @@ mod tests {
     #[test]
     fn power_up_mana_reduction_preserves_payer_choices() {
         use ManaSymbol::*;
-        let cost = ManaCost::from_pips(vec![vec![Generic(5)],vec![Red,Green],vec![Red,Green]]);
-        let reduction = ManaCost::from_pips(vec![vec![Generic(3)],vec![Red,Green]]);
-        let mut actual = cost.reduced_by_mana_cost_options(&reduction).iter().map(ManaCost::to_oracle).collect::<Vec<_>>();
+        let cost = ManaCost::from_pips(vec![vec![Generic(5)], vec![Red, Green], vec![Red, Green]]);
+        let reduction = ManaCost::from_pips(vec![vec![Generic(3)], vec![Red, Green]]);
+        let mut actual = cost
+            .reduced_by_mana_cost_options(&reduction)
+            .iter()
+            .map(ManaCost::to_oracle)
+            .collect::<Vec<_>>();
         actual.sort();
-        assert_eq!(actual, vec!["{1}{G}{G}","{1}{R}{R}","{2}{G}","{2}{R}"]);
+        assert_eq!(actual, vec!["{1}{G}{G}", "{1}{R}{R}", "{2}{G}", "{2}{R}"]);
         // Excess colored reduction becomes generic, never a different color.
-        let cost = ManaCost::from_symbols(vec![Generic(2),Blue]);
-        assert_eq!(cost.reduced_by_mana_cost_options(&ManaCost::from_symbols(vec![Red,Red,Red])),
-            vec![ManaCost::from_symbols(vec![Blue])]);
+        let cost = ManaCost::from_symbols(vec![Generic(2), Blue]);
+        assert_eq!(
+            cost.reduced_by_mana_cost_options(&ManaCost::from_symbols(vec![Red, Red, Red])),
+            vec![ManaCost::from_symbols(vec![Blue])]
+        );
         // A Phyrexian symbol in a reduction uses its color, never a life payment.
-        assert_eq!(cost.reduced_by_mana_cost_options(&ManaCost::from_pips(vec![vec![Blue,Life(2)]])),
-            vec![ManaCost::from_symbols(vec![Generic(2)])]);
+        assert_eq!(
+            cost.reduced_by_mana_cost_options(&ManaCost::from_pips(vec![vec![Blue, Life(2)]])),
+            vec![ManaCost::from_symbols(vec![Generic(2)])]
+        );
         // Snow reduces generic; colorless reduces matching colorless first.
-        assert_eq!(ManaCost::from_symbols(vec![Generic(2),Colorless]).reduced_by_mana_cost_options(
-            &ManaCost::from_symbols(vec![Colorless,Snow,X])),
-            vec![ManaCost::from_symbols(vec![Generic(1)])]);
-        let mut twobrid = cost.reduced_by_mana_cost_options(&ManaCost::from_pips(vec![vec![Generic(2),Blue]]))
-            .iter().map(ManaCost::to_oracle).collect::<Vec<_>>();
+        assert_eq!(
+            ManaCost::from_symbols(vec![Generic(2), Colorless])
+                .reduced_by_mana_cost_options(&ManaCost::from_symbols(vec![Colorless, Snow, X])),
+            vec![ManaCost::from_symbols(vec![Generic(1)])]
+        );
+        let mut twobrid = cost
+            .reduced_by_mana_cost_options(&ManaCost::from_pips(vec![vec![Generic(2), Blue]]))
+            .iter()
+            .map(ManaCost::to_oracle)
+            .collect::<Vec<_>>();
         twobrid.sort();
-        assert_eq!(twobrid,vec!["{2}","{U}"]);
+        assert_eq!(twobrid, vec!["{2}", "{U}"]);
     }
-
 }

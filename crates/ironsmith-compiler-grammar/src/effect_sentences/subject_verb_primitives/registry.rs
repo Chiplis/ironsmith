@@ -512,7 +512,10 @@ fn recognize_subject_verb_primitives_lexed(
                 "subject-verb-primitive-registry: typed head error on \"{}\"",
                 crate::lexer::render_token_slice(tokens).trim()
             ));
-            crate::util::parser_trace_stack("subject-verb-primitive-registry:typed-head-error", tokens);
+            crate::util::parser_trace_stack(
+                "subject-verb-primitive-registry:typed-head-error",
+                tokens,
+            );
             return ParseOutcome::Error(diagnostic);
         }
     };

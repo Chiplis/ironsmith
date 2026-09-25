@@ -219,8 +219,10 @@ fn parse_keyword_dispatch_hint_lexed<'a>(
             .value(KeywordDispatchHint::AlternativeOrExertFamily),
             primitives::kw("escalate").value(KeywordDispatchHint::Escalate),
             primitives::kw("evoke").value(KeywordDispatchHint::Evoke),
-            alt((primitives::kw("epic").value(KeywordDispatchHint::Epic),
-                primitives::kw("paradigm").value(KeywordDispatchHint::Paradigm))),
+            alt((
+                primitives::kw("epic").value(KeywordDispatchHint::Epic),
+                primitives::kw("paradigm").value(KeywordDispatchHint::Paradigm),
+            )),
             primitives::kw("craft").value(KeywordDispatchHint::Craft),
             primitives::kw("exploit").value(KeywordDispatchHint::Exploit),
         )),

@@ -666,14 +666,28 @@ pub fn parse_spell_activity_trigger(
     let timing = activity_facts
         .during_combat
         .then_some(ironsmith_core::TriggerTimingRestriction::DuringCombat);
-    let repeated_counted_spell_domain = clause_words.windows(4)
+    let repeated_counted_spell_domain = clause_words
+        .windows(4)
         .position(|part| part == ["other", "than", "the", "first"])
         .is_some_and(|other| {
-            let Some(cast) = clause_words[..other].iter().position(|word| matches!(*word, "cast" | "casts")) else { return false; };
-            let leading = clause_words[cast + 1..other].iter().copied()
-                .filter(|word| !matches!(*word, "a" | "an" | "the")).collect::<Vec<_>>();
+            let Some(cast) = clause_words[..other]
+                .iter()
+                .position(|word| matches!(*word, "cast" | "casts"))
+            else {
+                return false;
+            };
+            let leading = clause_words[cast + 1..other]
+                .iter()
+                .copied()
+                .filter(|word| !matches!(*word, "a" | "an" | "the"))
+                .collect::<Vec<_>>();
             let tail = &clause_words[other + 4..];
-            let Some(noun) = tail.iter().position(|word| matches!(*word, "spell" | "spells")) else { return false; };
+            let Some(noun) = tail
+                .iter()
+                .position(|word| matches!(*word, "spell" | "spells"))
+            else {
+                return false;
+            };
             leading == tail[..=noun]
         });
     let normalize_cast_count_filter = |mut filter: Option<ObjectFilter>| {
@@ -690,7 +704,6 @@ pub fn parse_spell_activity_trigger(
                 filter.spell_cast_minimum_each_turn = Some(minimum);
                 filter.cast_by = Some(PlayerFilter::IteratedPlayer);
             }
-
         }
         filter
     };
@@ -759,7 +772,10 @@ pub fn parse_spell_activity_trigger(
                         // A kicked spell records a paid optional cost; merely having
                         // kicker in its rules text does not satisfy this qualifier.
                         if filter_words.contains(&"kicked")
-                            && !filter.ability_markers.iter().any(|marker| marker == "kicked")
+                            && !filter
+                                .ability_markers
+                                .iter()
+                                .any(|marker| marker == "kicked")
                         {
                             filter.ability_markers.push("kicked".to_string());
                         }
@@ -847,18 +863,32 @@ pub fn parse_spell_activity_trigger(
 
     if let Some(cast) = cast_idx {
         let suffix_tokens = tokens.get(cast + 1..).unwrap_or_default();
-        if timing.is_none() && during_turn.is_none() && min_spells_this_turn.is_none()
-            && exact_spells_this_turn.is_none() && !from_not_hand
+        if timing.is_none()
+            && during_turn.is_none()
+            && min_spells_this_turn.is_none()
+            && exact_spells_this_turn.is_none()
+            && !from_not_hand
         {
             for (index, _) in suffix_tokens.iter().enumerate() {
-                let Some(relation) = suffix_tokens.get(index..index + 6) else { continue; };
-                if crate::lexer::token_word_refs(relation) != ["that", "has", "the", "same", "name", "as"] { continue; }
+                let Some(relation) = suffix_tokens.get(index..index + 6) else {
+                    continue;
+                };
+                if crate::lexer::token_word_refs(relation)
+                    != ["that", "has", "the", "same", "name", "as"]
+                {
+                    continue;
+                }
                 let reference = trim_commas(&suffix_tokens[index + 6..]);
                 let words = crate::lexer::token_word_refs(&reference);
-                if words != ["a", "card", "in", "your", "graveyard"] { continue; }
+                if words != ["a", "card", "in", "your", "graveyard"] {
+                    continue;
+                }
                 let filter = parse_filter(&suffix_tokens[..index])?;
                 return Ok(Some(TriggerSpec::SpellCastSameNameCardInZone {
-                    filter, caster: actor, zone: Zone::Graveyard, owner: PlayerFilter::You,
+                    filter,
+                    caster: actor,
+                    zone: Zone::Graveyard,
+                    owner: PlayerFilter::You,
                 }));
             }
         }

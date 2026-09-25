@@ -64,10 +64,18 @@ pub fn parse_consult_traversal_sentence(
         // the following traversal must use the same player.
         match prefix_effects.last()? {
             EffectAst::SubjectVerb(subject)
-                if matches!(subject.action,
+                if matches!(
+                    subject.action,
                     crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
-                        crate::cards::builders::ZoneMoveActionAst::Sacrifice { target: Some(_), .. }
-                    )) && subject.subject.player == PlayerAst::ItsController => Some(PlayerAst::That),
+                        crate::cards::builders::ZoneMoveActionAst::Sacrifice {
+                            target: Some(_),
+                            ..
+                        }
+                    )
+                ) && subject.subject.player == PlayerAst::ItsController =>
+            {
+                Some(PlayerAst::That)
+            }
             _ => None,
         }
     });
@@ -653,17 +661,19 @@ pub fn consult_cast_effects(
             }
             vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                 player: clause.caster,
-                effects: vec![EffectAst::subject_verb_cast_tagged(
-                    crate::tag::TagRef::of(match_tag.clone()),
-                    clause.caster,
-                    false,
-                    false,
-                    false,
-                    None,
-                )
-                .with_cast_tagged_alternative_payment(
-                    ironsmith_core::CastTaggedAlternativePayment::EnergyEqualToManaValue,
-                )],
+                effects: vec![
+                    EffectAst::subject_verb_cast_tagged(
+                        crate::tag::TagRef::of(match_tag.clone()),
+                        clause.caster,
+                        false,
+                        false,
+                        false,
+                        None,
+                    )
+                    .with_cast_tagged_alternative_payment(
+                        ironsmith_core::CastTaggedAlternativePayment::EnergyEqualToManaValue,
+                    ),
+                ],
             })]
         }
     };

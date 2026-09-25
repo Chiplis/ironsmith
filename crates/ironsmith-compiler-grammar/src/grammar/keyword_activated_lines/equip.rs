@@ -131,8 +131,12 @@ fn parse_equip_qualifier_lexed<'a>(
     // (or before) a subtype list. "Equip worthy {1}" (Mjölnir, Hammer of
     // Thor): a legendary non-Villain creature that's red and/or white.
     let worthy = opt(primitives::kw("worthy")).parse_next(input)?.is_some();
-    let legendary = opt(primitives::kw("legendary")).parse_next(input)?.is_some();
-    let commander = opt(primitives::kw("commander")).parse_next(input)?.is_some();
+    let legendary = opt(primitives::kw("legendary"))
+        .parse_next(input)?
+        .is_some();
+    let commander = opt(primitives::kw("commander"))
+        .parse_next(input)?
+        .is_some();
     let mut subtypes = Vec::new();
     if let Some(first) = opt(parse_equip_subtype_lexed).parse_next(input)? {
         let trailing: Vec<Subtype> = repeat(
@@ -160,7 +164,10 @@ fn parse_equip_qualifier_lexed<'a>(
     opt(primitives::kw("creature")).parse_next(input)?;
     eof.parse_next(input)?;
     if subtypes.is_empty() && !legendary && !commander && !worthy {
-        return Err(primitives::backtrack_err("equip qualifier", "a subtype or qualifier"));
+        return Err(primitives::backtrack_err(
+            "equip qualifier",
+            "a subtype or qualifier",
+        ));
     }
     Ok((subtypes, legendary, commander, worthy))
 }

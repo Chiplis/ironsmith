@@ -1314,8 +1314,8 @@ const PUT_INTO_YOUR_GRAVEYARD_FROM_BATTLEFIELD_SUFFIXES: &[TriggerSuffixShape] =
         8,
     ),
 ];
-const CAUSED_PUT_INTO_YOUR_GRAVEYARD_FROM_BATTLEFIELD_SUFFIXES: &[TriggerSuffixShape] = &[
-    trigger_suffix_shape(
+const CAUSED_PUT_INTO_YOUR_GRAVEYARD_FROM_BATTLEFIELD_SUFFIXES: &[TriggerSuffixShape] =
+    &[trigger_suffix_shape(
         clause_shape!(
             suffix
                 & [
@@ -1331,8 +1331,7 @@ const CAUSED_PUT_INTO_YOUR_GRAVEYARD_FROM_BATTLEFIELD_SUFFIXES: &[TriggerSuffixS
                 ]
         ),
         9,
-    ),
-];
+    )];
 const PUT_INTO_GRAVEYARD_FROM_BATTLEFIELD_SUFFIXES: &[TriggerSuffixShape] = &[
     trigger_suffix_shape(
         clause_shape!(suffix & ["is", "put", "into", "graveyard", "from", "battlefield"]),
@@ -2676,10 +2675,15 @@ fn try_parse_player_plays_card_lexed(
     raw_tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggerSpec>, CardTextError> {
     let tokens = strip_leading_trigger_intro(raw_tokens);
-    let Some(play) = tokens.iter().position(|token| token.is_any_word(&["play", "plays"])) else {
+    let Some(play) = tokens
+        .iter()
+        .position(|token| token.is_any_word(&["play", "plays"]))
+    else {
         return Ok(None);
     };
-    let Some(player) = parse_trigger_subject_player_filter(&crate::lexer::token_word_refs(&tokens[..play])) else {
+    let Some(player) =
+        parse_trigger_subject_player_filter(&crate::lexer::token_word_refs(&tokens[..play]))
+    else {
         return Ok(None);
     };
     let object = &tokens[play + 1..];
@@ -2689,19 +2693,22 @@ fn try_parse_player_plays_card_lexed(
         return Ok(None);
     }
     let filter = parse_object_filter_lexed(object, false)?;
-    Ok(Some(apply_leading_trigger_intro_surface(TriggerSpec::AnyOf(vec![
-        TriggerSpec::SpellCast {
-            filter: Some(filter.clone()),
-            mana_source_filter: None,
-            caster: player.clone(),
-            timing: None,
-            during_turn: None,
-            min_spells_this_turn: None,
-            exact_spells_this_turn: None,
-            from_not_hand: false,
-        },
-        TriggerSpec::PlayerPlaysLand { player, filter },
-    ]), raw_tokens)))
+    Ok(Some(apply_leading_trigger_intro_surface(
+        TriggerSpec::AnyOf(vec![
+            TriggerSpec::SpellCast {
+                filter: Some(filter.clone()),
+                mana_source_filter: None,
+                caster: player.clone(),
+                timing: None,
+                during_turn: None,
+                min_spells_this_turn: None,
+                exact_spells_this_turn: None,
+                from_not_hand: false,
+            },
+            TriggerSpec::PlayerPlaysLand { player, filter },
+        ]),
+        raw_tokens,
+    )))
 }
 
 /// Split a shared-subject "or" only for verbs without a dedicated union

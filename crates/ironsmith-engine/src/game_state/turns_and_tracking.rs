@@ -873,7 +873,9 @@ impl GameState {
             choices
                 .chosen_land_types
                 .retain(|source, _| !removed_ids.contains(source));
-            choices.secret_chosen_subtypes.retain(|source, _| !removed_ids.contains(source));
+            choices
+                .secret_chosen_subtypes
+                .retain(|source, _| !removed_ids.contains(source));
             choices
                 .chosen_creature_types
                 .retain(|source, _| !removed_ids.contains(source));
@@ -985,7 +987,9 @@ impl GameState {
 
         if let Some(combat) = self.combat.as_mut() {
             combat.remember_blocked_attackers();
-            combat.blocked_attackers.retain(|attacker| !removed_ids.contains(attacker));
+            combat
+                .blocked_attackers
+                .retain(|attacker| !removed_ids.contains(attacker));
             combat
                 .attackers
                 .retain(|attacker| !removed_ids.contains(&attacker.creature));
@@ -1918,7 +1922,11 @@ impl GameState {
 
     /// Record that a triggered ability's "Do this only once each turn"
     /// instruction was performed.
-    pub fn record_do_this_action(&mut self, source_object_id: ObjectId, trigger_id: TriggerIdentity) {
+    pub fn record_do_this_action(
+        &mut self,
+        source_object_id: ObjectId,
+        trigger_id: TriggerIdentity,
+    ) {
         *self
             .turn_store
             .turn_history
@@ -2146,7 +2154,8 @@ impl GameState {
     /// Records that an activated ability was used.
     /// Used for OncePerTurn timing restrictions.
     pub fn record_ability_activation(&mut self, source: ObjectId, ability_index: usize) {
-        let origin = self.current_characteristics(source)
+        let origin = self
+            .current_characteristics(source)
             .and_then(|chars| chars.abilities.origin(ability_index).cloned());
         self.record_ability_activation_with_origin(source, ability_index, origin);
     }
@@ -2158,7 +2167,11 @@ impl GameState {
         origin: Option<crate::continuous::AbilityOrigin>,
     ) {
         if let Some(origin) = origin {
-            let total = self.turn_store.ability_activations_per_object.entry((source, origin)).or_default();
+            let total = self
+                .turn_store
+                .ability_activations_per_object
+                .entry((source, origin))
+                .or_default();
             *total = total.saturating_add(1);
         }
         let exhaust_controller = self.object(source).and_then(|object| {
@@ -2414,7 +2427,8 @@ impl GameState {
     }
 
     pub fn set_next_stack_ability_id_counter(&mut self, next: u64) {
-        self.effect_store.next_stack_ability_id = next.max(crate::game_state::STACK_ABILITY_ID_BASE);
+        self.effect_store.next_stack_ability_id =
+            next.max(crate::game_state::STACK_ABILITY_ID_BASE);
     }
 
     /// The ability on the stack a target id names, if it names one by its
@@ -2442,7 +2456,10 @@ impl GameState {
     /// its own [`StackEntry::ability_id`], a spell by its object id.
     pub fn stack_entry_index_for_target(&self, id: ObjectId) -> Option<usize> {
         if id.0 >= crate::game_state::STACK_ABILITY_ID_BASE
-            && let Some(index) = self.stack.iter().position(|entry| entry.ability_id == Some(id))
+            && let Some(index) = self
+                .stack
+                .iter()
+                .position(|entry| entry.ability_id == Some(id))
         {
             return Some(index);
         }
@@ -2644,7 +2661,8 @@ impl GameState {
             && let Some(source_obj) = self.object(source_id)
         {
             tagged_objects.extend(source_obj.cast_tagged_objects.clone());
-            let source_exiled = self.get_exiled_with_source_links(source_id)
+            let source_exiled = self
+                .get_exiled_with_source_links(source_id)
                 .iter()
                 .filter_map(|id| self.object(*id))
                 .filter(|object| object.zone == crate::zone::Zone::Exile)

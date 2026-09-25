@@ -724,7 +724,9 @@ fn parse_terminal_where_x_binding(tokens: &[OwnedLexToken]) -> Option<(Vec<Owned
     let view = TokenWordView::new(tokens);
     let where_word = view.parse_phrase_start(&["where", "x", "is"])?;
     let where_index = view.map_word_to_token_start(where_word)?;
-    if shape.followup_tokens.is_none() && has_explicit_comma_then_boundary_lexed(&tokens[where_index..]) {
+    if shape.followup_tokens.is_none()
+        && has_explicit_comma_then_boundary_lexed(&tokens[where_index..])
+    {
         return None;
     }
     let leading_tokens = trim_lexed_commas(&tokens[..where_index]);

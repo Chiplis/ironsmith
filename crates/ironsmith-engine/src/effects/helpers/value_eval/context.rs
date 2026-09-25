@@ -156,7 +156,10 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
         // final attachment set, including Auras that have since left play.
         // Unions retain this meaning only when every arm has that relation.
         fn requires_source_attachment(filter: &ObjectFilter) -> bool {
-            filter.attached_to_object.as_ref().is_some_and(|host| host.source)
+            filter
+                .attached_to_object
+                .as_ref()
+                .is_some_and(|host| host.source)
                 || (!filter.any_of.is_empty()
                     && filter.any_of.iter().all(requires_source_attachment))
         }
@@ -166,7 +169,9 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                 object.id != snapshot.object_id || object.zone != snapshot.zone
             })
         {
-            return snapshot.attachment_snapshots.iter()
+            return snapshot
+                .attachment_snapshots
+                .iter()
                 .filter(|attachment| filter.matches_snapshot(attachment, &filter_ctx, self.game))
                 .count() as i32;
         }
@@ -290,8 +295,12 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                         visit(match property {
                             NumericProperty::Power => snapshot.power,
                             NumericProperty::Toughness => snapshot.toughness,
-                            NumericProperty::ManaValue => NumericProperty::ManaValue.snapshot(snapshot),
-                            NumericProperty::ManaSpent => Some(snapshot.mana_spent_to_cast.total() as i32),
+                            NumericProperty::ManaValue => {
+                                NumericProperty::ManaValue.snapshot(snapshot)
+                            }
+                            NumericProperty::ManaSpent => {
+                                Some(snapshot.mana_spent_to_cast.total() as i32)
+                            }
                             NumericProperty::ColorCount => Some(snapshot.colors.count() as i32),
                         });
                     }
@@ -312,7 +321,9 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                                 .calculated_toughness(id)
                                 .or_else(|| object.toughness()),
                             NumericProperty::ManaValue => NumericProperty::ManaValue.raw(object),
-                            NumericProperty::ManaSpent => Some(object.mana_spent_to_cast.total() as i32),
+                            NumericProperty::ManaSpent => {
+                                Some(object.mana_spent_to_cast.total() as i32)
+                            }
                             NumericProperty::ColorCount => Some(object.colors().count() as i32),
                         });
                     }

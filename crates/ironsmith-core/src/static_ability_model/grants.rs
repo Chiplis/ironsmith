@@ -253,7 +253,10 @@ impl<T, E, C, Cond, ICond> GrantObjectAbilityForFilter<T, E, C, Cond, ICond> {
     }
 
     /// A grant that renders the granted ability's own text.
-    pub fn from_static_grant(filter: ObjectFilter, ability: AbilityModel<T, E, C, Cond, ICond>) -> Self {
+    pub fn from_static_grant(
+        filter: ObjectFilter,
+        ability: AbilityModel<T, E, C, Cond, ICond>,
+    ) -> Self {
         Self {
             derived_ability_display: true,
             ..Self::new(filter, ability, String::new())

@@ -337,7 +337,9 @@ fn strip_per_blocking_creature_tail(tokens: &[OwnedLexToken]) -> &[OwnedLexToken
             ["for", "each", "of", "those", "creatures"]
                 | ["for", "each", "blocking", "creature", "they", "control"]
                 | ["for", "each", "blocking", "creature"]
-                | ["for", "each", "creature", "they", "control", "that's", "blocking", "it"]
+                | [
+                    "for", "each", "creature", "they", "control", "that's", "blocking", "it"
+                ]
         ) {
             return &tokens[..index];
         }
@@ -365,21 +367,36 @@ fn block_cost_static_ability(
     };
 
     let subject_words = crate::lexer::token_word_refs(&tokens[..cant_index]);
-    let action_words = crate::lexer::token_word_refs(
-        trim_edge_punctuation_tokens(&tokens[cant_index + 1..unless_index]),
-    );
+    let action_words = crate::lexer::token_word_refs(trim_edge_punctuation_tokens(
+        &tokens[cant_index + 1..unless_index],
+    ));
     // Passive wording taxes the blockers of the described attacker. The
     // cost engine already charges each declared blocker and its controller.
     if action_words == ["be", "blocked"]
-        && matches!(subject_words.as_slice(), ["enchanted", "creature"] | ["equipped", "creature"] | ["this", "creature"])
+        && matches!(
+            subject_words.as_slice(),
+            ["enchanted", "creature"] | ["equipped", "creature"] | ["this", "creature"]
+        )
     {
         let payment = trim_edge_punctuation_tokens(&tokens[unless_index + 1..]);
-        let Some(pay) = payment.iter().position(|token| token.is_word("pays")) else { return Ok(None); };
+        let Some(pay) = payment.iter().position(|token| token.is_word("pays")) else {
+            return Ok(None);
+        };
         let payer = crate::lexer::token_word_refs(&payment[..pay]);
-        if !matches!(payer.as_slice(), ["defending", "player"] | ["the", "defending", "player"]) { return Ok(None); }
-        let cost_tokens = strip_per_blocking_creature_tail(trim_edge_punctuation_tokens(&payment[pay + 1..]));
-        if cost_tokens.len() == payment[pay + 1..].len() { return Ok(None); }
-        let Some(cost) = parse_payment_clause_as_total_cost(cost_tokens)? else { return Ok(None); };
+        if !matches!(
+            payer.as_slice(),
+            ["defending", "player"] | ["the", "defending", "player"]
+        ) {
+            return Ok(None);
+        }
+        let cost_tokens =
+            strip_per_blocking_creature_tail(trim_edge_punctuation_tokens(&payment[pay + 1..]));
+        if cost_tokens.len() == payment[pay + 1..].len() {
+            return Ok(None);
+        }
+        let Some(cost) = parse_payment_clause_as_total_cost(cost_tokens)? else {
+            return Ok(None);
+        };
         let attackers = if subject_words[0] == "this" {
             ObjectFilter::source()
         } else {
@@ -388,7 +405,10 @@ fn block_cost_static_ability(
             filter
         };
         return Ok(Some(StaticAbility::block_cost(
-            ObjectFilter::creature(), attackers, cost, format_negated_restriction_display(tokens),
+            ObjectFilter::creature(),
+            attackers,
+            cost,
+            format_negated_restriction_display(tokens),
         )));
     }
     let (blockers, blocker_is_attached_to_source) =
@@ -638,10 +658,25 @@ mod cant_clause_readings;
 pub fn parse_cant_clauses(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
-    if crate::word_primitives::parse_choice_sequence_complete(&crate::lexer::token_word_refs(tokens), &[
-        &["spells"], &["and"], &["abilities"], &["your"], &["opponents"], &["control"], &["cant", "can't"],
-        &["cause"], &["their"], &["controller"], &["to"], &["search"], &["their"], &["library"],
-    ]) {
+    if crate::word_primitives::parse_choice_sequence_complete(
+        &crate::lexer::token_word_refs(tokens),
+        &[
+            &["spells"],
+            &["and"],
+            &["abilities"],
+            &["your"],
+            &["opponents"],
+            &["control"],
+            &["cant", "can't"],
+            &["cause"],
+            &["their"],
+            &["controller"],
+            &["to"],
+            &["search"],
+            &["their"],
+            &["library"],
+        ],
+    ) {
         return Ok(Some(vec![StaticAbility::restriction(
             crate::effect::Restriction::SearchOwnLibraryFromOwnEffects(PlayerFilter::Opponent),
             "Spells and abilities your opponents control can't cause their controller to search their library".to_owned(),

@@ -992,7 +992,10 @@ fn parse_put_counter_choice_lexed<'a>(
         .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(PutCounterChoiceShape {
-        counter_types: modes.iter().map(|(counter_type, _)| *counter_type).collect(),
+        counter_types: modes
+            .iter()
+            .map(|(counter_type, _)| *counter_type)
+            .collect(),
         counter_counts: modes.iter().map(|(_, count)| *count).collect(),
         target_tokens,
     })

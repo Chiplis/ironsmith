@@ -746,8 +746,18 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
         Value::X => ("{X}".to_string(), None),
         Value::PlayerCounters(player, counter) => {
             let subject = player.description();
-            let verb = if *player == PlayerFilter::You { "have" } else { "has" };
-            ("{1}".to_string(), Some(format!("for each {} counter {subject} {verb}", counter.description())))
+            let verb = if *player == PlayerFilter::You {
+                "have"
+            } else {
+                "has"
+            };
+            (
+                "{1}".to_string(),
+                Some(format!(
+                    "for each {} counter {subject} {verb}",
+                    counter.description()
+                )),
+            )
         }
         Value::PowerOf(_) | Value::ToughnessOf(_) | Value::ManaValueOf(_) => (
             "{X}".to_string(),
@@ -1253,29 +1263,43 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
     // A disjunction of otherwise-unqualified spell origins shares the outer
     // spell characteristics and caster. Render those facts once.
     if filter.zone.is_none() && !filter.any_of.is_empty() {
-        let origins: Option<Vec<String>> = filter.any_of.iter().map(|branch| {
-            let zone = branch.zone?;
-            if *branch != ObjectFilter::spell().in_zone(zone) { return None; }
-            let zone = match zone {
-                Zone::Graveyard => "graveyards",
-                Zone::Exile => "exile",
-                Zone::Hand => "hands",
-                Zone::Library => "libraries",
-                Zone::Command => "the command zone",
-                Zone::Battlefield => "the battlefield",
-                Zone::Ante => "ante",
-                Zone::OutsideGame => "outside the game",
-                Zone::Stack => return None,
-            };
-            Some(format!("from {zone}"))
-        }).collect();
+        let origins: Option<Vec<String>> = filter
+            .any_of
+            .iter()
+            .map(|branch| {
+                let zone = branch.zone?;
+                if *branch != ObjectFilter::spell().in_zone(zone) {
+                    return None;
+                }
+                let zone = match zone {
+                    Zone::Graveyard => "graveyards",
+                    Zone::Exile => "exile",
+                    Zone::Hand => "hands",
+                    Zone::Library => "libraries",
+                    Zone::Command => "the command zone",
+                    Zone::Battlefield => "the battlefield",
+                    Zone::Ante => "ante",
+                    Zone::OutsideGame => "outside the game",
+                    Zone::Stack => return None,
+                };
+                Some(format!("from {zone}"))
+            })
+            .collect();
         if let Some(origins) = origins {
             let mut common = filter.clone();
             common.any_of.clear();
-            return format!("{} {}", describe_spell_filter(&common), join_with_or(&origins));
+            return format!(
+                "{} {}",
+                describe_spell_filter(&common),
+                join_with_or(&origins)
+            );
         }
     }
-    if filter.ability_markers.iter().any(|marker| marker == "kicked") {
+    if filter
+        .ability_markers
+        .iter()
+        .any(|marker| marker == "kicked")
+    {
         let mut base = filter.clone();
         base.ability_markers.retain(|marker| marker != "kicked");
         return format!("kicked {}", describe_spell_filter(&base));

@@ -387,9 +387,8 @@ fn spell_put_from_among(
         // of the entry event (CR 122.6), so mark them for entry fusion.
         chosen_effects.push(EffectAst::subject_verb_put_counters(
             counter_type,
-            Value::Fixed(amount as i32).with_surface_hint(
-                ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter,
-            ),
+            Value::Fixed(amount as i32)
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter),
             it(),
             None,
             false,

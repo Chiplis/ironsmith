@@ -79,14 +79,15 @@ fn parse_tapped_for_amount_mana_replacement<'a>(
         primitives::kw("an"),
     )))
     .parse_next(input)?;
-    let source_tokens: &'a [OwnedLexToken] = winnow::combinator::repeat_till::<_, _, (), _, _, _, _>(
-        1..,
-        winnow::token::any.void(),
-        winnow::combinator::peek(primitives::phrase(&["is", "tapped", "for"])),
-    )
-    .map(|((), _)| ())
-    .take()
-    .parse_next(input)?;
+    let source_tokens: &'a [OwnedLexToken] =
+        winnow::combinator::repeat_till::<_, _, (), _, _, _, _>(
+            1..,
+            winnow::token::any.void(),
+            winnow::combinator::peek(primitives::phrase(&["is", "tapped", "for"])),
+        )
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
     primitives::phrase(&["is", "tapped", "for"]).parse_next(input)?;
     let minimum_amount = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
     primitives::phrase(&["or", "more", "mana"]).parse_next(input)?;

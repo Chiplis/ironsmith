@@ -1402,7 +1402,9 @@ fn source_sentence_for_each_player_effects_mut(
     match effect {
         EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) => Some(effects),
         EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
-            filter: crate::filter::PlayerFilter::Any, effects, ..
+            filter: crate::filter::PlayerFilter::Any,
+            effects,
+            ..
         }) => Some(effects),
         EffectAst::SourceSentence { effects, .. } => {
             let [effect] = effects.as_mut_slice() else {
@@ -1657,7 +1659,12 @@ fn bind_drawn_cards_to_reveal(draw: &mut EffectAst, reveal: &mut EffectAst) -> b
     // in the same ability simply rebinds it.
     let drawn = ironsmith_compiler_semantic::tag::sentence_helper_tag("revealed", 0, 1, 0);
     *tag = drawn.clone();
-    let inner = std::mem::replace(draw, EffectAst::Sequence { effects: Vec::new() });
+    let inner = std::mem::replace(
+        draw,
+        EffectAst::Sequence {
+            effects: Vec::new(),
+        },
+    );
     *draw = EffectAst::TagAffected {
         effect: Box::new(inner),
         tag: drawn,
@@ -2723,8 +2730,11 @@ mod tests {
                 ..
             })]
         ));
-        assert_eq!(normalize_effects_ast(&normalized), normalized,
-            "normalizing an existing optional loop must preserve its continuation index");
+        assert_eq!(
+            normalize_effects_ast(&normalized),
+            normalized,
+            "normalizing an existing optional loop must preserve its continuation index"
+        );
         for tail in [
             EffectAst::Permissions(PermissionEffectAst::May {
                 effects: vec![effects.last().unwrap().clone()],
@@ -2736,8 +2746,11 @@ mod tests {
         ] {
             let mut wrapped = effects.clone();
             *wrapped.last_mut().unwrap() = tail;
-            assert_eq!(normalize_effects_ast(&wrapped), normalized,
-                "the generic optional wrapper must not hide the loop or add a second prompt");
+            assert_eq!(
+                normalize_effects_ast(&wrapped),
+                normalized,
+                "the generic optional wrapper must not hide the loop or add a second prompt"
+            );
         }
     }
 

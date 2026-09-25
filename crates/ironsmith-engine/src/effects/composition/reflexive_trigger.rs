@@ -101,7 +101,10 @@ fn choose_reflexive_targets(
     game: &GameState,
     ctx: &mut ExecutionContext,
     choices: &[ChooseSpec],
-) -> Option<(Vec<crate::game_state::Target>, Vec<crate::game_state::TargetAssignment>)> {
+) -> Option<(
+    Vec<crate::game_state::Target>,
+    Vec<crate::game_state::TargetAssignment>,
+)> {
     let mut chosen_targets = Vec::new();
     let mut assignments = Vec::new();
 
@@ -109,13 +112,20 @@ fn choose_reflexive_targets(
         let resolved_spec = resolve_reflexive_choice_spec(game, ctx, spec)?;
         let count = resolved_spec.count();
         let legal_targets = crate::targeting::compute_legal_targets_with_execution_context(
-            game, &resolved_spec, ctx,
+            game,
+            &resolved_spec,
+            ctx,
         );
         let legal_target_sets =
             crate::targeting::legal_target_sets_for_spec(game, &resolved_spec, &legal_targets);
-        let aggregate_constraint = crate::targeting::resolved_target_aggregate_constraint_with_context(
-            game, &resolved_spec, ctx, &legal_targets,
-        ).ok()?;
+        let aggregate_constraint =
+            crate::targeting::resolved_target_aggregate_constraint_with_context(
+                game,
+                &resolved_spec,
+                ctx,
+                &legal_targets,
+            )
+            .ok()?;
         if !crate::targeting::has_enough_legal_targets_for_spec(
             game,
             &resolved_spec,
@@ -216,7 +226,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             transform_count: 0,
             attached_to: None,
             attachments: Vec::new(),
-        attachment_snapshots: Vec::new(),
+            attachment_snapshots: Vec::new(),
             was_enchanted: false,
             is_monstrous: false,
             is_prepared: false,
@@ -305,12 +315,15 @@ impl EffectExecutor for ReflexiveTriggerEffect {
         // X chosen while paying for the antecedent belongs to this follow-up,
         // even when the enclosing spell/ability had no X (or a different X).
         let parent_x = ctx.x_value;
-        let reflexive_x = outcome.execution_facts().iter().rev().find_map(|fact| {
-            match fact {
+        let reflexive_x = outcome
+            .execution_facts()
+            .iter()
+            .rev()
+            .find_map(|fact| match fact {
                 crate::effect::ExecutionFact::ManaPaid { x_value } => Some(*x_value),
                 _ => None,
-            }
-        }).or(parent_x);
+            })
+            .or(parent_x);
         let mut tagged_objects = ctx.tagged_objects.clone();
         let it_tag = TagKey::from("__it__");
         if !tagged_objects.contains_key(&it_tag) && !fallback_it_snapshots.is_empty() {
@@ -344,7 +357,11 @@ impl EffectExecutor for ReflexiveTriggerEffect {
                     }),
                 )
             } else if let Some(snapshot) = ctx.source_snapshot.clone() {
-                (snapshot.stable_id, snapshot.name.to_string(), Some(snapshot))
+                (
+                    snapshot.stable_id,
+                    snapshot.name.to_string(),
+                    Some(snapshot),
+                )
             } else {
                 (
                     crate::ids::StableId::from(ctx.source),
@@ -601,7 +618,8 @@ mod tests {
         let choices =
             vec![ChooseSpec::target(ChooseSpec::creature()).with_count(ChoiceCount::exactly(2))];
 
-        let (selected, _) = choose_reflexive_targets(&game, &mut ctx, &choices).expect("valid targets");
+        let (selected, _) =
+            choose_reflexive_targets(&game, &mut ctx, &choices).expect("valid targets");
 
         assert_eq!(selected.len(), 2);
         assert_eq!(selected[0], Target::Object(first));

@@ -227,7 +227,8 @@ fn cohort_searched_permanent_gets_haste_and_is_exiled_by_delayed_trigger() {
         .card_types(vec![CardType::Creature])
         .subtypes(vec![crate::types::Subtype::Dragon])
         .power_toughness(crate::card::PowerToughness::fixed(5, 5))
-        .parse_text("Shroud").unwrap();
+        .parse_text("Shroud")
+        .unwrap();
     game.create_object_from_definition(&dragon, alice, Zone::Library);
     let crate::ability::AbilityKind::Activated(ability) = &card.abilities[0].kind else {
         panic!("activated")

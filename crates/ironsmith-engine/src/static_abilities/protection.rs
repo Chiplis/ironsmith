@@ -116,7 +116,9 @@ impl StaticAbilityKind for Protection {
         controller: crate::ids::PlayerId,
     ) -> Option<crate::replacement::ReplacementEffect> {
         Some(crate::replacement::ReplacementEffect::with_matcher(
-            source, controller, ProtectionDamageMatcher(self.from.clone()),
+            source,
+            controller,
+            ProtectionDamageMatcher(self.from.clone()),
             crate::replacement::ReplacementAction::PreventDamage,
         ))
     }
@@ -134,19 +136,39 @@ impl StaticAbilityKind for Protection {
 struct ProtectionDamageMatcher(ProtectionFrom);
 
 impl crate::events::traits::ReplacementMatcher for ProtectionDamageMatcher {
-    fn matches_event(&self, event: &dyn crate::events::traits::GameEventType, ctx: &crate::events::context::EventContext) -> bool {
-        let Some(damage) = crate::events::downcast_event::<crate::events::DamageEvent>(event) else { return false; };
-        let crate::events::DamageTarget::Object(target) = damage.target else { return false; };
-        if ctx.source != Some(target) || damage.amount == 0 { return false; }
+    fn matches_event(
+        &self,
+        event: &dyn crate::events::traits::GameEventType,
+        ctx: &crate::events::context::EventContext,
+    ) -> bool {
+        let Some(damage) = crate::events::downcast_event::<crate::events::DamageEvent>(event)
+        else {
+            return false;
+        };
+        let crate::events::DamageTarget::Object(target) = damage.target else {
+            return false;
+        };
+        if ctx.source != Some(target) || damage.amount == 0 {
+            return false;
+        }
         let subject = if let Some(object) = ctx.game.object(damage.source) {
             crate::filter::ObjectSubject::Live(object)
-        } else if let Some(snapshot) = ctx.event_source_snapshot.filter(|snapshot| snapshot.object_id == damage.source) {
+        } else if let Some(snapshot) = ctx
+            .event_source_snapshot
+            .filter(|snapshot| snapshot.object_id == damage.source)
+        {
             crate::filter::ObjectSubject::Snapshot(snapshot)
-        } else { return false; };
+        } else {
+            return false;
+        };
         let view = crate::derived_view::DerivedGameView::new(ctx.game);
-        crate::targeting::protection_from_subject_with_view(ctx.game, target, subject, &self.0, &view)
+        crate::targeting::protection_from_subject_with_view(
+            ctx.game, target, subject, &self.0, &view,
+        )
     }
-    fn display(&self) -> String { "Prevent damage from sources matching protection".into() }
+    fn display(&self) -> String {
+        "Prevent damage from sources matching protection".into()
+    }
 }
 
 pub(crate) fn describe_protection_mana_value_scope(filter: &ObjectFilter) -> String {

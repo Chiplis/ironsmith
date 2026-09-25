@@ -4048,7 +4048,10 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes { target, include_source: true }),
+            SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes {
+                target,
+                include_source: true,
+            }),
         )
     }
 
@@ -4056,7 +4059,10 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes { target, include_source: false }),
+            SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes {
+                target,
+                include_source: false,
+            }),
         )
     }
 
@@ -4142,7 +4148,10 @@ impl EffectAst {
         )
     }
 
-    pub fn subject_verb_free_cast_next_spell_this_turn(player: PlayerAst, filter: ObjectFilter) -> Self {
+    pub fn subject_verb_free_cast_next_spell_this_turn(
+        player: PlayerAst,
+        filter: ObjectFilter,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -4660,12 +4669,21 @@ impl EffectAst {
         )
     }
 
-    pub fn subject_verb_choose_subtype_options(player: PlayerAst, options: Vec<Subtype>, secretly: bool) -> Self {
-        Self::subject_verb(SubjectVerbRoleAst::Chooser, player,
+    pub fn subject_verb_choose_subtype_options(
+        player: PlayerAst,
+        options: Vec<Subtype>,
+        secretly: bool,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Chooser,
+            player,
             SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType {
-                allowed_subtypes: options, secretly, excluded_subtypes: Vec::new(),
+                allowed_subtypes: options,
+                secretly,
+                excluded_subtypes: Vec::new(),
                 family: SubtypeFamily::Creature,
-            }))
+            }),
+        )
     }
 
     pub fn subject_verb_choose_subtype_type(player: PlayerAst, family: SubtypeFamily) -> Self {

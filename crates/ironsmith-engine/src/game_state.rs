@@ -68,16 +68,15 @@ pub use conspiracy::{
     ConspiracyDraftState, DraftCard, DraftCardView, DraftSelection, DraftVisibility,
 };
 pub use emperor::EmperorState;
-pub use hidden_hand_choices::{
-    DepartedHiddenCard, EndOfMatchDisclosureCard, FACE_DOWN_CAST_PERMISSION_KIND,
-    FaceDownCastKind, FaceDownCastPermission, HIDDEN_IDENTITY_VIOLATION_PREFIX,
-    HiddenIdentityCheck, HiddenIdentityObligation, HiddenLibraryAnchor,
-    PendingAutomaticDrawReveal,
-};
 pub use free_for_all::{FreeForAllAttackOption, FreeForAllState};
 pub use grand_melee::{
     GrandMeleeMarkerRestore, GrandMeleeMarkerStatus, GrandMeleeMarkerView, GrandMeleeRestore,
     GrandMeleeState,
+};
+pub use hidden_hand_choices::{
+    DepartedHiddenCard, EndOfMatchDisclosureCard, FACE_DOWN_CAST_PERMISSION_KIND, FaceDownCastKind,
+    FaceDownCastPermission, HIDDEN_IDENTITY_VIOLATION_PREFIX, HiddenIdentityCheck,
+    HiddenIdentityObligation, HiddenLibraryAnchor, PendingAutomaticDrawReveal,
 };
 pub use range_of_influence::LimitedRangeOfInfluenceState;
 use subgames::SubgameFrame;
@@ -1151,7 +1150,6 @@ struct ObjectSnapshotCache {
     entries: PersistentMap<ObjectId, Arc<ObjectSnapshot>>,
 }
 
-
 #[derive(Debug, Default)]
 struct CharacteristicsCache {
     epoch: Cell<u64>,
@@ -1803,8 +1801,9 @@ impl RestrictionEffectInstance {
                     obj.zone == Zone::Battlefield && game.controller_of(obj) == self.controller
                 })
             }
-            crate::effect::Until::ForAsLongAs(ref predicate) =>
-                crate::continuous::continuous_duration_predicate_matches(predicate, game),
+            crate::effect::Until::ForAsLongAs(ref predicate) => {
+                crate::continuous::continuous_duration_predicate_matches(predicate, game)
+            }
             _ => true,
         }
     }
@@ -1946,6 +1945,38 @@ impl CantEffectTracker {
         })
     }
 
+    /// Whether a permission to target an object "as though it didn't have
+    /// hexproof" covers `target`'s hexproof from a quality. Such a permission
+    /// also allows choosing a creature with "hexproof from [quality]", so a
+    /// permission that names creatures with hexproof counts it as one
+    /// (CR 702.11e).
+    pub fn ignores_hexproof_from_for_object(
+        &self,
+        game: &GameState,
+        target: ObjectId,
+        source_controller: PlayerId,
+    ) -> bool {
+        let Some(target_object) = game.object(target) else {
+            return false;
+        };
+        let hexproof = crate::static_abilities::StaticAbilityId::Hexproof;
+        self.targeting_as_though_overrides.iter().any(|permission| {
+            permission.ignored_ability == hexproof
+                && permission
+                    .allowed_source_controller
+                    .is_none_or(|allowed| allowed == source_controller)
+                && permission.objects.as_ref().is_some_and(|filter| {
+                    let mut filter = filter.clone();
+                    filter
+                        .static_abilities
+                        .retain(|ability| *ability != hexproof);
+                    let ctx =
+                        game.filter_context_for(permission.controller, Some(permission.source));
+                    filter.matches(target_object, &ctx, game)
+                })
+        })
+    }
+
     pub fn ignores_target_ability_for_player(
         &self,
         game: &GameState,
@@ -1969,7 +2000,8 @@ impl CantEffectTracker {
     pub fn merge(&mut self, other: CantEffectTracker) {
         self.cant_gain_life.extend(other.cant_gain_life);
         self.cant_search.extend(other.cant_search);
-        self.cant_search_own_library_from_own_effects.extend(other.cant_search_own_library_from_own_effects);
+        self.cant_search_own_library_from_own_effects
+            .extend(other.cant_search_own_library_from_own_effects);
         self.targeting_as_though_overrides
             .extend(other.targeting_as_though_overrides);
         self.cant_attack.extend(other.cant_attack);
@@ -2463,7 +2495,11 @@ impl CantEffectTracker {
             return true;
         };
 
-        self.can_target_object_from_subject(game, object, crate::filter::ObjectSubject::Live(source))
+        self.can_target_object_from_subject(
+            game,
+            object,
+            crate::filter::ObjectSubject::Live(source),
+        )
     }
 
     pub(crate) fn can_target_object_from_subject(
@@ -3666,8 +3702,16 @@ impl GameState {
     /// every event of the batch looks back at the same pre-batch sources, so a
     /// permanent leaving in the batch still sees the others leave (CR 704.3,
     /// 603.10a). `None` restores per-event look-back.
-    pub(crate) fn set_simultaneous_event_lookback(&mut self, lookback: Option<Vec<ObjectSnapshot>>) {
-        if lookback.is_none() && self.auxiliary_tracking.simultaneous_event_lookback.is_none() {
+    pub(crate) fn set_simultaneous_event_lookback(
+        &mut self,
+        lookback: Option<Vec<ObjectSnapshot>>,
+    ) {
+        if lookback.is_none()
+            && self
+                .auxiliary_tracking
+                .simultaneous_event_lookback
+                .is_none()
+        {
             return;
         }
         self.auxiliary_tracking_mut().simultaneous_event_lookback = lookback;
@@ -5707,9 +5751,7 @@ impl GameState {
     /// snapshot, which is how often goad is queried.
     fn any_goad_ability_exists(&self, goad: crate::static_abilities::StaticAbilityId) -> bool {
         use crate::continuous::Modification;
-        let is_goad_ability = |ability: &crate::ability::Ability| {
-            matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.id() == goad)
-        };
+        let is_goad_ability = |ability: &crate::ability::Ability| matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.id() == goad);
         self.battlefield
             .iter()
             .filter_map(|id| self.object(*id))
@@ -5746,26 +5788,24 @@ impl GameState {
             // so the granter counts as a goad source for this gate.
             && !self.any_goad_ability_exists(
                 crate::static_abilities::StaticAbilityId::AttachedGoadedBySourceController,
-            )
-        {
+            ) {
             Default::default()
         } else {
-            self
-            .calculated_characteristics_arc(creature)
-            .map(|chars| chars.static_abilities.clone())
-            .or_else(|| {
-                self.object(creature).map(|object| {
-                    object
-                        .abilities
-                        .iter()
-                        .filter_map(|ability| match &ability.kind {
-                            AbilityKind::Static(static_ability) => Some(static_ability.clone()),
-                            _ => None,
-                        })
-                        .collect()
+            self.calculated_characteristics_arc(creature)
+                .map(|chars| chars.static_abilities.clone())
+                .or_else(|| {
+                    self.object(creature).map(|object| {
+                        object
+                            .abilities
+                            .iter()
+                            .filter_map(|ability| match &ability.kind {
+                                AbilityKind::Static(static_ability) => Some(static_ability.clone()),
+                                _ => None,
+                            })
+                            .collect()
+                    })
                 })
-            })
-            .unwrap_or_default()
+                .unwrap_or_default()
         };
 
         if let Some(object) = self.object(creature) {
@@ -6235,7 +6275,12 @@ impl GameState {
                 }
                 let controller = self.current_controller(source_id).unwrap_or(searcher);
                 let filter_ctx = self.filter_context_for(controller, Some(source_id));
-                if crate::filter::player_filter_matches_game(player_filter, searcher, self, &filter_ctx) {
+                if crate::filter::player_filter_matches_game(
+                    player_filter,
+                    searcher,
+                    self,
+                    &filter_ctx,
+                ) {
                     let count = count as usize;
                     limit = Some(limit.map_or(count, |current| current.min(count)));
                 }
@@ -6246,7 +6291,11 @@ impl GameState {
 
     /// Restrict library-search candidates to the top cards of each searched
     /// library when a search limit applies to `searcher`.
-    pub fn restrict_library_search_candidates(&self, searcher: PlayerId, candidates: &mut Vec<ObjectId>) {
+    pub fn restrict_library_search_candidates(
+        &self,
+        searcher: PlayerId,
+        candidates: &mut Vec<ObjectId>,
+    ) {
         let Some(limit) = self.library_search_top_limit(searcher) else {
             return;
         };
@@ -6257,16 +6306,26 @@ impl GameState {
             if object.zone != Zone::Library {
                 return true;
             }
-            self.player(object.owner).is_some_and(|owner| {
-                owner.library.iter().rev().take(limit).any(|top| top == id)
-            })
+            self.player(object.owner)
+                .is_some_and(|owner| owner.library.iter().rev().take(limit).any(|top| top == id))
         });
     }
 
     /// Can the player search their library?
-    pub fn can_search_library_from_effect(&self, searcher: PlayerId, owner: PlayerId, controller: PlayerId) -> bool {
-        self.can_search_library(searcher) && !(searcher == owner && searcher == controller
-            && self.effect_store.cant_effects.cant_search_own_library_from_own_effects.contains(&searcher))
+    pub fn can_search_library_from_effect(
+        &self,
+        searcher: PlayerId,
+        owner: PlayerId,
+        controller: PlayerId,
+    ) -> bool {
+        self.can_search_library(searcher)
+            && !(searcher == owner
+                && searcher == controller
+                && self
+                    .effect_store
+                    .cant_effects
+                    .cant_search_own_library_from_own_effects
+                    .contains(&searcher))
     }
 
     pub fn can_search_library(&self, player: PlayerId) -> bool {
@@ -6435,7 +6494,9 @@ impl GameState {
     }
 
     pub fn can_prevent_damage_of_kind(&self, is_combat: bool) -> bool {
-        self.effect_store.cant_effects.can_prevent_damage_of_kind(is_combat)
+        self.effect_store
+            .cant_effects
+            .can_prevent_damage_of_kind(is_combat)
     }
 
     /// Can the permanent be destroyed?
@@ -6736,8 +6797,11 @@ impl GameState {
                 object.other_face,
             )
         {
-            object.linked_face_mana_cost =
-                other_half.card.mana_cost.clone().map(crate::object::SharedValue::from);
+            object.linked_face_mana_cost = other_half
+                .card
+                .mana_cost
+                .clone()
+                .map(crate::object::SharedValue::from);
         }
         if zone == Zone::Battlefield
             && let Some(loyalty) = object.base_loyalty
@@ -7131,22 +7195,40 @@ impl PendingTurnSkips {
         *count = count.saturating_add(1);
     }
     pub fn remove(&mut self, player: &PlayerId) -> bool {
-        let Some(count) = self.counts.get_mut(player) else { return false; };
+        let Some(count) = self.counts.get_mut(player) else {
+            return false;
+        };
         *count -= 1;
-        if *count == 0 { self.counts.remove(player); }
+        if *count == 0 {
+            self.counts.remove(player);
+        }
         true
     }
-    pub fn contains(&self, player: &PlayerId) -> bool { self.counts.contains_key(player) }
-    pub fn len(&self) -> usize { self.counts.len() }
-    pub fn is_empty(&self) -> bool { self.counts.is_empty() }
-    pub fn iter(&self) -> impl Iterator<Item = &PlayerId> { self.counts.keys() }
-    pub fn pending(&self, player: PlayerId) -> u32 { self.counts.get(&player).copied().unwrap_or(0) }
-    pub fn remove_all(&mut self, player: PlayerId) { self.counts.remove(&player); }
+    pub fn contains(&self, player: &PlayerId) -> bool {
+        self.counts.contains_key(player)
+    }
+    pub fn len(&self) -> usize {
+        self.counts.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.counts.is_empty()
+    }
+    pub fn iter(&self) -> impl Iterator<Item = &PlayerId> {
+        self.counts.keys()
+    }
+    pub fn pending(&self, player: PlayerId) -> u32 {
+        self.counts.get(&player).copied().unwrap_or(0)
+    }
+    pub fn remove_all(&mut self, player: PlayerId) {
+        self.counts.remove(&player);
+    }
 }
 impl FromIterator<PlayerId> for PendingTurnSkips {
     fn from_iter<T: IntoIterator<Item = PlayerId>>(players: T) -> Self {
         let mut schedule = Self::default();
-        for player in players { schedule.insert(player); }
+        for player in players {
+            schedule.insert(player);
+        }
         schedule
     }
 }

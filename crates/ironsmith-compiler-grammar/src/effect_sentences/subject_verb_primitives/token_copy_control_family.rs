@@ -362,7 +362,11 @@ fn may_cast_target_graveyard_card_lexed<'a>(
     let filter_tokens = repeat_till::<_, _, (), _, _, _, _>(
         1..,
         any.void(),
-        peek(crate::grammar::primitives::phrase(&["from", "your", "graveyard"])),
+        peek(crate::grammar::primitives::phrase(&[
+            "from",
+            "your",
+            "graveyard",
+        ])),
     )
     .map(|((), _)| ())
     .take()
@@ -447,10 +451,28 @@ pub fn parse_sentence_each_opponent_draws_then_you_draw_per_opponent(
     let words = crate::lexer::token_word_refs(clause.tokens());
     let (opponent_count, your_count) = match words.as_slice() {
         [
-            "each", "opponent", "draws", opponent_count, opponent_noun, "then", "you", "draw",
-            your_count, your_noun, "for", "each", "opponent", "who", "drew", "a", "card", "this",
+            "each",
+            "opponent",
+            "draws",
+            opponent_count,
+            opponent_noun,
+            "then",
+            "you",
+            "draw",
+            your_count,
+            your_noun,
+            "for",
+            "each",
+            "opponent",
+            "who",
+            "drew",
+            "a",
+            "card",
+            "this",
             "way",
-        ] if matches!(*opponent_noun, "card" | "cards") && matches!(*your_noun, "card" | "cards") => {
+        ] if matches!(*opponent_noun, "card" | "cards")
+            && matches!(*your_noun, "card" | "cards") =>
+        {
             (*opponent_count, *your_count)
         }
         _ => return Ok(None),

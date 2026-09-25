@@ -621,7 +621,16 @@ fn pre_rule_note_activation_mana_type(
     let words = crate::lexer::parser_token_word_refs(sentence_tokens);
     if words.as_slice()
         != [
-            "note", "the", "type", "of", "mana", "spent", "to", "pay", "this", "activation",
+            "note",
+            "the",
+            "type",
+            "of",
+            "mana",
+            "spent",
+            "to",
+            "pay",
+            "this",
+            "activation",
             "cost",
         ]
     {
@@ -735,8 +744,12 @@ fn pre_rule_resolves_despite_illegal_targets(
     let matches = crate::word_primitives::strip_any_prefix(
         &words,
         &[
-            &["this", "ability", "still", "resolves", "if", "its", "target", "becomes", "illegal"],
-            &["this", "ability", "still", "resolves", "if", "its", "targets", "become", "illegal"],
+            &[
+                "this", "ability", "still", "resolves", "if", "its", "target", "becomes", "illegal",
+            ],
+            &[
+                "this", "ability", "still", "resolves", "if", "its", "targets", "become", "illegal",
+            ],
         ],
     )
     .is_some_and(|(_, rest)| rest.is_empty());
@@ -859,10 +872,23 @@ fn pre_rule_search_exiled_cards_owner(
     let words = words.strip_prefix(&["then"]).unwrap_or(&words);
     if !words.starts_with(&["search", "its", "owners"])
         && !words.starts_with(&["search", "its", "owner's"])
-    { return Ok(None); }
-    if !words.windows(3).any(|words| words == ["with", "that", "name"]) { return Ok(None); }
-    let Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. })) = state.effects.last_mut() else { return Ok(None); };
-    if !tag_latest_prior_exile(if_true) { return Ok(None); }
+    {
+        return Ok(None);
+    }
+    if !words
+        .windows(3)
+        .any(|words| words == ["with", "that", "name"])
+    {
+        return Ok(None);
+    }
+    let Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. })) =
+        state.effects.last_mut()
+    else {
+        return Ok(None);
+    };
+    if !tag_latest_prior_exile(if_true) {
+        return Ok(None);
+    }
     let mut combined = sentence_tokens.to_vec();
     let mut consumed = 1;
     if let Some(next) = sentences.get(sentence_idx + 1) {
@@ -876,9 +902,18 @@ fn pre_rule_search_exiled_cards_owner(
     let mut effects = parse_effect_sentences_lexed(&combined)?;
     fn bind_name(effects: &mut [EffectAst]) {
         for effect in effects {
-            if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { filter, .. }) = effect {
-                if matches!(filter.owner, Some(PlayerFilter::OwnerOf(crate::target::ObjectRef::Target))) {
-                    filter.owner = Some(PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(crate::tag::CompilerReferenceTag::PriorExiledCard.key())));
+            if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                filter,
+                ..
+            }) = effect
+            {
+                if matches!(
+                    filter.owner,
+                    Some(PlayerFilter::OwnerOf(crate::target::ObjectRef::Target))
+                ) {
+                    filter.owner = Some(PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(
+                        crate::tag::CompilerReferenceTag::PriorExiledCard.key(),
+                    )));
                 }
                 for constraint in &mut filter.tagged_constraints {
                     if constraint.tag == crate::tag::CompilerReferenceTag::ChosenName.key() {
@@ -891,7 +926,8 @@ fn pre_rule_search_exiled_cards_owner(
     }
     bind_name(&mut effects);
     if_true.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-        tag: crate::tag::CompilerReferenceTag::PriorExiledCard.bind(), effects,
+        tag: crate::tag::CompilerReferenceTag::PriorExiledCard.bind(),
+        effects,
     }));
     Ok(Some(PreParseFollowupResult::Handled {
         consumed_sentences: consumed,
@@ -1479,26 +1515,101 @@ fn pre_rule_permission_payment_followup(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
     let words = crate::lexer::parser_token_word_refs(tokens);
-    let Some(tail) = words.strip_prefix(&["if", "you", "cast", "a", "spell", "this", "way"]) else { return Ok(None); };
-    let life = tail == ["pay", "life", "equal", "to", "its", "mana", "value", "rather", "than", "pay", "its", "mana", "cost"];
+    let Some(tail) = words.strip_prefix(&["if", "you", "cast", "a", "spell", "this", "way"]) else {
+        return Ok(None);
+    };
+    let life = tail
+        == [
+            "pay", "life", "equal", "to", "its", "mana", "value", "rather", "than", "pay", "its",
+            "mana", "cost",
+        ];
     let mode = match tail {
-        ["you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any", "type", "to", "cast", "it"] => Some(ironsmith_core::value_model::ManaSpendMode::AnyType),
-        ["you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any", "color", "to", "cast", "it"] => Some(ironsmith_core::value_model::ManaSpendMode::AnyColor),
+        [
+            "you",
+            "may",
+            "spend",
+            "mana",
+            "as",
+            "though",
+            "it",
+            "were",
+            "mana",
+            "of",
+            "any",
+            "type",
+            "to",
+            "cast",
+            "it",
+        ] => Some(ironsmith_core::value_model::ManaSpendMode::AnyType),
+        [
+            "you",
+            "may",
+            "spend",
+            "mana",
+            "as",
+            "though",
+            "it",
+            "were",
+            "mana",
+            "of",
+            "any",
+            "color",
+            "to",
+            "cast",
+            "it",
+        ] => Some(ironsmith_core::value_model::ManaSpendMode::AnyColor),
         _ => None,
     };
-    if !life && mode.is_none() { return Ok(None); }
-    fn annotate(effect: &mut EffectAst, life: bool, mode: Option<ironsmith_core::value_model::ManaSpendMode>, rider: &mut Option<EffectAst>) -> bool {
-        if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Grants(grant), .. }) = effect {
+    if !life && mode.is_none() {
+        return Ok(None);
+    }
+    fn annotate(
+        effect: &mut EffectAst,
+        life: bool,
+        mode: Option<ironsmith_core::value_model::ManaSpendMode>,
+        rider: &mut Option<EffectAst>,
+    ) -> bool {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Grants(grant),
+            ..
+        }) = effect
+        {
             let parts = match grant {
-                GrantActionAst::GrantPlayTaggedUntilEndOfTurn { tag, player, allow_any_color_for_cast, surface, .. } => Some((tag, player, allow_any_color_for_cast, surface, true)),
-                GrantActionAst::GrantPlayTaggedForAsLongAsExiled { tag, player, allow_any_color_for_cast, surface, .. }
-                | GrantActionAst::GrantPlayTaggedUntilYourNextTurn { tag, player, allow_any_color_for_cast, surface, .. }
-                | GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { tag, player, allow_any_color_for_cast, surface, .. } => Some((tag, player, allow_any_color_for_cast, surface, false)),
+                GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                    tag,
+                    player,
+                    allow_any_color_for_cast,
+                    surface,
+                    ..
+                } => Some((tag, player, allow_any_color_for_cast, surface, true)),
+                GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                    tag,
+                    player,
+                    allow_any_color_for_cast,
+                    surface,
+                    ..
+                }
+                | GrantActionAst::GrantPlayTaggedUntilYourNextTurn {
+                    tag,
+                    player,
+                    allow_any_color_for_cast,
+                    surface,
+                    ..
+                }
+                | GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource {
+                    tag,
+                    player,
+                    allow_any_color_for_cast,
+                    surface,
+                    ..
+                } => Some((tag, player, allow_any_color_for_cast, surface, false)),
                 _ => None,
             };
             if let Some((tag, player, spending, surface, until_end_of_turn)) = parts {
                 if life {
-                    if !until_end_of_turn { return false; }
+                    if !until_end_of_turn {
+                        return false;
+                    }
                     let pool_tag = tag.clone();
                     *rider = Some(EffectAst::subject_verb_grant_tagged_spell_alternative_cost_pay_life_by_mana_value_until_end_of_turn(pool_tag.clone(), *player));
                     // The ordinary play permission is only for lands. Spells
@@ -1518,7 +1629,9 @@ fn pre_rule_permission_payment_followup(
                     });
                 } else if let Some(mode) = mode {
                     *spending = mode;
-                    surface.get_or_insert_with(Default::default).mana_spend_followup = true;
+                    surface
+                        .get_or_insert_with(Default::default)
+                        .mana_spend_followup = true;
                 }
                 return true;
             }
@@ -1526,16 +1639,27 @@ fn pre_rule_permission_payment_followup(
         let mut found = false;
         crate::model::visit::for_each_nested_effects_mut(effect, false, |nested| {
             for child in nested.iter_mut().rev() {
-                if !found { found = annotate(child, life, mode, rider); }
+                if !found {
+                    found = annotate(child, life, mode, rider);
+                }
             }
         });
         found
     }
     let mut rider = None;
-    let Some(last) = state.effects.last_mut() else { return Ok(None); };
-    if !annotate(last, life, mode, &mut rider) { return Ok(None); }
-    if let Some(rider) = rider { state.effects.push(rider); }
-    Ok(Some(PreParseFollowupResult::Handled { consumed_sentences: 1, route: Some("permission-payment-followup") }))
+    let Some(last) = state.effects.last_mut() else {
+        return Ok(None);
+    };
+    if !annotate(last, life, mode, &mut rider) {
+        return Ok(None);
+    }
+    if let Some(rider) = rider {
+        state.effects.push(rider);
+    }
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: Some("permission-payment-followup"),
+    }))
 }
 
 // A repeated sacrifice procedure keeps its result-dependent consequence,
@@ -1548,23 +1672,38 @@ fn pre_rule_repeat_sacrifice_for_types(
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
     let words = crate::lexer::parser_token_word_refs(tokens);
     let words = words.strip_prefix(&["then"]).unwrap_or(&words);
-    let Some(tail) = words.strip_prefix(&["repeat", "this", "process", "for"]) else { return Ok(None); };
+    let Some(tail) = words.strip_prefix(&["repeat", "this", "process", "for"]) else {
+        return Ok(None);
+    };
     let mut types = Vec::new();
     for word in tail {
-        if matches!(*word, "a" | "an" | "and") { continue; }
-        let Some(kind) = crate::util::parse_card_type(word) else { return Ok(None); };
+        if matches!(*word, "a" | "an" | "and") {
+            continue;
+        }
+        let Some(kind) = crate::util::parse_card_type(word) else {
+            return Ok(None);
+        };
         types.push(kind);
     }
-    if types.is_empty() || state.effects.is_empty() { return Ok(None); }
+    if types.is_empty() || state.effects.is_empty() {
+        return Ok(None);
+    }
     fn replace_sacrifice(effects: &mut [EffectAst], kind: crate::types::CardType) -> usize {
         let mut replaced = 0;
         for effect in effects {
             if let EffectAst::SubjectVerb(subject) = effect
-                && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { filter, target: None, .. }) = &mut subject.action
+                && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
+                    filter,
+                    target: None,
+                    ..
+                }) = &mut subject.action
                 && filter.card_types.len() == 1
             {
                 filter.card_types = vec![kind];
-                if matches!(subject.subject.player, PlayerAst::Target | PlayerAst::TargetOpponent) {
+                if matches!(
+                    subject.subject.player,
+                    PlayerAst::Target | PlayerAst::TargetOpponent
+                ) {
                     subject.subject.player = PlayerAst::That;
                 }
                 replaced += 1;
@@ -1578,11 +1717,16 @@ fn pre_rule_repeat_sacrifice_for_types(
     let mut repetitions = Vec::new();
     for kind in types {
         let mut process = state.effects.clone();
-        if replace_sacrifice(&mut process, kind) != 1 { return Ok(None); }
+        if replace_sacrifice(&mut process, kind) != 1 {
+            return Ok(None);
+        }
         repetitions.extend(process);
     }
     state.effects.extend(repetitions);
-    Ok(Some(PreParseFollowupResult::Handled { consumed_sentences: 1, route: Some("repeat-sacrifice-for-types") }))
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: Some("repeat-sacrifice-for-types"),
+    }))
 }
 
 /// "[If <condition>,] excess damage is dealt to that creature's controller
@@ -1594,7 +1738,15 @@ fn pre_rule_excess_damage_to_controller(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
     const TAIL: &[&str] = &[
-        "excess", "damage", "is", "dealt", "to", "that", "creatures", "controller", "instead",
+        "excess",
+        "damage",
+        "is",
+        "dealt",
+        "to",
+        "that",
+        "creatures",
+        "controller",
+        "instead",
     ];
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     let words = crate::lexer::parser_token_word_refs(tokens);
@@ -1633,14 +1785,19 @@ fn pre_rule_excess_damage_to_controller(
                 let mut filter_tokens = condition_tokens[1..has_idx].to_vec();
                 filter_tokens.extend(crate::lexer::synthetic_phrase_tokens("with"));
                 filter_tokens.extend_from_slice(&condition_tokens[has_idx + 1..]);
-                let filter = crate::object_filters::parse_object_filter_lexed(&filter_tokens, false)?;
+                let filter =
+                    crate::object_filters::parse_object_filter_lexed(&filter_tokens, false)?;
                 if filter.static_abilities.is_empty() {
                     return Ok(None);
                 }
-                Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(filter)))
+                Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(
+                    filter,
+                )))
             }
             (Some(&"the"), _) => return Ok(None),
-            _ => Some(crate::grammar::filters::parse_condition_predicate_lexed(condition_tokens)?),
+            _ => Some(crate::grammar::filters::parse_condition_predicate_lexed(
+                condition_tokens,
+            )?),
         }
     } else {
         return Ok(None);
@@ -1682,7 +1839,10 @@ fn pre_rule_damage_life_floor(
     ];
     let words = crate::lexer::parser_token_word_refs(tokens);
     let (duration, duration_surface) = if words.as_slice() == CLAUSE {
-        (crate::effect::Until::Forever, crate::effect::RestrictionDurationSurface::Default)
+        (
+            crate::effect::Until::Forever,
+            crate::effect::RestrictionDurationSurface::Default,
+        )
     } else if words.starts_with(&["until", "end", "of", "turn"]) && words[4..] == *CLAUSE {
         (
             crate::effect::Until::EndOfTurn,
@@ -1691,13 +1851,15 @@ fn pre_rule_damage_life_floor(
     } else {
         return Ok(None);
     };
-    state.effects.push(EffectAst::subject_verb_cant_starting_with_duration_surface(
-        crate::effect::Restriction::damage_reduce_life_below_one(PlayerFilter::You),
-        duration,
-        crate::effect::RestrictionStart::Immediate,
-        duration_surface,
-        None,
-    ));
+    state
+        .effects
+        .push(EffectAst::subject_verb_cant_starting_with_duration_surface(
+            crate::effect::Restriction::damage_reduce_life_below_one(PlayerFilter::You),
+            duration,
+            crate::effect::RestrictionStart::Immediate,
+            duration_surface,
+            None,
+        ));
     Ok(Some(PreParseFollowupResult::Handled {
         consumed_sentences: 1,
         route: Some("damage-life-floor"),
@@ -1705,14 +1867,26 @@ fn pre_rule_damage_life_floor(
 }
 
 const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
-    pre_followup_rule!("damage-life-floor", &["until", "damage"], pre_rule_damage_life_floor),
+    pre_followup_rule!(
+        "damage-life-floor",
+        &["until", "damage"],
+        pre_rule_damage_life_floor
+    ),
     pre_followup_rule!(
         "excess-damage-to-controller",
         &["excess", "if"],
         pre_rule_excess_damage_to_controller
     ),
-    pre_followup_rule!("repeat-sacrifice-for-types", &["then", "repeat"], pre_rule_repeat_sacrifice_for_types),
-    pre_followup_rule!("permission-payment-followup", &["if"], pre_rule_permission_payment_followup),
+    pre_followup_rule!(
+        "repeat-sacrifice-for-types",
+        &["then", "repeat"],
+        pre_rule_repeat_sacrifice_for_types
+    ),
+    pre_followup_rule!(
+        "permission-payment-followup",
+        &["if"],
+        pre_rule_permission_payment_followup
+    ),
     pre_followup_rule!(
         "permission-spell-discount",
         &["spells"],
@@ -2050,8 +2224,8 @@ pub(super) use subject_verb_followups_condition_programs::post_rule_future_zone_
 use subject_verb_followups_condition_programs::{
     default_effects_for_self_replacement, post_rule_self_replacement_common_suffix,
     pre_rule_conditional_optional_result_followup, pre_rule_if_no_one_does_followup,
-    pre_rule_if_you_win_followup,
-    predicate_explicitly_says_that_land, take_self_replacement_condition,
+    pre_rule_if_you_win_followup, predicate_explicitly_says_that_land,
+    take_self_replacement_condition,
 };
 #[path = "subject_verb_followups/subject_verb_followups_core.rs"]
 mod subject_verb_followups_core_programs;

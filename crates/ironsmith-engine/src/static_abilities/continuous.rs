@@ -2620,7 +2620,9 @@ fn entered_battlefield_this_turn_count(
                             }
                             Modification::RemoveCardTypes(card_types) => {
                                 crate::continuous::remove_card_types_and_prune_subtypes(
-                                    &mut adjusted.card_types, &mut adjusted.subtypes, card_types,
+                                    &mut adjusted.card_types,
+                                    &mut adjusted.subtypes,
+                                    card_types,
                                 );
                             }
                             Modification::SetCardTypes(card_types) => {
@@ -3651,7 +3653,6 @@ impl GrantAbility {
         GrantObjectAbilityForFilter::source_static_ability(ability)
     }
 }
-
 
 fn leading_source_keyword_condition(condition: &crate::ConditionExpr) -> bool {
     match condition {

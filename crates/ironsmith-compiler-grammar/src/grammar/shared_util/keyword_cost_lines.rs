@@ -190,23 +190,51 @@ pub fn parse_escape(
     }
     // Some escape costs constrain the types represented by a freely chosen
     // set, rather than requiring a fixed number of cards.
-    if permission_shapes::prefix_words(&tail_words, &["exile", "any", "number", "of", "other", "cards", "from", "your", "graveyard", "with"]) {
+    if permission_shapes::prefix_words(
+        &tail_words,
+        &[
+            "exile",
+            "any",
+            "number",
+            "of",
+            "other",
+            "cards",
+            "from",
+            "your",
+            "graveyard",
+            "with",
+        ],
+    ) {
         let count_index = tail_view.token_start_indices()[10];
         if let Some(parsed) = leaf::parse_leaf_number_prefix_tokens(&tail[count_index..]) {
             if let Some((count, consumed)) = parsed.into_fixed() {
                 let suffix = TokenWordView::new(&tail[count_index + consumed..]).word_refs();
-                if permission_shapes::exact_words(&suffix, &["or", "more", "card", "types", "among", "them"]) {
-                    let mut filter = ObjectFilter::default().owned_by(crate::target::PlayerFilter::You).in_zone(Zone::Graveyard);
+                if permission_shapes::exact_words(
+                    &suffix,
+                    &["or", "more", "card", "types", "among", "them"],
+                ) {
+                    let mut filter = ObjectFilter::default()
+                        .owned_by(crate::target::PlayerFilter::You)
+                        .in_zone(Zone::Graveyard);
                     filter.other = true;
-                    filter.target_set_aggregate_constraint = Some(Box::new(ironsmith_core::ChoiceAggregateConstraint::at_least(
-                        ironsmith_core::ChoiceAggregateMetric::DistinctCardTypes, count as i32,
-                    )));
+                    filter.target_set_aggregate_constraint = Some(Box::new(
+                        ironsmith_core::ChoiceAggregateConstraint::at_least(
+                            ironsmith_core::ChoiceAggregateMetric::DistinctCardTypes,
+                            count as i32,
+                        ),
+                    ));
                     return Ok(Some(AlternativeCastingMethod::Escape {
-                        cost: Some(mana_cost), exile_count: 0,
-                        additional_cost: ironsmith_core::TotalCost::from_cost(CompilerCost::ExileChosen {
-                            count: crate::effect::ChoiceCount::any_number(), filter,
-                            top_only: false, turn_face_up: false, binding: None,
-                        }),
+                        cost: Some(mana_cost),
+                        exile_count: 0,
+                        additional_cost: ironsmith_core::TotalCost::from_cost(
+                            CompilerCost::ExileChosen {
+                                count: crate::effect::ChoiceCount::any_number(),
+                                filter,
+                                top_only: false,
+                                turn_face_up: false,
+                                binding: None,
+                            },
+                        ),
                     }));
                 }
             }

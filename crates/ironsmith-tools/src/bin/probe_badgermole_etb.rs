@@ -20,9 +20,9 @@ use ironsmith::ids::{CardId, ObjectId, PlayerId};
 use ironsmith::object::CounterType;
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::zone::Zone;
-use ironsmith_registry::cards::builders::CardDefinitionBuilder;
 use ironsmith_registry::card::PowerToughness;
 use ironsmith_registry::cards::CardDefinition;
+use ironsmith_registry::cards::builders::CardDefinitionBuilder;
 use ironsmith_registry::types::{CardType, Subtype, Supertype};
 
 #[derive(serde::Deserialize)]
@@ -104,9 +104,7 @@ struct Board {
 
 fn build_board(players: usize, extra_lands: usize, cauldron: bool) -> Board {
     let index = oracle_index();
-    let names: Vec<String> = (0..players)
-        .map(|i| format!("P{i}"))
-        .collect::<Vec<_>>();
+    let names: Vec<String> = (0..players).map(|i| format!("P{i}")).collect::<Vec<_>>();
     let mut game = GameState::new(names, 20);
     let alice = PlayerId::from_index(0);
 
@@ -179,10 +177,13 @@ fn main() {
         let mut dm = SelectFirstDecisionMaker;
         for definition in &definitions {
             add_with_etb(&mut game, definition, alice, &mut queue, &mut dm);
-            let _ = ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm);
+            let _ =
+                ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm);
             let mut resolved = 0;
             while !game.stack.is_empty() && resolved < 6 {
-                if ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).is_err() { break; }
+                if ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).is_err() {
+                    break;
+                }
                 resolved += 1;
             }
         }
@@ -209,7 +210,13 @@ fn main() {
     }
     println!(
         "{:>8} {:>6} {:>9} | {:>10} {:>10} {:>10} {:>10} {:>10}",
-        "players", "lands", "cauldron", "enter_ms", "triggers_ms", "resolve_ms", "sba_ms",
+        "players",
+        "lands",
+        "cauldron",
+        "enter_ms",
+        "triggers_ms",
+        "resolve_ms",
+        "sba_ms",
         "legal_ms"
     );
     for cauldron in [false, true] {
@@ -281,15 +288,36 @@ fn main() {
                     ("derived_view", perf.derived_view_ms),
                     ("prewarm", perf.prewarm_ms),
                     ("cast_context", perf.cast_context_ms),
-                    ("battlefield_ability_context", perf.battlefield_ability_context_ms),
+                    (
+                        "battlefield_ability_context",
+                        perf.battlefield_ability_context_ms,
+                    ),
                     ("hand_casts", perf.hand_casts_ms),
                     ("battlefield_abilities", perf.battlefield_abilities_ms),
-                    ("  bf_ability_precheck", perf.battlefield_ability_precheck_ms),
-                    ("  bf_ability_target_legality", perf.battlefield_ability_target_legality_ms),
-                    ("  bf_ability_cost_build", perf.battlefield_ability_cost_build_ms),
-                    ("  bf_ability_affordability", perf.battlefield_ability_affordability_ms),
-                    ("non_battlefield_abilities", perf.non_battlefield_abilities_ms),
-                    ("compute_potential_mana", perf.compute_potential_mana_with_view_ms),
+                    (
+                        "  bf_ability_precheck",
+                        perf.battlefield_ability_precheck_ms,
+                    ),
+                    (
+                        "  bf_ability_target_legality",
+                        perf.battlefield_ability_target_legality_ms,
+                    ),
+                    (
+                        "  bf_ability_cost_build",
+                        perf.battlefield_ability_cost_build_ms,
+                    ),
+                    (
+                        "  bf_ability_affordability",
+                        perf.battlefield_ability_affordability_ms,
+                    ),
+                    (
+                        "non_battlefield_abilities",
+                        perf.non_battlefield_abilities_ms,
+                    ),
+                    (
+                        "compute_potential_mana",
+                        perf.compute_potential_mana_with_view_ms,
+                    ),
                     ("lands", perf.lands_ms),
                 ];
                 rows.sort_by(|a, b| b.1.total_cmp(&a.1));
@@ -303,7 +331,6 @@ fn main() {
     }
 }
 
-
 /// Reproduces the exact board from the reported diagnostics journal:
 /// Alice and Bob each with Omniscience, Agatha's Soul Cauldron, Yawgmoth,
 /// Ornithopter, Myr Moonvessel and seven lands, four players, and Alice
@@ -312,7 +339,12 @@ fn main() {
 fn reported_board(cubs: usize) -> (GameState, PlayerId, Vec<CardDefinition>) {
     let index = oracle_index();
     let mut game = GameState::new(
-        vec!["Alice".into(), "Bob".into(), "Charlie".into(), "Diana".into()],
+        vec![
+            "Alice".into(),
+            "Bob".into(),
+            "Charlie".into(),
+            "Diana".into(),
+        ],
         20,
     );
     let alice = PlayerId::from_index(0);
@@ -415,7 +447,8 @@ fn report_reported_board() {
             add_ms += started.elapsed().as_secs_f64() * 1000.0;
 
             let started = Instant::now();
-            let _ = ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm);
+            let _ =
+                ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm);
             triggers_ms += started.elapsed().as_secs_f64() * 1000.0;
 
             let started = Instant::now();
@@ -433,7 +466,10 @@ fn report_reported_board() {
                 resolved += 1;
             }
             if std::env::var("PROBE_VERBOSE").is_ok() {
-                println!("      after resolve: stack={} resolved={resolved}", game.stack.len());
+                println!(
+                    "      after resolve: stack={} resolved={resolved}",
+                    game.stack.len()
+                );
             }
             resolve_ms += started.elapsed().as_secs_f64() * 1000.0;
         }
@@ -451,7 +487,8 @@ fn report_reported_board() {
             .iter()
             .filter(|id| {
                 game.calculated_characteristics_arc(**id).is_some_and(|c| {
-                    c.card_types.contains(&CardType::Land) && c.card_types.contains(&CardType::Creature)
+                    c.card_types.contains(&CardType::Land)
+                        && c.card_types.contains(&CardType::Creature)
                 })
             })
             .count();

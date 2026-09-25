@@ -495,9 +495,10 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             };
             let words = crate::lexer::token_word_refs(tokens);
             if let Some(from) = target_tokens.iter().position(|token| token.is_word("from"))
-                && let Some(owner) = crate::effect_sentences::zone_handlers::parse_graveyard_owner_prefix_lexed(
-                    &target_tokens[from + 1..],
-                )
+                && let Some(owner) =
+                    crate::effect_sentences::zone_handlers::parse_graveyard_owner_prefix_lexed(
+                        &target_tokens[from + 1..],
+                    )
                 && matches!(owner.player, PlayerAst::ItsOwner | PlayerAst::ItsController)
                 && let Some(filter) =
                     crate::effect_sentences::zone_counter_helpers::target_object_filter_mut(
@@ -526,10 +527,13 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                 // the selected-card zone and owner instead.
                 filter.zone = Some(Zone::Graveyard);
                 filter.owner = Some(PlayerFilter::You);
-                if source_from_graveyard_tokens.as_deref().is_some_and(|tokens| {
-                    crate::grammar::effects::parse_return_back_reference_shape(tokens)
-                        == Some(crate::grammar::effects::ReturnBackReferenceShape::It)
-                }) {
+                if source_from_graveyard_tokens
+                    .as_deref()
+                    .is_some_and(|tokens| {
+                        crate::grammar::effects::parse_return_back_reference_shape(tokens)
+                            == Some(crate::grammar::effects::ReturnBackReferenceShape::It)
+                    })
+                {
                     filter.set_singular_pronoun_reference_surface(true);
                 }
             }

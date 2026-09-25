@@ -1075,9 +1075,7 @@ fn rewrite_trailing_instead_if_spell_label_line(text: &str) -> String {
     let Some(marker_idx) = text.find(MARKER) else {
         return text.to_string();
     };
-    let sentence_start = text[..marker_idx]
-        .rfind(". ")
-        .map_or(0, |idx| idx + 2);
+    let sentence_start = text[..marker_idx].rfind(". ").map_or(0, |idx| idx + 2);
     let action = text[sentence_start..marker_idx].trim();
     let after_marker = &text[marker_idx + MARKER.len()..];
     let Some(period_rel) = after_marker.find('.') else {

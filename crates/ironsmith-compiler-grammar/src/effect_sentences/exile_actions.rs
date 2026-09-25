@@ -772,7 +772,19 @@ fn parse_mixed_target_and_all_exile_list(
     let source_words = crate::lexer::token_word_refs(&first_segment);
     let coordinated_source = !until_source_leaves
         && matches!(&target, TargetAst::Source(_))
-        && matches!(source_words.as_slice(), ["this", "artifact" | "creature" | "enchantment" | "land" | "planeswalker" | "battle" | "permanent"]);
+        && matches!(
+            source_words.as_slice(),
+            [
+                "this",
+                "artifact"
+                    | "creature"
+                    | "enchantment"
+                    | "land"
+                    | "planeswalker"
+                    | "battle"
+                    | "permanent"
+            ]
+        );
     let mut coordinated_filters = vec![ObjectFilter::source().in_zone(Zone::Battlefield)];
     effects.push(if until_source_leaves {
         EffectAst::subject_verb_exile_until_source_leaves(target, face_down)

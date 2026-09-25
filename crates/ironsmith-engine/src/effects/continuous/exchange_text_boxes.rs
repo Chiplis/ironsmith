@@ -25,7 +25,8 @@ fn current_text_box_overlay(
     object_id: crate::ids::ObjectId,
     entry: Option<&crate::events::EnterBattlefieldEvent>,
 ) -> Result<TextBoxOverlay, ExecutionError> {
-    let preview = entry.filter(|entry| entry.object == object_id)
+    let preview = entry
+        .filter(|entry| entry.object == object_id)
         .and_then(|entry| entry.prospective_game_state(game));
     let game = preview.as_ref().unwrap_or(game);
     let effects: Vec<_> = game.effect_store.continuous_effects.effects().to_vec();
@@ -65,12 +66,18 @@ impl EffectExecutor for ExchangeTextBoxesEffect {
             let from = game.object(source)?.zone;
             Some(crate::events::EnterBattlefieldEvent::new(source, from))
         });
-        let entry = ctx.replacement.entry_event.as_deref().or(fallback_entry.as_ref());
+        let entry = ctx
+            .replacement
+            .entry_event
+            .as_deref()
+            .or(fallback_entry.as_ref());
         let preview = entry.and_then(|entry| entry.prospective_game_state(game));
         let creature_game = |id| {
             if entry.is_some_and(|entry| entry.object == id) {
                 preview.as_ref().unwrap_or(game)
-            } else { &*game }
+            } else {
+                &*game
+            }
         };
         if first == second
             || !is_current_creature(creature_game(first), first)
@@ -188,7 +195,9 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let flying = CardDefinitionBuilder::new(CardId::new(), "Flying creature")
             .card_types(vec![CardType::Creature])
-            .with_ability(crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::flying()))
+            .with_ability(crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::flying(),
+            ))
             .build();
         let plain = vanilla_creature_definition("Plain creature", 700_200);
         let first = create_creature_from_definition(&mut game, &flying, alice);
@@ -199,13 +208,32 @@ mod tests {
             crate::effects::ResolvedTarget::Object(second),
         ]);
         ExchangeTextBoxesEffect::new(
-            ChooseSpec::target(ChooseSpec::creature()).with_count(crate::effect::ChoiceCount::exactly(2)),
-        ).execute(&mut game, &mut ctx).unwrap();
-        assert!(!game.object_has_static_ability_id(first, crate::static_abilities::StaticAbilityId::Flying));
-        assert!(game.object_has_static_ability_id(second, crate::static_abilities::StaticAbilityId::Flying));
+            ChooseSpec::target(ChooseSpec::creature())
+                .with_count(crate::effect::ChoiceCount::exactly(2)),
+        )
+        .execute(&mut game, &mut ctx)
+        .unwrap();
+        assert!(
+            !game.object_has_static_ability_id(
+                first,
+                crate::static_abilities::StaticAbilityId::Flying
+            )
+        );
+        assert!(game.object_has_static_ability_id(
+            second,
+            crate::static_abilities::StaticAbilityId::Flying
+        ));
         game.move_object_by_effect(source, Zone::Graveyard).unwrap();
-        assert!(game.object_has_static_ability_id(first, crate::static_abilities::StaticAbilityId::Flying));
-        assert!(!game.object_has_static_ability_id(second, crate::static_abilities::StaticAbilityId::Flying));
+        assert!(
+            game.object_has_static_ability_id(
+                first,
+                crate::static_abilities::StaticAbilityId::Flying
+            )
+        );
+        assert!(!game.object_has_static_ability_id(
+            second,
+            crate::static_abilities::StaticAbilityId::Flying
+        ));
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

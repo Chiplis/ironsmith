@@ -237,8 +237,10 @@ fn direct_cant_ability<'a>(input: &mut LexStream<'a>) -> WResult<NextSpellGrantA
 fn direct_free_cast_ability<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<NextSpellGrantAbilitySurface<'a>> {
-    primitives::phrase(&["can", "be", "cast", "without", "paying", "its", "mana", "cost"])
-        .parse_next(input)?;
+    primitives::phrase(&[
+        "can", "be", "cast", "without", "paying", "its", "mana", "cost",
+    ])
+    .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(NextSpellGrantAbilitySurface::WithoutPayingManaCost)
 }

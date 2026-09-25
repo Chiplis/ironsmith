@@ -42,7 +42,11 @@ struct Choices {
 
 impl DecisionMaker for Choices {
     fn decide_targets(&mut self, _game: &GameState, ctx: &TargetsContext) -> Vec<Target> {
-        assert!(ctx.requirements[0].legal_targets.contains(&Target::Player(self.target)));
+        assert!(
+            ctx.requirements[0]
+                .legal_targets
+                .contains(&Target::Player(self.target))
+        );
         vec![Target::Player(self.target)]
     }
 
@@ -75,7 +79,8 @@ fn card(name: &str, card_type: CardType) -> ironsmith::cards::CardDefinition {
 }
 
 fn names(game: &GameState, ids: impl Iterator<Item = ObjectId>) -> Vec<String> {
-    ids.map(|id| game.object(id).unwrap().name.to_string()).collect()
+    ids.map(|id| game.object(id).unwrap().name.to_string())
+        .collect()
 }
 
 /// Bob holds Forest, Lightning Bolt, and Counterspell with Top Card on his library over
@@ -123,14 +128,26 @@ fn chosen_nonland_card_goes_to_the_bottom_and_its_owner_draws() {
     hand.sort();
     let mut offered = dm.offered.clone();
     offered.sort();
-    assert_eq!(offered, vec!["Counterspell".to_string(), "Lightning Bolt".to_string()], "lands can't be chosen");
+    assert_eq!(
+        offered,
+        vec!["Counterspell".to_string(), "Lightning Bolt".to_string()],
+        "lands can't be chosen"
+    );
     assert_eq!(
         hand,
-        vec!["Counterspell".to_string(), "Forest".to_string(), "Top Card".to_string()],
+        vec![
+            "Counterspell".to_string(),
+            "Forest".to_string(),
+            "Top Card".to_string()
+        ],
         "drew a replacement card"
     );
     let library = names(&game, player.library.iter().copied());
-    assert_eq!(library.first().map(String::as_str), Some("Lightning Bolt"), "on the bottom: {library:?}");
+    assert_eq!(
+        library.first().map(String::as_str),
+        Some("Lightning Bolt"),
+        "on the bottom: {library:?}"
+    );
     assert_eq!(library.len(), 2);
 }
 
@@ -143,7 +160,11 @@ fn choosing_nothing_leaves_the_hand_and_draws_nothing() {
     hand.sort();
     assert_eq!(
         hand,
-        vec!["Counterspell".to_string(), "Forest".to_string(), "Lightning Bolt".to_string()]
+        vec![
+            "Counterspell".to_string(),
+            "Forest".to_string(),
+            "Lightning Bolt".to_string()
+        ]
     );
     assert_eq!(player.library.len(), 2);
 }

@@ -5099,17 +5099,21 @@ fn boast_may_be_activated_an_additional_time(
     let Some(chars) = game.current_characteristics(source) else {
         return false;
     };
-    let is_boast = chars.abilities.as_slice().get(ability_index).is_some_and(|ability| {
-        matches!(
-            &ability.kind,
-            crate::ability::AbilityKind::Activated(activated)
-                if activated.additional_restrictions.iter().any(|restriction| {
-                    restriction
-                        .strip_prefix("__ironsmith_activation_label:")
-                        .is_some_and(|label| label.eq_ignore_ascii_case("Boast"))
-                })
-        )
-    });
+    let is_boast = chars
+        .abilities
+        .as_slice()
+        .get(ability_index)
+        .is_some_and(|ability| {
+            matches!(
+                &ability.kind,
+                crate::ability::AbilityKind::Activated(activated)
+                    if activated.additional_restrictions.iter().any(|restriction| {
+                        restriction
+                            .strip_prefix("__ironsmith_activation_label:")
+                            .is_some_and(|label| label.eq_ignore_ascii_case("Boast"))
+                    })
+            )
+        });
     if !is_boast || !chars.card_types.contains(&crate::types::CardType::Creature) {
         return false;
     }

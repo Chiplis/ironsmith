@@ -158,7 +158,9 @@ pub fn parse_if_conditional_alternative_cost(
     let self_free_cast = parse_self_free_cast(tail_tokens).is_some()
         || (condition_names_this_spell
             && TokenWordView::new(tail_tokens).word_refs()
-                == ["you", "may", "cast", "it", "without", "paying", "its", "mana", "cost"]);
+                == [
+                    "you", "may", "cast", "it", "without", "paying", "its", "mana", "cost",
+                ]);
     if !self_free_cast && parse_you_may_rather_than_spell_cost(tail_tokens, line)?.is_none() {
         return Ok(None);
     }
@@ -227,11 +229,22 @@ fn parse_special_cost_condition(tokens: &[OwnedLexToken]) -> Option<ThisSpellCos
     if exact_one_of(
         &words,
         &[
-            &["this", "spell", "is", "the", "first", "spell", "youve", "cast", "this", "game"],
-            &["this", "spell", "is", "the", "first", "spell", "you've", "cast", "this", "game"],
-            &["this", "spell", "is", "the", "first", "spell", "you", "have", "cast", "this", "game"],
-            &["this", "spell", "is", "first", "spell", "youve", "cast", "this", "game"],
-            &["this", "spell", "is", "first", "spell", "you've", "cast", "this", "game"],
+            &[
+                "this", "spell", "is", "the", "first", "spell", "youve", "cast", "this", "game",
+            ],
+            &[
+                "this", "spell", "is", "the", "first", "spell", "you've", "cast", "this", "game",
+            ],
+            &[
+                "this", "spell", "is", "the", "first", "spell", "you", "have", "cast", "this",
+                "game",
+            ],
+            &[
+                "this", "spell", "is", "first", "spell", "youve", "cast", "this", "game",
+            ],
+            &[
+                "this", "spell", "is", "first", "spell", "you've", "cast", "this", "game",
+            ],
         ],
     ) {
         return Some(ThisSpellCostCondition::FirstSpellYouCastThisGame);

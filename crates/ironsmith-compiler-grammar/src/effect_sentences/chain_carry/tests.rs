@@ -4184,7 +4184,9 @@ fn qualified_player_search_binds_both_library_owner_and_chooser() {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
-                    chooser, player, ..
+                    chooser,
+                    player,
+                    ..
                 }),
             ..
         }) = effect
@@ -4200,8 +4202,8 @@ fn qualified_player_search_binds_both_library_owner_and_chooser() {
         found
     }
 
-    let bindings =
-        search_bindings(effect).unwrap_or_else(|| panic!("expected typed search action, got {effect:#?}"));
+    let bindings = search_bindings(effect)
+        .unwrap_or_else(|| panic!("expected typed search action, got {effect:#?}"));
     assert_eq!(bindings, (PlayerAst::That, PlayerAst::That));
 }
 

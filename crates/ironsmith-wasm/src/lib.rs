@@ -1416,8 +1416,7 @@ fn push_hidden_move_requirements(
     let face_down_became_public = before_card.face_down
         && !after_card.zone.is_hidden()
         && before_card.zone != after_card.zone;
-    let reveals_face_down_card = (face_down_left_stack_or_battlefield
-        || face_down_became_public)
+    let reveals_face_down_card = (face_down_left_stack_or_battlefield || face_down_became_public)
         && !after_card.face_down
         && !after_card.foretold;
     if reveals_face_down_card {
@@ -2406,11 +2405,22 @@ struct TargetRequirementView {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum AttackTargetView {
-    Player { player: u8, name: String },
-    Planeswalker { object: u64, name: String },
-    Battle { object: u64, name: String },
+    Player {
+        player: u8,
+        name: String,
+    },
+    Planeswalker {
+        object: u64,
+        name: String,
+    },
+    Battle {
+        object: u64,
+        name: String,
+    },
     /// CR 506.4c: attacking nothing (never offered as a declarable target).
-    Nothing { name: String },
+    Nothing {
+        name: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -252,16 +252,30 @@ fn protection_uses_damage_source_last_known_colors_and_respects_unpreventable_da
     for unpreventable in [false, true] {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         let target = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
-        let source = game.create_object_from_definition(&probe(ColorSet::RED), alice, Zone::Battlefield);
-        let snapshot = ironsmith::snapshot::ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
+        let source =
+            game.create_object_from_definition(&probe(ColorSet::RED), alice, Zone::Battlefield);
+        let snapshot =
+            ironsmith::snapshot::ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
         if unpreventable {
             let rule = CardDefinitionBuilder::new(CardId::new(), "Damage rule probe")
                 .card_types(vec![CardType::Enchantment])
-                .with_ability(ironsmith::Ability::static_ability(ironsmith::static_abilities::StaticAbility::damage_cant_be_prevented())).build();
+                .with_ability(ironsmith::Ability::static_ability(
+                    ironsmith::static_abilities::StaticAbility::damage_cant_be_prevented(),
+                ))
+                .build();
             game.create_object_from_definition(&rule, alice, Zone::Battlefield);
         }
-        game.push_to_stack(ironsmith::game_state::StackEntry::ability(source, alice,
-            vec![ironsmith::Effect::deal_damage(1, ironsmith::target::ChooseSpec::SpecificObject(target))]).with_source_snapshot(snapshot));
+        game.push_to_stack(
+            ironsmith::game_state::StackEntry::ability(
+                source,
+                alice,
+                vec![ironsmith::Effect::deal_damage(
+                    1,
+                    ironsmith::target::ChooseSpec::SpecificObject(target),
+                )],
+            )
+            .with_source_snapshot(snapshot),
+        );
         move_to_zone(&mut game, source, alice, Zone::Exile);
         ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
         assert_eq!(game.damage_on(target), if unpreventable { 1 } else { 0 });
@@ -283,13 +297,21 @@ fn discard_events_exile_matching_cards_for_either_player() {
             let card = game.create_object_from_definition(&probe(color), owner, Zone::Hand);
             let stable = game.object(card).unwrap().stable_id;
             game.push_to_stack(ironsmith::game_state::StackEntry::ability(
-                source, owner, vec![ironsmith::Effect::discard(1)],
+                source,
+                owner,
+                vec![ironsmith::Effect::discard(1)],
             ));
             ironsmith::game_loop::resolve_stack_entry_with(
-                &mut game, &mut ironsmith::decision::SelectFirstDecisionMaker,
-            ).unwrap();
+                &mut game,
+                &mut ironsmith::decision::SelectFirstDecisionMaker,
+            )
+            .unwrap();
             let moved = game.find_object_by_stable_id(stable).unwrap();
-            assert_eq!(game.object(moved).unwrap().zone, expected, "{owner:?} {color:?}");
+            assert_eq!(
+                game.object(moved).unwrap().zone,
+                expected,
+                "{owner:?} {color:?}"
+            );
         }
     }
 }

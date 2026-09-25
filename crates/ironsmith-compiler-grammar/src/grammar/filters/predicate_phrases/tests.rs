@@ -3657,9 +3657,8 @@ fn parse_predicate_source_counters_use_shared_capture_parser() -> Result<(), Car
                 // "a +1/+1 counter" and "one or more +1/+1 counters" compare
                 // the same way; the hint is what keeps the two surfaces apart
                 // for the renderer.
-                right: Value::Fixed(1).with_surface_hint(
-                    ironsmith_core::ValueSurfaceHint::IndefiniteCounterPresence,
-                ),
+                right: Value::Fixed(1)
+                    .with_surface_hint(ironsmith_core::ValueSurfaceHint::IndefiniteCounterPresence),
             },
         ),
         (
@@ -4083,7 +4082,8 @@ fn intrinsic_counter_condition_rejects_other_subjects_and_extra_actions() {
 }
 
 #[test]
-fn discarded_cost_card_type_predicates_keep_cost_reference_and_negation() -> Result<(), CardTextError> {
+fn discarded_cost_card_type_predicates_keep_cost_reference_and_negation()
+-> Result<(), CardTextError> {
     for (text, negated) in [
         ("the discarded card was a land card", false),
         ("the discarded card wasn't a land card", true),
@@ -4092,13 +4092,25 @@ fn discarded_cost_card_type_predicates_keep_cost_reference_and_negation() -> Res
         let tokens = lex_line(text, 0)?;
         let predicate = parse_predicate(&tokens)?;
         let predicate = if negated {
-            let PredicateAst::Not(inner) = predicate else { panic!("missing negation: {text}"); };
+            let PredicateAst::Not(inner) = predicate else {
+                panic!("missing negation: {text}");
+            };
             *inner
-        } else { predicate };
-        let PredicateAst::TaggedMatches(tag, filter) = predicate else { panic!("wrong predicate: {text}"); };
-        assert_eq!(tag.as_str(), crate::tag::CompilerReferenceTag::DiscardedCost.as_str());
+        } else {
+            predicate
+        };
+        let PredicateAst::TaggedMatches(tag, filter) = predicate else {
+            panic!("wrong predicate: {text}");
+        };
+        assert_eq!(
+            tag.as_str(),
+            crate::tag::CompilerReferenceTag::DiscardedCost.as_str()
+        );
         assert_eq!(filter.card_types, vec![crate::types::CardType::Land]);
-        assert_eq!(filter.zone, None, "cost characteristics are independent of zone");
+        assert_eq!(
+            filter.zone, None,
+            "cost characteristics are independent of zone"
+        );
     }
     Ok(())
 }

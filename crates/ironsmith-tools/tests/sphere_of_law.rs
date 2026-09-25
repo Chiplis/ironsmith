@@ -52,7 +52,10 @@ fn hit(color: ManaSymbol, amount: i32, victim: PlayerId) -> (i32, i32) {
         &mut ctx,
     )
     .unwrap();
-    (game.player(alice).unwrap().life, game.player(bob).unwrap().life)
+    (
+        game.player(alice).unwrap().life,
+        game.player(bob).unwrap().life,
+    )
 }
 
 #[test]

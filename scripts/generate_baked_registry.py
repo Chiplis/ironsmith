@@ -140,9 +140,12 @@ def frontend_card_route_key(name: str) -> str:
 def collect_unique_blocks(
     db_path: Path,
     semantic_scores: Dict[str, float],
-) -> Tuple[Dict[str, SingleEntry], List[FlipPair], List[SplitPair], List[AliasEntry]]:
+) -> Tuple[
+    Dict[str, SingleEntry], List[FlipPair], List[FlipPair], List[SplitPair], List[AliasEntry]
+]:
     unique: Dict[str, SingleEntry] = {}
     flips: List[FlipPair] = []
+    prepares: List[FlipPair] = []
     splits: List[SplitPair] = []
     missing_scores: List[str] = []
     aliases_by_key: Dict[str, AliasEntry] = {}
@@ -311,12 +314,15 @@ def collect_unique_blocks(
         # Multi-face layouts need both faces available at runtime. We treat
         # transform/adventure-style cards the same as flip cards in the baked
         # payload so front-face lookups still resolve even when the root card
-        # has no strict parser block of its own.
+        # has no strict parser block of its own. Prepare cards share the
+        # shape but are kept apart: their spell face copies an existing card,
+        # so it must never claim a name or route of its own.
         if layout in {
             "flip",
             "transform",
             "modal_dfc",
             "adventure",
+            "prepare",
         } and isinstance(faces, list) and len(faces) >= 2:
             front = faces[0]
             back = faces[1]
@@ -335,7 +341,7 @@ def collect_unique_blocks(
             front_score = require_score(front_name, front_name, combined_name)
             back_score = require_score(back_name, back_name, combined_name)
 
-            flips.append(
+            (prepares if layout == "prepare" else flips).append(
                 (
                     front_name,
                     front_parse_block,
@@ -385,7 +391,7 @@ def collect_unique_blocks(
         )
 
     aliases = sorted(aliases_by_key.values(), key=lambda pair: pair[0].casefold())
-    return unique, flips, splits, aliases
+    return unique, flips, prepares, splits, aliases
 
 
 def write_generated_source(
@@ -1429,6 +1435,7 @@ def threshold_counts_for_scores(scores: Iterable[float]) -> List[int]:
 def write_frontend_card_assets(
     cards: Dict[str, SingleEntry],
     flips: List[FlipPair],
+    prepares: List[FlipPair],
     splits: List[SplitPair],
     aliases: List[AliasEntry],
     cards_dir: Path,
@@ -1488,6 +1495,50 @@ def write_frontend_card_assets(
         for alias in aliases_by_canonical.get(front_name.casefold(), []):
             add_frontend_route(routes, alias, payload)
         for alias in aliases_by_canonical.get(back_name.casefold(), []):
+            add_frontend_route(routes, alias, payload)
+        index_cards.append(
+            {
+                "name": front_name,
+                "route": frontend_card_route_key(front_name),
+                "score": frontend_score(front_score),
+            }
+        )
+
+    # A prepare card claims only its creature face (plus the combined name):
+    # the spell face is a copy of an existing card, and 18 of them share a
+    # name with a real card, so routing or aliasing it would shadow that card.
+    for entry in sorted(prepares, key=lambda pair: pair[0].casefold()):
+        (
+            front_name,
+            front_block,
+            front_score,
+            back_name,
+            back_block,
+            back_score,
+            combined_name,
+            metadata,
+        ) = entry
+        payload = frontend_asset_payload_for_linked(
+            layout="prepare",
+            front_name=front_name,
+            front_block=front_block,
+            front_score=front_score,
+            back_name=back_name,
+            back_block=back_block,
+            back_score=back_score,
+            combined_name=combined_name,
+            has_fuse=False,
+            metadata=metadata,
+            aliases_by_canonical=aliases_by_canonical,
+        )
+        payload["aliases"] = [
+            alias
+            for alias in payload["aliases"]
+            if alias["canonical"].casefold() != back_name.casefold()
+        ]
+        for route_name in (front_name, combined_name):
+            add_frontend_route(routes, route_name, payload)
+        for alias in aliases_by_canonical.get(front_name.casefold(), []):
             add_frontend_route(routes, alias, payload)
         index_cards.append(
             {
@@ -1637,12 +1688,13 @@ def main() -> None:
             f"[generate_baked_registry] registry DB not found: {db_path}"
         )
     semantic_scores = load_latest_semantic_scores(db_path)
-    cards, flips, splits, aliases = collect_unique_blocks(db_path, semantic_scores)
+    cards, flips, prepares, splits, aliases = collect_unique_blocks(db_path, semantic_scores)
     write_generated_source(cards, flips, splits, aliases, output_path)
     if args.frontend_cards_dir:
         write_frontend_card_assets(
             cards,
             flips,
+            prepares,
             splits,
             aliases,
             Path(args.frontend_cards_dir),

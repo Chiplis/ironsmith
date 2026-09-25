@@ -4341,16 +4341,26 @@ pub(super) fn riot_structural_keyword_accepts_permanent_haste_choice() {
     );
     let replacement = Ability::static_ability(crate::static_abilities::StaticAbility::from_model(
         crate::static_abilities::CompiledStaticAbility::as_enters_effect_program(
-            triggered.effects.clone(), "this creature", false, false, None,
+            triggered.effects.clone(),
+            "this creature",
+            false,
+            false,
+            None,
         ),
     ));
-    assert_eq!(describe_keyword_ability(&replacement), Some("Riot".to_string()));
+    assert_eq!(
+        describe_keyword_ability(&replacement),
+        Some("Riot".to_string())
+    );
     let after_entry = Ability {
         kind: AbilityKind::Triggered(triggered),
         functional_zones: vec![Zone::Battlefield],
     };
-    assert_ne!(describe_keyword_ability(&after_entry), Some("Riot".to_string()),
-        "the same choice after entry is not riot");
+    assert_ne!(
+        describe_keyword_ability(&after_entry),
+        Some("Riot".to_string()),
+        "the same choice after entry is not riot"
+    );
 }
 
 #[test]
@@ -7911,16 +7921,34 @@ pub(super) fn loyalty_timing_permission_renders_structural_scope_and_condition()
             display: Some("UNRELATED CONDITION TEXT".into()),
         });
     model.label = "UNRELATED ABILITY TEXT".into();
-    assert_eq!(describe_static_ability_with_subject(&StaticAbility::from_model(model), "this planeswalker"),
-        "As long as this planeswalker entered this turn, you may activate this planeswalker's loyalty abilities any time you could cast an instant");
-    let model = CompiledStaticAbility::loyalty_abilities_any_time(ObjectFilter::planeswalker().you_control());
-    assert_eq!(describe_static_ability_with_subject(&StaticAbility::from_model(model), "this artifact"),
-        "You may activate loyalty abilities of planeswalkers you control any time you could cast an instant");
+    assert_eq!(
+        describe_static_ability_with_subject(
+            &StaticAbility::from_model(model),
+            "this planeswalker"
+        ),
+        "As long as this planeswalker entered this turn, you may activate this planeswalker's loyalty abilities any time you could cast an instant"
+    );
+    let model = CompiledStaticAbility::loyalty_abilities_any_time(
+        ObjectFilter::planeswalker().you_control(),
+    );
+    assert_eq!(
+        describe_static_ability_with_subject(&StaticAbility::from_model(model), "this artifact"),
+        "You may activate loyalty abilities of planeswalkers you control any time you could cast an instant"
+    );
 }
 
 #[test]
 pub(super) fn coordinated_color_adjectives_do_not_pluralize_as_nouns() {
-    assert_eq!(pluralize_noun_phrase("black or red card"), "black or red cards");
-    assert_eq!(pluralize_noun_phrase("white and blue creature"), "white and blue creatures");
-    assert_eq!(pluralize_noun_phrase("black creature or red card"), "black creatures or red cards");
+    assert_eq!(
+        pluralize_noun_phrase("black or red card"),
+        "black or red cards"
+    );
+    assert_eq!(
+        pluralize_noun_phrase("white and blue creature"),
+        "white and blue creatures"
+    );
+    assert_eq!(
+        pluralize_noun_phrase("black creature or red card"),
+        "black creatures or red cards"
+    );
 }

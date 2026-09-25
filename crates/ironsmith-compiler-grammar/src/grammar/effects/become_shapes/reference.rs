@@ -80,23 +80,23 @@ pub fn parse_filtered_object_animation_tokens(
                 ))
             })
         }
-            .or_else(|| {
-                let body_words =
-                    crate::word_primitives::strip_any_prefix(body_words, &[&["a"], &["an"]])
-                        .map_or(body_words, |(_, tail)| tail);
-                let (descriptor_words, preserve_other_types) =
-                    strip_become_addition_tail_words(body_words);
-                let leading = parse_become_leading_pt_shape(descriptor_words, &[])?;
-                let descriptor = parse_become_creature_descriptor_words(
-                    descriptor_words.get(leading.value_word_count..)?,
-                )?;
-                Some((
-                    leading.power,
-                    leading.toughness,
-                    descriptor,
-                    preserve_other_types,
-                ))
-            });
+        .or_else(|| {
+            let body_words =
+                crate::word_primitives::strip_any_prefix(body_words, &[&["a"], &["an"]])
+                    .map_or(body_words, |(_, tail)| tail);
+            let (descriptor_words, preserve_other_types) =
+                strip_become_addition_tail_words(body_words);
+            let leading = parse_become_leading_pt_shape(descriptor_words, &[])?;
+            let descriptor = parse_become_creature_descriptor_words(
+                descriptor_words.get(leading.value_word_count..)?,
+            )?;
+            Some((
+                leading.power,
+                leading.toughness,
+                descriptor,
+                preserve_other_types,
+            ))
+        });
         let Some((power, toughness, descriptor, preserve_other_types)) = parsed_body else {
             continue;
         };
@@ -197,7 +197,10 @@ fn split_animation_tail_words<'a, 'b>(
     fn marker_at(words: &[&str], index: usize) -> Option<usize> {
         let rest = &words[index..];
         let is_with = rest.first() == Some(&"with")
-            && !matches!(rest.get(1), Some(&"base") | Some(&"power") | Some(&"toughness"))
+            && !matches!(
+                rest.get(1),
+                Some(&"base") | Some(&"power") | Some(&"toughness")
+            )
             && rest.len() > 1;
         if is_with {
             return Some(1);

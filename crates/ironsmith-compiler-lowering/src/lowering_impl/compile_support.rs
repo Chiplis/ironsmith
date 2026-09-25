@@ -65,6 +65,8 @@ use crate::model::reference_state::{
     ReferenceImports,
 };
 
+#[path = "compile_support/card_selection_validation.rs"]
+mod card_selection_validation;
 #[path = "compile_support/choose_effect_helpers.rs"]
 mod choose_effect_helpers;
 #[path = "compile_support/control_flow_handlers.rs"]
@@ -77,8 +79,6 @@ mod effect_flow_search_handlers;
 mod effect_handlers;
 #[path = "compile_support/effect_visibility_object_handlers.rs"]
 mod effect_visibility_object_handlers;
-#[path = "compile_support/card_selection_validation.rs"]
-mod card_selection_validation;
 #[path = "compile_support/iterated_player_validation.rs"]
 mod iterated_player_validation;
 #[path = "compile_support/player_effect_helpers.rs"]
@@ -208,9 +208,13 @@ pub fn compile_annotated_effects_with_context(
                 .map(|predicate| compile_condition_from_predicate_ast(predicate, ctx, &None))
                 .transpose()?;
             let redirect = ironsmith_core::ExcessDamageRedirect { condition };
-            let rebuilt = compiled.iter().enumerate().rev().find_map(|(position, effect)| {
-                with_excess_damage_redirect(effect, &redirect).map(|effect| (position, effect))
-            });
+            let rebuilt = compiled
+                .iter()
+                .enumerate()
+                .rev()
+                .find_map(|(position, effect)| {
+                    with_excess_damage_redirect(effect, &redirect).map(|effect| (position, effect))
+                });
             let Some((position, effect)) = rebuilt else {
                 return Err(CardTextError::ParseError(
                     "excess damage redirect has no preceding damage instruction".to_string(),
@@ -308,9 +312,7 @@ pub fn compile_annotated_effects_with_context(
         }
 
         ctx.reserve_object_result_tag(current.out_env.known_last_object_tag().cloned());
-        ctx.set_annotated_result_prediction(Some(
-            current.out_env.known_last_object_tag().cloned(),
-        ));
+        ctx.set_annotated_result_prediction(Some(current.out_env.known_last_object_tag().cloned()));
         let compiled_effect = compile_effect(&current.effect, ctx);
         ctx.set_annotated_result_prediction(None);
         let (mut effect_list, effect_choices) = compiled_effect?;
@@ -1580,7 +1582,9 @@ fn compile_exchange_text_boxes_effect(
     let (spec, choices) = resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
     let mut exchange = crate::effects::ExchangeTextBoxesEffect::new(spec);
     exchange.include_source = include_source;
-    if include_source { exchange.duration = Until::Forever; }
+    if include_source {
+        exchange.duration = Until::Forever;
+    }
     let effect = Effect::new(exchange);
     let tag = ctx.next_tag("exchanged");
     ctx.last_object_tag = Some(tag.clone());
@@ -1751,8 +1755,8 @@ pub fn tag_object_target_effect(
     // predicted no new object result, allocating a fresh tag here would shift
     // every later predicted result name ("Put target creature card ... When
     // this leaves, that creature ...").
-    let redundant_source_result = matches!(spec.base(), ChooseSpec::Source)
-        && ctx.annotation_predicts_no_new_object_result();
+    let redundant_source_result =
+        matches!(spec.base(), ChooseSpec::Source) && ctx.annotation_predicts_no_new_object_result();
     if ctx.auto_tag_object_targets && produces_object_results && !redundant_source_result {
         let tag = ctx.next_tag(prefix);
         ctx.last_object_tag = Some(tag.clone());
@@ -3326,7 +3330,9 @@ fn with_excess_damage_redirect(
     redirect: &ironsmith_core::ExcessDamageRedirect,
 ) -> Option<Effect> {
     if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
-        return Some(Effect::new(damage.clone().with_excess_to_controller(redirect.clone())));
+        return Some(Effect::new(
+            damage.clone().with_excess_to_controller(redirect.clone()),
+        ));
     }
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         let inner = with_excess_damage_redirect(&tagged.effect, redirect)?;

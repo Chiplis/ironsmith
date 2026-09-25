@@ -18,7 +18,6 @@ mod become_creature_type_choice;
 mod conspire;
 mod crew;
 mod detain;
-mod next_adapt_ignores_counters;
 mod earthbend;
 mod evolve;
 mod exert;
@@ -26,6 +25,7 @@ mod flip;
 mod grant_object_ability;
 mod meld;
 mod monstrosity;
+mod next_adapt_ignores_counters;
 mod ninjutsu;
 mod phase_in;
 mod phase_out;
@@ -119,12 +119,18 @@ pub(crate) fn attachment_can_attach_to_target(
         }
         let filter_ctx = game.filter_context_for(attachment_controller, Some(attachment_id));
         if let Some(chars) = game.current_characteristics(attachment_id) {
-            let filters = chars.static_abilities.iter()
-                .filter_map(|ability| ability.enchant_filter()).collect::<Vec<_>>();
+            let filters = chars
+                .static_abilities
+                .iter()
+                .filter_map(|ability| ability.enchant_filter())
+                .collect::<Vec<_>>();
             return !filters.is_empty()
-                && filters.iter().all(|filter| filter.matches_target(target, &filter_ctx, game));
+                && filters
+                    .iter()
+                    .all(|filter| filter.matches_target(target, &filter_ctx, game));
         }
-        return attachment.aura_attach_filter_owned()
+        return attachment
+            .aura_attach_filter_owned()
             .is_some_and(|filter| filter.matches_target(target, &filter_ctx, game));
     }
 
@@ -136,9 +142,7 @@ pub(crate) fn attachment_can_attach_to_target(
     // creature (e.g. animated by March of the Machines) can't be attached.
     let attachment_is_creature = game.object_has_card_type(attachment_id, CardType::Creature);
     if subtypes.contains(&Subtype::Equipment) {
-        if attachment_is_creature
-            && !attachment_has_reconfigure_ability(attachment)
-        {
+        if attachment_is_creature && !attachment_has_reconfigure_ability(attachment) {
             return false;
         }
         if let Some(crate::object::AuraAttachmentFilter::Object(filter)) = game
@@ -272,7 +276,6 @@ pub use become_creature_type_choice::BecomeCreatureTypeChoiceEffect;
 pub use conspire::ConspireCostEffect;
 pub use crew::CrewCostEffect;
 pub use detain::DetainEffect;
-pub use next_adapt_ignores_counters::NextAdaptIgnoresCountersEffect;
 pub use earthbend::EarthbendEffect;
 pub use evolve::EvolveEffect;
 pub(crate) use evolve::evolve_entering_creature_is_larger;
@@ -281,6 +284,7 @@ pub use flip::FlipEffect;
 pub use grant_object_ability::GrantObjectAbilityEffect;
 pub use meld::MeldEffect;
 pub use monstrosity::MonstrosityEffect;
+pub use next_adapt_ignores_counters::NextAdaptIgnoresCountersEffect;
 pub use ninjutsu::{NinjutsuCostEffect, NinjutsuEffect, SneakCostEffect};
 pub use phase_in::PhaseInEffect;
 pub use phase_out::{PhaseOutDuration, PhaseOutEffect};

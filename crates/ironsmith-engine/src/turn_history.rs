@@ -299,7 +299,10 @@ impl TurnHistory {
 
     /// Spells `player` has cast this game, counting only completed casts.
     pub fn spells_cast_by_player_this_game(&self, player: PlayerId) -> u32 {
-        self.spells_cast_this_game.get(&player).copied().unwrap_or(0)
+        self.spells_cast_this_game
+            .get(&player)
+            .copied()
+            .unwrap_or(0)
     }
 
     pub fn spells_cast_by_player(&self, player: PlayerId) -> u32 {
@@ -702,27 +705,37 @@ impl TurnHistory {
         // Discard history may find the object created by that hand departure,
         // but must not follow the physical card through later zone changes.
         let is_discard_result = |hand_id: ObjectId| {
-            object_id == hand_id || self.projected_records().any(|record| {
-                record.event.downcast::<ZoneChangeEvent>().is_some_and(|event| {
-                    event.from == Zone::Hand
-                        && event.snapshots().iter().any(|snapshot| snapshot.object_id == hand_id)
-                        && if event.result_objects.is_empty() {
-                            event.objects.contains(&object_id)
-                        } else {
-                            event.result_objects.contains(&object_id)
-                        }
+            object_id == hand_id
+                || self.projected_records().any(|record| {
+                    record
+                        .event
+                        .downcast::<ZoneChangeEvent>()
+                        .is_some_and(|event| {
+                            event.from == Zone::Hand
+                                && event
+                                    .snapshots()
+                                    .iter()
+                                    .any(|snapshot| snapshot.object_id == hand_id)
+                                && if event.result_objects.is_empty() {
+                                    event.objects.contains(&object_id)
+                                } else {
+                                    event.result_objects.contains(&object_id)
+                                }
+                        })
                 })
-            })
         };
         self.projected_records().any(|record| {
             if let Some(event) = record.event.downcast::<CardDiscardedEvent>() {
                 return event.player == player && is_discard_result(event.card);
             }
-            record.event.downcast::<KeywordActionEvent>().is_some_and(|event| {
-                event.action == KeywordActionKind::Cycle
-                    && event.player == player
-                    && is_discard_result(event.source)
-            })
+            record
+                .event
+                .downcast::<KeywordActionEvent>()
+                .is_some_and(|event| {
+                    event.action == KeywordActionKind::Cycle
+                        && event.player == player
+                        && is_discard_result(event.source)
+                })
         })
     }
 
@@ -1325,9 +1338,11 @@ pub(crate) fn resolve_turn_history_count(
                 .filter(|snapshot| historical_filter.matches_snapshot(snapshot, filter_ctx, game))
                 .count() as i32
         }
-        TurnHistoryCount::TurnedFaceUp(player_filter) => history.projected_records()
+        TurnHistoryCount::TurnedFaceUp(player_filter) => history
+            .projected_records()
             .filter_map(|record| record.event.downcast::<crate::events::TurnedFaceUpEvent>())
-            .filter(|event| player_filter.matches_player(event.player, filter_ctx)).count() as i32,
+            .filter(|event| player_filter.matches_player(event.player, filter_ctx))
+            .count() as i32,
         TurnHistoryCount::TokensCreated(player_filter) => history
             .projected_records()
             .filter_map(|record| record.event.downcast::<CreateTokensEvent>())

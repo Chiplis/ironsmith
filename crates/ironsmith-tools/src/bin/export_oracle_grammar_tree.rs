@@ -600,6 +600,7 @@ fn line_paths(payload: &CardPayload, line: &OracleGrammarLine) -> Vec<(Vec<Segme
         )],
         OracleGrammarLine::DungeonRoom {
             room,
+            leads_to,
             text,
             effects_debug,
             ..
@@ -607,6 +608,7 @@ fn line_paths(payload: &CardPayload, line: &OracleGrammarLine) -> Vec<(Vec<Segme
             vec![
                 segment("line_family", "DungeonRoom"),
                 segment("room", room),
+                segment("leads_to", leads_to.join(",")),
                 segment("shape", abstract_text(&payload.name, text)),
                 segment("effect_ast", debug_heads(effects_debug)),
             ],

@@ -70,13 +70,22 @@ pub fn parse_comma_then_special_shape(
         return None;
     }
 
-    let into_library_then_position = primitives::parse_all(tail_tokens, |input: &mut LexStream<'_>| {
-        primitives::phrase(&["put", "this"]).parse_next(input)?;
-        repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), primitives::kw("library")).parse_next(input)?;
-        primitives::any_phrase(&[&["third", "from", "the", "top"], &["third", "from", "top"]]).parse_next(input)?;
-        primitives::sentence_end().parse_next(input)
-    }, "put source into library at position").is_ok();
-    let tail = if into_library_then_position && primitives::parse_prefix(head_tokens, primitives::kw("draw").void()).is_some() {
+    let into_library_then_position = primitives::parse_all(
+        tail_tokens,
+        |input: &mut LexStream<'_>| {
+            primitives::phrase(&["put", "this"]).parse_next(input)?;
+            repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), primitives::kw("library"))
+                .parse_next(input)?;
+            primitives::any_phrase(&[&["third", "from", "the", "top"], &["third", "from", "top"]])
+                .parse_next(input)?;
+            primitives::sentence_end().parse_next(input)
+        },
+        "put source into library at position",
+    )
+    .is_ok();
+    let tail = if into_library_then_position
+        && primitives::parse_prefix(head_tokens, primitives::kw("draw").void()).is_some()
+    {
         CommaThenTailShape::PutSourceOnLibrary
     } else if primitives::parse_prefix(tail_tokens, primitives::phrase(&["that", "player"]))
         .is_some()

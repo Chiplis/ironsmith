@@ -352,9 +352,11 @@ impl EffectLoweringContext {
     /// exposes no new object result: either no object reference at all, or
     /// the incoming one unchanged.
     pub fn annotation_predicts_no_new_object_result(&self) -> bool {
-        self.annotated_result_prediction.as_ref().is_some_and(|predicted| {
-            predicted.is_none() || predicted.as_ref() == self.frame.last_object_tag.as_ref()
-        })
+        self.annotated_result_prediction
+            .as_ref()
+            .is_some_and(|predicted| {
+                predicted.is_none() || predicted.as_ref() == self.frame.last_object_tag.as_ref()
+            })
     }
 
     pub fn take_reserved_object_result_tag(&mut self, prefix: &str) -> Option<TagKey> {

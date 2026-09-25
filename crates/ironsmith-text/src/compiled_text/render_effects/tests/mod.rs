@@ -194,11 +194,11 @@ mod damaged_target_player_or_controller;
 
 mod paid_color_hand_discard;
 
+mod cohort_choices;
+mod cohort_library_partition;
+mod cohort_targeted_tokens;
 mod combat_face_up_or_counter;
 mod permanent_keyword_choice;
-mod cohort_library_partition;
-mod cohort_choices;
-mod cohort_targeted_tokens;
 
 mod manifest_dread_counter_bundle;
 
@@ -310,9 +310,9 @@ mod activation_source_zone;
 
 mod shared_pump_targets;
 
-mod cohort_static_goad_and_prevention;
-mod cohort_counter_and_play_events;
 mod cohort_aura_returns_and_branches;
+mod cohort_counter_and_play_events;
+mod cohort_static_goad_and_prevention;
 
 mod cohort_offers_and_references;
 
@@ -328,15 +328,15 @@ mod cohort_combat_permissions_and_sacrifice;
 
 mod cohort_history_extrema_and_references;
 
-mod cohort_value_followups_and_attached_conditions;
-mod cohort_spell_unions_and_related_subjects;
 mod cohort_counter_choices_and_kicked_history;
+mod cohort_spell_unions_and_related_subjects;
+mod cohort_value_followups_and_attached_conditions;
 
-mod cohort_prevention_and_historical_counts;
-mod cohort_named_sources_and_persistent_choices;
-mod cohort_life_events_and_host_states;
+mod cohort_chapters_levels_and_name_relations;
 mod cohort_damage_sources_and_entry_conditions;
 mod cohort_entry_lists_and_payment_actors;
-mod cohort_chapters_levels_and_name_relations;
+mod cohort_life_events_and_host_states;
+mod cohort_named_sources_and_persistent_choices;
+mod cohort_prevention_and_historical_counts;
 
 mod cohort_corpus_filter_regressions;

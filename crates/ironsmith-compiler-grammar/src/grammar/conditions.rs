@@ -242,7 +242,9 @@ pub enum PlayerAchievementAst {
     CitysBlessing,
     /// "an enduring story" (Storied).
     EnduringStory,
-    CompletedDungeon { dungeon_name: Option<String> },
+    CompletedDungeon {
+        dungeon_name: Option<String>,
+    },
     FullParty,
     VisitedAttractionThisTurn,
 }
@@ -1418,10 +1420,12 @@ fn parse_player_cards_in_hand_relation_shape(
     let relation_clause = relation.tail_clause;
 
     match parse_cards_in_hand_relation_shape(relation_clause)? {
-        CardsInHandRelationShape::AtLeastMoreThanYou(amount) => Some(PlayerCardsInHandRelationConditionAst {
-            player: subject,
-            relation: PlayerCardsInHandRelationAst::HasAtLeastMoreCardsInHandThanYou(amount),
-        }),
+        CardsInHandRelationShape::AtLeastMoreThanYou(amount) => {
+            Some(PlayerCardsInHandRelationConditionAst {
+                player: subject,
+                relation: PlayerCardsInHandRelationAst::HasAtLeastMoreCardsInHandThanYou(amount),
+            })
+        }
         CardsInHandRelationShape::MoreThanYou => Some(PlayerCardsInHandRelationConditionAst {
             player: subject,
             relation: PlayerCardsInHandRelationAst::HasMoreCardsInHandThanYou,
@@ -1800,7 +1804,9 @@ fn parse_battlefield_entry_shape(tokens: &[OwnedLexToken]) -> Option<Battlefield
                 filter.other = true;
             }
             filter.set_you_had_entry_surface(you_had_surface);
-            if face_down { filter.face_down = Some(true); }
+            if face_down {
+                filter.face_down = Some(true);
+            }
             Some(BattlefieldEntryConditionAst::ObjectEntered {
                 filter,
                 min_count,
@@ -1912,10 +1918,12 @@ fn split_both_spell_cast_filter_tokens(
 }
 
 fn parse_spell_cast_filter_tokens_single(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter_with_grammar_entrypoint(
-        tokens, false,
-    ))?;
-    if tokens.iter().take_while(|token| !token.is_word("spell") && !token.is_word("spells"))
+    let mut filter = crate::grammar::primitives::probe_shape(
+        parse_object_filter_with_grammar_entrypoint(tokens, false),
+    )?;
+    if tokens
+        .iter()
+        .take_while(|token| !token.is_word("spell") && !token.is_word("spells"))
         .any(|token| token.is_word("another") || token.is_word("other"))
     {
         filter.other = true;

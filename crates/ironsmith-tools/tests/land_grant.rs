@@ -2,7 +2,9 @@
 //! rather than pay this spell's mana cost. Search your library for a Forest
 //! card, reveal that card, put it into your hand, then shuffle."
 use ironsmith::cards::builders::CardDefinitionBuilder;
-use ironsmith::decision::{GameProgress, LegalAction, SelectFirstDecisionMaker, compute_legal_actions};
+use ironsmith::decision::{
+    GameProgress, LegalAction, SelectFirstDecisionMaker, compute_legal_actions,
+};
 use ironsmith::game_loop::{PriorityLoopState, PriorityResponse};
 use ironsmith::ids::CardId;
 use ironsmith::{CardType, GameState, ObjectId, PlayerId, Subtype, Supertype, Zone};
@@ -31,7 +33,11 @@ fn strict_snapshot_and_full_quality_gate() {
     assert!(snapshot.similarity_score >= 0.99, "{snapshot:#?}");
 }
 
-fn card(name: &str, card_type: CardType, subtype: Option<Subtype>) -> ironsmith::cards::CardDefinition {
+fn card(
+    name: &str,
+    card_type: CardType,
+    subtype: Option<Subtype>,
+) -> ironsmith::cards::CardDefinition {
     let mut builder = CardDefinitionBuilder::new(CardId::new(), name).card_types(vec![card_type]);
     if card_type == CardType::Land {
         builder = builder.supertypes(vec![Supertype::Basic]);
@@ -50,8 +56,16 @@ fn setup(other: Option<(&str, CardType)>) -> (GameState, ObjectId) {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
-    game.create_object_from_definition(&card("Forest", CardType::Land, Some(Subtype::Forest)), alice, Zone::Library);
-    game.create_object_from_definition(&card("Island", CardType::Land, Some(Subtype::Island)), alice, Zone::Library);
+    game.create_object_from_definition(
+        &card("Forest", CardType::Land, Some(Subtype::Forest)),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_definition(
+        &card("Island", CardType::Land, Some(Subtype::Island)),
+        alice,
+        Zone::Library,
+    );
     if let Some((name, card_type)) = other {
         game.create_object_from_definition(&card(name, card_type, None), alice, Zone::Hand);
     }
@@ -90,7 +104,9 @@ fn with_no_land_cards_in_hand_it_is_cast_by_revealing_the_hand() {
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            &mut game, &mut queue, &mut state, &ctx, &mut dm,
+        );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
@@ -103,11 +119,17 @@ fn with_no_land_cards_in_hand_it_is_cast_by_revealing_the_hand() {
         .map(|id| game.object(*id).unwrap().name.to_string())
         .collect();
     hand.sort();
-    assert_eq!(hand, vec!["Forest".to_string(), "Spare Sorcery".to_string()]);
+    assert_eq!(
+        hand,
+        vec!["Forest".to_string(), "Spare Sorcery".to_string()]
+    );
 }
 
 #[test]
 fn a_land_card_in_hand_forbids_the_alternative_cost() {
     let (game, spell) = setup(Some(("Swamp", CardType::Land)));
-    assert!(castable(&game, spell).is_none(), "no mana and a land in hand");
+    assert!(
+        castable(&game, spell).is_none(),
+        "no mana and a land in hand"
+    );
 }

@@ -392,7 +392,8 @@ pub(super) fn read_negative_put_tagged_object_predicate(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let predicate_tokens = input.predicate_tokens;
     if let Some(predicate) = parse_negative_put_tagged_object_predicate(predicate_tokens)
-        .or_else(|| parse_positive_put_tagged_object_predicate(predicate_tokens)) {
+        .or_else(|| parse_positive_put_tagged_object_predicate(predicate_tokens))
+    {
         return Ok(Some(predicate));
     }
     Ok(None)
@@ -511,8 +512,9 @@ pub(super) fn read_source_linked_exiled_card_predicate(
     {
         return Ok(None);
     }
-    let exiled_with_source = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())
-        .in_zone(Zone::Exile);
+    let exiled_with_source =
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())
+            .in_zone(Zone::Exile);
     Ok(Some(PredicateAst::CountComparison {
         count: ironsmith_core::AnthemCountExpression::MatchingFilter(exiled_with_source),
         comparison: crate::effect::Comparison::GreaterThanOrEqual(1),

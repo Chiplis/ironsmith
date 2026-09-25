@@ -463,13 +463,22 @@ fn parse_there_are_filtered_cards(input: &mut LexStream<'_>) -> WResult<ParsedRe
     primitives::phrase(&["there", "are"]).parse_next(input)?;
     let count = parse_minimum_count_lexed.parse_next(input)?;
     let tokens = take_remaining_tokens(input)?;
-    if !tokens.iter().any(|token| token.is_word("card") || token.is_word("cards")) {
+    if !tokens
+        .iter()
+        .any(|token| token.is_word("card") || token.is_word("cards"))
+    {
         return Err(primitives::backtrack_err("zone card count", "a card noun"));
     }
     let filter = filters::parse_object_filter_with_grammar_entrypoint(tokens, false)
         .map_err(|_| primitives::backtrack_err("zone card count", "a card filter"))?;
-    if !matches!(filter.zone, Some(Zone::Graveyard | Zone::Exile | Zone::Hand | Zone::Library)) {
-        return Err(primitives::backtrack_err("zone card count", "an explicit card zone"));
+    if !matches!(
+        filter.zone,
+        Some(Zone::Graveyard | Zone::Exile | Zone::Hand | Zone::Library)
+    ) {
+        return Err(primitives::backtrack_err(
+            "zone card count",
+            "an explicit card zone",
+        ));
     }
     Ok(ParsedRequirement {
         surface: AttackUnlessSurface::ZoneCardCount,

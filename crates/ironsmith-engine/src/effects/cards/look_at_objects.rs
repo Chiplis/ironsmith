@@ -109,7 +109,11 @@ fn remember_hidden_views(
 ) {
     for viewer in viewers {
         for id in viewed {
-            if game.object(*id).is_some_and(|object| object.zone == Zone::Exile) && game.is_face_down(*id) {
+            if game
+                .object(*id)
+                .is_some_and(|object| object.zone == Zone::Exile)
+                && game.is_face_down(*id)
+            {
                 game.grant_face_down_exile_view(*id, *viewer);
             }
         }

@@ -324,7 +324,8 @@ impl<'a> ObjectSubject<'a> {
     ) -> Option<Zone> {
         match self {
             Self::Live(object) => {
-                entry.and_then(|entry| stack_spell_cast_origin_zone(object, entry))
+                entry
+                    .and_then(|entry| stack_spell_cast_origin_zone(object, entry))
                     .or_else(|| {
                         // A casting preview uses a stack-shaped copy while the
                         // actual card remains in its hand/graveyard/exile/etc.
@@ -441,7 +442,8 @@ impl<'a> ObjectSubject<'a> {
             }
         }
         if let Some(zone) = filter.excluded_cast_origin_zone
-            && (self.zone() != Zone::Stack || self.cast_origin(game, entry, ctx, true) == Some(zone))
+            && (self.zone() != Zone::Stack
+                || self.cast_origin(game, entry, ctx, true) == Some(zone))
         {
             return None;
         }

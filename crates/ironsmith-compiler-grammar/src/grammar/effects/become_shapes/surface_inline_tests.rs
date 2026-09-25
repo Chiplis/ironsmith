@@ -234,7 +234,14 @@ fn body_shape_classifies_exact_copy_aura_and_equal_surfaces() {
 #[test]
 fn plural_copy_body_preserves_its_source_and_requires_one() {
     let tokens = lex("copies of that creature");
-    let BecomeCopySourceShape::Source(source) = parse_become_body_surface_shape(&tokens).copy_source else { panic!("expected plural copy source"); };
+    let BecomeCopySourceShape::Source(source) =
+        parse_become_body_surface_shape(&tokens).copy_source
+    else {
+        panic!("expected plural copy source");
+    };
     assert_eq!(parser_token_word_refs(source), vec!["that", "creature"]);
-    assert!(matches!(parse_become_body_surface_shape(&lex("copies of")).copy_source, BecomeCopySourceShape::Missing));
+    assert!(matches!(
+        parse_become_body_surface_shape(&lex("copies of")).copy_source,
+        BecomeCopySourceShape::Missing
+    ));
 }

@@ -34,7 +34,10 @@ fn choose_library_position(
     let top_label = if top_position == 0 {
         "Top of library".to_string()
     } else {
-        format!("{} from the top of library", ordinal_position(top_position + 1))
+        format!(
+            "{} from the top of library",
+            ordinal_position(top_position + 1)
+        )
     };
     let options = vec![
         SelectableOption::new(0, top_label),

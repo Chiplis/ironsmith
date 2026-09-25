@@ -1,7 +1,9 @@
 //! Aven Mindcensor: "Flash. Flying. If an opponent would search a library,
 //! that player searches the top four cards of that library instead."
 use ironsmith::cards::builders::CardDefinitionBuilder;
-use ironsmith::decision::{GameProgress, LegalAction, SelectFirstDecisionMaker, compute_legal_actions};
+use ironsmith::decision::{
+    GameProgress, LegalAction, SelectFirstDecisionMaker, compute_legal_actions,
+};
 use ironsmith::game_loop::{PriorityLoopState, PriorityResponse};
 use ironsmith::ids::CardId;
 use ironsmith::{CardType, GameState, ObjectId, PlayerId, Subtype, Supertype, Zone};
@@ -65,10 +67,15 @@ fn crack_wilds(searcher: PlayerId, forest_depth: usize) -> bool {
     game.create_object_from_definition(&load("Aven Mindcensor"), alice, Zone::Battlefield);
     let total = 8;
     for depth_from_top in (0..total).rev() {
-        let card = if depth_from_top == forest_depth { forest() } else { filler(&format!("Filler {depth_from_top}")) };
+        let card = if depth_from_top == forest_depth {
+            forest()
+        } else {
+            filler(&format!("Filler {depth_from_top}"))
+        };
         game.create_object_from_definition(&card, searcher, Zone::Library);
     }
-    let wilds: ObjectId = game.create_object_from_definition(&load("Evolving Wilds"), searcher, Zone::Battlefield);
+    let wilds: ObjectId =
+        game.create_object_from_definition(&load("Evolving Wilds"), searcher, Zone::Battlefield);
     let action = compute_legal_actions(&game, searcher)
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == wilds))
@@ -90,20 +97,26 @@ fn crack_wilds(searcher: PlayerId, forest_depth: usize) -> bool {
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            &mut game, &mut queue, &mut state, &ctx, &mut dm,
+        );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
-    game.battlefield
-        .iter()
-        .any(|id| game.object(*id).is_some_and(|o| o.name.as_str() == "Forest"))
+    game.battlefield.iter().any(|id| {
+        game.object(*id)
+            .is_some_and(|o| o.name.as_str() == "Forest")
+    })
 }
 
 #[test]
 fn an_opponent_only_searches_the_top_four_cards() {
     let bob = PlayerId::from_index(1);
     assert!(crack_wilds(bob, 3), "a Forest fourth from the top is found");
-    assert!(!crack_wilds(bob, 4), "a Forest fifth from the top is out of reach");
+    assert!(
+        !crack_wilds(bob, 4),
+        "a Forest fifth from the top is out of reach"
+    );
 }
 
 #[test]

@@ -79,14 +79,22 @@ impl TriggerMatcher for DealsExactDamageToObjectOrPlayerTrigger {
         if damage.amount != self.amount {
             return false;
         }
-        if damage.amount == 0 || !super::damage_object_matches_filter(
-            damage.source, event.source_snapshot(), &self.source_filter, ctx,
-        ) {
+        if damage.amount == 0
+            || !super::damage_object_matches_filter(
+                damage.source,
+                event.source_snapshot(),
+                &self.source_filter,
+                ctx,
+            )
+        {
             return false;
         }
         match damage.target {
             DamageTarget::Object(target) => super::damage_object_matches_filter(
-                target, damage.target_snapshot.as_ref(), &self.object_filter, ctx,
+                target,
+                damage.target_snapshot.as_ref(),
+                &self.object_filter,
+                ctx,
             ),
             DamageTarget::Player(player) => {
                 self.player_filter.matches_player(player, &ctx.filter_ctx)

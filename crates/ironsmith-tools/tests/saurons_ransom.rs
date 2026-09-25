@@ -55,7 +55,11 @@ impl DecisionMaker for Choices {
     }
 
     fn decide_options(&mut self, _game: &GameState, ctx: &SelectOptionsContext) -> Vec<usize> {
-        let wanted = if self.take_face_down { "face-down" } else { "face-up" };
+        let wanted = if self.take_face_down {
+            "face-down"
+        } else {
+            "face-up"
+        };
         let picked: Vec<usize> = ctx
             .options
             .iter()
@@ -64,7 +68,12 @@ impl DecisionMaker for Choices {
             .take(1)
             .collect();
         if picked.is_empty() {
-            ctx.options.iter().filter(|o| o.legal).take(ctx.min.max(1)).map(|o| o.index).collect()
+            ctx.options
+                .iter()
+                .filter(|o| o.legal)
+                .take(ctx.min.max(1))
+                .map(|o| o.index)
+                .collect()
         } else {
             picked
         }
@@ -78,7 +87,9 @@ fn card(name: &str) -> ironsmith::cards::CardDefinition {
 }
 
 fn names(game: &GameState, ids: impl Iterator<Item = ObjectId>) -> Vec<String> {
-    let mut names: Vec<String> = ids.map(|id| game.object(id).unwrap().name.to_string()).collect();
+    let mut names: Vec<String> = ids
+        .map(|id| game.object(id).unwrap().name.to_string())
+        .collect();
     names.sort();
     names
 }
@@ -95,8 +106,14 @@ fn run(take_face_down: bool) -> (GameState, Choices) {
     for name in ["Bottom", "D", "C", "B", "A"] {
         game.create_object_from_definition(&card(name), alice, Zone::Library);
     }
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Blue, 1);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Black, 2);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Black, 2);
     let hand = game.create_object_from_definition(&def, alice, Zone::Hand);
     let action = compute_legal_actions(&game, alice)
         .into_iter()
@@ -124,7 +141,9 @@ fn run(take_face_down: bool) -> (GameState, Choices) {
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            &mut game, &mut queue, &mut state, &ctx, &mut dm,
+        );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
@@ -135,7 +154,11 @@ fn run(take_face_down: bool) -> (GameState, Choices) {
 fn opponent_divides_the_top_four_and_you_take_the_face_down_pile() {
     let (game, dm) = run(true);
     let alice = PlayerId::from_index(0);
-    assert_eq!(dm.divider, Some(PlayerId::from_index(1)), "the chosen opponent divides");
+    assert_eq!(
+        dm.divider,
+        Some(PlayerId::from_index(1)),
+        "the chosen opponent divides"
+    );
     let mut offered = dm.offered.clone();
     offered.sort();
     assert_eq!(offered, vec!["A", "B", "C", "D"], "only the top four");

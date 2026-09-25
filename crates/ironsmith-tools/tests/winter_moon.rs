@@ -55,7 +55,8 @@ impl DecisionMaker for PickNamed {
 }
 
 fn land(name: &str, basic: bool) -> ironsmith::cards::CardDefinition {
-    let mut builder = CardDefinitionBuilder::new(CardId::new(), name).card_types(vec![CardType::Land]);
+    let mut builder =
+        CardDefinitionBuilder::new(CardId::new(), name).card_types(vec![CardType::Land]);
     if basic {
         builder = builder.supertypes(vec![Supertype::Basic]);
     }
@@ -82,13 +83,20 @@ fn board(player: PlayerId) -> Board {
     let moon = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     let nonbasic: Vec<_> = ["Nonbasic A", "Nonbasic B", "Nonbasic C"]
         .into_iter()
-        .map(|name| game.create_object_from_definition(&land(name, false), player, Zone::Battlefield))
+        .map(|name| {
+            game.create_object_from_definition(&land(name, false), player, Zone::Battlefield)
+        })
         .collect();
-    let untapped_nonbasic =
-        game.create_object_from_definition(&land("Untapped Nonbasic", false), player, Zone::Battlefield);
+    let untapped_nonbasic = game.create_object_from_definition(
+        &land("Untapped Nonbasic", false),
+        player,
+        Zone::Battlefield,
+    );
     let basics: Vec<_> = ["Basic A", "Basic B"]
         .into_iter()
-        .map(|name| game.create_object_from_definition(&land(name, true), player, Zone::Battlefield))
+        .map(|name| {
+            game.create_object_from_definition(&land(name, true), player, Zone::Battlefield)
+        })
         .collect();
     let creature = game.create_object_from_definition(
         &CardDefinitionBuilder::new(CardId::new(), "Bear")
@@ -133,11 +141,24 @@ fn only_the_chosen_nonbasic_land_untaps_for_each_player() {
         assert_eq!((*min, *max), (1, Some(1)));
         let mut candidates = candidates.clone();
         candidates.sort();
-        assert_eq!(candidates, vec!["Nonbasic A", "Nonbasic B", "Nonbasic C"], "only tapped nonbasic lands are limited");
-        assert!(!game.is_tapped(board.nonbasic[1]), "the chosen nonbasic land untaps");
+        assert_eq!(
+            candidates,
+            vec!["Nonbasic A", "Nonbasic B", "Nonbasic C"],
+            "only tapped nonbasic lands are limited"
+        );
+        assert!(
+            !game.is_tapped(board.nonbasic[1]),
+            "the chosen nonbasic land untaps"
+        );
         assert!(game.is_tapped(board.nonbasic[0]) && game.is_tapped(board.nonbasic[2]));
-        assert!(board.basics.iter().all(|id| !game.is_tapped(*id)), "basic lands untap normally");
-        assert!(!game.is_tapped(board.creature), "other permanents untap normally");
+        assert!(
+            board.basics.iter().all(|id| !game.is_tapped(*id)),
+            "basic lands untap normally"
+        );
+        assert!(
+            !game.is_tapped(board.creature),
+            "other permanents untap normally"
+        );
         assert!(!game.is_tapped(board.untapped_nonbasic));
     }
 }

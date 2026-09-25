@@ -658,8 +658,7 @@ fn parse_draw_extra_cards_replacement_lexed(
     ))
     .parse_next(input)?;
     let except_first_of_draw_step = opt(semantic_phrase(&[
-        "except", "the", "first", "one", "you", "draw", "in", "each", "of", "your", "draw",
-        "steps",
+        "except", "the", "first", "one", "you", "draw", "in", "each", "of", "your", "draw", "steps",
     ]))
     .parse_next(input)?
     .is_some();

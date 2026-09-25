@@ -322,8 +322,9 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
         PlayerFilter::ControlsMost { .. } => {
             format!("{}'s", describe_player_filter(filter))
         }
-        PlayerFilter::OpponentOf(_)
-        | PlayerFilter::MaxSpeed { .. } => format!("{}'s", describe_player_filter(filter)),
+        PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
+            format!("{}'s", describe_player_filter(filter))
+        }
         PlayerFilter::ChosenPlayer => "the chosen player's".to_string(),
         PlayerFilter::TaggedPlayer(_) => "that player's".to_string(),
         PlayerFilter::IteratedPlayer => "that player's".to_string(),

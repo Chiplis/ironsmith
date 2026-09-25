@@ -20,17 +20,18 @@ fn casualty_sacrificed_creature<'a>(
     game: &'a GameState,
     ctx: &'a ExecutionContext,
 ) -> Option<&'a ObjectSnapshot> {
-    let from_tags = |tags: &'a std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>| {
-        let mut keys: Vec<_> = tags
-            .keys()
-            .filter(|tag| tag.as_str().starts_with("sacrifice_cost_"))
-            .collect();
-        keys.sort_by_key(|tag| tag.as_str().to_string());
-        keys.into_iter()
-            .filter_map(|tag| tags.get(tag))
-            .flatten()
-            .find(|snapshot| snapshot.card_types.contains(&CardType::Creature))
-    };
+    let from_tags =
+        |tags: &'a std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>| {
+            let mut keys: Vec<_> = tags
+                .keys()
+                .filter(|tag| tag.as_str().starts_with("sacrifice_cost_"))
+                .collect();
+            keys.sort_by_key(|tag| tag.as_str().to_string());
+            keys.into_iter()
+                .filter_map(|tag| tags.get(tag))
+                .flatten()
+                .find(|snapshot| snapshot.card_types.contains(&CardType::Creature))
+        };
     from_tags(&ctx.tagged_objects).or_else(|| {
         game.object(ctx.source)
             .and_then(|spell| from_tags(&spell.cast_tagged_objects))

@@ -85,7 +85,10 @@ pub enum KeywordAction {
     Plot(ManaCost),
     Melee,
     Mobilize(u32),
-    Impending { time: u32, cost: ManaCost },
+    Impending {
+        time: u32,
+        cost: ManaCost,
+    },
     Suspend {
         time: u32,
         cost: ManaCost,

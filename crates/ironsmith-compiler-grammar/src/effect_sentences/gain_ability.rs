@@ -656,18 +656,33 @@ fn parse_granted_ability_component_for_gain(
     if authored_as_quoted_ability
         && ability_words.len() >= 3
         && ability_words[..2] == ["if", "this"]
-        && matches!(ability_words[2], "permanent" | "creature" | "artifact" | "enchantment" | "land")
-        && ability_words[3..] == [
-            "would", "leave", "the", "battlefield", "exile", "it", "instead",
-            "of", "putting", "it", "anywhere", "else",
-        ]
+        && matches!(
+            ability_words[2],
+            "permanent" | "creature" | "artifact" | "enchantment" | "land"
+        )
+        && ability_words[3..]
+            == [
+                "would",
+                "leave",
+                "the",
+                "battlefield",
+                "exile",
+                "it",
+                "instead",
+                "of",
+                "putting",
+                "it",
+                "anywhere",
+                "else",
+            ]
     {
         return Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(
             StaticAbilityAst::Static(StaticAbility::redirect_zone_change(
                 ObjectFilter::source().with_source_surface(
-                    crate::target::SourceReferenceSurface::ThisPermanentType(
-                        format!("this {}", ability_words[2]),
-                    ),
+                    crate::target::SourceReferenceSurface::ThisPermanentType(format!(
+                        "this {}",
+                        ability_words[2]
+                    )),
                 ),
                 Some(Zone::Battlefield),
                 None,
@@ -675,11 +690,20 @@ fn parse_granted_ability_component_for_gain(
             )),
         ))]));
     }
-    if let Some(shape) = crate::grammar::token_definitions::parse_token_power_as_though_greater_shape_tokens(&ability_tokens) {
-        let actions = if ability_words.contains(&"saddles") { "saddles Mounts and crews Vehicles" } else { "crews Vehicles" };
+    if let Some(shape) =
+        crate::grammar::token_definitions::parse_token_power_as_though_greater_shape_tokens(
+            &ability_tokens,
+        )
+    {
+        let actions = if ability_words.contains(&"saddles") {
+            "saddles Mounts and crews Vehicles"
+        } else {
+            "crews Vehicles"
+        };
         return Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(
             StaticAbilityAst::Static(StaticAbility::keyword_marker(format!(
-                "This creature {actions} as though its power were {} greater.", shape.amount
+                "This creature {actions} as though its power were {} greater.",
+                shape.amount
             ))),
         ))]));
     }
@@ -790,24 +814,29 @@ fn parse_granted_ability_conjunction_for_gain(
         // "hexproof from blue and from black" (Veil of Summer) repeats only
         // the preposition; the second arm shares the first arm's keyword.
         let synthesized: Vec<OwnedLexToken>;
-        let segment: &[OwnedLexToken] = if segment.first().is_some_and(|token| token.is_word("from"))
+        let segment: &[OwnedLexToken] = if segment
+            .first()
+            .is_some_and(|token| token.is_word("from"))
             && let Some(keyword) = previous_keyword
         {
-            let mut tokens: Vec<OwnedLexToken> =
-                crate::lexer::synthetic_word_tokens(&[keyword]).into_iter().collect();
+            let mut tokens: Vec<OwnedLexToken> = crate::lexer::synthetic_word_tokens(&[keyword])
+                .into_iter()
+                .collect();
             tokens.extend_from_slice(segment);
             synthesized = tokens;
             &synthesized
         } else {
             segment
         };
-        if segment
-            .get(1)
-            .is_some_and(|token| token.is_word("from"))
+        if segment.get(1).is_some_and(|token| token.is_word("from"))
             && let Some(first) = segment.first().and_then(OwnedLexToken::as_word)
             && matches!(first, "hexproof" | "protection")
         {
-            previous_keyword = Some(if first == "hexproof" { "hexproof" } else { "protection" });
+            previous_keyword = Some(if first == "hexproof" {
+                "hexproof"
+            } else {
+                "protection"
+            });
         } else {
             previous_keyword = None;
         }
@@ -822,17 +851,18 @@ fn parse_granted_ability_conjunction_for_gain(
 
 fn granted_ability_conjunction_is_keyword_list(abilities: &[GrantedAbilityAst]) -> bool {
     !abilities.is_empty()
-        && abilities
-            .iter()
-            .all(|ability| match ability {
-                GrantedAbilityAst::KeywordAction(_) => true,
-                // Enchant's object filter must not swallow a following
-                // independent keyword in a granted Aura ability list.
-                GrantedAbilityAst::StaticAbility(ability) => {
-                    matches!(ability.as_ref(), StaticAbilityAst::AttachmentRestriction { .. })
-                }
-                _ => false,
-            })
+        && abilities.iter().all(|ability| match ability {
+            GrantedAbilityAst::KeywordAction(_) => true,
+            // Enchant's object filter must not swallow a following
+            // independent keyword in a granted Aura ability list.
+            GrantedAbilityAst::StaticAbility(ability) => {
+                matches!(
+                    ability.as_ref(),
+                    StaticAbilityAst::AttachmentRestriction { .. }
+                )
+            }
+            _ => false,
+        })
 }
 
 fn split_quoted_granted_ability_list(tokens: &[OwnedLexToken]) -> Option<Vec<&[OwnedLexToken]>> {

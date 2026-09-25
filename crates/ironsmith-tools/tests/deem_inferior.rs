@@ -49,11 +49,20 @@ impl DecisionMaker for Choices {
     }
 
     fn decide_options(&mut self, _game: &GameState, ctx: &SelectOptionsContext) -> Vec<usize> {
-        if ctx.options.iter().any(|option| option.description.contains("Bottom of library")) {
+        if ctx
+            .options
+            .iter()
+            .any(|option| option.description.contains("Bottom of library"))
+        {
             self.chooser = Some(ctx.player);
             return vec![if self.bottom { 1 } else { 0 }];
         }
-        ctx.options.iter().filter(|o| o.legal).take(ctx.min).map(|o| o.index).collect()
+        ctx.options
+            .iter()
+            .filter(|o| o.legal)
+            .take(ctx.min)
+            .map(|o| o.index)
+            .collect()
     }
 }
 
@@ -75,7 +84,11 @@ fn cast(drawn: u32, mana: u32, bottom: bool) -> Option<(Vec<String>, Option<Play
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
     for i in 0..5 {
-        game.create_object_from_definition(&filler(&format!("Alice Card {i}")), alice, Zone::Library);
+        game.create_object_from_definition(
+            &filler(&format!("Alice Card {i}")),
+            alice,
+            Zone::Library,
+        );
     }
     // Bob's library bottom-first: Bottom, Middle, Top.
     for name in ["Bob Bottom", "Bob Middle", "Bob Top"] {
@@ -93,20 +106,32 @@ fn cast(drawn: u32, mana: u32, bottom: bool) -> Option<(Vec<String>, Option<Play
     if drawn > 0 {
         let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
         let mut ctx = ironsmith::effects::EffectContext::new(bear, alice, &mut dm);
-        ironsmith::effects::execute_effect(&mut game, &ironsmith::Effect::draw(drawn as i32), &mut ctx).unwrap();
+        ironsmith::effects::execute_effect(
+            &mut game,
+            &ironsmith::Effect::draw(drawn as i32),
+            &mut ctx,
+        )
+        .unwrap();
     }
     let spell = game.create_object_from_definition(
         &ironsmith_tools::compile_definition_from_payload(&payload()).unwrap(),
         alice,
         Zone::Hand,
     );
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Blue, mana);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Blue, mana);
     let action = compute_legal_actions(&game, alice)
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))?;
     let mut queue = ironsmith::triggers::TriggerQueue::new();
     let mut state = PriorityLoopState::new(game.players_in_game());
-    let mut dm = Choices { target: bear, bottom, chooser: None };
+    let mut dm = Choices {
+        target: bear,
+        bottom,
+        chooser: None,
+    };
     let mut result = ironsmith::game_loop::apply_priority_response_with_dm(
         &mut game,
         &mut queue,
@@ -121,7 +146,9 @@ fn cast(drawn: u32, mana: u32, bottom: bool) -> Option<(Vec<String>, Option<Play
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            &mut game, &mut queue, &mut state, &ctx, &mut dm,
+        );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
@@ -140,7 +167,10 @@ fn cast(drawn: u32, mana: u32, bottom: bool) -> Option<(Vec<String>, Option<Play
 fn owner_can_put_it_second_from_the_top() {
     let (library, chooser, _) = cast(0, 4, false).expect("castable for {3}{U}");
     assert_eq!(chooser, Some(PlayerId::from_index(1)), "the owner chooses");
-    assert_eq!(library[..2], ["Bob Top".to_string(), "Bob Bear".to_string()]);
+    assert_eq!(
+        library[..2],
+        ["Bob Top".to_string(), "Bob Bear".to_string()]
+    );
 }
 
 #[test]

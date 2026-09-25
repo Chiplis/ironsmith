@@ -230,9 +230,12 @@ fn parses_triggering_cast_mana_and_excess_damage_values() {
         parse_value_expr_words(&[
             "the", "amount", "of", "mana", "spent", "to", "cast", "that", "spell",
         ]),
-        Some((Value::ManaSpentToCast(Box::new(crate::target::ChooseSpec::Tagged(
-            (crate::tag::CompilerReferenceTag::It.bind()).into(),
-        ))), 9))
+        Some((
+            Value::ManaSpentToCast(Box::new(crate::target::ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            ))),
+            9
+        ))
     );
     assert_eq!(
         parse_value_expr_words(&[

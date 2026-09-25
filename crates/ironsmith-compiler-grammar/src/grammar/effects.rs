@@ -1416,9 +1416,13 @@ pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
     if tokens.first().is_some_and(|token| token.is_word("if"))
         && tokens.get(1).is_some_and(|token| token.is_word("target"))
         && let Some(comma) = tokens.iter().position(|token| token.is_comma())
-        && let Some(is_index) = tokens[..comma].iter().position(|token| token.is_word("is")) {
+        && let Some(is_index) = tokens[..comma].iter().position(|token| token.is_word("is"))
+    {
         let predicate_words = parser_token_word_refs(&tokens[is_index + 1..comma]);
-        if matches!(predicate_words.as_slice(), ["chosen", "type"] | ["the", "chosen", "type"]) {
+        if matches!(
+            predicate_words.as_slice(),
+            ["chosen", "type"] | ["the", "chosen", "type"]
+        ) {
             let target = parse_target_phrase(&tokens[1..is_index])?;
             let mut matching = ObjectFilter::default();
             matching.chosen_creature_type = true;

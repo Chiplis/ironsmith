@@ -86,7 +86,9 @@ fn perform(game: &mut GameState, action: LegalAction, target: Target) {
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, &mut dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            game, &mut queue, &mut state, &ctx, &mut dm,
+        );
     }
     assert!(!game.stack.is_empty(), "{result:?}");
     ironsmith::game_loop::put_triggers_on_stack_with_dm(game, &mut queue, &mut dm).unwrap();
@@ -108,16 +110,26 @@ fn targeting_with_an_ability_draws_once_each_turn() {
     let mut game = setup();
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-    let first = game.create_object_from_definition(&load("Prodigal Sorcerer"), alice, Zone::Battlefield);
-    let second = game.create_object_from_definition(&load("Prodigal Sorcerer"), alice, Zone::Battlefield);
+    let first =
+        game.create_object_from_definition(&load("Prodigal Sorcerer"), alice, Zone::Battlefield);
+    let second =
+        game.create_object_from_definition(&load("Prodigal Sorcerer"), alice, Zone::Battlefield);
     let bear = game.create_object_from_definition(&load("Grizzly Bears"), bob, Zone::Battlefield);
     game.remove_summoning_sickness(first);
     game.remove_summoning_sickness(second);
     activate_pinger(&mut game, first, Target::Player(bob));
-    assert_eq!(game.player(alice).unwrap().hand.len(), 1, "targeting a player draws");
+    assert_eq!(
+        game.player(alice).unwrap().hand.len(),
+        1,
+        "targeting a player draws"
+    );
     assert_eq!(game.player(bob).unwrap().life, 19);
     activate_pinger(&mut game, second, Target::Object(bear));
-    assert_eq!(game.player(alice).unwrap().hand.len(), 1, "only once each turn");
+    assert_eq!(
+        game.player(alice).unwrap().hand.len(),
+        1,
+        "only once each turn"
+    );
 }
 
 #[test]
@@ -125,7 +137,8 @@ fn targeting_a_permanent_with_an_ability_draws() {
     let mut game = setup();
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-    let pinger = game.create_object_from_definition(&load("Prodigal Sorcerer"), alice, Zone::Battlefield);
+    let pinger =
+        game.create_object_from_definition(&load("Prodigal Sorcerer"), alice, Zone::Battlefield);
     let bear = game.create_object_from_definition(&load("Grizzly Bears"), bob, Zone::Battlefield);
     game.remove_summoning_sickness(pinger);
     activate_pinger(&mut game, pinger, Target::Object(bear));
@@ -138,12 +151,19 @@ fn targeting_with_a_spell_does_not_trigger() {
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let shock = game.create_object_from_definition(&load("Shock"), alice, Zone::Hand);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Red, 1);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
     let action = compute_legal_actions(&game, alice)
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == shock))
         .expect("Shock castable");
     perform(&mut game, action, Target::Player(bob));
     assert_eq!(game.player(bob).unwrap().life, 18);
-    assert_eq!(game.player(alice).unwrap().hand.len(), 0, "a spell is not an ability");
+    assert_eq!(
+        game.player(alice).unwrap().hand.len(),
+        0,
+        "a spell is not an ability"
+    );
 }

@@ -304,12 +304,43 @@ fn mana_retention_and_subject_markers_are_typed() {
 
 #[test]
 fn cast_restriction_retains_dynamic_mana_value_comparison() {
-    let words = ["each", "opponent", "cant", "cast", "noncreature", "spells", "with", "mana", "value", "greater", "than", "the", "number", "of", "lands", "that", "player", "controls"];
+    let words = [
+        "each",
+        "opponent",
+        "cant",
+        "cast",
+        "noncreature",
+        "spells",
+        "with",
+        "mana",
+        "value",
+        "greater",
+        "than",
+        "the",
+        "number",
+        "of",
+        "lands",
+        "that",
+        "player",
+        "controls",
+    ];
     let fact = parse_cant_cast_restriction_fact_words(&words).expect("dynamic restriction");
-    let CantCastRestrictionFact::CastSpellsMatching { player, filter } = fact else { panic!("{fact:?}"); };
+    let CantCastRestrictionFact::CastSpellsMatching { player, filter } = fact else {
+        panic!("{fact:?}");
+    };
     assert_eq!(player, crate::target::PlayerFilter::Opponent);
-    assert_eq!(filter.excluded_card_types, vec![crate::types::CardType::Creature]);
-    assert!(matches!(filter.mana_value, Some(crate::filter::Comparison::GreaterThanExpr(_))), "{filter:?}");
-    let mut extra = words.to_vec(); extra.push("nonsense");
+    assert_eq!(
+        filter.excluded_card_types,
+        vec![crate::types::CardType::Creature]
+    );
+    assert!(
+        matches!(
+            filter.mana_value,
+            Some(crate::filter::Comparison::GreaterThanExpr(_))
+        ),
+        "{filter:?}"
+    );
+    let mut extra = words.to_vec();
+    extra.push("nonsense");
     assert!(parse_cant_cast_restriction_fact_words(&extra).is_none());
 }

@@ -181,16 +181,30 @@ struct DiscardProposal {
 }
 
 impl crate::effects::SimultaneousEffectProposal for DiscardProposal {
-    fn commit(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
-        -> Result<EffectOutcome, ExecutionError> {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
         game.mark_hidden_cards_publicly_revealed(&self.revealed_by_choice);
         let mut effect = self.effect;
         effect.count = Value::Fixed(self.selected.len() as i32);
         let mut filter = ObjectFilter::default();
-        filter.any_of = self.selected.iter().copied().map(ObjectFilter::specific).collect();
+        filter.any_of = self
+            .selected
+            .iter()
+            .copied()
+            .map(ObjectFilter::specific)
+            .collect();
         effect.card_filter = Some(filter);
-        let previous_targets = std::mem::replace(&mut ctx.targets,
-            self.selected.iter().copied().map(crate::effects::ResolvedTarget::Object).collect());
+        let previous_targets = std::mem::replace(
+            &mut ctx.targets,
+            self.selected
+                .iter()
+                .copied()
+                .map(crate::effects::ResolvedTarget::Object)
+                .collect(),
+        );
         let outcome = effect.execute(game, ctx);
         ctx.targets = previous_targets;
         outcome
@@ -202,27 +216,49 @@ impl EffectExecutor for DiscardEffect {
         !self.random && !self.any_number && self.card_filter.is_none()
     }
 
-    fn prepare_simultaneous_player_action(&self, game: &GameState, ctx: &mut ExecutionContext)
-        -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
         use crate::decisions::{make_decision, specs::ChooseObjectsSpec};
         if !self.supports_simultaneous_player_action() {
-            return Err(ExecutionError::Impossible("discard shape lacks simultaneous preparation".into()));
+            return Err(ExecutionError::Impossible(
+                "discard shape lacks simultaneous preparation".into(),
+            ));
         }
         let player = resolve_player_filter(game, &self.player, ctx)?;
-        let hand = game.player(player).map(|player| player.hand.to_vec()).unwrap_or_default();
+        let hand = game
+            .player(player)
+            .map(|player| player.hand.to_vec())
+            .unwrap_or_default();
         let count = (resolve_value(game, &self.count, ctx)?.max(0) as usize).min(hand.len());
-        let explicit = ctx.targets.iter().filter_map(|target| match target {
-            crate::effects::ResolvedTarget::Object(id) => Some(*id),
-            _ => None,
-        }).collect::<Vec<_>>();
+        let explicit = ctx
+            .targets
+            .iter()
+            .filter_map(|target| match target {
+                crate::effects::ResolvedTarget::Object(id) => Some(*id),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
         let reveal_chosen_publicly = hand.iter().any(|id| game.hidden_identity_is_private(*id));
         let mut revealed_by_choice = Vec::new();
-        let selected = if count == 0 { Vec::new() }
-        else if !explicit.is_empty() { normalize_object_selection(explicit, &hand, count) }
-        else {
-            let spec = ChooseObjectsSpec::new(ctx.source,
-                format!("Choose {} card{} to discard", count, if count == 1 { "" } else { "s" }),
-                hand.clone(), count, Some(count));
+        let selected = if count == 0 {
+            Vec::new()
+        } else if !explicit.is_empty() {
+            normalize_object_selection(explicit, &hand, count)
+        } else {
+            let spec = ChooseObjectsSpec::new(
+                ctx.source,
+                format!(
+                    "Choose {} card{} to discard",
+                    count,
+                    if count == 1 { "" } else { "s" }
+                ),
+                hand.clone(),
+                count,
+                Some(count),
+            );
             // Discarded hidden cards are opened publicly before the answer is
             // replayed (Madness, discard triggers); see `hidden_hand_choices`.
             let spec = if reveal_chosen_publicly {
@@ -234,14 +270,25 @@ impl EffectExecutor for DiscardEffect {
             };
             let chosen = make_decision(game, ctx.decision_maker, player, Some(ctx.source), spec);
             if reveal_chosen_publicly {
-                revealed_by_choice = chosen.iter().copied().filter(|id| hand.contains(id)).collect();
+                revealed_by_choice = chosen
+                    .iter()
+                    .copied()
+                    .filter(|id| hand.contains(id))
+                    .collect();
             }
-            if ctx.decision_maker.awaiting_choice() { Vec::new() }
-            else { normalize_object_selection(chosen, &hand, count) }
+            if ctx.decision_maker.awaiting_choice() {
+                Vec::new()
+            } else {
+                normalize_object_selection(chosen, &hand, count)
+            }
         };
         let mut effect = self.clone();
         effect.player = PlayerFilter::Specific(player);
-        Ok(Box::new(DiscardProposal { effect, selected, revealed_by_choice }))
+        Ok(Box::new(DiscardProposal {
+            effect,
+            selected,
+            revealed_by_choice,
+        }))
     }
 
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
@@ -410,8 +457,11 @@ impl EffectExecutor for DiscardEffect {
             }
             if reveal_chosen_publicly {
                 // Only offered candidates are opened by the peer front end.
-                let opened: Vec<_> =
-                    chosen.iter().copied().filter(|id| hand_cards.contains(id)).collect();
+                let opened: Vec<_> = chosen
+                    .iter()
+                    .copied()
+                    .filter(|id| hand_cards.contains(id))
+                    .collect();
                 game.mark_hidden_cards_publicly_revealed(&opened);
             }
             if min_required > 0 {
@@ -457,8 +507,11 @@ impl EffectExecutor for DiscardEffect {
             }
             if reveal_chosen_publicly {
                 // Only offered candidates are opened by the peer front end.
-                let opened: Vec<_> =
-                    chosen.iter().copied().filter(|id| hand_cards.contains(id)).collect();
+                let opened: Vec<_> = chosen
+                    .iter()
+                    .copied()
+                    .filter(|id| hand_cards.contains(id))
+                    .collect();
                 game.mark_hidden_cards_publicly_revealed(&opened);
             }
             if hidden_hand_choice {
@@ -585,10 +638,8 @@ impl EffectExecutor for DiscardEffect {
         {
             // Each observation needs its own identity: turn history stages
             // events by provenance before the trigger queue processes them.
-            let discard_provenance = game.alloc_child_event_provenance(
-                ctx.provenance,
-                crate::events::EventKind::Discard,
-            );
+            let discard_provenance = game
+                .alloc_child_event_provenance(ctx.provenance, crate::events::EventKind::Discard);
             discard_events.push(crate::triggers::TriggerEvent::new_with_provenance(
                 DiscardEvent::with_cause(card_id, player_id, cause.clone())
                     .with_destination(final_zone),
@@ -670,7 +721,11 @@ impl CostExecutableEffect for DiscardEffect {
         controller: crate::ids::PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
         CostExecutableEffect::can_execute_as_cost_with_reason(
-            self, game, source, controller, crate::costs::PaymentReason::Other,
+            self,
+            game,
+            source,
+            controller,
+            crate::costs::PaymentReason::Other,
         )
     }
 
@@ -794,17 +849,37 @@ mod tests {
         ));
         assert!(matches!(
             effect.0.can_execute_as_cost_with_reason(
-                &game, source, alice, crate::costs::PaymentReason::CastSpell,
+                &game,
+                source,
+                alice,
+                crate::costs::PaymentReason::CastSpell,
             ),
             Err(crate::effects::CostValidationError::NotEnoughCards)
         ));
-        assert!(effect.0.can_execute_as_cost_with_reason(
-            &game, source, alice, crate::costs::PaymentReason::Other,
-        ).is_ok(), "noncasting costs can discard their source");
+        assert!(
+            effect
+                .0
+                .can_execute_as_cost_with_reason(
+                    &game,
+                    source,
+                    alice,
+                    crate::costs::PaymentReason::Other,
+                )
+                .is_ok(),
+            "noncasting costs can discard their source"
+        );
         add_card_to_hand(&mut game, "Other card", alice);
-        assert!(effect.0.can_execute_as_cost_with_reason(
-            &game, source, alice, crate::costs::PaymentReason::CastSpell,
-        ).is_ok());
+        assert!(
+            effect
+                .0
+                .can_execute_as_cost_with_reason(
+                    &game,
+                    source,
+                    alice,
+                    crate::costs::PaymentReason::CastSpell,
+                )
+                .is_ok()
+        );
     }
 
     #[test]

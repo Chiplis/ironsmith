@@ -15,8 +15,13 @@ use crate::target::PlayerFilter;
 // permanents were sacrificed). Keep all choice facts and retain a standalone
 // choice's result when the optional program contains only choices.
 fn is_object_selection(effect: &Effect) -> bool {
-    effect.downcast_ref::<crate::effects::ChooseObjectsEffect>().is_some()
-        || effect.0.transparent_child_effect().is_some_and(is_object_selection)
+    effect
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        .is_some()
+        || effect
+            .0
+            .transparent_child_effect()
+            .is_some_and(is_object_selection)
 }
 
 fn execute_optional_effects(

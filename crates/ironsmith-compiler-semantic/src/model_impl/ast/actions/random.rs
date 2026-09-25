@@ -7,7 +7,9 @@ pub enum RandomActionAst {
     FlipCoin,
     /// Flip without a call when only the physical heads/tails face matters.
     FlipCoinFaceOnly,
-    FlipCoins { count: u32 },
+    FlipCoins {
+        count: u32,
+    },
     RollDie {
         sides: u32,
         surface: Option<DieSurface>,
@@ -18,5 +20,7 @@ pub enum RandomActionAst {
         surface: Option<DieSurface>,
     },
     /// "Choose 1, 2, or 3 at random": the result is the chosen number.
-    ChooseNumberAtRandom { choices: Vec<u32> },
+    ChooseNumberAtRandom {
+        choices: Vec<u32>,
+    },
 }

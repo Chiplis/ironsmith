@@ -43,7 +43,11 @@ struct Pick {
 
 impl DecisionMaker for Pick {
     fn decide_targets(&mut self, _game: &GameState, ctx: &TargetsContext) -> Vec<Target> {
-        self.offered = ctx.requirements.iter().map(|r| r.legal_targets.clone()).collect();
+        self.offered = ctx
+            .requirements
+            .iter()
+            .map(|r| r.legal_targets.clone())
+            .collect();
         self.targets.iter().map(|id| Target::Object(*id)).collect()
     }
 }
@@ -73,9 +77,12 @@ fn board() -> Board {
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
     let welder = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     game.remove_summoning_sickness(welder);
-    let bob_rock = game.create_object_from_definition(&artifact("Bob Rock"), bob, Zone::Battlefield);
-    let bob_relic = game.create_object_from_definition(&artifact("Bob Relic"), bob, Zone::Graveyard);
-    let alice_relic = game.create_object_from_definition(&artifact("Alice Relic"), alice, Zone::Graveyard);
+    let bob_rock =
+        game.create_object_from_definition(&artifact("Bob Rock"), bob, Zone::Battlefield);
+    let bob_relic =
+        game.create_object_from_definition(&artifact("Bob Relic"), bob, Zone::Graveyard);
+    let alice_relic =
+        game.create_object_from_definition(&artifact("Alice Relic"), alice, Zone::Graveyard);
     Board {
         game,
         welder,
@@ -90,7 +97,9 @@ fn activate(board: &mut Board, dm: &mut Pick) -> bool {
     let alice = PlayerId::from_index(0);
     let action = compute_legal_actions(&board.game, alice)
         .into_iter()
-        .find(|a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == board.welder))
+        .find(
+            |a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == board.welder),
+        )
         .expect("activatable");
     let mut queue = ironsmith::triggers::TriggerQueue::new();
     let mut state = PriorityLoopState::new(board.game.players_in_game());
@@ -134,10 +143,25 @@ fn swaps_an_artifact_for_an_artifact_card_in_its_controllers_graveyard() {
         targets: vec![board.bob_rock, board.bob_relic],
         offered: Vec::new(),
     };
-    assert!(activate(&mut board, &mut dm), "offered {:?} rock={:?} relic={:?} alice_relic={:?}", dm.offered, board.bob_rock, board.bob_relic, board.alice_relic);
+    assert!(
+        activate(&mut board, &mut dm),
+        "offered {:?} rock={:?} relic={:?} alice_relic={:?}",
+        dm.offered,
+        board.bob_rock,
+        board.bob_relic,
+        board.alice_relic
+    );
     ironsmith::game_loop::resolve_stack_entry_with(&mut board.game, &mut dm).unwrap();
-    assert_eq!(zone_of(&board.game, "Bob Rock"), Some(Zone::Graveyard), "sacrificed");
-    assert_eq!(zone_of(&board.game, "Bob Relic"), Some(Zone::Battlefield), "returned");
+    assert_eq!(
+        zone_of(&board.game, "Bob Rock"),
+        Some(Zone::Graveyard),
+        "sacrificed"
+    );
+    assert_eq!(
+        zone_of(&board.game, "Bob Relic"),
+        Some(Zone::Battlefield),
+        "returned"
+    );
     let relic = board
         .game
         .objects_in_deterministic_order()
@@ -145,7 +169,11 @@ fn swaps_an_artifact_for_an_artifact_card_in_its_controllers_graveyard() {
         .find(|o| o.name.as_str() == "Bob Relic")
         .unwrap()
         .id;
-    assert_eq!(board.game.controller_of_id(relic), Some(bob), "returns under that player's control");
+    assert_eq!(
+        board.game.controller_of_id(relic),
+        Some(bob),
+        "returns under that player's control"
+    );
     assert!(board.game.is_tapped(board.welder));
 }
 
@@ -156,7 +184,10 @@ fn the_card_must_be_in_the_artifact_controllers_graveyard() {
         targets: vec![board.bob_rock, board.alice_relic],
         offered: Vec::new(),
     };
-    assert!(!activate(&mut board, &mut dm), "Alice's graveyard card does not match Bob's artifact");
+    assert!(
+        !activate(&mut board, &mut dm),
+        "Alice's graveyard card does not match Bob's artifact"
+    );
     assert_eq!(zone_of(&board.game, "Alice Relic"), Some(Zone::Graveyard));
 }
 
@@ -170,15 +201,27 @@ fn nothing_happens_if_either_target_becomes_illegal() {
         };
         assert!(activate(&mut board, &mut dm));
         if remove_card {
-            board.game.move_object(board.bob_relic, Zone::Exile, EventCause::effect());
+            board
+                .game
+                .move_object(board.bob_relic, Zone::Exile, EventCause::effect());
         } else {
-            board.game.move_object(board.bob_rock, Zone::Hand, EventCause::effect());
+            board
+                .game
+                .move_object(board.bob_rock, Zone::Hand, EventCause::effect());
         }
         ironsmith::game_loop::resolve_stack_entry_with(&mut board.game, &mut dm).unwrap();
         if remove_card {
-            assert_eq!(zone_of(&board.game, "Bob Rock"), Some(Zone::Battlefield), "not sacrificed");
+            assert_eq!(
+                zone_of(&board.game, "Bob Rock"),
+                Some(Zone::Battlefield),
+                "not sacrificed"
+            );
         } else {
-            assert_eq!(zone_of(&board.game, "Bob Relic"), Some(Zone::Graveyard), "not returned");
+            assert_eq!(
+                zone_of(&board.game, "Bob Relic"),
+                Some(Zone::Graveyard),
+                "not returned"
+            );
         }
     }
 }

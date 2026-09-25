@@ -47,9 +47,14 @@ impl TriggerMatcher for ThisDealsDamageToTrigger {
         let DamageTarget::Object(target_id) = damage.target else {
             return false;
         };
-        if damage.amount == 0 || !super::damage_object_matches_filter(
-            target_id, damage.target_snapshot.as_ref(), &self.target_filter, ctx,
-        ) {
+        if damage.amount == 0
+            || !super::damage_object_matches_filter(
+                target_id,
+                damage.target_snapshot.as_ref(),
+                &self.target_filter,
+                ctx,
+            )
+        {
             return false;
         }
         if self.combat_only && self.target_filter.union_is_one_or_more() {

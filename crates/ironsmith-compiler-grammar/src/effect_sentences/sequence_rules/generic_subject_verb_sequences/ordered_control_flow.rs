@@ -1766,7 +1766,11 @@ pub fn parse_target_modifier_counter_instead_then_common_damage(
     // This procedure is a pump replaced by counters, followed by damage.
     // Do not commit errors from unrelated second/third sentences before the
     // replacement marker proves that this reading can own the sequence.
-    if !sentences[sentence_idx + 1].lowered().iter().any(|token| token.is_word("instead")) {
+    if !sentences[sentence_idx + 1]
+        .lowered()
+        .iter()
+        .any(|token| token.is_word("instead"))
+    {
         return Ok(None);
     }
     let default_effects =

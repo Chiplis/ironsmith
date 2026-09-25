@@ -188,7 +188,10 @@ impl GameState {
     /// but is still a planeswalker is removed unless it's controlled by its
     /// protector. Creatures attacking a removed permanent attack nothing
     /// (CR 506.4c).
-    fn reconcile_attacked_permanents(&mut self, previous_controllers: &HashMap<ObjectId, PlayerId>) {
+    fn reconcile_attacked_permanents(
+        &mut self,
+        previous_controllers: &HashMap<ObjectId, PlayerId>,
+    ) {
         use crate::combat_state::AttackTarget;
         use crate::types::CardType;
 
@@ -251,7 +254,11 @@ impl GameState {
             let retarget = if !was_both {
                 // CR 506.4: attacked as only one of them, it's removed once
                 // it stops being that, even if it has become the other.
-                let still_attacked = if as_battle { is_battle } else { is_planeswalker };
+                let still_attacked = if as_battle {
+                    is_battle
+                } else {
+                    is_planeswalker
+                };
                 if !still_attacked {
                     self.remove_attacked_permanent_from_combat(permanent, None);
                 }
@@ -1762,13 +1769,16 @@ impl GameState {
             return false;
         };
         player.restricted_mana.get(index).is_some_and(|restricted| {
-            restricted.restrictions.iter().any(|restriction| match restriction {
-                crate::ability::ManaUsageRestriction::PaymentTransaction {
-                    restriction: Some(predicate),
-                    ..
-                } => forbids_generic(&*predicate),
-                _ => false,
-            })
+            restricted
+                .restrictions
+                .iter()
+                .any(|restriction| match restriction {
+                    crate::ability::ManaUsageRestriction::PaymentTransaction {
+                        restriction: Some(predicate),
+                        ..
+                    } => forbids_generic(&*predicate),
+                    _ => false,
+                })
         })
     }
 
@@ -2514,13 +2524,19 @@ impl GameState {
         cost: &crate::mana::ManaCost,
         reason: crate::costs::PaymentReason,
     ) -> Option<crate::mana::ManaSymbol> {
-        fn contains_mana_cost(total: &crate::cost::TotalCost, mana: &crate::mana::ManaCost) -> bool {
+        fn contains_mana_cost(
+            total: &crate::cost::TotalCost,
+            mana: &crate::mana::ManaCost,
+        ) -> bool {
             if let Some(branches) = total.as_one_of() {
-                return branches.iter().any(|branch| contains_mana_cost(branch, mana));
+                return branches
+                    .iter()
+                    .any(|branch| contains_mana_cost(branch, mana));
             }
-            total.costs().iter().any(|component| {
-                component.mana_cost_ref().is_some_and(|cost| cost == mana)
-            })
+            total
+                .costs()
+                .iter()
+                .any(|component| component.mana_cost_ref().is_some_and(|cost| cost == mana))
         }
         if reason != crate::costs::PaymentReason::ActivateAbility {
             return None;
@@ -2533,10 +2549,10 @@ impl GameState {
             };
             contains_mana_cost(&activated.mana_cost, cost)
                 && activated.additional_restrictions.iter().any(|restriction| {
-                restriction.eq_ignore_ascii_case(
-                    "spend only mana of the chosen color to activate this ability",
-                )
-            })
+                    restriction.eq_ignore_ascii_case(
+                        "spend only mana of the chosen color to activate this ability",
+                    )
+                })
         });
 
         has_restricted_activation.then(|| {

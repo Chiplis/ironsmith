@@ -279,8 +279,14 @@ impl EffectExecutor for CantEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let duration = if let Until::ForAsLongAs(predicate) = &self.duration {
             let Some(predicate) = crate::effects::continuous::materialize_duration_predicate(
-                predicate, &crate::continuous::EffectTarget::Source, &None, game, ctx,
-            ) else { return Ok(EffectOutcome::count(0)); };
+                predicate,
+                &crate::continuous::EffectTarget::Source,
+                &None,
+                game,
+                ctx,
+            ) else {
+                return Ok(EffectOutcome::count(0));
+            };
             if !crate::continuous::continuous_duration_predicate_matches(&predicate, game) {
                 return Ok(EffectOutcome::count(0));
             }

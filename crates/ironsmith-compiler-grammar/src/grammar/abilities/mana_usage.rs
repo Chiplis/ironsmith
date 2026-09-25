@@ -117,10 +117,18 @@ pub fn parse_mana_usage_restriction_sentence_lexed(
 /// Wellspring).
 fn parse_cant_pay_generic_restriction(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestriction> {
     const SHAPES: &[&[&str]] = &[
-        &["this", "mana", "cant", "be", "spent", "to", "pay", "generic", "mana", "costs"],
-        &["this", "mana", "can't", "be", "spent", "to", "pay", "generic", "mana", "costs"],
-        &["that", "mana", "cant", "be", "spent", "to", "pay", "generic", "mana", "costs"],
-        &["that", "mana", "can't", "be", "spent", "to", "pay", "generic", "mana", "costs"],
+        &[
+            "this", "mana", "cant", "be", "spent", "to", "pay", "generic", "mana", "costs",
+        ],
+        &[
+            "this", "mana", "can't", "be", "spent", "to", "pay", "generic", "mana", "costs",
+        ],
+        &[
+            "that", "mana", "cant", "be", "spent", "to", "pay", "generic", "mana", "costs",
+        ],
+        &[
+            "that", "mana", "can't", "be", "spent", "to", "pay", "generic", "mana", "costs",
+        ],
     ];
     matches_any_exact_tokens(tokens, SHAPES).then(|| ManaUsageRestriction::PaymentTransaction {
         restriction: Some(ManaPaymentPredicate::Not(Box::new(

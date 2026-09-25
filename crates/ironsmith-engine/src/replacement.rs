@@ -218,7 +218,9 @@ pub enum ReplacementAction {
     EnterUnderControl(PlayerId),
 
     /// The affected permanent controller chooses its entering controller.
-    EnterUnderChosenControl { players: crate::target::PlayerFilter },
+    EnterUnderChosenControl {
+        players: crate::target::PlayerFilter,
+    },
 
     /// Enter as a copy of something
     EnterAsCopy {

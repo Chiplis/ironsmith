@@ -507,10 +507,12 @@ impl TriggerMatcher for SpellCastTrigger {
                 PlayerFilter::Opponent | PlayerFilter::Specific(_)
             )
         {
-            let repeated = spell_text.strip_prefix("an ").or_else(|| spell_text.strip_prefix("a ")).unwrap_or(&spell_text);
-            spell_text = format!(
-                "{spell_text} other than the first {repeated} that player casts each turn"
-            );
+            let repeated = spell_text
+                .strip_prefix("an ")
+                .or_else(|| spell_text.strip_prefix("a "))
+                .unwrap_or(&spell_text);
+            spell_text =
+                format!("{spell_text} other than the first {repeated} that player casts each turn");
         } else if self.min_spells_this_turn == Some(2) {
             suffix.push_str(" as your second spell this turn");
         }
@@ -692,7 +694,11 @@ fn describe_single_creature_target_excluding_source(filter: &ObjectFilter) -> Op
 }
 
 fn describe_spell_filter(filter: &ObjectFilter) -> String {
-    if filter.ability_markers.iter().any(|marker| marker == "kicked") {
+    if filter
+        .ability_markers
+        .iter()
+        .any(|marker| marker == "kicked")
+    {
         let mut base = filter.clone();
         base.ability_markers.retain(|marker| marker != "kicked");
         let base = describe_spell_filter(&base);
@@ -716,7 +722,10 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
     }
 
     // The surrounding trigger renders this matching ordinal and its caster.
-    if filter.first_spell_cast_each_turn || filter.spell_cast_ordinal_each_turn.is_some() || filter.spell_cast_minimum_each_turn.is_some() {
+    if filter.first_spell_cast_each_turn
+        || filter.spell_cast_ordinal_each_turn.is_some()
+        || filter.spell_cast_minimum_each_turn.is_some()
+    {
         let mut base = filter.clone();
         base.first_spell_cast_each_turn = false;
         base.spell_cast_ordinal_each_turn = None;

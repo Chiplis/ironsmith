@@ -758,21 +758,40 @@ fn printed_discard_cost_is_required_by_both_cast_legality_paths() {
             .card_types(vec![CardType::Sorcery])
             .mana_cost(ManaCost::new())
             .build();
-        def.additional_cost = crate::cost::TotalCost::from_cost(crate::costs::Cost::try_effect(
-            crate::effect::Effect::new(crate::effects::WithIdEffect::new(
-                crate::effect::EffectId(0),
-                crate::effect::Effect::new(crate::effects::DiscardEffect::you(1)),
-            )),
-        ).unwrap());
+        def.additional_cost = crate::cost::TotalCost::from_cost(
+            crate::costs::Cost::try_effect(crate::effect::Effect::new(
+                crate::effects::WithIdEffect::new(
+                    crate::effect::EffectId(0),
+                    crate::effect::Effect::new(crate::effects::DiscardEffect::you(1)),
+                ),
+            ))
+            .unwrap(),
+        );
         let spell_id = game.create_object_from_definition(&def, alice, Zone::Hand);
         if spare {
-            let card = CardBuilder::new(CardId::new(), "Spare").card_types(vec![CardType::Land]).build();
+            let card = CardBuilder::new(CardId::new(), "Spare")
+                .card_types(vec![CardType::Land])
+                .build();
             game.create_object_from_card(&card, alice, Zone::Hand);
         }
         let spell = game.object(spell_id).unwrap();
         let view = DerivedGameView::new(&game);
-        assert_eq!(can_cast_spell_with_view(&game, alice, spell, &CastingMethod::Normal, &view), spare);
-        assert_eq!(can_cast_with_cost_with_view(&game, alice, spell, spell_id,
-            Some(&ManaCost::new()), None, &AdditionalCastRequirements::default(), &view), spare);
+        assert_eq!(
+            can_cast_spell_with_view(&game, alice, spell, &CastingMethod::Normal, &view),
+            spare
+        );
+        assert_eq!(
+            can_cast_with_cost_with_view(
+                &game,
+                alice,
+                spell,
+                spell_id,
+                Some(&ManaCost::new()),
+                None,
+                &AdditionalCastRequirements::default(),
+                &view
+            ),
+            spare
+        );
     }
 }

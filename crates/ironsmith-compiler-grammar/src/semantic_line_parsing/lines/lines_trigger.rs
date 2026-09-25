@@ -559,11 +559,18 @@ pub(super) fn parse_triggered_ability_line_impl(
     if line.presentation == Some(PresentationLabel::CaseToSolve) {
         let trigger = parse_trigger_clause_lexed(trigger_parse_tokens)?;
         return apply_chosen_option_to_triggered_chunk(
-            apply_explicit_intervening_if_to_triggered_chunk(LineAst::Triggered {
-                trigger, effects: vec![EffectAst::SolveCase],
-                max_triggers_per_turn: inferred_max_triggers_per_turn,
-            }, line.intervening_if.clone())?,
-            trigger_facts, inferred_max_triggers_per_turn, chosen_option, presentation_label,
+            apply_explicit_intervening_if_to_triggered_chunk(
+                LineAst::Triggered {
+                    trigger,
+                    effects: vec![EffectAst::SolveCase],
+                    max_triggers_per_turn: inferred_max_triggers_per_turn,
+                },
+                line.intervening_if.clone(),
+            )?,
+            trigger_facts,
+            inferred_max_triggers_per_turn,
+            chosen_option,
+            presentation_label,
         );
     }
     let full_text_facts = semantic_grammar::parse_triggered_text_facts_tokens(full_parse_tokens);

@@ -93,7 +93,9 @@ fn board(fade: u32) -> Board {
     game.turn.phase = ironsmith::game_state::Phase::Beginning;
     game.turn.step = Some(ironsmith::game_state::Step::Upkeep);
     let wire = game.create_object_from_definition(&def, alice, Zone::Battlefield);
-    game.object_mut(wire).unwrap().add_counters(CounterType::Fade, fade);
+    game.object_mut(wire)
+        .unwrap()
+        .add_counters(CounterType::Fade, fade);
     let mut bob_permanents = Vec::new();
     for (name, card_type) in [
         ("Bob Land", CardType::Land),
@@ -102,7 +104,8 @@ fn board(fade: u32) -> Board {
         ("Bob Aura", CardType::Enchantment),
         ("Bob Tapped Land", CardType::Land),
     ] {
-        let id = game.create_object_from_definition(&permanent(name, card_type), bob, Zone::Battlefield);
+        let id =
+            game.create_object_from_definition(&permanent(name, card_type), bob, Zone::Battlefield);
         bob_permanents.push((id, name));
     }
     let tapped = bob_permanents[4].0;
@@ -148,7 +151,11 @@ fn opponent_taps_one_permanent_per_fade_counter_and_chooses_them() {
         prefer: vec!["Bob Relic", "Bob Land"],
         prompts: Vec::new(),
     };
-    assert_eq!(run_upkeep(&mut board.game, &mut dm), 1, "only the each-player upkeep trigger on Bob's turn");
+    assert_eq!(
+        run_upkeep(&mut board.game, &mut dm),
+        1,
+        "only the each-player upkeep trigger on Bob's turn"
+    );
     let (chooser, candidates, min, max) = dm.prompts.last().unwrap().clone();
     assert_eq!(chooser, bob, "that player chooses what to tap");
     assert_eq!((min, max), (2, Some(2)));
@@ -159,8 +166,14 @@ fn opponent_taps_one_permanent_per_fade_counter_and_chooses_them() {
         vec!["Bob Bear", "Bob Land", "Bob Relic"],
         "only untapped artifacts, creatures, and lands that player controls"
     );
-    assert_eq!(tapped_names(&board), vec!["Bob Land", "Bob Relic", "Bob Tapped Land"]);
-    assert!(!board.game.is_tapped(board.wire), "Alice's permanents are untouched");
+    assert_eq!(
+        tapped_names(&board),
+        vec!["Bob Land", "Bob Relic", "Bob Tapped Land"]
+    );
+    assert!(
+        !board.game.is_tapped(board.wire),
+        "Alice's permanents are untouched"
+    );
 }
 
 #[test]
@@ -175,7 +188,10 @@ fn taps_everything_eligible_when_counters_exceed_permanents() {
         tapped_names(&board),
         vec!["Bob Bear", "Bob Land", "Bob Relic", "Bob Tapped Land"]
     );
-    assert!(!board.game.is_tapped(board.bob_permanents[3].0), "enchantments are not eligible");
+    assert!(
+        !board.game.is_tapped(board.bob_permanents[3].0),
+        "enchantments are not eligible"
+    );
 }
 
 #[test]
@@ -183,9 +199,11 @@ fn controllers_own_upkeep_removes_a_counter_and_taps_for_the_rest() {
     let mut board = board(2);
     let alice = PlayerId::from_index(0);
     board.game.turn.active_player = alice;
-    let land = board
-        .game
-        .create_object_from_definition(&permanent("Alice Land", CardType::Land), alice, Zone::Battlefield);
+    let land = board.game.create_object_from_definition(
+        &permanent("Alice Land", CardType::Land),
+        alice,
+        Zone::Battlefield,
+    );
     let mut dm = Chooser {
         prefer: vec!["Alice Land"],
         prompts: Vec::new(),
@@ -199,10 +217,19 @@ fn controllers_own_upkeep_removes_a_counter_and_taps_for_the_rest() {
         .get(&CounterType::Fade)
         .copied()
         .unwrap_or(0);
-    assert_eq!(fade, 1, "fading removes one counter on its controller's upkeep");
+    assert_eq!(
+        fade, 1,
+        "fading removes one counter on its controller's upkeep"
+    );
     let (chooser, _, min, _) = dm.prompts.last().unwrap().clone();
     assert_eq!(chooser, alice);
     assert!((1..=2).contains(&min), "counted at resolution: {min}");
-    assert!(board.game.is_tapped(land), "Alice taps her own permanents on her upkeep");
-    assert!(tapped_names(&board) == vec!["Bob Tapped Land"], "Bob is unaffected on Alice's upkeep");
+    assert!(
+        board.game.is_tapped(land),
+        "Alice taps her own permanents on her upkeep"
+    );
+    assert!(
+        tapped_names(&board) == vec!["Bob Tapped Land"],
+        "Bob is unaffected on Alice's upkeep"
+    );
 }

@@ -322,7 +322,10 @@ impl PreventionEffectManager {
         self.pending_follow_ups.len()
     }
 
-    pub(crate) fn end_follow_up_deferral(&mut self, start: usize) -> Vec<PendingPreventionFollowUp> {
+    pub(crate) fn end_follow_up_deferral(
+        &mut self,
+        start: usize,
+    ) -> Vec<PendingPreventionFollowUp> {
         self.follow_up_deferral_depth -= 1;
         self.pending_follow_ups.split_off(start)
     }

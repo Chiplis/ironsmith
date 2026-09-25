@@ -43,7 +43,10 @@ fn land_type_mode_lowers_to_one_choice_of_each_type_applied_to_the_whole_set() {
     let debug = format!("{:#?}", def.spell_effect);
     assert!(debug.contains("ChooseLandTypeEffect"), "{debug}");
     assert!(debug.contains("BecomeBasicLandTypeChoiceEffect"), "{debug}");
-    assert!(debug.contains("chosen_land_type: true"), "lands of the first chosen type");
+    assert!(
+        debug.contains("chosen_land_type: true"),
+        "lands of the first chosen type"
+    );
     assert!(
         !debug.contains("ForEachObject"),
         "the basic land type is chosen once, not once per land"
@@ -107,7 +110,10 @@ fn cast(game: &mut GameState, dm: &mut Choices) {
     let alice = PlayerId::from_index(0);
     let def = ironsmith_tools::compile_definition_from_payload(&payload()).unwrap();
     let spell = game.create_object_from_definition(&def, alice, Zone::Hand);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Blue, 1);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
     let action = compute_legal_actions(game, alice)
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
@@ -151,9 +157,21 @@ fn chosen_land_type_becomes_the_chosen_basic_type_until_end_of_turn() {
     let mut game = new_game();
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-    let alice_forest = game.create_object_from_definition(&land("Alice Forest", Subtype::Forest, true), alice, Zone::Battlefield);
-    let bob_forest = game.create_object_from_definition(&land("Bob Forest", Subtype::Forest, true), bob, Zone::Battlefield);
-    let mountain = game.create_object_from_definition(&land("Bob Mountain", Subtype::Mountain, true), bob, Zone::Battlefield);
+    let alice_forest = game.create_object_from_definition(
+        &land("Alice Forest", Subtype::Forest, true),
+        alice,
+        Zone::Battlefield,
+    );
+    let bob_forest = game.create_object_from_definition(
+        &land("Bob Forest", Subtype::Forest, true),
+        bob,
+        Zone::Battlefield,
+    );
+    let mountain = game.create_object_from_definition(
+        &land("Bob Mountain", Subtype::Mountain, true),
+        bob,
+        Zone::Battlefield,
+    );
     let mut dm = Choices {
         mode: 1,
         land_type: "Forest",
@@ -163,7 +181,10 @@ fn chosen_land_type_becomes_the_chosen_basic_type_until_end_of_turn() {
     };
     cast(&mut game, &mut dm);
     assert_eq!(
-        dm.prompts.iter().filter(|p| p.contains("basic land type")).count(),
+        dm.prompts
+            .iter()
+            .filter(|p| p.contains("basic land type"))
+            .count(),
         1,
         "one basic land type choice for all lands: {:?}",
         dm.prompts
@@ -171,12 +192,23 @@ fn chosen_land_type_becomes_the_chosen_basic_type_until_end_of_turn() {
     for forest in [alice_forest, bob_forest] {
         let subtypes = game.calculated_subtypes(forest);
         assert!(subtypes.contains(&Subtype::Island), "{subtypes:?}");
-        assert!(!subtypes.contains(&Subtype::Forest), "setting a land type replaces it");
+        assert!(
+            !subtypes.contains(&Subtype::Forest),
+            "setting a land type replaces it"
+        );
     }
-    assert_eq!(game.calculated_subtypes(mountain), vec![Subtype::Mountain], "other lands unchanged");
+    assert_eq!(
+        game.calculated_subtypes(mountain),
+        vec![Subtype::Mountain],
+        "other lands unchanged"
+    );
 
     ironsmith::turn::execute_cleanup_step(&mut game);
-    assert!(game.calculated_subtypes(alice_forest).contains(&Subtype::Forest), "until end of turn");
+    assert!(
+        game.calculated_subtypes(alice_forest)
+            .contains(&Subtype::Forest),
+        "until end of turn"
+    );
 }
 
 #[test]

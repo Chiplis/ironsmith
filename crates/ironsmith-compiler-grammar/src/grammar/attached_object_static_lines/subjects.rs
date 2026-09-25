@@ -75,14 +75,15 @@ pub fn strip_attached_condition_pronoun(tokens: &[OwnedLexToken]) -> Option<&[Ow
 }
 
 /// The counterpart in the current, symmetric blocking relation of the host.
-pub fn parse_attached_combat_partner_condition_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn parse_attached_combat_partner_condition_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<&[OwnedLexToken]> {
     let tail = strip_attached_condition_pronoun(tokens).or_else(|| {
         // The lexer normalizes the one-token contraction "it's" to `its`.
         primitives::parse_prefix(tokens, semantic_phrase(&["its"])).map(|(_, tail)| tail)
     })?;
-    let (_, partner) = primitives::parse_prefix(
-        tail, semantic_phrase(&["blocking", "or", "blocked", "by"]),
-    )?;
+    let (_, partner) =
+        primitives::parse_prefix(tail, semantic_phrase(&["blocking", "or", "blocked", "by"]))?;
     (!partner.is_empty()).then_some(partner)
 }
 
@@ -333,7 +334,9 @@ pub fn parse_attached_is_goaded_tokens(tokens: &[OwnedLexToken]) -> Option<Attac
 }
 
 /// Return a typed attachment subject and its remaining predicate tokens.
-pub fn split_attached_subject_tokens(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+pub fn split_attached_subject_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     let mut input = LexStream::new(tokens);
     primitives::take_leaf(&mut input, parse_attached_subject_lexed)?;
     let boundary = tokens.len().checked_sub(input.len())?;

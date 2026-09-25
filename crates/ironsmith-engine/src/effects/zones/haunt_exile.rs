@@ -47,7 +47,10 @@ impl EffectExecutor for HauntExileEffect {
         // "put into a graveyard during its resolution") trigger's source is
         // the pre-move object; follow the zone change to the graveyard card.
         let Some(graveyard_card) = crate::effects::helpers::resolve_source_object_id(game, ctx)
-            .filter(|&id| game.object(id).is_some_and(|obj| obj.zone == Zone::Graveyard))
+            .filter(|&id| {
+                game.object(id)
+                    .is_some_and(|obj| obj.zone == Zone::Graveyard)
+            })
         else {
             return Ok(EffectOutcome::resolved());
         };

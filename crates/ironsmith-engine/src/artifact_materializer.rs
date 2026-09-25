@@ -126,7 +126,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "ChooseCardNameEffect" => decode_as::<T, ironsmith_core::ChooseCardNameEffect>(effect),
         "ChooseCardTypeEffect" => decode_as::<T, ironsmith_core::ChooseCardTypeEffect>(effect),
         "ChooseColorEffect" => decode_as::<T, ironsmith_core::ChooseColorEffect>(effect),
-        "RevealChosenSubtypeEffect" => decode_as::<T, ironsmith_core::RevealChosenSubtypeEffect>(effect),
+        "RevealChosenSubtypeEffect" => {
+            decode_as::<T, ironsmith_core::RevealChosenSubtypeEffect>(effect)
+        }
         "ChooseCreatureTypeEffect" => {
             decode_as::<T, ironsmith_core::ChooseCreatureTypeEffect>(effect)
         }
@@ -806,7 +808,7 @@ impl crate::effect_model_interpreter::EffectModelInterpreterHooks<WireEffectMode
             zone: spec.zone,
             beneficiary: spec.beneficiary,
             usage_limit: spec.usage_limit,
-                max_plays: spec.max_plays,
+            max_plays: spec.max_plays,
             cast_this_way_filter: spec.cast_this_way_filter,
             source_exiled_surface: spec.source_exiled_surface,
             cast_this_way_grants: spec

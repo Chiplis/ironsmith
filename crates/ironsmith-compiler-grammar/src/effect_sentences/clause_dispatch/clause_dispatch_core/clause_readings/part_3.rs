@@ -99,23 +99,43 @@ pub(super) fn read_choose_creature_type(
     let tokens = input.tokens;
     let words_view = ClauseDispatchCompatWords::new(tokens);
     let words = words_view.to_word_refs();
-    let secret_options = words.strip_prefix(&["secretly", "choose"])
+    let secret_options = words
+        .strip_prefix(&["secretly", "choose"])
         .or_else(|| words.strip_prefix(&["you", "secretly", "choose"]));
     if let Some(options) = secret_options
-        && options.first().and_then(|word| crate::util::parse_subtype_word(word)).is_some() {
+        && options
+            .first()
+            .and_then(|word| crate::util::parse_subtype_word(word))
+            .is_some()
+    {
         // Consume the entire disjunction; unknown words or trailing instructions
         // must remain a rejection rather than being silently discarded.
-        if options.len() >= 3 && options[options.len() - 2] == "or"
-            && options.iter().filter(|word| **word == "or").count() == 1 {
-            let subtypes: Option<Vec<_>> = options.iter().filter(|word| **word != "or")
+        if options.len() >= 3
+            && options[options.len() - 2] == "or"
+            && options.iter().filter(|word| **word == "or").count() == 1
+        {
+            let subtypes: Option<Vec<_>> = options
+                .iter()
+                .filter(|word| **word != "or")
                 .map(|word| crate::util::parse_subtype_word(word))
                 .collect();
             if let Some(subtypes) = subtypes
-                && subtypes.iter().all(|subtype| crate::types::SubtypeFamily::Creature.all_subtypes().contains(subtype)) {
-                return Ok(Some(EffectAst::subject_verb_choose_subtype_options(PlayerAst::You, subtypes, true)));
+                && subtypes.iter().all(|subtype| {
+                    crate::types::SubtypeFamily::Creature
+                        .all_subtypes()
+                        .contains(subtype)
+                })
+            {
+                return Ok(Some(EffectAst::subject_verb_choose_subtype_options(
+                    PlayerAst::You,
+                    subtypes,
+                    true,
+                )));
             }
         }
-        return Err(CardTextError::ParseError("incomplete or unsupported secret subtype choice".into()));
+        return Err(CardTextError::ParseError(
+            "incomplete or unsupported secret subtype choice".into(),
+        ));
     }
     let choice_head = parse_choice_clause_head_tokens(tokens);
     let choice_actor = choice_head

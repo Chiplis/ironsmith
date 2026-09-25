@@ -26,9 +26,7 @@ fn requires_target_selection(spec: &ChooseSpec) -> bool {
         | ChooseSpec::PlayerOrPlaneswalker(_) => true,
         ChooseSpec::SurfaceHinted { spec: inner, .. }
         | ChooseSpec::WithCount(inner, _)
-        | ChooseSpec::WithCountValue(inner, _, _) => {
-            requires_target_selection(inner)
-        }
+        | ChooseSpec::WithCountValue(inner, _, _) => requires_target_selection(inner),
         _ => false,
     }
 }

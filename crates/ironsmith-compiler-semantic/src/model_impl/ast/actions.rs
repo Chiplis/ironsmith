@@ -411,7 +411,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 f.debug_tuple("Clash").field(opponent).finish()
             }
             Self::Random(RandomActionAst::FlipCoin) => f.write_str("FlipCoin"),
-            Self::Random(RandomActionAst::FlipCoins { count }) => f.debug_struct("FlipCoins").field("count", count).finish(),
+            Self::Random(RandomActionAst::FlipCoins { count }) => {
+                f.debug_struct("FlipCoins").field("count", count).finish()
+            }
             Self::Random(RandomActionAst::FlipCoinFaceOnly) => f.write_str("FlipCoinFaceOnly"),
             Self::Random(RandomActionAst::ChooseNumberAtRandom { choices }) => f
                 .debug_struct("ChooseNumberAtRandom")
@@ -458,7 +460,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 f.debug_tuple("ChooseNamedOption").field(options).finish()
             }
             Self::Choices(ChoiceActionAst::ChooseCreatureType {
-                allowed_subtypes, secretly,
+                allowed_subtypes,
+                secretly,
                 excluded_subtypes,
                 family,
             }) => f

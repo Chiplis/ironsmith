@@ -321,7 +321,9 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
 
     /// Retain the compiler's typed static-ability model for structural
     /// rendering passes. Hand-authored runtime abilities return `None`.
-    fn is_source_only_graveyard_replacement(&self) -> bool { false }
+    fn is_source_only_graveyard_replacement(&self) -> bool {
+        false
+    }
 
     /// The quality named by a dungeon's "You can't enter this dungeon unless
     /// you 'venture into [quality]'" restriction (CR 701.49d).
@@ -515,7 +517,9 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     }
 
     /// A continuously evaluated goad designation from this source.
-    fn goads_matching(&self) -> Option<&crate::target::ObjectFilter> { None }
+    fn goads_matching(&self) -> Option<&crate::target::ObjectFilter> {
+        None
+    }
 
     /// Player currently goading this creature through a static ability.
     fn goaded_by_player(
@@ -1111,7 +1115,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     /// permanents, and the maximum that may untap.
     fn untap_step_limit(
         &self,
-    ) -> Option<(&crate::target::PlayerFilter, &crate::target::ObjectFilter, u32)> {
+    ) -> Option<(
+        &crate::target::PlayerFilter,
+        &crate::target::ObjectFilter,
+        u32,
+    )> {
         None
     }
 
@@ -1653,13 +1661,20 @@ impl StaticAbility {
     pub fn is_source_only_graveyard_replacement(&self) -> bool {
         if let Some(model) = self.compiled_model() {
             return match &model.payload {
-                ironsmith_core::StaticAbilityPayload::ExileToExileInsteadOfGraveyard { filter, .. }
-                | ironsmith_core::StaticAbilityPayload::ExileWouldDieInstead { filter, .. } => filter.source,
+                ironsmith_core::StaticAbilityPayload::ExileToExileInsteadOfGraveyard {
+                    filter,
+                    ..
+                }
+                | ironsmith_core::StaticAbilityPayload::ExileWouldDieInstead { filter, .. } => {
+                    filter.source
+                }
                 _ => false,
             };
         }
         self.0.is_source_only_graveyard_replacement()
-            || self.exile_would_die_instead_spec().is_some_and(|(filter, ..)| filter.source)
+            || self
+                .exile_would_die_instead_spec()
+                .is_some_and(|(filter, ..)| filter.source)
     }
 
     pub fn exile_would_die_instead_spec(
@@ -2218,7 +2233,11 @@ impl StaticAbility {
 
     pub fn untap_step_limit_spec(
         &self,
-    ) -> Option<(&crate::target::PlayerFilter, &crate::target::ObjectFilter, u32)> {
+    ) -> Option<(
+        &crate::target::PlayerFilter,
+        &crate::target::ObjectFilter,
+        u32,
+    )> {
         self.0.untap_step_limit()
     }
 
@@ -3991,7 +4010,9 @@ impl StaticAbility {
         halve: bool,
         display: String,
     ) -> Self {
-        Self::new(DoubleCountersReplacement::new_for_actor(actor, halve, display))
+        Self::new(DoubleCountersReplacement::new_for_actor(
+            actor, halve, display,
+        ))
     }
 
     pub fn add_counters_placement_replacement(
@@ -4070,8 +4091,14 @@ impl StaticAbility {
         display: String,
     ) -> Self {
         Self::new(
-            AddTokenCreationReplacement::new(controller, token_filter, additional_token, 1, display)
-                .per_created(),
+            AddTokenCreationReplacement::new(
+                controller,
+                token_filter,
+                additional_token,
+                1,
+                display,
+            )
+            .per_created(),
         )
     }
 

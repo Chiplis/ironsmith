@@ -129,9 +129,14 @@ impl TriggerMatcher for DealsDamageTrigger {
                 return false;
             }
         }
-        if e.amount == 0 || !super::damage_object_matches_filter(
-            e.source, event.source_snapshot(), &self.filter, ctx,
-        ) {
+        if e.amount == 0
+            || !super::damage_object_matches_filter(
+                e.source,
+                event.source_snapshot(),
+                &self.filter,
+                ctx,
+            )
+        {
             return false;
         }
         if self.filter.union_is_one_or_more()

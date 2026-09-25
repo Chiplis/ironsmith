@@ -1862,7 +1862,11 @@ fn full_alien_invasion_keeps_nested_token_attack_requirement() {
     );
     let mut created_tags = Vec::new();
     let mut counter_targets = Vec::new();
-    fn collect_links(effect: &Effect, created_tags: &mut Vec<TagKey>, counter_targets: &mut Vec<ChooseSpec>) {
+    fn collect_links(
+        effect: &Effect,
+        created_tags: &mut Vec<TagKey>,
+        counter_targets: &mut Vec<ChooseSpec>,
+    ) {
         if let Some(tagged) = effect.downcast_ref::<ironsmith_compiler::effects::TaggedEffect>()
             && find_create_token_effect(std::slice::from_ref(&tagged.effect)).is_some()
         {
@@ -1873,7 +1877,8 @@ fn full_alien_invasion_keeps_nested_token_attack_requirement() {
         {
             counter_targets.push(put.target.clone());
         }
-        effect.visit_child_effects(&mut |child| collect_links(child, created_tags, counter_targets));
+        effect
+            .visit_child_effects(&mut |child| collect_links(child, created_tags, counter_targets));
     }
     for ability in &def.abilities {
         if let AbilityKind::Triggered(triggered) = &ability.kind {
@@ -1882,7 +1887,12 @@ fn full_alien_invasion_keeps_nested_token_attack_requirement() {
             }
         }
     }
-    assert!(created_tags.iter().any(|tag| counter_targets.iter().any(|target| target.unhinted() == &ChooseSpec::Tagged(tag.clone()))), "the power/toughness counters must target the created token");
+    assert!(
+        created_tags.iter().any(|tag| counter_targets
+            .iter()
+            .any(|target| target.unhinted() == &ChooseSpec::Tagged(tag.clone()))),
+        "the power/toughness counters must target the created token"
+    );
     assert!(
         debug.matches("PutCountersEffect").count() >= 2
             && debug.contains("PlusOnePlusOne")
@@ -3742,7 +3752,10 @@ fn delegated_choice_from_revealed_top_collection_exiles_exact_other_card() {
     fn exiles_complement(effect: &Effect) -> bool {
         if let Some(exile) = effect.downcast_ref::<ironsmith_compiler::effects::ExileEffect>()
             && let ChooseSpec::Object(filter) = exile.spec.unhinted()
-            && filter.tagged_constraints.iter().any(|constraint| constraint.relation == ironsmith_compiler::target::TaggedOpbjectRelation::IsNotTaggedObject)
+            && filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation
+                    == ironsmith_compiler::target::TaggedOpbjectRelation::IsNotTaggedObject
+            })
         {
             return true;
         }
@@ -3752,8 +3765,14 @@ fn delegated_choice_from_revealed_top_collection_exiles_exact_other_card() {
     }
     let has_complement_exile = definition.abilities.iter().any(|ability| {
         if let AbilityKind::Activated(activated) = &ability.kind {
-            activated.effects.all_effects().iter().any(|effect| exiles_complement(effect))
-        } else { false }
+            activated
+                .effects
+                .all_effects()
+                .iter()
+                .any(|effect| exiles_complement(effect))
+        } else {
+            false
+        }
     });
     assert!(
         has_complement_exile,

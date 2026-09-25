@@ -193,9 +193,15 @@ fn cohort_library_partition_keeps_each_optional_searchers_cards_and_decisions() 
     }
     let text = "Each opponent may search their library for up to three basic land cards. They each put one of those cards onto the battlefield tapped under your control and the rest onto the battlefield tapped under their control. Then each player who searched their library this way shuffles.";
     let triggered_text = format!("When this creature enters, {}", lowercase_first(text));
-    let triggered = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Search Trigger Probe")
-        .card_types(vec![CardType::Creature]).parse_text(&triggered_text).unwrap();
-    assert_eq!(crate::compiled_text::compiled_text_lines(&triggered).join("\n"), triggered_text);
+    let triggered =
+        crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Search Trigger Probe")
+            .card_types(vec![CardType::Creature])
+            .parse_text(&triggered_text)
+            .unwrap();
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&triggered).join("\n"),
+        triggered_text
+    );
     let spell = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Search Probe")
         .card_types(vec![CardType::Sorcery])
         .parse_text(text)

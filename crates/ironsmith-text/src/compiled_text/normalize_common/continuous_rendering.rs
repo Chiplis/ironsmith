@@ -1435,8 +1435,7 @@ fn is_vanishing_upkeep_ability(ability: &Ability) -> bool {
             count: 1,
             ..
         })
-    )
-        || !triggered.choices.is_empty()
+    ) || !triggered.choices.is_empty()
         || triggered
             .trigger
             .downcast_ref::<crate::triggers::BeginningOfUpkeepTrigger>()
@@ -1468,18 +1467,23 @@ fn is_vanishing_last_counter_ability(ability: &Ability) -> bool {
     }
     let is_last_time_counter = if let Some(trigger) = triggered
         .trigger
-        .downcast_ref::<crate::triggers::CounterRemovedFromTrigger>()
-    {
+        .downcast_ref::<crate::triggers::CounterRemovedFromTrigger>(
+    ) {
         trigger.filter == ObjectFilter::source()
             && trigger.counter_type == Some(CounterType::Time)
             && trigger.last
             && !trigger.one_or_more
             && !trigger.caused_by_source
     } else {
-        triggered.trigger.downcast_ref::<crate::triggers::CustomTrigger>().is_some_and(|trigger| {
-            trigger.id == "vanishing-last-time-counter-removed"
-                || trigger.description.eq_ignore_ascii_case("when the last time counter is removed")
-        })
+        triggered
+            .trigger
+            .downcast_ref::<crate::triggers::CustomTrigger>()
+            .is_some_and(|trigger| {
+                trigger.id == "vanishing-last-time-counter-removed"
+                    || trigger
+                        .description
+                        .eq_ignore_ascii_case("when the last time counter is removed")
+            })
     };
     if !is_last_time_counter {
         return false;
@@ -1848,8 +1852,8 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
             }
         }
         crate::continuous::Modification::RemoveStaticAbilityFamily(id) => {
-            let family = ironsmith_core::filter_model::describe_filter_static_ability(*id)
-                .unwrap_or("such");
+            let family =
+                ironsmith_core::filter_model::describe_filter_static_ability(*id).unwrap_or("such");
             clauses.push(format!("{loses} all {family} abilities"));
         }
         crate::continuous::Modification::RemoveAbilityGeneric { ability, mode } => {
@@ -3186,14 +3190,27 @@ pub(crate) fn describe_apply_continuous_effect(
         && ability.id() == crate::static_abilities::StaticAbilityId::CanAttackAsThoughNoDefender
     {
         let (target, plural) = describe_apply_continuous_target(effect);
-        let (target, plural) = if let crate::continuous::EffectTarget::Filter(filter) = &effect.target
-            && effect.target_spec.as_ref().is_none_or(|spec| !spec.is_target() && matches!(spec.base(), ChooseSpec::Object(_) | ChooseSpec::All(_)))
-        {
+        let (target, plural) = if let crate::continuous::EffectTarget::Filter(filter) =
+            &effect.target
+            && effect.target_spec.as_ref().is_none_or(|spec| {
+                !spec.is_target()
+                    && matches!(spec.base(), ChooseSpec::Object(_) | ChooseSpec::All(_))
+            }) {
             let mut filter = filter.clone();
             filter.set_set_quantifier_surface(None);
-            (capitalize_first(&pluralize_noun_phrase(strip_leading_article(&filter.description()))), true)
-        } else { (target, plural) };
-        return Some(format!("{target} can attack this turn as though {} didn't have defender", if plural { "they" } else { "it" }));
+            (
+                capitalize_first(&pluralize_noun_phrase(strip_leading_article(
+                    &filter.description(),
+                ))),
+                true,
+            )
+        } else {
+            (target, plural)
+        };
+        return Some(format!(
+            "{target} can attack this turn as though {} didn't have defender",
+            if plural { "they" } else { "it" }
+        ));
     }
     if effect.condition.is_none()
         && effect.target_spec.is_none()
@@ -4872,7 +4889,8 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             }
         }
         crate::effect::Restriction::SearchOwnLibraryFromOwnEffects(filter) => format!(
-            "Spells and abilities {} control can't cause their controller to search their library", describe_player_set_filter(filter)
+            "Spells and abilities {} control can't cause their controller to search their library",
+            describe_player_set_filter(filter)
         ),
         crate::effect::Restriction::SearchLibraries(filter) => {
             format!(
@@ -5017,7 +5035,9 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             )
         }
         crate::effect::Restriction::PreventDamage => "damage can't be prevented".to_string(),
-        crate::effect::Restriction::PreventCombatDamage => "combat damage can't be prevented".to_string(),
+        crate::effect::Restriction::PreventCombatDamage => {
+            "combat damage can't be prevented".to_string()
+        }
         crate::effect::Restriction::Attack(filter) => {
             let subject =
                 restriction_backref_subject(filter).unwrap_or_else(|| filter.description());
@@ -5100,9 +5120,7 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             {
                 return format!(
                     "It can't be blocked by {}",
-                    crate::compiled_text::pluralize_noun_phrase(
-                        &blockers.description()
-                    )
+                    crate::compiled_text::pluralize_noun_phrase(&blockers.description())
                 );
             }
             format!(

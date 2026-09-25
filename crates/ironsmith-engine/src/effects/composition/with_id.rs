@@ -157,7 +157,9 @@ impl CostExecutableEffect for WithIdEffect {
         controller: crate::ids::PlayerId,
         reason: crate::costs::PaymentReason,
     ) -> Result<(), CostValidationError> {
-        self.effect.0.can_execute_as_cost_with_reason(game, source, controller, reason)
+        self.effect
+            .0
+            .can_execute_as_cost_with_reason(game, source, controller, reason)
     }
 
     fn can_execute_as_cost(

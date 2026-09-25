@@ -1207,14 +1207,31 @@ impl StaticAbilityKind for EntersPrepared {
 pub struct EntersUnderChosenControl(pub crate::target::PlayerFilter);
 
 impl StaticAbilityKind for EntersUnderChosenControl {
-    fn id(&self) -> StaticAbilityId { StaticAbilityId::EntersUnderChosenControl }
-    fn display(&self) -> String {
-        format!("This enters under the control of {} of your choice", self.0.description())
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::EntersUnderChosenControl
     }
-    fn generate_replacement_effect(&self, source:ObjectId, controller:PlayerId) -> Option<ReplacementEffect> {
-        Some(ReplacementEffect::with_matcher(source,controller,ThisWouldEnterBattlefieldMatcher,
-            ReplacementAction::EnterUnderChosenControl {players:self.0.clone()})
-            .with_priority_override(ReplacementPriority::ControlChanging))
+    fn display(&self) -> String {
+        format!(
+            "This enters under the control of {} of your choice",
+            self.0.description()
+        )
+    }
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(
+            ReplacementEffect::with_matcher(
+                source,
+                controller,
+                ThisWouldEnterBattlefieldMatcher,
+                ReplacementAction::EnterUnderChosenControl {
+                    players: self.0.clone(),
+                },
+            )
+            .with_priority_override(ReplacementPriority::ControlChanging),
+        )
     }
 }
 
@@ -1388,7 +1405,9 @@ impl StaticAbilityKind for EntersTappedUnlessTwoOrMoreOpponents {
 struct ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLandsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLandsMatcher {
-    fn applies_from_entering_source(&self) -> bool { true }
+    fn applies_from_entering_source(&self) -> bool {
+        true
+    }
 
     fn matches_event(
         &self,
@@ -1422,7 +1441,9 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLands
 struct ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLandsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLandsMatcher {
-    fn applies_from_entering_source(&self) -> bool { true }
+    fn applies_from_entering_source(&self) -> bool {
+        true
+    }
 
     fn matches_event(
         &self,
@@ -1456,7 +1477,9 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLand
 struct ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLandsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLandsMatcher {
-    fn applies_from_entering_source(&self) -> bool { true }
+    fn applies_from_entering_source(&self) -> bool {
+        true
+    }
 
     fn matches_event(
         &self,
@@ -1494,7 +1517,9 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLands
 struct ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatcher {
-    fn applies_from_entering_source(&self) -> bool { true }
+    fn applies_from_entering_source(&self) -> bool {
+        true
+    }
 
     fn matches_event(
         &self,
@@ -1524,7 +1549,9 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatc
 struct ThisWouldEnterTappedUnlessTwoOrMoreOpponentsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessTwoOrMoreOpponentsMatcher {
-    fn applies_from_entering_source(&self) -> bool { true }
+    fn applies_from_entering_source(&self) -> bool {
+        true
+    }
 
     fn matches_event(
         &self,
@@ -1607,7 +1634,9 @@ struct ThisWouldEnterTappedUnlessConditionMatcher {
 }
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessConditionMatcher {
-    fn applies_from_entering_source(&self) -> bool { true }
+    fn applies_from_entering_source(&self) -> bool {
+        true
+    }
 
     fn matches_event(
         &self,
@@ -1729,7 +1758,9 @@ impl StaticAbilityKind for Bloodthirst {
 struct ThisWouldEnterWithBloodthirstMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterWithBloodthirstMatcher {
-    fn applies_from_entering_source(&self) -> bool { true }
+    fn applies_from_entering_source(&self) -> bool {
+        true
+    }
 
     fn matches_event(
         &self,
@@ -2162,7 +2193,9 @@ struct ThisWouldEnterWithCountersIfConditionMatcher {
 }
 
 impl ReplacementMatcher for ThisWouldEnterWithCountersIfConditionMatcher {
-    fn applies_from_entering_source(&self) -> bool { true }
+    fn applies_from_entering_source(&self) -> bool {
+        true
+    }
 
     fn matches_event(
         &self,
@@ -4174,7 +4207,9 @@ impl ConditionalWouldEnterBattlefieldMatcher {
 }
 
 impl ReplacementMatcher for ConditionalWouldEnterBattlefieldMatcher {
-    fn applies_from_entering_source(&self) -> bool { self.enter_matcher.applies_from_entering_source() }
+    fn applies_from_entering_source(&self) -> bool {
+        self.enter_matcher.applies_from_entering_source()
+    }
 
     fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
         self.enter_matcher.matches_event(event, ctx) && self.condition_matches(event, ctx)
@@ -4754,13 +4789,18 @@ impl StaticAbilityKind for DamagePreventionWithFollowUp {
     }
 
     fn generate_replacement_effect(
-        &self, source: ObjectId, controller: PlayerId,
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
     ) -> Option<ReplacementEffect> {
         Some(ReplacementEffect::with_matcher(
-            source, controller,
+            source,
+            controller,
             crate::events::DamageFromSourceToObjectMatcher::new(
-                self.source_filter.clone(), self.target_filter.clone(),
-            ).with_combat_only(self.combat_only),
+                self.source_filter.clone(),
+                self.target_filter.clone(),
+            )
+            .with_combat_only(self.combat_only),
             // Additional effects happen even when the damage cannot be prevented.
             ReplacementAction::PreventDamageThen(self.effects.clone()),
         ))

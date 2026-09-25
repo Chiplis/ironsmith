@@ -174,16 +174,18 @@ fn append_granted_play_from_actions_for_card(
     };
     let adventure_play_from_grants =
         view.granted_play_from_for_card_view(card_id, &adventure_view, source_zone, player);
-    let face_alternatives = view.granted_alternative_casts_for_card_view(
-        card_id, &adventure_view, source_zone, player,
-    );
+    let face_alternatives =
+        view.granted_alternative_casts_for_card_view(card_id, &adventure_view, source_zone, player);
     let face_alternative_base = card.alternative_casts.len()
-        + view.granted_alternative_casts_for_card(card_id, source_zone, player).len();
+        + view
+            .granted_alternative_casts_for_card(card_id, source_zone, player)
+            .len();
     for grant in adventure_play_from_grants {
         if !grant_usage_limit_allows(game, player, grant.source_id, grant.usage_limit) {
             continue;
         }
-        let has_same_source_alternative = face_alternatives.iter()
+        let has_same_source_alternative = face_alternatives
+            .iter()
             .any(|alternative| alternative.source_id == grant.source_id);
         if !has_same_source_alternative
             && can_cast_spell_with_view(game, player, card, &CastingMethod::SplitOtherHalf, view)
@@ -472,7 +474,11 @@ fn append_cast_actions_from_zone_for_card(
             game, actions, player, card_id, card, view,
         );
     }
-    if from_zone == Zone::Exile && game.plotted_cast_permission(card_id, from_zone, player).is_some() {
+    if from_zone == Zone::Exile
+        && game
+            .plotted_cast_permission(card_id, from_zone, player)
+            .is_some()
+    {
         append_zone_granted_alternative_cast_actions_for_card(
             game, actions, player, card_id, card, from_zone, view,
         );
@@ -1183,8 +1189,6 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
     let library_has_active_grants = view.player_has_active_grants_for_zone(player, Zone::Library);
     perf.active_grant_zone_checks_ms = active_grant_zone_started_at.elapsed_ms();
 
-
-
     let hand_summary_started_at = PerfTimer::start();
     let hand_summaries = build_hand_summaries(game, hand);
     perf.hand_summary_ms = hand_summary_started_at.elapsed_ms();
@@ -1271,11 +1275,30 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
     add_library_cast_actions(game, &mut actions, player, &view, library_has_active_grants);
     if view.player_has_active_grants_for_zone(player, Zone::OutsideGame) {
         for &card_id in &game.player(player).expect("active player").sideboard {
-            if !requested_action_source(card_id) { continue; }
-            let Some(card) = game.object(card_id) else { continue; };
-            append_cast_actions_from_zone_for_card(game, &mut actions, player, card_id, card, Zone::OutsideGame, &view, true);
+            if !requested_action_source(card_id) {
+                continue;
+            }
+            let Some(card) = game.object(card_id) else {
+                continue;
+            };
+            append_cast_actions_from_zone_for_card(
+                game,
+                &mut actions,
+                player,
+                card_id,
+                card,
+                Zone::OutsideGame,
+                &view,
+                true,
+            );
         }
-        append_granted_land_play_actions_from_public_zone(game, &mut actions, player, Zone::OutsideGame, &view);
+        append_granted_land_play_actions_from_public_zone(
+            game,
+            &mut actions,
+            player,
+            Zone::OutsideGame,
+            &view,
+        );
     }
 
     let hand_alternatives_started_at = PerfTimer::start();
@@ -1552,18 +1575,35 @@ fn player_may_activate_loyalty_abilities_any_time(
     view: &DerivedGameView<'_>,
 ) -> bool {
     use crate::filter::ObjectFilterExt;
-    let Some(activated_object) = game.object(source) else { return false; };
+    let Some(activated_object) = game.object(source) else {
+        return false;
+    };
     game.battlefield.iter().copied().any(|permission_source| {
-        let Some(object) = game.object(permission_source) else { return false; };
-        if game.controller_of(object) != controller { return false; }
-        let abilities = view.abilities_rc(permission_source)
+        let Some(object) = game.object(permission_source) else {
+            return false;
+        };
+        if game.controller_of(object) != controller {
+            return false;
+        }
+        let abilities = view
+            .abilities_rc(permission_source)
             .unwrap_or_else(|| std::sync::Arc::new(object.abilities_vec()));
         let ctx = game.filter_context_for(controller, Some(permission_source));
         abilities.iter().any(|ability| {
-            if !ability.functional_zones.contains(&Zone::Battlefield) { return false; }
-            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else { return false; };
-            let Some(model) = static_ability.compiled_model() else { return false; };
-            let ironsmith_core::StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter } = &model.payload else { return false; };
+            if !ability.functional_zones.contains(&Zone::Battlefield) {
+                return false;
+            }
+            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                return false;
+            };
+            let Some(model) = static_ability.compiled_model() else {
+                return false;
+            };
+            let ironsmith_core::StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter } =
+                &model.payload
+            else {
+                return false;
+            };
             filter.matches(activated_object, &ctx, game)
         })
     })

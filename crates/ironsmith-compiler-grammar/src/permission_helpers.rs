@@ -10,8 +10,8 @@ use super::object_filters::merge_spell_filters;
 use super::token_primitives::{TurnDurationPhrase, parse_turn_duration_suffix};
 use super::util::{parse_target_phrase, strip_leading_token_words_any, trim_commas};
 use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::{GrantActionAst, SubjectVerbActionAst};
 use crate::cards::builders::GrantedAbilityAst;
+use crate::cards::builders::{GrantActionAst, SubjectVerbActionAst};
 use crate::effect::{Until, Value, ValueComparisonOperator};
 use crate::grammar::shared_util::value_semantics::{
     parse_value_prefix_lexed, starts_explicit_ordered_comparison,
@@ -1026,7 +1026,8 @@ pub fn parse_permission_clause_spec_lexed(
 
     // A condition on the spell being cast restricts the proposed spell face,
     // rather than testing the exiled card once when the permission resolves.
-    if !allow_land && prefixed_lifetime.is_some()
+    if !allow_land
+        && prefixed_lifetime.is_some()
         && let Some((target, tail)) = parse_tagged_cast_or_play_target_tokens(rest_tokens)
     {
         let words = token_word_refs(tail);
@@ -1034,14 +1035,22 @@ pub fn parse_permission_clause_spec_lexed(
             || words.starts_with(&["if", "its", "a"])
             || words.starts_with(&["if", "it's", "an"])
             || words.starts_with(&["if", "it's", "a"])
-        { Some(3) } else if words.starts_with(&["if", "it", "is", "an"])
+        {
+            Some(3)
+        } else if words.starts_with(&["if", "it", "is", "an"])
             || words.starts_with(&["if", "it", "is", "a"])
-        { Some(4) } else { None };
+        {
+            Some(4)
+        } else {
+            None
+        };
         if let Some(skip) = condition_len
             && words.last() == Some(&"spell")
         {
             let condition_tokens = &tail[skip..];
-            if let Some(mut filter) = permission_subject_facts::parse_permission_subject_filter_tokens(condition_tokens)? {
+            if let Some(mut filter) =
+                permission_subject_facts::parse_permission_subject_filter_tokens(condition_tokens)?
+            {
                 filter.zone = None;
                 return Ok(Some(PermissionClauseSpec::Tagged {
                     tag: target.tag,
@@ -1052,9 +1061,15 @@ pub fn parse_permission_clause_spec_lexed(
                     without_paying_mana_cost: false,
                     lifetime: prefixed_lifetime.unwrap(),
                     filter: Some(filter),
-                    surface: Some(ironsmith_core::GrantPlayTaggedSurface::default()
-                        .with_leading_duration(true)
-                        .with_object(target.surface.unwrap_or(ironsmith_core::GrantPlayTaggedObjectSurface::It))),
+                    surface: Some(
+                        ironsmith_core::GrantPlayTaggedSurface::default()
+                            .with_leading_duration(true)
+                            .with_object(
+                                target
+                                    .surface
+                                    .unwrap_or(ironsmith_core::GrantPlayTaggedObjectSurface::It),
+                            ),
+                    ),
                 }));
             }
         }
@@ -1422,13 +1437,20 @@ pub fn parse_permission_clause_spec_lexed(
         }));
     }
 
-    if allow_land && token_word_refs(rest_tokens) == ["a", "card", "you", "own", "from", "outside", "the", "game", "this", "turn"] {
+    if allow_land
+        && token_word_refs(rest_tokens)
+            == [
+                "a", "card", "you", "own", "from", "outside", "the", "game", "this", "turn",
+            ]
+    {
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
             player,
             spec: crate::model::CompilerGrantSpecCore::new(
                 crate::model::CompilerGrantableCore::play_from(),
-                ObjectFilter::default().owned_by(PlayerFilter::You), Zone::OutsideGame,
-            ).with_max_plays(1),
+                ObjectFilter::default().owned_by(PlayerFilter::You),
+                Zone::OutsideGame,
+            )
+            .with_max_plays(1),
             lifetime: PermissionLifetime::ThisTurn,
         }));
     }
@@ -2103,17 +2125,23 @@ pub fn parse_cast_or_play_tagged_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let trimmed_tokens = trim_commas(tokens);
     let mut trimmed = strip_leading_token_words_any(&trimmed_tokens, &["then", "and"]).to_vec();
-    if let Some(((), rest)) = crate::grammar::primitives::parse_prefix(&trimmed,
-        crate::grammar::primitives::phrase(&["you", "may", "look", "at", "and"]))
-    {
+    if let Some(((), rest)) = crate::grammar::primitives::parse_prefix(
+        &trimmed,
+        crate::grammar::primitives::phrase(&["you", "may", "look", "at", "and"]),
+    ) {
         let mut permission_tokens = crate::lexer::synthetic_word_tokens(["you", "may"]);
         permission_tokens.extend_from_slice(rest);
         if let Some(permission) = parse_cast_or_play_tagged_clause(&permission_tokens)? {
-            return Ok(Some(EffectAst::Sequence { effects: vec![
-                EffectAst::subject_verb_look_at_objects(PlayerAst::You,
-                    ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()).in_zone(Zone::Exile)),
-                permission,
-            ] }));
+            return Ok(Some(EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::subject_verb_look_at_objects(
+                        PlayerAst::You,
+                        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind())
+                            .in_zone(Zone::Exile),
+                    ),
+                    permission,
+                ],
+            }));
         }
     }
     let input = tagged_permission_readings::TaggedPermission { tokens: &trimmed };
@@ -2345,20 +2373,33 @@ pub fn parse_cast_or_play_tagged_clause(
         {
             let mut effect = if lifetime == PermissionLifetime::UntilYourNextEndStep {
                 EffectAst::subject_verb_grant_play_tagged_until_your_next_end_step(
-                    crate::tag::TagRef::of(tag), PlayerAst::Implicit, allow_land, mana_spend_mode,
+                    crate::tag::TagRef::of(tag),
+                    PlayerAst::Implicit,
+                    allow_land,
+                    mana_spend_mode,
                 )
             } else {
                 EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
-                    crate::tag::TagRef::of(tag), PlayerAst::Implicit, allow_land, mana_spend_mode,
+                    crate::tag::TagRef::of(tag),
+                    PlayerAst::Implicit,
+                    allow_land,
+                    mana_spend_mode,
                 )
-            }.with_tagged_play_max_plays(max_plays);
+            }
+            .with_tagged_play_max_plays(max_plays);
             if let EffectAst::SubjectVerb(subject) = &mut effect
-                && let SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn {
-                    until_next_turn_start, spell_filter, surface: grant_surface, ..
-                }) = &mut subject.action
+                && let SubjectVerbActionAst::Grants(
+                    GrantActionAst::GrantPlayTaggedUntilYourNextTurn {
+                        until_next_turn_start,
+                        spell_filter,
+                        surface: grant_surface,
+                        ..
+                    },
+                ) = &mut subject.action
             {
                 *until_next_turn_start = lifetime == PermissionLifetime::UntilYourNextTurn
-                    && next_turn_permission_grant_duration(tokens)? == crate::grant::GrantDuration::UntilYourNextTurn;
+                    && next_turn_permission_grant_duration(tokens)?
+                        == crate::grant::GrantDuration::UntilYourNextTurn;
                 *spell_filter = filter;
                 *grant_surface = surface;
             }
@@ -2593,23 +2634,78 @@ mod source_exile_duration_tests {
 
 /// A graveyard casting permission with a forage additional cost and an
 /// enters-with-counter rider attached only to spells using that permission.
-pub fn parse_forage_cast_permission(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+pub fn parse_forage_cast_permission(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
     let view = crate::lexer::TokenWordView::new(tokens);
     let words = view.word_refs();
-    let prefix = ["until", "end", "of", "turn", "you", "may", "cast", "creature", "spells", "from", "your", "graveyard", "by", "foraging", "in", "addition", "to", "paying", "their", "other", "costs"];
-    if !words.starts_with(&prefix) { return Ok(None); }
+    let prefix = [
+        "until",
+        "end",
+        "of",
+        "turn",
+        "you",
+        "may",
+        "cast",
+        "creature",
+        "spells",
+        "from",
+        "your",
+        "graveyard",
+        "by",
+        "foraging",
+        "in",
+        "addition",
+        "to",
+        "paying",
+        "their",
+        "other",
+        "costs",
+    ];
+    if !words.starts_with(&prefix) {
+        return Ok(None);
+    }
     let mut spec = crate::model::CompilerGrantSpecCore::new(
-        crate::model::CompilerGrantableCore::graveyard_cast_from_cards_mana_cost(vec![
-            crate::model::CompilerCost::ValidatedEffect(Box::new(EffectAst::subject_verb_emit_keyword_action(crate::events::KeywordActionKind::Forage, 1))),
-        ], false), ObjectFilter::creature().owned_by(PlayerFilter::You).in_zone(Zone::Graveyard), Zone::Graveyard);
+        crate::model::CompilerGrantableCore::graveyard_cast_from_cards_mana_cost(
+            vec![crate::model::CompilerCost::ValidatedEffect(Box::new(
+                EffectAst::subject_verb_emit_keyword_action(
+                    crate::events::KeywordActionKind::Forage,
+                    1,
+                ),
+            ))],
+            false,
+        ),
+        ObjectFilter::creature()
+            .owned_by(PlayerFilter::You)
+            .in_zone(Zone::Graveyard),
+        Zone::Graveyard,
+    );
     let rider = &words[prefix.len()..];
     if !rider.is_empty() {
-        let head = ["if", "you", "cast", "a", "spell", "this", "way", "that", "creature", "enters", "with", "a"];
-        if !rider.starts_with(&head) || !rider.ends_with(&["counter", "on", "it"]) { return Ok(None); }
+        let head = [
+            "if", "you", "cast", "a", "spell", "this", "way", "that", "creature", "enters", "with",
+            "a",
+        ];
+        if !rider.starts_with(&head) || !rider.ends_with(&["counter", "on", "it"]) {
+            return Ok(None);
+        }
         let start = view.token_start_indices()[prefix.len() + head.len()];
         let end = view.token_start_indices()[words.len() - 2];
-        let Some(counter) = crate::grammar::filters::parse_counter_type_from_tokens(&tokens[start..end]) else { return Ok(None); };
-        spec = spec.with_cast_this_way_grant(crate::model::CompilerStaticAbilityCore::enters_with_counters_value(counter, Value::Fixed(1)));
+        let Some(counter) =
+            crate::grammar::filters::parse_counter_type_from_tokens(&tokens[start..end])
+        else {
+            return Ok(None);
+        };
+        spec = spec.with_cast_this_way_grant(
+            crate::model::CompilerStaticAbilityCore::enters_with_counters_value(
+                counter,
+                Value::Fixed(1),
+            ),
+        );
     }
-    Ok(Some(EffectAst::subject_verb_grant_by_spec(spec, PlayerAst::You, crate::grant::GrantDuration::UntilEndOfTurn)))
+    Ok(Some(EffectAst::subject_verb_grant_by_spec(
+        spec,
+        PlayerAst::You,
+        crate::grant::GrantDuration::UntilEndOfTurn,
+    )))
 }

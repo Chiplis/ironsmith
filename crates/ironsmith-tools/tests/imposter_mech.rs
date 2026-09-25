@@ -47,7 +47,11 @@ impl DecisionMaker for Choices {
 
     fn decide_options(&mut self, _game: &GameState, ctx: &SelectOptionsContext) -> Vec<usize> {
         // "Choose which replacement effect to apply": copy or not.
-        let wanted = if self.copy { "Enter as a copy of Wind Drake" } else { "Do not apply" };
+        let wanted = if self.copy {
+            "Enter as a copy of Wind Drake"
+        } else {
+            "Do not apply"
+        };
         let matching: Vec<_> = ctx
             .options
             .iter()
@@ -55,7 +59,12 @@ impl DecisionMaker for Choices {
             .map(|o| o.index)
             .collect();
         if matching.is_empty() {
-            ctx.options.iter().filter(|o| o.legal).take(ctx.min.max(1)).map(|o| o.index).collect()
+            ctx.options
+                .iter()
+                .filter(|o| o.legal)
+                .take(ctx.min.max(1))
+                .map(|o| o.index)
+                .collect()
         } else {
             matching
         }
@@ -69,7 +78,12 @@ impl DecisionMaker for Choices {
             .map(|c| c.id)
             .collect();
         if picked.is_empty() {
-            ctx.candidates.iter().filter(|c| c.legal).take(ctx.min).map(|c| c.id).collect()
+            ctx.candidates
+                .iter()
+                .filter(|c| c.legal)
+                .take(ctx.min)
+                .map(|c| c.id)
+                .collect()
         } else {
             picked
         }
@@ -99,7 +113,11 @@ fn enter(copy: bool) -> (GameState, ObjectId, ObjectId) {
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
     game.create_object_from_definition(&creature("Wind Drake", 2, true), bob, Zone::Battlefield);
-    let ogre = game.create_object_from_definition(&creature("Crew Ogre", 3, false), alice, Zone::Battlefield);
+    let ogre = game.create_object_from_definition(
+        &creature("Crew Ogre", 3, false),
+        alice,
+        Zone::Battlefield,
+    );
     let hand = game.create_object_from_definition(&def, alice, Zone::Hand);
     let mut dm = Choices {
         copy,
@@ -126,14 +144,24 @@ fn copies_an_opponents_creature_as_a_noncreature_vehicle_artifact_with_crew() {
     let (game, mech, _) = enter(true);
     let chars = game.current_characteristics(mech).unwrap();
     assert_eq!(game.object(mech).unwrap().name, "Wind Drake", "copied name");
-    assert_eq!(chars.card_types, vec![CardType::Artifact], "loses all other card types");
+    assert_eq!(
+        chars.card_types,
+        vec![CardType::Artifact],
+        "loses all other card types"
+    );
     assert!(chars.subtypes.contains(&Subtype::Vehicle));
     assert!(
-        chars.static_abilities.iter().any(|a| a.id() == StaticAbilityId::Flying),
+        chars
+            .static_abilities
+            .iter()
+            .any(|a| a.id() == StaticAbilityId::Flying),
         "copied abilities are kept"
     );
     assert!(has_crew(&game, mech), "gains crew 3");
-    assert!(!chars.card_types.contains(&CardType::Creature), "not a creature until crewed");
+    assert!(
+        !chars.card_types.contains(&CardType::Creature),
+        "not a creature until crewed"
+    );
 }
 
 #[test]

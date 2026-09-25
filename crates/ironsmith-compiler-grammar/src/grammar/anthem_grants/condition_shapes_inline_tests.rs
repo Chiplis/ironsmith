@@ -139,10 +139,16 @@ fn parses_typed_quantity_and_source_relation_shapes() {
 fn contracted_existential_retains_the_singular_quantity_and_complete_object_phrase() {
     let expanded = lex("There is a Lesson card in your graveyard.");
     let contracted = lex("There's a Lesson card in your graveyard.");
-    let expanded = parse_existential_condition_shape(&expanded).unwrap().unwrap();
-    let contracted = parse_existential_condition_shape(&contracted).unwrap().unwrap();
+    let expanded = parse_existential_condition_shape(&expanded)
+        .unwrap()
+        .unwrap();
+    let contracted = parse_existential_condition_shape(&contracted)
+        .unwrap()
+        .unwrap();
     assert_eq!(expanded.comparison, contracted.comparison);
-    let ExistentialConditionTail::Generic { filter_tokens } = contracted.tail else { panic!("expected full Lesson filter") };
+    let ExistentialConditionTail::Generic { filter_tokens } = contracted.tail else {
+        panic!("expected full Lesson filter")
+    };
     let words = crate::lexer::parser_token_word_refs(filter_tokens);
     assert_eq!(words, ["lesson", "card", "in", "your", "graveyard"]);
 }

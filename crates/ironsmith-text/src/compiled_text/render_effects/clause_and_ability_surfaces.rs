@@ -1641,9 +1641,9 @@ fn describe_coordinated_same_object_modifiers(
         && applies.iter().skip(1).all(|apply| {
             apply.target == first.target
                 && apply.target_spec.is_none()
-                && apply.set_quantifier_surface.is_none_or(|surface| {
-                    surface == ironsmith_core::SetQuantifierSurface::Each
-                })
+                && apply
+                    .set_quantifier_surface
+                    .is_none_or(|surface| surface == ironsmith_core::SetQuantifierSurface::Each)
         })
         && applies.iter().skip(1).any(|apply| {
             apply.set_quantifier_surface == Some(ironsmith_core::SetQuantifierSurface::Each)
@@ -4024,9 +4024,7 @@ fn describe_coordinated_action_then_you_gain_life(effects: &[Effect]) -> Option<
     ))
 }
 
-fn describe_size_free_animation(
-    sequence: &crate::effects::SequenceEffect,
-) -> Option<String> {
+fn describe_size_free_animation(sequence: &crate::effects::SequenceEffect) -> Option<String> {
     use crate::continuous::Modification;
     fn flatten<'a>(
         sequence: &'a crate::effects::SequenceEffect,
@@ -4671,16 +4669,26 @@ fn describe_target_players_base_pt_leading_duration(
 ) -> Option<String> {
     if sequence.surface != ironsmith_core::SequenceSurface::CoordinatedLeadingDuration
         || sequence.result_label.is_some()
-    { return None; }
-    let [declaration, modification] = sequence.effects.as_slice() else { return None; };
+    {
+        return None;
+    }
+    let [declaration, modification] = sequence.effects.as_slice() else {
+        return None;
+    };
     let target = structural_unwrap_render_wrappers(declaration)
         .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
-    if target.explicit_declaration { return None; }
+    if target.explicit_declaration {
+        return None;
+    }
     let player = choose_spec_player_filter(&target.target)?;
-    if !matches!(player, PlayerFilter::Target(_)) { return None; }
+    if !matches!(player, PlayerFilter::Target(_)) {
+        return None;
+    }
     let apply = structural_unwrap_render_wrappers(modification)
         .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
-    let crate::continuous::EffectTarget::Filter(filter) = &apply.target else { return None; };
+    let crate::continuous::EffectTarget::Filter(filter) = &apply.target else {
+        return None;
+    };
     if filter.controller.as_ref() != Some(&player)
         || !matches!(apply.target_spec.as_ref()?.base(), ChooseSpec::All(selected) | ChooseSpec::Object(selected) if selected == filter)
         || apply.target_spec.as_ref()?.is_target()
@@ -4693,13 +4701,28 @@ fn describe_target_players_base_pt_leading_duration(
         || apply.type_retention_surface.is_some()
         || apply.animation_pt_surface.is_some()
         || apply.animation_duration_surface.is_some()
-    { return None; }
+    {
+        return None;
+    }
     let Some(crate::continuous::Modification::SetPowerToughness {
-        power, toughness, sublayer: crate::continuous::PtSublayer::Setting,
-    }) = &apply.modification else { return None; };
-    let (Value::Fixed(power), Value::Fixed(toughness)) = (power.unhinted(), toughness.unhinted()) else { return None; };
-    let subject = pluralize_noun_phrase(strip_leading_article(&describe_object_filter_with_fixed_pt_shorthand(filter)));
-    Some(format!("{}, {subject} have base power and toughness {power}/{toughness}", capitalize_first(&describe_until(&apply.until))))
+        power,
+        toughness,
+        sublayer: crate::continuous::PtSublayer::Setting,
+    }) = &apply.modification
+    else {
+        return None;
+    };
+    let (Value::Fixed(power), Value::Fixed(toughness)) = (power.unhinted(), toughness.unhinted())
+    else {
+        return None;
+    };
+    let subject = pluralize_noun_phrase(strip_leading_article(
+        &describe_object_filter_with_fixed_pt_shorthand(filter),
+    ));
+    Some(format!(
+        "{}, {subject} have base power and toughness {power}/{toughness}",
+        capitalize_first(&describe_until(&apply.until))
+    ))
 }
 
 fn describe_single_dynamic_base_pt_leading_duration(
@@ -4773,15 +4796,23 @@ fn describe_leading_duration_typed_fallback(
         && cant.duration == Until::EndOfTurn
         && cant.start == crate::effect::RestrictionStart::Immediate
     {
-        let inner = continuous.downcast_ref::<crate::effects::TaggedEffect>()
+        let inner = continuous
+            .downcast_ref::<crate::effects::TaggedEffect>()
             .map_or(continuous, |tagged| &tagged.effect);
         if let Some(apply) = inner.downcast_ref::<crate::effects::ApplyContinuousEffect>()
             && apply.until == Until::EndOfTurn
         {
             let rendered = describe_effect(continuous);
-            if let Some(body) = rendered.trim().trim_end_matches('.').strip_suffix(" until end of turn") {
-                return Some(format!("Until end of turn, {}, and {}",
-                    lowercase_first(&describe_restriction(&cant.restriction)), lowercase_first(body)));
+            if let Some(body) = rendered
+                .trim()
+                .trim_end_matches('.')
+                .strip_suffix(" until end of turn")
+            {
+                return Some(format!(
+                    "Until end of turn, {}, and {}",
+                    lowercase_first(&describe_restriction(&cant.restriction)),
+                    lowercase_first(body)
+                ));
             }
         }
     }
@@ -4926,17 +4957,18 @@ pub(super) fn describe_shared_target_end_of_turn_modifications(
 
     let strip_duration = |text: String| {
         let text = text.trim().trim_end_matches('.');
-        let stripped =
-            if let Some((body, where_clause)) = split_coordinated_duration(text, &Until::EndOfTurn) {
-                let where_clause = if where_clause == ", where X is X" {
-                    ""
-                } else {
-                    where_clause.as_str()
-                };
-                format!("{body}{where_clause}")
+        let stripped = if let Some((body, where_clause)) =
+            split_coordinated_duration(text, &Until::EndOfTurn)
+        {
+            let where_clause = if where_clause == ", where X is X" {
+                ""
             } else {
-                text.to_string()
+                where_clause.as_str()
             };
+            format!("{body}{where_clause}")
+        } else {
+            text.to_string()
+        };
         // Some clauses spell their duration inside the phrase rather than as
         // a trailing "until end of turn". The sequence already opens with the
         // shared duration, so that inline copy would repeat it.
@@ -8756,16 +8788,22 @@ pub(super) fn activation_condition_without_presentation_label(
     activated: &crate::ability::ActivatedAbility,
 ) -> Option<crate::ConditionExpr> {
     let condition = activated.activation_condition.as_ref()?;
-    if let Some(range) = activated.additional_restrictions.iter()
+    if let Some(range) = activated
+        .additional_restrictions
+        .iter()
         .find_map(|restriction| restriction.strip_prefix("__ironsmith_level_range:"))
         && let Some((minimum, maximum)) = range.split_once(':')
         && let Ok(minimum) = minimum.parse::<u32>()
     {
-        let lower = |condition: &crate::ConditionExpr| matches!(condition,
-            crate::ConditionExpr::SourceHasCounterAtLeast { counter_type: CounterType::Level, count, .. } if *count == minimum);
-        let upper = |condition: &crate::ConditionExpr| matches!(condition,
+        let lower = |condition: &crate::ConditionExpr| {
+            matches!(condition,
+            crate::ConditionExpr::SourceHasCounterAtLeast { counter_type: CounterType::Level, count, .. } if *count == minimum)
+        };
+        let upper = |condition: &crate::ConditionExpr| {
+            matches!(condition,
             crate::ConditionExpr::ValueComparison { left: Value::CountersOnSource(CounterType::Level), operator: crate::effect::ValueComparisonOperator::LessThanOrEqual, right: Value::Fixed(count) }
-                if maximum.parse::<i32>().ok() == Some(*count));
+                if maximum.parse::<i32>().ok() == Some(*count))
+        };
         // The level heading already expresses these exact executable bounds.
         // Retain any condition that contains an additional restriction.
         if (maximum == "+" && lower(condition))
@@ -9319,15 +9357,23 @@ fn describe_loyalty_timing_permission(filter: &ObjectFilter, subject: &str) -> S
     let mut scope = filter.clone();
     scope.source_surface = None;
     if scope == ObjectFilter::source() {
-        return format!("You may activate {} loyalty abilities any time you could cast an instant", possessive_subject(subject));
+        return format!(
+            "You may activate {} loyalty abilities any time you could cast an instant",
+            possessive_subject(subject)
+        );
     }
     if scope.source && scope.entered_battlefield_this_turn {
         scope.entered_battlefield_this_turn = false;
         if scope == ObjectFilter::source() {
-            return format!("As long as {subject} entered this turn, you may activate its loyalty abilities any time you could cast an instant");
+            return format!(
+                "As long as {subject} entered this turn, you may activate its loyalty abilities any time you could cast an instant"
+            );
         }
     }
-    format!("You may activate loyalty abilities of {} any time you could cast an instant", describe_count_filter_value_subject(filter))
+    format!(
+        "You may activate loyalty abilities of {} any time you could cast an instant",
+        describe_count_filter_value_subject(filter)
+    )
 }
 
 pub(crate) fn describe_static_ability_with_subject(
@@ -9340,19 +9386,28 @@ pub(crate) fn describe_static_ability_with_subject(
                 return describe_loyalty_timing_permission(filter, subject);
             }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
-                if let (ironsmith_core::StaticAbilityPayload::RuleRestriction { restriction, additional_restrictions, .. }, Condition::AttachedToSourceMatches(property)) = (&ability.payload, condition)
+                if let (
+                    ironsmith_core::StaticAbilityPayload::RuleRestriction {
+                        restriction,
+                        additional_restrictions,
+                        ..
+                    },
+                    Condition::AttachedToSourceMatches(property),
+                ) = (&ability.payload, condition)
                     && additional_restrictions.is_empty()
                 {
                     use crate::effect::Restriction;
                     let affected = match restriction {
-                        Restriction::TurnFaceUp(filter) | Restriction::Transform(filter)
+                        Restriction::TurnFaceUp(filter)
+                        | Restriction::Transform(filter)
                         | Restriction::AttackOrBlock(filter) => Some(filter),
                         _ => None,
                     };
                     if let Some(affected) = affected
                         && let [attachment] = affected.tagged_constraints.as_slice()
                         && matches!(attachment.tag.as_str(), "enchanted" | "equipped")
-                        && attachment.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                        && attachment.relation
+                            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
                     {
                         let mut domain = affected.clone();
                         domain.tagged_constraints.clear();
@@ -9363,28 +9418,49 @@ pub(crate) fn describe_static_ability_with_subject(
                             let subject = affected.description();
                             let clause = describe_restriction(restriction);
                             if let Some(tail) = clause.strip_prefix(&subject) {
-                                let orientation = if orientation == Some(true) { "face down" } else { "face up" };
+                                let orientation = if orientation == Some(true) {
+                                    "face down"
+                                } else {
+                                    "face up"
+                                };
                                 return format!("As long as {subject} is {orientation}, it{tail}");
                             }
                         }
                     }
                 }
-                if let ironsmith_core::StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter } = &ability.payload {
+                if let ironsmith_core::StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter } =
+                    &ability.payload
+                {
                     let condition_text = if let Condition::CountComparison {
-                        count: crate::static_abilities::AnthemCountExpression::MatchingFilter(condition_filter),
-                        comparison: crate::effect::Comparison::GreaterThanOrEqual(1), ..
-                    } = condition {
+                        count:
+                            crate::static_abilities::AnthemCountExpression::MatchingFilter(
+                                condition_filter,
+                            ),
+                        comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+                        ..
+                    } = condition
+                    {
                         let mut scope = condition_filter.clone();
                         scope.source_surface = None;
                         if scope.zone == Some(Zone::Battlefield) {
                             scope.zone = None;
                         }
                         scope.entered_battlefield_this_turn = false;
-                        if condition_filter.entered_battlefield_this_turn && scope == ObjectFilter::source() {
+                        if condition_filter.entered_battlefield_this_turn
+                            && scope == ObjectFilter::source()
+                        {
                             format!("{subject} entered this turn")
-                        } else { describe_condition(condition) }
-                    } else { describe_condition(condition) };
-                    return format!("As long as {}, {}", lowercase_first(&condition_text), lowercase_first(&describe_loyalty_timing_permission(filter, subject)));
+                        } else {
+                            describe_condition(condition)
+                        }
+                    } else {
+                        describe_condition(condition)
+                    };
+                    return format!(
+                        "As long as {}, {}",
+                        lowercase_first(&condition_text),
+                        lowercase_first(&describe_loyalty_timing_permission(filter, subject))
+                    );
                 }
             }
             _ => {}
@@ -9400,13 +9476,22 @@ pub(crate) fn describe_static_ability_with_subject(
             Some("Enchanted creature")
         } else if tax.attackers() == &ObjectFilter::source() {
             Some(subject)
-        } else { None };
+        } else {
+            None
+        };
         if let Some(attacker) = attacker {
-            return format!("{attacker} can't be blocked unless defending player pays {} for each creature they control that's blocking it", describe_total_cost(tax.cost()));
+            return format!(
+                "{attacker} can't be blocked unless defending player pays {} for each creature they control that's blocking it",
+                describe_total_cost(tax.cost())
+            );
         }
     }
     if let Some(ironsmith_core::StaticAbilityPayload::EntersWithCountersIfCondition {
-        counter, count, condition: Condition::Not(condition), added_abilities, ..
+        counter,
+        count,
+        condition: Condition::Not(condition),
+        added_abilities,
+        ..
     }) = static_ability.compiled_model().map(|model| &model.payload)
         && added_abilities.is_empty()
     {
@@ -9673,16 +9758,18 @@ pub(crate) fn describe_static_ability_with_subject(
         presentation_label,
     }) = static_ability.compiled_model().map(|model| &model.payload)
     {
-        if !also_turns_face_up && !turns_face_up_only && transforms_into.is_none()
+        if !also_turns_face_up
+            && !turns_face_up_only
+            && transforms_into.is_none()
             && let Some(riot) = describe_structural_riot_program(program)
         {
             return riot;
         }
-        if !also_turns_face_up && !turns_face_up_only && transforms_into.is_none()
-            && let Some(keyword) = describe_structural_as_enters_keyword_program(
-                program,
-                presentation_label.as_ref(),
-            )
+        if !also_turns_face_up
+            && !turns_face_up_only
+            && transforms_into.is_none()
+            && let Some(keyword) =
+                describe_structural_as_enters_keyword_program(program, presentation_label.as_ref())
         {
             return keyword;
         }
@@ -9912,10 +9999,13 @@ pub(crate) fn describe_static_ability_with_subject(
     } else if let Some(rest) = trimmed.strip_prefix("this ") {
         // A generic self-reference noun ("this source is ...") names the
         // same object as the card's own subject; don't stack both nouns.
-        if let Some(tail) = ["creature", "permanent", "source"].into_iter().find_map(|generic| {
-            rest.strip_prefix(generic)
-                .filter(|tail| tail.starts_with(' ') || tail.starts_with("'s"))
-        }) {
+        if let Some(tail) = ["creature", "permanent", "source"]
+            .into_iter()
+            .find_map(|generic| {
+                rest.strip_prefix(generic)
+                    .filter(|tail| tail.starts_with(' ') || tail.starts_with("'s"))
+            })
+        {
             format!("{subject}{tail}")
         } else {
             format!("{subject} {rest}")
@@ -13033,7 +13123,12 @@ pub(super) fn describe_triggered_resolution_text(
     subject: &str,
     rewrite_it_deals: bool,
 ) -> Option<String> {
-    if triggered.effects.segments.iter().all(|segment| segment.self_replacements.is_empty()) {
+    if triggered
+        .effects
+        .segments
+        .iter()
+        .all(|segment| segment.self_replacements.is_empty())
+    {
         let effects = triggered.effects.flattened_default_effects();
         if let Some(text) = describe_quantified_created_tokens_goaded_forever(effects) {
             return Some(text);
@@ -16280,13 +16375,17 @@ pub(super) fn describe_trigger_intervening_condition(
     if let Condition::AttachedToSourceMatches(filter) = condition
         && filter.card_types == [CardType::Creature]
         && (self_subject.is_some_and(|subject| subject.eq_ignore_ascii_case("this aura"))
-            || triggered.trigger.downcast_ref::<crate::triggers::ZoneChangeTrigger>()
+            || triggered
+                .trigger
+                .downcast_ref::<crate::triggers::ZoneChangeTrigger>()
                 .and_then(|entry| entry.this_object_surface.as_ref())
                 .is_some_and(|surface| surface.display_text().eq_ignore_ascii_case("this aura")))
     {
         let mut property = filter.clone();
         property.card_types.clear();
-        if property.zone == Some(Zone::Battlefield) { property.zone = None; }
+        if property.zone == Some(Zone::Battlefield) {
+            property.zone = None;
+        }
         if let Some(text) = describe_exact_keyword_condition("enchanted creature", &property) {
             return text;
         }
@@ -17062,11 +17161,16 @@ pub(super) fn describe_next_spell_delayed_trigger(
                 ". You may choose new targets for the copy",
                 ". You may choose new targets for the copies",
             );
-    } else if !schedule.effects.flattened_default_effects().iter().any(|effect| {
-        copy_spell_from_effect(effect).is_some_and(|copy| {
-            copy.target_reference_kind.is_some() && !copy.target_reference_pronoun
+    } else if !schedule
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .any(|effect| {
+            copy_spell_from_effect(effect).is_some_and(|copy| {
+                copy.target_reference_kind.is_some() && !copy.target_reference_pronoun
+            })
         })
-    }) {
+    {
         delayed_text = delayed_text
             .replace(
                 "copy that spell. You may choose new targets for the copy",
@@ -17451,17 +17555,22 @@ mod typed_attack_tax_render_tests {
 #[test]
 fn attached_orientation_restrictions_render_from_typed_predicates() {
     let affected = ObjectFilter::creature().match_tagged(
-        "equipped", crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        "equipped",
+        crate::filter::TaggedOpbjectRelation::IsTaggedObject,
     );
     let mut property = ObjectFilter::creature();
     property.zone = None;
     property.face_down = Some(true);
     let model = crate::static_abilities::CompiledStaticAbility::restriction(
-        crate::effect::Restriction::transform(affected), "unrelated display text",
-    ).with_condition(Condition::AttachedToSourceMatches(property));
+        crate::effect::Restriction::transform(affected),
+        "unrelated display text",
+    )
+    .with_condition(Condition::AttachedToSourceMatches(property));
     let ability = crate::static_abilities::StaticAbility::from_model(model);
-    assert_eq!(describe_static_ability_with_subject(&ability, "this equipment"),
-        "As long as equipped creature is face down, it can't transform");
+    assert_eq!(
+        describe_static_ability_with_subject(&ability, "this equipment"),
+        "As long as equipped creature is face down, it can't transform"
+    );
 }
 
 /// The condition on an excess-damage redirect. A damage-source condition

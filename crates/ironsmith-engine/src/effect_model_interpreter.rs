@@ -1703,7 +1703,9 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ManifestDreadEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::ManifestDreadEffect::for_player(payload.player.clone())));
+        return Ok(Effect::new(
+            crate::effects::ManifestDreadEffect::for_player(payload.player.clone()),
+        ));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ManifestTopCardOfLibraryEffect>(&effect)
@@ -1737,15 +1739,16 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ChooseNumberAtRandomEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::ChooseNumberAtRandomEffect::new(
-            payload.choices.clone(),
-        )));
+        return Ok(Effect::new(
+            crate::effects::ChooseNumberAtRandomEffect::new(payload.choices.clone()),
+        ));
     }
-    if let Some(payload) = M::downcast_ref::<ironsmith_core::NextAdaptIgnoresCountersEffect>(&effect)
+    if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::NextAdaptIgnoresCountersEffect>(&effect)
     {
-        return Ok(Effect::new(crate::effects::NextAdaptIgnoresCountersEffect::new(
-            payload.target.clone(),
-        )));
+        return Ok(Effect::new(
+            crate::effects::NextAdaptIgnoresCountersEffect::new(payload.target.clone()),
+        ));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::DetainEffect>(&effect) {
         return Ok(Effect::new(crate::effects::DetainEffect::new(
@@ -1763,7 +1766,9 @@ where
         return Ok(Effect::new(goad));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::BecomePlottedEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::BecomePlottedEffect::new(payload.target.clone())));
+        return Ok(Effect::new(crate::effects::BecomePlottedEffect::new(
+            payload.target.clone(),
+        )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::PrepareEffect>(&effect) {
         return Ok(Effect::new(crate::effects::PrepareEffect::new(

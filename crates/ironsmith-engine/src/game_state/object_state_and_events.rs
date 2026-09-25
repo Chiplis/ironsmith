@@ -483,9 +483,16 @@ impl GameState {
     }
 
     pub fn harness(&mut self, id: ObjectId) -> bool {
-        if !self.object(id).is_some_and(|object| object.zone == Zone::Battlefield) { return false; }
+        if !self
+            .object(id)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
+        {
+            return false;
+        }
         let changed = self.battlefield_flags_mut().harnessed.insert(id);
-        if changed { self.mark_continuous_state_dirty(); }
+        if changed {
+            self.mark_continuous_state_dirty();
+        }
         changed
     }
 
@@ -699,7 +706,11 @@ impl GameState {
         if !self.is_face_down(id) {
             return false;
         }
-        !self.effect_store.cant_effects.cant_turn_face_up.contains(&id)
+        !self
+            .effect_store
+            .cant_effects
+            .cant_turn_face_up
+            .contains(&id)
             && !self.merged_permanent_blocks_turn_face_up(id)
     }
 
@@ -748,7 +759,12 @@ impl GameState {
     /// Turn an object face up, including every face-down merged component.
     pub fn set_face_up(&mut self, id: ObjectId) -> bool {
         self.refresh_continuous_state();
-        if self.effect_store.cant_effects.cant_turn_face_up.contains(&id) {
+        if self
+            .effect_store
+            .cant_effects
+            .cant_turn_face_up
+            .contains(&id)
+        {
             return false;
         }
         if !self.is_face_down(id) {
@@ -1005,7 +1021,12 @@ impl GameState {
         &mut self,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Result<(), crate::game_loop::GameLoopError> {
-        while let Some(id) = self.turn_store.pending_day_night_as_transforms.first().copied() {
+        while let Some(id) = self
+            .turn_store
+            .pending_day_night_as_transforms
+            .first()
+            .copied()
+        {
             if let Some(controller) = self
                 .object(id)
                 .filter(|object| object.zone == Zone::Battlefield)
@@ -1466,14 +1487,21 @@ impl GameState {
     ) -> Option<crate::grant_registry::GrantedAlternativeCast> {
         use crate::alternative_cast::AlternativeCastingMethod;
         let card = self.object(id)?;
-        if zone != Zone::Exile || card.zone != Zone::Exile || card.owner != player
+        if zone != Zone::Exile
+            || card.zone != Zone::Exile
+            || card.owner != player
             || !self.is_plotted_by(id, player)
-            || card.alternative_casts.iter().any(|method| matches!(method, AlternativeCastingMethod::Plot { .. }))
+            || card
+                .alternative_casts
+                .iter()
+                .any(|method| matches!(method, AlternativeCastingMethod::Plot { .. }))
         {
             return None;
         }
         Some(crate::grant_registry::GrantedAlternativeCast {
-            method: AlternativeCastingMethod::Plot { cost: crate::mana::ManaCost::new() },
+            method: AlternativeCastingMethod::Plot {
+                cost: crate::mana::ManaCost::new(),
+            },
             source_id: id,
             zone,
             usage_limit: None,

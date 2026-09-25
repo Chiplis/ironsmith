@@ -235,10 +235,15 @@ fn captures_generic_block_transform_and_untap_actions() {
 
 #[test]
 fn captures_filtered_face_up_prohibitions() {
-    for sentence in ["Enchanted creature can't be turned face up.", "Creatures you control can't be turned face up."] {
+    for sentence in [
+        "Enchanted creature can't be turned face up.",
+        "Creatures you control can't be turned face up.",
+    ] {
         let tokens = lex(sentence);
-        assert!(matches!(parse_generic_negated_cant_action_tokens(&tokens),
-            Some(GenericNegatedCantAction::SubjectCantTurnFaceUp { .. })));
+        assert!(matches!(
+            parse_generic_negated_cant_action_tokens(&tokens),
+            Some(GenericNegatedCantAction::SubjectCantTurnFaceUp { .. })
+        ));
     }
     let tokens = lex("Creatures you control can't be turned face down.");
     assert!(parse_generic_negated_cant_action_tokens(&tokens).is_none());

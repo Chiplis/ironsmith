@@ -2654,10 +2654,16 @@ pub(super) fn describe_inline_action_choice(
             };
             let effect = match effects {
                 [effect] => effect,
-                [selection, action] if declaration.is_none()
-                    && selection.downcast_ref::<crate::effects::ChooseObjectsEffect>().is_some()
-                    && sacrifice_view_unwrapped(action).is_some() => {
-                    let text = compile_effect_list(effects).trim_end_matches('.').to_string();
+                [selection, action]
+                    if declaration.is_none()
+                        && selection
+                            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+                            .is_some()
+                        && sacrifice_view_unwrapped(action).is_some() =>
+                {
+                    let text = compile_effect_list(effects)
+                        .trim_end_matches('.')
+                        .to_string();
                     branch_targets.push(None);
                     return (!text.contains(['\n', '.'])).then_some(text);
                 }
@@ -2689,17 +2695,27 @@ pub(super) fn describe_inline_action_choice(
             (!text.contains(['\n', '.'])).then_some(text)
         })
         .collect::<Option<Vec<_>>>()?;
-    let shared_you = choose.modes.iter().all(|mode| match mode.effects.as_slice() {
-        [effect] => structural_unwrap_render_wrappers(effect)
-            .downcast_ref::<crate::effects::DiscardEffect>()
-            .is_some_and(|discard| discard.player == PlayerFilter::You),
-        [selection, action] => selection.downcast_ref::<crate::effects::ChooseObjectsEffect>()
-            .is_some_and(|selection| selection.chooser == PlayerFilter::You)
-            && sacrifice_view_unwrapped(action).is_some_and(|sacrifice| *sacrifice.player == PlayerFilter::You),
-        _ => false,
-    });
+    let shared_you = choose
+        .modes
+        .iter()
+        .all(|mode| match mode.effects.as_slice() {
+            [effect] => structural_unwrap_render_wrappers(effect)
+                .downcast_ref::<crate::effects::DiscardEffect>()
+                .is_some_and(|discard| discard.player == PlayerFilter::You),
+            [selection, action] => {
+                selection
+                    .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+                    .is_some_and(|selection| selection.chooser == PlayerFilter::You)
+                    && sacrifice_view_unwrapped(action)
+                        .is_some_and(|sacrifice| *sacrifice.player == PlayerFilter::You)
+            }
+            _ => false,
+        });
     let second = if shared_you || clauses[0].starts_with("You ") || clauses[0].starts_with("you ") {
-        clauses[1].strip_prefix("You ").or_else(|| clauses[1].strip_prefix("you ")).unwrap_or(&clauses[1])
+        clauses[1]
+            .strip_prefix("You ")
+            .or_else(|| clauses[1].strip_prefix("you "))
+            .unwrap_or(&clauses[1])
     } else {
         &clauses[1]
     };
@@ -4178,13 +4194,12 @@ pub(crate) fn describe_search_choose_for_each(
             };
             // Keep an iterated player's optional search and placement in one
             // clause; the definition of X belongs after the complete action.
-            let deferred_where = if choose.chooser == PlayerFilter::IteratedPlayer
-                && !shuffle_before_move
-            {
-                selection_text.split_once(", where X is ")
-            } else {
-                None
-            };
+            let deferred_where =
+                if choose.chooser == PlayerFilter::IteratedPlayer && !shuffle_before_move {
+                    selection_text.split_once(", where X is ")
+                } else {
+                    None
+                };
             text = if let Some((selection, _)) = deferred_where {
                 format!(
                     "Search {search_origin} for {selection}{reveal_clause} and put {pronoun} onto the battlefield{control_suffix}"

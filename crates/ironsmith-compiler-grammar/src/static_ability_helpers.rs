@@ -184,9 +184,11 @@ pub fn compiler_granted_ability_ast_to_object_ability(
             }
             // Activated keywords such as Crew grant a real activated ability
             // ("except it's a Vehicle artifact with crew 3", Imposter Mech).
-            if let Some(parsed) = crate::keyword_static::parse_nonstatic_keyword_action_as_object_ability(
-                (**action).clone(),
-            ) {
+            if let Some(parsed) =
+                crate::keyword_static::parse_nonstatic_keyword_action_as_object_ability(
+                    (**action).clone(),
+                )
+            {
                 return Ok(*parsed.ability);
             }
             Err(CardTextError::ParseError(format!(

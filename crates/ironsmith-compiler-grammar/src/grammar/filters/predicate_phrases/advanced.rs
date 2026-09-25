@@ -954,7 +954,9 @@ pub(super) fn parse_source_controllers_main_phase_predicate_shape(
 
 /// "creatures you control have total toughness 10 or greater" (Betor, Kin
 /// to All): a summed characteristic threshold over a filter.
-pub(super) fn parse_total_stat_threshold_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+pub(super) fn parse_total_stat_threshold_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
     let words = crate::lexer::token_word_refs(tokens);
     let have = words
         .iter()
@@ -990,10 +992,22 @@ pub(super) fn parse_total_stat_threshold_predicate(tokens: &[OwnedLexToken]) -> 
 /// control]" (Mangara, the Diplomat). The attacking set at trigger time is the
 /// creatures that just attacked, so the count reads the attacking creatures
 /// whose attack target is you (or your planeswalkers).
-pub(super) fn parse_attacking_you_count_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+pub(super) fn parse_attacking_you_count_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
     let words = crate::lexer::token_word_refs(tokens);
-    let [amount, "or", "more", "of", "those", "creatures", "are", "attacking", "you", rest @ ..] =
-        words.as_slice()
+    let [
+        amount,
+        "or",
+        "more",
+        "of",
+        "those",
+        "creatures",
+        "are",
+        "attacking",
+        "you",
+        rest @ ..,
+    ] = words.as_slice()
     else {
         return None;
     };
@@ -1027,8 +1041,19 @@ pub(super) fn parse_havent_added_mana_with_this_ability_predicate(
     let words = crate::lexer::token_word_refs(tokens);
     let matched = matches!(
         words.as_slice(),
-        ["you", "havent" | "haven't" | "haven’t", "added", "mana", "with", "this", "ability", "this", "turn"]
-            | ["you", "have", "not", "added", "mana", "with", "this", "ability", "this", "turn"]
+        [
+            "you",
+            "havent" | "haven't" | "haven’t",
+            "added",
+            "mana",
+            "with",
+            "this",
+            "ability",
+            "this",
+            "turn"
+        ] | [
+            "you", "have", "not", "added", "mana", "with", "this", "ability", "this", "turn"
+        ]
     );
     matched.then(|| PredicateAst::ValueComparison {
         left: Value::ThisAbilityResolvedThisTurnCount,
@@ -1582,10 +1607,12 @@ pub(super) fn parse_value_reference_comparison_predicate(
     let words = crate::lexer::parser_token_word_refs(tokens);
     let words = words.strip_prefix(&["the"]).unwrap_or(&words);
     let comparison = match words {
-        ["it", "greater"] | ["it", "is", "greater"] | ["it's", "greater"] | ["its", "greater"] =>
-            Some(crate::effect::ValueComparisonOperator::GreaterThan),
-        ["it", "less"] | ["it", "is", "less"] | ["it's", "less"] | ["its", "less"] =>
-            Some(crate::effect::ValueComparisonOperator::LessThan),
+        ["it", "greater"] | ["it", "is", "greater"] | ["it's", "greater"] | ["its", "greater"] => {
+            Some(crate::effect::ValueComparisonOperator::GreaterThan)
+        }
+        ["it", "less"] | ["it", "is", "less"] | ["it's", "less"] | ["its", "less"] => {
+            Some(crate::effect::ValueComparisonOperator::LessThan)
+        }
         _ => None,
     };
     if let Some(operator) = comparison {
@@ -1599,12 +1626,22 @@ pub(super) fn parse_value_reference_comparison_predicate(
         let kind = words[1].trim_end_matches("'s").trim_end_matches('s');
         let axis = words[2];
         if matches!(axis, "power" | "toughness") && matches!(words[3], "was" | "is") {
-            let (comparison, used) = parse_filter_comparison_tokens(axis, &words[4..], words).ok()??;
+            let (comparison, used) =
+                parse_filter_comparison_tokens(axis, &words[4..], words).ok()??;
             if used == words.len() - 4 {
                 let mut filter = ObjectFilter::default();
-                if let Some(card_type) = parse_card_type(kind) { filter.card_types.push(card_type); }
-                if axis == "power" { filter.power = Some(comparison); } else { filter.toughness = Some(comparison); }
-                return Some(PredicateAst::TaggedMatches(crate::tag::CompilerReferenceTag::ThisWaySacrificed.bind(), filter));
+                if let Some(card_type) = parse_card_type(kind) {
+                    filter.card_types.push(card_type);
+                }
+                if axis == "power" {
+                    filter.power = Some(comparison);
+                } else {
+                    filter.toughness = Some(comparison);
+                }
+                return Some(PredicateAst::TaggedMatches(
+                    crate::tag::CompilerReferenceTag::ThisWaySacrificed.bind(),
+                    filter,
+                ));
             }
         }
     }
@@ -1619,8 +1656,12 @@ pub(super) fn parse_value_reference_comparison_predicate(
         // can use that value directly; past power/toughness must instead go
         // through the dedicated last-known-characteristics predicate reader.
         let mut comparison_tokens = &tokens[comparison_start..];
-        if matches!(left, Value::ManaSpentToCast(_) | Value::ManaSpentToCastTriggeringObject)
-            && comparison_tokens.first().is_some_and(|token| token.is_word("was"))
+        if matches!(
+            left,
+            Value::ManaSpentToCast(_) | Value::ManaSpentToCastTriggeringObject
+        ) && comparison_tokens
+            .first()
+            .is_some_and(|token| token.is_word("was"))
         {
             comparison_tokens = &comparison_tokens[1..];
         }
@@ -1919,7 +1960,10 @@ pub(super) fn parse_opponent_dealt_damage_this_turn_predicate(
     let words = crate::lexer::token_word_refs(tokens);
     let rest = crate::word_primitives::strip_any_prefix(
         &words,
-        &[&["an", "opponent", "was", "dealt"], &["an", "opponent", "has", "been", "dealt"]],
+        &[
+            &["an", "opponent", "was", "dealt"],
+            &["an", "opponent", "has", "been", "dealt"],
+        ],
     )
     .map(|(_, rest)| rest)?;
     match rest {
@@ -2015,19 +2059,40 @@ pub(super) fn parse_player_would_action_predicate(
 
 pub(super) fn parse_battlefield_entry_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     // Both alternatives remain independent event-history queries.
-    for (index, token) in tokens.iter().enumerate().filter(|(_, token)| token.is_word("or")) {
+    for (index, token) in tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_word("or"))
+    {
         let _ = token;
-        if let (Some(left), Some(right)) = (parse_battlefield_entry_predicate(&tokens[..index]), parse_battlefield_entry_predicate(&tokens[index + 1..])) {
+        if let (Some(left), Some(right)) = (
+            parse_battlefield_entry_predicate(&tokens[..index]),
+            parse_battlefield_entry_predicate(&tokens[index + 1..]),
+        ) {
             return Some(PredicateAst::Or(Box::new(left), Box::new(right)));
         }
     }
     let words = crate::lexer::token_word_refs(tokens);
-    if crate::word_primitives::parse_any_sequence_complete(&words, &[
-        &["you", "turned", "a", "permanent", "face", "up", "this", "turn"],
-        &["you", "turned", "permanent", "face", "up", "this", "turn"],
-    ]) {
+    if crate::word_primitives::parse_any_sequence_complete(
+        &words,
+        &[
+            &[
+                "you",
+                "turned",
+                "a",
+                "permanent",
+                "face",
+                "up",
+                "this",
+                "turn",
+            ],
+            &["you", "turned", "permanent", "face", "up", "this", "turn"],
+        ],
+    ) {
         return Some(PredicateAst::ValueComparison {
-            left: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::TurnedFaceUp(PlayerFilter::You)),
+            left: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::TurnedFaceUp(
+                PlayerFilter::You,
+            )),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             right: Value::Fixed(1),
         });
@@ -2745,7 +2810,9 @@ pub(super) fn parse_this_spell_paid_named_label_shape(
         .or_else(|| parse_this_spell_was_kicked_shape(tokens))
         .or_else(|| parse_this_spell_was_cast_using_teamwork_shape(tokens))
         .or_else(|| parse_this_spell_was_bargained_shape(tokens))
-        .or_else(|| parse_named_spell_label_action_shape(tokens, "Evidence", &["was", "collected"], false))
+        .or_else(|| {
+            parse_named_spell_label_action_shape(tokens, "Evidence", &["was", "collected"], false)
+        })
         .or_else(|| {
             parse_named_spell_label_action_shape(tokens, "Gift", &["was", "promised"], false)
         })
@@ -2863,11 +2930,20 @@ pub(super) fn parse_this_spell_was_bargained_shape(
 }
 
 /// "if this spell was cast using teamwork" (We Say Thee Nay!).
-fn parse_this_spell_was_cast_using_teamwork_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+fn parse_this_spell_was_cast_using_teamwork_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
     let words = crate::lexer::token_word_refs(tokens);
     let negated = match words.as_slice() {
         ["this", "spell", "was", "cast", "using", "teamwork"] => false,
-        ["this", "spell", "wasnt" | "wasn't", "cast", "using", "teamwork"]
+        [
+            "this",
+            "spell",
+            "wasnt" | "wasn't",
+            "cast",
+            "using",
+            "teamwork",
+        ]
         | ["this", "spell", "was", "not", "cast", "using", "teamwork"] => true,
         _ => return None,
     };
@@ -3282,18 +3358,37 @@ pub(super) fn parse_additional_cost_object_state_predicate(
             WinnowSequence::action("copula", WinnowCaptureKind::WordCount(copula.len())),
             WinnowSequence::modifier("descriptor", WinnowCaptureKind::Rest),
         ];
-        let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else { continue; };
-        let Some(subject) = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause) else { continue; };
+        let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
+            continue;
+        };
+        let Some(subject) = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)
+        else {
+            continue;
+        };
         let subject = LexedClause::new(strip_leading_article_tokens(subject.tokens()));
-        if !surface::exact_any(subject, &[&["discarded", "card"]]) { continue; }
-        let Some(descriptor) = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause) else { continue; };
-        if descriptor.tokens().is_empty() { continue; }
+        if !surface::exact_any(subject, &[&["discarded", "card"]]) {
+            continue;
+        }
+        let Some(descriptor) = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause)
+        else {
+            continue;
+        };
+        if descriptor.tokens().is_empty() {
+            continue;
+        }
         let mut filter = parse_object_filter(descriptor.tokens(), false)?;
         // This describes the paid card's characteristics, not a battlefield
         // selection. The discard snapshot must remain usable after it moves.
         filter.zone = None;
-        let predicate = PredicateAst::TaggedMatches(crate::tag::CompilerReferenceTag::DiscardedCost.bind(), filter);
-        return Ok(Some(if negated { PredicateAst::Not(Box::new(predicate)) } else { predicate }));
+        let predicate = PredicateAst::TaggedMatches(
+            crate::tag::CompilerReferenceTag::DiscardedCost.bind(),
+            filter,
+        );
+        return Ok(Some(if negated {
+            PredicateAst::Not(Box::new(predicate))
+        } else {
+            predicate
+        }));
     }
 
     let optional_article = [WinnowSequence::any_word(&["a", "an", "the"])];
@@ -3407,10 +3502,14 @@ fn parse_tagged_chosen_name_shape(tokens: &[OwnedLexToken]) -> Option<PredicateA
     ];
     let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
     let subject = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
-    if !is_implicit_object_state_subject_clause(subject) { return None; }
+    if !is_implicit_object_state_subject_clause(subject) {
+        return None;
+    }
     let name = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let name = LexedClause::new(strip_leading_article_tokens(name.trimmed().tokens()));
-    if !surface::exact(name, &["chosen", "name"]) { return None; }
+    if !surface::exact(name, &["chosen", "name"]) {
+        return None;
+    }
     let filter = ObjectFilter::default().match_tagged(
         crate::tag::CompilerReferenceTag::ChosenName.bind(),
         crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
@@ -5290,12 +5389,25 @@ mod chosen_name_predicate_tests {
     use super::*;
     #[test]
     fn referenced_object_chosen_name_is_a_typed_name_comparison() {
-        for text in ["that card has the chosen name", "it has the chosen name", "that permanent has chosen name"] {
+        for text in [
+            "that card has the chosen name",
+            "it has the chosen name",
+            "that permanent has chosen name",
+        ] {
             let tokens = crate::lexer::lex_line(text, 0).unwrap();
-            let Some(PredicateAst::ItMatches(filter)) = parse_tagged_chosen_name_shape(&tokens) else { panic!("{text}"); };
+            let Some(PredicateAst::ItMatches(filter)) = parse_tagged_chosen_name_shape(&tokens)
+            else {
+                panic!("{text}");
+            };
             assert_eq!(filter.tagged_constraints.len(), 1);
-            assert_eq!(filter.tagged_constraints[0].tag.as_str(), crate::tag::CompilerReferenceTag::ChosenName.as_str());
-            assert_eq!(filter.tagged_constraints[0].relation, crate::filter::TaggedOpbjectRelation::SameNameAsTagged);
+            assert_eq!(
+                filter.tagged_constraints[0].tag.as_str(),
+                crate::tag::CompilerReferenceTag::ChosenName.as_str()
+            );
+            assert_eq!(
+                filter.tagged_constraints[0].relation,
+                crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+            );
         }
         let tokens = crate::lexer::lex_line("that card has the chosen type", 0).unwrap();
         assert!(parse_tagged_chosen_name_shape(&tokens).is_none());

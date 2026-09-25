@@ -544,7 +544,9 @@ pub(crate) fn describe_cross_zone_target_swap_bundle(filtered: &[&Effect]) -> Op
             .any(|constraint| &constraint.tag == tag),
         _ => false,
     };
-    if !uses(&sacrifice.target, &first_tag) || !uses(&returned.target, &second_tag) || returned.tapped
+    if !uses(&sacrifice.target, &first_tag)
+        || !uses(&returned.target, &second_tag)
+        || returned.tapped
     {
         return None;
     }
@@ -566,7 +568,16 @@ pub(crate) fn describe_cross_zone_target_swap_bundle(filtered: &[&Effect]) -> Op
 pub(crate) fn describe_chosen_opponent_face_down_piles_bundle(
     filtered: &[&Effect],
 ) -> Option<String> {
-    let [choose_player, look, choose, tag_rest, reveal, pick, rest @ ..] = filtered else {
+    let [
+        choose_player,
+        look,
+        choose,
+        tag_rest,
+        reveal,
+        pick,
+        rest @ ..,
+    ] = filtered
+    else {
         return None;
     };
     let choose_player = choose_player.downcast_ref::<crate::effects::ChoosePlayerEffect>()?;

@@ -163,10 +163,14 @@ pub fn handle_saga_enters_battlefield(
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,
 ) {
-    if game
-        .object(saga_id)
-        .is_some_and(|object| object.counters.get(&CounterType::Lore).copied().unwrap_or(0) > 0)
-    {
+    if game.object(saga_id).is_some_and(|object| {
+        object
+            .counters
+            .get(&CounterType::Lore)
+            .copied()
+            .unwrap_or(0)
+            > 0
+    }) {
         return;
     }
     let Some(profile) = ({

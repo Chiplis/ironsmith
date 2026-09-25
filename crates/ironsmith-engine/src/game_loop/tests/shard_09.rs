@@ -3788,7 +3788,6 @@ pub(super) fn granted_split_second_spell_is_still_castable() {
     );
 }
 
-
 /// A conditional grant must not impose its restrictions while the condition is
 /// false. Restriction collection gates candidates on `is_active`, so both grant
 /// representations have to answer it the same way.

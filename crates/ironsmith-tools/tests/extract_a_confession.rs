@@ -2,8 +2,8 @@
 //! collect evidence 6. Each opponent sacrifices a creature of their choice. If
 //! evidence was collected, instead each opponent sacrifices a creature with the
 //! greatest power among creatures they control."
-use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::card::PowerToughness;
+use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::decision::{DecisionMaker, GameProgress, LegalAction, compute_legal_actions};
 use ironsmith::decisions::context::{SelectObjectsContext, SelectOptionsContext};
 use ironsmith::game_loop::{PriorityLoopState, PriorityResponse};
@@ -68,14 +68,13 @@ impl DecisionMaker for Choices {
                 .collect();
             return picked;
         }
-        let owner_is_creature_side = legal
-            .iter()
-            .all(|c| game.object(c.id).is_some_and(|o| o.zone == Zone::Battlefield));
+        let owner_is_creature_side = legal.iter().all(|c| {
+            game.object(c.id)
+                .is_some_and(|o| o.zone == Zone::Battlefield)
+        });
         if owner_is_creature_side {
-            self.sacrifice_candidates.push((
-                ctx.player,
-                legal.iter().map(|c| c.name.clone()).collect(),
-            ));
+            self.sacrifice_candidates
+                .push((ctx.player, legal.iter().map(|c| c.name.clone()).collect()));
         }
         legal.iter().take(ctx.min.max(1)).map(|c| c.id).collect()
     }
@@ -84,7 +83,9 @@ impl DecisionMaker for Choices {
 fn card(name: &str, types: Vec<CardType>, mana_value: u8) -> ironsmith::cards::CardDefinition {
     let mut builder = CardDefinitionBuilder::new(CardId::new(), name)
         .card_types(types.clone())
-        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(mana_value)]));
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(
+            mana_value,
+        )]));
     if types.contains(&CardType::Creature) {
         builder = builder.power_toughness(PowerToughness::fixed(mana_value as i32, 1));
     }
@@ -106,7 +107,10 @@ fn cast(collect: bool, graveyard_mvs: &[u8]) -> Result<Outcome, String> {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Black, 2);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Black, 2);
     let spell = game.create_object_from_definition(&def, alice, Zone::Hand);
     let mut evidence = Vec::new();
     let mut evidence_names = Vec::new();
@@ -121,9 +125,21 @@ fn cast(collect: bool, graveyard_mvs: &[u8]) -> Result<Outcome, String> {
     }
     for index in [1, 2] {
         let player = PlayerId::from_index(index);
-        game.create_object_from_definition(&card("Small", vec![CardType::Creature], 1), player, Zone::Battlefield);
-        game.create_object_from_definition(&card("Big A", vec![CardType::Creature], 3), player, Zone::Battlefield);
-        game.create_object_from_definition(&card("Big B", vec![CardType::Creature], 3), player, Zone::Battlefield);
+        game.create_object_from_definition(
+            &card("Small", vec![CardType::Creature], 1),
+            player,
+            Zone::Battlefield,
+        );
+        game.create_object_from_definition(
+            &card("Big A", vec![CardType::Creature], 3),
+            player,
+            Zone::Battlefield,
+        );
+        game.create_object_from_definition(
+            &card("Big B", vec![CardType::Creature], 3),
+            player,
+            Zone::Battlefield,
+        );
     }
 
     let action = compute_legal_actions(&game, alice)
@@ -181,9 +197,17 @@ fn without_evidence_each_opponent_sacrifices_a_creature_of_their_choice() {
         let player = PlayerId::from_index(index);
         assert_eq!(creature_names(&outcome.game, player).len(), 2);
     }
-    assert_eq!(outcome.dm.sacrifice_candidates.len(), 2, "each opponent chooses");
+    assert_eq!(
+        outcome.dm.sacrifice_candidates.len(),
+        2,
+        "each opponent chooses"
+    );
     for (_, candidates) in &outcome.dm.sacrifice_candidates {
-        assert_eq!(candidates.len(), 3, "any creature may be sacrificed: {candidates:?}");
+        assert_eq!(
+            candidates.len(),
+            3,
+            "any creature may be sacrificed: {candidates:?}"
+        );
     }
     for id in &outcome.evidence {
         assert_eq!(outcome.game.object(*id).unwrap().zone, Zone::Graveyard);
@@ -197,7 +221,10 @@ fn collected_evidence_forces_greatest_power_sacrifice_and_exiles_evidence() {
         let player = PlayerId::from_index(index);
         let remaining = creature_names(&outcome.game, player);
         assert_eq!(remaining.len(), 2);
-        assert!(remaining.contains(&"Small".to_string()), "a greatest-power creature was sacrificed");
+        assert!(
+            remaining.contains(&"Small".to_string()),
+            "a greatest-power creature was sacrificed"
+        );
     }
     for (_, candidates) in &outcome.dm.sacrifice_candidates {
         assert!(
@@ -207,15 +234,26 @@ fn collected_evidence_forces_greatest_power_sacrifice_and_exiles_evidence() {
         assert_eq!(candidates.len(), 2, "tied creatures remain a choice");
     }
     let alice = PlayerId::from_index(0);
-    assert!(outcome.game.player(alice).unwrap().graveyard.iter().all(|id| {
-        !outcome.evidence.contains(id)
-    }));
+    assert!(
+        outcome
+            .game
+            .player(alice)
+            .unwrap()
+            .graveyard
+            .iter()
+            .all(|id| { !outcome.evidence.contains(id) })
+    );
     assert_eq!(
         outcome
             .game
             .exile
             .iter()
-            .filter(|id| outcome.game.object(**id).unwrap().name.starts_with("Evidence"))
+            .filter(|id| outcome
+                .game
+                .object(**id)
+                .unwrap()
+                .name
+                .starts_with("Evidence"))
             .count(),
         2,
         "the evidence cards were exiled as the cost"

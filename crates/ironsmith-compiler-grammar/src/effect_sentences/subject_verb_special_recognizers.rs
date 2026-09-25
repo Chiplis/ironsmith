@@ -100,8 +100,8 @@ pub fn parse_scaled_target_power_sentence(
                     crate::tag::CompilerReferenceTag::It.bind().into(),
                 ))
             } else {
-                let amount_source_filter =
-                    target_ast_to_object_filter(target.clone()).unwrap_or_else(|| {
+                let amount_source_filter = target_ast_to_object_filter(target.clone())
+                    .unwrap_or_else(|| {
                         let mut fallback = ObjectFilter::default();
                         fallback.card_types.push(CardType::Creature);
                         fallback

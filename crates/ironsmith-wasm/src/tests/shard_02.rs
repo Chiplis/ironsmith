@@ -1946,21 +1946,35 @@ fn canonical_abby_entry_choice_resumes_without_premature_entry() {
     wasm.game.turn.phase = Phase::FirstMain;
     wasm.game.turn.step = None;
     let payloads = ironsmith_tools::load_card_payloads_by_name(
-        ironsmith_tools::default_cards_path().to_str().unwrap(), "Abby, Merciless Soldier",
-    ).unwrap();
+        ironsmith_tools::default_cards_path().to_str().unwrap(),
+        "Abby, Merciless Soldier",
+    )
+    .unwrap();
     let definition = ironsmith_tools::compile_definition_from_payload(&payloads[0]).unwrap();
-    let source = wasm.game.create_object_from_definition(&definition, alice, Zone::Stack);
+    let source = wasm
+        .game
+        .create_object_from_definition(&definition, alice, Zone::Stack);
     let stable = wasm.game.object(source).unwrap().stable_id;
-    wasm.game.push_to_stack(ironsmith::game_state::StackEntry::new(source, alice));
+    wasm.game
+        .push_to_stack(ironsmith::game_state::StackEntry::new(source, alice));
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
     wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
-        alice, compute_legal_actions(&wasm.game, alice),
+        alice,
+        compute_legal_actions(&wasm.game, alice),
     )));
-    for _ in 0..3 { dispatch_pass_priority(&mut wasm); }
+    for _ in 0..3 {
+        dispatch_pass_priority(&mut wasm);
+    }
     match wasm.pending_decision.as_ref() {
         Some(DecisionContext::SelectOptions(ctx)) => {
             assert_eq!(ctx.player, alice);
-            assert_eq!(ctx.options.iter().map(|option| option.index).collect::<Vec<_>>(), vec![1, 2]);
+            assert_eq!(
+                ctx.options
+                    .iter()
+                    .map(|option| option.index)
+                    .collect::<Vec<_>>(),
+                vec![1, 2]
+            );
         }
         other => panic!("expected entry-controller prompt, got {other:?}"),
     }

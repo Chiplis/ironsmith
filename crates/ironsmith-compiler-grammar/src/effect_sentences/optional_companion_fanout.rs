@@ -139,7 +139,10 @@ fn combine_shared_keyword_choice(
         })
         .collect();
     Ok(Some(EffectAst::ObjectChoices(
-        ObjectChoiceEffectAst::ChooseOneOf { chooser: crate::target::PlayerFilter::You, modes },
+        ObjectChoiceEffectAst::ChooseOneOf {
+            chooser: crate::target::PlayerFilter::You,
+            modes,
+        },
     )))
 }
 

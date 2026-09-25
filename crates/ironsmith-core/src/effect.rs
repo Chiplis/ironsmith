@@ -3897,17 +3897,29 @@ pub struct ManifestDreadEffect {
 impl<'de> serde::Deserialize<'de> for ManifestDreadEffect {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(serde::Deserialize)]
-        struct Payload { player: PlayerFilter }
+        struct Payload {
+            player: PlayerFilter,
+        }
         let payload = Option::<Payload>::deserialize(deserializer)?;
         Ok(payload.map_or_else(Self::new, |payload| Self::for_player(payload.player)))
     }
 }
 
-impl Default for ManifestDreadEffect { fn default() -> Self { Self::new() } }
+impl Default for ManifestDreadEffect {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ManifestDreadEffect {
-    pub fn new() -> Self { Self { player: PlayerFilter::You } }
-    pub fn for_player(player: PlayerFilter) -> Self { Self { player } }
+    pub fn new() -> Self {
+        Self {
+            player: PlayerFilter::You,
+        }
+    }
+    pub fn for_player(player: PlayerFilter) -> Self {
+        Self { player }
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

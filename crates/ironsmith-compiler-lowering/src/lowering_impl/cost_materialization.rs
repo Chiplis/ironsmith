@@ -821,7 +821,9 @@ fn lower_materialization_costs(
             }
             MaterializationCost::RevealChosenSubtype => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                costs.push(Cost::validated_effect(Effect::new(crate::effects::RevealChosenSubtypeEffect)));
+                costs.push(Cost::validated_effect(Effect::new(
+                    crate::effects::RevealChosenSubtypeEffect,
+                )));
             }
             MaterializationCost::RevealSourceFromHand => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);

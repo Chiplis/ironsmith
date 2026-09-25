@@ -123,8 +123,7 @@ pub fn parse_leaf_source_reference_aliases_for_name(name: &str) -> Vec<LeafSourc
 /// the rest of that name in a source-reference clause.
 pub fn parse_multiword_name_before_of(name: &str) -> Option<&str> {
     let (prefix, epithet) = name.split_once(" of ")?;
-    (prefix.split_whitespace().count() >= 2 && !epithet.trim().is_empty())
-        .then_some(prefix.trim())
+    (prefix.split_whitespace().count() >= 2 && !epithet.trim().is_empty()).then_some(prefix.trim())
 }
 
 pub fn push_leaf_source_reference_alias(

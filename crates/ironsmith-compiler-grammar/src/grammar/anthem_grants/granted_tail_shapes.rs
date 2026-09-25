@@ -87,7 +87,9 @@ pub fn parse_granted_subject_facts(tokens: &[OwnedLexToken]) -> GrantedSubjectFa
     // imperative action rejected by this static-grant family.
     let action_tokens = if words.ends_with(&["with", "a", "counter", "on", "it"]) {
         &tokens[..tokens.len() - 5]
-    } else { tokens };
+    } else {
+        tokens
+    };
     GrantedSubjectFacts {
         rejected_action: contains_parser(action_tokens, || parse_rejected_subject_action),
         has_may: contains_parser(tokens, || primitives::kw("may").void()),

@@ -11,12 +11,16 @@ pub(super) fn contains_attacking_player_or_planeswalker_relation(tokens: &[Owned
             return false;
         }
         let tail = &words[attacking + index + 1..];
-        let tail = if tail.first().is_some_and(|word| matches!(*word, "a" | "an" | "the")) {
+        let tail = if tail
+            .first()
+            .is_some_and(|word| matches!(*word, "a" | "an" | "the"))
+        {
             &tail[1..]
         } else {
             tail
         };
-        tail.first().is_some_and(|word| matches!(*word, "planeswalker" | "planeswalkers"))
+        tail.first()
+            .is_some_and(|word| matches!(*word, "planeswalker" | "planeswalkers"))
     })
 }
 

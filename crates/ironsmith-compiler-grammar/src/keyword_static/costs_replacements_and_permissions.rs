@@ -2702,14 +2702,18 @@ pub fn parse_damage_prevention_with_owner_shuffle_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let tokens = trim_edge_punctuation_tokens(tokens);
     let words = crate::lexer::token_word_refs(tokens);
-    if words.first() != Some(&"if") { return Ok(None); }
+    if words.first() != Some(&"if") {
+        return Ok(None);
+    }
     let Some(would) = tokens.iter().position(|t| t.as_word() == Some("would")) else {
         return Ok(None);
     };
     let Some(comma) = tokens.iter().position(|t| t.kind == TokenKind::Comma) else {
         return Ok(None);
     };
-    if would <= 1 || comma <= would { return Ok(None); }
+    if would <= 1 || comma <= would {
+        return Ok(None);
+    }
     let source_tokens = &tokens[1..would];
     let source_words = crate::lexer::token_word_refs(source_tokens);
     let source_filter = if is_source_reference_words(&source_words) {
@@ -2717,43 +2721,72 @@ pub fn parse_damage_prevention_with_owner_shuffle_line(
         filter.source_surface = source_reference_surface_for_words(&source_words);
         filter
     } else {
-        let Ok(filter) = parse_object_filter_lexed(source_tokens, false) else {return Ok(None);};
+        let Ok(filter) = parse_object_filter_lexed(source_tokens, false) else {
+            return Ok(None);
+        };
         filter
     };
     let damage_words = crate::lexer::token_word_refs(&tokens[would..comma]);
-    let (combat_only, prefix_len) = if damage_words.starts_with(&["would", "deal", "combat", "damage", "to"]) {
-        (Some(true), 5)
-    } else if damage_words.starts_with(&["would", "deal", "noncombat", "damage", "to"]) {
-        (Some(false), 5)
-    } else if damage_words.starts_with(&["would", "deal", "damage", "to"]) {
-        (None, 4)
-    } else {return Ok(None);};
+    let (combat_only, prefix_len) =
+        if damage_words.starts_with(&["would", "deal", "combat", "damage", "to"]) {
+            (Some(true), 5)
+        } else if damage_words.starts_with(&["would", "deal", "noncombat", "damage", "to"]) {
+            (Some(false), 5)
+        } else if damage_words.starts_with(&["would", "deal", "damage", "to"]) {
+            (None, 4)
+        } else {
+            return Ok(None);
+        };
     // This bounded head contains only words, so token and word offsets coincide.
     let target_tokens = &tokens[would + prefix_len..comma];
     let target_words = crate::lexer::token_word_refs(target_tokens);
-    let Some(noun) = target_words.last().copied() else {return Ok(None);};
+    let Some(noun) = target_words.last().copied() else {
+        return Ok(None);
+    };
     if !matches!(noun, "creature" | "permanent" | "planeswalker" | "battle") {
         return Ok(None);
     }
     let tail = crate::lexer::token_word_refs(&tokens[comma + 1..]);
     let possessive = format!("{noun}'s");
-    if tail != ["prevent", "that", "damage", "and", "that", possessive.as_str(), "owner", "shuffles", "it", "into", "their", "library"] {
+    if tail
+        != [
+            "prevent",
+            "that",
+            "damage",
+            "and",
+            "that",
+            possessive.as_str(),
+            "owner",
+            "shuffles",
+            "it",
+            "into",
+            "their",
+            "library",
+        ]
+    {
         return Ok(None);
     }
     let target_filter = parse_object_filter_lexed(target_tokens, false)?;
     let recipient = crate::tag::TagRef::of("__prevented_damage_recipient__");
     let shuffle = crate::cards::builders::EffectAst::subject_verb(
-        SubjectVerbRoleAst::LibraryOwner, PlayerAst::ItsOwner,
-        SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::ShuffleObjectsIntoLibrary {
-            target: TargetAst::Tagged(recipient.clone(), None),
-            all: false,
-            owner_library_destination: true,
-            possessive_owner_subject: true,
-            shuffle_subject_library: false,
-        }),
+        SubjectVerbRoleAst::LibraryOwner,
+        PlayerAst::ItsOwner,
+        SubjectVerbActionAst::Library(
+            crate::cards::builders::LibraryActionAst::ShuffleObjectsIntoLibrary {
+                target: TargetAst::Tagged(recipient.clone(), None),
+                all: false,
+                owner_library_destination: true,
+                possessive_owner_subject: true,
+                shuffle_subject_library: false,
+            },
+        ),
     );
     Ok(Some(StaticAbility::damage_prevention_with_follow_up(
-        source_filter, target_filter, combat_only, recipient.key.clone(), vec![shuffle],
+        source_filter,
+        target_filter,
+        combat_only,
+        recipient.key.clone(),
+        vec![shuffle],
     )))
 }
 
@@ -2780,11 +2813,16 @@ pub fn parse_double_counters_replacement_line(
         return Ok(None);
     };
     Ok(Some(match shape {
-        keyword_static_lines::CounterReplacementShape::CounterAdjustment { filter_tokens, counter_type, adjustment } =>
-            StaticAbility::add_counters_placement_replacement(
-                parse_object_filter_lexed(filter_tokens, false)?, Some(counter_type), adjustment,
-                display_text_for_tokens(tokens, true),
-            ),
+        keyword_static_lines::CounterReplacementShape::CounterAdjustment {
+            filter_tokens,
+            counter_type,
+            adjustment,
+        } => StaticAbility::add_counters_placement_replacement(
+            parse_object_filter_lexed(filter_tokens, false)?,
+            Some(counter_type),
+            adjustment,
+            display_text_for_tokens(tokens, true),
+        ),
         keyword_static_lines::CounterReplacementShape::GenericUnderYourControl => {
             StaticAbility::double_counters_replacement(
                 ObjectFilter::permanent().controlled_by(PlayerFilter::You),
@@ -3021,7 +3059,9 @@ pub fn parse_prevent_all_damage_to_matching_permanents_line(
             words[0],
             "you" | "this" | "it" | "that" | "enchanted" | "equipped" | "each" | "any"
         )
-        || words.iter().any(|word| matches!(*word, "by" | "and" | "or"))
+        || words
+            .iter()
+            .any(|word| matches!(*word, "by" | "and" | "or"))
     {
         return Ok(None);
     }
@@ -3029,7 +3069,9 @@ pub fn parse_prevent_all_damage_to_matching_permanents_line(
     if filter.zone != Some(Zone::Battlefield) {
         return Ok(None);
     }
-    Ok(Some(StaticAbility::prevent_all_damage_to_permanents_matching(filter)))
+    Ok(Some(
+        StaticAbility::prevent_all_damage_to_permanents_matching(filter),
+    ))
 }
 
 pub fn parse_prevent_all_combat_damage_to_matching_permanents_line(
@@ -3215,7 +3257,11 @@ pub fn parse_prevent_all_damage_to_you_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = parser_token_word_refs(tokens);
-    if words.as_slice() != ["prevent", "all", "damage", "that", "would", "be", "dealt", "to", "you"] {
+    if words.as_slice()
+        != [
+            "prevent", "all", "damage", "that", "would", "be", "dealt", "to", "you",
+        ]
+    {
         return Ok(None);
     }
     Ok(Some(StaticAbility::prevent_all_damage_to_you()))
@@ -3229,10 +3275,39 @@ pub fn parse_opponents_must_target_flagbearers_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = parser_token_word_refs(trim_edge_punctuation_tokens(tokens));
     let expected = [
-        "while", "an", "opponent", "is", "choosing", "targets", "as", "part", "of", "casting",
-        "a", "spell", "they", "control", "or", "activating", "an", "ability", "they", "control",
-        "that", "player", "must", "choose", "at", "least", "one", "flagbearer", "on", "the",
-        "battlefield", "if", "able",
+        "while",
+        "an",
+        "opponent",
+        "is",
+        "choosing",
+        "targets",
+        "as",
+        "part",
+        "of",
+        "casting",
+        "a",
+        "spell",
+        "they",
+        "control",
+        "or",
+        "activating",
+        "an",
+        "ability",
+        "they",
+        "control",
+        "that",
+        "player",
+        "must",
+        "choose",
+        "at",
+        "least",
+        "one",
+        "flagbearer",
+        "on",
+        "the",
+        "battlefield",
+        "if",
+        "able",
     ];
     if words.as_slice() != expected {
         return Ok(None);
@@ -3252,8 +3327,11 @@ pub fn parse_search_limited_to_top_cards_line(
     ) else {
         return Ok(None);
     };
-    let Some(rest) = rest.strip_prefix(&["would", "search", "a", "library", "that", "player", "searches", "the", "top"][..])
-    else {
+    let Some(rest) = rest.strip_prefix(
+        &[
+            "would", "search", "a", "library", "that", "player", "searches", "the", "top",
+        ][..],
+    ) else {
         return Ok(None);
     };
     let Some((count_word, rest)) = rest.split_first() else {
@@ -3297,8 +3375,9 @@ pub fn parse_untap_step_limit_line(
     } else {
         PlayerFilter::Any
     };
-    let Some(rest) = crate::word_primitives::strip_any_prefix(rest, &[&["cant"], &["can't"], &["cannot"]])
-        .map(|(_, rest)| rest)
+    let Some(rest) =
+        crate::word_primitives::strip_any_prefix(rest, &[&["cant"], &["can't"], &["cannot"]])
+            .map(|(_, rest)| rest)
     else {
         return Ok(None);
     };
@@ -3314,7 +3393,10 @@ pub fn parse_untap_step_limit_line(
     let suffixes: &[&[&str]] = if player == PlayerFilter::You {
         &[&["during", "your", "untap", "step"]]
     } else {
-        &[&["during", "their", "untap", "steps"], &["during", "their", "untap", "step"]]
+        &[
+            &["during", "their", "untap", "steps"],
+            &["during", "their", "untap", "step"],
+        ]
     };
     let Some((suffix, filter_words)) = crate::word_primitives::strip_any_suffix(rest, suffixes)
     else {
@@ -3334,7 +3416,11 @@ pub fn parse_untap_step_limit_line(
     };
     let filter_tokens = trim_commas(&tokens[filter_start..filter_end]);
     let filter = parse_object_filter(&filter_tokens, false)?;
-    let subject_text = if player == PlayerFilter::You { "You" } else { "Players" };
+    let subject_text = if player == PlayerFilter::You {
+        "You"
+    } else {
+        "Players"
+    };
     Ok(Some(StaticAbility::untap_step_limit(
         player,
         filter,
@@ -3838,7 +3924,9 @@ pub fn parse_source_exiled_play_life_cost_line(
         return Ok(None);
     };
     let Some((reference, tail)) =
-        crate::grammar::permission_facts::source_exiled::parse_cards_from_source_exiled_tokens(rest)
+        crate::grammar::permission_facts::source_exiled::parse_cards_from_source_exiled_tokens(
+            rest,
+        )
     else {
         return Ok(None);
     };
@@ -3849,8 +3937,8 @@ pub fn parse_source_exiled_play_life_cost_line(
             crate::grammar::primitives::phrase(&["if", "you", "cast", "a", "spell", "this", "way"]),
             winnow::combinator::opt(crate::grammar::primitives::comma()),
             crate::grammar::primitives::phrase(&[
-                "pay", "life", "equal", "to", "its", "mana", "value", "rather", "than", "pay", "its",
-                "mana", "cost",
+                "pay", "life", "equal", "to", "its", "mana", "value", "rather", "than", "pay",
+                "its", "mana", "cost",
             ]),
             winnow::combinator::opt(crate::grammar::primitives::period()),
         )
@@ -3869,10 +3957,11 @@ pub fn parse_source_exiled_play_life_cost_line(
         generic_cast_this_way_subject: true,
     };
     let mut pool = ObjectFilter::default();
-    pool.tagged_constraints.push(crate::target::TaggedObjectConstraint {
-        tag: (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
-        relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
-    });
+    pool.tagged_constraints
+        .push(crate::target::TaggedObjectConstraint {
+            tag: (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
+            relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        });
     let mut spells = pool.clone();
     spells.excluded_card_types.push(CardType::Land);
     let mut play = crate::model::CompilerGrantSpecCore::new(
@@ -3896,7 +3985,10 @@ pub fn parse_source_exiled_play_life_cost_line(
         play = play.with_usage_limit(limit);
         life = life.with_usage_limit(limit);
     }
-    Ok(Some(vec![StaticAbility::grants(play), StaticAbility::grants(life)]))
+    Ok(Some(vec![
+        StaticAbility::grants(play),
+        StaticAbility::grants(life),
+    ]))
 }
 
 pub fn parse_you_may_static_grant_line(
@@ -4199,9 +4291,9 @@ pub fn parse_attacks_each_combat_if_able_line(
             let subject_tokens = trim_commas(subject_tokens);
             if !subject_tokens.is_empty() {
                 let filter = parse_object_filter_lexed(&subject_tokens, false)?;
-                return Ok(Some(StaticAbilityAst::Static(StaticAbility::goad_matching(
-                    filter,
-                ))));
+                return Ok(Some(StaticAbilityAst::Static(
+                    StaticAbility::goad_matching(filter),
+                )));
             }
         }
     }
@@ -4270,7 +4362,9 @@ pub fn parse_graveyard_cards_have_retrace_line(
     Ok(Some(graveyard_cards_have_retrace_ability(fact)))
 }
 
-fn graveyard_cards_have_retrace_ability(fact: late_static_facts::RetraceGrantFact) -> StaticAbility {
+fn graveyard_cards_have_retrace_ability(
+    fact: late_static_facts::RetraceGrantFact,
+) -> StaticAbility {
     let mut filter = if fact.nonland_permanents {
         ObjectFilter::permanent_card().without_type(CardType::Land)
     } else {
@@ -4325,7 +4419,10 @@ pub fn parse_player_may_cast_spells_free_and_flash_line(
         ["you", "may", "cast", ..] => (PlayerFilter::You, 3),
         _ => return Ok(None),
     };
-    let Some(without) = words[rest_start..].iter().position(|word| *word == "without") else {
+    let Some(without) = words[rest_start..]
+        .iter()
+        .position(|word| *word == "without")
+    else {
         return Ok(None);
     };
     let tail = &words[rest_start + without..];
@@ -4666,9 +4763,15 @@ pub fn parse_if_you_would_draw_instead_effects_line(
     // "except the first one you draw in each of your draw steps" /
     // "... they draw in each of their draw steps" (Hullbreacher).
     let except_first: &[&str] = if drawer == PlayerFilter::You {
-        &["except", "the", "first", "one", "you", "draw", "in", "each", "of", "your", "draw", "steps"]
+        &[
+            "except", "the", "first", "one", "you", "draw", "in", "each", "of", "your", "draw",
+            "steps",
+        ]
     } else {
-        &["except", "the", "first", "one", "they", "draw", "in", "each", "of", "their", "draw", "steps"]
+        &[
+            "except", "the", "first", "one", "they", "draw", "in", "each", "of", "their", "draw",
+            "steps",
+        ]
     };
     let (except_first_of_draw_step, rest) = match rest.strip_prefix(except_first) {
         Some(rest) => (true, rest),
@@ -4707,12 +4810,14 @@ pub fn parse_draw_extra_cards_replacement_line(
     if fact.extra == 0 {
         return Ok(None);
     }
-    Ok(Some(StaticAbility::draw_extra_cards_replacement_with_options(
-        fact.extra,
-        fact.except_first_of_draw_step,
-        fact.per_instruction,
-        render_token_slice(tokens),
-    )))
+    Ok(Some(
+        StaticAbility::draw_extra_cards_replacement_with_options(
+            fact.extra,
+            fact.except_first_of_draw_step,
+            fact.per_instruction,
+            render_token_slice(tokens),
+        ),
+    ))
 }
 
 pub fn parse_conditional_draw_replacement_line(
@@ -5314,14 +5419,19 @@ pub fn parse_exile_would_die_instead_line(
             };
             StaticAbility::exile_would_die_instead(filter)
         }
-        keyword_static_lines::ExileWouldDieSpec::SimpleCreature { controller: player, follow_up_tokens } => {
+        keyword_static_lines::ExileWouldDieSpec::SimpleCreature {
+            controller: player,
+            follow_up_tokens,
+        } => {
             let player = match player {
                 keyword_static_lines::ReplacementPlayerKind::Any => PlayerFilter::Any,
                 keyword_static_lines::ReplacementPlayerKind::You => PlayerFilter::You,
                 keyword_static_lines::ReplacementPlayerKind::Opponent => PlayerFilter::Opponent,
             };
             StaticAbility::exile_would_die_instead_with_damage_source_counters_and_follow_up(
-                ObjectFilter::creature().controlled_by(player), None, Vec::new(),
+                ObjectFilter::creature().controlled_by(player),
+                None,
+                Vec::new(),
                 super::super::clause_support::parse_effect_sentences_lexed(&follow_up_tokens)?,
             )
         }
@@ -5405,9 +5515,8 @@ pub fn parse_choose_basic_land_type_then_pay_life_line(
     if !then.is_word("then") {
         return Ok(None);
     }
-    let Some(choice) = crate::keyword_static::parse_choose_basic_land_type_as_enters_line(
-        choice_tokens,
-    )?
+    let Some(choice) =
+        crate::keyword_static::parse_choose_basic_land_type_as_enters_line(choice_tokens)?
     else {
         return Ok(None);
     };
@@ -5481,8 +5590,7 @@ pub fn parse_if_source_tapped_for_mana_replacement_line(
 pub fn parse_if_you_tap_for_mana_multiplier_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let Some(spec) =
-        crate::grammar::effects::parse_mana_multiplier_replacement_spec_lexed(tokens)
+    let Some(spec) = crate::grammar::effects::parse_mana_multiplier_replacement_spec_lexed(tokens)
     else {
         return Ok(None);
     };
@@ -6878,7 +6986,6 @@ mod attached_your_untap_tests {
     }
 }
 
-
 /// "You may activate abilities of creatures you control as though those
 /// creatures had haste." (Tyvar, Jubilant Brawler; Thousand-Year Elixir)
 pub fn parse_activate_abilities_as_though_haste_line(
@@ -6919,9 +7026,10 @@ pub fn parse_activate_abilities_as_though_haste_line(
         .trim()
         .trim_end_matches('.')
         .to_string();
-    Ok(Some(StaticAbility::activate_abilities_as_though_haste(filter, display)))
+    Ok(Some(StaticAbility::activate_abilities_as_though_haste(
+        filter, display,
+    )))
 }
-
 
 /// "You may play lands and cast spells from the top of your library. If you
 /// cast a spell this way, pay life equal to its mana value rather than pay its
@@ -6984,8 +7092,11 @@ pub fn parse_loyalty_abilities_any_time_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let prefix = crate::grammar::abilities::split_as_long_as_condition_prefix_lexed(tokens);
-    let body = prefix.as_ref().map_or(tokens, |prefix| prefix.remainder_tokens);
-    let words: Vec<&str> = body.iter()
+    let body = prefix
+        .as_ref()
+        .map_or(tokens, |prefix| prefix.remainder_tokens);
+    let words: Vec<&str> = body
+        .iter()
         .filter(|token| token.as_word().is_some())
         .map(|token| token.parser_text())
         .collect();
@@ -7013,9 +7124,15 @@ pub fn parse_loyalty_abilities_any_time_line(
         let condition = parse_static_condition_clause(prefix.condition_tokens)?;
         let PredicateAst::CountComparison {
             count: AnthemCountExpression::MatchingFilter(condition_filter),
-            comparison: crate::effect::Comparison::GreaterThanOrEqual(1), ..
-        } = condition else { return Ok(None); };
-        if !filter.source || !condition_filter.source { return Ok(None); }
+            comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+            ..
+        } = condition
+        else {
+            return Ok(None);
+        };
+        if !filter.source || !condition_filter.source {
+            return Ok(None);
+        }
         filter = condition_filter;
     }
     Ok(Some(StaticAbility::loyalty_abilities_any_time(filter)))
@@ -7027,13 +7144,31 @@ mod loyalty_timing_tests {
     #[test]
     fn loyalty_permission_parses_scoped_and_conditional_filters() {
         for (line, is_source, entered) in [
-            ("You may activate its loyalty abilities any time you could cast an instant.", true, false),
-            ("You may activate loyalty abilities of planeswalkers you control any time you could cast an instant.", false, false),
-            ("As long as this entered this turn, you may activate its loyalty abilities any time you could cast an instant.", true, true),
+            (
+                "You may activate its loyalty abilities any time you could cast an instant.",
+                true,
+                false,
+            ),
+            (
+                "You may activate loyalty abilities of planeswalkers you control any time you could cast an instant.",
+                false,
+                false,
+            ),
+            (
+                "As long as this entered this turn, you may activate its loyalty abilities any time you could cast an instant.",
+                true,
+                true,
+            ),
         ] {
             let tokens = crate::lexer::lex_line(line, 0).unwrap();
-            let ability = parse_loyalty_abilities_any_time_line(&tokens).unwrap().expect(line);
-            let ironsmith_core::StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter } = ability.payload else { panic!("{line}"); };
+            let ability = parse_loyalty_abilities_any_time_line(&tokens)
+                .unwrap()
+                .expect(line);
+            let ironsmith_core::StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter } =
+                ability.payload
+            else {
+                panic!("{line}");
+            };
             assert_eq!(filter.source, is_source, "{line}");
             assert_eq!(filter.entered_battlefield_this_turn, entered, "{line}");
             if !is_source {

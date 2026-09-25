@@ -237,7 +237,10 @@ fn parses_animation_with_indestructible_and_loses_other_abilities_tail() {
     assert_eq!(shape.toughness, Value::Fixed(1));
     assert_eq!(
         shape.descriptor.card_types,
-        vec![crate::types::CardType::Artifact, crate::types::CardType::Creature]
+        vec![
+            crate::types::CardType::Artifact,
+            crate::types::CardType::Creature
+        ]
     );
 }
 
@@ -246,11 +249,8 @@ fn parses_still_a_planeswalker_animation_tail() {
     let text = "During your turn, this permanent is a 4/4 Human Soldier creature with indestructible that's still a planeswalker.";
     let tokens = lex_line(text, 0).expect("lex animation");
     let tokens = &tokens[4..];
-    let shape = parse_filtered_object_animation_tokens(tokens)
-        .expect("Gideon animation should parse");
+    let shape =
+        parse_filtered_object_animation_tokens(tokens).expect("Gideon animation should parse");
     assert!(shape.preserve_other_types, "{shape:#?}");
     assert_eq!(shape.granted_keyword_words, vec!["indestructible"]);
 }
-
-
-

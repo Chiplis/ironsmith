@@ -1020,11 +1020,14 @@ pub(super) fn resolve_stack_entry_full(
     let mut tagged_objects = entry.tagged_objects.clone();
     // Linked choices belong to the original source, including its last known
     // state after a leaves-the-battlefield trigger has been put on the stack.
-    if let Some(chosen) = entry.source_snapshot.as_ref()
+    if let Some(chosen) = entry
+        .source_snapshot
+        .as_ref()
         .and_then(|snapshot| snapshot.chosen_object.as_deref())
         .or_else(|| game.chosen_object(execution_source))
     {
-        tagged_objects.entry(crate::tag::CHOSEN_OBJECTS_TAG.into())
+        tagged_objects
+            .entry(crate::tag::CHOSEN_OBJECTS_TAG.into())
             .or_insert_with(|| vec![chosen.clone()]);
     }
     let source_exiled = game
@@ -1252,20 +1255,36 @@ pub(super) fn resolve_stack_entry_full(
         && let Some(obj) = &obj
     {
         install_epic_resolution_effects(game, &entry, obj)?;
-        let first_with_name = game.turn_store.resolved_spell_names.insert((entry.controller, obj.name.to_string()));
+        let first_with_name = game
+            .turn_store
+            .resolved_spell_names
+            .insert((entry.controller, obj.name.to_string()));
         if spell_has_keyword_marker(obj, "paradigm") {
             if first_with_name {
                 let delayed = crate::effects::delayed::DelayedTriggerConfig::new(
-                    Trigger::beginning_of_precombat_main_phase(crate::target::PlayerFilter::Specific(entry.controller)),
-                    crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(crate::effects::CastStoredCardCopyEffect::new(obj))]),
-                    false, Vec::new(), entry.controller,
-                ).with_ability_source(Some(entry.object_id));
+                    Trigger::beginning_of_precombat_main_phase(
+                        crate::target::PlayerFilter::Specific(entry.controller),
+                    ),
+                    crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
+                        crate::effects::CastStoredCardCopyEffect::new(obj),
+                    )]),
+                    false,
+                    Vec::new(),
+                    entry.controller,
+                )
+                .with_ability_source(Some(entry.object_id));
                 crate::effects::delayed::queue_delayed_trigger(game, delayed);
             }
             // Paradigm exiles every resolving spell, even when its name has
             // already resolved and therefore creates no new delayed trigger.
-            let _ = crate::effects::zones::apply_zone_change(game, entry.object_id, Zone::Stack, Zone::Exile,
-                EventCause::from_effect(entry.object_id, entry.controller), decision_maker);
+            let _ = crate::effects::zones::apply_zone_change(
+                game,
+                entry.object_id,
+                Zone::Stack,
+                Zone::Exile,
+                EventCause::from_effect(entry.object_id, entry.controller),
+                decision_maker,
+            );
             return Ok(());
         }
     }

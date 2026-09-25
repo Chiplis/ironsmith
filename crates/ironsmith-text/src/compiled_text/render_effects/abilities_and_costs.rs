@@ -1598,9 +1598,7 @@ pub(crate) fn describe_ability(
             {
                 let typed = describe_mana_activation_condition(&condition);
                 let authored_differs = authored_clauses.iter().any(|clause| {
-                    clause
-                        .to_ascii_lowercase()
-                        .starts_with("activate only if ")
+                    clause.to_ascii_lowercase().starts_with("activate only if ")
                         && !clause.eq_ignore_ascii_case(&typed)
                 });
                 if !authored_differs {
@@ -3075,8 +3073,9 @@ pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
     }
     if cost.kind == OptionalCostKind::Casualty
         && let Some([sacrifice]) = cost.cost.as_all()
-        && let Some(crate::filter::Comparison::GreaterThanOrEqual(power)) =
-            sacrifice.sacrifice_filter().and_then(|filter| filter.power.clone())
+        && let Some(crate::filter::Comparison::GreaterThanOrEqual(power)) = sacrifice
+            .sacrifice_filter()
+            .and_then(|filter| filter.power.clone())
     {
         use crate::compiled_text::{
             STANDARD_REMINDER_CLOSE_SENTINEL, STANDARD_REMINDER_OPEN_SENTINEL,

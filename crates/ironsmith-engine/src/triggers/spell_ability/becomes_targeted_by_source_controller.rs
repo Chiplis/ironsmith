@@ -37,7 +37,10 @@ impl PlayerOrObjectBecomesTargetedBySourceControllerTrigger {
         }
     }
 
-    pub fn with_source_kind(mut self, source_kind: ironsmith_core::filter_model::StackObjectKind) -> Self {
+    pub fn with_source_kind(
+        mut self,
+        source_kind: ironsmith_core::filter_model::StackObjectKind,
+    ) -> Self {
         self.source_kind = source_kind;
         self
     }
@@ -168,13 +171,19 @@ impl TriggerMatcher for PlayerOrObjectBecomesTargetedBySourceControllerTrigger {
 /// creature"), unless the description already carries a determiner.
 fn singular_subject(description: String) -> String {
     let lower = description.to_ascii_lowercase();
-    let determined = ["a ", "an ", "the ", "another ", "this ", "that ", "each ", "target "]
-        .iter()
-        .any(|prefix| lower.starts_with(prefix));
+    let determined = [
+        "a ", "an ", "the ", "another ", "this ", "that ", "each ", "target ",
+    ]
+    .iter()
+    .any(|prefix| lower.starts_with(prefix));
     if determined || description.is_empty() {
         return description;
     }
-    let article = if lower.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" };
+    let article = if lower.starts_with(['a', 'e', 'i', 'o', 'u']) {
+        "an"
+    } else {
+        "a"
+    };
     format!("{article} {description}")
 }
 

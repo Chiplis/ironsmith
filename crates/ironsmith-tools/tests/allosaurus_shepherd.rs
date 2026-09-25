@@ -4,7 +4,9 @@
 //! addition to its other creature types."
 use ironsmith::card::PowerToughness;
 use ironsmith::cards::builders::CardDefinitionBuilder;
-use ironsmith::decision::{GameProgress, LegalAction, SelectFirstDecisionMaker, compute_legal_actions};
+use ironsmith::decision::{
+    GameProgress, LegalAction, SelectFirstDecisionMaker, compute_legal_actions,
+};
 use ironsmith::game_loop::{PriorityLoopState, PriorityResponse};
 use ironsmith::ids::CardId;
 use ironsmith::mana::ManaSymbol;
@@ -60,9 +62,21 @@ fn board() -> Board {
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
     let shepherd = game.create_object_from_definition(&def, alice, Zone::Battlefield);
-    let my_elf = game.create_object_from_definition(&creature("Llanowar Scout", Subtype::Elf), alice, Zone::Battlefield);
-    let my_goblin = game.create_object_from_definition(&creature("Goblin Scout", Subtype::Goblin), alice, Zone::Battlefield);
-    let their_elf = game.create_object_from_definition(&creature("Enemy Elf", Subtype::Elf), bob, Zone::Battlefield);
+    let my_elf = game.create_object_from_definition(
+        &creature("Llanowar Scout", Subtype::Elf),
+        alice,
+        Zone::Battlefield,
+    );
+    let my_goblin = game.create_object_from_definition(
+        &creature("Goblin Scout", Subtype::Goblin),
+        alice,
+        Zone::Battlefield,
+    );
+    let their_elf = game.create_object_from_definition(
+        &creature("Enemy Elf", Subtype::Elf),
+        bob,
+        Zone::Battlefield,
+    );
     Board {
         game,
         shepherd,
@@ -75,7 +89,10 @@ fn board() -> Board {
 fn activate(board: &mut Board) {
     let alice = PlayerId::from_index(0);
     let game = &mut board.game;
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Green, 6);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Green, 6);
     let action = compute_legal_actions(game, alice)
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == board.shepherd))
@@ -102,7 +119,11 @@ fn activate(board: &mut Board) {
         );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
-    assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0, "paid {{4}}{{G}}{{G}}");
+    assert_eq!(
+        game.player(alice).unwrap().mana_pool.total(),
+        0,
+        "paid {{4}}{{G}}{{G}}"
+    );
     ironsmith::game_loop::resolve_stack_entry_with(game, &mut dm).unwrap();
 }
 
@@ -119,7 +140,10 @@ fn your_elves_become_5_5_dinosaurs_until_end_of_turn() {
         assert_eq!(game.calculated_power(elf), Some(5));
         assert_eq!(game.calculated_toughness(elf), Some(5));
         assert!(is_dinosaur(game, elf));
-        assert!(game.calculated_subtypes(elf).contains(&Subtype::Elf), "in addition to its other types");
+        assert!(
+            game.calculated_subtypes(elf).contains(&Subtype::Elf),
+            "in addition to its other types"
+        );
     }
     for other in [board.my_goblin, board.their_elf] {
         assert_eq!(game.calculated_power(other), Some(1));
@@ -136,10 +160,16 @@ fn elves_that_arrive_after_resolution_are_unaffected() {
     let mut board = board();
     activate(&mut board);
     let alice = PlayerId::from_index(0);
-    let late = board
-        .game
-        .create_object_from_definition(&creature("Late Elf", Subtype::Elf), alice, Zone::Battlefield);
-    assert_eq!(board.game.calculated_power(late), Some(1), "CR 611.2c: affected set locked in");
+    let late = board.game.create_object_from_definition(
+        &creature("Late Elf", Subtype::Elf),
+        alice,
+        Zone::Battlefield,
+    );
+    assert_eq!(
+        board.game.calculated_power(late),
+        Some(1),
+        "CR 611.2c: affected set locked in"
+    );
     assert!(!is_dinosaur(&board.game, late));
 }
 
@@ -147,5 +177,10 @@ fn elves_that_arrive_after_resolution_are_unaffected() {
 fn shepherd_and_green_spells_cannot_be_countered() {
     let def = ironsmith_tools::compile_definition_from_payload(&payload()).unwrap();
     let debug = format!("{:#?}", def.abilities);
-    assert!(debug.contains("CantBeCountered") || debug.contains("cant_be_countered") || debug.contains("Uncounterable"), "{debug}");
+    assert!(
+        debug.contains("CantBeCountered")
+            || debug.contains("cant_be_countered")
+            || debug.contains("Uncounterable"),
+        "{debug}"
+    );
 }

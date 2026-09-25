@@ -66,7 +66,13 @@ fn board(attackers: usize) -> Board {
     game.tap(jewel);
     let blocker = game.create_object_from_definition(&bear("Alice Bear"), alice, Zone::Battlefield);
     let attackers = (0..attackers)
-        .map(|i| game.create_object_from_definition(&bear(&format!("Bob Bear {i}")), bob, Zone::Battlefield))
+        .map(|i| {
+            game.create_object_from_definition(
+                &bear(&format!("Bob Bear {i}")),
+                bob,
+                Zone::Battlefield,
+            )
+        })
         .collect();
     Board {
         game,
@@ -93,8 +99,13 @@ fn declare_blocks(board: &mut Board, blocked: &[usize]) {
             target: AttackTarget::Player(alice),
         })
         .collect();
-    ironsmith::game_loop::apply_attacker_declarations(&mut board.game, &mut combat, &mut queue, &attacks)
-        .unwrap();
+    ironsmith::game_loop::apply_attacker_declarations(
+        &mut board.game,
+        &mut combat,
+        &mut queue,
+        &attacks,
+    )
+    .unwrap();
     let blocks: Vec<BlockerDeclaration> = blocked
         .iter()
         .map(|i| BlockerDeclaration {
@@ -103,10 +114,17 @@ fn declare_blocks(board: &mut Board, blocked: &[usize]) {
         })
         .collect();
     let mut queue = TriggerQueue::new();
-    ironsmith::game_loop::apply_blocker_declarations(&mut board.game, &mut combat, &mut queue, &blocks, alice)
-        .unwrap();
+    ironsmith::game_loop::apply_blocker_declarations(
+        &mut board.game,
+        &mut combat,
+        &mut queue,
+        &blocks,
+        alice,
+    )
+    .unwrap();
     let mut dm = SelectFirstDecisionMaker;
-    ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut board.game, &mut queue, &mut dm).unwrap();
+    ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut board.game, &mut queue, &mut dm)
+        .unwrap();
     while !board.game.stack.is_empty() {
         ironsmith::game_loop::resolve_stack_entry_with(&mut board.game, &mut dm).unwrap();
     }
@@ -117,7 +135,11 @@ fn unblocked_attackers_trigger_once_and_hand_over_the_untapped_jewel() {
     let mut board = board(2);
     declare_blocks(&mut board, &[]);
     let bob = PlayerId::from_index(1);
-    assert_eq!(board.game.player(bob).unwrap().hand.len(), 3, "one trigger for the group");
+    assert_eq!(
+        board.game.player(bob).unwrap().hand.len(),
+        3,
+        "one trigger for the group"
+    );
     assert_eq!(board.game.controller_of_id(board.jewel), Some(bob));
     assert!(!board.game.is_tapped(board.jewel), "untapped");
 }
@@ -150,7 +172,9 @@ fn attacking_only_alices_planeswalker_does_not_trigger() {
     let walker = CardDefinitionBuilder::new(CardId::new(), "Alice Walker")
         .card_types(vec![CardType::Planeswalker])
         .build();
-    let walker = board.game.create_object_from_definition(&walker, alice, Zone::Battlefield);
+    let walker = board
+        .game
+        .create_object_from_definition(&walker, alice, Zone::Battlefield);
     board.game.remove_summoning_sickness(board.attackers[0]);
     let mut combat = CombatState::default();
     let mut queue = TriggerQueue::new();
@@ -165,11 +189,21 @@ fn attacking_only_alices_planeswalker_does_not_trigger() {
     )
     .unwrap();
     let mut queue = TriggerQueue::new();
-    ironsmith::game_loop::apply_blocker_declarations(&mut board.game, &mut combat, &mut queue, &[], alice)
-        .unwrap();
+    ironsmith::game_loop::apply_blocker_declarations(
+        &mut board.game,
+        &mut combat,
+        &mut queue,
+        &[],
+        alice,
+    )
+    .unwrap();
     let mut dm = SelectFirstDecisionMaker;
-    ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut board.game, &mut queue, &mut dm).unwrap();
-    assert!(board.game.stack.is_empty(), "\"attack you\" excludes planeswalkers");
+    ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut board.game, &mut queue, &mut dm)
+        .unwrap();
+    assert!(
+        board.game.stack.is_empty(),
+        "\"attack you\" excludes planeswalkers"
+    );
     assert_eq!(board.game.controller_of_id(board.jewel), Some(alice));
     let _ = bob;
 }

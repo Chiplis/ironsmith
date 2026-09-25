@@ -3,7 +3,6 @@
 //! This module provides functions for computing legal targets
 //! for spells and abilities.
 
-
 use crate::ability::extract_static_abilities;
 use crate::filter::ObjectFilterExt as _;
 use crate::filter::ObjectSubject;
@@ -453,7 +452,13 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
 
     // Check for HexproofFrom. A permission to target "as though it didn't
     // have hexproof" also covers "hexproof from [quality]" (CR 702.11e).
-    if game.controller_of(target) != source.protection_controller(game) && !ignores_hexproof {
+    if game.controller_of(target) != source.protection_controller(game)
+        && !ignores_hexproof
+        && !game
+            .effect_store
+            .cant_effects
+            .ignores_hexproof_from_for_object(game, target_id, permission_player)
+    {
         for ability in target_abilities.iter() {
             if let Some(filter) = ability.hexproof_from_filter()
                 && source.matches(
@@ -580,14 +585,22 @@ fn has_protection_from_subject_with_view(
     // A card can have protection in its text box without that ability
     // functioning in its current zone (for example, in a graveyard).
     let target_abilities = view.abilities_rc(target_id);
-    let target_abilities = target_abilities.as_deref().map(Vec::as_slice)
+    let target_abilities = target_abilities
+        .as_deref()
+        .map(Vec::as_slice)
         .unwrap_or(&target.abilities);
-    for ability in target_abilities.iter().filter(|ability| ability.functions_in(&target.zone)) {
-        let crate::ability::AbilityKind::Static(ability) = &ability.kind else { continue; };
+    for ability in target_abilities
+        .iter()
+        .filter(|ability| ability.functions_in(&target.zone))
+    {
+        let crate::ability::AbilityKind::Static(ability) = &ability.kind else {
+            continue;
+        };
         if ability.has_protection()
             && let Some(protection_from) = ability.protection_from()
         {
-            let matches = protection_from_subject_with_view(game, target_id, source, protection_from, view);
+            let matches =
+                protection_from_subject_with_view(game, target_id, source, protection_from, view);
             if matches {
                 return true;
             }
@@ -606,30 +619,27 @@ pub(crate) fn protection_from_subject_with_view(
     protection_from: &crate::ability::ProtectionFrom,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
-    let Some(target) = game.object(target_id) else { return false; };
+    let Some(target) = game.object(target_id) else {
+        return false;
+    };
     match protection_from {
-                crate::ability::ProtectionFrom::ChosenPlayer => game
-                    .chosen_player(target_id)
-                    .is_some_and(|chosen| source.protection_controller(game) == chosen),
-                crate::ability::ProtectionFrom::ChosenColor => {
-                    game.chosen_color(target_id)
-                        .is_some_and(|chosen| source.protection_colors(view).contains(chosen))
-                        || attached_grant_protects_from_chosen_color(
-                            game,
-                            target,
-                            source.protection_colors(view),
-                        )
-                }
-                crate::ability::ProtectionFrom::EachManaValueAmong(filter) => {
-                    mana_value_matches_scope(
-                        game,
-                        target_id,
-                        source.protection_mana_value(),
-                        filter,
-                    )
-                }
-                _ => subject_matches_protection(source, protection_from, game, view),
-            }
+        crate::ability::ProtectionFrom::ChosenPlayer => game
+            .chosen_player(target_id)
+            .is_some_and(|chosen| source.protection_controller(game) == chosen),
+        crate::ability::ProtectionFrom::ChosenColor => {
+            game.chosen_color(target_id)
+                .is_some_and(|chosen| source.protection_colors(view).contains(chosen))
+                || attached_grant_protects_from_chosen_color(
+                    game,
+                    target,
+                    source.protection_colors(view),
+                )
+        }
+        crate::ability::ProtectionFrom::EachManaValueAmong(filter) => {
+            mana_value_matches_scope(game, target_id, source.protection_mana_value(), filter)
+        }
+        _ => subject_matches_protection(source, protection_from, game, view),
+    }
 }
 
 /// Check if a source matches a protection quality.
@@ -811,21 +821,43 @@ pub(crate) fn compute_legal_targets_with_execution_context_and_view(
     ctx: &crate::effects::ExecutionContext,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<Target> {
-    let objects = |filter: &ObjectFilter| compute_object_targets_with_filter_context(
-        game, filter, ctx.controller, Some(ctx.source), ctx.source_snapshot.as_ref(),
-        None, None, Some(ctx.filter_context(game)), view,
-    );
+    let objects = |filter: &ObjectFilter| {
+        compute_object_targets_with_filter_context(
+            game,
+            filter,
+            ctx.controller,
+            Some(ctx.source),
+            ctx.source_snapshot.as_ref(),
+            None,
+            None,
+            Some(ctx.filter_context(game)),
+            view,
+        )
+    };
     let players = |filter: &PlayerFilter| {
-        let filter = match filter { PlayerFilter::Target(inner) => inner.as_ref(), other => other };
+        let filter = match filter {
+            PlayerFilter::Target(inner) => inner.as_ref(),
+            other => other,
+        };
         let mut filter_ctx = ctx.filter_context(game);
-        if game.source_snapshot_is_exempt_from_range(Some(ctx.source), ctx.source_snapshot.as_ref()) {
+        if game.source_snapshot_is_exempt_from_range(Some(ctx.source), ctx.source_snapshot.as_ref())
+        {
             filter_ctx.players_in_range = None;
         }
-        game.players.iter().filter(|p| p.is_in_game())
-            .filter(|p| can_target_player_from_source_or_snapshot(
-                game, p.id, ctx.source, ctx.source_snapshot.as_ref()))
+        game.players
+            .iter()
+            .filter(|p| p.is_in_game())
+            .filter(|p| {
+                can_target_player_from_source_or_snapshot(
+                    game,
+                    p.id,
+                    ctx.source,
+                    ctx.source_snapshot.as_ref(),
+                )
+            })
             .filter(|p| player_filter_matches_game(filter, p.id, game, &filter_ctx))
-            .map(|p| Target::Player(p.id)).collect::<Vec<_>>()
+            .map(|p| Target::Player(p.id))
+            .collect::<Vec<_>>()
     };
     match spec.base() {
         ChooseSpec::Object(filter) => objects(filter),
@@ -836,8 +868,13 @@ pub(crate) fn compute_legal_targets_with_execution_context_and_view(
             targets
         }
         _ => compute_legal_targets_with_tagged_objects_source_snapshot_with_view(
-            game, spec, ctx.controller, Some(ctx.source), ctx.source_snapshot.as_ref(),
-            Some(&ctx.tagged_objects), view,
+            game,
+            spec,
+            ctx.controller,
+            Some(ctx.source),
+            ctx.source_snapshot.as_ref(),
+            Some(&ctx.tagged_objects),
+            view,
         ),
     }
 }
@@ -848,16 +885,31 @@ pub fn resolved_target_aggregate_constraint_with_context(
     spec: &ChooseSpec,
     ctx: &crate::effects::ExecutionContext,
     legal_targets: &[Target],
-) -> Result<Option<crate::targeting::ResolvedTargetAggregateConstraint>, crate::effects::ExecutionError> {
-    let Some(constraint) = spec.target_set_aggregate_constraint() else { return Ok(None); };
+) -> Result<
+    Option<crate::targeting::ResolvedTargetAggregateConstraint>,
+    crate::effects::ExecutionError,
+> {
+    let Some(constraint) = spec.target_set_aggregate_constraint() else {
+        return Ok(None);
+    };
     let maximum = crate::effects::helpers::resolve_value(game, &constraint.maximum, ctx)?;
     Ok(Some(crate::targeting::ResolvedTargetAggregateConstraint {
         metric: constraint.metric,
         maximum,
-        target_values: legal_targets.iter().map(|target| (*target, match target {
-            Target::Object(id) => crate::targeting::aggregate_object_value(game, *id, constraint.metric),
-            Target::Player(_) => 0,
-        })).collect(),
+        target_values: legal_targets
+            .iter()
+            .map(|target| {
+                (
+                    *target,
+                    match target {
+                        Target::Object(id) => {
+                            crate::targeting::aggregate_object_value(game, *id, constraint.metric)
+                        }
+                        Target::Player(_) => 0,
+                    },
+                )
+            })
+            .collect(),
     }))
 }
 
@@ -1293,8 +1345,15 @@ fn compute_object_targets_with_view(
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<Target> {
     compute_object_targets_with_filter_context(
-        game, filter, caster, source_id, source_snapshot, tagged_objects,
-        combat_context, None, view,
+        game,
+        filter,
+        caster,
+        source_id,
+        source_snapshot,
+        tagged_objects,
+        combat_context,
+        None,
+        view,
     )
 }
 
@@ -1312,14 +1371,19 @@ fn compute_object_targets_with_filter_context(
     let mut targets = Vec::new();
 
     let mut candidate_filter;
-    let filter = if filter.controller == Some(crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget) {
+    let filter = if filter.controller
+        == Some(crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget)
+    {
         candidate_filter = filter.clone();
         candidate_filter.controller = None;
         &candidate_filter
-    } else { filter };
+    } else {
+        filter
+    };
 
     // Build filter context
-    let mut filter_ctx = execution_filter.unwrap_or_else(|| target_filter_context(game, caster, source_id));
+    let mut filter_ctx =
+        execution_filter.unwrap_or_else(|| target_filter_context(game, caster, source_id));
     if game.source_snapshot_is_exempt_from_range(source_id, source_snapshot) {
         filter_ctx.players_in_range = None;
     }
@@ -1381,7 +1445,14 @@ fn compute_object_targets_with_filter_context(
     view.prewarm_characteristics(&prewarm_ids);
 
     let candidate_ids = view.candidate_ids_for_filter_with_context(filter, &filter_ctx);
-    let stack_filter = filter.zone == Some(Zone::Stack) || filter.stack_kind.is_some();
+    // "Target activated or triggered ability" is a disjunction of two
+    // stack-kind filters, so the branches say whether it names stack objects.
+    fn names_stack_objects(filter: &ObjectFilter) -> bool {
+        filter.zone == Some(Zone::Stack)
+            || filter.stack_kind.is_some()
+            || filter.any_of.iter().any(names_stack_objects)
+    }
+    let stack_filter = names_stack_objects(filter);
     let mut seen_candidates = std::collections::HashSet::new();
     for object_id in candidate_ids {
         if stack_filter && !seen_candidates.insert(object_id) {
@@ -1394,7 +1465,11 @@ fn compute_object_targets_with_filter_context(
             // Each ability on the stack is its own target, named by its
             // `ability_id`, even when several share one source (two
             // activations of one permanent, a storm trigger and its spell).
-            for entry in game.stack.iter().filter(|entry| entry.object_id == object_id) {
+            for entry in game
+                .stack
+                .iter()
+                .filter(|entry| entry.object_id == object_id)
+            {
                 let Some(ability_id) = entry.ability_id else {
                     continue;
                 };
@@ -1407,17 +1482,14 @@ fn compute_object_targets_with_filter_context(
                     targets.push(Target::Object(ability_id));
                 }
             }
-            // The object itself is a target only as its own stack object (a
-            // spell, or an ability copy that has its own object).
-            if !game
-                .stack
-                .iter()
-                .any(|entry| entry.object_id == object_id && entry.ability_id.is_none())
-            {
-                continue;
-            }
         }
-        let stack_object_ctx = stack_filter.then(|| {
+        // The object itself matches a stack branch only as its own stack
+        // object (a spell, or an ability copy that has its own object): for
+        // a permanent whose abilities are on the stack the hint names no
+        // entry, so only the filter's other branches can match it.
+        let stack_object_ctx = (stack_filter
+            && game.stack.iter().any(|entry| entry.object_id == object_id))
+        .then(|| {
             let mut own_ctx = filter_ctx.clone();
             own_ctx.stack_entry = Some(object_id);
             own_ctx

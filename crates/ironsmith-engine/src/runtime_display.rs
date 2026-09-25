@@ -196,14 +196,13 @@ fn granted_ability_quote(
         [] => return None,
         [only] if !matches!(ability.kind, AbilityKind::Static(_)) => only,
         _ => {
-            let index = effect_sentences::best_matching_text(&quotes, &ability_surface_text(ability))?;
+            let index =
+                effect_sentences::best_matching_text(&quotes, &ability_surface_text(ability))?;
             &quotes[index]
         }
     };
     let mut text = capitalize_first(chosen.trim());
-    if !matches!(ability.kind, AbilityKind::Static(_))
-        && !text.ends_with(['.', '!', '?', ')'])
-    {
+    if !matches!(ability.kind, AbilityKind::Static(_)) && !text.ends_with(['.', '!', '?', ')']) {
         text.push('.');
     }
     Some(text)

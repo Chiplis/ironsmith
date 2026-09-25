@@ -603,11 +603,12 @@ pub(super) fn try_apply_card_type_count_phrase(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
 ) -> bool {
-    let found = all_words.iter().enumerate().find_map(|(index, _)| {
-        let (count, used) = parse_min_color_count_quantity_prefix(&all_words[index..])?;
-        (all_words.get(index + used..index + used + 2) == Some(&["card", "types"][..]))
-            .then_some((index, count, used + 2))
-    });
+    let found =
+        all_words.iter().enumerate().find_map(|(index, _)| {
+            let (count, used) = parse_min_color_count_quantity_prefix(&all_words[index..])?;
+            (all_words.get(index + used..index + used + 2) == Some(&["card", "types"][..]))
+                .then_some((index, count, used + 2))
+        });
     let Some((index, count, consumed)) = found else {
         return false;
     };
@@ -649,8 +650,7 @@ pub(super) fn try_apply_color_count_phrase(
         && matches!(
             all_words[color_count_idx - 1],
             "of" | "thats" | "that's" | "that"
-        )
-    {
+        ) {
         color_count_idx - 1
     } else {
         color_count_idx
@@ -1162,7 +1162,9 @@ fn apply_spell_filter_cast_origin_tail(filter: &mut ObjectFilter, words: &[&str]
     let mut rest = &words[start..];
     let mut origins = Vec::new();
     loop {
-        let Some((word, tail)) = rest.split_first() else { return; };
+        let Some((word, tail)) = rest.split_first() else {
+            return;
+        };
         let zone = match *word {
             "graveyard" | "graveyards" => Zone::Graveyard,
             "exile" => Zone::Exile,
@@ -1172,11 +1174,21 @@ fn apply_spell_filter_cast_origin_tail(filter: &mut ObjectFilter, words: &[&str]
             _ => return,
         };
         origins.push(zone);
-        rest = if zone == Zone::Command { &tail[1..] } else { tail };
-        if rest.is_empty() { break; }
-        if rest.first() != Some(&"or") { return; }
+        rest = if zone == Zone::Command {
+            &tail[1..]
+        } else {
+            tail
+        };
+        if rest.is_empty() {
+            break;
+        }
+        if rest.first() != Some(&"or") {
+            return;
+        }
         rest = &rest[1..];
-        if rest.first() == Some(&"from") { rest = &rest[1..]; }
+        if rest.first() == Some(&"from") {
+            rest = &rest[1..];
+        }
     }
     if origins.len() == 1 {
         filter.zone = Some(origins[0]);
@@ -1185,11 +1197,14 @@ fn apply_spell_filter_cast_origin_tail(filter: &mut ObjectFilter, words: &[&str]
         // Preserve an existing disjunction as a nested constraint in every
         // origin branch instead of flattening two independent OR conditions.
         let inner = std::mem::take(&mut filter.any_of);
-        filter.any_of = origins.into_iter().map(|zone| {
-            let mut origin = ObjectFilter::spell().in_zone(zone);
-            origin.any_of = inner.clone();
-            origin
-        }).collect();
+        filter.any_of = origins
+            .into_iter()
+            .map(|zone| {
+                let mut origin = ObjectFilter::spell().in_zone(zone);
+                origin.any_of = inner.clone();
+                origin
+            })
+            .collect();
     }
 }
 
@@ -1536,9 +1551,20 @@ mod spell_cast_origin_tail_tests {
         // descriptor filters. Origin recognition must preserve that binding.
         let mut filter = ObjectFilter::default();
         filter.cast_by = Some(PlayerFilter::Opponent);
-        apply_spell_filter_cast_origin_tail(&mut filter, &[
-            "spells", "your", "opponents", "cast", "from", "graveyards", "or", "from", "exile",
-        ]);
+        apply_spell_filter_cast_origin_tail(
+            &mut filter,
+            &[
+                "spells",
+                "your",
+                "opponents",
+                "cast",
+                "from",
+                "graveyards",
+                "or",
+                "from",
+                "exile",
+            ],
+        );
         assert_eq!(filter.cast_by, Some(PlayerFilter::Opponent));
         assert_eq!(filter.any_of.len(), 2);
         assert_eq!(filter.any_of[0].zone, Some(Zone::Graveyard));
@@ -1554,7 +1580,9 @@ mod spell_cast_origin_tail_tests {
         ]);
         assert!(filter.any_of.is_empty());
         assert_eq!(filter.zone, None);
-        let filter = parse_spell_filter_from_words(&["spells", "you", "cast", "from", "exile", "this", "turn"]);
+        let filter = parse_spell_filter_from_words(&[
+            "spells", "you", "cast", "from", "exile", "this", "turn",
+        ]);
         assert!(filter.any_of.is_empty());
     }
 }

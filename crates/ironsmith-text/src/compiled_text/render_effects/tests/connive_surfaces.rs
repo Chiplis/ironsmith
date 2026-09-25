@@ -15,7 +15,9 @@ fn creature_you_control_connives_trigger_keeps_its_subject_filter() {
     );
     assert_eq!(
         crate::compiled_text::compiled_text_lines(&definition),
-        ["Whenever a creature you control connives, put a +1/+1 counter on each Villain you control."]
+        [
+            "Whenever a creature you control connives, put a +1/+1 counter on each Villain you control."
+        ]
     );
     let debug = format!("{:#?}", definition.abilities);
     assert!(debug.contains("Connive"), "{debug}");
@@ -34,7 +36,9 @@ fn leader_connive_replacement_compiles_to_a_keyword_action_replacement() {
     );
     assert_eq!(
         crate::compiled_text::compiled_text_lines(&definition),
-        ["If a creature you control would connive, instead draw a card, then that creature connives."]
+        [
+            "If a creature you control would connive, instead draw a card, then that creature connives."
+        ]
     );
     let debug = format!("{:#?}", definition.abilities);
     assert!(debug.contains("KeywordActionReplacement"), "{debug}");
@@ -51,6 +55,8 @@ fn optional_connive_keeps_the_causative_have() {
     );
     assert_eq!(
         crate::compiled_text::compiled_text_lines(&definition),
-        ["Whenever another Villain you control enters, you may have it connive. Do this only once each turn."]
+        [
+            "Whenever another Villain you control enters, you may have it connive. Do this only once each turn."
+        ]
     );
 }

@@ -282,27 +282,50 @@ mod tests {
         let land = create_land(&mut game, "Land", alice);
         let creature_target = AttachmentTarget::Object(creature);
         let land_target = AttachmentTarget::Object(land);
-        let legal = |game: &GameState, target| super::super::attachment_can_attach_to_target(game, aura, target);
+        let legal = |game: &GameState, target| {
+            super::super::attachment_can_attach_to_target(game, aura, target)
+        };
         assert!(legal(&game, creature_target));
         assert!(!legal(&game, land_target));
         let mut ctx = ExecutionContext::new_default(aura, alice);
         let apply = |game: &mut GameState, ctx: &mut ExecutionContext, modification| {
-            ApplyContinuousEffect::with_spec(ChooseSpec::Source, modification, crate::effect::Until::Forever)
-                .execute(game, ctx).unwrap();
+            ApplyContinuousEffect::with_spec(
+                ChooseSpec::Source,
+                modification,
+                crate::effect::Until::Forever,
+            )
+            .execute(game, ctx)
+            .unwrap();
         };
         let land_enchant = StaticAbility::enchant(ObjectFilter::land().into());
-        apply(&mut game, &mut ctx, Modification::AddAbility(land_enchant.clone()));
+        apply(
+            &mut game,
+            &mut ctx,
+            Modification::AddAbility(land_enchant.clone()),
+        );
         // Both enchant restrictions apply, so neither ordinary creature nor land qualifies.
         assert!(!legal(&game, creature_target));
         assert!(!legal(&game, land_target));
-        apply(&mut game, &mut ctx, Modification::RemoveAbility(StaticAbility::enchant(ObjectFilter::creature().into())));
+        apply(
+            &mut game,
+            &mut ctx,
+            Modification::RemoveAbility(StaticAbility::enchant(ObjectFilter::creature().into())),
+        );
         assert!(legal(&game, land_target));
         assert!(!legal(&game, creature_target));
         apply(&mut game, &mut ctx, Modification::RemoveAllAbilities);
         assert!(!legal(&game, land_target));
-        assert!(game.current_characteristics(aura).unwrap().aura_attach_filter.is_none());
+        assert!(
+            game.current_characteristics(aura)
+                .unwrap()
+                .aura_attach_filter
+                .is_none()
+        );
         apply(&mut game, &mut ctx, Modification::AddAbility(land_enchant));
-        assert!(legal(&game, land_target), "later enchant grant survives earlier ability removal");
+        assert!(
+            legal(&game, land_target),
+            "later enchant grant survives earlier ability removal"
+        );
     }
 
     #[test]

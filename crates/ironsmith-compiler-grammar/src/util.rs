@@ -2855,8 +2855,11 @@ mod mixed_flashback_cost_tests {
 
     #[test]
     fn flashback_keeps_mana_and_filtered_dynamic_exile_payment() {
-        let tokens = lex_line("Flashback—{1}{U}, Exile X blue cards from your graveyard.", 0)
-            .unwrap();
+        let tokens = lex_line(
+            "Flashback—{1}{U}, Exile X blue cards from your graveyard.",
+            0,
+        )
+        .unwrap();
         let method = parse_flashback_line(&tokens).unwrap().unwrap();
         let AlternativeCastingMethod::Flashback { total_cost } = method else {
             panic!("expected flashback");
@@ -2976,14 +2979,31 @@ pub fn parse_warp_line(
         return Ok(None);
     };
     let tokens = fact.cost_tokens;
-    let tokens = tokens.first().filter(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash)).map_or(tokens, |_| &tokens[1..]);
+    let tokens = tokens
+        .first()
+        .filter(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
+        .map_or(tokens, |_| &tokens[1..]);
     let (cost, consumed) = leading_mana_cost_from_tokens(tokens)
         .ok_or_else(|| CardTextError::ParseError("warp keyword missing mana cost".to_string()))?;
     let tail = &tokens[consumed..];
-    let tail = if tail.first().is_some_and(OwnedLexToken::is_comma) { &tail[1..] } else { tail };
-    let end = tail.iter().position(|token| token.kind == TokenKind::Period).unwrap_or(tail.len());
-    let additional_cost = if end == 0 { ironsmith_core::TotalCost::default() } else { parse_activation_cost(&tail[..end])? };
-    Ok(Some(AlternativeCastingMethod::Warp { cost, additional_cost }))
+    let tail = if tail.first().is_some_and(OwnedLexToken::is_comma) {
+        &tail[1..]
+    } else {
+        tail
+    };
+    let end = tail
+        .iter()
+        .position(|token| token.kind == TokenKind::Period)
+        .unwrap_or(tail.len());
+    let additional_cost = if end == 0 {
+        ironsmith_core::TotalCost::default()
+    } else {
+        parse_activation_cost(&tail[..end])?
+    };
+    Ok(Some(AlternativeCastingMethod::Warp {
+        cost,
+        additional_cost,
+    }))
 }
 
 pub fn parse_warp_line_lexed(

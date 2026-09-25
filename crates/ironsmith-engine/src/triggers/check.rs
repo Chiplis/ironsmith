@@ -1579,8 +1579,7 @@ fn add_ward_triggers(
     let Some(object) = game.object(target) else {
         return;
     };
-    let source_snapshot =
-        ObjectSnapshot::from_object_with_calculated_characteristics(object, game);
+    let source_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(object, game);
     for (instance, ward) in wards.into_iter().enumerate() {
         let ability = TriggeredAbility {
             trigger: Trigger::custom(
@@ -2997,9 +2996,10 @@ fn state_trigger_instance_pending(
         .any(|entry| matches(entry.source_stable_id, entry.trigger_identity))
         || game.stack.iter().any(|entry| {
             entry.is_ability
-                && entry.source_stable_id.zip(entry.trigger_identity).is_some_and(
-                    |(stable_id, identity)| matches(stable_id, identity),
-                )
+                && entry
+                    .source_stable_id
+                    .zip(entry.trigger_identity)
+                    .is_some_and(|(stable_id, identity)| matches(stable_id, identity))
         })
 }
 
@@ -3584,7 +3584,13 @@ pub fn player_filter_matches_with_context(
         PlayerFilter::OpponentOf(base) => game.players.iter().any(|other| {
             other.is_in_game()
                 && game.are_opponents(other.id, player)
-                && player_filter_matches_with_context(base, other.id, controller, game, defending_player)
+                && player_filter_matches_with_context(
+                    base,
+                    other.id,
+                    controller,
+                    game,
+                    defending_player,
+                )
         }),
         PlayerFilter::CastCardTypeThisTurn(card_type) => game
             .turn_store

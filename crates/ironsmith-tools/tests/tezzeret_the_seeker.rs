@@ -64,7 +64,9 @@ impl DecisionMaker for Choices {
 fn artifact(name: &str, mana_value: u8) -> ironsmith::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), name)
         .card_types(vec![CardType::Artifact])
-        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(mana_value)]]))
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+            mana_value,
+        )]]))
         .build()
 }
 
@@ -77,7 +79,13 @@ fn setup(loyalty: u32) -> (GameState, ObjectId) {
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
     let def = ironsmith_tools::compile_definition_from_payload(&payload()).unwrap();
     let tezzeret = game.create_object_from_definition(&def, alice, Zone::Battlefield);
-    let printed = game.object(tezzeret).unwrap().counters.get(&CounterType::Loyalty).copied().unwrap_or(0);
+    let printed = game
+        .object(tezzeret)
+        .unwrap()
+        .counters
+        .get(&CounterType::Loyalty)
+        .copied()
+        .unwrap_or(0);
     assert_eq!(printed, 4, "starting loyalty");
     if loyalty > printed {
         game.add_counters(tezzeret, CounterType::Loyalty, loyalty - printed);
@@ -120,7 +128,9 @@ fn activate(game: &mut GameState, tezzeret: ObjectId, ordinal: usize, dm: &mut C
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            game, &mut queue, &mut state, &ctx, dm,
+        );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
     ironsmith::game_loop::resolve_stack_entry_with(game, dm).unwrap();
@@ -134,10 +144,20 @@ fn plus_one_untaps_up_to_two_target_artifacts() {
     let b = game.create_object_from_definition(&artifact("Relic B", 1), alice, Zone::Battlefield);
     game.tap(a);
     game.tap(b);
-    let mut dm = Choices { targets: vec![a, b], ..Default::default() };
+    let mut dm = Choices {
+        targets: vec![a, b],
+        ..Default::default()
+    };
     activate(&mut game, tezzeret, 0, &mut dm);
     assert!(!game.is_tapped(a) && !game.is_tapped(b));
-    assert_eq!(game.object(tezzeret).unwrap().counters.get(&CounterType::Loyalty).copied(), Some(5));
+    assert_eq!(
+        game.object(tezzeret)
+            .unwrap()
+            .counters
+            .get(&CounterType::Loyalty)
+            .copied(),
+        Some(5)
+    );
 }
 
 #[test]
@@ -146,7 +166,11 @@ fn minus_x_puts_an_artifact_with_mana_value_x_or_less_onto_the_battlefield() {
     let alice = PlayerId::from_index(0);
     game.create_object_from_definition(&artifact("Big Relic", 5), alice, Zone::Library);
     game.create_object_from_definition(&artifact("Small Relic", 2), alice, Zone::Library);
-    let mut dm = Choices { x: 2, pick: Some("Small Relic"), ..Default::default() };
+    let mut dm = Choices {
+        x: 2,
+        pick: Some("Small Relic"),
+        ..Default::default()
+    };
     activate(&mut game, tezzeret, 1, &mut dm);
     let on_battlefield = |name: &str| {
         game.battlefield
@@ -155,7 +179,14 @@ fn minus_x_puts_an_artifact_with_mana_value_x_or_less_onto_the_battlefield() {
     };
     assert!(on_battlefield("Small Relic"));
     assert!(!on_battlefield("Big Relic"), "mana value 5 is more than X");
-    assert_eq!(game.object(tezzeret).unwrap().counters.get(&CounterType::Loyalty).copied(), Some(2));
+    assert_eq!(
+        game.object(tezzeret)
+            .unwrap()
+            .counters
+            .get(&CounterType::Loyalty)
+            .copied(),
+        Some(2)
+    );
 }
 
 #[test]
@@ -163,8 +194,10 @@ fn minus_five_turns_your_artifacts_into_five_five_creatures_until_end_of_turn() 
     let (mut game, tezzeret) = setup(6);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-    let mine = game.create_object_from_definition(&artifact("My Relic", 1), alice, Zone::Battlefield);
-    let theirs = game.create_object_from_definition(&artifact("Their Relic", 1), bob, Zone::Battlefield);
+    let mine =
+        game.create_object_from_definition(&artifact("My Relic", 1), alice, Zone::Battlefield);
+    let theirs =
+        game.create_object_from_definition(&artifact("Their Relic", 1), bob, Zone::Battlefield);
     let mut dm = Choices::default();
     activate(&mut game, tezzeret, 2, &mut dm);
     game.refresh_continuous_state();
@@ -172,8 +205,14 @@ fn minus_five_turns_your_artifacts_into_five_five_creatures_until_end_of_turn() 
     assert!(game.object_has_card_type(mine, CardType::Artifact));
     assert_eq!(game.calculated_power(mine), Some(5));
     assert_eq!(game.calculated_toughness(mine), Some(5));
-    assert!(!game.object_has_card_type(theirs, CardType::Creature), "only your artifacts");
+    assert!(
+        !game.object_has_card_type(theirs, CardType::Creature),
+        "only your artifacts"
+    );
     ironsmith::turn::execute_cleanup_step(&mut game);
     game.refresh_continuous_state();
-    assert!(!game.object_has_card_type(mine, CardType::Creature), "until end of turn");
+    assert!(
+        !game.object_has_card_type(mine, CardType::Creature),
+        "until end of turn"
+    );
 }

@@ -248,7 +248,8 @@ impl GameState {
             hand_modifiers: std::collections::BTreeMap::new(),
             life_modifiers: std::collections::BTreeMap::new(),
         };
-        let mut restarted_scheme_decks = std::collections::BTreeMap::<PlayerId, Vec<ObjectId>>::new();
+        let mut restarted_scheme_decks =
+            std::collections::BTreeMap::<PlayerId, Vec<ObjectId>>::new();
         let mut restarted_conspiracy = ConspiracyState::default();
         for card in cards {
             let exempt =

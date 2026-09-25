@@ -702,7 +702,13 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
     };
 
     let should_untap = if may_have_untap_static_abilities {
-        apply_untap_step_limits(game, &active_players, &permanents, should_untap, decision_maker)
+        apply_untap_step_limits(
+            game,
+            &active_players,
+            &permanents,
+            should_untap,
+            decision_maker,
+        )
     } else {
         should_untap
     };
@@ -798,7 +804,8 @@ fn apply_untap_step_limits(
             .unwrap_or(game.turn.active_player);
         let filter_ctx = game.filter_context_for(source_controller, Some(source_id));
         for &player in active_players {
-            if !crate::filter::player_filter_matches_game(&player_filter, player, game, &filter_ctx) {
+            if !crate::filter::player_filter_matches_game(&player_filter, player, game, &filter_ctx)
+            {
                 continue;
             }
             let candidates: Vec<_> = permanents

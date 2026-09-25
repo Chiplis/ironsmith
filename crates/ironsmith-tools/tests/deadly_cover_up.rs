@@ -92,7 +92,9 @@ impl DecisionMaker for Choices {
 fn card(name: &str, types: Vec<CardType>, mana_value: u8) -> ironsmith::cards::CardDefinition {
     let mut builder = CardDefinitionBuilder::new(CardId::new(), name)
         .card_types(types.clone())
-        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(mana_value)]));
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(
+            mana_value,
+        )]));
     if types.contains(&CardType::Creature) {
         builder = builder.power_toughness(PowerToughness::fixed(2, 2));
     }
@@ -121,18 +123,33 @@ fn cast(collect: bool) -> Outcome {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Black, 5);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Black, 5);
     let spell = game.create_object_from_definition(&def, alice, Zone::Hand);
     for name in ["Evidence A", "Evidence B"] {
-        game.create_object_from_definition(&card(name, vec![CardType::Instant], 3), alice, Zone::Graveyard);
+        game.create_object_from_definition(
+            &card(name, vec![CardType::Instant], 3),
+            alice,
+            Zone::Graveyard,
+        );
     }
     for (owner, name) in [(alice, "Alice Bear"), (bob, "Bob Bear")] {
-        game.create_object_from_definition(&card(name, vec![CardType::Creature], 2), owner, Zone::Battlefield);
+        game.create_object_from_definition(
+            &card(name, vec![CardType::Creature], 2),
+            owner,
+            Zone::Battlefield,
+        );
     }
     let secret = card(SECRET, vec![CardType::Instant], 1);
     let filler = card("Filler", vec![CardType::Instant], 1);
     game.create_object_from_definition(&secret, bob, Zone::Graveyard);
-    game.create_object_from_definition(&card("Other Card", vec![CardType::Instant], 1), bob, Zone::Graveyard);
+    game.create_object_from_definition(
+        &card("Other Card", vec![CardType::Instant], 1),
+        bob,
+        Zone::Graveyard,
+    );
     for _ in 0..2 {
         game.create_object_from_definition(&secret, bob, Zone::Hand);
     }
@@ -182,7 +199,10 @@ fn without_evidence_only_destroys_all_creatures() {
     let Outcome { game, dm } = cast(false);
     let bob = PlayerId::from_index(1);
     assert!(game.battlefield.is_empty(), "every creature is destroyed");
-    assert!(dm.graveyard_choice.is_empty(), "no graveyard exile without evidence");
+    assert!(
+        dm.graveyard_choice.is_empty(),
+        "no graveyard exile without evidence"
+    );
     let bob_state = game.player(bob).unwrap();
     assert_eq!(bob_state.hand.len(), 3);
     assert_eq!(bob_state.library.len(), 5);
@@ -204,20 +224,41 @@ fn collected_evidence_exiles_every_copy_and_replaces_only_hand_cards() {
     );
     let mut searched = dm.searched_zones.clone();
     searched.sort_by_key(|zone| format!("{zone:?}"));
-    assert_eq!(searched, vec![Zone::Hand, Zone::Hand, Zone::Library], "search spans hand and library copies");
+    assert_eq!(
+        searched,
+        vec![Zone::Hand, Zone::Hand, Zone::Library],
+        "search spans hand and library copies"
+    );
 
     let bob_state = game.player(bob).unwrap();
-    assert_eq!(count_named(&game, &game.exile, SECRET), 4, "the chosen card plus all three copies");
+    assert_eq!(
+        count_named(&game, &game.exile, SECRET),
+        4,
+        "the chosen card plus all three copies"
+    );
     assert_eq!(count_named(&game, &bob_state.graveyard, SECRET), 0);
     assert_eq!(count_named(&game, &bob_state.hand, SECRET), 0);
     assert_eq!(count_named(&game, &bob_state.library, SECRET), 0);
-    assert_eq!(bob_state.hand.len(), 3, "one Filler kept plus two draws for two hand exiles");
-    assert_eq!(bob_state.library.len(), 2, "five minus one exiled minus two drawn");
+    assert_eq!(
+        bob_state.hand.len(),
+        3,
+        "one Filler kept plus two draws for two hand exiles"
+    );
+    assert_eq!(
+        bob_state.library.len(),
+        2,
+        "five minus one exiled minus two drawn"
+    );
     assert_eq!(count_named(&game, &bob_state.graveyard, "Other Card"), 1);
     assert_eq!(
-        count_named(&game, &game.exile, "Evidence A") + count_named(&game, &game.exile, "Evidence B"),
+        count_named(&game, &game.exile, "Evidence A")
+            + count_named(&game, &game.exile, "Evidence B"),
         2,
         "evidence exiled as the cost"
     );
-    assert_eq!(game.player(alice).unwrap().hand.len(), 0, "the caster draws nothing");
+    assert_eq!(
+        game.player(alice).unwrap().hand.len(),
+        0,
+        "the caster draws nothing"
+    );
 }

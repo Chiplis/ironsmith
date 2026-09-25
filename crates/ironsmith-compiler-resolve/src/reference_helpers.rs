@@ -815,33 +815,33 @@ pub fn resolve_it_tag(
         return Ok(resolved);
     }
 
-        if refs.has_source_object_antecedent()
-            && refs.known_last_object_tag().is_none_or(|tag| {
-                tag.as_str() == crate::tag::CompilerReferenceTag::Triggering.as_str()
-            })
-            && resolved.attached_to_object.is_none()
-            && resolved.tagged_constraints.iter().any(|constraint| {
-                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
-                    && constraint.relation == TaggedOpbjectRelation::AttachedToTaggedObject
-            })
-        {
-            // In a source-triggered clause, "attached to it" relates the
-            // counted objects to the source; it is not a disposable identity
-            // qualifier on those objects.
-            resolved.attached_to_object = Some(Box::new(ObjectFilter {
-                source: true,
-                ..ObjectFilter::default()
-            }));
-            resolved.tagged_constraints.retain(|constraint| {
-                constraint.tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
-                    || constraint.relation != TaggedOpbjectRelation::AttachedToTaggedObject
-            });
-            if !resolved.tagged_constraints.iter().any(|constraint| {
-                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
-            }) {
-                return Ok(resolved);
-            }
+    if refs.has_source_object_antecedent()
+        && refs
+            .known_last_object_tag()
+            .is_none_or(|tag| tag.as_str() == crate::tag::CompilerReferenceTag::Triggering.as_str())
+        && resolved.attached_to_object.is_none()
+        && resolved.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                && constraint.relation == TaggedOpbjectRelation::AttachedToTaggedObject
+        })
+    {
+        // In a source-triggered clause, "attached to it" relates the
+        // counted objects to the source; it is not a disposable identity
+        // qualifier on those objects.
+        resolved.attached_to_object = Some(Box::new(ObjectFilter {
+            source: true,
+            ..ObjectFilter::default()
+        }));
+        resolved.tagged_constraints.retain(|constraint| {
+            constraint.tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
+                || constraint.relation != TaggedOpbjectRelation::AttachedToTaggedObject
+        });
+        if !resolved.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        }) {
+            return Ok(resolved);
         }
+    }
     let Some(tag) = refs.known_last_object_tag() else {
         let mut saw_it_constraint = false;
         let mut preserved_runtime_it_constraint = false;
@@ -1037,7 +1037,9 @@ pub fn resolve_restriction_it_tag(
             Restriction::gain_life(resolve_contextual_player_filter(player, refs)?)
         }
         Restriction::SearchOwnLibraryFromOwnEffects(player) => {
-            Restriction::SearchOwnLibraryFromOwnEffects(resolve_contextual_player_filter(player, refs)?)
+            Restriction::SearchOwnLibraryFromOwnEffects(resolve_contextual_player_filter(
+                player, refs,
+            )?)
         }
         Restriction::SearchLibraries(player) => {
             Restriction::search_libraries(resolve_contextual_player_filter(player, refs)?)
@@ -1303,14 +1305,21 @@ fn resolve_choose_spec_it_tag_preserving_selection(
 
 pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value, CardTextError> {
     match value {
-        Value::PendingComparisonLeft | Value::PendingComparisonRight | Value::PendingComparisonDifference => {
-            let crate::model::reference_state::RefState::Known((left, right)) = &refs.last_value_comparison else {
-                return Err(CardTextError::ParseError("comparison reference requires an earlier explicit value comparison".into()));
+        Value::PendingComparisonLeft
+        | Value::PendingComparisonRight
+        | Value::PendingComparisonDifference => {
+            let crate::model::reference_state::RefState::Known((left, right)) =
+                &refs.last_value_comparison
+            else {
+                return Err(CardTextError::ParseError(
+                    "comparison reference requires an earlier explicit value comparison".into(),
+                ));
             };
             Ok(match value {
                 Value::PendingComparisonLeft => left.clone(),
                 Value::PendingComparisonRight => right.clone(),
-                _ => Value::absolute_difference(left.clone(), right.clone()).with_surface_hint(ironsmith_core::ValueSurfaceHint::Difference),
+                _ => Value::absolute_difference(left.clone(), right.clone())
+                    .with_surface_hint(ironsmith_core::ValueSurfaceHint::Difference),
             })
         }
 
@@ -1338,10 +1347,15 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::SurfaceHinted { value, hints }
             if hints.contains(&ironsmith_core::ValueSurfaceHint::LifeGainedAmount)
                 && !refs.allow_life_event_value
-                && matches!(value.unhinted(), Value::EventValue(EventValueSpec::LifeAmount)) =>
+                && matches!(
+                    value.unhinted(),
+                    Value::EventValue(EventValueSpec::LifeAmount)
+                ) =>
         {
             let id = refs.known_last_effect_id().ok_or_else(|| {
-                CardTextError::ParseError("life-gain amount requires a triggering event or prior effect".to_string())
+                CardTextError::ParseError(
+                    "life-gain amount requires a triggering event or prior effect".to_string(),
+                )
             })?;
             Ok(Value::SurfaceHinted {
                 value: Box::new(Value::EffectMetric {
@@ -1544,7 +1558,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::ColorsOf(spec) => Ok(Value::ColorsOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),
-        Value::ManaSpentToCast(spec) => Ok(Value::ManaSpentToCast(Box::new(resolve_choose_spec_it_tag(spec, refs)?))),
+        Value::ManaSpentToCast(spec) => Ok(Value::ManaSpentToCast(Box::new(
+            resolve_choose_spec_it_tag(spec, refs)?,
+        ))),
         Value::ManaValueOf(spec) => Ok(Value::ManaValueOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),

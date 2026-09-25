@@ -74,16 +74,24 @@ impl TriggerMatcher for DealsDamageToTrigger {
         if self.combat_only && !damage.is_combat {
             return false;
         }
-        if damage.amount == 0 || !super::damage_object_matches_filter(
-            damage.source, event.source_snapshot(), &self.source_filter, ctx,
-        ) {
+        if damage.amount == 0
+            || !super::damage_object_matches_filter(
+                damage.source,
+                event.source_snapshot(),
+                &self.source_filter,
+                ctx,
+            )
+        {
             return false;
         }
         let DamageTarget::Object(target_id) = damage.target else {
             return false;
         };
         if !super::damage_object_matches_filter(
-            target_id, damage.target_snapshot.as_ref(), &self.target_filter, ctx,
+            target_id,
+            damage.target_snapshot.as_ref(),
+            &self.target_filter,
+            ctx,
         ) {
             return false;
         }

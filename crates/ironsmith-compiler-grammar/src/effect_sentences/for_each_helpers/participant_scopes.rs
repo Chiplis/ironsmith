@@ -36,9 +36,9 @@ pub(super) fn player_filter(scope: ForEachParticipantScope) -> Option<PlayerFilt
             PlayerFilter::Opponent,
         )),
         // "that player" is the player the surrounding clause already names.
-        ForEachParticipantScope::OpponentOfThatPlayer => Some(PlayerFilter::OpponentOf(
-            Box::new(PlayerFilter::IteratedPlayer),
-        )),
+        ForEachParticipantScope::OpponentOfThatPlayer => Some(PlayerFilter::OpponentOf(Box::new(
+            PlayerFilter::IteratedPlayer,
+        ))),
         ForEachParticipantScope::Opponent | ForEachParticipantScope::OpponentExceptDefending => {
             None
         }
@@ -184,14 +184,17 @@ pub fn parse_for_each_player_clause(
     // "Each player creates X Treasure tokens ..., where X is the number of
     // descent counters on this enchantment." (Descent into Avernus): the
     // value definition scopes the whole participant body.
-    let (inner_tokens, body_where_x) = match find_word_phrase(outer.inner_tokens, &["where", "x", "is"])
-        .and_then(|where_idx| {
+    let (inner_tokens, body_where_x) =
+        match find_word_phrase(outer.inner_tokens, &["where", "x", "is"]).and_then(|where_idx| {
             let value = parse_participant_body_where_x_value(outer.inner_tokens)?;
-            Some((crate::lexer::trim_lexed_commas(&outer.inner_tokens[..where_idx]).to_vec(), value))
+            Some((
+                crate::lexer::trim_lexed_commas(&outer.inner_tokens[..where_idx]).to_vec(),
+                value,
+            ))
         }) {
-        Some((body, value)) if !body.is_empty() => (body, Some(value)),
-        _ => (outer.inner_tokens.to_vec(), None),
-    };
+            Some((body, value)) if !body.is_empty() => (body, Some(value)),
+            _ => (outer.inner_tokens.to_vec(), None),
+        };
     let inner_tokens = inner_tokens.as_slice();
     let mut effects = if outer.participant_is_actor && !participant_may {
         if let Some(effects) = parse_quantified_participant_actor_program(inner_tokens)? {

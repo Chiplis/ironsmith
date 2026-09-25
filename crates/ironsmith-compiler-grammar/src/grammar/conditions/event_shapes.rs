@@ -166,12 +166,16 @@ pub(super) fn parse_cards_in_hand_relation(
     tokens: &[OwnedLexToken],
 ) -> Option<CardsInHandRelationShape> {
     let tokens = trim_clause(tokens);
-    if let Some((amount, _)) = primitives::parse_prefix(tokens, (
-        primitives::phrase(&["at", "least"]),
-        crate::grammar::leaf::parse_leaf_number_prefix_lexed,
-        primitives::phrase(&["more", "cards", "in", "hand", "than", "you"]),
-        eof,
-    ).map(|(_, amount, _, _)| amount)) {
+    if let Some((amount, _)) = primitives::parse_prefix(
+        tokens,
+        (
+            primitives::phrase(&["at", "least"]),
+            crate::grammar::leaf::parse_leaf_number_prefix_lexed,
+            primitives::phrase(&["more", "cards", "in", "hand", "than", "you"]),
+            eof,
+        )
+            .map(|(_, amount, _, _)| amount),
+    ) {
         return Some(CardsInHandRelationShape::AtLeastMoreThanYou(amount));
     }
     let mut input = LexStream::new(tokens);

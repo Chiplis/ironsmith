@@ -122,9 +122,7 @@ pub fn parse_add_mana_clause_facts(tokens: &[OwnedLexToken]) -> AddManaClauseFac
     let one_that_color_tail = prefix_tail_tokens(tokens, &view, ADD_MANA_ONE_THAT_COLOR_PREFIX);
     let amount_that_color = phrase_is_prefix(&words, ADD_MANA_THAT_COLOR_AMOUNT_PREFIX);
     let amount_that_type = phrase_offset(&words, &["mana", "of", "that", "type"])
-        .is_some_and(|offset| {
-            matches!(&words[offset + 4..], [] | ["instead"])
-        });
+        .is_some_and(|offset| matches!(&words[offset + 4..], [] | ["instead"]));
     let choice = parse_add_mana_choice_clause(tokens, &view, &words);
 
     AddManaClauseFacts {

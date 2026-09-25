@@ -903,17 +903,33 @@ fn all_hand_replacement_predicate(
     rest: &[SentenceInput],
     revealed: bool,
 ) -> Option<crate::cards::builders::PredicateAst> {
-    let [replacement, ..] = rest else { return None; };
-    if revealed { return None; }
-    if triple_grammar::is_nonhand_replacement_looked_split_shape(trimmed(sentence), replacement.lowered()) {
+    let [replacement, ..] = rest else {
+        return None;
+    };
+    if revealed {
+        return None;
+    }
+    if triple_grammar::is_nonhand_replacement_looked_split_shape(
+        trimmed(sentence),
+        replacement.lowered(),
+    ) {
         return Some(crate::cards::builders::PredicateAst::ThisSpellWasCastFromNonHand);
     }
-    if !triple_grammar::is_one_hand_rest_bottom_shape(trimmed(sentence)) { return None; }
+    if !triple_grammar::is_one_hand_rest_bottom_shape(trimmed(sentence)) {
+        return None;
+    }
     let tokens = replacement.lowered();
     let split = tokens.iter().position(|token| token.is_word("if"))?;
     let prefix = crate::lexer::parser_token_word_refs(&tokens[..split]);
-    if prefix != ["put", "each", "of", "those", "cards", "into", "your", "hand", "instead"] { return None; }
-    crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens[split + 1..]).ok()
+    if prefix
+        != [
+            "put", "each", "of", "those", "cards", "into", "your", "hand", "instead",
+        ]
+    {
+        return None;
+    }
+    crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens[split + 1..])
+        .ok()
 }
 
 pub(super) fn nonhand_replacement_shape(
@@ -970,7 +986,12 @@ pub(super) fn nonhand_replacement(
         EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: crate::tag::TagRef::of(group.tag.clone()),
             effects: vec![EffectAst::subject_verb_move_to_zone(
-                it(), Zone::Hand, false, ReturnControllerAst::Preserve, false, None,
+                it(),
+                Zone::Hand,
+                false,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
             )],
         }),
     ];

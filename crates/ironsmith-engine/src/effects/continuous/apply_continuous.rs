@@ -669,26 +669,26 @@ fn materialize_granted_entry_counter_source(
 
     // Unwrap either grant representation to the static ability it carries, and
     // remember how to put it back.
-    let (ability, rewrap): (_, Box<dyn FnOnce(crate::static_abilities::StaticAbility) -> Modification>) =
-        match modification {
-            Modification::AddAbility(ability) => {
-                (ability, Box::new(Modification::AddAbility))
-            }
-            Modification::AddAbilityGeneric(granted) => {
-                let crate::ability::AbilityKind::Static(ability) = granted.kind.clone() else {
-                    return Modification::AddAbilityGeneric(granted);
-                };
-                (
-                    ability,
-                    Box::new(move |materialized| {
-                        let mut granted = granted.clone();
-                        granted.kind = crate::ability::AbilityKind::Static(materialized);
-                        Modification::AddAbilityGeneric(granted)
-                    }),
-                )
-            }
-            other => return other,
-        };
+    let (ability, rewrap): (
+        _,
+        Box<dyn FnOnce(crate::static_abilities::StaticAbility) -> Modification>,
+    ) = match modification {
+        Modification::AddAbility(ability) => (ability, Box::new(Modification::AddAbility)),
+        Modification::AddAbilityGeneric(granted) => {
+            let crate::ability::AbilityKind::Static(ability) = granted.kind.clone() else {
+                return Modification::AddAbilityGeneric(granted);
+            };
+            (
+                ability,
+                Box::new(move |materialized| {
+                    let mut granted = granted.clone();
+                    granted.kind = crate::ability::AbilityKind::Static(materialized);
+                    Modification::AddAbilityGeneric(granted)
+                }),
+            )
+        }
+        other => return other,
+    };
     let Some(mut model) = ability.compiled_model().cloned() else {
         return rewrap(ability);
     };

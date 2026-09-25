@@ -964,7 +964,9 @@ fn future_zone_replacement_counters(
 pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     // A result-gated instruction may grant a quoted replacement ability.
     // Parse its outer result envelope before recognizing any replacement.
-    if tokens.iter().any(|token| token.kind == crate::lexer::TokenKind::Quote)
+    if tokens
+        .iter()
+        .any(|token| token.kind == crate::lexer::TokenKind::Quote)
         && crate::grammar::structure::split_leading_result_prefix_lexed(tokens).is_some()
     {
         return None;
@@ -6354,7 +6356,7 @@ fn is_direct_coin_flip(effect: &EffectAst) -> bool {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
                 | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
-            | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. }),
+                | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. }),
             ..
         })
     )
@@ -11271,7 +11273,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 ..
             }) => {
                 replace_in_filter(filter, replacement, clause)?;
-                if let LibraryConsultStopRuleAst::MatchCount(count) | LibraryConsultStopRuleAst::TotalManaValue(count) = stop_rule {
+                if let LibraryConsultStopRuleAst::MatchCount(count)
+                | LibraryConsultStopRuleAst::TotalManaValue(count) = stop_rule
+                {
                     replace_value(count, replacement, clause)?;
                 }
                 if let Some(max_exposed) = max_exposed {
@@ -11479,7 +11483,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
+                ..
+            })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop)
@@ -13003,25 +13009,52 @@ pub use crate::model::ast::{
 /// A batch of face-only coin flips followed by a turn-skip count referring
 /// to its heads. The batch is the numeric producer; target selection still
 /// happens when announcing the ability, before any coins are flipped.
-fn parse_coin_batch_and_counted_turn_skip(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+fn parse_coin_batch_and_counted_turn_skip(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentences = split_lexed_sentences(tokens);
-    let [flips, skip] = sentences.as_slice() else { return Ok(None); };
-    if !flips.first().is_some_and(|token| token.is_word("flip")) { return Ok(None); }
-    let Some(number) = crate::grammar::leaf::parse_leaf_number_prefix_tokens(&flips[1..]) else { return Ok(None); };
-    let Some((count, consumed)) = number.into_fixed() else { return Ok(None); };
-    if crate::lexer::TokenWordView::new(&flips[1 + consumed..]).word_refs() != ["coins"] { return Ok(None); }
+    let [flips, skip] = sentences.as_slice() else {
+        return Ok(None);
+    };
+    if !flips.first().is_some_and(|token| token.is_word("flip")) {
+        return Ok(None);
+    }
+    let Some(number) = crate::grammar::leaf::parse_leaf_number_prefix_tokens(&flips[1..]) else {
+        return Ok(None);
+    };
+    let Some((count, consumed)) = number.into_fixed() else {
+        return Ok(None);
+    };
+    if crate::lexer::TokenWordView::new(&flips[1 + consumed..]).word_refs() != ["coins"] {
+        return Ok(None);
+    }
     let words = crate::lexer::TokenWordView::new(skip).word_refs();
     let (player, tail) = if words.starts_with(&["target", "opponent"]) {
         (PlayerAst::TargetOpponent, &words[2..])
     } else if words.starts_with(&["target", "player"]) {
         (PlayerAst::Target, &words[2..])
-    } else { return Ok(None); };
-    if tail != ["skips", "their", "next", "x", "turns", "where", "x", "is", "the", "number", "of", "coins", "that", "came", "up", "heads"] { return Ok(None); }
+    } else {
+        return Ok(None);
+    };
+    if tail
+        != [
+            "skips", "their", "next", "x", "turns", "where", "x", "is", "the", "number", "of",
+            "coins", "that", "came", "up", "heads",
+        ]
+    {
+        return Ok(None);
+    }
     Ok(Some(vec![
-        EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
-            SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count })),
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count }),
+        ),
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
-            count: Value::PendingEffectMetric { source: ironsmith_core::EffectMetricSource::Outcome, metric: ironsmith_core::EffectMetric::Count },
+            count: Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::Count,
+            },
             effects: vec![EffectAst::subject_verb_skip_turn(player)],
         }),
     ]))

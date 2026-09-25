@@ -2284,9 +2284,15 @@ pub(super) struct CombatAttackerSnapshot {
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(super) enum CombatAttackTargetSnapshot {
-    Player { player: u8 },
-    Planeswalker { object: u64 },
-    Battle { object: u64 },
+    Player {
+        player: u8,
+    },
+    Planeswalker {
+        object: u64,
+    },
+    Battle {
+        object: u64,
+    },
     /// CR 506.4c: the planeswalker or battle it was attacking was removed from
     /// combat; it's still attacking, but not attacking anything.
     Nothing,
@@ -2313,11 +2319,15 @@ pub(super) fn combat_snapshot(game: &GameState) -> Option<CombatSnapshot> {
         .map(|attacker| CombatAttackerSnapshot {
             creature: attacker.creature.0,
             target: match attacker.target {
-                AttackTarget::Player(player) => CombatAttackTargetSnapshot::Player { player: player.0 },
+                AttackTarget::Player(player) => {
+                    CombatAttackTargetSnapshot::Player { player: player.0 }
+                }
                 AttackTarget::Planeswalker(object) => {
                     CombatAttackTargetSnapshot::Planeswalker { object: object.0 }
                 }
-                AttackTarget::Battle(object) => CombatAttackTargetSnapshot::Battle { object: object.0 },
+                AttackTarget::Battle(object) => {
+                    CombatAttackTargetSnapshot::Battle { object: object.0 }
+                }
                 AttackTarget::Nothing { .. } => CombatAttackTargetSnapshot::Nothing,
             },
         })
@@ -2333,7 +2343,10 @@ pub(super) fn combat_snapshot(game: &GameState) -> Option<CombatSnapshot> {
             });
         }
     }
-    Some(CombatSnapshot { attackers, blockers })
+    Some(CombatSnapshot {
+        attackers,
+        blockers,
+    })
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -3494,14 +3507,18 @@ mod tests {
         let equipment = game.create_object_from_definition(&wand, alice, Zone::Battlefield);
         let bears_id = game.create_object_from_card(&test_bears_card(), alice, Zone::Battlefield);
         game.object_mut(equipment).unwrap().attached_to = Some(AttachmentTarget::Object(bears_id));
-        game.object_mut(bears_id).unwrap().attachments.push(equipment);
+        game.object_mut(bears_id)
+            .unwrap()
+            .attachments
+            .push(equipment);
 
         let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &HashSet::new());
         let bears = battlefield
             .iter()
             .find(|permanent| permanent.id == bears_id.0)
             .expect("expected Bears in battlefield snapshot");
-        let abilities = serde_json::to_value(bears).expect("snapshot should serialize")["abilities"].clone();
+        let abilities =
+            serde_json::to_value(bears).expect("snapshot should serialize")["abilities"].clone();
         assert_eq!(
             abilities,
             serde_json::json!([
@@ -3888,7 +3905,18 @@ mod tests {
 
         let snapshot_for = |game: &GameState, perspective: PlayerId| {
             GameSnapshot::from_game(
-                game, perspective, None, None, None, None, None, Vec::new(), None, false, None, 0,
+                game,
+                perspective,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Vec::new(),
+                None,
+                false,
+                None,
+                0,
             )
         };
         assert!(
@@ -3903,14 +3931,18 @@ mod tests {
             "combat before any attackers are declared stays out of the snapshot"
         );
 
-        combat.attackers.push(ironsmith::combat_state::AttackerInfo {
-            creature: attacker,
-            target: AttackTarget::Player(bob),
-        });
-        combat.attackers.push(ironsmith::combat_state::AttackerInfo {
-            creature: unblocked,
-            target: AttackTarget::Player(bob),
-        });
+        combat
+            .attackers
+            .push(ironsmith::combat_state::AttackerInfo {
+                creature: attacker,
+                target: AttackTarget::Player(bob),
+            });
+        combat
+            .attackers
+            .push(ironsmith::combat_state::AttackerInfo {
+                creature: unblocked,
+                target: AttackTarget::Player(bob),
+            });
         combat.blockers.insert(attacker, vec![blocker]);
         game.combat = Some(combat);
 

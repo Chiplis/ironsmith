@@ -659,9 +659,11 @@ fn read_comma_then_chain(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, Ca
         // A bare follow-up verb shares the initial optional instruction.
         // Splitting first would copy `may` onto every arm and create several
         // independent choices. Explicit later subjects keep their own scope.
-        if comma_then_segments.iter().skip(1).all(|segment| {
-            find_verb_lexed(segment).is_some_and(|(_, index)| index == 0)
-        }) {
+        if comma_then_segments
+            .iter()
+            .skip(1)
+            .all(|segment| find_verb_lexed(segment).is_some_and(|(_, index)| index == 0))
+        {
             if parse_leading_player_may_lexed(tokens).is_some() {
                 return read_player_may(input);
             }

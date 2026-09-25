@@ -3,7 +3,6 @@
 //! This module provides the `make_decision` function, which is the primary
 //! entry point for making player decisions using the new spec-based system.
 
-
 use crate::color::Color;
 use crate::decision::{DecisionMaker, FallbackStrategy, LegalAction};
 use crate::decisions::context::{DecisionContext, DecisionHiddenCardVisibility, ViewCardsContext};

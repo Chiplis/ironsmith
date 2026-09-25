@@ -150,10 +150,7 @@ fn setting_the_starting_player_rotates_seating_without_consuming_randomness() {
 #[test]
 fn randomizing_the_starting_player_follows_the_match_seed() {
     let seat_for_seed = |seed: u64| {
-        let mut game = GameState::new(
-            ["Alice", "Bob", "Charlie"].map(str::to_string).to_vec(),
-            20,
-        );
+        let mut game = GameState::new(["Alice", "Bob", "Charlie"].map(str::to_string).to_vec(), 20);
         game.set_random_seed(seed);
         let chosen = game
             .randomize_starting_player()

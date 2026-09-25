@@ -430,7 +430,12 @@ impl EffectExecutor for MoveToZoneEffect {
             // you do, ... put it back on top of your library."
             let exiled_this_resolution = ctx
                 .get_tagged_all(crate::tag::SOURCE_EXILED_TAG)
-                .map(|snapshots| snapshots.iter().map(|snapshot| snapshot.object_id).collect::<Vec<_>>())
+                .map(|snapshots| {
+                    snapshots
+                        .iter()
+                        .map(|snapshot| snapshot.object_id)
+                        .collect::<Vec<_>>()
+                })
                 .unwrap_or_default();
             object_ids.retain(|id| {
                 let Some(object) = game.object(*id) else {

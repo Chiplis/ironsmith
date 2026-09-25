@@ -81,12 +81,20 @@ impl EffectExecutor for TagTriggeringObjectEffect {
                 // Entry events without explicit result_objects identify their
                 // destination objects in objects. Preserve those incarnations:
                 // a later blink of the same physical card is a different object.
-                let tagged: Vec<_> = zone_change.objects.iter().filter_map(|&id| {
-                    game.object(id)
-                        .filter(|object| object.zone == zone_change.to)
-                        .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
-                        .or_else(|| latest_zone_lki_snapshot(game, id, zone_change.to))
-                }).collect();
+                let tagged: Vec<_> = zone_change
+                    .objects
+                    .iter()
+                    .filter_map(|&id| {
+                        game.object(id)
+                            .filter(|object| object.zone == zone_change.to)
+                            .map(|object| {
+                                ObjectSnapshot::from_object_with_calculated_characteristics(
+                                    object, game,
+                                )
+                            })
+                            .or_else(|| latest_zone_lki_snapshot(game, id, zone_change.to))
+                    })
+                    .collect();
                 let count = tagged.len() as i32;
                 set_triggering_object_tags(ctx, self.tag.as_str(), tagged);
                 return Ok(EffectOutcome::count(count));
@@ -587,7 +595,7 @@ mod tests {
                     transform_count: 0,
                     attached_to: None,
                     attachments: Vec::new(),
-        attachment_snapshots: Vec::new(),
+                    attachment_snapshots: Vec::new(),
                     was_enchanted: false,
                     is_monstrous: false,
                     is_prepared: false,

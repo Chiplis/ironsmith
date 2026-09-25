@@ -61,7 +61,12 @@ impl EffectExecutor for AddManaOfNotedTypeEffect {
             return Ok(EffectOutcome::count(0));
         }
         let mana = credit_repeated_mana_symbol_from_context(game, player_id, symbol, amount, ctx);
-        Ok(mana_added_count_outcome(ctx, player_id, mana, amount as i32))
+        Ok(mana_added_count_outcome(
+            ctx,
+            player_id,
+            mana,
+            amount as i32,
+        ))
     }
 
     fn producible_mana_symbols(
@@ -70,6 +75,10 @@ impl EffectExecutor for AddManaOfNotedTypeEffect {
         source: crate::ids::ObjectId,
         _controller: crate::ids::PlayerId,
     ) -> Option<Vec<ManaSymbol>> {
-        Some(game.noted_mana_type_for_source(source).into_iter().collect())
+        Some(
+            game.noted_mana_type_for_source(source)
+                .into_iter()
+                .collect(),
+        )
     }
 }

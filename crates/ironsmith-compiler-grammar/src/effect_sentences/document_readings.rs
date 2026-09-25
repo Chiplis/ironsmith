@@ -213,9 +213,7 @@ const DOCUMENT_READINGS: &[Reading] = &[
         id: RuleId::new("sentence-each-opponent-draws-then-you-draw-per-opponent"),
         head: HeadDiscriminator::Any,
         read: |document| {
-            document.outcome(read_sentence_each_opponent_draws_then_you_draw_per_opponent(
-                document,
-            ))
+            document.outcome(read_sentence_each_opponent_draws_then_you_draw_per_opponent(document))
         },
     },
     Reading {
@@ -421,10 +419,9 @@ fn read_repeat_following_process(
     if effects.is_empty() {
         return Ok(None);
     }
-    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
-        count,
-        effects,
-    })]))
+    Ok(Some(vec![EffectAst::ForEach(
+        ForEachEffectAst::RepeatEffects { count, effects },
+    )]))
 }
 
 fn read_conditional_put_counters(
@@ -688,7 +685,16 @@ fn read_each_opponent_attacking_that_player_does_the_same(
     };
     let second_words = crate::lexer::token_word_refs(second);
     if second_words.as_slice()
-        != ["each", "opponent", "attacking", "that", "player", "does", "the", "same"]
+        != [
+            "each",
+            "opponent",
+            "attacking",
+            "that",
+            "player",
+            "does",
+            "the",
+            "same",
+        ]
     {
         return Ok(None);
     }
@@ -703,14 +709,16 @@ fn read_each_opponent_attacking_that_player_does_the_same(
         repeated.push(EffectAst::SubjectVerb(copy));
     }
     let mut out = effects;
-    out.push(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
-        sequential: false,
-        filter: crate::target::PlayerFilter::Excluding {
-            base: Box::new(crate::target::PlayerFilter::Attacking),
-            excluded: Box::new(crate::target::PlayerFilter::You),
+    out.push(EffectAst::ForEach(
+        ForEachEffectAst::ForEachPlayersFiltered {
+            sequential: false,
+            filter: crate::target::PlayerFilter::Excluding {
+                base: Box::new(crate::target::PlayerFilter::Attacking),
+                excluded: Box::new(crate::target::PlayerFilter::You),
+            },
+            effects: repeated,
         },
-        effects: repeated,
-    }));
+    ));
     Ok(Some(out))
 }
 

@@ -33,24 +33,64 @@ use application::{
     find_matching_cards_in_hand, find_matching_sacrificable_permanents,
 };
 
-fn entry_controller_candidates(game: &GameState, controller: PlayerId, players: &crate::target::PlayerFilter) -> Vec<PlayerId> {
-    let ctx=game.filter_context_for(controller,None);
-    game.players.iter().filter(|player|player.is_in_game() && players.matches_player(player.id,&ctx)).map(|player|player.id).collect()
+fn entry_controller_candidates(
+    game: &GameState,
+    controller: PlayerId,
+    players: &crate::target::PlayerFilter,
+) -> Vec<PlayerId> {
+    let ctx = game.filter_context_for(controller, None);
+    game.players
+        .iter()
+        .filter(|player| player.is_in_game() && players.matches_player(player.id, &ctx))
+        .map(|player| player.id)
+        .collect()
 }
 
-fn entry_controller_choice_context(game: &GameState, source: ObjectId, controller: PlayerId, players: &crate::target::PlayerFilter) -> crate::decisions::context::DecisionContext {
-    let options=entry_controller_candidates(game,controller,players).into_iter().map(|player| {
-        crate::decisions::context::SelectableOption::new(player.index(),game.player(player).unwrap().name.to_string())
-    }).collect();
-    crate::decisions::context::DecisionContext::SelectOptions(crate::decisions::context::SelectOptionsContext::new(controller,Some(source),"Choose the entering permanent's controller",options,1,1))
+fn entry_controller_choice_context(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    players: &crate::target::PlayerFilter,
+) -> crate::decisions::context::DecisionContext {
+    let options = entry_controller_candidates(game, controller, players)
+        .into_iter()
+        .map(|player| {
+            crate::decisions::context::SelectableOption::new(
+                player.index(),
+                game.player(player).unwrap().name.to_string(),
+            )
+        })
+        .collect();
+    crate::decisions::context::DecisionContext::SelectOptions(
+        crate::decisions::context::SelectOptionsContext::new(
+            controller,
+            Some(source),
+            "Choose the entering permanent's controller",
+            options,
+            1,
+            1,
+        ),
+    )
 }
 
-fn apply_entry_controller_choice(game: &GameState,event: &Event,response: &InteractiveReplacementResponse,controller: PlayerId,players: &crate::target::PlayerFilter) -> Option<Event> {
-    let InteractiveReplacementResponse::Options(selected)=response else { return None; };
-    let [selected]=selected.as_slice() else { return None; };
-    let selected=*selected;
-    let player=entry_controller_candidates(game,controller,players).into_iter().find(|player|player.index()==selected)?;
-    application::apply_trait_enter_under_control(event,player)
+fn apply_entry_controller_choice(
+    game: &GameState,
+    event: &Event,
+    response: &InteractiveReplacementResponse,
+    controller: PlayerId,
+    players: &crate::target::PlayerFilter,
+) -> Option<Event> {
+    let InteractiveReplacementResponse::Options(selected) = response else {
+        return None;
+    };
+    let [selected] = selected.as_slice() else {
+        return None;
+    };
+    let selected = *selected;
+    let player = entry_controller_candidates(game, controller, players)
+        .into_iter()
+        .find(|player| player.index() == selected)?;
+    application::apply_trait_enter_under_control(event, player)
 }
 
 fn apply_tribute_response(
@@ -340,16 +380,24 @@ fn push_enter_as_copy_effects_for_spec(
 
     let copy_condition_matches = |candidate, filter: &Option<crate::target::ObjectFilter>| {
         filter.as_ref().is_none_or(|filter| {
-            let Some(mut object) = game.object(candidate).cloned() else { return false; };
+            let Some(mut object) = game.object(candidate).cloned() else {
+                return false;
+            };
             let effects = game.all_continuous_effects();
             if let Some(values) = crate::continuous::copiable_values_with_effects(
-                candidate, game.objects_map(), &effects, &game.battlefield,
-                game.commander_objects(), game,
+                candidate,
+                game.objects_map(),
+                &effects,
+                &game.battlefield,
+                game.commander_objects(),
+                game,
             ) {
                 object.copy_copiable_values_from_values(&values);
             }
             for card_type in &spec.added_card_types {
-                if !object.card_types.contains(card_type) { object.card_types.push(*card_type); }
+                if !object.card_types.contains(card_type) {
+                    object.card_types.push(*card_type);
+                }
             }
             let ctx = game.filter_context_for(controller, Some(entering_object));
             filter.matches_non_recursive(&object, &ctx, game)
@@ -442,14 +490,19 @@ fn push_enter_as_copy_effects_for_spec(
                     copy_duration: spec.copy_duration.clone(),
                     linked_exile_objects: Vec::new(),
                     additional_counters: {
-                        let mut counters =
-                            if copy_condition_matches(candidate, &spec.additional_counters_source_filter) {
-                                spec.additional_counters.clone()
-                            } else {
-                                Vec::new()
-                            };
+                        let mut counters = if copy_condition_matches(
+                            candidate,
+                            &spec.additional_counters_source_filter,
+                        ) {
+                            spec.additional_counters.clone()
+                        } else {
+                            Vec::new()
+                        };
                         for conditional in &spec.conditional_additional_counters {
-                            if copy_condition_matches(candidate, &Some(conditional.source_filter.clone())) {
+                            if copy_condition_matches(
+                                candidate,
+                                &Some(conditional.source_filter.clone()),
+                            ) {
                                 counters.push((conditional.counter_type, conditional.count));
                             }
                         }
@@ -458,7 +511,7 @@ fn push_enter_as_copy_effects_for_spec(
                     name_override: spec.name_override.clone(),
                     added_colors: spec.added_colors,
                     added_card_types: spec.added_card_types.clone(),
-                            removes_other_card_types: spec.removes_other_card_types,
+                    removes_other_card_types: spec.removes_other_card_types,
                     added_supertypes: spec.added_supertypes.clone(),
                     removed_supertypes: spec.removed_supertypes.clone(),
                     added_subtypes: spec.added_subtypes.clone(),
@@ -651,8 +704,14 @@ fn process_event_direct(
         consume_one_shot_if_applied(game, effect_id, &result);
         return match result {
             TraitApplyResult::Modified(modified_event)
-                if state.yield_after_etb_replacement && crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(modified_event.inner()).is_some() =>
-                TraitEventResult::Modified(modified_event),
+                if state.yield_after_etb_replacement
+                    && crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(
+                        modified_event.inner(),
+                    )
+                    .is_some() =>
+            {
+                TraitEventResult::Modified(modified_event)
+            }
             TraitApplyResult::Modified(modified_event) => process_event_direct(
                 game,
                 modified_event,
@@ -730,9 +789,15 @@ fn process_event_direct(
 
     match result {
         TraitApplyResult::Modified(modified_event)
-                if state.yield_after_etb_replacement && crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(modified_event.inner()).is_some() =>
-                TraitEventResult::Modified(modified_event),
-            TraitApplyResult::Modified(modified_event) => process_event_direct(
+            if state.yield_after_etb_replacement
+                && crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(
+                    modified_event.inner(),
+                )
+                .is_some() =>
+        {
+            TraitEventResult::Modified(modified_event)
+        }
+        TraitApplyResult::Modified(modified_event) => process_event_direct(
             game,
             modified_event,
             state,
@@ -918,12 +983,7 @@ fn continue_interactive_replacement(
         && redirect_zone == Zone::Battlefield
     {
         return handle_reveal_card_or_enter_tapped(
-            game,
-            response,
-            object_id,
-            controller,
-            filter,
-            provenance,
+            game, response, object_id, controller, filter, provenance,
         );
     }
 
@@ -2073,7 +2133,10 @@ fn shield_counter_destroy_replacements(
     if source.is_none() || shield_counter_count(game, permanent) == 0 {
         return Vec::new();
     }
-    let Some(controller) = game.object(permanent).map(|object| game.controller_of(object)) else {
+    let Some(controller) = game
+        .object(permanent)
+        .map(|object| game.controller_of(object))
+    else {
         return Vec::new();
     };
     let mut effects = vec![ReplacementEffect::with_matcher(
@@ -2094,14 +2157,20 @@ fn shield_counter_destroy_replacements(
 /// "If damage would be dealt to this permanent, prevent that damage and
 /// remove a shield counter from it." The additional part still happens for
 /// unpreventable damage (CR 615.12).
-fn shield_counter_damage_replacements(game: &GameState, target: DamageTarget) -> Vec<ReplacementEffect> {
+fn shield_counter_damage_replacements(
+    game: &GameState,
+    target: DamageTarget,
+) -> Vec<ReplacementEffect> {
     let DamageTarget::Object(permanent) = target else {
         return Vec::new();
     };
     if shield_counter_count(game, permanent) == 0 {
         return Vec::new();
     }
-    let Some(controller) = game.object(permanent).map(|object| game.controller_of(object)) else {
+    let Some(controller) = game
+        .object(permanent)
+        .map(|object| game.controller_of(object))
+    else {
         return Vec::new();
     };
     vec![ReplacementEffect::with_matcher(
@@ -2119,13 +2188,19 @@ fn shield_counter_damage_replacements(game: &GameState, target: DamageTarget) ->
 /// The built-in untap replacement created by stun counters (CR 122.1d): "If
 /// a permanent with a stun counter on it would become untapped, instead
 /// remove a stun counter from it."
-fn stun_counter_untap_replacements(game: &GameState, permanent: ObjectId) -> Vec<ReplacementEffect> {
+fn stun_counter_untap_replacements(
+    game: &GameState,
+    permanent: ObjectId,
+) -> Vec<ReplacementEffect> {
     let stunned = game
         .object(permanent)
         .and_then(|object| object.counters.get(&CounterType::Stun).copied())
         .unwrap_or(0)
         > 0;
-    let Some(controller) = game.object(permanent).map(|object| game.controller_of(object)) else {
+    let Some(controller) = game
+        .object(permanent)
+        .map(|object| game.controller_of(object))
+    else {
         return Vec::new();
     };
     if !stunned {
@@ -2215,7 +2290,13 @@ pub fn process_untap(
             consume_one_shot_if_applied(game, effect_id, &applied);
             match applied {
                 TraitApplyResult::Replaced(effects) => {
-                    run_untap_replacement_effects(game, effect.source, effect.controller, effects, dm);
+                    run_untap_replacement_effects(
+                        game,
+                        effect.source,
+                        effect.controller,
+                        effects,
+                        dm,
+                    );
                     false
                 }
                 TraitApplyResult::Modified(_) | TraitApplyResult::Unchanged(_) => {
@@ -2440,13 +2521,16 @@ fn process_zone_change_inner(
                     );
                     let replacement_outcome = match replacement_object_snapshot {
                         Some(snapshot) => {
-                            let outcome = crate::effect::EffectOutcome::with_objects(vec![snapshot.object_id]);
+                            let outcome = crate::effect::EffectOutcome::with_objects(vec![
+                                snapshot.object_id,
+                            ]);
                             ctx.tag_object(crate::tag::ZONE_REPLACEMENT_OBJECT_TAG, snapshot);
                             outcome
                         }
                         None => crate::effect::EffectOutcome::count(0),
                     };
-                    ctx.effect_outcomes.insert(crate::effect::EffectId::REPLACED_EVENT, replacement_outcome);
+                    ctx.effect_outcomes
+                        .insert(crate::effect::EffectId::REPLACED_EVENT, replacement_outcome);
                     for effect in effects {
                         if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut ctx)
                         {
@@ -2949,7 +3033,10 @@ fn assign_ephemeral_effect_ids(effects: &mut [ReplacementEffect], id_base: u64) 
 fn prepared_object_etb_replacement_effects(
     game: &GameState,
     event: &Event,
-    ids: &mut std::collections::HashMap<(crate::static_abilities::StaticAbilityInstanceId, usize), ReplacementEffectId>,
+    ids: &mut std::collections::HashMap<
+        (crate::static_abilities::StaticAbilityInstanceId, usize),
+        ReplacementEffectId,
+    >,
     state: &TraitEventProcessingState,
     reserved_objects: &std::collections::HashSet<ObjectId>,
 ) -> Option<Vec<ReplacementEffect>> {
@@ -2964,45 +3051,75 @@ fn prepared_object_etb_replacement_effects(
             if ability.compiled_model().is_some_and(|model| matches!(&model.payload,
                 ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram { turns_face_up_only: false, transforms_into: None, .. })))
     });
-    if !changed_text && !has_program { return None; }
+    if !changed_text && !has_program {
+        return None;
+    }
     let controller = prospective.current_controller(etb.object)?;
     let mut effects = Vec::new();
     for ability in chars.abilities.iter() {
-        let crate::ability::AbilityKind::Static(ability) = &ability.kind else { continue; };
+        let crate::ability::AbilityKind::Static(ability) = &ability.kind else {
+            continue;
+        };
         if let Some(model) = ability.compiled_model()
             && let ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram {
-                program, turns_face_up_only: false, transforms_into: None, ..
-            } = &model.payload {
+                program,
+                turns_face_up_only: false,
+                transforms_into: None,
+                ..
+            } = &model.payload
+        {
             let mut effect = ReplacementEffect::with_matcher(
-                etb.object, controller, crate::ThisWouldEnterBattlefieldMatcher,
+                etb.object,
+                controller,
+                crate::ThisWouldEnterBattlefieldMatcher,
                 ReplacementAction::AsEntersProgram(program.clone()),
             );
             let next_id = ReplacementEffectId(u64::MAX - 250_000 + ids.len() as u64);
-            effect.id = *ids.entry((ability.instance_id(), usize::MAX)).or_insert(next_id);
+            effect.id = *ids
+                .entry((ability.instance_id(), usize::MAX))
+                .or_insert(next_id);
             effect.static_ability_instance = Some(ability.instance_id());
             effects.push(effect);
         }
         if let Some(mut effect) = ability.generate_replacement_effect(etb.object, controller)
-            && effect.matcher.as_ref().is_some_and(|matcher| matcher.applies_from_entering_source()) {
+            && effect
+                .matcher
+                .as_ref()
+                .is_some_and(|matcher| matcher.applies_from_entering_source())
+        {
             let next_id = ReplacementEffectId(u64::MAX - 250_000 + ids.len() as u64);
             effect.id = *ids.entry((ability.instance_id(), 0)).or_insert(next_id);
             effects.push(effect);
         }
         if let Some(spec) = ability.enter_as_copy_as_enters()
-            && spec.affected_filter.is_none() {
+            && spec.affected_filter.is_none()
+        {
             // All candidates (including declining) are alternative outcomes
             // of one replacement, not independently applicable replacements.
             let consumed = ids.iter().any(|((instance, slot), id)| {
-                *instance == ability.instance_id() && *slot > 0 && *slot != usize::MAX && state.was_applied(*id)
+                *instance == ability.instance_id()
+                    && *slot > 0
+                    && *slot != usize::MAX
+                    && state.was_applied(*id)
             });
-            if consumed { continue; }
+            if consumed {
+                continue;
+            }
             let mut copies = Vec::new();
             push_enter_as_copy_effects_for_spec(
-                game, etb.object, etb.object, controller, spec, reserved_objects, &mut copies,
+                game,
+                etb.object,
+                etb.object,
+                controller,
+                spec,
+                reserved_objects,
+                &mut copies,
             );
             for (index, mut effect) in copies.into_iter().enumerate() {
                 let next_id = ReplacementEffectId(u64::MAX - 250_000 + ids.len() as u64);
-                effect.id = *ids.entry((ability.instance_id(), index + 1)).or_insert(next_id);
+                effect.id = *ids
+                    .entry((ability.instance_id(), index + 1))
+                    .or_insert(next_id);
                 effect.static_ability_instance = Some(ability.instance_id());
                 effects.push(effect);
             }
@@ -3039,7 +3156,10 @@ fn copied_object_etb_replacement_effects(
     for ability in copied_abilities {
         if let crate::ability::AbilityKind::Static(static_ability) = ability.kind
             && let Some(effect) = static_ability.generate_replacement_effect(object, controller)
-            && effect.matcher.as_ref().is_some_and(|matcher| matcher.applies_from_entering_source())
+            && effect
+                .matcher
+                .as_ref()
+                .is_some_and(|matcher| matcher.applies_from_entering_source())
         {
             effects.push(effect);
         }
@@ -3481,7 +3601,8 @@ fn collect_simultaneous_prevention_allocations(
             .iter()
             .enumerate()
             .filter_map(|(index, item)| {
-                if item.amount == 0 || item.unpreventable
+                if item.amount == 0
+                    || item.unpreventable
                     || !game.can_prevent_damage_of_kind(item.is_combat)
                 {
                     return None;
@@ -4343,11 +4464,16 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
         for s in &current_static_abilities {
             // Check for unified replacement effects
             if let Some(effect) = s.generate_replacement_effect(object, controller)
-                && effect.matcher.as_ref().is_some_and(|matcher| matcher.applies_from_entering_source()) {
+                && effect
+                    .matcher
+                    .as_ref()
+                    .is_some_and(|matcher| matcher.applies_from_entering_source())
+            {
                 object_etb_effects.push(effect);
             }
             if let Some(spec) = s.enter_as_copy_as_enters()
-                && spec.affected_filter.is_none() {
+                && spec.affected_filter.is_none()
+            {
                 push_enter_as_copy_effects_for_spec(
                     game,
                     object,
@@ -4465,7 +4591,10 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
         },
         etb_event_provenance,
     );
-    let mut state = TraitEventProcessingState { yield_after_etb_replacement: true, ..Default::default() };
+    let mut state = TraitEventProcessingState {
+        yield_after_etb_replacement: true,
+        ..Default::default()
+    };
     let mut paid_labels = Vec::new();
     let mut prepared_ability_ids = std::collections::HashMap::new();
 
@@ -4474,21 +4603,38 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
             reserved_objects.extend(etb.linked_exile_with_entering.iter().copied());
         }
         if let Some(etb) = downcast_event::<EnterBattlefieldEvent>(current_event.inner())
-            && let Some((program, controller)) = etb.pending_program.clone() {
+            && let Some((program, controller)) = etb.pending_program.clone()
+        {
             let mut resumed = etb.clone();
             resumed.pending_program = None;
-            let Some(mut choices) = game.execute_entry_programs(object, controller, vec![program], Some(&resumed), dm) else {
-                return EtbEventResult { prevented: true, ..Default::default() };
+            let Some(mut choices) =
+                game.execute_entry_programs(object, controller, vec![program], Some(&resumed), dm)
+            else {
+                return EtbEventResult {
+                    prevented: true,
+                    ..Default::default()
+                };
             };
             for (kind, count) in choices.as_enters_counters.drain(..) {
                 resumed = resumed.with_counters(kind, count);
             }
-            resumed.program_choices.transfer_as_enters_source_links |= choices.transfer_as_enters_source_links;
-            resumed.program_choices.as_enters_continuous_effects.extend(choices.as_enters_continuous_effects);
+            resumed.program_choices.transfer_as_enters_source_links |=
+                choices.transfer_as_enters_source_links;
+            resumed
+                .program_choices
+                .as_enters_continuous_effects
+                .extend(choices.as_enters_continuous_effects);
             for (tag, snapshots) in choices.as_enters_tagged_objects {
-                let retained = resumed.program_choices.as_enters_tagged_objects.entry(tag).or_default();
+                let retained = resumed
+                    .program_choices
+                    .as_enters_tagged_objects
+                    .entry(tag)
+                    .or_default();
                 for snapshot in snapshots {
-                    if !retained.iter().any(|existing| existing.stable_id == snapshot.stable_id) {
+                    if !retained
+                        .iter()
+                        .any(|existing| existing.stable_id == snapshot.stable_id)
+                    {
                         retained.push(snapshot);
                     }
                 }
@@ -4498,12 +4644,18 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
             continue;
         }
         let prepared_object_effects = prepared_object_etb_replacement_effects(
-            game, &current_event, &mut prepared_ability_ids, &state, &reserved_objects,
+            game,
+            &current_event,
+            &mut prepared_ability_ids,
+            &state,
+            &reserved_objects,
         );
         let copy_choice_consumed = copy_choice_effects
             .iter()
             .any(|effect| state.was_applied(effect.id))
-            || prepared_ability_ids.iter().any(|((_, slot), id)| *slot > 0 && *slot != usize::MAX && state.was_applied(*id));
+            || prepared_ability_ids
+                .iter()
+                .any(|((_, slot), id)| *slot > 0 && *slot != usize::MAX && state.was_applied(*id));
         let original_object_effects_still_apply =
             downcast_event::<EnterBattlefieldEvent>(current_event.inner())
                 .map(|etb| etb.enters_as_copy_of.is_none())
@@ -4516,17 +4668,16 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
         );
         let current_additional_effects: Vec<ReplacementEffect> = copy_choice_effects
             .iter()
-            .filter(|effect| !copy_choice_consumed && (effect.source != object || prepared_object_effects.is_none()))
-            .chain(
-                object_etb_effects
-                    .iter()
-                    .filter(|_| original_object_effects_still_apply && prepared_object_effects.is_none()),
-            )
-            .chain(
-                copied_object_etb_effects
-                    .iter()
-                    .filter(|effect| prepared_object_effects.is_none() && !state.was_applied(effect.id)),
-            )
+            .filter(|effect| {
+                !copy_choice_consumed
+                    && (effect.source != object || prepared_object_effects.is_none())
+            })
+            .chain(object_etb_effects.iter().filter(|_| {
+                original_object_effects_still_apply && prepared_object_effects.is_none()
+            }))
+            .chain(copied_object_etb_effects.iter().filter(|effect| {
+                prepared_object_effects.is_none() && !state.was_applied(effect.id)
+            }))
             .chain(prepared_object_effects.iter().flatten())
             .cloned()
             .collect();
@@ -4596,16 +4747,23 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                         interactive_replacement: None,
                     };
                     if etb.prepared_choices.is_none() {
-                        let abilities = if etb.program_choices.as_enters_continuous_effects.is_empty() {
-                            let mut abilities = game.object(etb.enters_as_copy_of.unwrap_or(object))
-                                .map(|object| object.abilities_vec()).unwrap_or_default();
-                            abilities.extend(etb.added_abilities.clone());
-                            abilities
-                        } else {
-                            etb.prospective_game_state(game)
-                                .and_then(|prospective| prospective.calculated_characteristics(object).map(|chars| chars.abilities.iter().cloned().collect()))
-                                .unwrap_or_default()
-                        };
+                        let abilities =
+                            if etb.program_choices.as_enters_continuous_effects.is_empty() {
+                                let mut abilities = game
+                                    .object(etb.enters_as_copy_of.unwrap_or(object))
+                                    .map(|object| object.abilities_vec())
+                                    .unwrap_or_default();
+                                abilities.extend(etb.added_abilities.clone());
+                                abilities
+                            } else {
+                                etb.prospective_game_state(game)
+                                    .and_then(|prospective| {
+                                        prospective
+                                            .calculated_characteristics(object)
+                                            .map(|chars| chars.abilities.iter().cloned().collect())
+                                    })
+                                    .unwrap_or_default()
+                            };
                         let Some(prepared) = game.prepare_etb_entry_after_programs(
                             object,
                             event_result,
@@ -4838,11 +4996,22 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                             );
                             continue;
                         }
-                        if let ReplacementAction::EnterUnderChosenControl { players } = &chosen_effect.replacement {
-                            let Some(modified)=apply_entry_controller_choice(game,&current_event,&response,chosen_effect.controller,players) else {
-                                return EtbEventResult { prevented:true,..Default::default() };
+                        if let ReplacementAction::EnterUnderChosenControl { players } =
+                            &chosen_effect.replacement
+                        {
+                            let Some(modified) = apply_entry_controller_choice(
+                                game,
+                                &current_event,
+                                &response,
+                                chosen_effect.controller,
+                                players,
+                            ) else {
+                                return EtbEventResult {
+                                    prevented: true,
+                                    ..Default::default()
+                                };
                             };
-                            current_event=modified;
+                            current_event = modified;
                             continue;
                         }
                         if let ReplacementAction::EnterWithCounterChoice {
@@ -4943,13 +5112,24 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                     );
                     continue;
                 }
-                if let Some(effect) = find_effect_for_choice(game, &current_additional_effects, effect_id)
-                    && let ReplacementAction::EnterUnderChosenControl { players } = &effect.replacement
+                if let Some(effect) =
+                    find_effect_for_choice(game, &current_additional_effects, effect_id)
+                    && let ReplacementAction::EnterUnderChosenControl { players } =
+                        &effect.replacement
                 {
-                    let Some(modified)=apply_entry_controller_choice(game,&event,&response,effect.controller,players) else {
-                        return EtbEventResult { prevented:true,..Default::default() };
+                    let Some(modified) = apply_entry_controller_choice(
+                        game,
+                        &event,
+                        &response,
+                        effect.controller,
+                        players,
+                    ) else {
+                        return EtbEventResult {
+                            prevented: true,
+                            ..Default::default()
+                        };
                     };
-                    current_event=modified;
+                    current_event = modified;
                     continue;
                 }
                 if let Some(ReplacementAction::EnterWithCounterChoice {
@@ -5019,7 +5199,6 @@ fn object_has_compleated_marker(obj: &crate::object::Object) -> bool {
             && static_ability.display().eq_ignore_ascii_case("compleated")
     })
 }
-
 
 /// Result of processing a zone change event with full replacement effect handling.
 ///
@@ -5586,68 +5765,149 @@ mod tests {
 
     #[test]
     fn compiled_entry_controller_model_materializes_typed_replacement() {
-        let model=crate::static_abilities::CompiledStaticAbility::enters_under_chosen_control(crate::target::PlayerFilter::Opponent);
-        let ability=crate::static_abilities::StaticAbility::from_model(model.clone());
-        assert_eq!(ability.compiled_model(),Some(&model));
-        let mut game=crate::tests::test_helpers::setup_two_player_game();
-        let alice=PlayerId::from_index(0);
-        let entering=create_creature_in_zone(&mut game,"Model entry fixture",alice,Zone::Hand,4,4);
-        let effect=ability.generate_replacement_effect(entering,alice).expect("typed model must generate replacement");
-        assert!(matches!(effect.replacement,ReplacementAction::EnterUnderChosenControl{players:crate::target::PlayerFilter::Opponent}));
-        assert_eq!(effect.priority_override,Some(crate::events::ReplacementPriority::ControlChanging));
+        let model = crate::static_abilities::CompiledStaticAbility::enters_under_chosen_control(
+            crate::target::PlayerFilter::Opponent,
+        );
+        let ability = crate::static_abilities::StaticAbility::from_model(model.clone());
+        assert_eq!(ability.compiled_model(), Some(&model));
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let entering =
+            create_creature_in_zone(&mut game, "Model entry fixture", alice, Zone::Hand, 4, 4);
+        let effect = ability
+            .generate_replacement_effect(entering, alice)
+            .expect("typed model must generate replacement");
+        assert!(matches!(
+            effect.replacement,
+            ReplacementAction::EnterUnderChosenControl {
+                players: crate::target::PlayerFilter::Opponent
+            }
+        ));
+        assert_eq!(
+            effect.priority_override,
+            Some(crate::events::ReplacementPriority::ControlChanging)
+        );
         game.effect_store.replacement_effects.add_effect(effect);
-        let mut dm=crate::decision::SelectFirstDecisionMaker;
-        let result=process_etb_with_event_and_dm(&mut game,entering,Zone::Hand,&mut dm);
-        assert_eq!(result.controller_override,Some(PlayerId::from_index(1)));
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let result = process_etb_with_event_and_dm(&mut game, entering, Zone::Hand, &mut dm);
+        assert_eq!(result.controller_override, Some(PlayerId::from_index(1)));
         assert!(!result.prevented);
     }
 
     #[test]
     fn chosen_entry_controller_applies_before_controller_relative_replacements() {
-        let mut game=crate::tests::test_helpers::setup_two_player_game();
-        let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
-        let entering=create_creature_in_zone(&mut game,"Chosen controller entrant",alice,Zone::Hand,4,4);
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let entering = create_creature_in_zone(
+            &mut game,
+            "Chosen controller entrant",
+            alice,
+            Zone::Hand,
+            4,
+            4,
+        );
         game.effect_store.replacement_effects.add_effect(
-            ReplacementEffect::with_matcher(entering,alice,crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
-                ReplacementAction::EnterUnderChosenControl{players:crate::target::PlayerFilter::Opponent})
-                .with_priority_override(crate::events::ReplacementPriority::ControlChanging));
-        game.effect_store.replacement_effects.add_effect(ReplacementEffect::enters_tapped(entering,bob,ObjectFilter::creature().you_control()));
-        let mut dm=crate::decision::SelectFirstDecisionMaker;
-        let result=process_etb_with_event_and_dm(&mut game,entering,Zone::Hand,&mut dm);
+            ReplacementEffect::with_matcher(
+                entering,
+                alice,
+                crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                ReplacementAction::EnterUnderChosenControl {
+                    players: crate::target::PlayerFilter::Opponent,
+                },
+            )
+            .with_priority_override(crate::events::ReplacementPriority::ControlChanging),
+        );
+        game.effect_store
+            .replacement_effects
+            .add_effect(ReplacementEffect::enters_tapped(
+                entering,
+                bob,
+                ObjectFilter::creature().you_control(),
+            ));
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let result = process_etb_with_event_and_dm(&mut game, entering, Zone::Hand, &mut dm);
         assert!(!result.prevented);
-        assert_eq!(result.controller_override,Some(bob));
-        assert!(result.enters_tapped,"later replacements must use selected entry controller");
+        assert_eq!(result.controller_override, Some(bob));
+        assert!(
+            result.enters_tapped,
+            "later replacements must use selected entry controller"
+        );
     }
 
     #[test]
     fn chosen_entry_controller_preserves_multiplayer_choice_and_rejects_ineligible_player() {
-        struct Choose { selected:usize, calls:usize }
+        struct Choose {
+            selected: usize,
+            calls: usize,
+        }
         impl crate::DecisionMaker for Choose {
-            fn decide_options(&mut self,_game:&GameState,ctx:&crate::decisions::context::SelectOptionsContext)->Vec<usize> {
-                assert_eq!(ctx.player,PlayerId::from_index(0));
-                assert_eq!(ctx.options.iter().map(|o|o.index).collect::<Vec<_>>(),vec![1,2]);
-                self.calls+=1;
-                if self.selected==4 {vec![1,2]} else {vec![self.selected]}
+            fn decide_options(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectOptionsContext,
+            ) -> Vec<usize> {
+                assert_eq!(ctx.player, PlayerId::from_index(0));
+                assert_eq!(
+                    ctx.options.iter().map(|o| o.index).collect::<Vec<_>>(),
+                    vec![1, 2]
+                );
+                self.calls += 1;
+                if self.selected == 4 {
+                    vec![1, 2]
+                } else {
+                    vec![self.selected]
+                }
             }
         }
-        for selected in [1,2,0,3,4] {
-            let mut game=GameState::new(vec!["Alice".into(),"Bob".into(),"Cara".into(),"Departed".into()],20);
-            let alice=PlayerId::from_index(0);
-            game.player_mut(PlayerId::from_index(3)).unwrap().has_left_game=true;
-            let entering=create_creature_in_zone(&mut game,"Chosen controller entrant",alice,Zone::Hand,4,4);
+        for selected in [1, 2, 0, 3, 4] {
+            let mut game = GameState::new(
+                vec![
+                    "Alice".into(),
+                    "Bob".into(),
+                    "Cara".into(),
+                    "Departed".into(),
+                ],
+                20,
+            );
+            let alice = PlayerId::from_index(0);
+            game.player_mut(PlayerId::from_index(3))
+                .unwrap()
+                .has_left_game = true;
+            let entering = create_creature_in_zone(
+                &mut game,
+                "Chosen controller entrant",
+                alice,
+                Zone::Hand,
+                4,
+                4,
+            );
             game.effect_store.replacement_effects.add_effect(
-                ReplacementEffect::with_matcher(entering,alice,crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
-                    ReplacementAction::EnterUnderChosenControl{players:crate::target::PlayerFilter::Opponent})
-                    .with_priority_override(crate::events::ReplacementPriority::ControlChanging));
-            let mut dm=Choose{selected,calls:0};
-            let result=process_etb_with_event_and_dm(&mut game,entering,Zone::Hand,&mut dm);
-            assert_eq!(dm.calls,1);
-            if selected==1 || selected==2 {
+                ReplacementEffect::with_matcher(
+                    entering,
+                    alice,
+                    crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                    ReplacementAction::EnterUnderChosenControl {
+                        players: crate::target::PlayerFilter::Opponent,
+                    },
+                )
+                .with_priority_override(crate::events::ReplacementPriority::ControlChanging),
+            );
+            let mut dm = Choose { selected, calls: 0 };
+            let result = process_etb_with_event_and_dm(&mut game, entering, Zone::Hand, &mut dm);
+            assert_eq!(dm.calls, 1);
+            if selected == 1 || selected == 2 {
                 assert!(!result.prevented);
-                assert_eq!(result.controller_override,Some(PlayerId::from_index(selected as u8)));
+                assert_eq!(
+                    result.controller_override,
+                    Some(PlayerId::from_index(selected as u8))
+                );
             } else {
-                assert!(result.prevented,"invalid choice must not select an arbitrary opponent");
-                assert_eq!(result.controller_override,None);
+                assert!(
+                    result.prevented,
+                    "invalid choice must not select an arbitrary opponent"
+                );
+                assert_eq!(result.controller_override, None);
             }
         }
     }

@@ -345,7 +345,9 @@ where
 pub trait ReplacementMatcher: Debug + Send + Sync + ReplacementMatcherClone {
     /// CR 614.12: only a replacement affecting this specific entrant can
     /// function from the entering object's own text before it is on the field.
-    fn applies_from_entering_source(&self) -> bool { false }
+    fn applies_from_entering_source(&self) -> bool {
+        false
+    }
 
     /// Check if this matcher matches the given event.
     ///

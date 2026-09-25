@@ -5,8 +5,7 @@ use crate::cards::builders::PlayerPredicateAst;
 // a shared or repeated "your" stays attached to every alternative.
 fn owned_exile_origin_words(words: &[&str]) -> Option<(usize, Vec<Zone>)> {
     let start = words.windows(6).position(|part| {
-        matches!(part[0], "is" | "are")
-            && part[1..] == ["put", "into", "exile", "from", "your"]
+        matches!(part[0], "is" | "are") && part[1..] == ["put", "into", "exile", "from", "your"]
     })?;
     let mut rest = &words[start + 6..];
     let mut zones = Vec::new();
@@ -27,7 +26,11 @@ fn owned_exile_origin_words(words: &[&str]) -> Option<(usize, Vec<Zone>)> {
         if !matches!(rest[0], "and/or" | "or" | "and") {
             return None;
         }
-        let connector_len = if rest.starts_with(&["and", "or"]) { 2 } else { 1 };
+        let connector_len = if rest.starts_with(&["and", "or"]) {
+            2
+        } else {
+            1
+        };
         rest = &rest[connector_len..];
         if rest.first() == Some(&"your") {
             rest = &rest[1..];
@@ -465,7 +468,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     .map(|mut filter| {
                         filter.other |= other;
                         if parser_filter_words.contains(&"kicked")
-                            && !filter.ability_markers.iter().any(|marker| marker == "kicked")
+                            && !filter
+                                .ability_markers
+                                .iter()
+                                .any(|marker| marker == "kicked")
                         {
                             filter.ability_markers.push("kicked".to_string());
                         }
@@ -1335,9 +1341,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         let verb_token_idx =
             trigger_word_token_start(tokens, exiled_word_idx - 1).unwrap_or(tokens.len());
         let subject_tokens = &tokens[..verb_token_idx];
-        if let Some(filter) =
-            crate::grammar::primitives::probe_shape(parse_object_filter_lexed(subject_tokens, false))
-        {
+        if let Some(filter) = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
+            subject_tokens,
+            false,
+        )) {
             return Ok(TriggerSpec::ExiledFromBattlefield(filter));
         }
     }
@@ -1352,9 +1359,14 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             trigger_word_token_start(tokens, leaves_word_idx).unwrap_or(tokens.len());
         let subject_tokens = &tokens[..leaves_token_idx];
 
-        if subject_tokens.len() > 2 && subject_tokens[0].is_word("the") && subject_tokens[1].is_word("targeted") {
-            let filter = parse_object_filter_lexed(&subject_tokens[2..], false)?
-                .match_tagged(crate::tag::CompilerReferenceTag::It.bind(), TaggedOpbjectRelation::IsTaggedObject);
+        if subject_tokens.len() > 2
+            && subject_tokens[0].is_word("the")
+            && subject_tokens[1].is_word("targeted")
+        {
+            let filter = parse_object_filter_lexed(&subject_tokens[2..], false)?.match_tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+                TaggedOpbjectRelation::IsTaggedObject,
+            );
             return Ok(TriggerSpec::LeavesBattlefield(filter));
         }
 
@@ -2062,15 +2074,23 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             ["are", "put", "into", "exile", "from", "your", "graveyard"].as_slice(),
             vec![Zone::Graveyard],
         ),
-    ].into_iter().filter_map(|(tail, zones)| {
+    ]
+    .into_iter()
+    .filter_map(|(tail, zones)| {
         trigger_pattern_accepts(zone_change_words, ClauseShape::new().suffix(tail)).then(|| {
             let owned = trigger_pattern_accepts(tail, FROM_YOUR_HAND_SUFFIX_PATTERN)
-                || crate::word_primitives::parse_sequence_suffix(tail, &["from", "your", "graveyard"]);
+                || crate::word_primitives::parse_sequence_suffix(
+                    tail,
+                    &["from", "your", "graveyard"],
+                );
             (tail.len(), zones, owned)
         })
-    }).chain(owned_exile_origin.as_ref().map(|(start, zones)| {
-        (zone_change_words.len() - start, zones.clone(), true)
-    })) {
+    })
+    .chain(
+        owned_exile_origin
+            .as_ref()
+            .map(|(start, zones)| (zone_change_words.len() - start, zones.clone(), true)),
+    ) {
         {
             let subject_word_len = zone_change_words.len().saturating_sub(tail_len);
             let subject_tokens = trigger_word_token_start(tokens, subject_word_len)
@@ -3018,12 +3038,14 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     words.join(" ")
                 ))
             })?;
-            return Ok(TriggerSpec::PlayerOrObjectBecomesTargetedBySourceController {
-                player: PlayerFilter::Any,
-                object,
-                source_controller,
-                source_kind,
-            });
+            return Ok(
+                TriggerSpec::PlayerOrObjectBecomesTargetedBySourceController {
+                    player: PlayerFilter::Any,
+                    object,
+                    source_controller,
+                    source_kind,
+                },
+            );
         }
         let subject_filter = parse_trigger_subject_filter_lexed(subject_tokens)?;
         let subject_is_source =

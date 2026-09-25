@@ -183,7 +183,7 @@ pub fn generate_replacement_effects_from_abilities(game: &GameState) -> Vec<Repl
             // Layer-six grants and ability loss also affect replacements.
             let current_abilities = (zone == crate::zone::Zone::Battlefield
                 && (layered_abilities || game.is_face_down(object_id)))
-                .then(|| game.current_abilities(object_id).unwrap_or_default());
+            .then(|| game.current_abilities(object_id).unwrap_or_default());
             let abilities = current_abilities.as_deref().unwrap_or(&object.abilities);
             for ability in abilities {
                 if let AbilityKind::Static(static_ability) = &ability.kind {

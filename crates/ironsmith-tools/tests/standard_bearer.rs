@@ -62,7 +62,8 @@ fn shock_targets(caster: PlayerId) -> (Vec<Target>, ObjectId, ObjectId) {
     game.turn.active_player = caster;
     game.turn.priority_player = Some(caster);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
-    let bearer = game.create_object_from_definition(&load("Standard Bearer"), alice, Zone::Battlefield);
+    let bearer =
+        game.create_object_from_definition(&load("Standard Bearer"), alice, Zone::Battlefield);
     let bear = game.create_object_from_definition(
         &CardDefinitionBuilder::new(CardId::new(), "Bear")
             .card_types(vec![CardType::Creature])
@@ -72,7 +73,10 @@ fn shock_targets(caster: PlayerId) -> (Vec<Target>, ObjectId, ObjectId) {
         Zone::Battlefield,
     );
     let shock = game.create_object_from_definition(&load("Shock"), caster, Zone::Hand);
-    game.player_mut(caster).unwrap().mana_pool.add(ManaSymbol::Red, 1);
+    game.player_mut(caster)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
     let action = compute_legal_actions(&game, caster)
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == shock))
@@ -94,7 +98,9 @@ fn shock_targets(caster: PlayerId) -> (Vec<Target>, ObjectId, ObjectId) {
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {
             break;
         };
-        result = ironsmith::game_loop::apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm);
+        result = ironsmith::game_loop::apply_decision_context_with_dm(
+            &mut game, &mut queue, &mut state, &ctx, &mut dm,
+        );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
     (dm.0, bearer, bear)

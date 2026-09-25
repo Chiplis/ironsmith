@@ -207,9 +207,11 @@ pub(crate) fn resolve_source_object_id(
     // A later independent zone change does not authorize following the same
     // physical card. Explicit moves within a resolution update ctx.source;
     // zone-change triggers use their recorded destination above.
-    if ctx.triggering_event.as_ref().is_some_and(|event| {
-        event.downcast::<crate::events::ZoneChangeEvent>().is_none()
-    }) {
+    if ctx
+        .triggering_event
+        .as_ref()
+        .is_some_and(|event| event.downcast::<crate::events::ZoneChangeEvent>().is_none())
+    {
         return None;
     }
     ctx.source_snapshot
@@ -706,8 +708,15 @@ fn greatest_shared_creature_type_count_for_filter(
 }
 
 /// Resolve a Value to a concrete i32.
-pub fn resolve_value(game: &GameState, value: &Value, ctx: &ExecutionContext) -> Result<i32, ExecutionError> {
- value_eval::resolve(value, &value_eval::EvaluationContext::execution_context(game, ctx))
+pub fn resolve_value(
+    game: &GameState,
+    value: &Value,
+    ctx: &ExecutionContext,
+) -> Result<i32, ExecutionError> {
+    value_eval::resolve(
+        value,
+        &value_eval::EvaluationContext::execution_context(game, ctx),
+    )
 }
 
 /// Resolve the player affected by the most recent damage effect in the
@@ -1939,8 +1948,8 @@ pub fn resolve_objects_for_effect_with_choice_description(
                 return Ok(Vec::new());
             }
         }
-        let hidden_hand_choice = !count.is_random()
-            && game.hidden_hand_choice_for_filter(filter, &hidden_filter_ctx);
+        let hidden_hand_choice =
+            !count.is_random() && game.hidden_hand_choice_for_filter(filter, &hidden_filter_ctx);
         if hidden_hand_choice {
             for id in game.hidden_hand_placeholder_candidates(
                 filter,
@@ -2655,9 +2664,7 @@ pub fn resolve_objects_from_spec(
             match attacked_target_from_trigger(ctx) {
                 Some(AttackEventTarget::Planeswalker(object_id))
                 | Some(AttackEventTarget::Battle(object_id)) => return Ok(vec![object_id]),
-                Some(AttackEventTarget::Player(_))
-                | Some(AttackEventTarget::Nothing)
-                | None => {}
+                Some(AttackEventTarget::Player(_)) | Some(AttackEventTarget::Nothing) | None => {}
             }
             Err(ExecutionError::InvalidTarget)
         }
@@ -3070,8 +3077,7 @@ pub(crate) fn resolve_player_filter_to_list(
             .filter(|player| player_filter_matches_game(filter, player.id, game, _filter_ctx))
             .map(|player| player.id)
             .collect()),
-        PlayerFilter::OpponentOf(_)
-        | PlayerFilter::MaxSpeed { .. } => Ok(game
+        PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => Ok(game
             .players
             .iter()
             .filter(|player| player.is_in_game())
