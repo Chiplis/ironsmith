@@ -1063,8 +1063,8 @@
 }
 
 .game-card.field-card.battlefield-portrait-card .battlefield-counter-rail {
-  top: clamp(-8px, calc(var(--bf-card-height, 96px) * -0.05), -3px);
-  right: clamp(-9px, calc(var(--bf-card-width, 124px) * -0.055), -4px);
+  top: clamp(4px, calc(var(--bf-card-height, 96px) * 0.035), 7px);
+  right: clamp(4px, calc(var(--bf-card-width, 124px) * 0.035), 7px);
   left: auto;
 }
 

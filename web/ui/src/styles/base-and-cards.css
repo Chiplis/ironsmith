@@ -251,10 +251,9 @@
   transform-origin: center center;
 }
 
-/* ---- Keep counter badges visible outside the card frame ----
-   Perspective transforms are reset above, so this container no longer needs
-   to clip the card rows. Counter rails intentionally sit a few pixels beyond
-   the top/right edge of their card. */
+/* ---- Keep counter badges aligned with the card frame ----
+   Perspective transforms are reset above, so this container can remain
+   visible while each rail stays inset inside its card bounds. */
 .battlefield-zone-entry[data-zone-id="battlefield"] {
   overflow: visible;
 }
@@ -315,6 +314,8 @@
   --card-return-y: 0px;
   --card-return-rotate: 0deg;
   --card-return-scale: 1;
+  --battlefield-card-scale: 1;
+  --battlefield-card-y: 0px;
   --battlefield-settle-x: 0px;
   --battlefield-settle-y: 0px;
   --card-jolt-x: 0px;
@@ -339,11 +340,11 @@
   transform:
     translate3d(
       calc(var(--card-translate-x) + var(--battlefield-settle-x) + var(--card-return-x) + var(--card-jolt-x)),
-      calc(var(--card-translate-y) + var(--battlefield-settle-y) + var(--card-return-y) + var(--card-jolt-y)),
+      calc(var(--card-translate-y) + var(--battlefield-settle-y) + var(--card-return-y) + var(--card-jolt-y) + var(--battlefield-card-y)),
       0
     )
     rotate(calc(var(--card-rotate) + var(--card-return-rotate) + var(--card-jolt-rotate)))
-    scale(var(--card-scale))
+    scale(calc(var(--card-scale) * var(--battlefield-card-scale)))
     scale(var(--card-return-scale))
     scale(var(--card-jolt-scale));
   filter: brightness(var(--card-flash-brightness)) saturate(var(--card-flash-saturate));
@@ -1188,6 +1189,14 @@
     inset 0 0 14px rgba(0, 0, 0, 0.26);
 }
 
+@media (min-width: 900px) {
+  .game-card.field-card:not(.battlefield-token-card):not(.battlefield-arena-card) {
+    --battlefield-card-scale: 1.15;
+    --battlefield-card-y: -6px;
+    transform-origin: center top;
+  }
+}
+
 .game-card.field-card.card-circuit-active {
   box-shadow:
     0 12px 22px rgba(0, 0, 0, 0.4),
@@ -1643,8 +1652,8 @@
 
 .battlefield-counter-rail {
   position: absolute;
-  top: clamp(-8px, calc(var(--bf-card-height, 96px) * -0.05), -3px);
-  right: clamp(-9px, calc(var(--bf-card-width, 124px) * -0.055), -4px);
+  top: clamp(4px, calc(var(--bf-card-height, 96px) * 0.035), 7px);
+  right: clamp(4px, calc(var(--bf-card-width, 124px) * 0.035), 7px);
   z-index: 30;
   display: flex;
   max-width: clamp(42px, calc(var(--bf-card-width, 124px) * 0.43), 58px);
@@ -1662,13 +1671,14 @@
   align-items: center;
   justify-content: center;
   gap: clamp(2px, calc(var(--bf-card-width, 124px) * 0.022), 3px);
-  width: clamp(30px, calc(var(--bf-card-width, 124px) * 0.28), 40px);
-  min-height: clamp(15px, calc(var(--bf-card-height, 96px) * 0.18), 20px);
+  width: clamp(36px, calc(var(--bf-card-width, 124px) * 0.34), 48px);
+  min-height: clamp(20px, calc(var(--bf-card-height, 96px) * 0.19), 27px);
   box-sizing: border-box;
-  padding: 0 clamp(3px, calc(var(--bf-card-width, 124px) * 0.038), 5px);
+  padding: 0 clamp(4px, calc(var(--bf-card-width, 124px) * 0.035), 5px)
+    0 clamp(19px, calc(var(--bf-card-width, 124px) * 0.17), 24px);
   overflow: visible;
   border: 1px solid var(--counter-stroke, #dcecff);
-  border-radius: 0;
+  border-radius: 4px 8px 8px 4px;
   background-color: var(--counter-fill, #1b2d49) !important;
   background-image: none;
   color: #fff;
@@ -1677,7 +1687,7 @@
   isolation: isolate;
   mix-blend-mode: normal;
   filter: none;
-  clip-path: polygon(10% 0, 90% 0, 100% 32%, 100% 100%, 0 100%, 0 32%);
+  clip-path: none;
   font-family: Rajdhani, "Avenir Next", "Segoe UI", system-ui, sans-serif;
   line-height: 1;
   box-shadow:
@@ -1685,15 +1695,37 @@
     0 2px 7px #000;
 }
 
-.battlefield-counter-chip--loyalty {
-  width: clamp(26px, calc(var(--bf-card-width, 124px) * 0.25), 34px);
-  height: clamp(26px, calc(var(--bf-card-width, 124px) * 0.25), 34px);
-  min-height: 0;
-  aspect-ratio: 1;
-  padding: 0;
-  border-radius: 0;
+.battlefield-counter-chip::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: -1px;
+  bottom: -1px;
+  z-index: 0;
+  width: clamp(21px, calc(var(--bf-card-width, 124px) * 0.2), 27px);
   border: 1px solid var(--counter-stroke, #dcecff);
-  clip-path: polygon(50% 0, 88% 17%, 82% 73%, 50% 100%, 18% 73%, 12% 17%);
+  border-radius: 4px 50% 50% 4px;
+  background: var(--counter-accent, #a7c3e7);
+  pointer-events: none;
+}
+
+.battlefield-counter-chip > .battlefield-counter-amount,
+.battlefield-counter-chip > .battlefield-counter-icon,
+.battlefield-counter-chip > .battlefield-counter-symbol {
+  position: relative;
+  z-index: 1;
+}
+
+.battlefield-counter-chip--loyalty {
+  width: clamp(36px, calc(var(--bf-card-width, 124px) * 0.34), 48px);
+  height: clamp(20px, calc(var(--bf-card-height, 96px) * 0.19), 27px);
+  min-height: 0;
+  aspect-ratio: auto;
+  padding: 0 clamp(4px, calc(var(--bf-card-width, 124px) * 0.035), 5px)
+    0 clamp(19px, calc(var(--bf-card-width, 124px) * 0.17), 24px);
+  border-radius: 4px 8px 8px 4px;
+  border: 1px solid var(--counter-stroke, #dcecff);
+  clip-path: none;
 }
 
 .battlefield-counter-chip--shape-charge,
@@ -1701,8 +1733,9 @@
   width: clamp(28px, calc(var(--bf-card-width, 124px) * 0.29), 38px);
   height: clamp(24px, calc(var(--bf-card-height, 96px) * 0.24), 32px);
   min-height: 0;
-  padding: 0 clamp(4px, calc(var(--bf-card-width, 124px) * 0.035), 5px);
-  border-radius: 999px;
+  padding: 0 clamp(4px, calc(var(--bf-card-width, 124px) * 0.035), 5px)
+    0 clamp(19px, calc(var(--bf-card-width, 124px) * 0.17), 24px);
+  border-radius: 4px 8px 8px 4px;
   clip-path: none;
   justify-content: space-between;
 }
@@ -1717,11 +1750,33 @@
   clip-path: polygon(0 0, 84% 0, 100% 24%, 100% 100%, 0 100%);
 }
 
+.battlefield-counter-chip--shape-charge::before,
+.battlefield-counter-chip--shape-time::before {
+  width: clamp(22px, calc(var(--bf-card-height, 96px) * 0.23), 29px);
+  border-radius: 50%;
+}
+
+.battlefield-counter-chip--shape-loyalty::before {
+  width: clamp(22px, calc(var(--bf-card-height, 96px) * 0.23), 29px);
+  border-radius: 4px;
+  clip-path: polygon(50% 0, 90% 16%, 84% 73%, 50% 100%, 16% 73%, 10% 16%);
+}
+
+.battlefield-counter-chip--shape-lore::before {
+  border-radius: 3px 6px 6px 3px;
+  clip-path: polygon(0 0, 82% 0, 100% 23%, 100% 100%, 0 100%);
+}
+
+.battlefield-counter-chip--shape-power-toughness::before {
+  border-radius: 3px 6px 6px 3px;
+  clip-path: polygon(10% 0, 86% 0, 100% 23%, 100% 100%, 0 100%, 0 23%);
+}
+
 .battlefield-counter-chip--loyalty .battlefield-counter-icon {
-  position: absolute;
-  inset: 2px;
-  width: calc(100% - 4px);
-  height: calc(100% - 4px);
+  position: relative;
+  inset: auto;
+  width: clamp(11px, calc(var(--bf-card-width, 124px) * 0.1), 14px);
+  height: clamp(11px, calc(var(--bf-card-width, 124px) * 0.1), 14px);
   opacity: 1;
 }
 
@@ -1730,7 +1785,7 @@
   z-index: 1;
   font-size: clamp(12px, calc(var(--bf-card-width, 124px) * 0.12), 16px);
   letter-spacing: -0.05em;
-  -webkit-text-stroke: 0.75px var(--counter-fill, #1f2a38);
+  -webkit-text-stroke: 0;
 }
 
 .battlefield-counter-chip--power-toughness {

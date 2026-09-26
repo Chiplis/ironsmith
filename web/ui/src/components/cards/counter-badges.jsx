@@ -247,8 +247,8 @@ export function BattlefieldCounterBadge({ badge }) {
         </>
       ) : (
         <>
-          <span className="battlefield-counter-amount">{ui(amountLabel)}</span>
           {icon}
+          <span className="battlefield-counter-amount">{ui(amountLabel)}</span>
         </>
       )}
     </span>
