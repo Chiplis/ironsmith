@@ -64,6 +64,8 @@ function counterPalette(rawKind) {
       return { accent: "#f1b561", fill: "#612e09", stroke: "#ffd7a2" };
     case "Charge":
       return { accent: "#6bc2ff", fill: "#12355b", stroke: "#bbebff" };
+    case "Time":
+      return { accent: "#6cb8ff", fill: "#123b63", stroke: "#c2e7ff" };
     case "Shield":
       return { accent: "#84d6cf", fill: "#123f3b", stroke: "#c5f7ef" };
     case "Stun":
@@ -75,6 +77,16 @@ function counterPalette(rawKind) {
     default:
       return { accent: "#a7c3e7", fill: "#1b2d49", stroke: "#dcecff" };
   }
+}
+
+function counterShapeClass(rawKind, variant) {
+  const key = String(rawKind || "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replace(/\s+/g, " ");
+  if (["charge", "time", "loyalty", "lore"].includes(key)) return key;
+  return variant === "power-toughness" ? "power-toughness" : "standard";
 }
 
 function counterIconClass(rawKind) {
@@ -158,6 +170,7 @@ export function buildCounterBadge(counter) {
       displayLabel: "+1/+1",
       shortLabel: "+1",
       variant,
+      shapeClassName: counterShapeClass(rawKind, variant),
       iconClassName: counterIconClass(rawKind),
       palette: counterPalette(rawKind),
       icon: counterSymbolUrl(rawKind),
@@ -170,6 +183,7 @@ export function buildCounterBadge(counter) {
       displayLabel: "-1/-1",
       shortLabel: "-1",
       variant,
+      shapeClassName: counterShapeClass(rawKind, variant),
       iconClassName: counterIconClass(rawKind),
       palette: counterPalette(rawKind),
       icon: counterSymbolUrl(rawKind),
@@ -183,6 +197,7 @@ export function buildCounterBadge(counter) {
     displayLabel,
     shortLabel: powerToughnessLabel || abbreviateCounterKind(rawKind),
     variant,
+    shapeClassName: counterShapeClass(rawKind, variant),
     iconClassName: counterIconClass(rawKind),
     palette: counterPalette(displayLabel),
     icon: counterSymbolUrl(rawKind),
@@ -205,7 +220,7 @@ export function BattlefieldCounterBadge({ badge }) {
 
   return (
     <span
-      className={`battlefield-counter-chip battlefield-counter-chip--${badge.variant || "standard"}`}
+      className={`battlefield-counter-chip battlefield-counter-chip--${badge.variant || "standard"} battlefield-counter-chip--shape-${badge.shapeClassName || "standard"}`}
       title={ui(badge.fullLabel)}
       role="img"
       aria-label={ui(badge.fullLabel)}
@@ -221,6 +236,11 @@ export function BattlefieldCounterBadge({ badge }) {
           <span className="battlefield-counter-amount">{ui(amountLabel)}</span>
         </>
       ) : badge.variant === "power-toughness" ? (
+        <>
+          {icon}
+          <span className="battlefield-counter-amount">{ui(amountLabel)}</span>
+        </>
+      ) : badge.shapeClassName === "charge" || badge.shapeClassName === "time" ? (
         <>
           {icon}
           <span className="battlefield-counter-amount">{ui(amountLabel)}</span>

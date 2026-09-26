@@ -1696,6 +1696,27 @@
   clip-path: polygon(50% 0, 88% 17%, 82% 73%, 50% 100%, 18% 73%, 12% 17%);
 }
 
+.battlefield-counter-chip--shape-charge,
+.battlefield-counter-chip--shape-time {
+  width: clamp(28px, calc(var(--bf-card-width, 124px) * 0.29), 38px);
+  height: clamp(24px, calc(var(--bf-card-height, 96px) * 0.24), 32px);
+  min-height: 0;
+  padding: 0 clamp(4px, calc(var(--bf-card-width, 124px) * 0.035), 5px);
+  border-radius: 999px;
+  clip-path: none;
+  justify-content: space-between;
+}
+
+.battlefield-counter-chip--shape-lore {
+  border-radius: 2px 7px 7px 2px;
+  clip-path: polygon(0 0, 84% 0, 100% 24%, 100% 100%, 0 100%);
+}
+
+.battlefield-counter-chip--shape-power-toughness {
+  border-radius: 3px 6px 6px 3px;
+  clip-path: polygon(0 0, 84% 0, 100% 24%, 100% 100%, 0 100%);
+}
+
 .battlefield-counter-chip--loyalty .battlefield-counter-icon {
   position: absolute;
   inset: 2px;
