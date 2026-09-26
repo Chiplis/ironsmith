@@ -349,7 +349,8 @@ fn materialize_self_spell_cost_facts(
                 crate::static_abilities::ThisSpellCostReductionManaCost::new(
                     reduction.cost.clone(),
                     crate::static_abilities::ThisSpellCostCondition::Always,
-                ),
+                )
+                .with_colored_only(reduction.colored_only),
             )
         }
         _ => ability,
@@ -1320,16 +1321,25 @@ fn materialize_optional_cost(
     builder = builder.optional_cost(cost);
     match kind {
         crate::cost::OptionalCostKind::Squad => {
-            builder = builder.with_ability(Ability::triggered(
-                crate::triggers::Trigger::this_enters_battlefield(),
-                vec![crate::effect::Effect::new(
-                    crate::effects::CreateTokenCopyEffect::new(
-                        ChooseSpec::Source,
-                        crate::effect::Value::TimesPaidLabel(reference),
-                        PlayerFilter::You,
-                    ),
-                )],
-            ));
+            // CR 702.157a: "When this creature enters, if its squad cost was
+            // paid, create a token that's a copy of it for each time its squad
+            // cost was paid."
+            builder = builder.with_ability(Ability {
+                kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                    trigger: crate::triggers::Trigger::this_enters_battlefield(),
+                    effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                        crate::effect::Effect::new(crate::effects::CreateTokenCopyEffect::new(
+                            ChooseSpec::Source,
+                            crate::effect::Value::TimesPaidLabel(reference.clone()),
+                            PlayerFilter::You,
+                        )),
+                    ]),
+                    choices: Vec::new(),
+                    intervening_if: Some(crate::effect::Condition::ThisSpellPaidLabel(reference)),
+                    presentation_label: None,
+                }),
+                functional_zones: vec![Zone::Battlefield],
+            });
         }
         crate::cost::OptionalCostKind::Offspring => {
             builder = builder.with_ability(Ability {

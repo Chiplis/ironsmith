@@ -172,6 +172,25 @@ impl GameState {
             .collect::<HashMap<_, _>>();
         let changed = previous_controllers.keys().copied().collect::<Vec<_>>();
 
+        // CR 701.54a: a creature stops being a player's Ring-bearer when
+        // another player gains control of it, and the designation doesn't
+        // come back if control later returns.
+        let lost_ring_bearers = self
+            .players
+            .iter()
+            .filter(|player| {
+                player.ring_bearer.is_some_and(|bearer| {
+                    controllers
+                        .get(&bearer)
+                        .is_some_and(|controller| *controller != player.id)
+                })
+            })
+            .map(|player| player.id)
+            .collect::<Vec<_>>();
+        for player in lost_ring_bearers {
+            self.clear_ring_bearer(player);
+        }
+
         self.battlefield_flags_mut().controller_at_last_refresh = controllers;
         for &id in &changed {
             self.set_summoning_sick(id);
@@ -1019,13 +1038,13 @@ impl GameState {
     /// CR 709.5d: a Room entering without either half cast has neither
     /// unlocked designation; until a door unlocks it has no name, mana cost or
     /// rules text from either half (CR 709.5).
-    pub(crate) fn room_has_no_unlocked_door(&self, object_id: ObjectId) -> bool {
+    pub fn room_has_no_unlocked_door(&self, object_id: ObjectId) -> bool {
         self.battlefield_flags
             .rooms_with_no_unlocked_door
             .contains(&object_id)
     }
 
-    pub(crate) fn mark_room_entered_with_no_unlocked_door(&mut self, object_id: ObjectId) {
+    pub fn mark_room_entered_with_no_unlocked_door(&mut self, object_id: ObjectId) {
         if self
             .battlefield_flags_mut()
             .rooms_with_no_unlocked_door
@@ -1068,7 +1087,14 @@ impl GameState {
         changed
     }
 
-    pub(crate) fn mark_room_fully_unlocked(&mut self, object_id: ObjectId) {
+    /// CR 709.5e: whether this Room has both unlocked designations.
+    pub fn is_room_fully_unlocked(&self, object_id: ObjectId) -> bool {
+        self.battlefield_flags
+            .fully_unlocked_rooms
+            .contains(&object_id)
+    }
+
+    pub fn mark_room_fully_unlocked(&mut self, object_id: ObjectId) {
         self.battlefield_flags_mut()
             .fully_unlocked_rooms
             .insert(object_id);
@@ -3191,8 +3217,7 @@ impl GameState {
             .filter(|object| {
                 ability_effects_can_add_triggers
                     || object.abilities.iter().any(|ability| {
-                        matches!(ability.kind, AbilityKind::Triggered(_))
-                            && ability.functions_in(&object.zone)
+                        Self::ability_is_trigger_lookback_relevant(ability, object.zone)
                     })
             })
             .map(|object| {
@@ -3203,11 +3228,27 @@ impl GameState {
             })
             .filter(|snapshot| {
                 snapshot.abilities.iter().any(|ability| {
-                    matches!(ability.kind, AbilityKind::Triggered(_))
-                        && ability.functions_in(&snapshot.zone)
+                    Self::ability_is_trigger_lookback_relevant(ability, snapshot.zone)
                 })
             })
             .collect()
+    }
+
+    /// Triggered abilities, plus the statics that make other abilities
+    /// trigger additional times or not at all (Teysa Karlov, Drivnod): a
+    /// leaves-the-battlefield trigger looks back at both (CR 603.10a).
+    fn ability_is_trigger_lookback_relevant(ability: &crate::ability::Ability, zone: Zone) -> bool {
+        if !ability.functions_in(&zone) {
+            return false;
+        }
+        match &ability.kind {
+            AbilityKind::Triggered(_) => true,
+            AbilityKind::Static(static_ability) => {
+                static_ability.trigger_duplication_spec().is_some()
+                    || static_ability.trigger_suppression_spec().is_some()
+            }
+            _ => false,
+        }
     }
 
     fn modification_can_change_triggered_abilities(modification: &Modification) -> bool {

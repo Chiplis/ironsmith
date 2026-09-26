@@ -149,8 +149,33 @@ pub(crate) fn add_entry_lore_counters(
     if amount == 0 {
         return;
     }
+    // CR 122.6 / 614.1: the lore counters a Saga enters with are "put" on it,
+    // so counter replacements and "can't have counters" effects apply.
+    let amount = crate::events::processing::process_put_counters_with_event_with_dm(
+        game,
+        saga_id,
+        CounterType::Lore,
+        amount,
+        saga_entry_lore_cause(game, saga_id),
+        decision_maker,
+    );
+    if amount == 0 {
+        return;
+    }
     if let Some(event) = game.add_counters(saga_id, CounterType::Lore, amount) {
         game.queue_trigger_event(event.provenance(), event);
+    }
+}
+
+/// The entry lore counter (CR 714.3a) is placed like other counters a
+/// permanent enters with, attributed to the Saga and its controller.
+fn saga_entry_lore_cause(game: &GameState, saga_id: ObjectId) -> crate::events::cause::EventCause {
+    match game
+        .object(saga_id)
+        .map(|object| game.controller_of(object))
+    {
+        Some(controller) => crate::events::cause::EventCause::from_effect(saga_id, controller),
+        None => crate::events::cause::EventCause::effect(),
     }
 }
 
@@ -192,7 +217,8 @@ pub fn handle_saga_enters_battlefield(
         1
     };
 
-    add_lore_counters_and_check_chapters(game, saga_id, amount, trigger_queue);
+    let cause = saga_entry_lore_cause(game, saga_id);
+    add_lore_counters_and_check_chapters_with_cause(game, saga_id, amount, cause, trigger_queue);
 }
 
 fn choose_read_ahead_chapter(
@@ -269,6 +295,36 @@ pub fn add_lore_counters_and_check_chapters(
     amount: u32,
     trigger_queue: &mut TriggerQueue,
 ) {
+    // CR 714.3b: the precombat-main lore counter is a turn-based action, not
+    // an effect ("if an effect would put counters" replacements don't apply).
+    add_lore_counters_and_check_chapters_with_cause(
+        game,
+        saga_id,
+        amount,
+        crate::events::cause::EventCause::from_game_rule(),
+        trigger_queue,
+    );
+}
+
+/// Put lore counters through the counter-placement pipeline (replacements
+/// and "can't have counters", CR 614.1 / 122.6), then check chapters.
+fn add_lore_counters_and_check_chapters_with_cause(
+    game: &mut GameState,
+    saga_id: ObjectId,
+    amount: u32,
+    cause: crate::events::cause::EventCause,
+    trigger_queue: &mut TriggerQueue,
+) {
+    if amount == 0 {
+        return;
+    }
+    let amount = crate::events::processing::process_put_counters_with_event(
+        game,
+        saga_id,
+        CounterType::Lore,
+        amount,
+        cause,
+    );
     if amount == 0 {
         return;
     }

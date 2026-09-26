@@ -21,7 +21,7 @@ use crate::zone::Zone;
 pub use ironsmith_core::DiscoverEffect;
 
 use super::runtime_helpers::{
-    EffectDrivenCastOption, cast_effect_driven_spell_without_paying,
+    cast_effect_driven_spell_without_paying, effect_driven_cast_options_for_card,
     register_effect_driven_spell_cast,
 };
 
@@ -101,20 +101,49 @@ impl EffectExecutor for DiscoverEffect {
 
             let mut put_in_hand = !should_cast;
             if should_cast {
+                // CR 701.57a: any face whose resulting spell has mana value N
+                // or less may be cast (the other half of a split card, an
+                // Adventure, an MDFC back face).
                 let from_zone = candidate_obj.zone;
-                let option = EffectDrivenCastOption {
-                    object_id: candidate_id,
+                let filter = crate::target::ObjectFilter::nonland().with_mana_value(
+                    crate::filter::Comparison::LessThanOrEqual(count as i32),
+                );
+                let options = effect_driven_cast_options_for_card(
+                    game,
+                    player_id,
+                    ctx.source,
+                    candidate_id,
                     from_zone,
-                    casting_method: crate::alternative_cast::CastingMethod::PlayFrom {
-                        source: ctx.source,
-                        zone: from_zone,
-                        use_alternative: None,
-                    },
-                    label: format!("Cast {candidate_name}"),
+                    &filter,
+                );
+                let option = match options.len() {
+                    0 => None,
+                    1 => options.into_iter().next(),
+                    _ => {
+                        let choices = options
+                            .into_iter()
+                            .map(|option| (option.label.clone(), option))
+                            .collect::<Vec<_>>();
+                        let choice = crate::decisions::ask_choose_one(
+                            game,
+                            ctx.decision_maker,
+                            player_id,
+                            ctx.source,
+                            &choices,
+                        );
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(EffectOutcome::count(0));
+                        }
+                        choice
+                    }
                 };
-                if let Some(result) =
-                    cast_effect_driven_spell_without_paying(game, ctx, player_id, &option)?
-                {
+                let cast_result = match option {
+                    Some(option) => {
+                        cast_effect_driven_spell_without_paying(game, ctx, player_id, &option)?
+                    }
+                    None => None,
+                };
+                if let Some(result) = cast_result {
                     selected_object = Some(result.new_id);
                     casted_spell = Some((result.new_id, result.from_zone));
                 } else if ctx.decision_maker.awaiting_choice() {

@@ -3352,6 +3352,17 @@ impl<
         Self::identified(StaticAbilityId::DungeonRoomTriggerDuplication, text)
     }
 
+    /// CR 702.16n: "This effect doesn't remove this Aura." (`all_auras`
+    /// false) or "This effect doesn't remove Auras." (`all_auras` true).
+    pub fn protection_doesnt_remove_auras(all_auras: bool, text: impl Into<String>) -> Self {
+        let id = if all_auras {
+            StaticAbilityId::ProtectionDoesntRemoveAuras
+        } else {
+            StaticAbilityId::ProtectionDoesntRemoveThisAura
+        };
+        Self::identified(id, text)
+    }
+
     fn known_keyword_marker(text: &str) -> Option<Self> {
         let normalized = text.trim().trim_end_matches('.').to_ascii_lowercase();
         if normalized.ends_with(" can't be blocked") || normalized.ends_with(" cant be blocked") {

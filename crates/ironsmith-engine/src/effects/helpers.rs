@@ -143,6 +143,11 @@ pub(crate) fn resolve_tagged_object_id(
     game: &GameState,
     snapshot: &ObjectSnapshot,
 ) -> Option<ObjectId> {
+    // A tag naming an ability on the stack by its own stack id ("that spell
+    // or ability") keeps naming that entry, not the source's current object.
+    if game.stack_ability_entry(snapshot.object_id).is_some() {
+        return Some(snapshot.object_id);
+    }
     // Zone changes create a fresh ObjectId while retaining the stable
     // identity. Prefer that indexed current object when a tag snapshot is
     // stale; the old object record may remain available for LKI queries.

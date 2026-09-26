@@ -19,7 +19,22 @@ impl EffectExecutor for SetClassLevelEffect {
             return Ok(EffectOutcome::target_invalid());
         }
         let changed = game.set_class_level(ctx.source, self.level);
-        Ok(EffectOutcome::count(i32::from(changed)))
+        let outcome = EffectOutcome::count(i32::from(changed));
+        if !changed {
+            return Ok(outcome);
+        }
+        // CR 716.2a: "When this Class becomes level N" triggers on the level
+        // change itself.
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::KeywordActionEvent::new(
+                crate::events::KeywordActionKind::GainClassLevel,
+                ctx.controller,
+                ctx.source,
+                self.level,
+            ),
+            ctx.provenance,
+        );
+        Ok(outcome.with_event(event))
     }
 }
 

@@ -489,6 +489,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         ),
         TriggerSpec::ThisMutates => Trigger::this_mutates(),
         TriggerSpec::ThisBecomesMonstrous => Trigger::this_becomes_monstrous(),
+        TriggerSpec::ThisClassBecomesLevel(level) => Trigger::class_becomes_level(level),
         TriggerSpec::ThisBecomesTapped => Trigger::becomes_tapped(),
         TriggerSpec::PermanentBecomesTapped(filter) => Trigger::permanent_becomes_tapped(filter),
         TriggerSpec::ThisBecomesUntapped => Trigger::becomes_untapped(),

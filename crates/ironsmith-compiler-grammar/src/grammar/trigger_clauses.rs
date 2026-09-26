@@ -497,8 +497,9 @@ pub fn parse_players_attacked_clause(tokens: &[OwnedLexToken]) -> Option<Players
 pub fn parse_fully_unlock_room_trigger(tokens: &[OwnedLexToken]) -> Option<FullyUnlockRoomTrigger> {
     let words = primitives::TokenWordView::new(tokens).word_refs();
     primitives::parse_full_word_slice(&words, parse_fully_unlock_room_words)?;
+    // CR 709.5i: "fully unlock" is its own event, not every door unlock.
     Some(FullyUnlockRoomTrigger {
-        action: KeywordActionKind::UnlockDoor,
+        action: KeywordActionKind::FullyUnlockRoom,
         player: PlayerFilter::You,
         source_filter: ObjectFilter::default().with_subtype(Subtype::Room),
     })

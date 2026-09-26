@@ -35,3 +35,51 @@ pub use remove_any_counters_from_source::RemoveAnyCountersFromSourceEffect;
 pub use remove_counters::RemoveCountersEffect;
 pub use remove_up_to_any_counters::RemoveUpToAnyCountersEffect;
 pub use remove_up_to_counters::RemoveUpToCountersEffect;
+
+use crate::effects::ExecutionContext;
+use crate::game_state::GameState;
+use crate::ids::ObjectId;
+use crate::object::CounterType;
+
+/// CR 122.5: a counter can be moved only if it can be put onto the second
+/// object; otherwise nothing is removed and nothing is put. This covers both
+/// "can't have counters" and kind-specific prohibitions (Melira).
+pub(crate) fn move_destination_can_receive_counters(
+    game: &GameState,
+    to_id: ObjectId,
+    counter_type: CounterType,
+) -> bool {
+    game.object(to_id).is_some() && game.can_have_counter_type_placed(to_id, counter_type)
+}
+
+/// The "put" half of moving counters (CR 122.5, 122.8) is an ordinary
+/// counter placement, so counter replacements apply to it (CR 614.1).
+pub(crate) fn put_moved_counters(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    to_id: ObjectId,
+    counter_type: CounterType,
+    count: u32,
+) -> Option<crate::triggers::TriggerEvent> {
+    if count == 0 {
+        return None;
+    }
+    let final_count = crate::events::processing::process_put_counters_with_event_with_dm(
+        game,
+        to_id,
+        counter_type,
+        count,
+        ctx.cause.clone(),
+        &mut *ctx.decision_maker,
+    );
+    if final_count == 0 {
+        return None;
+    }
+    game.add_counters_with_source(
+        to_id,
+        counter_type,
+        final_count,
+        Some(ctx.source),
+        Some(ctx.controller),
+    )
+}

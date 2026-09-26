@@ -94,7 +94,8 @@ impl TriggerMatcher for ThisDealsDamageTrigger {
         let Some(e) = event.downcast::<DamageEvent>() else {
             return false;
         };
-        if e.source != ctx.source_id {
+        // CR 615.1: prevented damage is never dealt.
+        if e.source != ctx.source_id || e.amount == 0 {
             return false;
         }
         if self.combat_only && !e.is_combat {

@@ -1060,9 +1060,53 @@ impl GameState {
         if !self.has_day_night && (sets_day_if_unset || daybound_or_nightbound) {
             self.set_daytime(true);
         }
+        // CR 702.145b / 712.14: if it is night, a daybound double-faced
+        // permanent enters transformed. Entering transformed isn't
+        // transforming, so no transform event, "As this transforms" program or
+        // transform count is produced for it.
+        if daybound_or_nightbound && self.has_day_night && self.is_night {
+            self.enter_daybound_permanent_transformed(id);
+        }
         if daybound_or_nightbound {
             self.apply_day_nightbound_transformations();
         }
+    }
+
+    /// Put a just-entered daybound permanent back face up (CR 702.145b).
+    fn enter_daybound_permanent_transformed(&mut self, id: ObjectId) -> bool {
+        let Some(target) = self.object(id) else {
+            return false;
+        };
+        if target.zone != Zone::Battlefield
+            || target.linked_face_layout != LinkedFaceLayout::TransformLike
+            || !Self::object_has_daybound_keyword(target)
+            || self
+                .commander_tracking
+                .merged_permanents
+                .contains_key(&target.stable_id)
+        {
+            return false;
+        }
+        let Some(other_def) = self.linked_face_definition_by_name_or_id(
+            target.other_face_name.as_deref(),
+            target.other_face,
+        ) else {
+            return false;
+        };
+        if other_def.card.card_types.contains(&CardType::Instant)
+            || other_def.card.card_types.contains(&CardType::Sorcery)
+        {
+            return false;
+        }
+        let handles = self.object_store.shared_handles_for_definition(&other_def);
+        if let Some(obj) = self.object_mut(id) {
+            obj.apply_definition_face_with_shared(&other_def, &handles);
+        }
+        self.mark_continuous_state_dirty();
+        // It is a transformed permanent (back face up), so the face parity
+        // reads odd; no transform happened, so no event or new timestamp.
+        self.battlefield_flags_mut().transform_count.insert(id, 1);
+        true
     }
 
     /// Set the global day/night designation and transform daybound/nightbound permanents.
@@ -1369,6 +1413,28 @@ impl GameState {
             .remove(&id);
     }
 
+    /// Open the miracle cast window while the card's miracle trigger casts it.
+    pub(crate) fn authorize_miracle_cast(&mut self, id: ObjectId) {
+        self.cast_permission_flags_mut()
+            .miracle_cast_authorized
+            .insert(id);
+    }
+
+    /// Close the miracle cast window.
+    pub(crate) fn revoke_miracle_cast(&mut self, id: ObjectId) {
+        self.cast_permission_flags_mut()
+            .miracle_cast_authorized
+            .remove(&id);
+    }
+
+    /// Whether this card may be cast for its miracle cost now: only while its
+    /// miracle trigger resolves (CR 702.94a).
+    pub fn miracle_cast_is_authorized(&self, id: ObjectId) -> bool {
+        self.cast_permission_flags
+            .miracle_cast_authorized
+            .contains(&id)
+    }
+
     /// Whether `player` may cast this exiled card for its madness cost now:
     /// only its owner, only while its madness trigger resolves (CR 702.35a).
     pub fn madness_cast_is_authorized(&self, id: ObjectId, player: PlayerId) -> bool {
@@ -1428,12 +1494,36 @@ impl GameState {
 
     /// Check if a card is exiled because its Adventure spell resolved.
     pub fn is_adventure_exiled(&self, id: ObjectId) -> bool {
-        self.cast_permission_flags.adventure_exiled.contains(&id)
+        self.cast_permission_flags
+            .adventure_exiled
+            .contains_key(&id)
     }
 
-    /// Mark a card as exiled because its Adventure spell resolved.
+    /// The player who may play a card exiled by its resolving Adventure
+    /// spell: the controller of that spell, not necessarily the card's owner
+    /// (CR 715.3d).
+    pub fn adventure_exiled_player(&self, id: ObjectId) -> Option<PlayerId> {
+        self.cast_permission_flags
+            .adventure_exiled
+            .get(&id)
+            .copied()
+    }
+
+    /// Mark a card as exiled because its Adventure spell resolved, playable
+    /// by its owner.
     pub fn set_adventure_exiled(&mut self, id: ObjectId) {
-        self.cast_permission_flags_mut().adventure_exiled.insert(id);
+        let Some(owner) = self.object(id).map(|object| object.owner) else {
+            return;
+        };
+        self.set_adventure_exiled_for(id, owner);
+    }
+
+    /// Mark a card as exiled because an Adventure spell controlled by
+    /// `player` resolved (CR 715.3d).
+    pub fn set_adventure_exiled_for(&mut self, id: ObjectId, player: PlayerId) {
+        self.cast_permission_flags_mut()
+            .adventure_exiled
+            .insert(id, player);
     }
 
     /// Clear adventure exiled status.
@@ -1647,9 +1737,15 @@ impl GameState {
                 .into_iter()
                 .collect();
         }
+        // CR 310.11a: a Siege's protector is an opponent of its controller,
+        // never a teammate.
         self.players
             .iter()
-            .filter(|player| player.id != controller && player.is_in_game())
+            .filter(|player| {
+                player.id != controller
+                    && player.is_in_game()
+                    && self.are_opponents(controller, player.id)
+            })
             .map(|player| player.id)
             .collect()
     }

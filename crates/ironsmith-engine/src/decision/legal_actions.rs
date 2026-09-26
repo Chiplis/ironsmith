@@ -544,10 +544,7 @@ fn append_adventure_exiled_land_play_actions(
         let Some(card) = game.object(card_id) else {
             continue;
         };
-        if !game.is_adventure_exiled(card_id)
-            || !card.is_land()
-            || game.controller_of(card) != player
-        {
+        if game.adventure_exiled_player(card_id) != Some(player) || !card.is_land() {
             continue;
         }
 
@@ -790,8 +787,9 @@ fn add_exile_cast_actions(
         );
         // A prepare spell copy waits in exile for exactly one caster: whoever
         // controls the prepared permanent right now.
-        if (game.is_adventure_exiled(card_id) || game.is_prepared_spell_copy(card_id))
-            && game.controller_of(card) == player
+        // CR 715.3d: the Adventure spell's controller may cast the card.
+        if (game.adventure_exiled_player(card_id) == Some(player)
+            || (game.is_prepared_spell_copy(card_id) && game.controller_of(card) == player))
             && can_cast_spell_with_view(game, player, card, &CastingMethod::Normal, view)
         {
             actions.push(LegalAction::CastSpell {
@@ -1578,35 +1576,42 @@ fn player_may_activate_loyalty_abilities_any_time(
     let Some(activated_object) = game.object(source) else {
         return false;
     };
-    game.battlefield.iter().copied().any(|permission_source| {
-        let Some(object) = game.object(permission_source) else {
-            return false;
-        };
-        if game.controller_of(object) != controller {
-            return false;
-        }
-        let abilities = view
-            .abilities_rc(permission_source)
-            .unwrap_or_else(|| std::sync::Arc::new(object.abilities_vec()));
-        let ctx = game.filter_context_for(controller, Some(permission_source));
-        abilities.iter().any(|ability| {
-            if !ability.functional_zones.contains(&Zone::Battlefield) {
+    // Emblems grant the permission from the command zone (CR 114.4), e.g.
+    // Teferi, Temporal Archmage's emblem.
+    game.battlefield
+        .iter()
+        .copied()
+        .chain(game.command_zone.iter().copied())
+        .any(|permission_source| {
+            let Some(object) = game.object(permission_source) else {
+                return false;
+            };
+            if game.controller_of(object) != controller {
                 return false;
             }
-            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
-                return false;
-            };
-            let Some(model) = static_ability.compiled_model() else {
-                return false;
-            };
-            let ironsmith_core::StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter } =
-                &model.payload
-            else {
-                return false;
-            };
-            filter.matches(activated_object, &ctx, game)
+            let permission_zone = object.zone;
+            let abilities = view
+                .abilities_rc(permission_source)
+                .unwrap_or_else(|| std::sync::Arc::new(object.abilities_vec()));
+            let ctx = game.filter_context_for(controller, Some(permission_source));
+            abilities.iter().any(|ability| {
+                if !ability.functional_zones.contains(&permission_zone) {
+                    return false;
+                }
+                let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                    return false;
+                };
+                let Some(model) = static_ability.compiled_model() else {
+                    return false;
+                };
+                let ironsmith_core::StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter } =
+                    &model.payload
+                else {
+                    return false;
+                };
+                filter.matches(activated_object, &ctx, game)
+            })
         })
-    })
 }
 
 fn player_may_activate_equip_abilities_any_time(
@@ -2380,19 +2385,77 @@ pub fn compute_commander_actions(game: &GameState, player: PlayerId) -> Vec<Lega
                 && let Some(commander) = game.object(current_id)
             {
                 // Only if the commander is in the command zone
-                if commander.zone == Zone::Command
-                    && can_cast_spell_with_view(
-                        game,
-                        player,
-                        commander,
-                        &CastingMethod::Normal,
-                        &view,
-                    )
-                {
+                if commander.zone != Zone::Command {
+                    continue;
+                }
+                // CR 903.8 / 601.2b: casting from the command zone offers every
+                // choice a cast from hand would (alternative costs, the other
+                // face or Adventure half, face down); commander tax is then
+                // added to whichever total cost was chosen.
+                let mut methods = vec![CastingMethod::Normal];
+                if spell_can_be_cast_face_down(game, commander) {
+                    methods.push(CastingMethod::FaceDown);
+                }
+                if spell_has_castable_linked_other_half(game, commander) {
+                    methods.push(CastingMethod::SplitOtherHalf);
+                }
+                for casting_method in methods {
+                    if can_cast_spell_with_view(game, player, commander, &casting_method, &view) {
+                        actions.push(LegalAction::CastSpell {
+                            spell_id: current_id,
+                            from_zone: Zone::Command,
+                            casting_method,
+                        });
+                    }
+                }
+                for (idx, alt_cast) in commander.alternative_casts.iter().enumerate() {
+                    // Alternatives that aren't tied to another zone (dash,
+                    // blitz, evoke, emerge, prowl...) report the hand as
+                    // their casting zone.
+                    if alt_cast.cast_from_zone() == Zone::Hand
+                        && can_cast_with_alternative_from_hand_with_view(
+                            game, player, commander, current_id, alt_cast, &view,
+                        )
+                    {
+                        actions.push(LegalAction::CastSpell {
+                            spell_id: current_id,
+                            from_zone: Zone::Command,
+                            casting_method: CastingMethod::Alternative(idx),
+                        });
+                    }
+                }
+                // Cost-replacement grants from other permanents ("you may pay
+                // {W}{U}{B}{R}{G} rather than pay the mana cost for spells you
+                // cast": Fist of Suns, Jodah) are registered for hand casts but
+                // apply to any spell you cast, the commander included. Lookups
+                // for `Zone::Command` read those hand grants
+                // (`alternative_cast_grant_zone`), while the cast method keeps
+                // the command zone as its origin and commander tax still applies.
+                let granted_casts =
+                    view.granted_alternative_casts_for_card(current_id, Zone::Command, player);
+                let base_alt_idx = commander.alternative_casts.len();
+                for (offset, grant) in granted_casts.iter().enumerate() {
+                    if grant.method.cast_from_zone() != Zone::Hand
+                        || !grant_usage_limit_allows(game, player, grant.source_id, grant.usage_limit)
+                        || !can_cast_with_alternative_from_hand_with_view(
+                            game,
+                            player,
+                            commander,
+                            current_id,
+                            &grant.method,
+                            &view,
+                        )
+                    {
+                        continue;
+                    }
                     actions.push(LegalAction::CastSpell {
                         spell_id: current_id,
                         from_zone: Zone::Command,
-                        casting_method: CastingMethod::Normal,
+                        casting_method: CastingMethod::PlayFrom {
+                            source: grant.source_id,
+                            zone: Zone::Command,
+                            use_alternative: Some(base_alt_idx + offset),
+                        },
                     });
                 }
             }

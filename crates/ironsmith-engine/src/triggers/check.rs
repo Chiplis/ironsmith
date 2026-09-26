@@ -123,6 +123,11 @@ fn trigger_entry_x_value(trigger_event: &TriggerEvent, fallback: Option<u32>) ->
                 .downcast::<crate::events::spells::AbilityActivatedEvent>()
                 .and_then(|event| event.x_value)
         })
+        .or_else(|| {
+            trigger_event
+                .downcast::<crate::events::other::KeywordActionEvent>()
+                .and_then(|event| event.x_value)
+        })
         .or(fallback)
 }
 
@@ -779,7 +784,60 @@ fn additional_trigger_copies_for_entry(
         }
     }
 
+    // CR 603.10a: a leaves-the-battlefield ability looks back in time, using
+    // the abilities that existed immediately before the event. A duplicator
+    // that left in the same event (Teysa Karlov dying alongside the other
+    // creatures) still makes those death triggers trigger an additional time.
+    for_each_departed_lookback_static(game, entry, |snapshot, static_ability| {
+        let Some(spec) = static_ability.trigger_duplication_spec() else {
+            return;
+        };
+        if trigger_entry_matches_specs(
+            game,
+            view,
+            entry,
+            snapshot.controller,
+            snapshot.object_id,
+            spec.source_filter.as_ref(),
+            spec.event_matcher.as_ref(),
+            spec.source_matcher,
+        ) {
+            copies += spec.copies;
+        }
+    });
+
     copies
+}
+
+/// Visit the battlefield static abilities of permanents that left the
+/// battlefield in the entry's triggering event, from their look-back
+/// snapshots, when the triggered ability itself looks back (CR 603.10a).
+/// Permanents still on the battlefield are covered by the live scans.
+fn for_each_departed_lookback_static(
+    game: &GameState,
+    entry: &TriggeredAbilityEntry,
+    mut visit: impl FnMut(&ObjectSnapshot, &crate::static_abilities::StaticAbility),
+) {
+    let event = &entry.triggering_event;
+    if event.lookback_source_snapshots().is_empty()
+        || !entry.ability.trigger.looks_back_for_source(event)
+    {
+        return;
+    }
+    for snapshot in event.lookback_source_snapshots() {
+        if snapshot.zone != Zone::Battlefield || game.battlefield.contains(&snapshot.object_id) {
+            continue;
+        }
+        for ability in snapshot.abilities.iter() {
+            let AbilityKind::Static(static_ability) = &ability.kind else {
+                continue;
+            };
+            if !ability.functions_in(&Zone::Battlefield) {
+                continue;
+            }
+            visit(snapshot, static_ability);
+        }
+    }
 }
 
 fn trigger_is_suppressed(
@@ -817,7 +875,26 @@ fn trigger_is_suppressed(
         }
     }
 
-    false
+    let mut suppressed = false;
+    for_each_departed_lookback_static(game, entry, |snapshot, static_ability| {
+        if suppressed {
+            return;
+        }
+        let Some(spec) = static_ability.trigger_suppression_spec() else {
+            return;
+        };
+        suppressed = trigger_entry_matches_specs(
+            game,
+            view,
+            entry,
+            snapshot.controller,
+            snapshot.object_id,
+            spec.source_filter.as_ref(),
+            spec.event_matcher.as_ref(),
+            TriggerDuplicationSourceMatcher::ObjectAbility,
+        );
+    });
+    suppressed
 }
 
 fn remove_suppressed_triggers(
@@ -826,6 +903,18 @@ fn remove_suppressed_triggers(
     triggered: &mut Vec<TriggeredAbilityEntry>,
 ) {
     triggered.retain(|entry| !trigger_is_suppressed(game, view, entry));
+}
+
+/// Apply CR 603.2d "triggers an additional time" effects to entries that are
+/// queued directly instead of through [`check_triggers`] (dungeon room
+/// abilities: Hama Pashar, Ruin Seeker; Dungeon Delver).
+pub(crate) fn with_additional_trigger_copies(
+    game: &GameState,
+    mut entries: Vec<TriggeredAbilityEntry>,
+) -> Vec<TriggeredAbilityEntry> {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    append_additional_trigger_copies(game, &view, &mut entries);
+    entries
 }
 
 fn append_additional_trigger_copies(
@@ -2048,7 +2137,8 @@ fn check_battlefield_trigger_subscriber(
     };
     let trigger_identity = compute_trigger_identity(trigger_ability);
     let ctx = TriggerContext::for_source(obj_id, controller, game)
-        .with_trigger_identity(trigger_identity);
+        .with_trigger_identity(trigger_identity)
+        .with_ability_index(subscriber.ability_index);
 
     if !ability.functions_in(&obj.zone) {
         return;
@@ -2150,7 +2240,8 @@ fn battlefield_trigger_subscriber_matches_event(
     };
     let trigger_identity = compute_trigger_identity(trigger_ability);
     let ctx = TriggerContext::for_source(obj_id, controller, game)
-        .with_trigger_identity(trigger_identity);
+        .with_trigger_identity(trigger_identity)
+        .with_ability_index(subscriber.ability_index);
 
     if !ability.functions_in(&obj.zone) {
         return false;
@@ -2470,12 +2561,22 @@ fn check_triggers_with_view_and_registry(
         && let Some(snapshot) = sacrifice.snapshot.as_ref()
         && !game.battlefield.contains(&snapshot.object_id)
     {
+        let self_in_batch_lookback = trigger_event
+            .lookback_source_snapshots()
+            .iter()
+            .any(|lookback| lookback.stable_id == snapshot.stable_id);
         for ability in snapshot.abilities.iter() {
             let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
                 continue;
             };
 
             if !ability.functions_in(&Zone::Battlefield) {
+                continue;
+            }
+            // Already found through the batch look-back above.
+            if self_in_batch_lookback
+                && trigger_ability.trigger.looks_back_for_source(trigger_event)
+            {
                 continue;
             }
 
@@ -2810,9 +2911,37 @@ fn check_triggers_with_view_and_registry(
     add_ring_designation_triggers(game, trigger_event, &mut triggered);
     add_speed_increase_triggers(game, trigger_event, &mut triggered);
     remove_suppressed_triggers(game, view, &mut triggered);
+    cap_granted_casualty_triggers(game, &mut triggered);
     append_additional_trigger_copies(game, view, &mut triggered);
 
     triggered
+}
+
+/// CR 702.153b: each instance of casualty is paid separately and triggers
+/// only for its own payment. Granted instances with the same N share one
+/// "Granted Casualty N" label, so a spell's copy triggers for that label fire
+/// at most as many times as that label was paid.
+fn cap_granted_casualty_triggers(game: &GameState, triggered: &mut Vec<TriggeredAbilityEntry>) {
+    let mut fired: Vec<(ObjectId, crate::cost::OptionalCostRef)> = Vec::new();
+    triggered.retain(|entry| {
+        let Some(crate::ConditionExpr::ThisSpellPaidLabel(label)) = &entry.ability.intervening_if
+        else {
+            return true;
+        };
+        if label.kind != crate::cost::OptionalCostKind::GrantedCasualty {
+            return true;
+        }
+        let Some(spell) = game.object(entry.source) else {
+            return true;
+        };
+        let paid = spell.optional_costs_paid.times_paid_label(label.clone()) as usize;
+        let key = (entry.source, label.clone());
+        if fired.iter().filter(|fired_key| **fired_key == key).count() >= paid {
+            return false;
+        }
+        fired.push(key);
+        true
+    });
 }
 
 fn presentation_labeled_trigger_is_active(
@@ -3420,13 +3549,14 @@ fn check_triggers_in_zone(
         .abilities_rc(obj_id)
         .unwrap_or_else(|| std::sync::Arc::new(obj.abilities_vec()));
 
-    for ability in calculated_abilities.iter() {
+    for (ability_index, ability) in calculated_abilities.iter().enumerate() {
         let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
             continue;
         };
         let trigger_identity = compute_trigger_identity(trigger_ability);
         let ctx = TriggerContext::for_source(obj_id, game.controller_of(obj), game)
-            .with_trigger_identity(trigger_identity);
+            .with_trigger_identity(trigger_identity)
+            .with_ability_index(ability_index);
 
         if !ability.functions_in(&obj.zone) {
             continue;

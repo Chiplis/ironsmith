@@ -232,6 +232,18 @@ pub struct ObjectSnapshot {
 }
 
 impl ObjectSnapshot {
+    /// The other half's name when this was a split card outside the stack
+    /// and battlefield, which then also had that name (CR 709.4a).
+    pub fn split_other_half_name(&self) -> Option<&str> {
+        if self.linked_face_layout == crate::card::LinkedFaceLayout::Split
+            && !matches!(self.zone, Zone::Stack | Zone::Battlefield)
+        {
+            self.other_face_name.as_deref()
+        } else {
+            None
+        }
+    }
+
     /// Create a snapshot from an object with game state access.
     ///
     /// Captures all relevant characteristics at the current moment.
@@ -262,9 +274,11 @@ impl ObjectSnapshot {
                 .map(|set_name| set_name.to_owned_string()),
             mana_cost: obj.mana_cost_owned(),
             colors: obj.colors(),
-            supertypes: obj.supertypes.to_vec(),
-            card_types: obj.card_types.to_vec(),
-            subtypes: obj.subtypes.to_vec(),
+            // CR 709.4: a split card outside the stack/battlefield has both
+            // halves' types.
+            supertypes: obj.zone_supertypes().to_vec(),
+            card_types: obj.zone_card_types().to_vec(),
+            subtypes: obj.zone_subtypes().to_vec(),
             compiled_card_text: obj.compiled_card_text.to_string(),
             ability_labels: obj.ability_labels.to_vec(),
             other_face: obj.other_face,

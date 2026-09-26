@@ -961,6 +961,8 @@ pub enum Restriction {
         cause: crate::CauseFilter,
     },
     HaveCountersPlaced(ObjectFilter),
+    /// "[objects] can't have [kind] counters put on them" (e.g. Melira).
+    HaveCounterTypePlaced(ObjectFilter, crate::counter::CounterType),
     BeTargeted(ObjectFilter),
     BeTargetedFrom(ObjectFilter, ObjectFilter),
     BeTargetedPlayer(PlayerFilter),
@@ -1347,6 +1349,13 @@ impl Restriction {
 
     pub fn have_counters_placed(filter: ObjectFilter) -> Self {
         Self::HaveCountersPlaced(filter)
+    }
+
+    pub fn have_counter_type_placed(
+        filter: ObjectFilter,
+        counter_type: crate::counter::CounterType,
+    ) -> Self {
+        Self::HaveCounterTypePlaced(filter, counter_type)
     }
 
     pub fn be_targeted(filter: ObjectFilter) -> Self {

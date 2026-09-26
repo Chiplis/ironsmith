@@ -1799,6 +1799,27 @@ pub(super) fn create_triggered_stack_entry_with_targets(
     );
     refresh_trigger_program_target_requirements(game, trigger, &entry, &mut program_requirements);
 
+    // An announced division (damage or counters, CR 601.2d) belongs to the
+    // effect, so an explicit trigger choice that stands for a program target
+    // carries that target's division too.
+    let program_distributions = program_requirements
+        .iter()
+        .filter(|requirement| requirement.distribution_value.is_some())
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut explicit_requirements = explicit_requirements;
+    for requirement in explicit_requirements
+        .iter_mut()
+        .filter(|requirement| requirement.distribution_value.is_none())
+    {
+        if let Some(program) = program_distributions
+            .iter()
+            .find(|program| target_requirements_overlap(program, requirement))
+        {
+            requirement.distribution_value = program.distribution_value.clone();
+            requirement.distribution_min_per_target = program.distribution_min_per_target;
+        }
+    }
     let requirements = if !program_requirements.is_empty()
         && target_requirements_cover_existing(&program_requirements, &explicit_requirements)
     {
@@ -1825,7 +1846,105 @@ pub(super) fn create_triggered_stack_entry_with_targets(
     entry.targets = chosen_targets;
     entry.target_assignments = target_assignments;
 
+    // Putting a triggered ability on the stack follows CR 601.2c-d (CR
+    // 603.3d): a division of damage or counters ("divided as you choose",
+    // "distribute N counters among") is announced along with the targets and
+    // stored in `target_distributions`, as for spells and activations, so it
+    // is locked in before anyone can respond and a share assigned to a target
+    // that becomes illegal isn't reassigned (CR 608.2b).
+    if !announce_trigger_target_distributions(
+        game,
+        trigger.source,
+        trigger.controller,
+        trigger.x_value,
+        &mut entry,
+        &requirements,
+        decision_maker,
+    ) {
+        return None;
+    }
+
     Some(entry)
+}
+
+/// Announce the divisions of a triggered ability's targeted amounts (damage
+/// or counters) as it is put on the stack (CR 603.3d, 601.2d), storing them in
+/// `entry.target_distributions` like a spell's or activation's. The effects
+/// consume them at resolution and don't redivide among the targets still
+/// legal (CR 608.2b). `requirements` are parallel to
+/// `entry.target_assignments`. Returns false while awaiting a decision.
+pub(crate) fn announce_trigger_target_distributions(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    x_value: Option<u32>,
+    entry: &mut StackEntry,
+    requirements: &[TargetRequirement],
+    decision_maker: &mut dyn DecisionMaker,
+) -> bool {
+    if !requirements
+        .iter()
+        .any(|requirement| requirement.distribution_value.is_some())
+    {
+        return true;
+    }
+    let mut pending = std::collections::VecDeque::new();
+    if super::priority_cast::append_target_distribution_requirements(
+        game,
+        source,
+        controller,
+        x_value,
+        &entry.targets,
+        &entry.target_assignments,
+        requirements,
+        &entry.target_assignments,
+        &mut pending,
+    )
+    .is_err()
+    {
+        return true;
+    }
+    let mut distributions = Vec::with_capacity(pending.len());
+    for requirement in pending {
+        let ctx = super::priority_cast::target_distribution_context(
+            game,
+            controller,
+            source,
+            &requirement,
+        );
+        let response = decision_maker.decide_distribute(game, &ctx);
+        if decision_maker.awaiting_choice() {
+            return false;
+        }
+        let allocations =
+            super::priority_cast::normalized_target_distribution(&requirement, &response)
+                .unwrap_or_else(|_| default_target_distribution(&requirement));
+        distributions.push(crate::game_state::TargetDistribution {
+            spec: requirement.spec,
+            range: requirement.range,
+            allocations,
+        });
+    }
+    entry.target_distributions = distributions;
+    true
+}
+
+/// The division used when a decision maker gives no valid one: the minimum
+/// to each target in chosen order, and the rest to the first target.
+fn default_target_distribution(requirement: &PendingTargetDistribution) -> Vec<(Target, u32)> {
+    let minimum_total = requirement
+        .min_per_target
+        .saturating_mul(requirement.targets.len() as u32);
+    let remainder = requirement.total.saturating_sub(minimum_total);
+    requirement
+        .targets
+        .iter()
+        .enumerate()
+        .map(|(index, target)| {
+            let extra = if index == 0 { remainder } else { 0 };
+            (*target, requirement.min_per_target + extra)
+        })
+        .collect()
 }
 
 /// Convert a triggered ability entry to a stack entry.
@@ -1923,8 +2042,16 @@ pub(super) fn triggered_to_stack_entry_with_effects(
         entry.saddle_contributors = saddlers.clone();
     }
 
-    // Copy intervening-if condition if present (must be rechecked at resolution time)
-    if let Some(ref condition) = trigger.ability.intervening_if {
+    // Copy intervening-if condition if present (must be rechecked at resolution time).
+    // CR 603.8: a state trigger's condition is its trigger event, not an
+    // intervening "if" clause, so it isn't rechecked on resolution.
+    if let Some(ref condition) = trigger.ability.intervening_if
+        && trigger
+            .ability
+            .trigger
+            .downcast_ref::<crate::triggers::StateTrigger>()
+            .is_none()
+    {
         entry = entry.with_intervening_if(condition.clone());
     }
 

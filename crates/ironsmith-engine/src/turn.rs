@@ -1181,16 +1181,15 @@ pub fn apply_cleanup_discard(
 /// Executes the cleanup step (damage removal, mana emptying).
 /// This should be called after any required discard decision has been resolved.
 pub fn execute_cleanup_step(game: &mut GameState) {
-    for active_player in game.turn_players() {
-        // Avoid globally invalidating continuous state for an already-empty pool.
-        if game
-            .player(active_player)
-            .is_some_and(|player| player.mana_pool.total() > 0)
-            && let Some(player) = game.player_mut(active_player)
-        {
-            player.mana_pool.empty();
-            player.clear_mana_source_provenance();
-        }
+    // CR 500.4 / 106.4: unspent mana empties as the turn's last step ends,
+    // except where an effect retains it (Upwelling, Electro, Fangorn...).
+    // The retention-aware emptying also expires "until end of turn" mana.
+    if game
+        .players
+        .iter()
+        .any(|player| player.mana_pool.total() > 0 || !player.mana_source_provenance.is_empty())
+    {
+        game.empty_mana_pools();
     }
 
     game.cleanup_damage_and_regeneration_end_of_turn();

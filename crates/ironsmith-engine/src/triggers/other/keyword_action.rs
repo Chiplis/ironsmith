@@ -185,6 +185,25 @@ impl TriggerMatcher for KeywordActionTrigger {
             if e.source != ctx.source_id && e.source != ctx_stable_source {
                 return false;
             }
+            // CR 709.5h: "when you unlock this door" triggers only for its
+            // own half's designation.
+            if self.action == KeywordActionKind::UnlockDoor {
+                // Prefer the ability's position (keys the door by half);
+                // fall back to structural identity without a live index.
+                let other_door = match (e.unlocked_door_ability_range.as_ref(), ctx.ability_index)
+                {
+                    (Some(range), Some(index)) => !range.contains(&index),
+                    _ => match (e.unlocked_door_triggers.as_ref(), ctx.trigger_identity) {
+                        (Some(door_triggers), Some(identity)) => {
+                            !door_triggers.contains(&identity)
+                        }
+                        _ => false,
+                    },
+                };
+                if other_door {
+                    return false;
+                }
+            }
         }
 
         if let Some(source_filter) = &self.source_filter {
@@ -292,11 +311,13 @@ impl TriggerMatcher for KeywordActionTrigger {
         if self.action == KeywordActionKind::Vote && self.player == PlayerFilter::Any {
             return "Whenever players finish voting".to_string();
         }
-        if self.action == KeywordActionKind::UnlockDoor
-            && self
-                .source_filter
-                .as_ref()
-                .is_some_and(|filter| filter.subtypes == [crate::types::Subtype::Room])
+        if matches!(
+            self.action,
+            KeywordActionKind::FullyUnlockRoom | KeywordActionKind::UnlockDoor
+        ) && self
+            .source_filter
+            .as_ref()
+            .is_some_and(|filter| filter.subtypes == [crate::types::Subtype::Room])
         {
             return match &self.player {
                 PlayerFilter::You => "Whenever you fully unlock a Room".to_string(),

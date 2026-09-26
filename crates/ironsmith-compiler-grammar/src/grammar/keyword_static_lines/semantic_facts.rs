@@ -40,6 +40,8 @@ pub enum EarlyStaticMarkerKind {
 pub enum StaticTextMarkerKind {
     Banding,
     AuraRetentionClarification,
+    /// "This effect doesn't remove Auras." (CR 702.16n).
+    AurasRetentionClarification,
     YouHaveHexproof,
     YouHaveProtectionFromOpponents,
     OpponentsCastOnlyAsSorcery,
@@ -185,6 +187,12 @@ pub fn parse_static_text_marker_kind_tokens(
                     semantic_phrase(&["remove", "this", "aura"]),
                 )
                     .value(StaticTextMarkerKind::AuraRetentionClarification),
+                (
+                    semantic_phrase(&["this", "effect"]),
+                    alt((semantic_kw("doesnt"), semantic_kw("doesn't"))),
+                    semantic_phrase(&["remove", "auras"]),
+                )
+                    .value(StaticTextMarkerKind::AurasRetentionClarification),
                 semantic_phrase(&["you", "have", "hexproof"])
                     .value(StaticTextMarkerKind::YouHaveHexproof),
                 semantic_phrase(&[

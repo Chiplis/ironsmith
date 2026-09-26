@@ -142,7 +142,7 @@ fn queue_room_ability(
     };
     let trigger_identity = crate::triggers::compute_trigger_identity(&ability);
     let source = dungeon_room_source_id(player_id);
-    game.defer_trigger_entries([crate::triggers::TriggeredAbilityEntry {
+    let entry = crate::triggers::TriggeredAbilityEntry {
         source,
         controller: player_id,
         x_value: None,
@@ -155,7 +155,11 @@ fn queue_room_ability(
         tagged_objects: std::collections::HashMap::new(),
         source_kind: crate::triggers::TriggeredAbilitySourceKind::DungeonRoom,
         trigger_identity,
-    }]);
+    };
+    // CR 603.2d: "Room abilities of dungeons you own trigger an additional
+    // time" (Hama Pashar, Dungeon Delver) applies to this deferred entry too.
+    let entries = crate::triggers::check::with_additional_trigger_copies(game, vec![entry]);
+    game.defer_trigger_entries(entries);
 }
 
 /// The quality "venture into Undercity" restricts the choice to (CR 701.49d).

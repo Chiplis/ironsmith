@@ -788,6 +788,9 @@ impl GameState {
             new_object.end_bestow_cast_overlay();
             new_object.end_face_down_cast_overlay();
         }
+        if old_zone == Zone::Battlefield && new_zone != Zone::Battlefield {
+            new_object.end_enters_as_copy_overlay();
+        }
         if !preserve_x_value {
             new_object.x_value = None;
         }
@@ -842,7 +845,8 @@ impl GameState {
 
         if old_zone == Zone::Stack
             && new_zone != Zone::Stack
-            && new_object.subtypes.contains(&Subtype::Adventure)
+            && (new_object.subtypes.contains(&Subtype::Adventure)
+                || new_object.subtypes.contains(&Subtype::Omen))
             && let Some(front_def) = self.linked_face_definition_by_name_or_id(
                 new_object.other_face_name.as_deref(),
                 new_object.other_face,
@@ -2068,6 +2072,24 @@ impl GameState {
         // with an explicit duration instead becomes a locked layer-1 effect,
         // preserving the underlying permanent so it can revert when it expires.
         let temporary_copy_duration = result.copy_duration.clone();
+        // These entry modifications overwrite the permanent's own copiable
+        // fields. They belong to this permanent only, so remember the printed
+        // values and restore them when it leaves the battlefield (CR 707.2,
+        // 400.7): a Clone that copied Grave Titan is just Clone again in its
+        // new zone.
+        if temporary_copy_duration.is_none()
+            && (result.enters_as_copy_of.is_some()
+                || !result.added_colors.is_empty()
+                || !result.added_card_types.is_empty()
+                || !result.added_supertypes.is_empty()
+                || !result.removed_supertypes.is_empty()
+                || !result.added_subtypes.is_empty()
+                || !result.added_abilities.is_empty()
+                || result.set_base_power_toughness.is_some())
+            && let Some(new_obj) = self.object_mut(new_id)
+        {
+            new_obj.capture_enters_as_copy_restore_state();
+        }
         if let Some(copy_source_id) = result.enters_as_copy_of {
             if let Some(duration) = temporary_copy_duration.clone() {
                 let effects = self.all_continuous_effects();
@@ -2334,7 +2356,12 @@ impl GameState {
                 AuraAttachmentFilter::Object(filter) => {
                     let mut candidates = Vec::new();
                     for (id, candidate) in &self.objects {
-                        if *id == new_id || candidate.zone != Zone::Battlefield {
+                        // CR 702.26b: phased-out permanents are treated as
+                        // though they don't exist.
+                        if *id == new_id
+                            || candidate.zone != Zone::Battlefield
+                            || self.is_phased_out(*id)
+                        {
                             continue;
                         }
                         // CR 303.4f: the object must be legal to enchant under
@@ -3019,6 +3046,7 @@ impl GameState {
     ) -> Option<crate::triggers::TriggerEvent> {
         self.mark_continuous_state_dirty();
         let obj = self.object_mut(id)?;
+        let previous_count = obj.counters.get(&counter_type).copied().unwrap_or(0);
         obj.add_counters(counter_type, amount);
         if amount > 0 {
             self.effect_store
@@ -3031,7 +3059,8 @@ impl GameState {
             .provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::CounterPlaced);
         Some(crate::triggers::TriggerEvent::new_with_provenance(
-            crate::events::other::CounterPlacedEvent::new(id, counter_type, amount),
+            crate::events::other::CounterPlacedEvent::new(id, counter_type, amount)
+                .with_previous_count(previous_count),
             event_provenance,
         ))
     }
@@ -3544,9 +3573,9 @@ impl GameState {
                     ability_labels: object.ability_labels.clone(),
                     power: object.power(),
                     toughness: object.toughness(),
-                    card_types: object.card_types.clone(),
-                    subtypes: object.subtypes.clone(),
-                    supertypes: object.supertypes.clone(),
+                    card_types: object.zone_card_types().to_vec().into(),
+                    subtypes: object.zone_subtypes().to_vec().into(),
+                    supertypes: object.zone_supertypes().to_vec().into(),
                     world_supertype_since: object
                         .supertypes
                         .contains(&crate::types::Supertype::World)

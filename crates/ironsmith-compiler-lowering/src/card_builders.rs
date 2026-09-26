@@ -485,7 +485,9 @@ impl CardDefinitionBuilder {
 
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_enters_battlefield(),
-            vec![crate::effect::Effect::choose_one(modes)],
+            // CR 702.123a: if the counters can't be put on it, the Servos are
+            // created (the same counters-else-token shape as endure).
+            vec![crate::effect::Effect::choose_one_endure(modes)],
         ))
     }
 

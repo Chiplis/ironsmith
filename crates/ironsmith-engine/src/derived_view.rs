@@ -996,7 +996,10 @@ impl<'a> DerivedGameView<'a> {
         let grants = self.active_grants();
         let grants: Vec<_> = grants
             .iter()
-            .filter(|grant| grant.player == player && grant.zone == zone)
+            .filter(|grant| {
+                grant.player == player
+                    && grant.zone == crate::grant_registry::alternative_cast_grant_zone(zone)
+            })
             .filter(|grant| grant_applies_to_card(grant, card_id, card, &ctx, self.game))
             .filter_map(|grant| match &grant.grantable {
                 Grantable::AlternativeCast(method) => Some(GrantedAlternativeCast {
@@ -1073,7 +1076,10 @@ impl<'a> DerivedGameView<'a> {
         let ctx = self.game.filter_context_for(player, None);
         self.active_grants()
             .iter()
-            .filter(|grant| grant.player == player && grant.zone == zone)
+            .filter(|grant| {
+                grant.player == player
+                    && grant.zone == crate::grant_registry::alternative_cast_grant_zone(zone)
+            })
             .filter(|grant| {
                 grant_applies_to_card_non_recursive(grant, card_id, card, &ctx, self.game)
             })

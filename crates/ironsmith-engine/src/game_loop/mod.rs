@@ -77,9 +77,14 @@ mod priority_core;
 mod priority_mana;
 mod priority_state;
 mod saga;
+pub(crate) use sba_triggers::announce_trigger_target_distributions;
+pub(crate) use targeting::extract_target_requirements_with_modes;
 mod sba_triggers;
 mod stack_resolution;
-pub(crate) use targeting::{queue_triggers_from_event, specialize_iterated_player_choose_spec};
+pub(crate) use targeting::{
+    AssignmentLegalTargets, queue_triggers_from_event, specialize_iterated_player_choose_spec,
+    stack_entry_assignment_legal_targets,
+};
 mod targeting;
 #[cfg(all(test, feature = "engine-integration-tests"))]
 mod tests;

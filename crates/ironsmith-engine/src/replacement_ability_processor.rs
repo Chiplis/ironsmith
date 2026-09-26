@@ -173,11 +173,27 @@ pub fn generate_replacement_effects_from_abilities(game: &GameState) -> Vec<Repl
                 // Aftermath (CR 702.127a) and "if a spell cast this way would be
                 // put into your graveyard, exile it instead" grants: a countered
                 // or fizzled spell is exiled too, not only a resolved one.
-                effects.push(crate::replacement::ZoneReplacementSpec::new(
+                // Aftermath exiles the half "instead of putting it anywhere
+                // else any time it would leave the stack" (a bounce too); the
+                // grants only replace the move to the graveyard.
+                let has_aftermath = object.abilities.iter().any(|ability| {
+                    matches!(
+                        &ability.kind,
+                        AbilityKind::Static(static_ability)
+                            if static_ability
+                                .compiled_model()
+                                .is_some_and(|model| model.label == "Aftermath")
+                    )
+                });
+                let spec = crate::replacement::ZoneReplacementSpec::new(
                     crate::target::ObjectFilter::specific(object_id), crate::zone::Zone::Exile)
-                    .from_zone(crate::zone::Zone::Stack)
-                    .to_zone(crate::zone::Zone::Graveyard)
-                    .build(object_id, controller));
+                    .from_zone(crate::zone::Zone::Stack);
+                let spec = if has_aftermath {
+                    spec
+                } else {
+                    spec.to_zone(crate::zone::Zone::Graveyard)
+                };
+                effects.push(spec.build(object_id, controller));
             }
 
             // Layer-six grants and ability loss also affect replacements.

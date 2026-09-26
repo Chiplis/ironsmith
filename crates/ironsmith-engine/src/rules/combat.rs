@@ -794,6 +794,7 @@ mod tests {
             other_face_name: None,
             linked_face_layout: crate::card::LinkedFaceLayout::None,
             linked_face_mana_cost: None,
+            split_combined: None,
             base_power: Some(PtValue::Fixed(power)),
             base_toughness: Some(PtValue::Fixed(toughness)),
             base_loyalty: None,
@@ -823,6 +824,7 @@ mod tests {
             bestow_cast_state: None,
             face_down_cast_state: None,
             prototype_cast_state: None,
+            enters_as_copy_restore_state: None,
         }
     }
 

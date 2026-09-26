@@ -1192,6 +1192,8 @@ pub(crate) fn describe_ability(
             let prefer_safe_label_text = matches!(
                 static_ability.id(),
                 crate::static_abilities::StaticAbilityId::KeywordMarker
+                    | crate::static_abilities::StaticAbilityId::ProtectionDoesntRemoveThisAura
+                    | crate::static_abilities::StaticAbilityId::ProtectionDoesntRemoveAuras
                     | crate::static_abilities::StaticAbilityId::DraftRuleText
                     | crate::static_abilities::StaticAbilityId::KeywordFallbackText
                     | crate::static_abilities::StaticAbilityId::RuleFallbackText

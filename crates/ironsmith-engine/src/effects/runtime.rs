@@ -102,6 +102,16 @@ fn effect_chooses_new_targets_for_copy(effect: &Effect) -> bool {
     effect
         .downcast_ref::<crate::effects::ChooseNewTargetsEffect>()
         .is_some()
+        // "You may choose new targets for the copy" also lowers to an
+        // optional retarget of the copy just made (a non-targeting,
+        // back-referenced stack object), not only to `ChooseNewTargets`.
+        || effect
+            .downcast_ref::<crate::effects::RetargetStackObjectEffect>()
+            .is_some_and(|retarget| !retarget.target.is_target())
+        || effect
+            .downcast_ref::<crate::effects::MayEffect>()
+            .and_then(|may| may.effects.first())
+            .is_some_and(effect_chooses_new_targets_for_copy)
         || effect
             .transparent_child_effect()
             .is_some_and(effect_chooses_new_targets_for_copy)

@@ -1423,23 +1423,13 @@ pub fn execute_discard(
             controller: replacement_controller,
         } => {
             // "If a card would be put into a graveyard from anywhere, exile it
-            // instead" (Rest in Peace, Leyline of the Void): the card is still
-            // discarded, it just ends up in exile (CR 614.6, 701.9a).
-            let destination = match &replacement {
-                crate::replacement::ReplacementAction::MoveToZoneWithCounters { zone, .. } => {
-                    Some(*zone)
-                }
-                crate::replacement::ReplacementAction::ExileWithSourceLink
-                | crate::replacement::ReplacementAction::ExileWithSourceLinkThen(_)
-                | crate::replacement::ReplacementAction::ExileWithSourceLinkCountersThen {
-                    ..
-                } => Some(Zone::Exile),
-                _ => None,
-            };
-            game.effect_store
-                .replacement_effects
-                .mark_effect_used(effect_id);
-            let Some(destination) = destination else {
+            // instead" (Rest in Peace, Leyline of the Void, Dauthi Voidwalker):
+            // the card is still discarded, it just ends up in exile (CR 614.6,
+            // 701.9a).
+            if !replacement_moves_object(&replacement) {
+                game.effect_store
+                    .replacement_effects
+                    .mark_effect_used(effect_id);
                 // Discard replaced with other effects - treat as prevented
                 let mut ctx = crate::effects::ExecutionContext::new(
                     replacement_source,
@@ -1450,40 +1440,44 @@ pub fn execute_discard(
                     let _ = crate::effects::execute_effect(game, &effect, &mut ctx);
                 }
                 return DiscardResult::prevented();
-            };
-            let new_id = game.move_object(card_id, destination, cause.clone());
-            if let Some(new_id) = new_id {
-                if destination == Zone::Exile
-                    && !matches!(
-                        replacement,
-                        crate::replacement::ReplacementAction::MoveToZoneWithCounters { .. }
-                    )
-                {
-                    game.add_exiled_with_source_link(replacement_source, new_id);
-                }
-                if !effects.is_empty() {
-                    let mut ctx = crate::effects::ExecutionContext::new(
-                        replacement_source,
-                        replacement_controller,
-                        decision_maker,
-                    );
-                    if let Some(object) = game.object(new_id) {
-                        let snapshot =
-                            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                                object, game,
-                            );
-                        ctx.tag_object(crate::tag::ZONE_REPLACEMENT_OBJECT_TAG, snapshot);
-                    }
-                    for effect in effects {
-                        if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut ctx)
-                        {
-                            for trigger_event in outcome.events {
-                                game.queue_trigger_event(trigger_event.provenance(), trigger_event);
-                            }
-                        }
-                    }
-                }
             }
+
+            // CR 702.35a / 616.1: madness is itself a replacement of the
+            // discarded card's move to the graveyard, and the affected player
+            // chooses which applicable replacement applies first. Madness
+            // dominates a graveyard-hate exile for that player (if they
+            // decline the madness cast, the card's later move to the
+            // graveyard is again subject to the hate effect), so apply it.
+            let has_madness = game
+                .object(card_id)
+                .is_some_and(|obj| obj.alternative_casts.iter().any(|alt| alt.is_madness()));
+            if has_madness {
+                let new_id = game.move_object(card_id, Zone::Exile, cause.clone());
+                if let Some(id) = new_id {
+                    game.set_madness_exiled(id);
+                    queue_madness_trigger(game, id, player, &cause, provenance);
+                }
+                return DiscardResult {
+                    new_id,
+                    final_zone: Zone::Exile,
+                    type_verifiable: zone_allows_type_verification(Zone::Exile),
+                    prevented: false,
+                };
+            }
+
+            game.effect_store
+                .replacement_effects
+                .mark_effect_used(effect_id);
+            let (destination, new_id) = apply_replacement_move(
+                game,
+                card_id,
+                &replacement,
+                effects,
+                replacement_source,
+                replacement_controller,
+                cause.clone(),
+                decision_maker,
+            );
             DiscardResult {
                 new_id,
                 final_zone: destination,
@@ -2257,6 +2251,36 @@ fn shield_counter_damage_replacements(
     )]
 }
 
+/// The built-in replacement created by finality counters (CR 122.1h): "If
+/// this permanent would be put into a graveyard from the battlefield, exile
+/// it instead." It applies to any permanent, and as a real replacement effect
+/// it is ordered against other "instead" effects by the controller (CR 616.1).
+fn finality_counter_replacements(game: &GameState, permanent: ObjectId) -> Vec<ReplacementEffect> {
+    let Some(object) = game.object(permanent) else {
+        return Vec::new();
+    };
+    if object
+        .counters
+        .get(&CounterType::Finality)
+        .copied()
+        .unwrap_or(0)
+        == 0
+    {
+        return Vec::new();
+    }
+    let controller = game.controller_of(object);
+    vec![ReplacementEffect::with_matcher(
+        permanent,
+        controller,
+        crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+            crate::target::ObjectFilter::specific(permanent),
+            Some(Zone::Battlefield),
+            Some(Zone::Graveyard),
+        ),
+        ReplacementAction::ChangeDestination(Zone::Exile),
+    )]
+}
+
 /// The built-in untap replacement created by stun counters (CR 122.1d): "If
 /// a permanent with a stun counter on it would become untapped, instead
 /// remove a stun counter from it."
@@ -2464,20 +2488,7 @@ fn process_zone_change_inner(
 
     game.update_replacement_effects();
 
-    // Finality counter rule text: "If a creature with a finality counter on it would die, exile it instead."
-    // Apply this as a baseline destination rewrite for battlefield->graveyard moves.
-    let mut requested_to = game.resolve_commander_move_destination(object, to, dm);
-    if from == Zone::Battlefield
-        && to == Zone::Graveyard
-        && game.object_has_card_type(object, CardType::Creature)
-        && game
-            .object(object)
-            .and_then(|obj| obj.counters.get(&CounterType::Finality).copied())
-            .unwrap_or(0)
-            > 0
-    {
-        requested_to = Zone::Exile;
-    }
+    let requested_to = game.resolve_commander_move_destination(object, to, dm);
 
     let snapshot = lki_snapshot.or_else(|| {
         game.object(object).map(|o| {
@@ -2491,6 +2502,9 @@ fn process_zone_change_inner(
         merged_card_only_change_destinations(game, &zone_event, additional_effects);
     let event = Event::zone_change(object, from, requested_to, cause.clone(), snapshot.clone());
     let mut additional_effects = additional_effects.to_vec();
+    if from == Zone::Battlefield && requested_to == Zone::Graveyard {
+        additional_effects.extend(finality_counter_replacements(game, object));
+    }
     assign_ephemeral_effect_ids(&mut additional_effects, (u64::MAX / 2).saturating_add(1024));
     let result =
         process_with_dm_and_additional_effects(game, event.clone(), dm, &additional_effects);
@@ -2529,89 +2543,17 @@ fn process_zone_change_inner(
             game.effect_store
                 .replacement_effects
                 .mark_effect_used(effect_id);
-            if matches!(
-                replacement,
-                crate::replacement::ReplacementAction::MoveToZoneWithCounters { .. }
-                    | crate::replacement::ReplacementAction::ExileWithSourceLink
-                    | crate::replacement::ReplacementAction::ExileWithSourceLinkThen(_)
-                    | crate::replacement::ReplacementAction::ExileWithSourceLinkCountersThen { .. }
-            ) {
-                let destination = match &replacement {
-                    crate::replacement::ReplacementAction::MoveToZoneWithCounters {
-                        zone, ..
-                    } => *zone,
-                    _ => Zone::Exile,
-                };
-                let counters = match &replacement {
-                    crate::replacement::ReplacementAction::MoveToZoneWithCounters {
-                        counters,
-                        ..
-                    } => counters.as_slice(),
-                    crate::replacement::ReplacementAction::ExileWithSourceLinkCountersThen {
-                        counters,
-                        ..
-                    } => counters.as_slice(),
-                    _ => &[],
-                };
-                let should_link_to_source = matches!(
-                    replacement,
-                    crate::replacement::ReplacementAction::ExileWithSourceLink
-                        | crate::replacement::ReplacementAction::ExileWithSourceLinkThen(_)
-                        | crate::replacement::ReplacementAction::ExileWithSourceLinkCountersThen { .. }
+            if replacement_moves_object(&replacement) {
+                apply_replacement_move(
+                    game,
+                    object,
+                    &replacement,
+                    effects,
+                    replacement_source,
+                    replacement_controller,
+                    cause.clone(),
+                    dm,
                 );
-                let replacement_object_snapshot = if let Some(new_id) =
-                    game.move_object(object, destination, cause.clone())
-                {
-                    for (counter_type, count) in counters {
-                        if let Some(event) = game.add_counters_with_source(
-                            new_id,
-                            *counter_type,
-                            *count,
-                            Some(replacement_source),
-                            Some(replacement_controller),
-                        ) {
-                            game.queue_trigger_event(event.provenance(), event);
-                        }
-                    }
-                    if should_link_to_source {
-                        game.add_exiled_with_source_link(replacement_source, new_id);
-                    }
-                    game.record_zone_change_results(object, vec![new_id]);
-                    game.object(new_id).map(|object| {
-                        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                            object, game,
-                        )
-                    })
-                } else {
-                    None
-                };
-                if !effects.is_empty() {
-                    let mut ctx = crate::effects::ExecutionContext::new(
-                        replacement_source,
-                        replacement_controller,
-                        dm,
-                    );
-                    let replacement_outcome = match replacement_object_snapshot {
-                        Some(snapshot) => {
-                            let outcome = crate::effect::EffectOutcome::with_objects(vec![
-                                snapshot.object_id,
-                            ]);
-                            ctx.tag_object(crate::tag::ZONE_REPLACEMENT_OBJECT_TAG, snapshot);
-                            outcome
-                        }
-                        None => crate::effect::EffectOutcome::count(0),
-                    };
-                    ctx.effect_outcomes
-                        .insert(crate::effect::EffectId::REPLACED_EVENT, replacement_outcome);
-                    for effect in effects {
-                        if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut ctx)
-                        {
-                            for trigger_event in outcome.events {
-                                game.queue_trigger_event(trigger_event.provenance(), trigger_event);
-                            }
-                        }
-                    }
-                }
                 return EventOutcome::Replaced;
             }
             let mut ctx = crate::effects::ExecutionContext::new(
@@ -2658,6 +2600,106 @@ fn process_zone_change_inner(
             EventOutcome::Prevented
         }
     }
+}
+
+/// Whether a `Replaced` replacement action is a "put it into [zone] instead"
+/// move (with optional counters, source link and follow-up effects), rather
+/// than an arbitrary replacement effect sequence.
+fn replacement_moves_object(replacement: &crate::replacement::ReplacementAction) -> bool {
+    matches!(
+        replacement,
+        crate::replacement::ReplacementAction::MoveToZoneWithCounters { .. }
+            | crate::replacement::ReplacementAction::ExileWithSourceLink
+            | crate::replacement::ReplacementAction::ExileWithSourceLinkThen(_)
+            | crate::replacement::ReplacementAction::ExileWithSourceLinkCountersThen { .. }
+    )
+}
+
+/// Perform a moving `Replaced` replacement (CR 614.6: the modified event
+/// happens instead): move the object, place the replacement's counters on
+/// the new object, link it to the replacement's source, record the zone
+/// change result, then run follow-up effects with the moved object tagged.
+///
+/// Shared by zone changes and discards, so "exile it with a void counter on
+/// it" behaves the same whichever event it replaced. Returns the destination
+/// and the new object id, if the move happened.
+#[allow(clippy::too_many_arguments)]
+fn apply_replacement_move(
+    game: &mut GameState,
+    object: crate::ids::ObjectId,
+    replacement: &crate::replacement::ReplacementAction,
+    effects: Vec<crate::effect::Effect>,
+    replacement_source: crate::ids::ObjectId,
+    replacement_controller: PlayerId,
+    cause: crate::events::cause::EventCause,
+    dm: &mut dyn DecisionMaker,
+) -> (Zone, Option<crate::ids::ObjectId>) {
+    let destination = match replacement {
+        crate::replacement::ReplacementAction::MoveToZoneWithCounters { zone, .. } => *zone,
+        _ => Zone::Exile,
+    };
+    let counters = match replacement {
+        crate::replacement::ReplacementAction::MoveToZoneWithCounters { counters, .. } => {
+            counters.as_slice()
+        }
+        crate::replacement::ReplacementAction::ExileWithSourceLinkCountersThen {
+            counters, ..
+        } => counters.as_slice(),
+        _ => &[],
+    };
+    let should_link_to_source = matches!(
+        replacement,
+        crate::replacement::ReplacementAction::ExileWithSourceLink
+            | crate::replacement::ReplacementAction::ExileWithSourceLinkThen(_)
+            | crate::replacement::ReplacementAction::ExileWithSourceLinkCountersThen { .. }
+    );
+    let new_id = game.move_object(object, destination, cause);
+    let replacement_object_snapshot = if let Some(new_id) = new_id {
+        for (counter_type, count) in counters {
+            if let Some(event) = game.add_counters_with_source(
+                new_id,
+                *counter_type,
+                *count,
+                Some(replacement_source),
+                Some(replacement_controller),
+            ) {
+                game.queue_trigger_event(event.provenance(), event);
+            }
+        }
+        if should_link_to_source {
+            game.add_exiled_with_source_link(replacement_source, new_id);
+        }
+        game.record_zone_change_results(object, vec![new_id]);
+        game.object(new_id).map(|object| {
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                object, game,
+            )
+        })
+    } else {
+        None
+    };
+    if !effects.is_empty() {
+        let mut ctx =
+            crate::effects::ExecutionContext::new(replacement_source, replacement_controller, dm);
+        let replacement_outcome = match replacement_object_snapshot {
+            Some(snapshot) => {
+                let outcome = crate::effect::EffectOutcome::with_objects(vec![snapshot.object_id]);
+                ctx.tag_object(crate::tag::ZONE_REPLACEMENT_OBJECT_TAG, snapshot);
+                outcome
+            }
+            None => crate::effect::EffectOutcome::count(0),
+        };
+        ctx.effect_outcomes
+            .insert(crate::effect::EffectId::REPLACED_EVENT, replacement_outcome);
+        for effect in effects {
+            if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut ctx) {
+                for trigger_event in outcome.events {
+                    game.queue_trigger_event(trigger_event.provenance(), trigger_event);
+                }
+            }
+        }
+    }
+    (destination, new_id)
 }
 
 /// Process a draw event with optional DecisionMaker for resolving choices.
@@ -3778,6 +3820,12 @@ pub fn process_simultaneous_damage_assignments_with_event_with_dm(
     // The prevention events of this batch are coalesced below.
     game.effect_store.trigger_matching_holds += 1;
     let allocations = collect_simultaneous_prevention_allocations(game, events, dm);
+    // CR 615.5: the batch's additional prevention effects happen after the
+    // whole simultaneous damage event, so they are collected here.
+    let follow_up_start = game
+        .effect_store
+        .prevention_effects
+        .begin_follow_up_deferral();
     let mut results = Vec::with_capacity(events.len());
     for (index, item) in events.iter().enumerate() {
         results.push(
@@ -3797,7 +3845,56 @@ pub fn process_simultaneous_damage_assignments_with_event_with_dm(
     }
     game.effect_store.trigger_matching_holds -= 1;
     coalesce_simultaneous_shield_prevention_events(game, pending_event_start);
+    let mut follow_ups = game
+        .effect_store
+        .prevention_effects
+        .end_follow_up_deferral(follow_up_start);
+    dedupe_shield_counter_follow_ups(&mut follow_ups);
+    if game
+        .effect_store
+        .prevention_effects
+        .follow_ups_are_deferred()
+    {
+        for pending in follow_ups {
+            game.effect_store.prevention_effects.queue_follow_up(
+                pending.follow_up,
+                pending.damage,
+                pending.provenance,
+            );
+        }
+    } else {
+        execute_prevention_follow_ups(game, dm, follow_ups);
+    }
     results
+}
+
+/// CR 122.1c / 510.2: simultaneous damage to a permanent is one damage event,
+/// so its shield counter prevents all of it and only one shield counter is
+/// removed, however many sources dealt damage.
+fn dedupe_shield_counter_follow_ups(follow_ups: &mut Vec<crate::prevention::PendingPreventionFollowUp>) {
+    let shield_target = |pending: &crate::prevention::PendingPreventionFollowUp| {
+        let [effect] = pending.follow_up.effects.as_slice() else {
+            return None;
+        };
+        let remove = effect.downcast_ref::<crate::effects::RemoveCountersEffect>()?;
+        match (remove.counter_type, &remove.target) {
+            (CounterType::Shield, crate::target::ChooseSpec::SpecificObject(id))
+                if *id == pending.follow_up.source =>
+            {
+                Some(*id)
+            }
+            _ => None,
+        }
+    };
+    let mut seen: Vec<ObjectId> = Vec::new();
+    follow_ups.retain(|pending| match shield_target(pending) {
+        Some(id) if seen.contains(&id) => false,
+        Some(id) => {
+            seen.push(id);
+            true
+        }
+        None => true,
+    });
 }
 
 fn coalesce_simultaneous_shield_prevention_events(game: &mut GameState, start_index: usize) {
@@ -4247,7 +4344,10 @@ pub fn process_zone_change_with_event(
 
 /// Process a put counters event using the new Event type.
 ///
-/// Returns the final number of counters to place.
+/// Returns the final number of counters to place. Callers without a decision
+/// maker resolve ties among several counter replacements (CR 616.1) by
+/// applying them in a deterministic order; every applicable modifier still
+/// applies (Hardened Scales + Doubling Season both modify the event).
 pub fn process_put_counters_with_event(
     game: &mut GameState,
     target: crate::ids::ObjectId,
@@ -4255,14 +4355,32 @@ pub fn process_put_counters_with_event(
     count: u32,
     cause: crate::events::cause::EventCause,
 ) -> u32 {
-    use crate::events::{PutCountersEvent, downcast_event};
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    process_put_counters_with_event_with_dm(game, target, counter_type, count, cause, &mut dm)
+}
 
-    if !game.can_have_counters_placed(target) {
+/// Process a put counters event, asking the affected object's controller to
+/// order tied counter replacements (CR 616.1, 616.1e).
+///
+/// Returns the final number of counters to place (0 while a choice is pending).
+pub fn process_put_counters_with_event_with_dm(
+    game: &mut GameState,
+    target: crate::ids::ObjectId,
+    counter_type: CounterType,
+    count: u32,
+    cause: crate::events::cause::EventCause,
+    dm: &mut (impl DecisionMaker + ?Sized),
+) -> u32 {
+    if !game.can_have_counter_type_placed(target, counter_type) {
         return 0;
     }
 
     let event = Event::put_counters(target, counter_type, count, cause);
-    let result = process_trait_event(game, event);
+    put_counters_result_count(process_with_dm(game, event, dm), count)
+}
+
+fn put_counters_result_count(result: TraitEventResult, count: u32) -> u32 {
+    use crate::events::{PutCountersEvent, downcast_event};
 
     match result {
         TraitEventResult::Prevented => 0,
@@ -4273,6 +4391,8 @@ pub fn process_put_counters_with_event(
                 count
             }
         }
+        // A replacement-order choice is still pending; nothing is placed yet.
+        TraitEventResult::NeedsChoice { .. } => 0,
         _ => count,
     }
 }
@@ -4287,8 +4407,20 @@ pub fn process_player_counters_with_event(
     count: u32,
     cause: crate::events::cause::EventCause,
 ) -> u32 {
-    use crate::events::{PutCountersEvent, downcast_event};
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    process_player_counters_with_event_with_dm(game, target, counter_type, count, cause, &mut dm)
+}
 
+/// Process a player counter event, asking the affected player to order tied
+/// counter replacements (CR 616.1).
+pub fn process_player_counters_with_event_with_dm(
+    game: &mut GameState,
+    target: PlayerId,
+    counter_type: CounterType,
+    count: u32,
+    cause: crate::events::cause::EventCause,
+    dm: &mut (impl DecisionMaker + ?Sized),
+) -> u32 {
     if game
         .turn_store
         .turn_history
@@ -4298,19 +4430,7 @@ pub fn process_player_counters_with_event(
     }
 
     let event = Event::put_player_counters(target, counter_type, count, cause);
-    let result = process_trait_event(game, event);
-
-    match result {
-        TraitEventResult::Prevented => 0,
-        TraitEventResult::Proceed(e) | TraitEventResult::Modified(e) => {
-            if let Some(put_counters) = downcast_event::<PutCountersEvent>(e.inner()) {
-                put_counters.count
-            } else {
-                count
-            }
-        }
-        _ => count,
-    }
+    put_counters_result_count(process_with_dm(game, event, dm), count)
 }
 
 /// Process a token creation event through replacement effects.
@@ -4886,9 +5006,9 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                         && let Some(mut prospective) = etb.prospective_game_state(game)
                     {
                         prospective.update_cant_effects();
-                        if !prospective.can_have_counters_placed(object) {
-                            event_result.enters_with_counters.clear();
-                        }
+                        event_result.enters_with_counters.retain(|(counter_type, _)| {
+                            prospective.can_have_counter_type_placed(object, *counter_type)
+                        });
                     }
                     return event_result;
                 }

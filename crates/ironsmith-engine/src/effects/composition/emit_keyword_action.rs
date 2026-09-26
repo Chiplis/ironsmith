@@ -339,9 +339,15 @@ impl EffectExecutor for EmitKeywordActionEffect {
             .with_lookback_source_snapshots(lookback);
             return Ok(EffectOutcome::resolved().with_event(event));
         }
+        // CR 702.29: a cycling ability's announced X (paid as part of the
+        // cycling cost) is the X of its "when you cycle this card" trigger.
+        let x_value = (self.action == KeywordActionKind::Cycle)
+            .then_some(ctx.x_value)
+            .flatten();
         let event = TriggerEvent::new_with_provenance(
             KeywordActionEvent::new(self.action, ctx.controller, ctx.source, self.amount)
-                .with_object_tags(object_tags),
+                .with_object_tags(object_tags)
+                .with_x_value(x_value),
             ctx.provenance,
         );
         Ok(EffectOutcome::resolved().with_event(event))

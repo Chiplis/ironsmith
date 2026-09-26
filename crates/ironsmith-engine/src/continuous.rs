@@ -1616,7 +1616,11 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         restored
     });
     let object = restored.as_ref().unwrap_or(object);
-    let supertypes = object.supertypes.clone();
+    // CR 709.4: outside the stack and battlefield a split card starts from
+    // both halves' combined types (colors() already combines them).
+    let split_combined = object.split_combined_active();
+    let supertypes = split_combined
+        .map_or_else(|| object.supertypes.clone(), |combined| combined.supertypes.clone());
     let mut chars = CalculatedCharacteristics {
         name: object.name.clone(),
         mana_cost: object.mana_cost_owned(),
@@ -1624,8 +1628,10 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         ability_labels: object.ability_labels.clone(),
         power: object.base_power.as_ref().map(|p| p.base_value()),
         toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
-        card_types: object.card_types.clone(),
-        subtypes: object.subtypes.clone(),
+        card_types: split_combined
+            .map_or_else(|| object.card_types.clone(), |combined| combined.card_types.clone()),
+        subtypes: split_combined
+            .map_or_else(|| object.subtypes.clone(), |combined| combined.subtypes.clone()),
         world_supertype_since: supertypes.contains(&Supertype::World).then_some(0),
         supertypes,
         colors: object.colors(),

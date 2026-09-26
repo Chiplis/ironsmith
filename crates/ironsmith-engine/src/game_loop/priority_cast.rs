@@ -168,7 +168,7 @@ fn ensure_granted_casualty_optional_costs(game: &mut GameState, pending: &mut Pe
             .map(|spell| spell.abilities.to_vec())
             .unwrap_or_default()
     });
-    let mut powers: Vec<u32> = abilities
+    let on_spell_powers: Vec<u32> = abilities
         .iter()
         .filter_map(|ability| match &ability.kind {
             AbilityKind::Triggered(triggered) => {
@@ -201,19 +201,40 @@ fn ensure_granted_casualty_optional_costs(game: &mut GameState, pending: &mut Pe
     // The spell isn't a recorded cast yet while it's being cast, so a grant
     // such as "the first instant or sorcery spell you cast each turn has
     // casualty 2" is matched against it as the prospective cast (CR 601.2).
-    powers.extend(prospective_granted_casualty_powers(game, pending));
-    powers.sort_unstable();
-    powers.dedup();
+    // Both views can describe the same grant, so each power needs as many
+    // costs as the larger view has instances: CR 702.153b pays each instance
+    // separately (two grants of casualty 2 give two sacrifices).
+    let prospective_powers = prospective_granted_casualty_powers(game, pending);
+    let mut distinct_powers = on_spell_powers
+        .iter()
+        .chain(prospective_powers.iter())
+        .copied()
+        .collect::<Vec<_>>();
+    distinct_powers.sort_unstable();
+    distinct_powers.dedup();
     let Some(spell) = game.object(pending.spell_id) else {
         return false;
     };
-    powers.retain(|power| {
+    let mut powers = Vec::new();
+    for power in distinct_powers {
+        let instances = on_spell_powers
+            .iter()
+            .filter(|candidate| **candidate == power)
+            .count()
+            .max(
+                prospective_powers
+                    .iter()
+                    .filter(|candidate| **candidate == power)
+                    .count(),
+            );
         let label = format!("Granted Casualty {power}");
-        !spell
+        let existing = spell
             .optional_costs
             .iter()
-            .any(|existing| existing.source_label == label)
-    });
+            .filter(|existing| existing.source_label == label)
+            .count();
+        powers.extend(std::iter::repeat_n(power, instances.saturating_sub(existing)));
+    }
     if powers.is_empty() {
         return false;
     }
@@ -748,6 +769,27 @@ pub(super) fn compute_spell_cast_x_bounds(
     casting_method: &CastingMethod,
     mana_cost_to_pay: Option<&crate::mana::ManaCost>,
 ) -> (bool, u32, u32) {
+    compute_spell_cast_x_bounds_with_reduction(
+        game,
+        caster,
+        stack_id,
+        casting_method,
+        mana_cost_to_pay,
+        0,
+    )
+}
+
+/// Like [`compute_spell_cast_x_bounds`], with `mana_reduction_headroom` mana
+/// of cost reductions that will also apply to the X part of the total cost
+/// (CR 601.2f), raising the X the caster's mana can afford.
+pub(super) fn compute_spell_cast_x_bounds_with_reduction(
+    game: &GameState,
+    caster: PlayerId,
+    stack_id: ObjectId,
+    casting_method: &CastingMethod,
+    mana_cost_to_pay: Option<&crate::mana::ManaCost>,
+    mana_reduction_headroom: u32,
+) -> (bool, u32, u32) {
     let Some(spell) = game.object(stack_id) else {
         return (false, 0, 0);
     };
@@ -781,9 +823,16 @@ pub(super) fn compute_spell_cast_x_bounds(
                 &mana_spend_policy,
                 allow_black_life,
             );
+        let x_pips = cost
+            .pips()
+            .iter()
+            .filter(|pip| pip.contains(&crate::mana::ManaSymbol::X))
+            .count()
+            .max(1) as u32;
         max_x = Some(
             crate::decision::max_x_payable_with_payment_resources(game, caster, stack_id, cost)
-                .unwrap_or(caster_only_max),
+                .unwrap_or(caster_only_max)
+                .saturating_add(mana_reduction_headroom / x_pips),
         );
     }
 
@@ -2308,16 +2357,18 @@ pub(super) fn check_x_or_continue(
         }
         pending.cost_resource_announced = true;
     }
-    if pending.base_mana_cost_waived {
-        if game
+    // CR 107.3b: casting without paying the mana cost forces X to 0 only when
+    // X is in that mana cost. An X that appears only in an additional cost
+    // ("pay X life", "sacrifice X creatures") is still chosen (CR 107.3a).
+    if pending.base_mana_cost_waived
+        && game
             .object(pending.spell_id)
             .and_then(|spell| spell.mana_cost.as_ref())
             .is_some_and(|cost| cost.has_x())
-        {
-            pending.x_value = Some(0);
-            if let Some(spell) = game.object_mut(pending.spell_id) {
-                spell.x_value = Some(0);
-            }
+    {
+        pending.x_value = Some(0);
+        if let Some(spell) = game.object_mut(pending.spell_id) {
+            spell.x_value = Some(0);
         }
         return continue_to_targeting_or_finalize(
             game,
@@ -2335,12 +2386,38 @@ pub(super) fn check_x_or_continue(
         &pending.casting_method,
         pending.from_zone,
     );
-    let (needs_x, min_x, mut max_x) = compute_spell_cast_x_bounds(
+    // CR 601.2f: cost reductions also reduce the X part of the total cost, so
+    // the affordable X grows by whatever the reductions take off. Measure it
+    // with X locked high enough that every generic reduction is absorbed.
+    let mana_reduction_headroom = mana_cost
+        .as_ref()
+        .filter(|cost| cost.has_x())
+        .zip(game.object(pending.spell_id))
+        .map_or(0, |(printed, spell)| {
+            const REDUCTION_PROBE_X: u32 = 1_000;
+            let locked = crate::decision::mana_cost_with_locked_x_and_generic_reduction(
+                printed,
+                REDUCTION_PROBE_X,
+                0,
+            );
+            let effective = crate::decision::calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method_from_zone(
+                game,
+                pending.caster,
+                spell,
+                &locked,
+                &[],
+                &pending.casting_method,
+                pending.from_zone,
+            );
+            locked.mana_value().saturating_sub(effective.mana_value())
+        });
+    let (needs_x, min_x, mut max_x) = compute_spell_cast_x_bounds_with_reduction(
         game,
         pending.caster,
         pending.spell_id,
         &pending.casting_method,
         mana_cost.as_ref(),
+        mana_reduction_headroom,
     );
 
     if needs_x && pending.cost_resource_reduction > 0 {
@@ -2936,7 +3013,8 @@ pub(super) fn finalize_pending_spell_cast(
     queue_triggers_from_event(game, trigger_queue, event, false);
 
     state.clear_checkpoint();
-    reset_priority(game, &mut state.tracker);
+    // CR 117.3c: the player who cast the spell receives priority afterward.
+    priority_after_player_action(game, &mut state.tracker, result.caster);
     advance_priority_with_dm(game, trigger_queue, decision_maker)
 }
 
@@ -3841,6 +3919,30 @@ fn mana_cost_with_effect_additional_cost(
     crate::mana::ManaCost::from_pips(pips)
 }
 
+/// Replace each announced hybrid/Phyrexian pip with the single symbol its
+/// payer chose (CR 118.13a). Choices are keyed by the pip's index in the
+/// announced cost.
+fn mana_cost_with_announced_hybrid_choices(
+    cost: &crate::mana::ManaCost,
+    hybrid_choices: &[(usize, crate::mana::ManaSymbol)],
+) -> crate::mana::ManaCost {
+    if hybrid_choices.is_empty() {
+        return cost.clone();
+    }
+    let pips = cost
+        .pips()
+        .iter()
+        .enumerate()
+        .map(|(index, pip)| {
+            hybrid_choices
+                .iter()
+                .find(|(choice_index, symbol)| *choice_index == index && pip.contains(symbol))
+                .map_or_else(|| pip.clone(), |(_, symbol)| vec![*symbol])
+        })
+        .collect::<Vec<_>>();
+    crate::mana::ManaCost::from_pips(pips)
+}
+
 fn announced_spell_mana_cost(
     game: &GameState,
     pending: &PendingCast,
@@ -3939,6 +4041,20 @@ pub(super) fn continue_to_mana_payment(
             let bc = mana_cost_with_effect_additional_cost(
                 &bc,
                 pending.effect_additional_mana_cost.as_ref(),
+            );
+            // CR 118.13a / 601.2b: the hybrid and Phyrexian payment choices were
+            // announced against this exact cost (pip indices of the announced
+            // cost). Substitute them before cost modifiers reorder or remove
+            // pips, so the total cost (and any Trinisphere-style minimum)
+            // counts a Phyrexian pip paid with life as 0 mana (CR 601.2f).
+            let bc = mana_cost_with_announced_hybrid_choices(&bc, &pending.hybrid_choices);
+            // CR 107.3a / 601.2f: X has its announced value while the total
+            // cost is determined, so cost reductions reduce it like any other
+            // generic mana and a minimum-cost floor counts it.
+            let bc = crate::decision::mana_cost_with_locked_x_and_generic_reduction(
+                &bc,
+                pending.x_value.unwrap_or(0),
+                0,
             );
             let effective = calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method_from_zone(
                 game,
@@ -5045,7 +5161,7 @@ pub(super) fn target_distribution_context(
     )
 }
 
-fn normalized_target_distribution(
+pub(super) fn normalized_target_distribution(
     requirement: &PendingTargetDistribution,
     response: &[(Target, u32)],
 ) -> Result<Vec<(Target, u32)>, GameLoopError> {

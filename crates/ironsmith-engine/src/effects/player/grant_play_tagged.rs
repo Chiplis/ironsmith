@@ -205,12 +205,20 @@ impl GrantPlayTaggedEffect {
                 Self::next_turn_number_for_player(game, player)
             }
             GrantPlayTaggedDuration::UntilYourNextEndStep => {
-                // The grant registry stores an end-of-turn boundary rather
-                // than a phase-step marker. Keep the same one-turn boundary
-                // used by the tagged free-cast implementation so a grant
-                // created during the active player's turn remains visible
-                // until the next end-step window is crossed.
-                game.turn.turn_number.saturating_add(1)
+                // Play permissions use `GrantSource::EffectUntilPlayerNextEndStep`,
+                // which tracks the real end-step boundary. This turn number
+                // only bounds the companion mana-spend permission: through
+                // the turn containing the player's next end step.
+                if game.turn_players().contains(&player)
+                    && !matches!(
+                        game.turn.step,
+                        Some(crate::game_state::Step::End | crate::game_state::Step::Cleanup)
+                    )
+                {
+                    game.turn.turn_number
+                } else {
+                    Self::next_turn_number_for_player(game, player)
+                }
             }
             GrantPlayTaggedDuration::UntilSourceExilesAnother => u32::MAX,
             GrantPlayTaggedDuration::ForAsLongAsExiled => u32::MAX,
@@ -341,6 +349,8 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 )
             } else if self.duration == GrantPlayTaggedDuration::UntilYourNextTurnEnd {
                 GrantSource::until_player_next_turn_end(ctx.source, player_id, expires_end_of_turn)
+            } else if self.duration == GrantPlayTaggedDuration::UntilYourNextEndStep {
+                GrantSource::until_player_next_end_step(ctx.source, player_id, game)
             } else {
                 GrantSource::Effect {
                     source_id: ctx.source,

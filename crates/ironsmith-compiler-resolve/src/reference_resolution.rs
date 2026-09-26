@@ -6879,6 +6879,7 @@ fn bind_unresolved_it_in_restriction(
         | Restriction::BeRegenerated(filter)
         | Restriction::BeSacrificed(filter)
         | Restriction::HaveCountersPlaced(filter)
+        | Restriction::HaveCounterTypePlaced(filter, _)
         | Restriction::BeTargeted(filter)
         | Restriction::BeCountered(filter)
         | Restriction::TurnFaceUp(filter)

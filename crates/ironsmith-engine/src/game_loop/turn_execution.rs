@@ -173,7 +173,7 @@ pub(super) fn generate_damage_triggers(
         let mut trigger_events = Vec::with_capacity(events.len().saturating_mul(2));
         for event in events {
             let (damage_event, life_loss_event) = combat_damage_trigger_events(game, event);
-            trigger_events.push(damage_event);
+            trigger_events.extend(damage_event);
             trigger_events.extend(life_loss_event);
             trigger_events.extend(combat_lifelink_trigger_event(game, event));
         }
@@ -194,12 +194,14 @@ pub(super) fn generate_damage_triggers(
     let mut damage_batch_groups = std::collections::HashMap::new();
     for event in events {
         let (damage_event, life_loss_event) = combat_damage_trigger_events(game, event);
-        queue_incremental_combat_damage_event(
-            game,
-            trigger_queue,
-            damage_event,
-            &mut damage_batch_groups,
-        );
+        if let Some(damage_event) = damage_event {
+            queue_incremental_combat_damage_event(
+                game,
+                trigger_queue,
+                damage_event,
+                &mut damage_batch_groups,
+            );
+        }
         if let Some(life_loss_event) = life_loss_event {
             queue_triggers_from_event(game, trigger_queue, life_loss_event, true);
         }
@@ -291,10 +293,18 @@ fn can_batch_combat_damage_trigger_events(game: &GameState) -> bool {
         && !matches!(game.player_speed(game.turn.active_player), Some(1..=3))
 }
 
+/// Build the Damage (and LifeLoss) trigger events for one combat damage event.
+///
+/// CR 615.1 / 603.2: damage that was entirely prevented (or otherwise not
+/// dealt) is never dealt, so a zero-amount combat damage event produces no
+/// Damage trigger event ("deals combat damage to a player" can't trigger).
 fn combat_damage_trigger_events(
     game: &mut GameState,
     event: &CombatDamageEvent,
-) -> (TriggerEvent, Option<TriggerEvent>) {
+) -> (Option<TriggerEvent>, Option<TriggerEvent>) {
+    if event.amount == 0 {
+        return (None, None);
+    }
     let damage_target = match event.target {
         DamageEventTarget::Player(p) => EventDamageTarget::Player(p),
         DamageEventTarget::Object(o) => EventDamageTarget::Object(o),
@@ -346,7 +356,7 @@ fn combat_damage_trigger_events(
         _ => None,
     };
 
-    (damage_event, life_loss_event)
+    (Some(damage_event), life_loss_event)
 }
 
 /// CR 702.15b: combat damage from a lifelink source causes a life-gain event.

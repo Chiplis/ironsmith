@@ -311,6 +311,13 @@ pub enum StaticAbilityId {
     CreaturesEnteringDontCauseAbilitiesToTrigger,
     DuplicateMatchingTriggeredAbilities,
     DungeonRoomTriggerDuplication,
+    /// "This effect doesn't remove this Aura." on an Aura that grants
+    /// protection (CR 702.16n): this Aura isn't put into its owner's
+    /// graveyard for being attached to a permanent with that protection.
+    ProtectionDoesntRemoveThisAura,
+    /// "This effect doesn't remove Auras." (CR 702.16n): no Aura is removed
+    /// from the enchanted permanent by this Aura's protection grant.
+    ProtectionDoesntRemoveAuras,
     SuppressMatchingTriggeredAbilities,
     DoubleDamageFromSourcesYouControlOfChosenType,
     StartingLifeBonus,
@@ -658,6 +665,8 @@ impl StaticAbilityId {
             | CreaturesEnteringDontCauseAbilitiesToTrigger
             | DuplicateMatchingTriggeredAbilities
             | DungeonRoomTriggerDuplication
+            | ProtectionDoesntRemoveThisAura
+            | ProtectionDoesntRemoveAuras
             | SuppressMatchingTriggeredAbilities
             | DoubleDamageFromSourcesYouControlOfChosenType
             | StartingLifeBonus

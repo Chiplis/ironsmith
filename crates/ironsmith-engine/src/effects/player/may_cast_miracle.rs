@@ -107,6 +107,7 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
         }
 
         let casting_method = CastingMethod::Alternative(miracle_index);
+        game.authorize_miracle_cast(card_id);
         let result = crate::game_loop::cast_spell_from_resolving_effect(
             game,
             card_id,
@@ -117,8 +118,9 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
             None,
             ctx.provenance,
             &mut ctx.decision_maker,
-        )
-        .map_err(|error| ExecutionError::Impossible(error.to_string()))?;
+        );
+        game.revoke_miracle_cast(card_id);
+        let result = result.map_err(|error| ExecutionError::Impossible(error.to_string()))?;
         if let Some(new_id) = result {
             Ok(with_spell_cast_event(
                 EffectOutcome::with_objects(vec![new_id]),

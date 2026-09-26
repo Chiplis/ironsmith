@@ -1731,6 +1731,11 @@ impl Trigger {
         Self::new(KeywordActionTrigger::from_source(action, player))
     }
 
+    /// Create a "when this Class becomes level N" trigger (CR 716.2a).
+    pub fn class_becomes_level(level: u32) -> Self {
+        Self::new(crate::triggers::other::ClassBecomesLevelTrigger::new(level))
+    }
+
     /// Create a "whenever [player] expend N" trigger.
     pub fn expend(amount: u32, player: PlayerFilter) -> Self {
         Self::new(ExpendTrigger::new(player, amount))

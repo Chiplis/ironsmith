@@ -3301,7 +3301,18 @@ pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticA
         return Some(match marker {
             keyword_static_lines::StaticTextMarkerKind::Banding => StaticAbility::banding(),
             keyword_static_lines::StaticTextMarkerKind::AuraRetentionClarification => {
-                StaticAbility::keyword_marker(keyword_static_clause_text(tokens))
+                StaticAbility::protection_doesnt_remove_auras(
+                    false,
+                    keyword_static_clause_text(tokens),
+                )
+            }
+            keyword_static_lines::StaticTextMarkerKind::AurasRetentionClarification => {
+                // The printed surface; lexed clause text loses the capital
+                // of the "Auras" subtype.
+                StaticAbility::protection_doesnt_remove_auras(
+                    true,
+                    "This effect doesn't remove Auras.",
+                )
             }
             keyword_static_lines::StaticTextMarkerKind::YouHaveHexproof => {
                 StaticAbility::restriction(
@@ -5771,7 +5782,10 @@ pub fn parse_if_this_spell_costs_less_to_cast_line_lexed(
 
     if let Some((reduction, _)) = parsed_mana_cost {
         return Ok(Some(StaticAbility::new(
-            crate::static_abilities::ThisSpellCostReductionManaCost::new(reduction, condition),
+            crate::static_abilities::ThisSpellCostReductionManaCost::new(reduction, condition)
+                .with_colored_only(
+                    costs_replacements_and_permissions::cost_reduction_is_colored_only(tokens),
+                ),
         )));
     }
 

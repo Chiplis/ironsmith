@@ -487,6 +487,48 @@ impl SacrificeEffect {
     }
 }
 
+/// Permanents sacrificed by one instruction leave the battlefield at the same
+/// time, so every sacrifice (and dies) event of the batch looks back at the
+/// same pre-batch trigger sources (CR 603.10a, 603.6c). A watcher such as
+/// Mayhem Devil sacrificed together with a Treasure still triggers for both.
+///
+/// Returns the look-back to attach to the batch's sacrifice events, and
+/// whether this call pinned it (and so must release it with
+/// [`end_sacrifice_batch_lookback`]).
+fn begin_sacrifice_batch_lookback(
+    game: &mut GameState,
+    batch_size: usize,
+) -> (Option<Vec<ObjectSnapshot>>, bool) {
+    if let Some(existing) = game.simultaneous_event_lookback() {
+        return (Some(existing.to_vec()), false);
+    }
+    if batch_size < 2 {
+        return (None, false);
+    }
+    let lookback = game.trigger_source_lookback_snapshots();
+    game.set_simultaneous_event_lookback(Some(lookback.clone()));
+    (Some(lookback), true)
+}
+
+fn end_sacrifice_batch_lookback(game: &mut GameState, pinned: bool) {
+    if pinned {
+        game.set_simultaneous_event_lookback(None);
+    }
+}
+
+fn with_sacrifice_batch_lookback(
+    events: Vec<TriggerEvent>,
+    lookback: Option<Vec<ObjectSnapshot>>,
+) -> Vec<TriggerEvent> {
+    let Some(lookback) = lookback else {
+        return events;
+    };
+    events
+        .into_iter()
+        .map(|event| event.with_lookback_source_snapshots(lookback.clone()))
+        .collect()
+}
+
 /// Move the already-chosen objects to the graveyard as sacrifices, emitting
 /// the same events and outcome facts regardless of whether the selection came
 /// from a live execution or a simultaneous each-player proposal.
@@ -506,6 +548,8 @@ fn sacrifice_selected_objects(
     let mut sacrificed_objects = Vec::new();
     let mut sacrificed_memory = Vec::new();
     let mut sacrifice_events = Vec::new();
+    let (batch_lookback, pinned_lookback) =
+        begin_sacrifice_batch_lookback(game, to_sacrifice.len());
 
     for id in to_sacrifice {
         if !game.can_be_sacrificed_with_cause(id, &ctx.cause) {
@@ -601,6 +645,8 @@ fn sacrifice_selected_objects(
             }
         }
     }
+    end_sacrifice_batch_lookback(game, pinned_lookback);
+    let sacrifice_events = with_sacrifice_batch_lookback(sacrifice_events, batch_lookback);
 
     let mut outcome = EffectOutcome::count(sacrificed_count)
         .with_events(sacrifice_events)
@@ -772,6 +818,8 @@ impl EffectExecutor for EachPlayerSacrificesEffect {
         let mut sacrificed_objects = Vec::new();
         let mut sacrificed_memory = Vec::new();
         let mut sacrifice_events = Vec::new();
+        let (batch_lookback, pinned_lookback) =
+            begin_sacrifice_batch_lookback(game, all_chosen.len());
 
         for (_player_id, chosen) in chosen_by_player {
             for id in chosen {
@@ -807,6 +855,8 @@ impl EffectExecutor for EachPlayerSacrificesEffect {
                 }
             }
         }
+        end_sacrifice_batch_lookback(game, pinned_lookback);
+        let sacrifice_events = with_sacrifice_batch_lookback(sacrifice_events, batch_lookback);
 
         let mut outcome = EffectOutcome::count(sacrificed_count)
             .with_events(sacrifice_events)

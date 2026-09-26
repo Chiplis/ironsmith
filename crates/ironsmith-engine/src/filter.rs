@@ -154,6 +154,22 @@ pub(crate) fn names_match(lhs: &str, rhs: &str) -> bool {
     lhs.eq_ignore_ascii_case(rhs) || normalize_name_for_match(lhs) == normalize_name_for_match(rhs)
 }
 
+/// Whether two objects share a name, each given as its primary name plus the
+/// other half's name when it's a split card outside the stack and battlefield
+/// (CR 709.4a: such a card has both names).
+pub(crate) fn names_share(
+    lhs: &str,
+    lhs_other: Option<&str>,
+    rhs: &str,
+    rhs_other: Option<&str>,
+) -> bool {
+    std::iter::once(lhs).chain(lhs_other).any(|left| {
+        std::iter::once(rhs)
+            .chain(rhs_other)
+            .any(|right| names_match(left, right))
+    })
+}
+
 pub(crate) fn object_mana_value_for_filter(object: &Object) -> i32 {
     if let Some(mana_value) = object.linked_face_mana_value() {
         return mana_value as i32;
@@ -362,6 +378,11 @@ pub(crate) trait TaggedConstraintSubject {
     fn subject_object_id(&self) -> ObjectId;
     fn subject_stable_id(&self) -> StableId;
     fn subject_name(&self) -> &str;
+    /// The other half's name of a split card outside the stack and
+    /// battlefield, which it also has (CR 709.4a).
+    fn subject_alternate_name(&self) -> Option<&str> {
+        None
+    }
     fn subject_controller(&self) -> PlayerId;
     fn subject_card_types(&self) -> &[CardType];
     fn subject_subtypes(&self) -> &[Subtype];
@@ -376,6 +397,11 @@ pub(crate) trait TaggedConstraintSubject {
 pub(crate) trait TailMatchSubject: TaggedConstraintSubject {
     fn tail_object_id(&self) -> ObjectId;
     fn tail_name(&self) -> &str;
+    /// A second name the subject has: the other half of a split card outside
+    /// the stack and battlefield (CR 709.4a).
+    fn tail_alternate_name(&self) -> Option<&str> {
+        self.subject_alternate_name()
+    }
     fn tail_first_printed_set_name(&self) -> Option<&str>;
     fn tail_counters(&self) -> &std::collections::BTreeMap<CounterType, u32>;
     fn tail_abilities(&self) -> &[crate::ability::Ability];
@@ -404,16 +430,20 @@ impl TaggedConstraintSubject for Object {
         &self.name
     }
 
+    fn subject_alternate_name(&self) -> Option<&str> {
+        self.split_other_half_name()
+    }
+
     fn subject_controller(&self) -> PlayerId {
         self.owner
     }
 
     fn subject_card_types(&self) -> &[CardType] {
-        &self.card_types
+        self.zone_card_types()
     }
 
     fn subject_subtypes(&self) -> &[Subtype] {
-        &self.subtypes
+        self.zone_subtypes()
     }
 
     fn subject_colors(&self) -> ColorSet {
@@ -504,6 +534,10 @@ impl TaggedConstraintSubject for LayeredSubject<'_> {
 
     fn subject_name(&self) -> &str {
         self.chars.name.as_str()
+    }
+
+    fn subject_alternate_name(&self) -> Option<&str> {
+        self.object.split_other_half_name()
     }
 
     fn subject_controller(&self) -> PlayerId {
@@ -614,6 +648,10 @@ impl TaggedConstraintSubject for ObjectSnapshot {
 
     fn subject_name(&self) -> &str {
         &self.name
+    }
+
+    fn subject_alternate_name(&self) -> Option<&str> {
+        self.split_other_half_name()
     }
 
     fn subject_controller(&self) -> PlayerId {
@@ -739,8 +777,17 @@ fn linked_face_has_adventure(
         .is_some_and(|def| def.card.subtypes.contains(&Subtype::Adventure))
 }
 
+/// Whether a filter subject has `name`, counting both names of a split card
+/// outside the stack and battlefield (CR 709.4a).
+fn subject_has_name<S: TailMatchSubject>(subject: &S, name: &str) -> bool {
+    names_match(subject.tail_name(), name)
+        || subject
+            .tail_alternate_name()
+            .is_some_and(|other| names_match(other, name))
+}
+
 fn object_matches_subtype(object: &Object, subtype: Subtype, game: &GameState) -> bool {
-    object.subtypes.contains(&subtype)
+    object.zone_subtypes().contains(&subtype)
         || (subtype == Subtype::Adventure
             && linked_face_has_adventure(
                 game,
@@ -767,21 +814,21 @@ fn filter_card_types<'a>(
     object: &'a Object,
     chars: Option<&'a CalculatedCharacteristics>,
 ) -> &'a [CardType] {
-    chars.map_or(&object.card_types, |chars| chars.card_types.as_slice())
+    chars.map_or(object.zone_card_types(), |chars| chars.card_types.as_slice())
 }
 
 fn filter_subtypes<'a>(
     object: &'a Object,
     chars: Option<&'a CalculatedCharacteristics>,
 ) -> &'a [Subtype] {
-    chars.map_or(&object.subtypes, |chars| chars.subtypes.as_slice())
+    chars.map_or(object.zone_subtypes(), |chars| chars.subtypes.as_slice())
 }
 
 fn filter_supertypes<'a>(
     object: &'a Object,
     chars: Option<&'a CalculatedCharacteristics>,
 ) -> &'a [Supertype] {
-    chars.map_or(&object.supertypes, |chars| chars.supertypes.as_slice())
+    chars.map_or(object.zone_supertypes(), |chars| chars.supertypes.as_slice())
 }
 
 fn filter_colors(object: &Object, chars: Option<&CalculatedCharacteristics>) -> ColorSet {
@@ -1130,15 +1177,27 @@ fn tagged_constraint_matches_subject(
         TaggedOpbjectRelation::SameStableId => tagged_snapshots
             .iter()
             .any(|snapshot| snapshot.stable_id == subject.subject_stable_id()),
-        TaggedOpbjectRelation::SameNameAsTagged => tagged_snapshots
-            .iter()
-            .any(|snapshot| names_match(&snapshot.name, subject.subject_name())),
+        TaggedOpbjectRelation::SameNameAsTagged => tagged_snapshots.iter().any(|snapshot| {
+            names_share(
+                &snapshot.name,
+                snapshot.split_other_half_name(),
+                subject.subject_name(),
+                subject.subject_alternate_name(),
+            )
+        }),
         // CR 201.2c: a nameless object never has a different name.
         TaggedOpbjectRelation::DifferentNameFromTagged => {
             !name_is_nameless(subject.subject_name())
                 && tagged_snapshots
                     .iter()
-                    .all(|snapshot| !names_match(&snapshot.name, subject.subject_name()))
+                    .all(|snapshot| {
+                        !names_share(
+                            &snapshot.name,
+                            snapshot.split_other_half_name(),
+                            subject.subject_name(),
+                            subject.subject_alternate_name(),
+                        )
+                    })
         }
         TaggedOpbjectRelation::SameControllerAsTagged => tagged_snapshots
             .iter()
@@ -2754,15 +2813,15 @@ impl ObjectFilterExt for ObjectFilter {
                 let Some(chosen_name) = game.chosen_named_option(source) else {
                     return false;
                 };
-                if !names_match(subject.tail_name(), chosen_name) {
+                if !subject_has_name(subject, chosen_name) {
                     return false;
                 }
-            } else if !names_match(subject.tail_name(), required_name) {
+            } else if !subject_has_name(subject, required_name) {
                 return false;
             }
         }
         if let Some(excluded_name) = &self.excluded_name
-            && names_match(subject.tail_name(), excluded_name)
+            && subject_has_name(subject, excluded_name)
         {
             return false;
         }

@@ -189,6 +189,18 @@ struct SyncObject {
     /// is already part of the restored exile zone.
     #[serde(default)]
     prepared_spell_source: Option<u64>,
+    /// Class level designation (CR 716.2b); 0/1 means level 1.
+    #[serde(default)]
+    class_level: u32,
+    /// Room with neither door unlocked (CR 709.5d).
+    #[serde(default)]
+    room_no_unlocked_door: bool,
+    /// Room with both doors unlocked (CR 709.5e).
+    #[serde(default)]
+    room_fully_unlocked: bool,
+    /// Solved Case designation (CR 719.3).
+    #[serde(default)]
+    case_solved: bool,
     plotted_by: Option<u8>,
     plotted_turn: Option<u32>,
     damage_marked: u32,
@@ -475,7 +487,13 @@ struct SyncRulesState {
     #[serde(default)]
     current_turn_is_extra: bool,
     #[serde(default)]
+    normal_turn_anchor: Option<u8>,
+    #[serde(default)]
     combat_phases_started_this_turn: u32,
+    /// Permanents that came under their controller's control since that
+    /// player's last upkeep began (echo, CR 702.30a), sorted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    came_under_control_since_last_upkeep: Vec<u64>,
     /// Seats whose hidden draws open an owner reveal window (Miracle); fixed
     /// at match setup from public inputs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -2241,6 +2259,10 @@ impl WasmGame {
                         .game
                         .prepared_spell_source(id)
                         .map(|source| source.0),
+                    class_level: self.game.class_level(id),
+                    room_no_unlocked_door: self.game.room_has_no_unlocked_door(id),
+                    room_fully_unlocked: self.game.is_room_fully_unlocked(id),
+                    case_solved: self.game.is_case_solved(id),
                     plotted_by: self.game.plotted_by(id).map(|player| player.0),
                     plotted_turn: self.game.plotted_turn(id),
                     damage_marked: self.game.damage_on(id),
@@ -2490,7 +2512,23 @@ impl WasmGame {
                     .collect()
             },
             current_turn_is_extra: self.game.turn_store.current_turn_is_extra,
+            normal_turn_anchor: self
+                .game
+                .turn_store
+                .normal_turn_anchor
+                .map(|player| player.0),
             combat_phases_started_this_turn: self.game.turn_store.combat_phases_started_this_turn,
+            came_under_control_since_last_upkeep: {
+                let mut ids: Vec<u64> = self
+                    .game
+                    .turn_store
+                    .came_under_control_since_last_upkeep
+                    .iter()
+                    .map(|id| id.0)
+                    .collect();
+                ids.sort_unstable();
+                ids
+            },
             hidden_draw_reveal_players: self
                 .game
                 .hidden_draw_reveal_players()
@@ -2771,8 +2809,16 @@ impl WasmGame {
         self.game.has_day_night = rules.has_day_night;
         self.game.is_night = rules.has_day_night && rules.is_night;
         self.game.turn_store.current_turn_is_extra = rules.current_turn_is_extra;
+        self.game.turn_store.normal_turn_anchor =
+            rules.normal_turn_anchor.map(PlayerId::from_index);
         self.game.turn_store.combat_phases_started_this_turn =
             rules.combat_phases_started_this_turn;
+        self.game.turn_store.came_under_control_since_last_upkeep = rules
+            .came_under_control_since_last_upkeep
+            .iter()
+            .copied()
+            .map(ObjectId::from_raw)
+            .collect();
         self.game.set_hidden_draw_reveal_players(
             rules
                 .hidden_draw_reveal_players
@@ -3815,6 +3861,20 @@ impl WasmGame {
             }
             if object.renowned {
                 self.game.set_renowned(id);
+            }
+            // Battlefield designations that aren't counters (CR 716.2b,
+            // 709.5d-e, 719.3).
+            if object.class_level > 1 {
+                self.game.set_class_level(id, object.class_level);
+            }
+            if object.room_no_unlocked_door {
+                self.game.mark_room_entered_with_no_unlocked_door(id);
+            }
+            if object.room_fully_unlocked {
+                self.game.mark_room_fully_unlocked(id);
+            }
+            if object.case_solved {
+                self.game.solve_case(id);
             }
             if object.saddled {
                 self.game.set_saddled_until_end_of_turn(id);

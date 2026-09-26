@@ -372,6 +372,12 @@ impl StaticAbility {
             Some(StaticAbilityId::DungeonRoomTriggerDuplication) => {
                 Self::dungeon_room_trigger_duplication(label)
             }
+            Some(StaticAbilityId::ProtectionDoesntRemoveThisAura) => {
+                Self::protection_doesnt_remove_auras(false, label)
+            }
+            Some(StaticAbilityId::ProtectionDoesntRemoveAuras) => {
+                Self::protection_doesnt_remove_auras(true, label)
+            }
             Some(StaticAbilityId::DeckConstructionRuleText) => {
                 Self::deck_construction_rule_text(label)
             }

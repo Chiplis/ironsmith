@@ -49,6 +49,10 @@ pub struct TriggerContext<'a> {
 
     /// Structural identity of the enclosing triggered ability, when known.
     pub trigger_identity: Option<super::TriggerIdentity>,
+
+    /// Index of the enclosing triggered ability in the source's abilities,
+    /// when the matcher runs against a live object.
+    pub ability_index: Option<usize>,
 }
 
 impl<'a> TriggerContext<'a> {
@@ -65,7 +69,13 @@ impl<'a> TriggerContext<'a> {
             filter_ctx,
             game,
             trigger_identity: None,
+            ability_index: None,
         }
+    }
+
+    pub fn with_ability_index(mut self, ability_index: usize) -> Self {
+        self.ability_index = Some(ability_index);
+        self
     }
 
     pub fn with_trigger_identity(mut self, trigger_identity: super::TriggerIdentity) -> Self {

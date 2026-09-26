@@ -19,6 +19,11 @@ pub struct CounterPlacedEvent {
     pub counter_type: CounterType,
     /// The number of counters placed
     pub amount: u32,
+    /// How many counters of this kind the permanent had just before this
+    /// placement, when known. Chapter-style threshold checks compare this
+    /// before/after pair rather than the count at trigger-check time
+    /// (CR 714.2b), which may already include later placements.
+    pub previous_count: Option<u32>,
 }
 
 impl CounterPlacedEvent {
@@ -28,7 +33,14 @@ impl CounterPlacedEvent {
             permanent,
             counter_type,
             amount,
+            previous_count: None,
         }
+    }
+
+    /// Record the counter count just before this placement.
+    pub fn with_previous_count(mut self, previous_count: u32) -> Self {
+        self.previous_count = Some(previous_count);
+        self
     }
 }
 

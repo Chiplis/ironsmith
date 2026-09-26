@@ -342,6 +342,9 @@ pub fn apply_priority_response_with_dm(
                 && let Some(object) = game.object_mut(*land_id)
             {
                 object.apply_definition_face(&linked_land_def);
+                // CR 712.8f: a modal DFC played as its land back face has only that
+                // face's characteristics, so no front-face mana value carries over.
+                object.linked_face_mana_cost = None;
             }
             let result = if permission_forces_tapped {
                 game.move_object_with_etb_processing_with_dm_and_forced_tapped(
@@ -1013,14 +1016,18 @@ pub fn apply_priority_response_with_dm(
             };
             crate::special_actions::can_perform(&action, game, player, &mut *decision_maker)
                 .map_err(|e| GameLoopError::InvalidState(format!("Cannot turn face up: {e}")))?;
-            finish_special_action_response(
+            let performed = finish_special_action_response(
                 crate::special_actions::perform(action, game, player, &mut *decision_maker),
                 game,
                 decision_maker,
             )?;
             drain_pending_trigger_events(game, trigger_queue);
 
-            // Player retains priority
+            // CR 116.3 / 117.3c / 117.4: the player retains priority, and the
+            // action breaks any run of passes in succession.
+            if performed {
+                priority_after_player_action(game, &mut state.tracker, player);
+            }
             advance_priority_with_dm(game, trigger_queue, decision_maker)
         }
         LegalAction::SpecialAction(special) => {
@@ -1042,6 +1049,17 @@ pub fn apply_priority_response_with_dm(
                     game,
                     decision_maker,
                 )?;
+                // CR 116.3 / 117.3c / 117.4: a special action breaks any run
+                // of passes in succession; the player keeps priority. (Mana
+                // abilities keep the existing pass count.)
+                if performed
+                    && !matches!(
+                        special,
+                        crate::special_actions::SpecialAction::ActivateManaAbility { .. }
+                    )
+                {
+                    priority_after_player_action(game, &mut state.tracker, player);
+                }
                 if performed
                     && let crate::special_actions::SpecialAction::ActivateManaAbility {
                         permanent_id,

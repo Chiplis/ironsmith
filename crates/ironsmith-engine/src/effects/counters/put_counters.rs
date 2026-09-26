@@ -1,18 +1,17 @@
 //! Put counters effect implementation.
 
 use crate::decision::FallbackStrategy;
-use crate::decisions::{NumberSpec, make_decision_with_fallback};
+use crate::decisions::{DistributeSpec, NumberSpec, make_decision_with_fallback};
 use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, Value};
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_value};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::processing::process_put_counters_with_event;
+use crate::events::processing::process_put_counters_with_event_with_dm;
 use crate::filter::{FilterContext, ObjectFilterExt as _};
-use crate::game_state::GameState;
+use crate::game_state::{GameState, Target};
 use crate::ids::ObjectId;
 use crate::target::ChooseSpec;
 pub use ironsmith_core::PutCountersEffect;
-use std::collections::HashMap;
 
 /// Effect that puts counters on a target permanent.
 ///
@@ -109,14 +108,62 @@ impl EffectExecutor for PutCountersEffect {
             });
         }
 
-        let distributed_counts: Option<HashMap<ObjectId, u32>> = if self.distributed {
-            let mut allocations: HashMap<ObjectId, u32> = HashMap::new();
-            let target_len = target_ids.len();
-            if target_len > 0 {
-                for idx in 0..count {
-                    let target = target_ids[(idx as usize) % target_len];
-                    *allocations.entry(target).or_insert(0) += 1;
+        // CR 601.2d / 603.3d: the controller announces how distributed
+        // counters are divided (at least one per target) when the targets
+        // are chosen. A share announced for a target that has since become
+        // illegal is lost (CR 608.2b). Without an announced division (a
+        // non-targeted "distribute among" or a trigger whose division wasn't
+        // announced) the controller divides them now.
+        let distributed_counts: Option<Vec<(ObjectId, u32)>> = if self.distributed {
+            let announced = if self.target.is_target() {
+                ctx.take_target_distribution(&self.target)
+            } else {
+                None
+            };
+            let division: Vec<(Target, u32)> = if let Some(announced) = announced {
+                announced.allocations
+            } else if target_ids.len() == 1 {
+                vec![(Target::Object(target_ids[0]), count)]
+            } else {
+                let min_per_target = if self.target.is_target()
+                    && count as usize >= target_ids.len()
+                {
+                    1
+                } else {
+                    0
+                };
+                let spec = DistributeSpec::new(
+                    ctx.source,
+                    count,
+                    target_ids.iter().copied().map(Target::Object).collect(),
+                    min_per_target,
+                );
+                let division = make_decision_with_fallback(
+                    game,
+                    &mut ctx.decision_maker,
+                    ctx.controller,
+                    Some(ctx.source),
+                    spec,
+                    FallbackStrategy::Maximum,
+                );
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
                 }
+                division
+            };
+            // Keep the allocations in target order so counters land in the
+            // same order on every peer; never place more than the total.
+            let mut remaining = count;
+            let mut allocations: Vec<(ObjectId, u32)> = Vec::new();
+            for target_id in &target_ids {
+                let share: u32 = division
+                    .iter()
+                    .filter(|(target, _)| *target == Target::Object(*target_id))
+                    .map(|(_, amount)| *amount)
+                    .sum();
+                let share = share.min(remaining);
+                remaining -= share;
+                allocations.push((*target_id, share));
             }
             Some(allocations)
         } else {
@@ -128,7 +175,12 @@ impl EffectExecutor for PutCountersEffect {
         for target_id in target_ids {
             let assigned_count = distributed_counts
                 .as_ref()
-                .and_then(|allocations| allocations.get(&target_id).copied())
+                .map(|allocations| {
+                    allocations
+                        .iter()
+                        .find(|(id, _)| *id == target_id)
+                        .map_or(0, |(_, amount)| *amount)
+                })
                 .unwrap_or(count);
             if assigned_count == 0 {
                 continue;
@@ -137,14 +189,19 @@ impl EffectExecutor for PutCountersEffect {
             let final_count = if ctx.replacement.entry_counter_source == Some(target_id) {
                 assigned_count
             } else {
-                process_put_counters_with_event(
+                process_put_counters_with_event_with_dm(
                     game,
                     target_id,
                     self.counter_type,
                     assigned_count,
                     ctx.cause.clone(),
+                    &mut *ctx.decision_maker,
                 )
             };
+            if ctx.decision_maker.awaiting_choice() {
+                // A counter-replacement order choice is pending.
+                return Ok(EffectOutcome::count(0));
+            }
             if final_count == 0 {
                 outcomes.push(EffectOutcome::prevented());
                 continue;
@@ -183,6 +240,12 @@ impl EffectExecutor for PutCountersEffect {
 
     fn get_target_count(&self) -> Option<ChoiceCount> {
         self.target_count
+    }
+
+    fn get_target_distribution_value(&self) -> Option<&Value> {
+        // CR 601.2d: "distribute N counters among ... targets" is divided
+        // when the targets are announced, at least one per target.
+        (self.distributed && self.target.is_target()).then_some(&self.amount)
     }
 
     fn cost_description(&self) -> Option<String> {

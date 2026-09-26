@@ -543,6 +543,11 @@ pub struct CostReductionManaCost<Cond = Condition> {
     pub condition: Option<Cond>,
     pub per_target: bool,
     pub optional_life_additional_cost: Option<OptionalLifeAdditionalCost>,
+    /// "This effect reduces only the amount of colored mana you pay." Without
+    /// it, the part of a colored reduction the cost doesn't require reduces
+    /// generic mana instead (CR 118.7b-c).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub colored_only: bool,
 }
 
 impl<Cond> CostReductionManaCost<Cond> {
@@ -557,6 +562,7 @@ impl<Cond> CostReductionManaCost<Cond> {
             cost,
             per_target,
             optional_life_additional_cost,
+            colored_only,
         } = self;
         Ok(CostReductionManaCost {
             condition: condition.map(map_condition).transpose()?,
@@ -564,6 +570,7 @@ impl<Cond> CostReductionManaCost<Cond> {
             cost,
             per_target,
             optional_life_additional_cost,
+            colored_only,
         })
     }
 }
@@ -576,7 +583,13 @@ impl<Cond: ConditionConjunction> CostReductionManaCost<Cond> {
             condition: None,
             per_target: false,
             optional_life_additional_cost: None,
+            colored_only: false,
         }
+    }
+
+    pub fn with_colored_only(mut self, colored_only: bool) -> Self {
+        self.colored_only = colored_only;
+        self
     }
 
     pub fn with_optional_life_additional_cost(
@@ -757,6 +770,9 @@ pub struct ThisSpellCostReductionManaCost<Cond> {
     pub cost: ManaCost,
     pub repetitions: Option<Value>,
     pub condition: Cond,
+    /// See [`CostReductionManaCost::colored_only`] (CR 118.7b-c).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub colored_only: bool,
 }
 
 impl<Cond> ThisSpellCostReductionManaCost<Cond> {
@@ -765,7 +781,13 @@ impl<Cond> ThisSpellCostReductionManaCost<Cond> {
             cost,
             repetitions: None,
             condition,
+            colored_only: false,
         }
+    }
+
+    pub fn with_colored_only(mut self, colored_only: bool) -> Self {
+        self.colored_only = colored_only;
+        self
     }
 
     pub fn with_repetitions(mut self, repetitions: Value) -> Self {

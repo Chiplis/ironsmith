@@ -524,6 +524,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | BeRegenerated(filter)
         | BeSacrificed(filter)
         | HaveCountersPlaced(filter)
+        | HaveCounterTypePlaced(filter, _)
         | BeTargeted(filter)
         | BeCountered(filter)
         | TurnFaceUp(filter)

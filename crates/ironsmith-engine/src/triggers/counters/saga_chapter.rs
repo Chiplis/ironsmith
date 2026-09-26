@@ -27,39 +27,61 @@ impl SagaChapterTrigger {
     }
 }
 
-impl TriggerMatcher for SagaChapterTrigger {
-    fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
+impl SagaChapterTrigger {
+    /// Number of this ability's chapters crossed by one lore-counter
+    /// placement (CR 714.2b): each chapter number whose threshold lies in
+    /// (before, after]. "I, II —" is two chapter abilities (CR 714.2c), so a
+    /// single 0→2 placement triggers it twice.
+    fn crossed_chapter_count(&self, event: &TriggerEvent, ctx: &TriggerContext) -> u32 {
         if event.kind() != EventKind::CounterPlaced {
-            return false;
+            return 0;
         }
         let Some(e) = event.downcast::<CounterPlacedEvent>() else {
-            return false;
+            return 0;
         };
 
         // Only trigger on lore counters placed on this saga
         if e.permanent != ctx.source_id || e.counter_type != CounterType::Lore {
-            return false;
+            return 0;
         }
 
-        // Get the saga's current lore count
         let Some(saga) = ctx.game.object(e.permanent) else {
-            return false;
+            return 0;
         };
 
-        let current_count = saga.counters.get(&CounterType::Lore).copied().unwrap_or(0);
-        // Calculate what the count was before this counter addition
-        let previous_count = current_count.saturating_sub(e.amount);
+        // Compare the counts immediately before and after this placement.
+        // Older events without a recorded count fall back to the live count.
+        let (previous_count, current_count) = match e.previous_count {
+            Some(previous) => (previous, previous.saturating_add(e.amount)),
+            None => {
+                let current = saga.counters.get(&CounterType::Lore).copied().unwrap_or(0);
+                (current.saturating_sub(e.amount), current)
+            }
+        };
 
         let entered_this_turn =
             crate::game_loop::source_entered_battlefield_this_turn(ctx.game, e.permanent);
         let read_ahead_suppresses_skipped_chapters =
             entered_this_turn && crate::game_loop::source_has_read_ahead(ctx.game, e.permanent);
 
-        self.chapters.iter().any(|&chapter| {
-            previous_count < chapter
-                && current_count >= chapter
-                && (!read_ahead_suppresses_skipped_chapters || current_count == chapter)
-        })
+        self.chapters
+            .iter()
+            .filter(|&&chapter| {
+                previous_count < chapter
+                    && current_count >= chapter
+                    && (!read_ahead_suppresses_skipped_chapters || current_count == chapter)
+            })
+            .count() as u32
+    }
+}
+
+impl TriggerMatcher for SagaChapterTrigger {
+    fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
+        self.crossed_chapter_count(event, ctx) > 0
+    }
+
+    fn trigger_count_with_context(&self, event: &TriggerEvent, ctx: &TriggerContext) -> u32 {
+        self.crossed_chapter_count(event, ctx).max(1)
     }
 
     fn display(&self) -> String {

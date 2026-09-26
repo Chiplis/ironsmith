@@ -1793,10 +1793,11 @@ pub struct ChooseModeEffect<E> {
     /// Authored ability-word label for a modal spell. Triggered modal labels
     /// live on the enclosing triggered ability instead.
     pub presentation_label: Option<crate::ability_model::PresentationLabel>,
-    /// This is the endure keyword action (CR 701.63a): the first mode puts
-    /// +1/+1 counters on the enduring permanent, the second creates the
-    /// Spirit token. If the permanent can't get counters because it left the
-    /// battlefield, the token is created.
+    /// This is a counters-else-token keyword action, endure (CR 701.63a) or
+    /// fabricate (CR 702.123a): the first mode puts +1/+1 counters on the
+    /// permanent, the second creates the token(s). If the permanent can't get
+    /// counters (it left the battlefield or can't have counters put on it),
+    /// the token mode is used.
     #[cfg_attr(feature = "serde", serde(default))]
     pub endure: bool,
 }

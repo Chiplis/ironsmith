@@ -740,6 +740,7 @@ fn execute_general_combat_damage_batch_path(
         let mut damage_to_original = 0u32;
         let mut life_lost_to_original = 0u32;
         let mut total_damage_dealt = 0u32;
+        let mut redirected = Vec::new();
         if !processed.replacement_prevented {
             for assignment in processed.assignments {
                 let applied = crate::rules::damage::apply_processed_damage_assignment(
@@ -761,6 +762,8 @@ fn execute_general_combat_damage_batch_path(
                 if assignment.target == planned.target {
                     damage_to_original = damage_to_original.saturating_add(assignment.amount);
                     life_lost_to_original = life_lost_to_original.saturating_add(applied.life_lost);
+                } else {
+                    redirected.push((assignment.target, assignment.amount, applied.life_lost));
                 }
             }
         }
@@ -782,9 +785,10 @@ fn execute_general_combat_damage_batch_path(
             target: event_target,
             amount: damage_to_original,
             life_lost: life_lost_to_original,
-            result: planned.result,
+            result: planned.result.clone(),
             lifelink_gain: None,
         });
+        push_redirected_combat_damage_events(&mut events, &planned.result, planned.source, redirected);
     }
     lifelink_totals.apply(game, &mut events);
     Ok(events)
@@ -1031,6 +1035,7 @@ fn execute_unblocked_player_damage_batch_path(
         let mut damage_to_original = 0u32;
         let mut life_lost_to_original = 0u32;
         let mut total_damage_dealt = 0u32;
+        let mut redirected = Vec::new();
         if !processed.replacement_prevented {
             for assignment in processed.assignments {
                 let applied = crate::rules::damage::apply_processed_damage_assignment(
@@ -1048,11 +1053,12 @@ fn execute_unblocked_player_damage_batch_path(
                 if let crate::events::DamageTarget::Player(player) = assignment.target {
                     game.record_commander_damage(player, planned.source, assignment.amount);
                     apply_combat_toxic(game, planned.source, planned.controller, player);
-                    if player == planned.target {
-                        damage_to_original = damage_to_original.saturating_add(assignment.amount);
-                        life_lost_to_original =
-                            life_lost_to_original.saturating_add(applied.life_lost);
-                    }
+                }
+                if assignment.target == crate::events::DamageTarget::Player(planned.target) {
+                    damage_to_original = damage_to_original.saturating_add(assignment.amount);
+                    life_lost_to_original = life_lost_to_original.saturating_add(applied.life_lost);
+                } else {
+                    redirected.push((assignment.target, assignment.amount, applied.life_lost));
                 }
             }
         }
@@ -1070,9 +1076,10 @@ fn execute_unblocked_player_damage_batch_path(
             target: DamageEventTarget::Player(planned.target),
             amount: damage_to_original,
             life_lost: life_lost_to_original,
-            result: planned.result,
+            result: planned.result.clone(),
             lifelink_gain: None,
         });
+        push_redirected_combat_damage_events(&mut events, &planned.result, planned.source, redirected);
     }
     lifelink_totals.apply(game, &mut events);
 
@@ -1250,6 +1257,37 @@ fn apply_combat_toxic(
 ///
 /// CR 702.15b / 120.3f: a lifelink source that deals damage to several
 /// recipients at once causes a single life gain equal to the total.
+/// CR 614.9 / 510.2: damage a replacement effect redirected to another
+/// recipient is still combat damage dealt by the source, so each applied
+/// redirected assignment gets its own event (damage and, for players, life
+/// loss triggers and turn history see it).
+fn push_redirected_combat_damage_events(
+    events: &mut Vec<CombatDamageEvent>,
+    result: &DamageResult,
+    source: ObjectId,
+    redirected: Vec<(crate::events::DamageTarget, u32, u32)>,
+) {
+    for (target, amount, life_lost) in redirected {
+        if amount == 0 {
+            continue;
+        }
+        let target = match target {
+            crate::events::DamageTarget::Player(player) => DamageEventTarget::Player(player),
+            crate::events::DamageTarget::Object(object) => DamageEventTarget::Object(object),
+        };
+        events.push(CombatDamageEvent {
+            source_snapshot: None,
+            target_snapshot: None,
+            source,
+            target,
+            amount,
+            life_lost,
+            result: result.clone(),
+            lifelink_gain: None,
+        });
+    }
+}
+
 #[derive(Default)]
 struct CombatLifelinkTotals {
     /// (source, controller, total damage dealt, index of the source's first event)

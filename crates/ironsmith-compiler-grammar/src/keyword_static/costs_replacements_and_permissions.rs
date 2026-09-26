@@ -250,6 +250,17 @@ pub fn parse_cost_modifier_prefix_condition(
     Ok((None, 0))
 }
 
+/// "This effect reduces only the amount of colored mana you pay" (or "... of
+/// green mana ..."). Without this sentence, the part of a colored reduction a
+/// cost doesn't require reduces its generic mana instead (CR 118.7b-c).
+pub fn cost_reduction_is_colored_only(tokens: &[OwnedLexToken]) -> bool {
+    use winnow::Parser as _;
+    crate::grammar::primitives::find_prefix(tokens, || {
+        crate::grammar::primitives::phrase(&["reduces", "only", "the", "amount", "of"]).void()
+    })
+    .is_some()
+}
+
 pub fn parse_optional_life_additional_cost_reduction_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -317,7 +328,8 @@ pub fn parse_optional_life_additional_cost_reduction_line(
         .to_string();
     Ok(Some(StaticAbility::new(
         crate::model::CompilerCostReductionManaCost::new(filter, reduction)
-            .with_optional_life_additional_cost(label, life_cost),
+            .with_optional_life_additional_cost(label, life_cost)
+            .with_colored_only(cost_reduction_is_colored_only(tokens)),
     )))
 }
 
@@ -808,14 +820,16 @@ pub fn parse_spells_cost_modifier_line(
             let mut ability = crate::static_abilities::ThisSpellCostReductionManaCost::new(
                 cost,
                 this_spell_condition,
-            );
+            )
+            .with_colored_only(cost_reduction_is_colored_only(tokens));
             if let Some(repetitions) = parsed_mana_cost_repetitions {
                 ability = ability.with_repetitions(repetitions);
             }
             return Ok(Some(StaticAbility::new(ability)));
         }
         if let Some((cost, _)) = parsed_mana_cost {
-            let mut ability = crate::static_abilities::CostReductionManaCost::new(filter, cost);
+            let mut ability = crate::static_abilities::CostReductionManaCost::new(filter, cost)
+                .with_colored_only(cost_reduction_is_colored_only(tokens));
             if per_target {
                 ability = ability.with_per_target();
             }
@@ -1739,6 +1753,17 @@ pub fn parse_dynamic_cost_modifier_value(
 pub fn parse_add_mana_that_much_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     if keyword_static_lines::parse_that_much_value_marker_tokens(tokens) {
         return Some(Value::EventValue(EventValueSpec::Amount));
+    }
+    // "add twice that much {G}" (Fangorn, Tree Shepherd)
+    if tokens
+        .first()
+        .is_some_and(|token| token.is_word("twice"))
+        && keyword_static_lines::parse_that_much_value_marker_tokens(&tokens[1..])
+    {
+        return Some(Value::Scaled(
+            Box::new(Value::EventValue(EventValueSpec::Amount)),
+            2,
+        ));
     }
     None
 }
@@ -5284,28 +5309,50 @@ pub fn parse_exile_to_exile_instead_of_graveyard_line(
     };
     let filter = match spec.filter_kind {
         keyword_static_lines::ExileGraveyardFilterKind::Source => ObjectFilter::source(),
-        keyword_static_lines::ExileGraveyardFilterKind::AnyCard => {
+        keyword_static_lines::ExileGraveyardFilterKind::AnyCardOrToken => {
             let mut filter = ObjectFilter::default();
+            filter.set_explicit_card_noun(true);
+            filter
+        }
+        // A token isn't a card (CR 108.2, 111.1): "a card" graveyard
+        // replacements leave dying tokens alone.
+        keyword_static_lines::ExileGraveyardFilterKind::AnyCard => {
+            let mut filter = ObjectFilter::default().nontoken();
             filter.set_explicit_card_noun(true);
             filter
         }
         keyword_static_lines::ExileGraveyardFilterKind::CardYouDidntControl => {
             // Cards outside the battlefield and stack are controlled by their
             // owners, so only a permanent or spell you controlled is spared.
-            let mut filter = ObjectFilter::default();
+            let mut filter = ObjectFilter::default().nontoken();
             filter.set_explicit_card_noun(true);
             filter.controller = Some(PlayerFilter::NotYou);
             filter
         }
-        keyword_static_lines::ExileGraveyardFilterKind::CreatureCard => ObjectFilter::creature(),
+        // "a creature card": a token isn't a card (CR 108.2, 111.1).
+        keyword_static_lines::ExileGraveyardFilterKind::CreatureCard => {
+            let mut filter = ObjectFilter::creature().nontoken();
+            filter.set_explicit_card_noun(true);
+            filter
+        }
         keyword_static_lines::ExileGraveyardFilterKind::CyclingCard => {
-            let mut filter = ObjectFilter::default().with_ability_marker("cycling");
+            let mut filter = ObjectFilter::default()
+                .with_ability_marker("cycling")
+                .nontoken();
             filter.set_explicit_card_noun(true);
             filter
         }
         keyword_static_lines::ExileGraveyardFilterKind::ObjectFilter => {
             match parse_object_filter(spec.filter_tokens, false) {
-                Ok(filter) => filter,
+                // "... card" subjects exclude tokens (CR 108.2) unless the
+                // filter explicitly names tokens or has alternatives.
+                Ok(mut filter) => {
+                    if filter.has_explicit_card_noun() && !filter.token && filter.any_of.is_empty()
+                    {
+                        filter.nontoken = true;
+                    }
+                    filter
+                }
                 Err(_) if crate::lexer::is_bare_card_name_phrase(spec.filter_tokens) => {
                     ObjectFilter::source()
                 }

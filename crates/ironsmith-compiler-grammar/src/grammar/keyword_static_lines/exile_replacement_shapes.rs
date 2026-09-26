@@ -37,7 +37,10 @@ pub enum ExileWouldDieVictimKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExileGraveyardFilterKind {
     Source,
+    /// "a card": tokens are excluded (CR 108.2).
     AnyCard,
+    /// "a card or token" (Rest in Peace).
+    AnyCardOrToken,
     /// "a card you didn't control"
     CardYouDidntControl,
     CreatureCard,
@@ -227,7 +230,10 @@ fn classify_exile_graveyard_filter(tokens: &[OwnedLexToken]) -> ExileGraveyardFi
     }
     if exact_phrase(tokens, &["a", "card", "or", "token"])
         || exact_phrase(tokens, &["card", "or", "token"])
-        || exact_phrase(tokens, &["a", "card"])
+    {
+        return ExileGraveyardFilterKind::AnyCardOrToken;
+    }
+    if exact_phrase(tokens, &["a", "card"])
         || exact_phrase(tokens, &["card"])
     {
         return ExileGraveyardFilterKind::AnyCard;

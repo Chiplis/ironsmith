@@ -79,6 +79,64 @@ fn controlled_existing_attachment_is_preserved_by_protection_grant(
         })
 }
 
+/// CR 702.16n: an Aura that grants protection and says "this effect doesn't
+/// remove this Aura" (or "... doesn't remove Auras") isn't put into its
+/// owner's graveyard because of the protection *that Aura grants*. The
+/// exemption doesn't cover the same protection from another source (White
+/// Ward still falls off if protection from white also comes from Mother of
+/// Runes), so the protected permanent's characteristics are recomputed
+/// without the continuous effects of the exempting Auras and the Aura stays
+/// only if none of the remaining protection covers it.
+fn aura_is_preserved_by_protection_grant(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    protected: ObjectId,
+    aura: ObjectId,
+) -> bool {
+    let has_retention = |object: ObjectId, id: StaticAbilityId| {
+        view.static_abilities_rc(object)
+            .is_some_and(|abilities| abilities.iter().any(|ability| ability.id() == id))
+    };
+    let Some(protected_object) = game.object(protected) else {
+        return false;
+    };
+    // The sources whose protection doesn't remove this Aura: the Aura itself
+    // ("this Aura"), and any Aura on the permanent that doesn't remove Auras.
+    let mut exempting_sources = Vec::new();
+    if has_retention(aura, StaticAbilityId::ProtectionDoesntRemoveThisAura) {
+        exempting_sources.push(aura);
+    }
+    for &attachment in &protected_object.attachments {
+        if game.object(attachment).is_some_and(|object| {
+            object.attached_to == Some(AttachmentTarget::Object(protected))
+        }) && has_retention(attachment, StaticAbilityId::ProtectionDoesntRemoveAuras)
+            && !exempting_sources.contains(&attachment)
+        {
+            exempting_sources.push(attachment);
+        }
+    }
+    if exempting_sources.is_empty() {
+        return false;
+    }
+    let effects = game
+        .all_continuous_effects_arc()
+        .iter()
+        .filter(|effect| !exempting_sources.contains(&effect.source))
+        .cloned()
+        .collect::<Vec<_>>();
+    let Some(without_exempt) = game.calculated_characteristics_with_effects(protected, &effects)
+    else {
+        return false;
+    };
+    !crate::targeting::protection_among_abilities_from_source(
+        game,
+        protected,
+        aura,
+        &without_exempt.static_abilities,
+        view,
+    )
+}
+
 /// A state-based action that needs to be performed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StateBasedAction {
@@ -1357,6 +1415,12 @@ fn check_permanent_sbas_for_ids(
                                     attached_id,
                                     obj_id,
                                 )
+                                && !aura_is_preserved_by_protection_grant(
+                                    game,
+                                    view,
+                                    attached_id,
+                                    obj_id,
+                                )
                     )
                 {
                     if obj.is_bestow_overlay_active() {
@@ -2117,7 +2181,7 @@ pub(crate) fn apply_state_based_actions_with_legend_choices(
         };
     game.set_simultaneous_event_lookback(Some(lookback));
     for (keep, group) in legend_keeps {
-        apply_legend_rule_choice_from_group(game, *keep, group);
+        apply_legend_rule_choice_from_group_with_decision_maker(game, *keep, group, decision_maker);
     }
     let applied =
         apply_state_based_actions_from_actions_with(game, actions, all_effects, decision_maker);
@@ -2212,6 +2276,23 @@ pub fn apply_legend_rule_choice_from_group(
     keep: ObjectId,
     candidates: &[ObjectId],
 ) {
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    apply_legend_rule_choice_from_group_with_decision_maker(
+        game,
+        keep,
+        candidates,
+        &mut decision_maker,
+    );
+}
+
+/// [`apply_legend_rule_choice_from_group`] with the decision maker that answers
+/// choices among zone-change replacement effects for the removed legends.
+pub fn apply_legend_rule_choice_from_group_with_decision_maker(
+    game: &mut GameState,
+    keep: ObjectId,
+    candidates: &[ObjectId],
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
+) {
     if !candidates.contains(&keep) {
         return;
     }
@@ -2261,11 +2342,32 @@ pub fn apply_legend_rule_choice_from_group(
         };
     drop(view);
 
+    // CR 704.5j / 614.6: "would be put into a graveyard" replacement effects
+    // (Rest in Peace, Leyline of the Void, "exile it instead") apply to the
+    // legend rule's moves like any other. Determine every replacement result
+    // while all the legends still exist, then commit the moves.
+    use crate::events::processing::{ZoneChangeOutcome, process_zone_change_with_snapshot};
+    let cause = crate::events::cause::EventCause::from_legend_rule(controller);
+    let mut prepared = Vec::with_capacity(to_remove.len());
     for (id, snapshot) in to_remove {
+        let outcome = process_zone_change_with_snapshot(
+            game,
+            id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            cause.clone(),
+            decision_maker,
+            Some(snapshot.clone()),
+        );
+        if let ZoneChangeOutcome::Proceed(final_zone) = outcome {
+            prepared.push((id, final_zone, snapshot));
+        }
+    }
+    for (id, final_zone, snapshot) in prepared {
         game.move_object_with_snapshot_and_pre_event_lookback(
             id,
-            Zone::Graveyard,
-            crate::events::cause::EventCause::from_legend_rule(controller),
+            final_zone,
+            cause.clone(),
             Some(snapshot),
             &pre_event_lookback_source_snapshots,
         );
@@ -2476,12 +2578,15 @@ fn apply_single_sba_with_snapshots(
             permanents,
         } => {
             // In a full implementation, the player would choose which to keep
-            // For now, keep the first one, sacrifice the rest
-            for &obj_id in permanents.iter().skip(1) {
-                game.move_object(
-                    obj_id,
-                    Zone::Graveyard,
-                    crate::events::cause::EventCause::from_legend_rule(player),
+            // For now, keep the first one; the rest go through the same
+            // replacement-aware legend-rule path (CR 704.5j, 614.6).
+            let _ = player;
+            if let Some(&keep) = permanents.first() {
+                apply_legend_rule_choice_from_group_with_decision_maker(
+                    game,
+                    keep,
+                    &permanents,
+                    decision_maker,
                 );
             }
         }

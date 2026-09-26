@@ -1557,6 +1557,17 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::HaveCounterTypePlaced(filter, counter_type) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker
+                            .cant_have_counter_types_placed
+                            .insert((obj_id, *counter_type));
+                    }
+                }
+            }
             Restriction::HaveCountersPlaced(filter) => {
                 for &obj_id in &game.battlefield {
                     if let Some(obj) = game.object(obj_id)

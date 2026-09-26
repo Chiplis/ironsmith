@@ -16,7 +16,9 @@ impl TriggerMatcher for ThisBlocksTrigger {
         let Some(e) = event.downcast::<CreatureBlockedEvent>() else {
             return false;
         };
+        // CR 509.3a: once per combat, however many creatures it blocks.
         e.blocker == ctx.source_id
+            && super::blocks::is_first_blocked_attacker_for_blocker(ctx.game, e.blocker, e.attacker)
     }
 
     fn display(&self) -> String {

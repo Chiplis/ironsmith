@@ -851,7 +851,7 @@ impl TurnHistory {
                 .is_some_and(|snapshot| {
                     snapshot.controller == dealer
                         && snapshot.card_types.contains(&CardType::Creature)
-                        && snapshot.subtypes.contains(&subtype)
+                        && snapshot_had_subtype(snapshot, subtype)
                 })
         })
     }
@@ -880,10 +880,9 @@ impl TurnHistory {
                 .or(record.object_snapshot.as_ref())
                 .is_some_and(|snapshot| {
                     snapshot.controller == dealer
-                        && snapshot
-                            .subtypes
+                        && subtypes
                             .iter()
-                            .any(|subtype| subtypes.contains(subtype))
+                            .any(|subtype| snapshot_had_subtype(snapshot, *subtype))
                 })
         })
     }
@@ -911,7 +910,7 @@ impl TurnHistory {
                 .is_some_and(|snapshot| {
                     snapshot.controller == dealer
                         && snapshot.card_types.contains(&CardType::Creature)
-                        && (snapshot.subtypes.contains(&subtype) || snapshot.is_commander)
+                        && (snapshot_had_subtype(snapshot, subtype) || snapshot.is_commander)
                 })
         })
     }
@@ -1949,4 +1948,13 @@ mod tests {
             5
         );
     }
+}
+
+/// Whether a last-known snapshot had `subtype`, counting changeling: a
+/// creature with changeling is every creature type (CR 702.73a).
+fn snapshot_had_subtype(snapshot: &ObjectSnapshot, subtype: Subtype) -> bool {
+    snapshot.subtypes.contains(&subtype)
+        || (subtype.is_creature_type()
+            && snapshot.card_types.contains(&CardType::Creature)
+            && snapshot.has_static_ability_id(crate::static_abilities::StaticAbilityId::Changeling))
 }

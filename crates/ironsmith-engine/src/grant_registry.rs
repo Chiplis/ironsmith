@@ -35,10 +35,28 @@ pub enum GrantSource {
     /// particular player's next turn. The numeric boundary is retained for
     /// ordinary cleanup, while the player identity lets CR 800.4m clamp the
     /// duration if that player leaves before the turn can happen.
+    ///
+    /// The boundary is re-evaluated at every turn start (see
+    /// `expire_at_turn_start`): "your next turn" is whichever turn that player
+    /// actually takes next, including extra turns created after the grant.
     EffectUntilPlayerNextTurnEnd {
         source_id: ObjectId,
         duration_player: PlayerId,
         expires_end_of_turn: u32,
+        /// Set once CR 800.4m clamped the boundary because the player left.
+        departure_clamped: bool,
+    },
+    /// From a one-shot effect that lasts "until your next end step": until
+    /// the end step of the next turn `duration_player` controls begins. When
+    /// granted during that player's turn before its end step, this turn's end
+    /// step ends it.
+    EffectUntilPlayerNextEndStep {
+        source_id: ObjectId,
+        duration_player: PlayerId,
+        /// The turn whose end step ends the grant, once known.
+        final_turn: Option<u32>,
+        /// CR 800.4m boundary if the duration player left the game.
+        departure_boundary: Option<u32>,
     },
     EffectUntilPlayerNextTurnStart {
         source_id: ObjectId,
@@ -112,6 +130,27 @@ impl GrantSource {
             source_id,
             duration_player,
             expires_end_of_turn: turn,
+            departure_clamped: false,
+        }
+    }
+
+    /// Create a grant that lasts until `duration_player`'s next end step
+    /// begins.
+    pub fn until_player_next_end_step(
+        source_id: ObjectId,
+        duration_player: PlayerId,
+        game: &crate::game_state::GameState,
+    ) -> Self {
+        let before_end_step_of_own_turn = game.turn_players().contains(&duration_player)
+            && !matches!(
+                game.turn.step,
+                Some(crate::game_state::Step::End | crate::game_state::Step::Cleanup)
+            );
+        GrantSource::EffectUntilPlayerNextEndStep {
+            source_id,
+            duration_player,
+            final_turn: before_end_step_of_own_turn.then_some(game.turn.turn_number),
+            departure_boundary: None,
         }
     }
 
@@ -128,6 +167,7 @@ impl GrantSource {
             GrantSource::Effect { source_id, .. } => *source_id,
             GrantSource::EffectUntilPlayerNextTurnStart { source_id, .. } => *source_id,
             GrantSource::EffectUntilPlayerNextTurnEnd { source_id, .. } => *source_id,
+            GrantSource::EffectUntilPlayerNextEndStep { source_id, .. } => *source_id,
             GrantSource::EffectUntilSourceExilesAnother { source_id, .. } => *source_id,
             GrantSource::EffectWhileControlled { source_id, .. } => *source_id,
             GrantSource::EffectWhileStableCardOnTopOfLibrary { source_id, .. } => *source_id,
@@ -148,6 +188,25 @@ impl GrantSource {
                 !(game.turn.turn_number > *created_turn && game.is_active_player(*duration_player)),
                 |boundary| game.turn.turn_number < boundary,
             ),
+            GrantSource::EffectUntilPlayerNextEndStep {
+                final_turn,
+                departure_boundary,
+                ..
+            } => {
+                let turn = game.turn.turn_number;
+                departure_boundary.is_none_or(|boundary| turn < boundary)
+                    && final_turn.is_none_or(|final_turn| {
+                        turn < final_turn
+                            || (turn == final_turn
+                                && !matches!(
+                                    game.turn.step,
+                                    Some(
+                                        crate::game_state::Step::End
+                                            | crate::game_state::Step::Cleanup
+                                    )
+                                ))
+                    })
+            }
 
             GrantSource::Effect {
                 expires_end_of_turn,
@@ -213,6 +272,14 @@ impl GrantSource {
             GrantSource::EffectUntilPlayerNextTurnStart {
                 departure_boundary, ..
             } => departure_boundary.is_none_or(|boundary| turn_number < boundary),
+            GrantSource::EffectUntilPlayerNextEndStep {
+                final_turn,
+                departure_boundary,
+                ..
+            } => {
+                departure_boundary.is_none_or(|boundary| turn_number < boundary)
+                    && final_turn.is_none_or(|final_turn| turn_number <= final_turn)
+            }
 
             GrantSource::Effect {
                 expires_end_of_turn,
@@ -320,6 +387,17 @@ impl GrantSource {
                 source_id: *source_id,
                 turn: *expires_end_of_turn,
             },
+            GrantSource::EffectUntilPlayerNextEndStep {
+                source_id,
+                final_turn,
+                departure_boundary,
+                ..
+            } => GrantLifetime::UntilEndOfTurn {
+                source_id: *source_id,
+                turn: final_turn
+                    .or(departure_boundary.map(|boundary| boundary.saturating_sub(1)))
+                    .unwrap_or(u32::MAX),
+            },
             GrantSource::EffectUntilSourceExilesAnother {
                 source_id,
                 exile_revision,
@@ -358,6 +436,20 @@ impl GrantSource {
                 counter_type: *counter_type,
             },
         }
+    }
+}
+
+/// Zone whose alternative-cost grants apply to a cast from `zone`.
+///
+/// "Rather than pay the mana cost" grants for spells you cast (Fist of Suns,
+/// Jodah) are registered for hand casts, but a commander cast from the command
+/// zone may use them too (CR 903.8, 601.2b). The cast itself keeps
+/// `Zone::Command` as its origin.
+pub(crate) fn alternative_cast_grant_zone(zone: Zone) -> Zone {
+    if zone == Zone::Command {
+        Zone::Hand
+    } else {
+        zone
     }
 }
 
@@ -1063,7 +1155,7 @@ impl GrantRegistry {
         zone: Zone,
         player: PlayerId,
     ) -> Vec<GrantedAlternativeCast> {
-        self.get_grants_for_card(game, card_id, zone, player)
+        self.get_grants_for_card(game, card_id, alternative_cast_grant_zone(zone), player)
             .into_iter()
             .filter_map(|grant| materialize_granted_alternative_cast(game, card_id, grant))
             .chain(game.plotted_cast_permission(card_id, zone, player))
@@ -1140,6 +1232,7 @@ impl GrantRegistry {
                 GrantSource::Effect { source_id: sid, .. } |
                 GrantSource::EffectUntilPlayerNextTurnStart { source_id: sid, .. } |
                 GrantSource::EffectUntilPlayerNextTurnEnd { source_id: sid, .. } |
+                GrantSource::EffectUntilPlayerNextEndStep { source_id: sid, .. } |
                 GrantSource::EffectWhileControlled { source_id: sid, .. } |
                 GrantSource::EffectWhileStableCardOnTopOfLibrary { source_id: sid, .. } |
                 GrantSource::EffectDuringTurnsCounterPutOnSource { source_id: sid, .. } |
@@ -1168,16 +1261,56 @@ impl GrantRegistry {
             if let GrantSource::EffectUntilPlayerNextTurnEnd {
                 duration_player,
                 expires_end_of_turn: grant_expiry,
+                departure_clamped,
                 ..
             } = &mut grant.source
                 && *duration_player == player
             {
                 *grant_expiry = (*grant_expiry).min(expires_end_of_turn);
+                *departure_clamped = true;
+            }
+            if let GrantSource::EffectUntilPlayerNextEndStep {
+                duration_player,
+                departure_boundary,
+                ..
+            } = &mut grant.source
+                && *duration_player == player
+            {
+                *departure_boundary = Some(expires_end_of_turn.saturating_add(1));
             }
         }
     }
 
     pub fn expire_at_turn_start(&mut self, turn: u32, active_players: &[PlayerId]) {
+        // Grants are always created during an earlier turn, so this is a turn
+        // after the grant's creation: if the duration player is taking it,
+        // it is that player's "next turn" (CR 500.7 extra turns included).
+        for grant in &mut self.grants {
+            match &mut grant.source {
+                GrantSource::EffectUntilPlayerNextTurnEnd {
+                    duration_player,
+                    expires_end_of_turn,
+                    departure_clamped: false,
+                    ..
+                } => {
+                    if active_players.contains(duration_player) {
+                        *expires_end_of_turn = turn;
+                    } else if *expires_end_of_turn == turn {
+                        // The predicted turn went to someone else (an extra
+                        // turn was inserted); wait for the player's real turn.
+                        *expires_end_of_turn = u32::MAX;
+                    }
+                }
+                GrantSource::EffectUntilPlayerNextEndStep {
+                    duration_player,
+                    final_turn: final_turn @ None,
+                    ..
+                } if active_players.contains(duration_player) => {
+                    *final_turn = Some(turn);
+                }
+                _ => {}
+            }
+        }
         self.grants.retain(|grant| match &grant.source {
             GrantSource::EffectUntilPlayerNextTurnStart {
                 duration_player,
@@ -1206,6 +1339,14 @@ impl GrantRegistry {
             GrantSource::EffectUntilPlayerNextTurnStart {
                 departure_boundary, ..
             } => departure_boundary.is_none_or(|boundary| turn_number.saturating_add(1) < boundary),
+            GrantSource::EffectUntilPlayerNextEndStep {
+                final_turn,
+                departure_boundary,
+                ..
+            } => {
+                departure_boundary.is_none_or(|boundary| turn_number.saturating_add(1) < boundary)
+                    && final_turn.is_none_or(|final_turn| final_turn > turn_number)
+            }
             GrantSource::Effect {
                 expires_end_of_turn,
                 ..

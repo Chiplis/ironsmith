@@ -62,8 +62,9 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
         let Some(e) = event.downcast::<DamageEvent>() else {
             return false;
         };
-        // Must be combat damage to a player.
-        if !e.is_combat {
+        // Must be combat damage to a player; prevented damage isn't dealt
+        // (CR 615.1).
+        if !e.is_combat || e.amount == 0 {
             return false;
         }
         let DamageTarget::Player(damaged_player) = e.target else {

@@ -4217,6 +4217,71 @@ pub(super) fn describe_structural_enlist_keyword(
     Some("Enlist".to_string())
 }
 
+/// The provoke lowering: `WithId(n, May[Tagged(tag, TargetOnly(target)),
+/// Cant(MustBlockSpecificAttacker { tagged, source }, EndOfCombat)])`
+/// followed by `If(n, Happened, [Untap(tagged)])` (CR 702.39a).
+fn provoke_tagged_must_block_shape(effects: &[Effect]) -> bool {
+    let [choose, untap] = effects else {
+        return false;
+    };
+    let Some(with_id) = choose.downcast_ref::<crate::effects::WithIdEffect>() else {
+        return false;
+    };
+    let Some(may) = with_id.effect.downcast_ref::<crate::effects::MayEffect>() else {
+        return false;
+    };
+    if may.decider.is_some() {
+        return false;
+    }
+    let [declare, must_block] = may.effects.as_slice() else {
+        return false;
+    };
+    let Some(tagged) = declare.downcast_ref::<crate::effects::TaggedEffect>() else {
+        return false;
+    };
+    let Some(target_only) = tagged
+        .effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+    else {
+        return false;
+    };
+    if !matches!(target_only.target, ChooseSpec::Target(_)) {
+        return false;
+    }
+    let Some(cant) = must_block.downcast_ref::<crate::effects::CantEffect>() else {
+        return false;
+    };
+    let tag_filter = crate::target::ObjectFilter::tagged(tagged.tag.clone());
+    let crate::effect::Restriction::MustBlockSpecificAttacker { blockers, attacker } =
+        &cant.restriction
+    else {
+        return false;
+    };
+    if cant.duration != Until::EndOfCombat
+        || *blockers != tag_filter
+        || *attacker != crate::target::ObjectFilter::source()
+    {
+        return false;
+    }
+    let Some(conditional) = untap.downcast_ref::<crate::effects::IfEffect>() else {
+        return false;
+    };
+    if conditional.condition != with_id.id
+        || conditional.predicate != EffectPredicate::Happened
+        || !conditional.else_.is_empty()
+    {
+        return false;
+    }
+    let [untap_effect] = conditional.then.as_slice() else {
+        return false;
+    };
+    untap_effect
+        .downcast_ref::<crate::effects::UntapEffect>()
+        .is_some_and(|untap| {
+            matches!(&untap.target, ChooseSpec::Tagged(tag) if *tag == tagged.tag)
+        })
+}
+
 pub(super) fn describe_structural_provoke_keyword(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
@@ -4244,6 +4309,9 @@ pub(super) fn describe_structural_provoke_keyword(
     } else {
         flattened
     };
+    if provoke_tagged_must_block_shape(effects) {
+        return Some("Provoke".to_string());
+    }
     let Some(untap_effect) = effects.first() else {
         return None;
     };

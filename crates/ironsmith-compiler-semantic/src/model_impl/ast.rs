@@ -266,6 +266,8 @@ pub enum TriggerSpec {
     ThisLeavesBattlefieldWithSurface(crate::target::SourceReferenceSurface),
     ThisMutates,
     ThisBecomesMonstrous,
+    /// "When this Class becomes level N" (CR 716.2a).
+    ThisClassBecomesLevel(u32),
     ThisBecomesTapped,
     PermanentBecomesTapped(ObjectFilter),
     ThisBecomesUntapped,

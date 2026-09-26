@@ -21,11 +21,15 @@ impl EffectExecutor for ExileInsteadOfGraveyardEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
 
+        // "If a card would be put into your graveyard": a token isn't a card
+        // (CR 108.2, 111.1), so dying tokens still reach the graveyard.
         let replacement = ReplacementEffect::with_matcher(
             ctx.source,
             ctx.controller,
             WouldGoToGraveyardMatcher::new(
-                ObjectFilter::default().owned_by(PlayerFilter::Specific(player_id)),
+                ObjectFilter::default()
+                    .owned_by(PlayerFilter::Specific(player_id))
+                    .nontoken(),
             ),
             ReplacementAction::ChangeDestination(Zone::Exile),
         );

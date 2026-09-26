@@ -59,6 +59,9 @@ impl SaddleCostEffect {
                 game.current_is_creature(id)
                     && game.controller_of(obj) == controller
                     && !game.is_tapped(id)
+                    // CR 702.26b: a phased-out permanent is treated as though
+                    // it doesn't exist.
+                    && !game.is_phased_out(id)
             })
             .collect()
     }

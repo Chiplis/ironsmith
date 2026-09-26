@@ -109,7 +109,10 @@ impl DealDistributedDamageEffect {
 
         for object_id in resolve_objects_from_spec(game, &self.target, ctx).unwrap_or_default() {
             if game.object(object_id).is_some_and(|obj| {
-                obj.has_card_type(CardType::Creature) || obj.has_card_type(CardType::Planeswalker)
+                // "Any target" includes battles (CR 115.4).
+                obj.has_card_type(CardType::Creature)
+                    || obj.has_card_type(CardType::Planeswalker)
+                    || obj.has_card_type(CardType::Battle)
             }) {
                 available_targets.push(Target::Object(object_id));
             }

@@ -343,12 +343,13 @@ impl EffectExecutor for ConniveEffect {
 
                     // Route through counter replacements (CR 614.1, 122.6).
                     let placed = if discarded_nonlands > 0 {
-                        crate::events::processing::process_put_counters_with_event(
+                        crate::events::processing::process_put_counters_with_event_with_dm(
                             game,
                             target_id,
                             crate::object::CounterType::PlusOnePlusOne,
                             discarded_nonlands,
                             ctx.cause.clone(),
+                            &mut *ctx.decision_maker,
                         )
                     } else {
                         0

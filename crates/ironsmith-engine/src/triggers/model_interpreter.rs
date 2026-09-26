@@ -278,6 +278,9 @@ pub(crate) fn interpret_trigger_model(
             crate::triggers::Trigger::leaves_battlefield(filter)
         }
         TriggerKind::ThisBecomesMonstrous => crate::triggers::Trigger::this_becomes_monstrous(),
+        TriggerKind::ClassBecomesLevel { level } => {
+            crate::triggers::Trigger::class_becomes_level(level)
+        }
         TriggerKind::BecomesTapped => crate::triggers::Trigger::becomes_tapped(),
         TriggerKind::PermanentBecomesTapped { filter } => {
             crate::triggers::Trigger::permanent_becomes_tapped(filter)

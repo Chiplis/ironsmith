@@ -141,10 +141,11 @@ fn active_target_assignments_for_inner_effect(
     assignments[start..end].to_vec()
 }
 
-/// For the endure keyword action (CR 701.63a, `ChooseModeEffect::endure`):
-/// mode 0 puts +1/+1 counters on the enduring permanent and mode 1 creates the
-/// Spirit token. Returns the token mode when that permanent is no longer on
-/// the battlefield, so the counters can't be put on it.
+/// For the counters-else-token keyword actions (`ChooseModeEffect::endure`:
+/// endure CR 701.63a, fabricate CR 702.123a): mode 0 puts +1/+1 counters on
+/// the permanent and mode 1 creates the token(s). Returns the token mode when
+/// that permanent is no longer on the battlefield or can't have counters put
+/// on it, so the counters can't be put on it.
 fn endure_token_mode_when_permanent_is_gone(
     effect: &ChooseModeEffect,
     game: &GameState,
@@ -160,6 +161,7 @@ fn endure_token_mode_when_permanent_is_gone(
     let on_battlefield = |id: crate::ids::ObjectId| {
         game.object(id)
             .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+            && game.can_have_counter_type_placed(id, put.counter_type)
     };
     let gone = if matches!(put.target.base(), crate::target::ChooseSpec::Source) {
         !on_battlefield(ctx.source)

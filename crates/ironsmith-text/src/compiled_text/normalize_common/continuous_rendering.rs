@@ -5201,6 +5201,13 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::HaveCountersPlaced(filter) => {
             format!("counters can't be placed on {}", filter.description())
         }
+        crate::effect::Restriction::HaveCounterTypePlaced(filter, counter_type) => {
+            format!(
+                "{} counters can't be put on {}",
+                counter_type.description(),
+                filter.description()
+            )
+        }
         crate::effect::Restriction::BeTargeted(filter) => {
             format!("{} can't be targeted", filter.description())
         }

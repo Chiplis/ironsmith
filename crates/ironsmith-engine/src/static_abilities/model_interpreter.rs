@@ -697,6 +697,7 @@ impl StaticAbilityModelInterpreter {
                 );
                 runtime.optional_life_additional_cost =
                     reduction.optional_life_additional_cost.clone();
+                runtime.colored_only = reduction.colored_only;
                 if let Some(condition) = reduction.condition.clone() {
                     runtime = runtime.with_condition(condition);
                 }
@@ -793,7 +794,8 @@ impl StaticAbilityModelInterpreter {
                         reduction.cost.clone(),
                         reduction.condition.clone(),
                     )
-                    .with_repetitions(reduction.repetitions.clone()),
+                    .with_repetitions(reduction.repetitions.clone())
+                    .with_colored_only(reduction.colored_only),
                 )
             }
             ironsmith_core::StaticAbilityPayload::ThisSpellCastRestriction { .. } => None,

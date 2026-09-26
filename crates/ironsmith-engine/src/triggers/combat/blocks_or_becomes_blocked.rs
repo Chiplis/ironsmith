@@ -116,8 +116,12 @@ impl TriggerMatcher for BlocksOrBecomesBlockedTrigger {
                 let Some(e) = event.downcast::<CreatureBlockedEvent>() else {
                     return false;
                 };
+                // CR 509.3a: "blocks" triggers once per combat per blocker.
                 if let Some(obj) = ctx.game.object(e.blocker) {
                     self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
+                        && super::blocks::is_first_blocked_attacker_for_blocker(
+                            ctx.game, e.blocker, e.attacker,
+                        )
                 } else {
                     false
                 }

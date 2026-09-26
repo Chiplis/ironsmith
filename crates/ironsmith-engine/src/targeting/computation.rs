@@ -371,16 +371,20 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
     }
 
     // Prefer the live source; use retained characteristics only after it leaves.
+    // A source with neither a live object nor retained characteristics (for
+    // example a dungeon's room ability, CR 309.4c) still can't target a
+    // permanent with shroud, or an opponent's permanent with hexproof
+    // (CR 702.11b, 702.18a): those checks depend only on the controller.
     let source = match (game.object(source_id), source_snapshot) {
-        (Some(object), _) => ObjectSubject::Live(object),
-        (None, Some(snapshot)) => ObjectSubject::Snapshot(snapshot),
-        (None, None) => return TargetingResult::legal(),
+        (Some(object), _) => Some(ObjectSubject::Live(object)),
+        (None, Some(snapshot)) => Some(ObjectSubject::Snapshot(snapshot)),
+        (None, None) => None,
     };
     // Historically, permission to ignore shroud/hexproof is queried for the
     // caster with a live source and the retained controller with LKI.
     let permission_player = match source {
-        ObjectSubject::Live(_) => caster,
-        ObjectSubject::Snapshot(snapshot) => snapshot.controller,
+        Some(ObjectSubject::Snapshot(snapshot)) => snapshot.controller,
+        Some(ObjectSubject::Live(_)) | None => caster,
     };
 
     // Most targeting restrictions in this function apply only to permanents
@@ -449,6 +453,46 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
     {
         return TargetingResult::Invalid(TargetingInvalidReason::HasHexproof);
     }
+
+    let Some(source) = source else {
+        // Without source characteristics only the colorless, "everything"
+        // and chosen-player protection qualities can be evaluated; the
+        // synthetic sources that reach here are colorless.
+        let protected = view
+            .abilities_rc(target_id)
+            .as_deref()
+            .map(Vec::as_slice)
+            .unwrap_or(&target.abilities)
+            .iter()
+            .filter(|ability| ability.functions_in(&target.zone))
+            .filter_map(|ability| match &ability.kind {
+                crate::ability::AbilityKind::Static(static_ability)
+                    if static_ability.has_protection() =>
+                {
+                    static_ability.protection_from()
+                }
+                _ => None,
+            })
+            .any(|protection_from| match protection_from {
+                crate::ability::ProtectionFrom::Everything
+                | crate::ability::ProtectionFrom::Colorless => true,
+                crate::ability::ProtectionFrom::ChosenPlayer => {
+                    game.chosen_player(target_id) == Some(caster)
+                }
+                _ => false,
+            });
+        if protected {
+            return TargetingResult::Invalid(TargetingInvalidReason::HasProtection);
+        }
+        if game.is_untargetable(target_id)
+            && game.controller_of(target) != caster
+            && !ignores_hexproof
+            && !ignores_shroud
+        {
+            return TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted);
+        }
+        return TargetingResult::legal();
+    };
 
     // Check for HexproofFrom. A permission to target "as though it didn't
     // have hexproof" also covers "hexproof from [quality]" (CR 702.11e).
@@ -608,6 +652,33 @@ fn has_protection_from_subject_with_view(
     }
 
     false
+}
+
+/// Whether any protection ability in `abilities` (for example a
+/// counterfactual set of the target's static abilities) protects `target_id`
+/// from the live `source_id`.
+pub(crate) fn protection_among_abilities_from_source(
+    game: &GameState,
+    target_id: ObjectId,
+    source_id: ObjectId,
+    abilities: &[crate::static_abilities::StaticAbility],
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> bool {
+    let Some(source) = game.object(source_id) else {
+        return false;
+    };
+    abilities.iter().any(|ability| {
+        ability.has_protection()
+            && ability.protection_from().is_some_and(|protection_from| {
+                protection_from_subject_with_view(
+                    game,
+                    target_id,
+                    ObjectSubject::Live(source),
+                    protection_from,
+                    view,
+                )
+            })
+    })
 }
 
 /// Evaluate one protection quality against live or last-known source data.
@@ -1190,9 +1261,23 @@ fn compute_any_targets_with_view(
 
     let range_exempt = game.source_snapshot_is_exempt_from_range(source_id, source_snapshot);
 
-    // All players in the game and in the source controller's range.
+    // All players in the game and in the source controller's range that the
+    // source can target (player hexproof, shroud and protection, CR 115.4).
     for player in &game.players {
-        if player.is_in_game() && (range_exempt || game.player_is_within_range(caster, player.id)) {
+        if player.is_in_game()
+            && (range_exempt || game.player_is_within_range(caster, player.id))
+            && source_id.map_or_else(
+                || game.can_target_player(player.id),
+                |source| {
+                    can_target_player_from_source_or_snapshot(
+                        game,
+                        player.id,
+                        source,
+                        source_snapshot,
+                    )
+                },
+            )
+        {
             targets.push(Target::Player(player.id));
         }
     }
@@ -1453,6 +1538,24 @@ fn compute_object_targets_with_filter_context(
             || filter.any_of.iter().any(names_stack_objects)
     }
     let stack_filter = names_stack_objects(filter);
+    // An ability on the stack is neither a spell nor a permanent (CR 113.1a,
+    // 115.1): match stack entries only against the branches that name stack
+    // objects, so a "spell or permanent" union doesn't offer the abilities of
+    // a matching permanent.
+    fn stack_branches_only(filter: &ObjectFilter) -> ObjectFilter {
+        if filter.zone == Some(Zone::Stack) || filter.stack_kind.is_some() {
+            return filter.clone();
+        }
+        let mut restricted = filter.clone();
+        restricted.any_of = filter
+            .any_of
+            .iter()
+            .filter(|branch| names_stack_objects(branch))
+            .map(stack_branches_only)
+            .collect();
+        restricted
+    }
+    let stack_entry_filter = stack_filter.then(|| stack_branches_only(filter));
     let mut seen_candidates = std::collections::HashSet::new();
     for object_id in candidate_ids {
         if stack_filter && !seen_candidates.insert(object_id) {
@@ -1478,7 +1581,8 @@ fn compute_object_targets_with_filter_context(
                 }
                 let mut entry_ctx = filter_ctx.clone();
                 entry_ctx.stack_entry = Some(ability_id);
-                if filter.matches_with_view(object, &entry_ctx, game, view) {
+                let entry_filter = stack_entry_filter.as_ref().unwrap_or(filter);
+                if entry_filter.matches_with_view(object, &entry_ctx, game, view) {
                     targets.push(Target::Object(ability_id));
                 }
             }

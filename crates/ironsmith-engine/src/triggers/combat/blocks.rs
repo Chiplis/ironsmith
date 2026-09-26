@@ -53,6 +53,28 @@ impl BlocksTrigger {
     }
 }
 
+/// CR 509.3a: "Whenever [a creature] blocks" triggers only once each combat
+/// for that creature, even if it blocks several attackers. One
+/// `CreatureBlockedEvent` is emitted per (blocker, attacker) pair, so only the
+/// pair with the lowest-id attacker this blocker is blocking counts. (The
+/// per-attacker "blocks a creature" form, 509.3b, doesn't use this.)
+pub(crate) fn is_first_blocked_attacker_for_blocker(
+    game: &crate::game_state::GameState,
+    blocker: crate::ids::ObjectId,
+    attacker: crate::ids::ObjectId,
+) -> bool {
+    let Some(combat) = game.combat.as_ref() else {
+        return true;
+    };
+    combat
+        .blockers
+        .iter()
+        .filter(|(_, blockers)| blockers.contains(&blocker))
+        .map(|(attacker_id, _)| *attacker_id)
+        .min_by_key(|id| id.0)
+        .is_none_or(|first| first == attacker)
+}
+
 impl TriggerMatcher for BlocksTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         if event.kind() != EventKind::CreatureBlocked {
@@ -63,6 +85,7 @@ impl TriggerMatcher for BlocksTrigger {
         };
         if let Some(obj) = ctx.game.object(e.blocker) {
             self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
+                && is_first_blocked_attacker_for_blocker(ctx.game, e.blocker, e.attacker)
                 && (!self.one_or_more || self.is_first_matching_blocker_this_combat(e.blocker, ctx))
         } else {
             false

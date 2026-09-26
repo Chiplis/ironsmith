@@ -464,11 +464,15 @@ struct CastPermissionFlags {
     /// Madness cards whose trigger is resolving and casting them right now:
     /// the only window in which the madness cost may be paid (CR 702.35a).
     madness_cast_authorized: HashSet<ObjectId>,
+    /// Miracle cards whose miracle trigger is resolving and casting them
+    /// right now: the only window for the miracle cost (CR 702.94a).
+    miracle_cast_authorized: HashSet<ObjectId>,
     /// Cards exiled via Foretell, with the turn they became foretold
     /// (CR 702.143a/d: castable only after that turn has ended).
     foretold_cards: HashMap<ObjectId, u32>,
-    /// Cards exiled after resolving as Adventure spells.
-    adventure_exiled: HashSet<ObjectId>,
+    /// Cards exiled after resolving as Adventure spells, with the player who
+    /// controlled the Adventure spell (CR 715.3d: "that player may cast it").
+    adventure_exiled: HashMap<ObjectId, PlayerId>,
     /// Prepare spell copies in exile, keyed by the prepared permanent that
     /// created them. The copy exists for exactly as long as that permanent is
     /// on the battlefield and prepared, and only its controller may cast it.
@@ -742,6 +746,11 @@ pub struct TurnStore {
     /// remaining `extra_turns` queue: the queue no longer contains the active
     /// turn after it has been selected.
     pub current_turn_is_extra: bool,
+    /// Active player of the most recent normal (non-extra) turn. CR 500.7:
+    /// extra turns are inserted after the turn that created them, so the
+    /// normal rotation resumes from this player, not from whoever took the
+    /// extra turn. Only consulted while `current_turn_is_extra` is set.
+    pub normal_turn_anchor: Option<PlayerId>,
     /// Extra turns queued up (Time Walk, etc.).
     /// Players take these turns in order after the current turn ends.
     pub extra_turns: Vec<PlayerId>,
@@ -1624,6 +1633,10 @@ pub struct CantEffectTracker {
     /// effects truly prevent counters.
     pub cant_have_counters_placed: HashSet<ObjectId>,
 
+    /// Permanents that can't have counters of one kind put on them (Melira:
+    /// "can't have -1/-1 counters put on them").
+    pub cant_have_counter_types_placed: HashSet<(ObjectId, crate::object::CounterType)>,
+
     /// Whether damage prevention is globally disabled.
     /// Example: Leyline of Punishment, Everlasting Torment
     pub damage_cant_be_prevented: bool,
@@ -2076,6 +2089,8 @@ impl CantEffectTracker {
         self.cant_be_blocked.extend(other.cant_be_blocked);
         self.cant_have_counters_placed
             .extend(other.cant_have_counters_placed);
+        self.cant_have_counter_types_placed
+            .extend(other.cant_have_counter_types_placed);
         self.damage_cant_be_prevented |= other.damage_cant_be_prevented;
         self.combat_damage_cant_be_prevented |= other.combat_damage_cant_be_prevented;
         self.life_total_cant_change
@@ -2141,6 +2156,7 @@ impl CantEffectTracker {
         self.cant_get_poison_counters.clear();
         self.cant_be_blocked.clear();
         self.cant_have_counters_placed.clear();
+        self.cant_have_counter_types_placed.clear();
         self.damage_cant_be_prevented = false;
         self.combat_damage_cant_be_prevented = false;
         self.life_total_cant_change.clear();
@@ -2478,6 +2494,18 @@ impl CantEffectTracker {
     /// Check if a permanent can have counters placed on it.
     pub fn can_have_counters_placed(&self, permanent: ObjectId) -> bool {
         !self.cant_have_counters_placed.contains(&permanent)
+    }
+
+    /// Check if a permanent can have counters of this kind placed on it.
+    pub fn can_have_counter_type_placed(
+        &self,
+        permanent: ObjectId,
+        counter_type: crate::object::CounterType,
+    ) -> bool {
+        self.can_have_counters_placed(permanent)
+            && !self
+                .cant_have_counter_types_placed
+                .contains(&(permanent, counter_type))
     }
 
     /// Check if a permanent is untargetable by the rules tracker.
@@ -6639,6 +6667,17 @@ impl GameState {
             .can_have_counters_placed(permanent)
     }
 
+    /// Can counters of this kind be put on the permanent (CR 122.5, 614.17)?
+    pub fn can_have_counter_type_placed(
+        &self,
+        permanent: ObjectId,
+        counter_type: crate::object::CounterType,
+    ) -> bool {
+        self.effect_store
+            .cant_effects
+            .can_have_counter_type_placed(permanent, counter_type)
+    }
+
     /// Is this permanent untargetable (by shroud/hexproof-style effects)?
     pub fn is_untargetable(&self, permanent: ObjectId) -> bool {
         self.effect_store.cant_effects.is_untargetable(permanent)
@@ -6802,6 +6841,16 @@ impl GameState {
                 .mana_cost
                 .clone()
                 .map(crate::object::SharedValue::from);
+            // CR 709.4a-d: it also has both halves' names, colors and types.
+            let mut other_half_view = object.clone();
+            other_half_view.apply_definition_face(&other_half);
+            object.split_combined = Some(
+                crate::object::SplitCombinedCharacteristics::from_halves(
+                    &object,
+                    &other_half_view,
+                )
+                .into(),
+            );
         }
         if zone == Zone::Battlefield
             && let Some(loyalty) = object.base_loyalty

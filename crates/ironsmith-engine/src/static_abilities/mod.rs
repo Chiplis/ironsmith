@@ -4128,6 +4128,10 @@ impl StaticAbility {
         Self::new(DungeonRoomTriggerDuplication::new(display))
     }
 
+    pub fn protection_doesnt_remove_auras(all_auras: bool, display: impl Into<String>) -> Self {
+        Self::new(ProtectionDoesntRemoveAuras::new(all_auras, display))
+    }
+
     pub fn draw_replacement_exile_top_face_down() -> Self {
         Self::new(DrawReplacementExileTopFaceDown)
     }

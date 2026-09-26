@@ -3,7 +3,7 @@
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_players_from_spec};
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
-use crate::events::processing::process_put_counters_with_event;
+use crate::events::processing::process_put_counters_with_event_with_dm;
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::target::ChooseSpec;
@@ -94,12 +94,13 @@ impl EffectExecutor for DoubleCountersEffect {
                 .unwrap_or_default();
 
             for (counter_type, count) in counters {
-                let final_count = process_put_counters_with_event(
+                let final_count = process_put_counters_with_event_with_dm(
                     game,
                     target_id,
                     counter_type,
                     count,
                     ctx.cause.clone(),
+                    &mut *ctx.decision_maker,
                 );
                 if final_count == 0 {
                     outcomes.push(EffectOutcome::prevented());

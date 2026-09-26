@@ -2203,6 +2203,20 @@ fn completed_cast_proposal_is_legal_with_timing_permission(
         return false;
     }
 
+    // "Can cast spells only any time they could cast a sorcery" (Teferi,
+    // Time Raveler) restricts the player, not the spell's type-based timing,
+    // so a resolving effect's permission to cast doesn't waive it (CR 608.2g,
+    // 307.1). While an effect resolves the stack isn't empty, so such a
+    // player can't cast the spell at all.
+    if timing_permission_from_effect
+        && game
+            .effect_store
+            .cant_effects
+            .cast_spells_only_as_sorcery
+            .contains(&player)
+    {
+        return false;
+    }
     let view = DerivedGameView::new(game);
     let ctx = CastLegalityContext::new(game, player, &view);
     timing_permission_from_effect
@@ -3613,6 +3627,15 @@ pub(crate) fn can_cast_with_alternative_with_context(
             }
             get_mana_cost_for_method(method, spell_for_checks)
         }
+        // CR 702.94a: the miracle cost is available only while the miracle
+        // trigger ("when you reveal this card this way") resolves, never at
+        // ordinary priority.
+        AlternativeCastingMethod::Miracle { .. } => {
+            if spell.zone != Zone::Stack && !game.miracle_cast_is_authorized(spell.id) {
+                return false;
+            }
+            get_mana_cost_for_method(method, spell_for_checks)
+        }
         _ => get_mana_cost_for_method(method, spell_for_checks),
     };
     if mana_cost.is_none() && alternative_method_uses_printed_mana_cost(method) {
@@ -4474,6 +4497,10 @@ pub(crate) struct SpellCostModifierTotals {
     pub(crate) total_reduction: i32,
     pub(crate) increase_pips: Vec<Vec<crate::mana::ManaSymbol>>,
     pub(crate) reduction_pips: Vec<Vec<crate::mana::ManaSymbol>>,
+    /// Colored reductions without "reduces only the amount of colored mana":
+    /// whatever the cost doesn't require of that color reduces generic mana
+    /// instead (CR 118.7b-c).
+    pub(crate) spilling_reduction_pips: Vec<Vec<crate::mana::ManaSymbol>>,
 }
 
 impl SpellCostModifierTotals {
@@ -4482,6 +4509,8 @@ impl SpellCostModifierTotals {
         self.total_reduction = self.total_reduction.saturating_add(other.total_reduction);
         self.increase_pips.extend(other.increase_pips);
         self.reduction_pips.extend(other.reduction_pips);
+        self.spilling_reduction_pips
+            .extend(other.spilling_reduction_pips);
     }
 
     pub(crate) fn add_generic_reduction(&mut self, amount: u32) {
@@ -4505,6 +4534,12 @@ impl SpellCostModifierTotals {
         }
         if !self.reduction_pips.is_empty() {
             adjusted = reduce_mana_cost(&adjusted, &ManaCost::from_pips(self.reduction_pips));
+        }
+        if !self.spilling_reduction_pips.is_empty() {
+            adjusted = reduce_mana_cost_spilling_to_generic(
+                &adjusted,
+                &ManaCost::from_pips(self.spilling_reduction_pips),
+            );
         }
         adjusted
     }
@@ -4625,6 +4660,7 @@ pub(crate) fn collect_spell_cost_modifiers(
     let mut total_reduction: i32 = 0;
     let mut increase_pips: Vec<Vec<ManaSymbol>> = Vec::new();
     let mut reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
+    let mut spilling_reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
     if let CastingMethod::PlayFrom { source, zone, .. }
     | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. } = casting_method
     {
@@ -4698,7 +4734,11 @@ pub(crate) fn collect_spell_cost_modifiers(
                     .map(|value| resolve_cost_modifier_value(game, player, spell, value).max(0))
                     .unwrap_or(1);
                 for _ in 0..repetitions {
-                    reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+                    if reduction.colored_only {
+                        reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+                    } else {
+                        spilling_reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+                    }
                 }
             }
         if !functions_in_current_zone {
@@ -4784,7 +4824,11 @@ pub(crate) fn collect_spell_cost_modifiers(
         {
             for _ in 0..cost_modifier_target_repetitions(reduction.per_target, chosen_target_count)
             {
-                reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+                if reduction.colored_only {
+                    reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+                } else {
+                    spilling_reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+                }
             }
         }
         if let Some(per_target_amount) = static_ability.cost_increase_per_additional_target() {
@@ -4841,6 +4885,7 @@ pub(crate) fn collect_spell_cost_modifiers(
         total_reduction,
         increase_pips,
         reduction_pips,
+        spilling_reduction_pips,
     }
 }
 
@@ -5023,6 +5068,7 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
     let mut total_reduction: i32 = 0;
     let mut increase_pips: Vec<Vec<ManaSymbol>> = Vec::new();
     let mut reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
+    let mut spilling_reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
 
     for perm_id in view.battlefield_spell_cost_modifier_sources() {
         let Some(perm) = game.object(perm_id) else {
@@ -5131,7 +5177,12 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                         reduction.per_target,
                         chosen_target_count,
                     ) {
-                        reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+                        if reduction.colored_only {
+                            reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+                        } else {
+                            spilling_reduction_pips
+                                .extend(reduction.reduction.pips().iter().cloned());
+                        }
                     }
                 }
                 if let Some(per_target_amount) =
@@ -5253,7 +5304,12 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                         reduction.per_target,
                         chosen_target_count,
                     ) {
-                        reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+                        if reduction.colored_only {
+                            reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+                        } else {
+                            spilling_reduction_pips
+                                .extend(reduction.reduction.pips().iter().cloned());
+                        }
                     }
                 }
                 if let Some(per_target_amount) =
@@ -5283,6 +5339,7 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
         total_reduction,
         increase_pips,
         reduction_pips,
+        spilling_reduction_pips,
     }
 }
 
@@ -5449,6 +5506,25 @@ pub(crate) fn reduce_mana_cost(
     cost: &crate::mana::ManaCost,
     reduction: &crate::mana::ManaCost,
 ) -> crate::mana::ManaCost {
+    reduce_mana_cost_with_spill(cost, reduction, false)
+}
+
+/// [`reduce_mana_cost`] for a colored reduction without "This effect reduces
+/// only the amount of colored mana you pay": a colored or colorless reduction
+/// symbol the cost doesn't require reduces one generic mana instead (CR
+/// 118.7b-c).
+pub(crate) fn reduce_mana_cost_spilling_to_generic(
+    cost: &crate::mana::ManaCost,
+    reduction: &crate::mana::ManaCost,
+) -> crate::mana::ManaCost {
+    reduce_mana_cost_with_spill(cost, reduction, true)
+}
+
+fn reduce_mana_cost_with_spill(
+    cost: &crate::mana::ManaCost,
+    reduction: &crate::mana::ManaCost,
+    spill_to_generic: bool,
+) -> crate::mana::ManaCost {
     use crate::mana::ManaSymbol;
 
     if reduction.pips().is_empty() {
@@ -5465,6 +5541,34 @@ pub(crate) fn reduce_mana_cost(
         }
         if let Some(pos) = pips.iter().position(|pip| pip == red_pip) {
             pips.remove(pos);
+            continue;
+        }
+        // CR 118.7 / 107.4e-f: a hybrid or Phyrexian symbol is each of its
+        // colors, so a {G} (or {G/P}) reduction reduces a {G/W} or {G/P} pip.
+        // A Phyrexian reduction symbol never reduces life, and an announced
+        // life payment ({Life}) isn't reducible by colored mana.
+        let reduced_symbols = red_pip
+            .iter()
+            .filter(|symbol| {
+                !matches!(
+                    symbol,
+                    ManaSymbol::Life(_) | ManaSymbol::X | ManaSymbol::Generic(_)
+                )
+            })
+            .collect::<Vec<_>>();
+        if reduced_symbols.is_empty() {
+            continue;
+        }
+        if let Some(pos) = pips
+            .iter()
+            .enumerate()
+            .filter(|(_, pip)| pip.iter().any(|symbol| reduced_symbols.contains(&symbol)))
+            .min_by_key(|(index, pip)| (pip.len(), *index))
+            .map(|(index, _)| index)
+        {
+            pips.remove(pos);
+        } else if spill_to_generic {
+            generic_reduction = generic_reduction.saturating_add(1);
         }
     }
     let reduced = crate::mana::ManaCost::from_pips(pips);

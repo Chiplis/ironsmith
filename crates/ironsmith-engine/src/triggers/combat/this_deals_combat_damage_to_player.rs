@@ -45,7 +45,9 @@ impl TriggerMatcher for ThisDealsCombatDamageToPlayerTrigger {
             return false;
         };
         // Must be combat damage to a matching player from the source.
+        // Prevented damage is never dealt (CR 615.1).
         e.is_combat
+            && e.amount > 0
             && e.source == ctx.source_id
             && self.player.matches_player(damaged_player, &ctx.filter_ctx)
     }

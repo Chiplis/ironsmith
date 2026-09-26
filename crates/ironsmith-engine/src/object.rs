@@ -427,6 +427,20 @@ pub struct FaceDownCastState {
     pub disguise_ward: bool,
 }
 
+/// Stored copiable fields of a permanent that entered the battlefield as a
+/// copy of another object. The copy effect belongs to that permanent only, so
+/// once it leaves the battlefield the card is its printed self again: a Clone
+/// that was copying Grave Titan is just Clone in the graveyard (CR 707.2,
+/// 400.7).
+#[derive(Debug, Clone)]
+pub struct EntersAsCopyRestoreState {
+    pub printed: FaceDownCastState,
+    pub other_face: Option<crate::ids::CardId>,
+    pub other_face_name: Option<SharedStr>,
+    pub linked_face_layout: LinkedFaceLayout,
+    pub has_fuse: bool,
+}
+
 /// Stored copiable fields needed to restore a prototype card outside the stack
 /// or battlefield.
 #[derive(Debug, Clone)]
@@ -435,6 +449,41 @@ pub struct PrototypeCastState {
     pub color_override: Option<ColorSet>,
     pub base_power: Option<PtValue>,
     pub base_toughness: Option<PtValue>,
+}
+
+/// The combined characteristics of a split card's two halves (CR 709.4a-d),
+/// precomputed so accessors can hand out slices.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SplitCombinedCharacteristics {
+    /// Name of the half that isn't currently shown.
+    pub other_half_name: SharedStr,
+    /// Colors of the half that isn't currently shown.
+    pub other_half_colors: ColorSet,
+    pub card_types: SharedVec<CardType>,
+    pub subtypes: SharedVec<Subtype>,
+    pub supertypes: SharedVec<Supertype>,
+}
+
+impl SplitCombinedCharacteristics {
+    /// Combine the shown half (`own`) with the other half's characteristics.
+    pub fn from_halves(own: &Object, other: &Object) -> Self {
+        fn union<T: Clone + PartialEq>(left: &[T], right: &[T]) -> Vec<T> {
+            let mut combined = left.to_vec();
+            for item in right {
+                if !combined.contains(item) {
+                    combined.push(item.clone());
+                }
+            }
+            combined
+        }
+        Self {
+            other_half_name: other.name.clone(),
+            other_half_colors: other.own_colors(),
+            card_types: union(&own.card_types, &other.card_types).into(),
+            subtypes: union(&own.subtypes, &other.subtypes).into(),
+            supertypes: union(&own.supertypes, &other.supertypes).into(),
+        }
+    }
 }
 
 /// Runtime representation of a game object.
@@ -492,6 +541,10 @@ pub struct Object {
     /// whose back face is up. Only mana value reads it (CR 709.4, 712.8c/e);
     /// it's not a copiable value, so a copy of a back face has mana value 0.
     pub linked_face_mana_cost: Option<SharedValue<ManaCost>>,
+    /// Both halves of a split card combined (CR 709.4): outside the stack and
+    /// the battlefield a split card has the characteristics of both halves.
+    /// Read through the zone-gated accessors (`split_combined_active`).
+    pub split_combined: Option<SharedValue<SplitCombinedCharacteristics>>,
     pub base_power: Option<PtValue>,
     pub base_toughness: Option<PtValue>,
     pub base_loyalty: Option<u32>,
@@ -521,6 +574,10 @@ pub struct Object {
     pub face_down_cast_state: Option<Box<FaceDownCastState>>,
     /// Original copiable fields to restore if this card was cast prototyped.
     pub prototype_cast_state: Option<PrototypeCastState>,
+    /// Printed copiable fields overwritten when this permanent entered as a
+    /// copy (or with other "enters as" characteristic changes), restored when
+    /// it leaves the battlefield (CR 707.2, 400.7).
+    pub enters_as_copy_restore_state: Option<Box<EntersAsCopyRestoreState>>,
     /// Alternative casting methods (flashback, escape, etc.)
     pub alternative_casts: SharedVec<AlternativeCastingMethod>,
     /// Alternative method chosen for the current spell cast.
@@ -736,6 +793,7 @@ impl Object {
             other_face_name: card.other_face_name.clone().map(Into::into),
             linked_face_layout: card.linked_face_layout,
             linked_face_mana_cost: None,
+            split_combined: None,
             base_power,
             base_toughness,
             base_loyalty: card.loyalty,
@@ -752,6 +810,7 @@ impl Object {
             bestow_cast_state: None,
             face_down_cast_state: None,
             prototype_cast_state: None,
+            enters_as_copy_restore_state: None,
             alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
             cast_play_from_constraints: None,
@@ -819,6 +878,7 @@ impl Object {
             other_face_name: None,
             linked_face_layout: LinkedFaceLayout::None,
             linked_face_mana_cost: None,
+            split_combined: None,
             base_power: None,
             base_toughness: None,
             base_loyalty: None,
@@ -835,6 +895,7 @@ impl Object {
             bestow_cast_state: None,
             face_down_cast_state: None,
             prototype_cast_state: None,
+            enters_as_copy_restore_state: None,
             alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
             cast_play_from_constraints: None,
@@ -916,6 +977,9 @@ impl Object {
                 .other_face_name
                 .as_deref()
                 .is_some_and(|name| name == def.card.name.as_str());
+        let hidden_split_half = (turning_to_linked_face
+            && def.card.linked_face_layout == LinkedFaceLayout::Split)
+            .then(|| self.clone());
         if turning_to_linked_face {
             self.linked_face_mana_cost = self.mana_cost.take();
         }
@@ -950,6 +1014,13 @@ impl Object {
         self.has_fuse = def.has_fuse;
         self.optional_costs = handles.optional_costs.clone();
         self.additional_cost = handles.additional_cost.clone();
+        // CR 709.4: keep the combined characteristics in step with the half
+        // now shown (the half being hidden becomes the "other" half).
+        if let Some(hidden) = hidden_split_half {
+            self.split_combined = Some(SplitCombinedCharacteristics::from_halves(self, &hidden).into());
+        } else if self.linked_face_layout != LinkedFaceLayout::Split {
+            self.split_combined = None;
+        }
     }
 
     /// Restore the printed spell program after a stack-only text/effect
@@ -1086,6 +1157,7 @@ impl Object {
             other_face_name: None,
             linked_face_layout: LinkedFaceLayout::None,
             linked_face_mana_cost: None,
+            split_combined: None,
             base_power: power.map(PtValue::Fixed),
             base_toughness: toughness.map(PtValue::Fixed),
             base_loyalty: None,
@@ -1102,6 +1174,7 @@ impl Object {
             bestow_cast_state: None,
             face_down_cast_state: None,
             prototype_cast_state: None,
+            enters_as_copy_restore_state: None,
             alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
             cast_play_from_constraints: None,
@@ -1158,6 +1231,7 @@ impl Object {
             other_face_name: source.other_face_name.clone(),
             linked_face_layout: source.linked_face_layout,
             linked_face_mana_cost: None,
+            split_combined: None,
             base_power: source.base_power,
             base_toughness: source.base_toughness,
             base_loyalty: source.base_loyalty,
@@ -1176,6 +1250,7 @@ impl Object {
             bestow_cast_state: None,
             face_down_cast_state: source.face_down_cast_state.clone(),
             prototype_cast_state: None,
+            enters_as_copy_restore_state: None,
             // Alternative casts are copiable (though tokens rarely use them)
             alternative_casts: source.alternative_casts.clone(),
             cast_alternative_method: None,
@@ -1231,6 +1306,7 @@ impl Object {
             other_face_name: source.other_face_name.clone(),
             linked_face_layout: source.linked_face_layout,
             linked_face_mana_cost: None,
+            split_combined: None,
             base_power: source.base_power,
             base_toughness: source.base_toughness,
             base_loyalty: source.base_loyalty,
@@ -1247,6 +1323,7 @@ impl Object {
             bestow_cast_state: source.bestow_cast_state.clone(),
             face_down_cast_state: source.face_down_cast_state.clone(),
             prototype_cast_state: source.prototype_cast_state.clone(),
+            enters_as_copy_restore_state: source.enters_as_copy_restore_state.clone(),
             alternative_casts: source.alternative_casts.clone(),
             cast_alternative_method: source.cast_alternative_method.clone(),
             cast_play_from_constraints: None,
@@ -1301,6 +1378,7 @@ impl Object {
             other_face_name: snapshot.other_face_name.clone().map(Into::into),
             linked_face_layout: snapshot.linked_face_layout,
             linked_face_mana_cost: None,
+            split_combined: None,
             base_power: copiable.power.map(PtValue::Fixed),
             base_toughness: copiable.toughness.map(PtValue::Fixed),
             base_loyalty: copiable.loyalty,
@@ -1317,6 +1395,7 @@ impl Object {
             bestow_cast_state: None,
             face_down_cast_state: None,
             prototype_cast_state: None,
+            enters_as_copy_restore_state: None,
             alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
             cast_play_from_constraints: None,
@@ -1370,6 +1449,7 @@ impl Object {
             other_face_name: None,
             linked_face_layout: LinkedFaceLayout::None,
             linked_face_mana_cost: None,
+            split_combined: None,
             base_power: None,
             base_toughness: None,
             base_loyalty: None,
@@ -1386,6 +1466,7 @@ impl Object {
             bestow_cast_state: None,
             face_down_cast_state: None,
             prototype_cast_state: None,
+            enters_as_copy_restore_state: None,
             alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
             cast_play_from_constraints: None,
@@ -1411,9 +1492,17 @@ impl Object {
         let bestow_restore = source.bestow_cast_state.as_ref();
         self.first_printed_set_name = source.first_printed_set_name.clone();
         self.rules_text_color_identity = source.rules_text_color_identity;
-        self.other_face = source.other_face;
-        self.other_face_name = source.other_face_name.clone();
-        self.linked_face_layout = source.linked_face_layout;
+        // Only the face that's up is copied (CR 707.8). Whether the permanent
+        // can transform depends on the entering card itself, not on what it
+        // copies: a Clone copying Delver of Secrets isn't a double-faced card,
+        // so it can't transform (CR 701.27a/c). Token copies keep both faces
+        // separately (`token_copy_of`, CR 707.8a). A split permanent (a Room)
+        // is copied with both halves (CR 709.5, 709.5b), so it keeps the link.
+        if source.linked_face_layout == LinkedFaceLayout::Split {
+            self.other_face = source.other_face;
+            self.other_face_name = source.other_face_name.clone();
+            self.linked_face_layout = source.linked_face_layout;
+        }
         self.base_defense = source.base_defense;
         self.aura_attach_filter = bestow_restore
             .map(|restore| restore.aura_attach_filter.clone())
@@ -1774,8 +1863,150 @@ impl Object {
         true
     }
 
+    /// Combined split-card characteristics, when they apply: a split card
+    /// outside the stack and the battlefield (CR 709.4). Cheap check first.
+    #[inline]
+    pub fn split_combined_active(&self) -> Option<&SplitCombinedCharacteristics> {
+        let combined = self.split_combined.as_deref()?;
+        (!matches!(self.zone, Zone::Stack | Zone::Battlefield)).then_some(combined)
+    }
+
+    /// Card types in the object's current zone (both split halves outside the
+    /// stack and battlefield, CR 709.4d).
+    #[inline]
+    pub fn zone_card_types(&self) -> &[CardType] {
+        self.split_combined_active()
+            .map_or(self.card_types.as_slice(), |combined| {
+                combined.card_types.as_slice()
+            })
+    }
+
+    /// Subtypes in the object's current zone (see `zone_card_types`).
+    #[inline]
+    pub fn zone_subtypes(&self) -> &[Subtype] {
+        self.split_combined_active()
+            .map_or(self.subtypes.as_slice(), |combined| combined.subtypes.as_slice())
+    }
+
+    /// Supertypes in the object's current zone (see `zone_card_types`).
+    #[inline]
+    pub fn zone_supertypes(&self) -> &[Supertype] {
+        self.split_combined_active()
+            .map_or(self.supertypes.as_slice(), |combined| {
+                combined.supertypes.as_slice()
+            })
+    }
+
+    /// Name of the other split half, when the object currently has both
+    /// names (CR 709.4a).
+    #[inline]
+    pub fn split_other_half_name(&self) -> Option<&str> {
+        self.split_combined_active()
+            .map(|combined| combined.other_half_name.as_ref())
+    }
+
+    /// Whether the object has `name`: either half's name for a split card
+    /// outside the stack and battlefield (CR 709.4a).
+    pub fn has_name(&self, name: &str) -> bool {
+        self.name.as_ref() == name || self.split_other_half_name() == Some(name)
+    }
+
+    /// Save the printed copiable fields before an "enters as a copy" (or other
+    /// enters-as characteristic change) overwrites them. The first capture
+    /// wins, so repeated entry modifications keep the true printed values.
+    pub fn capture_enters_as_copy_restore_state(&mut self) {
+        if self.enters_as_copy_restore_state.is_some() {
+            return;
+        }
+        self.enters_as_copy_restore_state = Some(Box::new(EntersAsCopyRestoreState {
+            printed: FaceDownCastState {
+                name: self.name.clone(),
+                first_printed_set_name: self.first_printed_set_name.clone(),
+                mana_cost: self.mana_cost.clone(),
+                color_override: self.color_override,
+                supertypes: self.supertypes.clone(),
+                card_types: self.card_types.clone(),
+                subtypes: self.subtypes.clone(),
+                compiled_card_text: self.compiled_card_text.clone(),
+                ability_labels: self.ability_labels.clone(),
+                rules_text_color_identity: self.rules_text_color_identity,
+                base_power: self.base_power,
+                base_toughness: self.base_toughness,
+                base_loyalty: self.base_loyalty,
+                base_defense: self.base_defense,
+                abilities: self.abilities.clone(),
+                spell_effect: self.spell_effect.clone(),
+                aura_attach_filter: self.aura_attach_filter.clone(),
+                disguise_ward: false,
+            },
+            other_face: self.other_face,
+            other_face_name: self.other_face_name.clone(),
+            linked_face_layout: self.linked_face_layout,
+            has_fuse: self.has_fuse,
+        }));
+    }
+
+    /// Restore the printed copiable fields saved by
+    /// [`Self::capture_enters_as_copy_restore_state`] (CR 400.7).
+    pub fn end_enters_as_copy_overlay(&mut self) -> bool {
+        let Some(restore) = self.enters_as_copy_restore_state.take() else {
+            return false;
+        };
+        let EntersAsCopyRestoreState {
+            printed: restore,
+            other_face,
+            other_face_name,
+            linked_face_layout,
+            has_fuse,
+        } = *restore;
+        self.name = restore.name;
+        self.first_printed_set_name = restore.first_printed_set_name;
+        self.mana_cost = restore.mana_cost;
+        self.color_override = restore.color_override;
+        self.supertypes = restore.supertypes;
+        self.card_types = restore.card_types;
+        self.subtypes = restore.subtypes;
+        self.compiled_card_text = restore.compiled_card_text;
+        self.ability_labels = restore.ability_labels;
+        self.rules_text_color_identity = restore.rules_text_color_identity;
+        self.base_power = restore.base_power;
+        self.base_toughness = restore.base_toughness;
+        self.base_loyalty = restore.base_loyalty;
+        self.base_defense = restore.base_defense;
+        self.abilities = restore.abilities;
+        self.spell_effect = restore.spell_effect;
+        self.aura_attach_filter = restore.aura_attach_filter;
+        self.other_face = other_face;
+        self.other_face_name = other_face_name;
+        self.linked_face_layout = linked_face_layout;
+        self.has_fuse = has_fuse;
+        true
+    }
+
     /// Returns the colors of this object.
     pub fn colors(&self) -> ColorSet {
+        let colors = self.own_colors();
+        match self.split_combined_active() {
+            // CR 709.4c: a split card has the colors of both halves.
+            Some(combined) if !colors.is_empty() || !self.is_devoid() => {
+                colors.union(combined.other_half_colors)
+            }
+            _ => colors,
+        }
+    }
+
+    fn is_devoid(&self) -> bool {
+        self.abilities.iter().any(|ability| {
+            ability.functions_in(&self.zone)
+                && matches!(
+                    &ability.kind,
+                    crate::ability::AbilityKind::Static(static_ability) if static_ability.is_devoid()
+                )
+        })
+    }
+
+    /// Colors of the face currently shown, ignoring the other split half.
+    pub fn own_colors(&self) -> ColorSet {
         // Devoid applies in all functional zones of the ability.
         if self.abilities.iter().any(|ability| {
             ability.functions_in(&self.zone)
@@ -1981,19 +2212,19 @@ impl Object {
 
     /// Returns true if this object has the given card type.
     pub fn has_card_type(&self, card_type: CardType) -> bool {
-        self.card_types.contains(&card_type)
+        self.zone_card_types().contains(&card_type)
     }
 
     /// Returns true if this object has the given supertype.
     pub fn has_supertype(&self, supertype: Supertype) -> bool {
-        self.supertypes.contains(&supertype)
+        self.zone_supertypes().contains(&supertype)
     }
 
     /// Returns true if this object has the given subtype.
     ///
     /// If the object has Changeling and is a creature, it has all creature types.
     pub fn has_subtype(&self, subtype: Subtype) -> bool {
-        if self.subtypes.contains(&subtype) {
+        if self.zone_subtypes().contains(&subtype) {
             return true;
         }
 
@@ -2136,6 +2367,7 @@ impl Object {
             other_face_name: handles.other_face_name.clone(),
             linked_face_layout: def.card.linked_face_layout,
             linked_face_mana_cost: None,
+            split_combined: None,
             base_power: def.card.power_toughness.map(|pt| pt.power),
             base_toughness: def.card.power_toughness.map(|pt| pt.toughness),
             base_loyalty: def.card.loyalty,
@@ -2152,6 +2384,7 @@ impl Object {
             bestow_cast_state: None,
             face_down_cast_state: None,
             prototype_cast_state: None,
+            enters_as_copy_restore_state: None,
             alternative_casts: handles.alternative_casts.clone(),
             cast_alternative_method: None,
             cast_play_from_constraints: None,

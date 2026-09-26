@@ -2694,8 +2694,13 @@ pub fn this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
                 .hand
                 .iter()
                 .filter_map(|card_id| game.object(*card_id))
-                .filter(|object| object.card_types.contains(&CardType::Creature))
-                .all(|object| names_match(&object.name, name))
+                .filter(|object| object.has_card_type(CardType::Creature))
+                .all(|object| {
+                    names_match(&object.name, name)
+                        || object
+                            .split_other_half_name()
+                            .is_some_and(|other| names_match(other, name))
+                })
         }
         ThisSpellCostCondition::NoCardsInHandMatching { filter, .. } => {
             let Some(player) = game.player(controller) else {
@@ -2900,6 +2905,10 @@ pub struct ThisSpellCostReductionManaCost {
     pub reduction: ManaCost,
     pub repetitions: Option<Value>,
     pub condition: ThisSpellCostCondition,
+    /// "This effect reduces only the amount of colored mana you pay." When
+    /// false, colored mana the cost doesn't require reduces generic mana
+    /// instead (CR 118.7b-c).
+    pub colored_only: bool,
 }
 
 impl ThisSpellCostReductionManaCost {
@@ -2908,7 +2917,13 @@ impl ThisSpellCostReductionManaCost {
             reduction,
             repetitions: None,
             condition,
+            colored_only: false,
         }
+    }
+
+    pub fn with_colored_only(mut self, colored_only: bool) -> Self {
+        self.colored_only = colored_only;
+        self
     }
 
     pub fn with_repetitions(mut self, repetitions: Option<Value>) -> Self {
@@ -3161,6 +3176,10 @@ pub struct CostReductionManaCost {
     pub condition: Option<crate::ConditionExpr>,
     pub per_target: bool,
     pub optional_life_additional_cost: Option<ironsmith_core::OptionalLifeAdditionalCost>,
+    /// "This effect reduces only the amount of colored mana you pay." When
+    /// false, colored mana the cost doesn't require reduces generic mana
+    /// instead (CR 118.7b-c).
+    pub colored_only: bool,
 }
 
 impl CostReductionManaCost {
@@ -3171,7 +3190,13 @@ impl CostReductionManaCost {
             condition: None,
             per_target: false,
             optional_life_additional_cost: None,
+            colored_only: false,
         }
+    }
+
+    pub fn with_colored_only(mut self, colored_only: bool) -> Self {
+        self.colored_only = colored_only;
+        self
     }
 
     pub fn with_optional_life_additional_cost(
@@ -3236,11 +3261,12 @@ impl StaticAbilityKind for CostReductionManaCost {
         if self.per_target {
             line.push_str(" for each target");
         }
-        if self.condition.is_none()
-            && (!self.filter.subtypes.is_empty()
-                || !self.filter.supertypes.is_empty()
-                || self.filter.chosen_creature_type
-                || self.filter.chosen_card_type)
+        if (self.colored_only
+            || (self.condition.is_none()
+                && (!self.filter.subtypes.is_empty()
+                    || !self.filter.supertypes.is_empty()
+                    || self.filter.chosen_creature_type
+                    || self.filter.chosen_card_type)))
             && mana_cost_contains_colored_symbol(&self.reduction)
         {
             line.push_str(". This effect reduces only the amount of colored mana you pay");

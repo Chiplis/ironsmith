@@ -61,6 +61,11 @@ pub enum KeywordActionKind {
     Surveil,
     Train,
     UnlockDoor,
+    /// A player fully unlocks a Room (CR 709.5i): it had one unlocked
+    /// designation and gets the other.
+    FullyUnlockRoom,
+    /// This Class's level becomes N (CR 716.2a); the event amount is N.
+    GainClassLevel,
     VisitAttraction,
     Vote,
     Airbend,
@@ -208,6 +213,8 @@ impl KeywordActionKind {
             Self::Surveil => "surveil",
             Self::Train => "train",
             Self::UnlockDoor => "unlock this door",
+            Self::FullyUnlockRoom => "fully unlock a Room",
+            Self::GainClassLevel => "level up this Class",
             Self::VisitAttraction => "visit an Attraction",
             Self::Vote => "vote",
             Self::TakeInitiative => "take the initiative",
@@ -274,6 +281,8 @@ impl KeywordActionKind {
             Self::Surveil => "surveils",
             Self::Train => "trains",
             Self::UnlockDoor => "unlocks this door",
+            Self::FullyUnlockRoom => "fully unlocks a Room",
+            Self::GainClassLevel => "levels up this Class",
             Self::VisitAttraction => "visits an Attraction",
             Self::Vote => "votes",
             Self::TakeInitiative => "takes the initiative",

@@ -92,6 +92,14 @@ impl TriggerMatcher for PlayerSacrificesTrigger {
         }
     }
 
+    /// A sacrificed permanent leaves the battlefield, so this is a
+    /// leaves-the-battlefield ability that looks back in time (CR 603.6c,
+    /// 603.10a): a watcher sacrificed together with other permanents still
+    /// sees each of them being sacrificed.
+    fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
+        event.kind() == EventKind::Sacrifice
+    }
+
     fn display(&self) -> String {
         let player_text = match &self.player {
             PlayerFilter::You => "you sacrifice",

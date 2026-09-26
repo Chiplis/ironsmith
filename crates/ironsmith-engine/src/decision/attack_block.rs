@@ -328,9 +328,10 @@ pub(crate) fn compute_legal_attackers_with_view(
         // Determine valid attack targets
         let mut legal_targets = Vec::new();
 
-        // Can attack each opponent
-        let mut goad_targets = Vec::new();
-        let mut nongoad_targets = Vec::new();
+        // Can attack each opponent. Targets are ranked only for ordering
+        // (fallback declarations take the first target); every legal target
+        // stays selectable.
+        let mut target_ranks = Vec::new();
 
         for (target, defending_player) in &attack_targets {
             let generic_attack_tax =
@@ -345,11 +346,10 @@ pub(crate) fn compute_legal_attackers_with_view(
                 view,
             ) {
                 legal_targets.push(target.clone());
-                if goaded_by.contains(defending_player) {
-                    goad_targets.push(target.clone());
-                } else {
-                    nongoad_targets.push(target.clone());
-                }
+                target_ranks.push((
+                    goaded_by.contains(defending_player),
+                    generic_attack_tax > 0,
+                ));
             }
         }
 
@@ -366,21 +366,31 @@ pub(crate) fn compute_legal_attackers_with_view(
             .cloned()
             .collect::<Vec<_>>();
 
-        let mut valid_targets = Vec::new();
         let assigned_players = game
             .required_attack_players_this_turn(perm_id)
             .collect::<Vec<_>>();
-        if !assigned_players.is_empty() {
-            // Keep all legal choices: requirements are compared globally, and
-            // never force an attack cost or override another requirement.
-            valid_targets.extend(legal_targets);
-        } else if !required_player_targets.is_empty() {
-            valid_targets.extend(required_player_targets);
-        } else if !nongoad_targets.is_empty() {
-            valid_targets.extend(nongoad_targets);
-        } else {
-            valid_targets.extend(goad_targets);
-        }
+        // CR 508.1c/d, 701.15b: goad and "attacks <player> if able" are
+        // requirements, not restrictions. Keep every legal target; the
+        // declaration validator maximizes obeyed requirements and never
+        // counts a requirement that would need an attack cost paid. So a
+        // goaded creature may still attack its goader when the only other
+        // opponents tax attacks. Order the preferred targets first:
+        // required players, then cost-free non-goader targets.
+        let mut ranked = legal_targets
+            .into_iter()
+            .zip(target_ranks)
+            .map(|(target, (is_goader, is_taxed))| {
+                let is_required = required_player_targets.contains(&target);
+                (!is_required, is_goader, is_taxed, target)
+            })
+            .collect::<Vec<_>>();
+        ranked.sort_by_key(|(not_required, is_goader, is_taxed, _)| {
+            (*not_required, *is_taxed, *is_goader)
+        });
+        let valid_targets = ranked
+            .into_iter()
+            .map(|(_, _, _, target)| target)
+            .collect::<Vec<_>>();
 
         let has_required_attack_target = !required_attack_players.is_empty()
             && valid_targets.iter().any(|target| match target {

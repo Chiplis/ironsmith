@@ -187,6 +187,17 @@ impl EffectExecutor for MoveAllCountersEffect {
         if counters_to_move.is_empty() {
             return Ok(EffectOutcome::count(0));
         }
+        // CR 122.5: counters that can't be put onto the destination aren't
+        // removed from the source either.
+        let counters_to_move: Vec<(CounterType, u32)> = counters_to_move
+            .into_iter()
+            .filter(|(counter_type, _)| {
+                super::move_destination_can_receive_counters(game, to_id, *counter_type)
+            })
+            .collect();
+        if counters_to_move.is_empty() {
+            return Ok(EffectOutcome::count(0));
+        }
 
         let mut total_moved = 0u32;
         let mut outcome = EffectOutcome::count(0);
@@ -231,14 +242,11 @@ impl EffectExecutor for MoveAllCountersEffect {
             }
             total_moved += removed;
 
-            // Add to destination (only the amount actually removed)
-            if let Some(add_event) = game.add_counters_with_source(
-                to_id,
-                counter_type,
-                removed,
-                Some(ctx.source),
-                Some(ctx.controller),
-            ) {
+            // Add to destination (only the amount actually removed). Putting
+            // the moved counters is an ordinary placement (CR 122.5, 122.8).
+            if let Some(add_event) =
+                super::put_moved_counters(game, ctx, to_id, counter_type, removed)
+            {
                 outcome = outcome.with_event(add_event);
             }
         }

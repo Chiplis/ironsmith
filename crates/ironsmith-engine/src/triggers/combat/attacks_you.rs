@@ -38,9 +38,9 @@ impl AttacksYouTrigger {
                 .game
                 .object(*pw)
                 .is_some_and(|o| ctx.game.controller_of(o) == ctx.controller),
-            AttackEventTarget::Battle(battle) => {
-                ctx.game.battle_protector(*battle) == Some(ctx.controller)
-            }
+            // CR 310.8 / 506.2: a creature attacking a battle is attacking
+            // that battle, not its protector.
+            AttackEventTarget::Battle(_) => false,
             // CR 506.4c: it isn't attacking you.
             AttackEventTarget::Nothing => false,
         }
@@ -53,9 +53,8 @@ impl AttacksYouTrigger {
                 .game
                 .object(*pw)
                 .is_some_and(|o| ctx.game.controller_of(o) == ctx.controller),
-            AttackTarget::Battle(battle) => {
-                ctx.game.battle_protector(*battle) == Some(ctx.controller)
-            }
+            // CR 310.8 / 506.2: attacking a battle isn't attacking you.
+            AttackTarget::Battle(_) => false,
             // CR 506.4c: it isn't attacking you.
             AttackTarget::Nothing { .. } => false,
         }

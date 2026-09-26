@@ -12,6 +12,19 @@ fn simple_negated_object_restriction(
 ) -> Option<crate::effect::Restriction> {
     use crate::effect::Restriction;
 
+    // "[objects] can't have [kind] counters put on them/it" (Melira).
+    if let ["have", counter_words @ .., "counters", "put", "on", "them" | "it"] = words
+        && !counter_words.is_empty()
+        && let Some(counter_type) = crate::grammar::filters::parse_counter_type_words(
+            &words[1..=counter_words.len() + 1],
+        )
+    {
+        return Some(Restriction::have_counter_type_placed(
+            filter.clone(),
+            counter_type,
+        ));
+    }
+
     let kind = restriction_grammar::parse_simple_object_restriction_words(words)?;
     use restriction_grammar::SimpleObjectRestrictionKind;
     Some(match kind {

@@ -1131,6 +1131,9 @@ pub fn resolve_restriction_it_tag(
         Restriction::HaveCountersPlaced(filter) => {
             Restriction::have_counters_placed(resolve_it_tag(filter, refs)?)
         }
+        Restriction::HaveCounterTypePlaced(filter, counter_type) => {
+            Restriction::have_counter_type_placed(resolve_it_tag(filter, refs)?, *counter_type)
+        }
         Restriction::BeTargeted(filter) => Restriction::be_targeted(resolve_it_tag(filter, refs)?),
         Restriction::BeTargetedFrom(filter, source_filter) => Restriction::be_targeted_from(
             resolve_it_tag(filter, refs)?,

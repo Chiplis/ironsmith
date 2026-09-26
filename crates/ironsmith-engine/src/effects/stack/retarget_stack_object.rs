@@ -19,13 +19,14 @@ use crate::ids::PlayerId;
 use crate::target::ChooseSpec;
 use crate::targeting::{
     assigned_target_ranges, assigned_target_ranges_ignoring_current_legality,
-    compute_legal_targets, normalize_targets_for_requirements,
+    normalize_targets_for_requirements,
 };
+use std::ops::Range;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub use ironsmith_core::{NewTargetRestriction, RetargetMode, RetargetStackObjectEffect};
 
-fn requires_target_selection(spec: &ChooseSpec) -> bool {
+pub(super) fn requires_target_selection(spec: &ChooseSpec) -> bool {
     match spec {
         ChooseSpec::Target(_) => true,
         ChooseSpec::AnyTarget
@@ -40,7 +41,7 @@ fn requires_target_selection(spec: &ChooseSpec) -> bool {
     }
 }
 
-fn effects_for_stack_entry(game: &GameState, entry: &StackEntry) -> Vec<crate::effect::Effect> {
+pub(super) fn effects_for_stack_entry(game: &GameState, entry: &StackEntry) -> Vec<crate::effect::Effect> {
     if let Some(ref effects) = entry.ability_effects {
         return effects.to_vec();
     }
@@ -56,13 +57,104 @@ fn effects_for_stack_entry(game: &GameState, entry: &StackEntry) -> Vec<crate::e
     Vec::new()
 }
 
-fn extract_requirements(
+/// The target requirements of a stack object whose targets are being changed
+/// or chosen again (CR 115.7, 707.10c), one per target slot, with the range
+/// of `entry.targets` each covers.
+///
+/// Slots come from the entry's announced `target_assignments`, so modal
+/// spells (only the chosen modes' targets) and spells with several targets
+/// get one requirement per announced "target" word. The number of targets
+/// can't change, so each slot keeps its announced count. Legality uses the
+/// entry's controller, source LKI and tagged objects, like the CR 608.2b
+/// recheck. With `keep_unchanged` (choosing new targets, CR 115.7d), each
+/// slot may keep its current targets even if they have become illegal.
+pub(super) struct RetargetSlot {
+    pub(super) spec: ChooseSpec,
+    pub(super) range: Range<usize>,
+    pub(super) requirement: TargetRequirementContext,
+}
+
+pub(super) fn stack_entry_retarget_requirements(
     game: &GameState,
     entry: &StackEntry,
-) -> Option<Vec<TargetRequirementContext>> {
-    let effects = effects_for_stack_entry(game, entry);
-    let mut requirements = Vec::new();
+    keep_unchanged: bool,
+) -> Option<Vec<RetargetSlot>> {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    let slot_requirement =
+        |spec: &ChooseSpec, range: &Range<usize>, computed: Vec<Target>, excluded: &[Target]| {
+            let existing = entry.targets.get(range.clone()).unwrap_or(&[]);
+            // Current targets first, so a default choice leaves them unchanged.
+            let mut legal: Vec<Target> = Vec::new();
+            if keep_unchanged {
+                for target in existing {
+                    if !legal.contains(target) {
+                        legal.push(*target);
+                    }
+                }
+            }
+            for target in computed {
+                if !legal.contains(&target)
+                    && (!excluded.contains(&target) || existing.contains(&target))
+                {
+                    legal.push(target);
+                }
+            }
+            let legal_target_sets =
+                crate::targeting::legal_target_sets_for_spec(game, spec, &legal);
+            let aggregate_constraint = crate::targeting::resolved_target_aggregate_constraint(
+                game,
+                spec,
+                entry.controller,
+                Some(entry.object_id),
+                &legal,
+            );
+            RetargetSlot {
+                spec: spec.clone(),
+                range: range.clone(),
+                requirement: TargetRequirementContext {
+                    description: "new target".to_string(),
+                    legal_targets: legal,
+                    legal_target_sets,
+                    aggregate_constraint,
+                    min_targets: range.len(),
+                    max_targets: Some(range.len()),
+                    distinct_player_group: None,
+                    shared_player_group: None,
+                },
+            }
+        };
 
+    if !entry.target_assignments.is_empty() {
+        let mut slots = Vec::with_capacity(entry.target_assignments.len());
+        for (index, assignment) in entry.target_assignments.iter().enumerate() {
+            if assignment.range.end > entry.targets.len() {
+                return None;
+            }
+            let crate::game_loop::AssignmentLegalTargets {
+                legal_targets,
+                relative_object_target,
+                prior_object_targets,
+            } = crate::game_loop::stack_entry_assignment_legal_targets(game, entry, index, &view);
+            let excluded: &[Target] = if relative_object_target {
+                &prior_object_targets
+            } else {
+                &[]
+            };
+            slots.push(slot_requirement(
+                &assignment.spec,
+                &assignment.range,
+                legal_targets,
+                excluded,
+            ));
+        }
+        return Some(slots);
+    }
+
+    // Entries without announced assignments: derive the slots from the
+    // object's top-level target specs.
+    let effects = effects_for_stack_entry(game, entry);
+    let mut specs = Vec::new();
+    let mut probe_requirements = Vec::new();
     for effect in &effects {
         let Some(spec) = effect.0.get_target_spec() else {
             continue;
@@ -70,46 +162,40 @@ fn extract_requirements(
         if !requires_target_selection(spec) {
             continue;
         }
-
         let count: ChoiceCount = effect.0.get_target_count().unwrap_or_default();
         let legal_targets =
-            compute_legal_targets(game, spec, entry.controller, Some(entry.object_id));
-        let legal_target_sets =
-            crate::targeting::legal_target_sets_for_spec(game, spec, &legal_targets);
-        let aggregate_constraint = crate::targeting::resolved_target_aggregate_constraint(
-            game,
-            spec,
-            entry.controller,
-            Some(entry.object_id),
-            &legal_targets,
-        );
-        let has_enough = crate::targeting::has_enough_legal_targets_for_spec(
-            game,
-            spec,
-            &legal_targets,
-            count.min,
-        );
-        if !has_enough
-            || aggregate_constraint
-                .as_ref()
-                .is_some_and(|constraint| !constraint.supports_minimum(count.min))
-        {
-            return None;
-        }
-
-        requirements.push(TargetRequirementContext {
+            crate::targeting::compute_legal_targets_with_tagged_objects_source_snapshot_with_view(
+                game,
+                spec,
+                entry.controller,
+                Some(entry.object_id),
+                entry.source_snapshot.as_ref(),
+                (!entry.tagged_objects.is_empty()).then_some(&entry.tagged_objects),
+                &view,
+            );
+        probe_requirements.push(TargetRequirementContext {
             description: effect.0.target_description().to_string(),
             legal_targets,
-            legal_target_sets,
-            aggregate_constraint,
+            legal_target_sets: Vec::new(),
+            aggregate_constraint: None,
             min_targets: count.min,
             max_targets: count.max,
             distinct_player_group: None,
             shared_player_group: None,
         });
+        specs.push(spec.clone());
     }
-
-    Some(requirements)
+    let ranges = assigned_target_ranges(&probe_requirements, &entry.targets).or_else(|| {
+        assigned_target_ranges_ignoring_current_legality(&probe_requirements, &entry.targets)
+    })?;
+    Some(
+        specs
+            .iter()
+            .zip(probe_requirements)
+            .zip(ranges.iter())
+            .map(|((spec, probe), range)| slot_requirement(spec, range, probe.legal_targets, &[]))
+            .collect(),
+    )
 }
 
 fn filter_targets_with_restriction(
@@ -275,37 +361,43 @@ impl EffectExecutor for RetargetStackObjectEffect {
             }
 
             let entry = game.stack[stack_idx].clone();
-            let Some(requirements) = extract_requirements(game, &entry) else {
+            // "Choose new targets" may leave targets unchanged (CR 115.7d);
+            // "change the target" must pick a new legal one if it can
+            // (CR 115.7a).
+            let keep_unchanged =
+                matches!(self.mode, RetargetMode::All) && !self.require_change;
+            let Some(slots) = stack_entry_retarget_requirements(game, &entry, keep_unchanged)
+            else {
                 continue;
             };
 
-            if requirements.is_empty() {
+            if slots.is_empty() {
                 continue;
             }
+            let requirements: Vec<TargetRequirementContext> =
+                slots.iter().map(|slot| slot.requirement.clone()).collect();
 
             match &self.mode {
                 RetargetMode::All => {
                     let mut adjusted = requirements.clone();
-                    let Some(slices) =
-                        assigned_target_ranges(&adjusted, &entry.targets).or_else(|| {
-                            assigned_target_ranges_ignoring_current_legality(
-                                &adjusted,
-                                &entry.targets,
-                            )
-                        })
-                    else {
-                        continue;
-                    };
-
-                    for (req, range) in adjusted.iter_mut().zip(slices.iter()) {
-                        let existing_targets = entry.targets.get(range.clone()).unwrap_or(&[]);
-                        let mut legal = req.legal_targets.clone();
-                        legal = filter_targets_with_restriction(
-                            legal,
+                    let mut any_choice = false;
+                    for (req, slot) in adjusted.iter_mut().zip(slots.iter()) {
+                        let existing_targets = entry.targets.get(slot.range.clone()).unwrap_or(&[]);
+                        let restricted = filter_targets_with_restriction(
+                            req.legal_targets.clone(),
                             self.new_target_restriction.as_ref(),
                             game,
                             ctx,
                         );
+                        let mut legal: Vec<Target> = req
+                            .legal_targets
+                            .iter()
+                            .copied()
+                            .filter(|t| {
+                                (keep_unchanged && existing_targets.contains(t))
+                                    || restricted.contains(t)
+                            })
+                            .collect();
 
                         if self.require_change {
                             let filtered: Vec<Target> = legal
@@ -318,21 +410,20 @@ impl EffectExecutor for RetargetStackObjectEffect {
                             }
                         }
 
+                        // A slot with too few legal new targets stays
+                        // unchanged (CR 115.7a).
                         if legal.len() < req.min_targets {
-                            legal.clear();
+                            legal = existing_targets.to_vec();
+                        } else if legal.iter().any(|t| !existing_targets.contains(t)) {
+                            any_choice = true;
                         }
 
+                        req.legal_target_sets =
+                            crate::targeting::legal_target_sets_for_spec(game, &slot.spec, &legal);
                         req.legal_targets = legal;
                     }
 
-                    if adjusted
-                        .iter()
-                        .any(|req| req.min_targets > 0 && req.legal_targets.is_empty())
-                    {
-                        continue;
-                    }
-
-                    if adjusted.iter().all(|req| req.legal_targets.is_empty()) {
+                    if !any_choice {
                         continue;
                     }
 
@@ -361,8 +452,12 @@ impl EffectExecutor for RetargetStackObjectEffect {
                         }
                         game.stack[stack_idx] = updated_entry;
                         changed += 1;
+                        // Each new target becomes a target once (CR 115.3,
+                        // 115.7); unchanged ones were targeted already.
+                        let mut newly_targeted: Vec<Target> = Vec::new();
                         for target in &game.stack[stack_idx].targets {
-                            if !old_targets.contains(target) {
+                            if !old_targets.contains(target) && !newly_targeted.contains(target) {
+                                newly_targeted.push(*target);
                                 push_becomes_targeted_event(
                                     &mut events,
                                     *target,
@@ -394,17 +489,8 @@ impl EffectExecutor for RetargetStackObjectEffect {
                     }
 
                     let mut eligible_indices = Vec::new();
-                    let Some(slices) = assigned_target_ranges(&requirements, &entry.targets)
-                        .or_else(|| {
-                            assigned_target_ranges_ignoring_current_legality(
-                                &requirements,
-                                &entry.targets,
-                            )
-                        })
-                    else {
-                        continue;
-                    };
-                    for (req, range) in requirements.iter().zip(slices.iter()) {
+                    for (req, slot) in requirements.iter().zip(slots.iter()) {
+                        let range = &slot.range;
                         let legal = filter_targets_with_restriction(
                             req.legal_targets.clone(),
                             self.new_target_restriction.as_ref(),

@@ -2,7 +2,6 @@ use crate::decisions::{SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_player_filter_as_chooser;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
-use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::triggers::TriggerEvent;
@@ -99,23 +98,25 @@ impl EffectExecutor for UnlockRoomDoorEffect {
                 .copied()
                 .unwrap_or(crate::special_actions::RoomDoor::Linked)
         };
-        if !crate::special_actions::apply_room_door_unlock(game, room_id, door) {
+        let Some(events) =
+            crate::special_actions::unlock_room_door_with_events(game, chooser, room_id, door)
+        else {
             return Ok(EffectOutcome::count(0));
-        }
+        };
 
-        let event = TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(KeywordActionKind::UnlockDoor, chooser, room_id, 1),
-            ctx.provenance,
-        );
-        Ok(EffectOutcome::with_objects(vec![room_id])
-            .with_affected_objects(vec![room_id])
-            .with_event(event))
+        let mut outcome =
+            EffectOutcome::with_objects(vec![room_id]).with_affected_objects(vec![room_id]);
+        for event in events {
+            outcome = outcome.with_event(TriggerEvent::new_with_provenance(event, ctx.provenance));
+        }
+        Ok(outcome)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::events::{KeywordActionEvent, KeywordActionKind};
     use crate::card::LinkedFaceLayout;
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::ids::{CardId, PlayerId};

@@ -82,6 +82,9 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
             } else if self.duration == crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
             {
                 GrantSource::until_player_next_turn_end(ctx.source, player_id, expires_end_of_turn)
+            } else if self.duration == crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep
+            {
+                GrantSource::until_player_next_end_step(ctx.source, player_id, game)
             } else if self.duration
                 == crate::effects::GrantPlayTaggedDuration::UntilSourceExilesAnother
             {

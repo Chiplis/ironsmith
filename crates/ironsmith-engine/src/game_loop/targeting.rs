@@ -190,13 +190,26 @@ pub(super) fn target_events_from_targets(
     source: ObjectId,
     source_controller: PlayerId,
     by_ability: bool,
+    stack_ability: Option<ObjectId>,
     provenance: ProvNodeId,
 ) -> Vec<TriggerEvent> {
+    // An object or player chosen for several instances of "target" becomes
+    // the target of the spell or ability once (CR 115.3, 601.2c), so emit one
+    // event per distinct target, in first-chosen order.
+    let mut seen = Vec::with_capacity(targets.len());
     targets
         .iter()
+        .filter(|target| {
+            if seen.contains(*target) {
+                return false;
+            }
+            seen.push(**target);
+            true
+        })
         .map(|target| {
             TriggerEvent::new_with_provenance(
-                BecomesTargetedEvent::new_target(*target, source, source_controller, by_ability),
+                BecomesTargetedEvent::new_target(*target, source, source_controller, by_ability)
+                    .with_stack_ability(stack_ability),
                 provenance,
             )
         })
@@ -241,9 +254,24 @@ pub(super) fn queue_becomes_targeted_events(
     by_ability: bool,
     provenance: ProvNodeId,
 ) {
-    for mut event in
-        target_events_from_targets(targets, source, source_controller, by_ability, provenance)
-    {
+    // The ability was just put on the stack: name its own stack entry.
+    let stack_ability = if by_ability {
+        game.stack
+            .iter()
+            .rev()
+            .find(|entry| entry.is_ability && entry.object_id == source)
+            .and_then(|entry| entry.ability_id)
+    } else {
+        None
+    };
+    for mut event in target_events_from_targets(
+        targets,
+        source,
+        source_controller,
+        by_ability,
+        stack_ability,
+        provenance,
+    ) {
         let event_provenance = game.alloc_child_event_provenance(provenance, event.kind());
         event.set_provenance(event_provenance);
         queue_triggers_from_event(game, trigger_queue, event, true);
@@ -2834,7 +2862,7 @@ pub fn extract_target_requirements_from_program_with_modes(
 }
 
 /// Extract target requirements from a list of effects with optional mode choices.
-pub(super) fn extract_target_requirements_with_modes(
+pub(crate) fn extract_target_requirements_with_modes(
     game: &GameState,
     effects: &[Effect],
     caster: PlayerId,
@@ -3859,6 +3887,114 @@ fn prior_player_or_planeswalker_target(
         })
 }
 
+/// Legal targets for one announced target assignment of a stack entry, with
+/// the entry's controller, source LKI, tagged objects and reflexive results.
+/// Shared by the CR 608.2b recheck and by effects that change or choose new
+/// targets (CR 115.7), which test new targets against the same requirement.
+pub(crate) struct AssignmentLegalTargets {
+    pub(crate) legal_targets: Vec<Target>,
+    /// "Another target ..." after an earlier object assignment: the earlier
+    /// assignment's targets can't be chosen again for this one.
+    pub(crate) relative_object_target: bool,
+    pub(crate) prior_object_targets: Vec<Target>,
+}
+
+pub(crate) fn stack_entry_assignment_legal_targets(
+    game: &GameState,
+    entry: &StackEntry,
+    assignment_index: usize,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> AssignmentLegalTargets {
+    let assignment = &entry.target_assignments[assignment_index];
+    let resolved_spec = choose_spec_with_damaged_player_from_event(
+        &assignment.spec,
+        entry.triggering_event.as_ref(),
+    );
+    let mut resolved_spec = choose_spec_for_resolution_target_validation(&resolved_spec);
+    let prior_object_targets: Vec<_> = entry.target_assignments[..assignment_index]
+        .iter()
+        .filter(|prior| matches!(prior.spec.base(), ChooseSpec::Object(_)))
+        .flat_map(|prior| entry.targets[prior.range.clone()].iter())
+        .copied()
+        .collect();
+    let relative_object_target = !prior_object_targets.is_empty()
+        && matches!(resolved_spec.base(), ChooseSpec::Object(filter)
+            if filter.other && filter.source_surface.is_none()
+                && filter.tagged_constraints.is_empty());
+    if relative_object_target {
+        resolved_spec = relax_relative_object_target_source_exclusion(&resolved_spec);
+    }
+    if let Some(player) =
+        prior_player_or_planeswalker_target(game, entry, assignment_index, view)
+    {
+        specialize_target_player_relation_in_choose_spec(&mut resolved_spec, player);
+    } else if let Some(player) =
+        prior_object_targets
+            .first()
+            .and_then(|target| match target {
+                // "a card in that player's graveyard" after an object target:
+                // that player is the earlier target's current controller.
+                Target::Object(id) => view.current_controller(*id),
+                Target::Player(_) => None,
+            })
+    {
+        specialize_target_player_relation_in_choose_spec(&mut resolved_spec, player);
+    }
+    // Reflexive entries retain the resolving parent's results. Use
+    // them again when rechecking legality after players can respond.
+    let legal_targets = if !entry.effect_outcomes.is_empty() {
+        let mut ctx = crate::effects::ExecutionContext::new_default(
+            entry.object_id,
+            entry.controller,
+        );
+        ctx.x_value = entry.x_value;
+        ctx.effect_outcomes = entry.effect_outcomes.clone();
+        ctx.tagged_objects = entry.tagged_objects.clone();
+        ctx.source_snapshot = entry.source_snapshot.clone();
+        ctx.triggering_event = entry.triggering_event.clone();
+        ctx.event_value_amount = entry.event_value_amount;
+        ctx.combat.defending_player = entry.defending_player;
+        ctx.combat.attacking_player = combat_attacking_player_for_entry(game, entry);
+        crate::targeting::compute_legal_targets_with_execution_context_and_view(
+            game,
+            &resolved_spec,
+            &ctx,
+            view,
+        )
+    } else if entry.defending_player.is_some() {
+        compute_legal_targets_with_tagged_objects_combat_context_and_view(
+            game,
+            &resolved_spec,
+            entry.controller,
+            Some(entry.object_id),
+            entry.source_snapshot.as_ref(),
+            Some(&entry.tagged_objects),
+            entry.defending_player,
+            combat_attacking_player_for_entry(game, entry),
+            view,
+        )
+    } else {
+        compute_legal_targets_with_source_snapshot_and_view(
+            game,
+            &resolved_spec,
+            entry.controller,
+            Some(entry.object_id),
+            entry.source_snapshot.as_ref(),
+            if entry.tagged_objects.is_empty() {
+                None
+            } else {
+                Some(&entry.tagged_objects)
+            },
+            view,
+        )
+    };
+    AssignmentLegalTargets {
+        legal_targets,
+        relative_object_target,
+        prior_object_targets,
+    }
+}
+
 pub(super) fn validate_stack_entry_targets_with_view(
     game: &GameState,
     entry: &StackEntry,
@@ -3879,88 +4015,11 @@ pub(super) fn validate_stack_entry_targets_with_view(
         let exchange_specs = stack_entry_exchange_control_specs(game, entry);
 
         for (assignment_index, assignment) in entry.target_assignments.iter().enumerate() {
-            let resolved_spec = choose_spec_with_damaged_player_from_event(
-                &assignment.spec,
-                entry.triggering_event.as_ref(),
-            );
-            let mut resolved_spec = choose_spec_for_resolution_target_validation(&resolved_spec);
-            let prior_object_targets: Vec<_> = entry.target_assignments[..assignment_index]
-                .iter()
-                .filter(|prior| matches!(prior.spec.base(), ChooseSpec::Object(_)))
-                .flat_map(|prior| entry.targets[prior.range.clone()].iter())
-                .copied()
-                .collect();
-            let relative_object_target = !prior_object_targets.is_empty()
-                && matches!(resolved_spec.base(), ChooseSpec::Object(filter)
-                    if filter.other && filter.source_surface.is_none()
-                        && filter.tagged_constraints.is_empty());
-            if relative_object_target {
-                resolved_spec = relax_relative_object_target_source_exclusion(&resolved_spec);
-            }
-            if let Some(player) =
-                prior_player_or_planeswalker_target(game, entry, assignment_index, view)
-            {
-                specialize_target_player_relation_in_choose_spec(&mut resolved_spec, player);
-            } else if let Some(player) =
-                prior_object_targets
-                    .first()
-                    .and_then(|target| match target {
-                        // "a card in that player's graveyard" after an object target:
-                        // that player is the earlier target's current controller.
-                        Target::Object(id) => view.current_controller(*id),
-                        Target::Player(_) => None,
-                    })
-            {
-                specialize_target_player_relation_in_choose_spec(&mut resolved_spec, player);
-            }
-            // Reflexive entries retain the resolving parent's results. Use
-            // them again when rechecking legality after players can respond.
-            let legal_targets = if !entry.effect_outcomes.is_empty() {
-                let mut ctx = crate::effects::ExecutionContext::new_default(
-                    entry.object_id,
-                    entry.controller,
-                );
-                ctx.x_value = entry.x_value;
-                ctx.effect_outcomes = entry.effect_outcomes.clone();
-                ctx.tagged_objects = entry.tagged_objects.clone();
-                ctx.source_snapshot = entry.source_snapshot.clone();
-                ctx.triggering_event = entry.triggering_event.clone();
-                ctx.event_value_amount = entry.event_value_amount;
-                ctx.combat.defending_player = entry.defending_player;
-                ctx.combat.attacking_player = combat_attacking_player_for_entry(game, entry);
-                crate::targeting::compute_legal_targets_with_execution_context_and_view(
-                    game,
-                    &resolved_spec,
-                    &ctx,
-                    view,
-                )
-            } else if entry.defending_player.is_some() {
-                compute_legal_targets_with_tagged_objects_combat_context_and_view(
-                    game,
-                    &resolved_spec,
-                    entry.controller,
-                    Some(entry.object_id),
-                    entry.source_snapshot.as_ref(),
-                    Some(&entry.tagged_objects),
-                    entry.defending_player,
-                    combat_attacking_player_for_entry(game, entry),
-                    view,
-                )
-            } else {
-                compute_legal_targets_with_source_snapshot_and_view(
-                    game,
-                    &resolved_spec,
-                    entry.controller,
-                    Some(entry.object_id),
-                    entry.source_snapshot.as_ref(),
-                    if entry.tagged_objects.is_empty() {
-                        None
-                    } else {
-                        Some(&entry.tagged_objects)
-                    },
-                    view,
-                )
-            };
+            let AssignmentLegalTargets {
+                legal_targets,
+                relative_object_target,
+                prior_object_targets,
+            } = stack_entry_assignment_legal_targets(game, entry, assignment_index, view);
 
             let start = valid_targets.len();
             for target in &entry.targets[assignment.range.clone()] {

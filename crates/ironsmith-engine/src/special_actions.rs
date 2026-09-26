@@ -1173,8 +1173,7 @@ fn can_play_land(game: &GameState, player: PlayerId, card_id: ObjectId) -> Resul
     let permission_view = crate::derived_view::DerivedGameView::new(game);
     let can_play_from_zone = object.zone == Zone::Hand
         || (object.zone == Zone::Exile
-            && game.is_adventure_exiled(card_id)
-            && game.controller_of(object) == player)
+            && game.adventure_exiled_player(card_id) == Some(player))
         || !permission_view
             .granted_play_from_for_card_view(card_id, proposed_land, object.zone, player)
             .is_empty();
@@ -1212,8 +1211,7 @@ pub(crate) fn shared_usage_to_consume_for_land_play(
     let object = game.object(card_id)?;
     if object.zone == Zone::Hand
         || (object.zone == Zone::Exile
-            && game.is_adventure_exiled(card_id)
-            && game.controller_of(object) == player)
+            && game.adventure_exiled_player(card_id) == Some(player))
     {
         return None;
     }
@@ -1236,6 +1234,9 @@ fn perform_play_land(
         && let Some(object) = game.object_mut(card_id)
     {
         object.apply_definition_face(&linked_land_def);
+        // CR 712.8f: a modal DFC played as its land back face has only that
+        // face's characteristics, so no front-face mana value carries over.
+        object.linked_face_mana_cost = None;
     }
 
     // Move the land to the battlefield with ETB replacement processing.
@@ -1408,12 +1409,13 @@ fn finish_turn_face_up(
     // ordinary counter placement, so counter replacements apply and a
     // counter-placed event fires (CR 122.6, 614.1).
     if spec.megamorph && game.object(permanent_id).is_some() {
-        let count = crate::events::processing::process_put_counters_with_event(
+        let count = crate::events::processing::process_put_counters_with_event_with_dm(
             game,
             permanent_id,
             crate::object::CounterType::PlusOnePlusOne,
             1,
             crate::events::cause::EventCause::from_special_action(Some(permanent_id), player),
+            &mut *decision_maker,
         );
         if count > 0
             && let Some(event) = game.add_counters_with_source(
@@ -1534,6 +1536,63 @@ pub(crate) fn apply_room_door_unlock(
     true
 }
 
+/// Unlock a Room door and build the resulting keyword-action events.
+///
+/// CR 709.5h: "when you unlock this door" triggers only for the door that got
+/// its designation, so a second-door event records that door's triggered
+/// abilities. CR 709.5i: unlocking the second door fully unlocks the Room.
+pub(crate) fn unlock_room_door_with_events(
+    game: &mut GameState,
+    player: PlayerId,
+    room_id: ObjectId,
+    door: RoomDoor,
+) -> Option<Vec<KeywordActionEvent>> {
+    let second_door = !game.room_has_no_unlocked_door(room_id);
+    let door_triggers = second_door.then(|| {
+        room_locked_door_definition(game, room_id)
+            .map(|definition| {
+                definition
+                    .abilities
+                    .iter()
+                    .filter_map(|ability| match &ability.kind {
+                        crate::ability::AbilityKind::Triggered(triggered) => {
+                            Some(crate::triggers::compute_trigger_identity(triggered))
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    });
+    let abilities_before = game.object(room_id).map(|room| room.abilities.len());
+    if !apply_room_door_unlock(game, room_id, door) {
+        return None;
+    }
+    let abilities_after = game.object(room_id).map(|room| room.abilities.len());
+    let mut unlock = KeywordActionEvent::new(
+        crate::events::KeywordActionKind::UnlockDoor,
+        player,
+        room_id,
+        1,
+    );
+    if let Some(door_triggers) = door_triggers {
+        unlock = unlock.with_unlocked_door_triggers(door_triggers);
+        if let (Some(before), Some(after)) = (abilities_before, abilities_after) {
+            unlock = unlock.with_unlocked_door_ability_range(before..after);
+        }
+    }
+    let mut events = vec![unlock];
+    if second_door {
+        events.push(KeywordActionEvent::new(
+            crate::events::KeywordActionKind::FullyUnlockRoom,
+            player,
+            room_id,
+            1,
+        ));
+    }
+    Some(events)
+}
+
 fn perform_unlock_room_door(
     game: &mut GameState,
     player: PlayerId,
@@ -1550,24 +1609,20 @@ fn perform_unlock_room_door(
         },
     );
 
-    if !apply_room_door_unlock(game, room_id, door) {
+    let Some(events) = unlock_room_door_with_events(game, player, room_id, door) else {
         return Err(ActionError::NoSuchAbility);
-    }
+    };
 
-    let event_provenance = game
-        .alloc_child_event_provenance(action_provenance, crate::events::EventKind::KeywordAction);
-    game.queue_trigger_event(
-        action_provenance,
-        TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(
-                crate::events::KeywordActionKind::UnlockDoor,
-                player,
-                room_id,
-                1,
-            ),
-            event_provenance,
-        ),
-    );
+    for event in events {
+        let event_provenance = game.alloc_child_event_provenance(
+            action_provenance,
+            crate::events::EventKind::KeywordAction,
+        );
+        game.queue_trigger_event(
+            action_provenance,
+            TriggerEvent::new_with_provenance(event, event_provenance),
+        );
+    }
     Ok(())
 }
 

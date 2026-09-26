@@ -2907,8 +2907,12 @@ fn tagged_object_name_matches_object_set(
     let filter_ctx = ctx.filter_context(game);
     Some(tagged.iter().any(|snapshot| {
         condition_objects_for_zone(game, comparison_set.zone).any(|candidate| {
-            crate::filter::names_match(&snapshot.name, &candidate.name)
-                && comparison_set.matches(candidate, &filter_ctx, game)
+            crate::filter::names_share(
+                &snapshot.name,
+                snapshot.split_other_half_name(),
+                &candidate.name,
+                candidate.split_other_half_name(),
+            ) && comparison_set.matches(candidate, &filter_ctx, game)
         })
     }))
 }

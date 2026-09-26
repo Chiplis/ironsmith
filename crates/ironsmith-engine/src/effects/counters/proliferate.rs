@@ -7,7 +7,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_value;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::{
-    TraitEventResult, process_put_counters_with_event,
+    TraitEventResult, process_put_counters_with_event_with_dm,
     process_trait_event_with_dm_and_applied_effects,
 };
 use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
@@ -217,7 +217,7 @@ impl EffectExecutor for ProliferateEffect {
                 let mut received_counter = false;
                 for ct in counter_types {
                     let final_count =
-                        process_put_counters_with_event(game, perm_id, ct, 1, ctx.cause.clone());
+                        process_put_counters_with_event_with_dm(game, perm_id, ct, 1, ctx.cause.clone(), &mut *ctx.decision_maker);
                     if final_count == 0 {
                         continue;
                     }

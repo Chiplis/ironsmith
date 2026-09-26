@@ -4,14 +4,13 @@
 //! by re-targeting stack objects produced by a prior effect.
 
 use crate::decisions::context::{BooleanContext, TargetRequirementContext, TargetsContext};
-use crate::effect::{ChoiceCount, EffectOutcome};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::spells::BecomesTargetedEvent;
-use crate::game_state::{GameState, StackEntry, Target};
-use crate::target::ChooseSpec;
-use crate::targeting::{compute_legal_targets, normalize_targets_for_requirements};
+use crate::game_state::{GameState, Target};
+use crate::targeting::normalize_targets_for_requirements;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub use ironsmith_core::ChooseNewTargetsEffect;
@@ -20,93 +19,6 @@ pub use ironsmith_core::ChooseNewTargetsEffect;
 ///
 /// The objects are read from a prior effect outcome, preferring explicit
 /// object outputs and falling back to preserved chosen/affected-object facts.
-fn requires_target_selection(spec: &ChooseSpec) -> bool {
-    match spec {
-        ChooseSpec::Target(_) => true,
-        ChooseSpec::AnyTarget
-        | ChooseSpec::AnyOtherTarget
-        | ChooseSpec::Player(_)
-        | ChooseSpec::Object(_)
-        | ChooseSpec::PlayerOrPlaneswalker(_) => true,
-        ChooseSpec::SurfaceHinted { spec: inner, .. }
-        | ChooseSpec::WithCount(inner, _)
-        | ChooseSpec::WithCountValue(inner, _, _) => requires_target_selection(inner),
-        _ => false,
-    }
-}
-
-fn effects_for_stack_entry(game: &GameState, entry: &StackEntry) -> Vec<crate::effect::Effect> {
-    if let Some(ref effects) = entry.ability_effects {
-        return effects.to_vec();
-    }
-
-    let Some(obj) = game.object(entry.object_id) else {
-        return Vec::new();
-    };
-
-    if let Some(ref effects) = obj.spell_effect {
-        return effects.to_vec();
-    }
-
-    Vec::new()
-}
-
-fn extract_requirements(
-    game: &GameState,
-    entry: &StackEntry,
-) -> Option<Vec<TargetRequirementContext>> {
-    let effects = effects_for_stack_entry(game, entry);
-    let mut requirements = Vec::new();
-
-    for effect in &effects {
-        let Some(spec) = effect.0.get_target_spec() else {
-            continue;
-        };
-        if !requires_target_selection(spec) {
-            continue;
-        }
-
-        let count: ChoiceCount = effect.0.get_target_count().unwrap_or_default();
-        let legal_targets =
-            compute_legal_targets(game, spec, entry.controller, Some(entry.object_id));
-        let legal_target_sets =
-            crate::targeting::legal_target_sets_for_spec(game, spec, &legal_targets);
-        let aggregate_constraint = crate::targeting::resolved_target_aggregate_constraint(
-            game,
-            spec,
-            entry.controller,
-            Some(entry.object_id),
-            &legal_targets,
-        );
-        let has_enough = crate::targeting::has_enough_legal_targets_for_spec(
-            game,
-            spec,
-            &legal_targets,
-            count.min,
-        );
-        if !has_enough
-            || aggregate_constraint
-                .as_ref()
-                .is_some_and(|constraint| !constraint.supports_minimum(count.min))
-        {
-            return None;
-        }
-
-        requirements.push(TargetRequirementContext {
-            description: effect.0.target_description().to_string(),
-            legal_targets,
-            legal_target_sets,
-            aggregate_constraint,
-            min_targets: count.min,
-            max_targets: count.max,
-            distinct_player_group: None,
-            shared_player_group: None,
-        });
-    }
-
-    Some(requirements)
-}
-
 impl EffectExecutor for ChooseNewTargetsEffect {
     fn execute(
         &self,
@@ -137,16 +49,22 @@ impl EffectExecutor for ChooseNewTargetsEffect {
             }
 
             let entry = game.stack[stack_idx].clone();
-            let Some(requirements) = extract_requirements(game, &entry) else {
+            // One requirement per announced target slot; each may keep its
+            // current targets (CR 707.10c, 115.7d).
+            let Some(slots) =
+                super::retarget_stack_object::stack_entry_retarget_requirements(game, &entry, true)
+            else {
                 if self.may {
                     continue;
                 }
                 return Ok(EffectOutcome::target_invalid());
             };
 
-            if requirements.is_empty() {
+            if slots.is_empty() {
                 continue;
             }
+            let requirements: Vec<TargetRequirementContext> =
+                slots.into_iter().map(|slot| slot.requirement).collect();
 
             let chooser = if let Some(filter) = &self.chooser {
                 resolve_player_filter(game, filter, ctx)?
@@ -203,21 +121,22 @@ impl EffectExecutor for ChooseNewTargetsEffect {
                 changed += 1;
                 // Only targets that are new become the target (CR 115.7);
                 // unchanged ones were targeted when the object was created.
+                // Each distinct new target becomes a target once (CR 115.3).
+                let mut newly_targeted: Vec<Target> = Vec::new();
                 for target in &game.stack[stack_idx].targets {
-                    if old_targets.contains(target) {
+                    if old_targets.contains(target) || newly_targeted.contains(target) {
                         continue;
                     }
-                    if let Target::Object(target_id) = target {
-                        events.push(TriggerEvent::new_with_provenance(
-                            BecomesTargetedEvent::new(
-                                *target_id,
-                                object_id,
-                                entry.controller,
-                                entry.is_ability,
-                            ),
-                            ctx.provenance,
-                        ));
-                    }
+                    newly_targeted.push(*target);
+                    events.push(TriggerEvent::new_with_provenance(
+                        BecomesTargetedEvent::new_target(
+                            *target,
+                            object_id,
+                            entry.controller,
+                            entry.is_ability,
+                        ),
+                        ctx.provenance,
+                    ));
                 }
             }
         }

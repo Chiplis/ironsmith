@@ -263,6 +263,10 @@ pub enum TriggerKind {
         filter: ObjectFilter,
     },
     ThisBecomesMonstrous,
+    /// "When this Class becomes level N" (CR 716.2a).
+    ClassBecomesLevel {
+        level: u32,
+    },
     BecomesTapped,
     PermanentBecomesTapped {
         filter: ObjectFilter,
@@ -1043,6 +1047,12 @@ impl Trigger {
     }
     pub fn this_becomes_monstrous() -> Self {
         Self::typed("this_becomes_monstrous", TriggerKind::ThisBecomesMonstrous)
+    }
+    pub fn class_becomes_level(level: u32) -> Self {
+        Self::typed(
+            "class_becomes_level",
+            TriggerKind::ClassBecomesLevel { level },
+        )
     }
     pub fn becomes_tapped() -> Self {
         Self::typed("becomes_tapped", TriggerKind::BecomesTapped)

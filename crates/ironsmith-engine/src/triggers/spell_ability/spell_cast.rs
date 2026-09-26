@@ -270,7 +270,12 @@ impl TriggerMatcher for SpellCastTrigger {
                 .any(|candidate| {
                     ctx.game.object(candidate).is_some_and(|candidate| {
                         owner.matches_player(candidate.owner, &owner_ctx)
-                            && crate::filter::names_match(&candidate.name, &spell.name)
+                            && crate::filter::names_share(
+                                &candidate.name,
+                                candidate.split_other_half_name(),
+                                &spell.name,
+                                spell.split_other_half_name(),
+                            )
                     })
                 })
             {

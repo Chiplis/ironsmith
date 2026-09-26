@@ -36,6 +36,19 @@ pub struct KeywordActionEvent {
     pub object_tags: HashMap<TagKey, Vec<ObjectSnapshot>>,
     /// Combat-phase ordinal in which the action occurred, when combat-scoped.
     pub combat_phase: Option<u32>,
+    /// For a Room's second door (CR 709.5h): structural identities of the
+    /// triggered abilities printed on the door that was unlocked. "When you
+    /// unlock this door" abilities of the other, already-unlocked half don't
+    /// trigger. `None` means every door ability on the Room is this door's.
+    pub unlocked_door_triggers: Option<Vec<crate::triggers::TriggerIdentity>>,
+    /// For a Room's second door: the positions the unlocked half's abilities
+    /// occupy on the Room (appended by the fully-unlocked overlay). Keys the
+    /// door by half, so identical door triggers on both halves stay apart.
+    pub unlocked_door_ability_range: Option<std::ops::Range<usize>>,
+    /// X announced for the ability whose cost performed this action (cycling
+    /// with {X} in its cost). Linked "when you cycle this card" triggers use
+    /// that value for their own X (Shark Typhoon).
+    pub x_value: Option<u32>,
 }
 
 impl KeywordActionEvent {
@@ -50,7 +63,28 @@ impl KeywordActionEvent {
             player_tags: HashMap::new(),
             object_tags: HashMap::new(),
             combat_phase: None,
+            unlocked_door_triggers: None,
+            unlocked_door_ability_range: None,
+            x_value: None,
         }
+    }
+
+    pub fn with_x_value(mut self, x_value: Option<u32>) -> Self {
+        self.x_value = x_value;
+        self
+    }
+
+    pub fn with_unlocked_door_triggers(
+        mut self,
+        identities: Vec<crate::triggers::TriggerIdentity>,
+    ) -> Self {
+        self.unlocked_door_triggers = Some(identities);
+        self
+    }
+
+    pub fn with_unlocked_door_ability_range(mut self, range: std::ops::Range<usize>) -> Self {
+        self.unlocked_door_ability_range = Some(range);
+        self
     }
 
     pub fn with_votes(mut self, votes: Vec<PlayerVote>) -> Self {

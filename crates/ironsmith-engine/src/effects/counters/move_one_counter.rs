@@ -23,6 +23,9 @@ impl EffectExecutor for MoveOneCounterEffect {
         let Some((from_id, to_id)) = target_pair else {
             return Ok(EffectOutcome::target_invalid());
         };
+        if game.object(to_id).is_none() {
+            return Ok(EffectOutcome::count(0));
+        }
 
         let available_counters = game
             .object(from_id)
@@ -30,6 +33,9 @@ impl EffectExecutor for MoveOneCounterEffect {
                 obj.counters
                     .iter()
                     .filter(|(_, count)| **count > 0)
+                    // CR 122.5: only a counter that can be put onto the second
+                    // object can be moved.
+                    .filter(|(ct, _)| super::move_destination_can_receive_counters(game, to_id, **ct))
                     .map(|(ct, count)| (*ct, *count))
                     .collect::<Vec<_>>()
             })
@@ -68,13 +74,7 @@ impl EffectExecutor for MoveOneCounterEffect {
                 continue;
             }
             let mut outcome = EffectOutcome::count(1).with_event(remove_event);
-            if let Some(add_event) = game.add_counters_with_source(
-                to_id,
-                counter_type,
-                1,
-                Some(ctx.source),
-                Some(ctx.controller),
-            ) {
+            if let Some(add_event) = super::put_moved_counters(game, ctx, to_id, counter_type, 1) {
                 outcome = outcome.with_event(add_event);
             }
             return Ok(outcome);

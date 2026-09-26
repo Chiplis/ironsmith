@@ -2656,8 +2656,12 @@ impl StaticAbilityKind for ExileToCounteredExileInsteadOfGraveyard {
         Some(ReplacementEffect::with_matcher(
             source,
             controller,
+            // "If a card would be put into ...": tokens aren't cards
+            // (CR 108.2, 111.1), so they still go to the graveyard (and die).
             WouldGoToGraveyardFromAnywhereMatcher::new(
-                ObjectFilter::default().owned_by(self.player.clone()),
+                ObjectFilter::default()
+                    .owned_by(self.player.clone())
+                    .nontoken(),
                 false,
             ),
             ReplacementAction::ExileWithSourceLinkCountersThen {
@@ -2707,10 +2711,17 @@ impl ExileToExileInsteadOfGraveyard {
     }
 
     fn replacement_subject_phrase(&self) -> String {
-        if self.filter.has_explicit_card_noun()
-            && self.filter.controller == Some(PlayerFilter::NotYou)
+        // The "card" noun already excludes tokens (CR 108.2), so a nontoken
+        // restriction carried for matching isn't spelled out.
+        let mut filter = self.filter.clone();
+        if filter.has_explicit_card_noun() {
+            filter.nontoken = false;
+        }
+        let filter = &filter;
+        if filter.has_explicit_card_noun()
+            && filter.controller == Some(PlayerFilter::NotYou)
         {
-            let mut normalized = self.filter.clone();
+            let mut normalized = filter.clone();
             normalized.controller = None;
             let mut bare_card = ObjectFilter::default();
             bare_card.set_explicit_card_noun(true);
@@ -2718,10 +2729,10 @@ impl ExileToExileInsteadOfGraveyard {
                 return "a card you didn't control".to_string();
             }
         }
-        if self.filter.has_explicit_card_noun()
-            && let [marker] = self.filter.ability_markers.as_slice()
+        if filter.has_explicit_card_noun()
+            && let [marker] = filter.ability_markers.as_slice()
         {
-            let mut normalized = self.filter.clone();
+            let mut normalized = filter.clone();
             normalized.ability_markers.clear();
             if normalized == ObjectFilter::default() {
                 let marker = marker.to_ascii_lowercase();
@@ -2732,7 +2743,7 @@ impl ExileToExileInsteadOfGraveyard {
                 return format!("a card that has {article} {marker} ability");
             }
         }
-        self.filter.description()
+        filter.description()
     }
 }
 

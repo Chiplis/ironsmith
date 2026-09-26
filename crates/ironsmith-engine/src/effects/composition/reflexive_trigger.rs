@@ -482,11 +482,44 @@ pub(crate) fn reflexive_trigger_stack_entry(
         return Some(None);
     }
     drop(ctx);
-    game.effect_store.pending_reflexive_triggers.remove(index);
     let Some((targets, assignments)) = selection else {
+        game.effect_store.pending_reflexive_triggers.remove(index);
         return Some(None);
     };
 
+    // "Divided as you choose" / "distribute ... among" in the reflexive
+    // ability is announced with its targets (CR 603.3d, 601.2d).
+    let program_requirements = crate::game_loop::extract_target_requirements_with_modes(
+        game,
+        &pending.effects,
+        pending.controller,
+        Some(pending.source),
+        None,
+    );
+    let distribution_requirements = program_requirements
+        .iter()
+        .any(|requirement| requirement.distribution_value.is_some())
+        .then(|| {
+            assignments
+                .iter()
+                .filter_map(|assignment| {
+                    program_requirements
+                        .iter()
+                        .find(|requirement| {
+                            requirement.distribution_value.is_some()
+                                && requirement.spec == assignment.spec
+                        })
+                        .or_else(|| program_requirements.first())
+                        .map(|requirement| {
+                            let mut requirement = requirement.clone();
+                            if requirement.spec != assignment.spec {
+                                requirement.distribution_value = None;
+                            }
+                            requirement
+                        })
+                })
+                .collect::<Vec<_>>()
+        });
     let mut entry = StackEntry::ability(pending.source, pending.controller, pending.effects)
         .with_targets(targets)
         .with_target_assignments(assignments)
@@ -503,6 +536,22 @@ pub(crate) fn reflexive_trigger_stack_entry(
     if let Some(x) = pending.x_value {
         entry = entry.with_x(x);
     }
+    if let Some(requirements) = distribution_requirements
+        && requirements.len() == entry.target_assignments.len()
+        && !crate::game_loop::announce_trigger_target_distributions(
+            game,
+            pending.source,
+            pending.controller,
+            pending.x_value,
+            &mut entry,
+            &requirements,
+            decision_maker,
+        )
+    {
+        // Awaiting the division: the reflexive trigger stays pending.
+        return Some(None);
+    }
+    game.effect_store.pending_reflexive_triggers.remove(index);
     if let Some(defending_player) = pending.combat.defending_player {
         entry = entry.with_defending_player(defending_player);
     }

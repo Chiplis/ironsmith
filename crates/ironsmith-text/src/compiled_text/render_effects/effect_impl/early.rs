@@ -4844,6 +4844,17 @@
                 describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
+        // "add twice that much {G}" (Fangorn, Tree Shepherd)
+        if let Value::Scaled(inner, 2) = amount
+            && (is_effect_count_reference(inner, None)
+                || matches!(inner.as_ref(), Value::EventValue(EventValueSpec::LifeAmount)))
+        {
+            return format!(
+                "Add twice that much {}{}",
+                mana_text,
+                describe_add_mana_destination_suffix(&add_scaled.player)
+            );
+        }
         if matches!(
             amount,
             Value::EventValue(EventValueSpec::LifeAmount)

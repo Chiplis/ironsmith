@@ -560,7 +560,9 @@ impl GameState {
 
         if let Some(shared) = self.shared_team_turns()
             && let Some(target_team) = self.team_index_for(player)
-            && let Some(mut simulated_team) = self.active_team_index()
+            && let Some(anchor_team) = self
+                .team_index_for(self.normal_turn_order_anchor())
+                .or_else(|| self.active_team_index())
         {
             let mut simulated_turn_number = self.turn.turn_number;
             let mut simulated_extra_turns = self.turn_store.extra_turns.clone();
@@ -573,8 +575,9 @@ impl GameState {
                 .saturating_add(16)
                 .max(1);
 
+            // CR 500.7: extra turns don't move the normal rotation.
+            let mut normal_anchor = anchor_team;
             for _ in 0..max_iterations {
-                let mut normal_anchor = simulated_team;
                 let candidate_team = loop {
                     let candidate = if let Some(extra_turn) = simulated_extra_turns.pop() {
                         let Some(team) = self.team_index_for(extra_turn) else {
@@ -605,7 +608,6 @@ impl GameState {
                 };
 
                 simulated_turn_number = simulated_turn_number.saturating_add(1);
-                simulated_team = candidate_team;
                 if candidate_team == target_team {
                     return simulated_turn_number;
                 }
@@ -614,7 +616,8 @@ impl GameState {
             return self.turn.turn_number.saturating_add(1);
         }
 
-        let mut simulated_active = self.turn.active_player;
+        // CR 500.7: extra turns don't move the normal rotation.
+        let mut simulated_anchor = self.normal_turn_order_anchor();
         let mut simulated_turn_number = self.turn.turn_number;
         let mut simulated_extra_turns = self.turn_store.extra_turns.clone();
         let mut simulated_skip_next_turn = self.turn_store.skip_next_turn.clone();
@@ -632,16 +635,18 @@ impl GameState {
                 .turn_store
                 .turn_order
                 .iter()
-                .position(|candidate| *candidate == simulated_active)
+                .position(|candidate| *candidate == simulated_anchor)
                 .unwrap_or(0);
             let mut normal_index = (current_index + 1) % self.turn_store.turn_order.len();
             let next_player = loop {
-                let candidate = if let Some(extra_turn) = simulated_extra_turns.pop() {
-                    extra_turn
+                let (candidate, is_extra_turn) = if let Some(extra_turn) =
+                    simulated_extra_turns.pop()
+                {
+                    (extra_turn, true)
                 } else {
                     let candidate = self.turn_store.turn_order[normal_index];
                     normal_index = (normal_index + 1) % self.turn_store.turn_order.len();
-                    candidate
+                    (candidate, false)
                 };
                 if !self
                     .player(candidate)
@@ -652,11 +657,13 @@ impl GameState {
                 if simulated_skip_next_turn.remove(&candidate) {
                     continue;
                 }
+                if !is_extra_turn {
+                    simulated_anchor = candidate;
+                }
                 break candidate;
             };
 
             simulated_turn_number = simulated_turn_number.saturating_add(1);
-            simulated_active = next_player;
             if next_player == player {
                 return simulated_turn_number;
             }
@@ -746,8 +753,51 @@ impl GameState {
         self.handle_archenemy_player_departure(player);
         // CR 702.106e reveals hidden agendas before their owner's objects leave.
         self.handle_conspiracy_player_departure(player);
+        // CR 603.6c: leaves-the-battlefield abilities also trigger when a
+        // phased-in permanent leaves the game because its owner leaves the
+        // game. Capture the permanents' last known information (and the
+        // look-back trigger sources, CR 603.10a) before they are removed.
+        let mut departing_permanents = owned_objects
+            .iter()
+            .filter(|(object_id, _)| {
+                self.battlefield.contains(object_id) && !self.is_phased_out(*object_id)
+            })
+            .filter_map(|(object_id, _)| {
+                self.object(*object_id).map(|object| {
+                    (
+                        *object_id,
+                        self.cached_object_snapshot_with_calculated_characteristics(object),
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        departing_permanents.sort_by_key(|(object_id, _)| object_id.0);
+        let departing_lookback = if departing_permanents.is_empty() {
+            Vec::new()
+        } else {
+            self.trigger_source_lookback_snapshots()
+        };
         for (object_id, _) in &owned_objects {
             self.remove_object(*object_id);
+        }
+        for (object_id, snapshot) in departing_permanents {
+            // Not a zone change into any real zone: only "leaves the
+            // battlefield" matchers accept it, never "dies" or "is exiled".
+            let event = crate::events::zones::ZoneChangeEvent::with_cause(
+                object_id,
+                Zone::Battlefield,
+                Zone::OutsideGame,
+                crate::events::cause::EventCause::from_game_rule(),
+                Some(snapshot),
+            );
+            let provenance = self
+                .provenance_graph_mut()
+                .alloc_root_event(crate::events::EventKind::ZoneChange);
+            self.queue_trigger_event(
+                provenance,
+                crate::triggers::TriggerEvent::new_with_provenance(event, provenance)
+                    .with_lookback_source_snapshots(departing_lookback.clone()),
+            );
         }
         self.handle_planechase_player_departure(player, &removed_ids);
         self.handle_vanguard_player_departure(player);
@@ -1044,15 +1094,22 @@ impl GameState {
             .filter(|candidate| candidate.is_in_game())
             .map(|candidate| candidate.id);
         if self.monarch == Some(player) {
-            let successor = if let Some(active) = active_player_still_in_game {
-                self.can_become_monarch(active).then_some(active)
+            // CR 724.4: the active player becomes the monarch. When there's
+            // no active player still in the game, or it can't become the
+            // monarch, the next player in turn order who can does; if no one
+            // can, the game continues with no monarch.
+            let successor = if let Some(active) = active_player_still_in_game
+                && self.can_become_monarch(active)
+            {
+                Some(active)
             } else {
                 let len = self.turn_store.turn_order.len();
+                let anchor = active_player_still_in_game.unwrap_or(player);
                 let start = self
                     .turn_store
                     .turn_order
                     .iter()
-                    .position(|candidate| *candidate == player)
+                    .position(|candidate| *candidate == anchor)
                     .unwrap_or(0);
                 (1..=len)
                     .map(|offset| self.turn_store.turn_order[(start + offset) % len])
@@ -1122,6 +1179,19 @@ impl GameState {
         self.turn_store.forecast_revealed_hand_cards.clear();
     }
 
+    /// The player whose position in turn order the next normal turn is
+    /// counted from (CR 500.7): the active player, unless the current turn is
+    /// an extra turn, in which case the player of the last normal turn.
+    pub(crate) fn normal_turn_order_anchor(&self) -> PlayerId {
+        if self.turn_store.current_turn_is_extra {
+            self.turn_store
+                .normal_turn_anchor
+                .unwrap_or(self.turn.active_player)
+        } else {
+            self.turn.active_player
+        }
+    }
+
     /// Advances to the next turn.
     ///
     /// Turn order rules:
@@ -1150,12 +1220,15 @@ impl GameState {
         extra_turn_override: Option<bool>,
     ) {
         let completed_turn_players = self.turn_players();
-        let mut normal_anchor = self.turn.active_player;
+        // CR 500.7: an extra turn is inserted after the turn that created it;
+        // normal turn order resumes from the last normal turn's player.
+        let turn_order_anchor = self.normal_turn_order_anchor();
+        let mut normal_anchor = turn_order_anchor;
         let current_index = self
             .turn_store
             .turn_order
             .iter()
-            .position(|&player| player == self.turn.active_player)
+            .position(|&player| player == turn_order_anchor)
             .unwrap_or(0);
         let mut normal_index = (current_index + 1) % self.turn_store.turn_order.len();
         let (next_player, selected_from_extra_turn_queue) = loop {
@@ -1194,6 +1267,11 @@ impl GameState {
         // Reset turn state
         self.turn_store.current_turn_is_extra =
             extra_turn_override.unwrap_or(selected_from_extra_turn_queue);
+        self.turn_store.normal_turn_anchor = Some(if self.turn_store.current_turn_is_extra {
+            turn_order_anchor
+        } else {
+            next_player
+        });
         self.turn.active_player = next_player;
         self.turn.priority_player = Some(next_player);
         self.turn.turn_number += 1;

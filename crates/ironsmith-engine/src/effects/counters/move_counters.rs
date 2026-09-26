@@ -2,9 +2,10 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_value;
+use crate::effects::helpers::{resolve_objects_for_effect, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+use crate::target::ChooseSpec;
 pub use ironsmith_core::MoveCountersEffect;
 
 impl EffectExecutor for MoveCountersEffect {
@@ -15,10 +16,34 @@ impl EffectExecutor for MoveCountersEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
 
-        // Get from and to targets from resolved targets
-        let Some((from_id, to_id)) = ctx.resolve_two_object_targets() else {
+        // Targeted moves read the two resolved targets; untargeted moves
+        // (graft: this permanent onto the entering creature, CR 702.58a)
+        // resolve `from`/`to` through their specs.
+        let is_reference =
+            |spec: &ChooseSpec| matches!(spec.base(), ChooseSpec::Source | ChooseSpec::Tagged(_));
+        let target_pair = if !is_reference(&self.from) && !is_reference(&self.to) {
+            ctx.resolve_two_object_targets()
+        } else {
+            let from = match self.from.base() {
+                ChooseSpec::Source => vec![ctx.source],
+                _ => resolve_objects_for_effect(game, ctx, &self.from)?,
+            };
+            let to = match self.to.base() {
+                ChooseSpec::Source => vec![ctx.source],
+                _ => resolve_objects_for_effect(game, ctx, &self.to)?,
+            };
+            from.first().copied().zip(to.first().copied())
+        };
+        let Some((from_id, to_id)) = target_pair else {
             return Ok(EffectOutcome::target_invalid());
         };
+        // CR 122.5: nothing is removed if the counters can't be put onto the
+        // second object.
+        if from_id == to_id
+            || !super::move_destination_can_receive_counters(game, to_id, self.counter_type)
+        {
+            return Ok(EffectOutcome::count(0));
+        }
 
         // Get current counter count on source
         let available = game
@@ -45,14 +70,10 @@ impl EffectExecutor for MoveCountersEffect {
             outcome = outcome.with_event(remove_event);
         }
 
-        // Add to target using centralized method
-        if let Some(add_event) = game.add_counters_with_source(
-            to_id,
-            self.counter_type,
-            to_move,
-            Some(ctx.source),
-            Some(ctx.controller),
-        ) {
+        // Putting the moved counters is an ordinary placement (CR 122.5).
+        if let Some(add_event) =
+            super::put_moved_counters(game, ctx, to_id, self.counter_type, to_move)
+        {
             outcome = outcome.with_event(add_event);
         }
 

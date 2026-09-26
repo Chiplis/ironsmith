@@ -2976,15 +2976,11 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         && words[1].eq_ignore_ascii_case("class")
         && trigger_word_at_accepts_pattern(&words, 2, BECOMES_WORD_PATTERN)
         && words[3].eq_ignore_ascii_case("level")
-        && parse_named_number(words[4]).is_some()
+        && let Some(level) = parse_named_number(words[4])
     {
-        return Ok(TriggerSpec::CounterPutOn {
-            filter: ObjectFilter::source(),
-            counter_type: Some(CounterType::Level),
-            source_controller: None,
-            one_or_more: false,
-            include_players: false,
-        });
+        // CR 716.2a: Class levels are a designation set by the level ability,
+        // not level counters.
+        return Ok(TriggerSpec::ThisClassBecomesLevel(level));
     }
     if trigger_pattern_accepts(&words, BECOMES_MONSTROUS_TRIGGER_SUFFIX)
         && words.len() > 2

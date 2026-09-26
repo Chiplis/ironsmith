@@ -17,6 +17,11 @@ pub struct BecomesTargetedEvent {
     pub source_controller: PlayerId,
     /// Whether the source was an ability (`true`) or spell (`false`).
     pub by_ability: bool,
+    /// The targeting ability's own stack id, when it is an ability on the
+    /// stack. An ability exists independently of its source (CR 113.7a), and
+    /// one source can have several abilities on the stack, so "that spell or
+    /// ability" names this entry rather than the source object.
+    pub stack_ability: Option<ObjectId>,
 }
 
 impl BecomesTargetedEvent {
@@ -32,6 +37,7 @@ impl BecomesTargetedEvent {
             source,
             source_controller,
             by_ability,
+            stack_ability: None,
         }
     }
 
@@ -47,6 +53,7 @@ impl BecomesTargetedEvent {
             source,
             source_controller,
             by_ability,
+            stack_ability: None,
         }
     }
 
@@ -62,7 +69,14 @@ impl BecomesTargetedEvent {
             source,
             source_controller,
             by_ability,
+            stack_ability: None,
         }
+    }
+
+    /// Name the targeting ability's stack entry.
+    pub fn with_stack_ability(mut self, stack_ability: Option<ObjectId>) -> Self {
+        self.stack_ability = stack_ability;
+        self
     }
 
     pub fn target_object(&self) -> Option<ObjectId> {
@@ -104,6 +118,7 @@ impl GameEventType for BecomesTargetedEvent {
             source: self.source,
             source_controller: self.source_controller,
             by_ability: self.by_ability,
+            stack_ability: self.stack_ability,
         }))
     }
 

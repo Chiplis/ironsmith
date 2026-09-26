@@ -121,12 +121,13 @@ impl EffectExecutor for EvolveEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let placed = crate::events::processing::process_put_counters_with_event(
+        let placed = crate::events::processing::process_put_counters_with_event_with_dm(
             game,
             source_id,
             CounterType::PlusOnePlusOne,
             1,
             ctx.cause.clone(),
+            &mut *ctx.decision_maker,
         );
         let mut outcome = EffectOutcome::count(1);
         if let Some(stable_id) = game.object(source_id).map(|o| o.stable_id) {

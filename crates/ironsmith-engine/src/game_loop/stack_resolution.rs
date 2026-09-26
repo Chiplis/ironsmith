@@ -1796,7 +1796,27 @@ pub(super) fn resolve_stack_entry_full(
             // It's an instant/sorcery
             // CR 702.88a with CR 613 layer 6: rebound granted by a static
             // ability (Cast Through Time) counts as much as printed rebound.
-            let has_rebound = matches!(entry.casting_method, CastingMethod::Normal)
+            // Rebound only asks whether the spell was cast from its owner's
+            // hand; the cost paid (normal, native or granted alternative such
+            // as Omniscience) doesn't matter.
+            let cast_from_hand = game
+                .turn_store
+                .turn_history
+                .latest_cast_zone(obj.stable_id)
+                .map_or_else(
+                    || {
+                        matches!(
+                            entry.casting_method,
+                            CastingMethod::Normal
+                                | CastingMethod::PlayFrom {
+                                    zone: Zone::Hand,
+                                    ..
+                                }
+                        )
+                    },
+                    |zone| zone == Zone::Hand,
+                );
+            let has_rebound = cast_from_hand
                 && (obj.abilities.iter().any(|ability| {
                     ability.functions_in(&Zone::Stack)
                         && matches!(
@@ -1849,7 +1869,48 @@ pub(super) fn resolve_stack_entry_full(
                 }
             };
 
-            if has_rebound {
+            // CR 720.3d: as an Omen spell resolves, its controller shuffles it
+            // into its owner's library instead of putting it into the
+            // graveyard. The move still goes through replacement processing.
+            let resolving_as_omen = matches!(
+                entry.casting_method,
+                CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { .. }
+            ) && obj.subtypes.contains(&crate::types::Subtype::Omen);
+
+            if resolving_as_omen {
+                if let crate::events::processing::EventOutcome::Proceed(result) =
+                    crate::effects::zones::apply_zone_change(
+                        game,
+                        entry.object_id,
+                        Zone::Stack,
+                        Zone::Library,
+                        crate::events::cause::EventCause::from_effect(
+                            entry.object_id,
+                            entry.controller,
+                        ),
+                        &mut *decision_maker,
+                    )
+                    && result.final_zone == Zone::Library
+                {
+                    game.shuffle_player_library(obj.owner);
+                    let provenance = game
+                        .provenance_graph_mut()
+                        .alloc_root_event(crate::events::EventKind::ShuffleLibrary);
+                    let event = TriggerEvent::new_with_provenance(
+                        crate::events::ShuffleLibraryEvent::new(
+                            obj.owner,
+                            crate::events::cause::EventCause::from_effect(
+                                entry.object_id,
+                                entry.controller,
+                            ),
+                        ),
+                        provenance,
+                    );
+                    if let Some(ref mut tq) = trigger_queue {
+                        queue_triggers_from_event(game, tq, event, false);
+                    }
+                }
+            } else if has_rebound {
                 if let crate::events::processing::EventOutcome::Proceed(result) =
                     crate::effects::zones::apply_zone_change(
                         game,
@@ -1916,7 +1977,7 @@ pub(super) fn resolve_stack_entry_full(
                     && let Some(exiled_id) = result.new_object_id
                     && was_adventure
                 {
-                    game.set_adventure_exiled(exiled_id);
+                    game.set_adventure_exiled_for(exiled_id, entry.controller);
                 }
             } else if entry.optional_costs_paid.was_bought_back()
                 || obj.optional_costs_paid.was_bought_back()

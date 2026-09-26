@@ -395,8 +395,14 @@ impl EffectExecutor for CopySpellEffect {
 
                 // A copy that targets an object makes that object become the
                 // target of the copy (ward, "becomes the target" triggers).
+                // Each distinct target becomes a target once (CR 115.3).
+                let mut targeted_seen: Vec<crate::ids::ObjectId> = Vec::new();
                 for target in &original_entry.targets {
                     if let Target::Object(targeted) = target {
+                        if targeted_seen.contains(targeted) {
+                            continue;
+                        }
+                        targeted_seen.push(*targeted);
                         game.queue_trigger_event(
                             ctx.provenance,
                             TriggerEvent::new_with_provenance(

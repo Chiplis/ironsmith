@@ -248,15 +248,16 @@ pub(crate) fn execute_keyword_action_replacement_effects(
 /// effects apply (CR 614.1, 122.6, 701.44a).
 fn put_explore_counter(
     game: &mut GameState,
-    ctx: &ExecutionContext,
+    ctx: &mut ExecutionContext,
     object_id: crate::ids::ObjectId,
 ) -> Option<TriggerEvent> {
-    let count = crate::events::processing::process_put_counters_with_event(
+    let count = crate::events::processing::process_put_counters_with_event_with_dm(
         game,
         object_id,
         CounterType::PlusOnePlusOne,
         1,
         ctx.cause.clone(),
+        &mut *ctx.decision_maker,
     );
     if count == 0 {
         return None;

@@ -4731,6 +4731,38 @@ impl StaticAbilityKind for DungeonRoomTriggerDuplication {
     }
 }
 
+/// CR 702.16n: "This effect doesn't remove this Aura." / "This effect doesn't
+/// remove Auras." on an Aura that grants protection. Consumed by the
+/// state-based action that removes Auras from protected permanents.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProtectionDoesntRemoveAuras {
+    pub all_auras: bool,
+    pub display: String,
+}
+
+impl ProtectionDoesntRemoveAuras {
+    pub fn new(all_auras: bool, display: impl Into<String>) -> Self {
+        Self {
+            all_auras,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for ProtectionDoesntRemoveAuras {
+    fn id(&self) -> StaticAbilityId {
+        if self.all_auras {
+            StaticAbilityId::ProtectionDoesntRemoveAuras
+        } else {
+            StaticAbilityId::ProtectionDoesntRemoveThisAura
+        }
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+}
+
 /// "If [matching event] would cause [matching source] to trigger, it doesn't."
 #[derive(Debug, Clone, PartialEq)]
 pub struct SuppressMatchingTriggeredAbilities {
