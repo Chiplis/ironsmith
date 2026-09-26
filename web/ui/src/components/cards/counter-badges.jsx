@@ -48,34 +48,34 @@ function abbreviateCounterKind(rawKind) {
 function counterPalette(rawKind) {
   const displayLabel = counterDisplayLabel(rawKind);
   if (displayLabel?.startsWith("+")) {
-    return { accent: "#67d79a", fill: "#164c2f", stroke: "#aef0ca" };
+    return { accent: "#67d79a", holder: "#236e46", fill: "#164c2f", stroke: "#aef0ca" };
   }
   if (displayLabel?.startsWith("-")) {
-    return { accent: "#df6d83", fill: "#551626", stroke: "#ffb0c1" };
+    return { accent: "#df6d83", holder: "#7a2339", fill: "#551626", stroke: "#ffb0c1" };
   }
   switch (rawKind) {
     case "Plus One Plus One":
-      return { accent: "#67d79a", fill: "#164c2f", stroke: "#aef0ca" };
+      return { accent: "#67d79a", holder: "#236e46", fill: "#164c2f", stroke: "#aef0ca" };
     case "Minus One Minus One":
-      return { accent: "#df6d83", fill: "#551626", stroke: "#ffb0c1" };
+      return { accent: "#df6d83", holder: "#7a2339", fill: "#551626", stroke: "#ffb0c1" };
     case "Lore":
-      return { accent: "#e1bd73", fill: "#5c3e0f", stroke: "#f8dba2" };
+      return { accent: "#e1bd73", holder: "#765015", fill: "#5c3e0f", stroke: "#f8dba2" };
     case "Loyalty":
-      return { accent: "#f1b561", fill: "#612e09", stroke: "#ffd7a2" };
+      return { accent: "#f1b561", holder: "#85400e", fill: "#612e09", stroke: "#ffd7a2" };
     case "Charge":
-      return { accent: "#6bc2ff", fill: "#12355b", stroke: "#bbebff" };
+      return { accent: "#6bc2ff", holder: "#1b5688", fill: "#12355b", stroke: "#bbebff" };
     case "Time":
-      return { accent: "#6cb8ff", fill: "#123b63", stroke: "#c2e7ff" };
+      return { accent: "#6cb8ff", holder: "#1f5b91", fill: "#123b63", stroke: "#c2e7ff" };
     case "Shield":
-      return { accent: "#84d6cf", fill: "#123f3b", stroke: "#c5f7ef" };
+      return { accent: "#84d6cf", holder: "#185e58", fill: "#123f3b", stroke: "#c5f7ef" };
     case "Stun":
-      return { accent: "#f2a464", fill: "#5d280b", stroke: "#ffd2a1" };
+      return { accent: "#f2a464", holder: "#7d3c11", fill: "#5d280b", stroke: "#ffd2a1" };
     case "Vigilance":
-      return { accent: "#b7df9f", fill: "#293e14", stroke: "#ebffd6" };
+      return { accent: "#b7df9f", holder: "#3d5f1e", fill: "#293e14", stroke: "#ebffd6" };
     case "Finality":
-      return { accent: "#b48fff", fill: "#302052", stroke: "#ddd0ff" };
+      return { accent: "#b48fff", holder: "#4e3785", fill: "#302052", stroke: "#ddd0ff" };
     default:
-      return { accent: "#a7c3e7", fill: "#1b2d49", stroke: "#dcecff" };
+      return { accent: "#a7c3e7", holder: "#2a466c", fill: "#1b2d49", stroke: "#dcecff" };
   }
 }
 
@@ -226,6 +226,7 @@ export function BattlefieldCounterBadge({ badge }) {
       aria-label={ui(badge.fullLabel)}
       style={{
         "--counter-accent": badge.palette.accent,
+        "--counter-holder": badge.palette.holder || badge.palette.fill,
         "--counter-fill": badge.palette.fill,
         "--counter-stroke": badge.palette.stroke,
       }}

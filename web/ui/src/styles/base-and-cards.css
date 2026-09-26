@@ -1705,7 +1705,7 @@
   width: clamp(16px, calc(var(--bf-card-width, 124px) * 0.25), 36px);
   border: 1px solid var(--counter-stroke, #dcecff);
   border-radius: 4px 50% 50% 4px;
-  background: var(--counter-fill, #1b2d49);
+  background: var(--counter-holder, var(--counter-fill, #1b2d49));
   pointer-events: none;
 }
 
