@@ -77,6 +77,17 @@ function counterPalette(rawKind) {
   }
 }
 
+function counterIconClass(rawKind) {
+  const key = String(rawKind || "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replace(/\s+/g, " ");
+  return ["lore", "time", "charge"].includes(key)
+    ? `battlefield-counter-icon--${key}`
+    : "";
+}
+
 function normalizeCounterEntry(rawCounter, fallbackKind = "") {
   const kind = String(
     rawCounter?.kind
@@ -147,6 +158,7 @@ export function buildCounterBadge(counter) {
       displayLabel: "+1/+1",
       shortLabel: "+1",
       variant,
+      iconClassName: counterIconClass(rawKind),
       palette: counterPalette(rawKind),
       icon: counterSymbolUrl(rawKind),
     };
@@ -158,6 +170,7 @@ export function buildCounterBadge(counter) {
       displayLabel: "-1/-1",
       shortLabel: "-1",
       variant,
+      iconClassName: counterIconClass(rawKind),
       palette: counterPalette(rawKind),
       icon: counterSymbolUrl(rawKind),
     };
@@ -170,6 +183,7 @@ export function buildCounterBadge(counter) {
     displayLabel,
     shortLabel: powerToughnessLabel || abbreviateCounterKind(rawKind),
     variant,
+    iconClassName: counterIconClass(rawKind),
     palette: counterPalette(displayLabel),
     icon: counterSymbolUrl(rawKind),
   };
@@ -179,7 +193,12 @@ export function BattlefieldCounterBadge({ badge }) {
   const ui = useUiText();
   const amountLabel = badge.amount > 99 ? "99+" : String(badge.amount);
   const icon = badge.icon ? (
-    <img className="battlefield-counter-icon" src={badge.icon} alt="" aria-hidden="true" />
+    <img
+      className={`battlefield-counter-icon ${badge.iconClassName || ""}`.trim()}
+      src={badge.icon}
+      alt=""
+      aria-hidden="true"
+    />
   ) : (
     <span className="battlefield-counter-symbol" aria-hidden="true">◇</span>
   );

@@ -32,6 +32,12 @@ export function manaSymbolUrl(symbol) {
 
 export function counterSymbolUrl(kind) {
   const key = String(kind || '').trim().toLowerCase().replaceAll('_', ' ').replace(/\s+/g, '-');
+  const compactCounterAsset = {
+    lore: `${base}counters/lore.svg`,
+    time: `${base}counters/time.svg`,
+    charge: `${base}counters/charge.svg`,
+  }[key];
+  if (compactCounterAsset) return compactCounterAsset;
   const alias = {
     'plus-one-plus-one': 'counter-plus', '+1/+1': 'counter-plus',
     'minus-one-minus-one': 'counter-minus', '-1/-1': 'counter-minus',

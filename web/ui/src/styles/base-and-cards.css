@@ -1752,6 +1752,14 @@
     drop-shadow(0 0 4px rgba(229, 184, 91, 0.58));
 }
 
+.battlefield-counter-icon--lore,
+.battlefield-counter-icon--time,
+.battlefield-counter-icon--charge {
+  width: clamp(11px, calc(var(--bf-card-width, 124px) * 0.1), 14px);
+  height: clamp(11px, calc(var(--bf-card-width, 124px) * 0.1), 14px);
+  filter: brightness(0) invert(1);
+}
+
 .battlefield-counter-symbol {
   color: #fff;
   font-size: clamp(17px, calc(var(--bf-card-width, 124px) * 0.15), 22px);
