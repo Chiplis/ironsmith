@@ -32,6 +32,7 @@ pub fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextE
             (&["mana", "cost"][..], MetadataKind::ManaCost),
             (&["type"][..], MetadataKind::TypeLine),
             (&["type", "line"][..], MetadataKind::TypeLine),
+            (&["color", "indicator"][..], MetadataKind::ColorIndicator),
             (
                 &["first", "printed", "set"][..],
                 MetadataKind::FirstPrintedSet,
@@ -50,6 +51,7 @@ pub fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextE
     let metadata = match kind {
         Some(MetadataKind::ManaCost) => MetadataLine::ManaCost(value),
         Some(MetadataKind::TypeLine) => MetadataLine::TypeLine(value),
+        Some(MetadataKind::ColorIndicator) => MetadataLine::ColorIndicator(value),
         Some(MetadataKind::FirstPrintedSet) => MetadataLine::FirstPrintedSet(value),
         Some(MetadataKind::AttractionLights) => MetadataLine::AttractionLights(value),
         Some(MetadataKind::PowerToughness) => MetadataLine::PowerToughness(value),
@@ -139,6 +141,7 @@ pub fn normalize_trimmed_line(line: &str) -> Option<NormalizedLine> {
 enum MetadataKind {
     ManaCost,
     TypeLine,
+    ColorIndicator,
     FirstPrintedSet,
     AttractionLights,
     PowerToughness,

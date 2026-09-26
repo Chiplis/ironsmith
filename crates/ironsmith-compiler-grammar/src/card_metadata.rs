@@ -38,6 +38,28 @@ pub fn apply_metadata_line(
                 card = card.subtypes(subtypes);
             }
         }
+        crate::front_end::MetadataLine::ColorIndicator(raw) => {
+            // CR 204: the color indicator sets the face's color. Values are
+            // color names or mana letters, separated by commas, spaces or
+            // "and" ("Color indicator: White, Blue").
+            let mut colors = ironsmith_core::color::ColorSet::COLORLESS;
+            for word in raw
+                .split(|character: char| character == ',' || character.is_whitespace())
+                .map(str::trim)
+                .filter(|word| !word.is_empty() && !word.eq_ignore_ascii_case("and"))
+            {
+                let color = ironsmith_core::color::Color::from_mana_code_or_name(
+                    &word.to_ascii_lowercase(),
+                )
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!("invalid color indicator color: {word}"))
+                })?;
+                colors = colors.with(color);
+            }
+            if !colors.is_empty() {
+                card = card.color_indicator(colors);
+            }
+        }
         crate::front_end::MetadataLine::FirstPrintedSet(raw) => {
             let set_name = raw.trim();
             if !set_name.is_empty() {
@@ -98,6 +120,9 @@ pub fn apply_compiler_metadata_line(
         }
         crate::model::facts::MetadataLine::TypeLine(value) => {
             crate::front_end::MetadataLine::TypeLine(value)
+        }
+        crate::model::facts::MetadataLine::ColorIndicator(value) => {
+            crate::front_end::MetadataLine::ColorIndicator(value)
         }
         crate::model::facts::MetadataLine::FirstPrintedSet(value) => {
             crate::front_end::MetadataLine::FirstPrintedSet(value)

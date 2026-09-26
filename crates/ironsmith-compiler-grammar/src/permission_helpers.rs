@@ -834,6 +834,11 @@ fn parse_hand_free_cast_grant_spec_from_rest(
             rhs_value,
         ));
     }
+    // "Cast spells from your hand without paying" (Omniscience) is limited
+    // to hand casts: record the origin on the filter so the command-zone
+    // commander cast that reuses hand-registered "spells you cast" grants
+    // (CR 903.8) does not also inherit this one.
+    filter.zone = Some(Zone::Hand);
     Ok(Some(
         crate::model::CompilerGrantSpecCore::cast_from_hand_without_paying_mana_cost_matching(
             filter,

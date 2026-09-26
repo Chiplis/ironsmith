@@ -15,11 +15,13 @@ use crate::game_loop::{
     apply_blocker_mana_ability_window_response, attack_mana_ability_window_context,
     begin_attack_declaration_transaction, begin_blocker_declaration_transaction,
     blocker_mana_ability_window_context, drain_pending_trigger_events,
-    finish_attack_declaration_transaction, finish_blocker_declaration_transaction,
+    finish_attack_declaration_transaction,
+    finish_blocker_declaration_transaction_deferring_triggers,
     generate_and_queue_step_triggers, get_declare_attackers_decision,
     get_declare_blockers_decision, preview_attack_cost_needs_mana_window,
     preview_optional_attack_cost_prompts, put_triggers_on_stack, queue_combat_damage_triggers,
-    try_execute_combat_damage_step, try_execute_combat_damage_step_with_first_step_snapshot,
+    queue_block_declaration_events, try_execute_combat_damage_step,
+    try_execute_combat_damage_step_with_first_step_snapshot,
 };
 use crate::game_state::{
     AddedStepPlacement, GameState, Phase, ScheduledStep, Step, TurnScheduleDestination,
@@ -524,6 +526,10 @@ pub struct TurnRunner {
     defending_player: Option<PlayerId>,
     /// Defending players who still need to declare blockers, in APNAP order.
     remaining_defending_players: Vec<PlayerId>,
+    /// (blocker, attacker) pairs declared so far this declare-blockers step.
+    /// Their trigger events are queued once, after the last defending player
+    /// declares (CR 509.1 is a single turn-based action).
+    declared_block_pairs: Vec<(ObjectId, ObjectId)>,
 }
 
 impl TurnRunner {
@@ -556,6 +562,7 @@ impl TurnRunner {
             pending_sector_designations: None,
             defending_player: None,
             remaining_defending_players: Vec::new(),
+            declared_block_pairs: Vec::new(),
         }
     }
 
@@ -1168,6 +1175,7 @@ impl TurnRunner {
                 } else {
                     self.remaining_defending_players =
                         attacked_defending_players_in_apnap_order(game, &self.combat);
+                    self.declared_block_pairs.clear();
                     self.state = TurnState::DeclareBlockersDecision;
                     Ok(TurnAction::Continue)
                 }
@@ -1227,15 +1235,17 @@ impl TurnRunner {
                             )
                         })?;
                     let mut decision_maker = AutoPassDecisionMaker;
-                    if let Err(error) = finish_blocker_declaration_transaction(
+                    match finish_blocker_declaration_transaction_deferring_triggers(
                         pending.transaction,
                         game,
                         &mut self.combat,
-                        tq,
                         &mut decision_maker,
                     ) {
-                        self.state = TurnState::DeclareBlockersDecision;
-                        return Err(error);
+                        Ok(pairs) => self.declared_block_pairs.extend(pairs),
+                        Err(error) => {
+                            self.state = TurnState::DeclareBlockersDecision;
+                            return Err(error);
+                        }
                     }
                     if self.remaining_defending_players.first().copied() == Some(defending_player) {
                         self.remaining_defending_players.remove(0);
@@ -1245,6 +1255,7 @@ impl TurnRunner {
                         self.state = TurnState::DeclareBlockersDecision;
                         return Ok(TurnAction::Continue);
                     }
+                    self.queue_declared_block_events(game, tq);
                     put_triggers_on_stack(game, tq)?;
                     game.combat = Some(self.combat.clone());
                     game.reset_priority_for_new_window();
@@ -1301,25 +1312,31 @@ impl TurnRunner {
                             context,
                         )));
                     }
-                    if let Err(error) = finish_blocker_declaration_transaction(
+                    match finish_blocker_declaration_transaction_deferring_triggers(
                         pending.transaction,
                         game,
                         &mut self.combat,
-                        tq,
                         &mut decision_maker,
                     ) {
-                        self.state = TurnState::DeclareBlockersDecision;
-                        return Err(error);
+                        Ok(pairs) => self.declared_block_pairs.extend(pairs),
+                        Err(error) => {
+                            self.state = TurnState::DeclareBlockersDecision;
+                            return Err(error);
+                        }
                     }
-                } else if let Err(error) = finish_blocker_declaration_transaction(
-                    transaction,
-                    game,
-                    &mut self.combat,
-                    tq,
-                    &mut decision_maker,
-                ) {
-                    self.state = TurnState::DeclareBlockersDecision;
-                    return Err(error);
+                } else {
+                    match finish_blocker_declaration_transaction_deferring_triggers(
+                        transaction,
+                        game,
+                        &mut self.combat,
+                        &mut decision_maker,
+                    ) {
+                        Ok(pairs) => self.declared_block_pairs.extend(pairs),
+                        Err(error) => {
+                            self.state = TurnState::DeclareBlockersDecision;
+                            return Err(error);
+                        }
+                    }
                 }
                 if self.remaining_defending_players.first().copied() == Some(defending_player) {
                     self.remaining_defending_players.remove(0);
@@ -1329,6 +1346,7 @@ impl TurnRunner {
                     self.state = TurnState::DeclareBlockersDecision;
                     return Ok(TurnAction::Continue);
                 }
+                self.queue_declared_block_events(game, tq);
                 put_triggers_on_stack(game, tq)?;
 
                 // Sync game.combat
@@ -2195,6 +2213,13 @@ impl TurnRunner {
         RunnerProgress::Complete(draw_events)
     }
 
+    /// CR 509.1: queue every defending player's block events as the one
+    /// declare-blockers batch, against the completed blocking configuration.
+    fn queue_declared_block_events(&mut self, game: &mut GameState, tq: &mut TriggerQueue) {
+        let pairs = std::mem::take(&mut self.declared_block_pairs);
+        queue_block_declaration_events(game, &self.combat, tq, &pairs, None);
+    }
+
     fn apply_sbas_until_commander_choice(
         &mut self,
         game: &mut GameState,
@@ -2217,6 +2242,8 @@ impl TurnRunner {
             drop(view);
             if actions.is_empty() {
                 game.clear_empty_library_draw_attempts_since_sba();
+                // CR 704.5h: deathtouch damage counts only since the last SBA check.
+                game.clear_deathtouch_damage_since_sba();
                 self.pending_boolean = None;
                 self.pending_commander_choice = None;
                 self.pending_draw_replacement = None;
@@ -2359,6 +2386,10 @@ impl TurnRunner {
                     all_effects.as_slice(),
                     &mut auto_dm,
                 );
+                // CR 704.5h: this check consumed the deathtouch damage tracked
+                // since the previous one (regeneration / umbra armor survivors
+                // must not be destroyed again by the next pass).
+                game.clear_deathtouch_damage_since_sba();
                 crate::game_loop::drain_pending_trigger_events(game, tq);
                 if !applied {
                     self.pending_boolean = None;
@@ -2373,6 +2404,7 @@ impl TurnRunner {
 
             let Some(obj_id) = commander_returns.first().copied() else {
                 game.clear_empty_library_draw_attempts_since_sba();
+                game.clear_deathtouch_damage_since_sba();
                 self.pending_boolean = None;
                 self.pending_commander_choice = None;
                 self.pending_draw_replacement = None;

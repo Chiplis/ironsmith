@@ -1987,6 +1987,10 @@ fn static_ability_for_token_keyword(
         token_grammar::TokenKeywordShape::FirstStrike => StaticAbility::first_strike(),
         token_grammar::TokenKeywordShape::DoubleStrike => StaticAbility::double_strike(),
         token_grammar::TokenKeywordShape::Hexproof => StaticAbility::hexproof(),
+        token_grammar::TokenKeywordShape::Shroud => StaticAbility::shroud(),
+        token_grammar::TokenKeywordShape::ProtectionFromColors(colors) => {
+            StaticAbility::protection(crate::ability::ProtectionFrom::Color(colors))
+        }
         token_grammar::TokenKeywordShape::Indestructible => StaticAbility::indestructible(),
         token_grammar::TokenKeywordShape::Infect => StaticAbility::infect(),
         token_grammar::TokenKeywordShape::Flash => StaticAbility::flash(),

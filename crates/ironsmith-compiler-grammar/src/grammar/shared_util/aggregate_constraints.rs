@@ -37,15 +37,26 @@ pub fn lift_total_mana_value_choice_constraint(
                 crate::effect::ChoiceAggregateMetric::Power => &mut filter.power,
                 _ => &mut filter.toughness,
             };
-            let maximum = match comparison.take()? {
-                crate::filter::Comparison::LessThanOrEqual(n) => Value::Fixed(n),
-                crate::filter::Comparison::LessThanOrEqualExpr(n) => *n,
+            // "any number of creatures with total power 12 or greater"
+            // (Phyrexian Dreadnought) is a lower bound on the chosen set.
+            return match comparison.take()? {
+                crate::filter::Comparison::LessThanOrEqual(n) => {
+                    Some(ChoiceAggregateConstraint::at_most(metric, Value::Fixed(n)))
+                }
+                crate::filter::Comparison::LessThanOrEqualExpr(n) => {
+                    Some(ChoiceAggregateConstraint::at_most(metric, *n))
+                }
+                crate::filter::Comparison::GreaterThanOrEqual(n) => {
+                    Some(ChoiceAggregateConstraint::at_least(metric, Value::Fixed(n)))
+                }
+                crate::filter::Comparison::GreaterThanOrEqualExpr(n) => {
+                    Some(ChoiceAggregateConstraint::at_least(metric, *n))
+                }
                 other => {
                     *comparison = Some(other);
-                    return None;
+                    None
                 }
             };
-            return Some(ChoiceAggregateConstraint::at_most(metric, maximum));
         }
     }
     if !crate::word_primitives::sequence_occurs(&words, &["total", "mana", "value"]) {

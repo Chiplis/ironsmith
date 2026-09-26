@@ -16,16 +16,10 @@ fn collapse_tagged_filter_to_specific_objects(
     game: &GameState,
 ) -> ObjectFilter {
     if filter.source {
-        let source = ctx
-            .source_snapshot
-            .as_ref()
-            .and_then(|snapshot| game.find_object_by_stable_id(snapshot.stable_id))
-            .or_else(|| {
-                game.object(ctx.source)
-                    .filter(|object| object.zone == crate::zone::Zone::Battlefield)
-                    .map(|_| ctx.source)
-            })
-            .or_else(|| crate::effects::helpers::resolve_source_object_id(game, ctx));
+        // CR 400.7: follow the source only to the object it still is (or a
+        // zone-change trigger's recorded destination), never to the same card
+        // after an unrelated zone change.
+        let source = crate::effects::helpers::resolve_source_object_id(game, ctx);
         if let Some(source) = source {
             return ObjectFilter::specific(source);
         }
@@ -54,14 +48,10 @@ fn collapse_tagged_filter_to_specific_objects(
         .collect::<Vec<_>>();
 
     if object_ids.is_empty()
-        && let Some(source) = ctx
-            .source_snapshot
-            .as_ref()
-            .and_then(|snapshot| game.find_object_by_stable_id(snapshot.stable_id))
-            .or_else(|| {
-                game.object(ctx.source)
-                    .filter(|object| object.zone == crate::zone::Zone::Battlefield)
-                    .map(|_| ctx.source)
+        && let Some(source) = crate::effects::helpers::resolve_source_object_id(game, ctx)
+            .filter(|source| {
+                game.object(*source)
+                    .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
             })
     {
         object_ids.push(source);

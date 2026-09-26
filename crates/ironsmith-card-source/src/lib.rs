@@ -169,6 +169,9 @@ fn build_registry_card_record(
     if let Some(value) = &type_line {
         metadata_lines.push(format!("Type: {value}"));
     }
+    if let Some(line) = color_indicator_metadata_line(card, face) {
+        metadata_lines.push(line);
+    }
     if let Some(value) = card
         .get("first_printed_set_name")
         .and_then(Value::as_str)
@@ -278,6 +281,28 @@ fn card_is_legal_in_supported_paper_format(card: &Value) -> bool {
                 .and_then(Value::as_str)
                 .is_some_and(|status| status == "legal")
         })
+}
+
+/// The "Color indicator: ..." metadata line for a face's Scryfall
+/// `color_indicator` (CR 204). The face's own value wins; a single-faced card
+/// keeps it on the root object.
+fn color_indicator_metadata_line(card: &Value, face: Option<&Value>) -> Option<String> {
+    let letters = face
+        .and_then(|value| value.get("color_indicator"))
+        .or_else(|| card.get("color_indicator"))
+        .and_then(Value::as_array)?;
+    let names = [
+        ("W", "White"),
+        ("U", "Blue"),
+        ("B", "Black"),
+        ("R", "Red"),
+        ("G", "Green"),
+    ]
+    .into_iter()
+    .filter(|(letter, _)| letters.iter().any(|value| value.as_str() == Some(*letter)))
+    .map(|(_, name)| name)
+    .collect::<Vec<_>>();
+    (!names.is_empty()).then(|| format!("Color indicator: {}", names.join(", ")))
 }
 
 fn get_first_face(card: &Value) -> Option<&Value> {

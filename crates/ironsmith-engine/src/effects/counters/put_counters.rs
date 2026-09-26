@@ -172,6 +172,9 @@ impl EffectExecutor for PutCountersEffect {
 
         let mut outcomes = Vec::with_capacity(target_ids.len());
         let mut affected_objects = Vec::new();
+        // Counters put on several objects by one instruction are one event
+        // for "one or more ... on one or more ..." triggers (CR 603.2c).
+        let mut counter_batch: Option<crate::provenance::ProvNodeId> = None;
         for target_id in target_ids {
             let assigned_count = distributed_counts
                 .as_ref()
@@ -208,13 +211,23 @@ impl EffectExecutor for PutCountersEffect {
             }
 
             // Use centralized method which handles counter addition, timestamp recording, and event creation.
-            match game.add_counters_with_source(
-                target_id,
-                self.counter_type,
-                final_count,
-                Some(ctx.source),
-                Some(ctx.controller),
-            ) {
+            match game
+                .add_counters_with_source(
+                    target_id,
+                    self.counter_type,
+                    final_count,
+                    Some(ctx.source),
+                    Some(ctx.controller),
+                )
+                .map(|event| {
+                    let batch = *counter_batch.get_or_insert_with(|| {
+                        game.alloc_child_event_provenance(
+                            ctx.provenance,
+                            crate::events::EventKind::MarkersChanged,
+                        )
+                    });
+                    event.with_simultaneous_batch(batch)
+                }) {
                 Some(event) => {
                     affected_objects.push(target_id);
                     outcomes.push(EffectOutcome::count(final_count as i32).with_event(event))

@@ -4361,9 +4361,25 @@ fn test_goaded_creature_cant_attack_goader_when_other_player_available() {
             .contains(&AttackTarget::Player(charlie)),
         "goaded creature should still be able to attack non-goader players"
     );
+    // CR 701.15b is an attack requirement, not a restriction: the goader
+    // stays a legal target (ranked after the other player), and the
+    // declaration validator rejects attacking it while another player is
+    // attackable at no cost.
+    let target_index = |target: AttackTarget| {
+        attacker
+            .valid_targets
+            .iter()
+            .position(|candidate| *candidate == target)
+    };
+    let charlie_index = target_index(AttackTarget::Player(charlie));
+    let bob_index = target_index(AttackTarget::Player(bob));
     assert!(
-        !attacker.valid_targets.contains(&AttackTarget::Player(bob)),
-        "goaded creature should not be able to attack the goader when another player is attackable"
+        bob_index.is_some(),
+        "the goader should remain a legal attack target (goad is a requirement)"
+    );
+    assert!(
+        charlie_index < bob_index,
+        "the non-goader player should be offered before the goader"
     );
 
     let declarations = vec![AttackerDeclaration {

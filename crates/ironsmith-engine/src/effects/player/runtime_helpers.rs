@@ -200,10 +200,18 @@ fn effect_driven_cast_options_inner(
     if object.is_land() || object.zone != from_zone {
         return Vec::new();
     }
+    // CR 709.3a: a split card is cast as one half, and only that half is
+    // evaluated against the cast permission's filter.
+    let chosen_half_view = object.split_combined.is_some().then(|| {
+        let mut view = object.clone();
+        view.split_combined = None;
+        view
+    });
+    let chosen_half = chosen_half_view.as_ref().unwrap_or(object);
 
     let mut options = Vec::new();
     if let EffectDrivenCastPayment::AlternativeCost(kind) = payment {
-        if !matches_filter(object) {
+        if !matches_filter(chosen_half) {
             return Vec::new();
         }
         for (idx, method) in object.alternative_casts.iter().enumerate() {
@@ -219,7 +227,7 @@ fn effect_driven_cast_options_inner(
         return options;
     }
 
-    if matches_filter(object) {
+    if matches_filter(chosen_half) {
         let casting_method = if from_zone == Zone::Hand && object.owner == caster {
             CastingMethod::Normal
         } else {

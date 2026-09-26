@@ -138,7 +138,52 @@ fn creature_subtypes(words: &[&str]) -> Vec<Subtype> {
     subtypes
 }
 
+/// Word positions naming the colors of a "protection from [color]" keyword,
+/// which are not colors of the token itself.
+fn protection_color_word_positions(words: &[&str]) -> Vec<usize> {
+    let mut positions = Vec::new();
+    for start in 0..words.len() {
+        if words[start] != "protection" || words.get(start + 1) != Some(&"from") {
+            continue;
+        }
+        let mut idx = start + 2;
+        while let Some(word) = words.get(idx) {
+            match *word {
+                "white" | "blue" | "black" | "red" | "green" | "and" | "or" | "from" => {
+                    positions.push(idx);
+                    idx += 1;
+                }
+                _ => break,
+            }
+        }
+    }
+    positions
+}
+
+fn protection_colors(words: &[&str]) -> Option<ColorSet> {
+    let mut colors = ColorSet::new();
+    for idx in protection_color_word_positions(words) {
+        colors = colors.union(match words[idx] {
+            "white" => ColorSet::WHITE,
+            "blue" => ColorSet::BLUE,
+            "black" => ColorSet::BLACK,
+            "red" => ColorSet::RED,
+            "green" => ColorSet::GREEN,
+            _ => continue,
+        });
+    }
+    (!colors.is_empty()).then_some(colors)
+}
+
 fn token_colors(words: &[&str]) -> ColorSet {
+    let protection_positions = protection_color_word_positions(words);
+    let own_words: Vec<&str> = words
+        .iter()
+        .enumerate()
+        .filter(|(idx, _)| !protection_positions.contains(idx))
+        .map(|(_, word)| *word)
+        .collect();
+    let words = own_words.as_slice();
     if common::phrase_present(words, &["all", "colors"])
         || common::phrase_present(words, &["all", "colours"])
     {
@@ -221,6 +266,7 @@ pub(super) fn token_keywords(words: &[&str]) -> Vec<TokenKeywordShape> {
         ("menace", TokenKeywordShape::Menace),
         ("reach", TokenKeywordShape::Reach),
         ("hexproof", TokenKeywordShape::Hexproof),
+        ("shroud", TokenKeywordShape::Shroud),
         ("indestructible", TokenKeywordShape::Indestructible),
         ("infect", TokenKeywordShape::Infect),
         ("flash", TokenKeywordShape::Flash),
@@ -236,6 +282,9 @@ pub(super) fn token_keywords(words: &[&str]) -> Vec<TokenKeywordShape> {
     }
     if common::phrase_present(words, &["first", "strike"]) {
         keywords.push(TokenKeywordShape::FirstStrike);
+    }
+    if let Some(colors) = protection_colors(words) {
+        keywords.push(TokenKeywordShape::ProtectionFromColors(colors));
     }
     if common::phrase_present(words, &["double", "strike"]) {
         keywords.push(TokenKeywordShape::DoubleStrike);

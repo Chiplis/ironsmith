@@ -947,6 +947,69 @@ impl StaticAbilityKind for PreventAllDamageToYou {
     }
 }
 
+/// "[You] have protection from [quality]" (CR 702.16b/c/e/j for players).
+/// One ability carries all three consequences: the player can't be targeted
+/// by matching sources, damage from them is prevented, and Auras with the
+/// quality can't enchant the player (registered in `player_protections`,
+/// read by `GameState::player_has_protection_from_object`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayerProtectionFrom {
+    pub player: PlayerFilter,
+    pub source_filter: crate::target::ObjectFilter,
+    pub display: String,
+}
+
+impl StaticAbilityKind for PlayerProtectionFrom {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PlayerProtectionFrom
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        let filter_ctx = game.filter_context_for(controller, Some(source));
+        let protected: Vec<PlayerId> = game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game() && self.player.matches_player(player.id, &filter_ctx))
+            .map(|player| player.id)
+            .collect();
+        for player in protected {
+            let tracker = &mut game.effect_store.cant_effects;
+            tracker
+                .cant_target_players_from
+                .push(crate::game_state::PlayerCantBeTargetedFrom {
+                    player,
+                    source_filter: self.source_filter.clone(),
+                    controller,
+                });
+            tracker
+                .player_protections
+                .push(crate::game_state::PlayerProtectionFrom {
+                    player,
+                    source_filter: self.source_filter.clone(),
+                    protection_source: source,
+                    controller,
+                });
+        }
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            DamageFromSourceToPlayerMatcher::new(self.source_filter.clone(), self.player.clone()),
+            ReplacementAction::PreventDamage,
+        ))
+    }
+}
+
 /// "If an opponent would search a library, that player searches the top four
 /// cards of that library instead." (Aven Mindcensor)
 #[derive(Debug, Clone, PartialEq)]

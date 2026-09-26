@@ -587,9 +587,7 @@ impl GameState {
             };
             let mut changed = false;
             for component in &mut merged.components {
-                if component.flipped
-                    || component.object.linked_face_layout != LinkedFaceLayout::None
-                {
+                if component.flipped || !is_flip_card_layout(component.object.linked_face_layout) {
                     continue;
                 }
                 let Some(other_definition) = self.linked_face_definition_by_name_or_id(
@@ -598,7 +596,7 @@ impl GameState {
                 ) else {
                     continue;
                 };
-                component.object.apply_definition_face(&other_definition);
+                component.object.apply_flipped_face(&other_definition);
                 component.flipped = true;
                 changed = true;
             }
@@ -616,6 +614,10 @@ impl GameState {
         let Some(object) = self.object(id) else {
             return false;
         };
+        // Only a flip card can flip; a double-faced or split card isn't one.
+        if !is_flip_card_layout(object.linked_face_layout) {
+            return false;
+        }
         let Some(other_definition) = self.linked_face_definition_by_name_or_id(
             object.other_face_name.as_deref(),
             object.other_face,
@@ -623,7 +625,7 @@ impl GameState {
             return false;
         };
         if let Some(object) = self.object_mut(id) {
-            object.apply_definition_face(&other_definition);
+            object.apply_flipped_face(&other_definition);
         }
         self.flip(id);
         true
@@ -1210,6 +1212,41 @@ impl GameState {
             return;
         };
         self.phase_out_with_attachment_tree(id, controller, false);
+    }
+
+    /// Phase out several permanents at the same time.
+    ///
+    /// CR 702.26h: an object that would simultaneously phase out directly and
+    /// indirectly (an Aura or Equipment phasing out along with the permanent
+    /// it's attached to) just phases out indirectly, so it phases in with its
+    /// host. Attachments whose host is also in the set are left to the host's
+    /// attachment-tree walk instead of being phased out directly first.
+    pub fn phase_out_simultaneously(&mut self, ids: &[ObjectId]) {
+        let set: std::collections::HashSet<ObjectId> = ids.iter().copied().collect();
+        let host_in_set = |game: &Self, id: ObjectId| {
+            let mut seen = std::collections::HashSet::new();
+            let mut current = id;
+            while seen.insert(current) {
+                let Some(crate::object::AttachmentTarget::Object(host)) =
+                    game.object(current).and_then(|object| object.attached_to)
+                else {
+                    return false;
+                };
+                if set.contains(&host) {
+                    return true;
+                }
+                current = host;
+            }
+            false
+        };
+        let direct: Vec<ObjectId> = ids
+            .iter()
+            .copied()
+            .filter(|id| !host_in_set(self, *id))
+            .collect();
+        for id in direct {
+            self.phase_out(id);
+        }
     }
 
     fn phase_out_with_attachment_tree(
@@ -2334,18 +2371,72 @@ impl GameState {
                 .unwrap_or_default();
             (linked, return_zones)
         };
-        for object_id in linked {
-            if self
-                .object(object_id)
-                .is_some_and(|object| object.zone == Zone::Exile)
-            {
+        let returns = linked
+            .into_iter()
+            .filter(|object_id| {
+                self.object(*object_id)
+                    .is_some_and(|object| object.zone == Zone::Exile)
+            })
+            .map(|object_id| {
                 let return_zone = return_zones
                     .get(&object_id)
                     .copied()
                     .unwrap_or(Zone::Battlefield);
-                self.move_object_by_effect(object_id, return_zone);
+                (object_id, return_zone)
+            })
+            .collect::<Vec<_>>();
+        self.return_exiled_cards_at_duration_end(source_id, returns);
+    }
+
+    /// CR 610.3 / 610.3c: when an "exile ... until" duration ends, the cards
+    /// return by a one-shot effect. A battlefield return is an ordinary,
+    /// simultaneous (CR 610.3d) battlefield entry under its owner's control,
+    /// so it goes through ETB replacement processing: intrinsic loyalty and
+    /// defense counters, enters-tapped, as-enters choices, copy choices and
+    /// CR 303.4f Aura attachment. Other return zones use the zone-change
+    /// replacement pipeline.
+    ///
+    /// Duration ends aren't resolving effects and have no player decision
+    /// maker, so any entry choice is made by the default chooser.
+    fn return_exiled_cards_at_duration_end(
+        &mut self,
+        source_id: ObjectId,
+        returns: Vec<(ObjectId, Zone)>,
+    ) {
+        if returns.is_empty() {
+            return;
+        }
+        let Some(controller) = returns
+            .iter()
+            .find_map(|(object_id, _)| self.object(*object_id).map(|object| object.owner))
+        else {
+            return;
+        };
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = crate::effects::ExecutionContext::new(source_id, controller, &mut dm);
+        let mut battlefield_requests = Vec::new();
+        for (object_id, return_zone) in returns {
+            if return_zone == Zone::Battlefield {
+                battlefield_requests.push((
+                    object_id,
+                    crate::effects::zones::BattlefieldEntryOptions::owner(false),
+                ));
+            } else {
+                let _ = crate::effects::zones::apply_zone_change(
+                    self,
+                    object_id,
+                    Zone::Exile,
+                    return_zone,
+                    ctx.cause.clone(),
+                    &mut *ctx.decision_maker,
+                );
             }
         }
+        let _ = crate::effects::zones::move_to_battlefield_batch_with_options(
+            self,
+            &mut ctx,
+            battlefield_requests,
+        );
     }
 
     /// Track a one-shot exile duration that ends the next time one of the
@@ -2388,17 +2479,21 @@ impl GameState {
             let Some(group) = self.take_linked_exile_group(group_id) else {
                 continue;
             };
-            for stable_id in group.stable_ids {
-                let Some(object_id) = self.find_object_by_stable_id(stable_id) else {
-                    continue;
-                };
-                if self
-                    .object(object_id)
-                    .is_some_and(|object| object.zone == Zone::Exile)
-                {
-                    self.move_object_by_effect(object_id, group.return_zone);
-                }
-            }
+            let returns = group
+                .stable_ids
+                .into_iter()
+                .filter_map(|stable_id| self.find_object_by_stable_id(stable_id))
+                .filter(|object_id| {
+                    self.object(*object_id)
+                        .is_some_and(|object| object.zone == Zone::Exile)
+                })
+                .map(|object_id| (object_id, group.return_zone))
+                .collect::<Vec<_>>();
+            // The effect that exiled them is long gone; any stable reference works.
+            let Some(source_id) = returns.first().map(|(object_id, _)| *object_id) else {
+                continue;
+            };
+            self.return_exiled_cards_at_duration_end(source_id, returns);
         }
     }
 
@@ -3115,6 +3210,39 @@ impl GameState {
         self.effect_store.pending_trigger_events.push(event);
     }
 
+    /// Drop the not-yet-matched "becomes the target" events a stack object
+    /// reported for targets it no longer has.
+    ///
+    /// A copy reports its original targets as it is created, but when new
+    /// targets are chosen for it as part of creating it, only the targets it
+    /// ends up with ever became its targets (CR 707.10c, 115.7).
+    pub(crate) fn drop_pending_stale_becomes_targeted_events(
+        &mut self,
+        source: ObjectId,
+        by_ability: bool,
+        final_targets: &[crate::game_state::Target],
+    ) {
+        use crate::events::spells::BecomesTargetedEvent;
+
+        let mut dropped = Vec::new();
+        self.effect_store.pending_trigger_events.retain(|event| {
+            let stale = event
+                .downcast::<BecomesTargetedEvent>()
+                .is_some_and(|targeted| {
+                    targeted.source == source
+                        && targeted.by_ability == by_ability
+                        && !final_targets.contains(&targeted.target)
+                });
+            if stale {
+                dropped.push(event.provenance());
+            }
+            !stale
+        });
+        for provenance in dropped {
+            self.turn_store.turn_history.remove_staged_event(provenance);
+        }
+    }
+
     pub(crate) fn tag_pending_zone_change_event_for_object(
         &mut self,
         event_object: ObjectId,
@@ -3347,4 +3475,10 @@ impl GameState {
     ) -> ProvNodeId {
         self.provenance_graph_mut().alloc_child_event(parent, kind)
     }
+}
+
+/// Whether a permanent with this linked-face layout is a flip card (CR 710).
+/// Hand-built flip fixtures carry a linked face with no layout at all.
+fn is_flip_card_layout(layout: LinkedFaceLayout) -> bool {
+    matches!(layout, LinkedFaceLayout::Flip | LinkedFaceLayout::None)
 }

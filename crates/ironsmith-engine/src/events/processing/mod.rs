@@ -873,11 +873,24 @@ fn consume_one_shot_if_applied(
     effect_id: ReplacementEffectId,
     result: &TraitApplyResult,
 ) {
-    if !matches!(result, TraitApplyResult::Unchanged(_)) {
-        game.effect_store
-            .replacement_effects
-            .mark_effect_used(effect_id);
+    if matches!(result, TraitApplyResult::Unchanged(_)) {
+        return;
     }
+    // "The next N damage ... is dealt to ... instead": a redirection of
+    // fewer than N damage leaves the rest of the shield for later damage.
+    if let TraitApplyResult::Modified(event) = result
+        && let Some(damage) =
+            crate::events::downcast_event::<crate::events::DamageEvent>(event.inner())
+        && game
+            .effect_store
+            .replacement_effects
+            .consume_redirect_damage_amount(effect_id, damage.amount)
+    {
+        return;
+    }
+    game.effect_store
+        .replacement_effects
+        .mark_effect_used(effect_id);
 }
 
 // =============================================================================
@@ -1976,8 +1989,15 @@ fn process_destroy_inner(
         return EventOutcome::NotApplicable;
     }
 
-    // Check for indestructible (this is a static ability that prevents destruction)
-    if obj.has_indestructible() {
+    // Check for indestructible (this is a static ability that prevents
+    // destruction). CR 702.12b / 613.1f: use the permanent's current
+    // abilities, so one that lost indestructible (Humility, Turn to Frog) can
+    // be destroyed and one that gained it can't. This matches the SBA check,
+    // which otherwise would keep emitting a destroy this refused.
+    if game.current_has_static_ability_id(
+        permanent,
+        crate::static_abilities::StaticAbilityId::Indestructible,
+    ) {
         return EventOutcome::Prevented;
     }
 
@@ -4607,6 +4627,9 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
     let mut object_etb_effects: Vec<ReplacementEffect> = Vec::new();
     let mut copy_choice_effects: Vec<ReplacementEffect> = Vec::new();
     let mut reserved_objects = batch_reserved_objects.clone();
+    // The intrinsic loyalty proposal (CR 306.5b), kept so an enter-as-copy
+    // choice can replace it with the copied printed loyalty.
+    let mut intrinsic_loyalty: Option<u32> = None;
 
     if let Some(obj) = game.object(object) {
         if let Some(loyalty) = obj.base_loyalty
@@ -4617,6 +4640,7 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
             // effects can modify it (e.g., Doubling Season).
             let loyalty = loyalty_after_compleated_life_payment(obj, loyalty);
             enters_with_counters.push((CounterType::Loyalty, loyalty));
+            intrinsic_loyalty = Some(loyalty);
         }
         if obj.card_types.contains(&CardType::Battle)
             && let Some(defense) = obj.base_defense
@@ -4896,13 +4920,35 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                 if let Some(etb) = downcast_event::<EnterBattlefieldEvent>(e.inner()) {
                     // Copy-as-enters effects are applied before other ETB
                     // modifications. Recompute a battle's intrinsic defense
-                    // proposal from the copied values so effects such as
-                    // Doubling Season can still modify those counters.
+                    // proposal and a planeswalker's intrinsic loyalty proposal
+                    // (CR 306.5b, 707.2: the copied printed loyalty applies as
+                    // the permanent enters) from the copied values so effects
+                    // such as Doubling Season can still modify those counters.
                     if !copy_choice_consumed && let Some(copy_source) = etb.enters_as_copy_of {
                         let mut copied_etb = etb.clone();
                         copied_etb
                             .enters_with_counters
                             .retain(|(counter, _)| *counter != CounterType::Defense);
+                        // Drop only the entering object's own intrinsic loyalty
+                        // entry: a copy exception's extra loyalty counter (Spark
+                        // Double) stays in the proposal.
+                        if let Some(loyalty) = intrinsic_loyalty.take()
+                            && let Some(index) = copied_etb
+                                .enters_with_counters
+                                .iter()
+                                .position(|entry| *entry == (CounterType::Loyalty, loyalty))
+                        {
+                            copied_etb.enters_with_counters.remove(index);
+                        }
+                        if let Some(loyalty) = game
+                            .object(copy_source)
+                            .and_then(|source| source.base_loyalty)
+                            .filter(|loyalty| *loyalty > 0)
+                        {
+                            copied_etb
+                                .enters_with_counters
+                                .push((CounterType::Loyalty, loyalty));
+                        }
                         if let Some(defense) = game
                             .object(copy_source)
                             .filter(|source| source.card_types.contains(&CardType::Battle))

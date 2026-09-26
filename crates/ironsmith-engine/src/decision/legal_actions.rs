@@ -1423,6 +1423,20 @@ pub(crate) fn activation_timing_allows(
                 && game.turn.phase == Phase::Beginning
                 && game.turn.step == Some(crate::game_state::Step::Upkeep)
         }
+        crate::ability::ActivationTiming::DuringYourUpkeep => {
+            game.is_active_player(controller)
+                && game.turn.phase == Phase::Beginning
+                && game.turn.step == Some(crate::game_state::Step::Upkeep)
+        }
+        crate::ability::ActivationTiming::DuringOpponentsUpkeep => {
+            !game.is_active_player(controller)
+                && game.turn.phase == Phase::Beginning
+                && game.turn.step == Some(crate::game_state::Step::Upkeep)
+        }
+        crate::ability::ActivationTiming::DuringAnyUpkeep => {
+            game.turn.phase == Phase::Beginning
+                && game.turn.step == Some(crate::game_state::Step::Upkeep)
+        }
     }
 }
 
@@ -2413,6 +2427,7 @@ pub fn compute_commander_actions(game: &GameState, player: PlayerId) -> Vec<Lega
                     // blitz, evoke, emerge, prowl...) report the hand as
                     // their casting zone.
                     if alt_cast.cast_from_zone() == Zone::Hand
+                        && !alt_cast.requires_cast_from_hand()
                         && can_cast_with_alternative_from_hand_with_view(
                             game, player, commander, current_id, alt_cast, &view,
                         )
@@ -2436,6 +2451,7 @@ pub fn compute_commander_actions(game: &GameState, player: PlayerId) -> Vec<Lega
                 let base_alt_idx = commander.alternative_casts.len();
                 for (offset, grant) in granted_casts.iter().enumerate() {
                     if grant.method.cast_from_zone() != Zone::Hand
+                        || grant.method.requires_cast_from_hand()
                         || !grant_usage_limit_allows(game, player, grant.source_id, grant.usage_limit)
                         || !can_cast_with_alternative_from_hand_with_view(
                             game,

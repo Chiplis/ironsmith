@@ -893,12 +893,27 @@ impl WasmGame {
     /// them (a seat qualifies when a listed card can trigger as it is drawn or
     /// grants miracle), otherwise every seat with a hidden deck qualifies.
     /// Unknown card names count as qualifying.
+    ///
+    /// Every listed name is loaded first: the registry is filled lazily, so
+    /// without this an engine that already held some of these cards (its own
+    /// deck from deck validation, an earlier match) would judge them while a
+    /// peer that never loaded them counts them as unknown, and only that peer
+    /// would open a draw reveal window.
     fn hidden_draw_reveal_players_for_setup(
-        &self,
+        &mut self,
         hidden_manifests: &[HiddenDeckManifestInput],
         public_decklists: Option<&[Vec<String>]>,
         commanders: Option<&[Vec<String>]>,
     ) -> Vec<PlayerId> {
+        if let Some(lists) = public_decklists {
+            let names = lists
+                .iter()
+                .chain(commanders.into_iter().flatten())
+                .flatten()
+                .map(String::as_str)
+                .collect::<Vec<_>>();
+            self.ensure_card_definitions_loaded(names);
+        }
         let mut seats = hidden_manifests
             .iter()
             .map(|manifest| manifest.owner)
@@ -3714,7 +3729,7 @@ impl WasmGame {
                     object_ids,
                     object_stable_ids,
                     object_hidden_refs,
-                } = command
+                } = command.clone()
                 else {
                     self.pending_decision = Some(pending_ctx);
                     self.pending_replay_action = Some(replay);
@@ -3763,23 +3778,36 @@ impl WasmGame {
                     .copied()
                     .map(ObjectId::from_raw)
                     .collect::<Vec<_>>();
-                ironsmith::rules::state_based::apply_legend_rule_choice_from_group(
+                // CR 616.1 / 704.5j: the removed legends' controller chooses
+                // among their zone-change replacement effects. Apply the
+                // choice live with the replayable decision maker; if a
+                // replacement choice is needed, undo the probe and take the
+                // general replay path below so the player is prompted.
+                let probe_checkpoint = self.capture_replay_checkpoint();
+                let mut legend_dm = WasmReplayDecisionMaker::new(&[]);
+                ironsmith::rules::state_based::apply_legend_rule_choice_from_group_with_decision_maker(
                     &mut self.game,
                     keep_id,
                     &legend_group,
+                    &mut legend_dm,
                 );
-                drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
-                self.pending_action_checkpoint = None;
-                self.pending_replay_action = None;
-                self.pending_decision = None;
-                self.clear_active_resolving_stack_object();
-                if let Err(err) = self.advance_until_decision() {
-                    self.restore_replay_checkpoint(&replay.checkpoint);
-                    self.pending_decision = Some(pending_ctx);
-                    self.pending_replay_action = Some(replay);
-                    return Err(err);
+                let (legend_pending_context, _, _) = legend_dm.finish();
+                if legend_pending_context.is_some() {
+                    self.restore_replay_checkpoint(&probe_checkpoint);
+                } else {
+                    drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
+                    self.pending_action_checkpoint = None;
+                    self.pending_replay_action = None;
+                    self.pending_decision = None;
+                    self.clear_active_resolving_stack_object();
+                    if let Err(err) = self.advance_until_decision() {
+                        self.restore_replay_checkpoint(&replay.checkpoint);
+                        self.pending_decision = Some(pending_ctx);
+                        self.pending_replay_action = Some(replay);
+                        return Err(err);
+                    }
+                    return self.snapshot();
                 }
-                return self.snapshot();
             }
             let answer = match self.command_to_replay_answer(&pending_ctx, command.clone()) {
                 Ok(answer) => answer,

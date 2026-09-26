@@ -1442,7 +1442,8 @@ fn count_distinct_card_types_in_graveyard(game: &GameState, player_id: PlayerId)
         let Some(obj) = game.object(card_id) else {
             continue;
         };
-        for card_type in &obj.card_types {
+        // CR 709.4: a split card has both halves' card types.
+        for card_type in obj.zone_card_types() {
             if !types.contains(card_type) {
                 types.push(*card_type);
             }

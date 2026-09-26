@@ -11142,6 +11142,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Counters(CounterActionAst::ExperienceCounters {
                 count: amount,
             })
+            | SubjectVerbActionAst::Counters(CounterActionAst::RadCounters {
+                count: amount,
+            })
             | SubjectVerbActionAst::Counters(CounterActionAst::TicketCounters { count: amount })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy { amount })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal {

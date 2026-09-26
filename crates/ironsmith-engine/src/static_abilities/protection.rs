@@ -82,6 +82,10 @@ impl StaticAbilityKind for Protection {
             ProtectionFrom::Everything => "Protection from everything".to_string(),
             ProtectionFrom::ChosenPlayer => "Protection from the chosen player".to_string(),
             ProtectionFrom::ChosenColor => "Protection from the chosen color".to_string(),
+            ProtectionFrom::ColorsOutsideCommanderIdentity => {
+                "Protection from each color that's not in your commander's color identity"
+                    .to_string()
+            }
             ProtectionFrom::CardType(ct) => format!("Protection from {}", ct.plural_name()),
             ProtectionFrom::Creatures => "Protection from creatures".to_string(),
             ProtectionFrom::Permanents(filter) => {
@@ -567,4 +571,73 @@ mod tests {
             "Hexproof from activated and triggered abilities"
         );
     }
+}
+
+/// Bind "the chosen card type" / "the chosen color" in a protection or
+/// hexproof-from quality to the choice made for the granting object.
+///
+/// CR 702.16a / 702.11d: the quality is the one chosen for the object that
+/// grants the ability (Serra's Emissary, Skrelv, Defector Mite). Left
+/// unbound, the filter would be evaluated against the choice of the spell or
+/// source being checked, which never has one. Returns `None` when nothing
+/// needs binding (or the choice hasn't been made yet).
+pub(crate) fn bind_chosen_protection_qualities(
+    ability: &super::StaticAbility,
+    game: &crate::game_state::GameState,
+    chooser_source: crate::ids::ObjectId,
+) -> Option<super::StaticAbility> {
+    if let Some(ProtectionFrom::Permanents(filter)) = ability.protection_from() {
+        let bound = bind_chosen_filter_qualities(filter, game, chooser_source)?;
+        return Some(super::StaticAbility::protection(ProtectionFrom::Permanents(
+            bound,
+        )));
+    }
+    if let Some(filter) = ability.hexproof_from_filter() {
+        let bound = bind_chosen_filter_qualities(filter, game, chooser_source)?;
+        return Some(super::StaticAbility::hexproof_from(bound));
+    }
+    None
+}
+
+pub(crate) fn bind_chosen_filter_qualities(
+    filter: &ObjectFilter,
+    game: &crate::game_state::GameState,
+    chooser_source: crate::ids::ObjectId,
+) -> Option<ObjectFilter> {
+    let mut bound = filter.clone();
+    let mut changed = false;
+    if bound.chosen_card_type
+        && let Some(card_type) = game.chosen_card_type(chooser_source)
+    {
+        bound.chosen_card_type = false;
+        if !bound.all_card_types.contains(&card_type) {
+            bound.all_card_types.push(card_type);
+        }
+        changed = true;
+    }
+    if bound.chosen_color
+        && let Some(color) = game.chosen_color(chooser_source)
+    {
+        let chosen = crate::color::ColorSet::from(color);
+        match bound.colors {
+            None => {
+                bound.colors = Some(chosen);
+                bound.chosen_color = false;
+                changed = true;
+            }
+            Some(existing) if existing.contains(color) => {
+                bound.colors = Some(chosen);
+                bound.chosen_color = false;
+                changed = true;
+            }
+            Some(_) => {}
+        }
+    }
+    for (index, branch) in filter.any_of.iter().enumerate() {
+        if let Some(bound_branch) = bind_chosen_filter_qualities(branch, game, chooser_source) {
+            bound.any_of[index] = bound_branch;
+            changed = true;
+        }
+    }
+    changed.then_some(bound)
 }

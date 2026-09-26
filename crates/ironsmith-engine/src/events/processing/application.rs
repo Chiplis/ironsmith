@@ -1613,6 +1613,42 @@ fn resolve_trait_redirect_target(
     if !selected.valid_redirect_types.is_valid(&new_target) {
         return None;
     }
+    // CR 614.9: if the permanent the event would be redirected to is no
+    // longer on the battlefield (or, for damage, is no longer a battle,
+    // creature, or planeswalker), or the player has left the game, the
+    // redirection does nothing and the event keeps its original recipient.
+    match new_target {
+        Target::Player(player_id) => {
+            if !game
+                .player(player_id)
+                .is_some_and(|player| player.is_in_game())
+            {
+                return None;
+            }
+        }
+        Target::Object(object_id) => {
+            let on_battlefield = game
+                .object(object_id)
+                .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+                && !game.is_phased_out(object_id);
+            if !on_battlefield {
+                return None;
+            }
+            let is_damage = crate::events::downcast_event::<crate::events::DamageEvent>(event)
+                .is_some();
+            if is_damage
+                && ![
+                    crate::types::CardType::Creature,
+                    crate::types::CardType::Planeswalker,
+                    crate::types::CardType::Battle,
+                ]
+                .into_iter()
+                .any(|card_type| game.current_has_card_type(object_id, card_type))
+            {
+                return None;
+            }
+        }
+    }
     Some(new_target)
 }
 

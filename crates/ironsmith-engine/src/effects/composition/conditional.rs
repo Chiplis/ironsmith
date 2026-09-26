@@ -64,7 +64,28 @@ impl EffectExecutor for ConditionalEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let result = evaluate_condition(game, &self.condition, ctx)?;
+        let mut result = evaluate_condition(game, &self.condition, ctx)?;
+
+        // CR 700.2 / 601.2b: "If [condition] as you cast this spell, you may
+        // choose both instead" fixes how many modes may be chosen during
+        // casting (603.3c for triggers). When the announced modes only fit
+        // the other branch's mode choice, that branch was the one in force at
+        // announcement; don't let a changed condition reject the choice.
+        if let Some(chosen) = ctx.chosen_modes.as_deref() {
+            let (current, other) = if result {
+                (&self.if_true, &self.if_false)
+            } else {
+                (&self.if_false, &self.if_true)
+            };
+            if let (Some(current_max), Some(other_max)) = (
+                announced_mode_choice_max(game, current, ctx)?,
+                announced_mode_choice_max(game, other, ctx)?,
+            ) && chosen.len() > current_max
+                && chosen.len() <= other_max
+            {
+                result = !result;
+            }
+        }
 
         let effects_to_execute = if result {
             &self.if_true
@@ -138,6 +159,25 @@ impl EffectExecutor for ConditionalEffect {
 
         None
     }
+}
+
+/// The most modes the branch's cast-time mode choice allows, if the branch
+/// opens with one.
+fn announced_mode_choice_max(
+    game: &GameState,
+    effects: &[crate::effect::Effect],
+    ctx: &ExecutionContext,
+) -> Result<Option<usize>, ExecutionError> {
+    let Some(choose) = effects.iter().find_map(|effect| {
+        effect
+            .downcast_ref::<crate::effects::ChooseModeEffect>()
+            .filter(|choose| choose.chooser.is_none())
+    }) else {
+        return Ok(None);
+    };
+    Ok(Some(
+        crate::effects::helpers::resolve_value(game, &choose.choose_count, ctx)?.max(0) as usize,
+    ))
 }
 
 fn evaluate_condition_simple(

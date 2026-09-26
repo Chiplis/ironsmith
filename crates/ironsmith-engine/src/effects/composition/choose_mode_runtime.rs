@@ -58,7 +58,10 @@ fn related_object_ids_for_mode(
     Some(ids)
 }
 
-fn find_source_activated_ability_index(
+/// The index on `source` of the activated or triggered ability that holds
+/// `choose_mode`. "Choose one that hasn't been chosen [this turn]" is tracked
+/// per ability of the source.
+fn find_source_modal_ability_index(
     game: &GameState,
     source: ObjectId,
     choose_mode: &ChooseModeEffect,
@@ -68,13 +71,15 @@ fn find_source_activated_ability_index(
     let mut fallback_indices = Vec::new();
 
     for (idx, ability) in source_object.abilities.iter().enumerate() {
-        let AbilityKind::Activated(activated) = &ability.kind else {
-            continue;
+        let effects: Vec<&crate::effect::Effect> = match &ability.kind {
+            AbilityKind::Activated(activated) => activated.effects.all_effects(),
+            AbilityKind::Triggered(triggered) => triggered.effects.all_effects(),
+            _ => continue,
         };
 
         let mut has_disallow_choose_mode = false;
         let mut has_exact_choose_mode = false;
-        for effect in &activated.effects {
+        for effect in effects {
             if let Some(candidate) = effect.downcast_ref::<ChooseModeEffect>() {
                 if candidate.disallow_previously_chosen_modes {
                     has_disallow_choose_mode = true;
@@ -100,6 +105,39 @@ fn find_source_activated_ability_index(
         return fallback_indices.first().copied();
     }
     None
+}
+
+/// For an ability whose modes can't repeat earlier choices ("choose one that
+/// hasn't been chosen [this turn]"): its index on `source` and whether the
+/// restriction resets each turn.
+pub(crate) fn previously_chosen_mode_restriction<'a>(
+    game: &GameState,
+    source: ObjectId,
+    effects: impl IntoIterator<Item = &'a crate::effect::Effect>,
+) -> Option<(usize, bool)> {
+    let choose_mode = effects.into_iter().find_map(|effect| {
+        effect
+            .downcast_ref::<ChooseModeEffect>()
+            .filter(|choose_mode| choose_mode.disallow_previously_chosen_modes)
+    })?;
+    let ability_index = find_source_modal_ability_index(game, source, choose_mode)?;
+    Some((
+        ability_index,
+        choose_mode.disallow_previously_chosen_modes_this_turn,
+    ))
+}
+
+/// Whether mode `mode_idx` was already chosen for a restricted modal ability
+/// (see [`previously_chosen_mode_restriction`]), so it can't be chosen again.
+pub(crate) fn restricted_mode_was_chosen(
+    game: &GameState,
+    source: ObjectId,
+    restriction: Option<(usize, bool)>,
+    mode_idx: usize,
+) -> bool {
+    restriction.is_some_and(|(ability_index, this_turn)| {
+        game.ability_mode_was_chosen(source, ability_index, mode_idx, this_turn)
+    })
 }
 
 fn mode_point_cost(effect: &ChooseModeEffect, mode_idx: usize) -> usize {
@@ -173,6 +211,20 @@ fn endure_token_mode_when_permanent_is_gone(
         }
     };
     gone.then_some(1)
+}
+
+/// CR 608.2b: an instruction whose targets have all become illegal does
+/// nothing, but the spell or ability still performs its other instructions
+/// and modes. Executors that report an empty target scope as
+/// `Err(InvalidTarget)` are mapped to a target-invalid outcome so sibling
+/// instructions and later modes keep resolving.
+fn continue_past_illegal_target(
+    outcome: Result<EffectOutcome, ExecutionError>,
+) -> Result<EffectOutcome, ExecutionError> {
+    match outcome {
+        Err(ExecutionError::InvalidTarget) => Ok(EffectOutcome::target_invalid()),
+        other => other,
+    }
 }
 
 pub(crate) fn run_choose_mode(
@@ -251,10 +303,14 @@ pub(crate) fn run_choose_mode(
     }
 
     let source_ability_index = if effect.disallow_previously_chosen_modes {
-        find_source_activated_ability_index(game, ctx.source, effect)
+        find_source_modal_ability_index(game, ctx.source, effect)
     } else {
         None
     };
+    // Modes announced as the ability was activated or put on the stack
+    // (CR 602.2b, 603.3c) were checked and recorded then; they stay chosen
+    // even though that choice now counts as "previously chosen".
+    let modes_were_announced = effect.chooser.is_none() && ctx.chosen_modes.is_some();
     let is_mode_available = |mode_idx: usize| {
         mode_idx < effect.modes.len()
             && !source_ability_index.is_some_and(|ability_index| {
@@ -349,10 +405,23 @@ pub(crate) fn run_choose_mode(
     }
 
     // Validate selected mode indices while preserving selection order.
+    // Modes chosen while casting or putting the ability on the stack were
+    // locked in then (CR 601.2b, 700.2); their target legality was checked at
+    // announcement. At resolution a mode whose targets have all become
+    // illegal still "resolves" and simply does nothing for those parts
+    // (CR 608.2b), so only availability, repetition and point limits are
+    // re-checked for pre-chosen modes.
     let mut valid_chosen_indices: Vec<usize> = Vec::new();
     let mut chosen_point_total = 0usize;
     for idx in chosen_indices {
-        if !is_mode_legal(idx) {
+        // Announced modes were checked when announced; a mode whose targets
+        // are gone just does nothing (CR 608.2b), so only the index matters.
+        let legal = if modes_were_announced {
+            idx < effect.modes.len()
+        } else {
+            is_mode_legal(idx)
+        };
+        if !legal {
             return Err(ExecutionError::Impossible(
                 "Selected mode is not legal".to_string(),
             ));
@@ -378,7 +447,7 @@ pub(crate) fn run_choose_mode(
         ));
     }
 
-    if let Some(ability_index) = source_ability_index {
+    if let Some(ability_index) = source_ability_index.filter(|_| !modes_were_announced) {
         for &mode_idx in &valid_chosen_indices {
             game.record_ability_mode_choice(
                 ctx.source,
@@ -416,8 +485,8 @@ pub(crate) fn run_choose_mode(
             })
         } else {
             execute_effect(game, common, ctx)
-        }?;
-        outcomes.push(outcome);
+        };
+        outcomes.push(continue_past_illegal_target(outcome)?);
     }
     for &idx in &valid_chosen_indices {
         if let Some(mode) = effect.modes.get(idx) {
@@ -448,8 +517,8 @@ pub(crate) fn run_choose_mode(
                     })
                 } else {
                     execute_effect(game, inner, ctx)
-                }?;
-                outcomes.push(outcome);
+                };
+                outcomes.push(continue_past_illegal_target(outcome)?);
             }
         }
     }

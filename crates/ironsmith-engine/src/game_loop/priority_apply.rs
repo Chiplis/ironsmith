@@ -1281,12 +1281,21 @@ pub(super) fn apply_targets_response(
         if let Some(ability) = game.current_ability(pending.source, pending.ability_index)
             && let crate::ability::AbilityKind::Activated(activated) = &ability.kind
         {
+            // X was announced before targets (CR 602.2b, 601.2b); price the
+            // cost with it locked so reductions apply to the X part too.
+            let base_cost = match pending.x_value.and_then(|x| u32::try_from(x).ok()) {
+                Some(x) => super::priority_cast::activation_cost_with_locked_x(
+                    &activated.mana_cost,
+                    x,
+                ),
+                None => activated.mana_cost.clone(),
+            };
             let repriced =
                 crate::decision::calculate_effective_activation_total_cost_with_chosen_targets(
                     game,
                     pending.activator,
                     pending.source,
-                    &activated.mana_cost,
+                    &base_cost,
                     &pending.chosen_targets,
                 );
             let locked_cost = match repriced.kind() {
@@ -1475,6 +1484,38 @@ pub(super) fn apply_x_value_response(
         pending.x_value = Some(x_value as usize);
         if let Some(obj) = game.object_mut(pending.source) {
             obj.x_value = Some(x_value);
+        }
+
+        // CR 602.2b / 601.2f: with X announced, the total cost is determined
+        // with X as generic mana, so generic reductions (Training Grounds,
+        // Heartstone) and the one-mana floor apply to it.
+        if let Some(ability) = game.current_ability(pending.source, pending.ability_index)
+            && let crate::ability::AbilityKind::Activated(activated) = &ability.kind
+            && activated.mana_cost.as_all().is_none_or(|components| {
+                components
+                    .iter()
+                    .any(|component| component.mana_cost_ref().is_some_and(|mana| mana.has_x()))
+            })
+        {
+            let locked =
+                super::priority_cast::activation_cost_with_locked_x(&activated.mana_cost, x_value);
+            let repriced =
+                crate::decision::calculate_effective_activation_total_cost_with_chosen_targets(
+                    game,
+                    pending.activator,
+                    pending.source,
+                    &locked,
+                    &pending.chosen_targets,
+                );
+            let locked_cost = match repriced.kind() {
+                ironsmith_core::TotalCostKind::All(_) => Some(repriced.clone()),
+                ironsmith_core::TotalCostKind::OneOf(branches) => pending
+                    .selected_alternative_cost
+                    .and_then(|selected| branches.get(selected).cloned()),
+            };
+            if let Some(locked_cost) = locked_cost {
+                assign_pending_activation_cost(game, &mut pending, &locked_cost, decision_maker)?;
+            }
         }
 
         // Modes have already been announced. Continue with payment-symbol

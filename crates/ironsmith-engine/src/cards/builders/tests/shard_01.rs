@@ -2700,13 +2700,11 @@ pub(super) fn bumi_earthbend_mode_is_illegal_without_a_controlled_land_target() 
     let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
         .with_chosen_modes(Some(vec![2]));
 
-    let err = modal
+    // CR 608.2b / 700.2: a mode locked in at announcement whose target is
+    // gone at resolution does nothing; it doesn't abort the resolution.
+    modal
         .execute(&mut game, &mut ctx)
-        .expect_err("Bumi earthbend mode should be illegal with no land you control");
-    assert!(
-        format!("{err:?}").contains("Selected mode is not legal"),
-        "expected earthbend target legality failure, got {err:?}"
-    );
+        .expect("a pre-chosen earthbend mode with no land target should resolve doing nothing");
 }
 
 #[test]

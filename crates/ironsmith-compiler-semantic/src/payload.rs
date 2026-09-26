@@ -162,6 +162,7 @@ pub enum KeywordAction {
     ProtectionFromEverything,
     ProtectionFromChosenPlayer,
     ProtectionFromChosenColor,
+    ProtectionFromColorsOutsideCommanderIdentity,
     ProtectionFromFilter(ObjectFilter),
     ProtectionFromEachManaValueAmong(ObjectFilter),
     ProtectionFromCardType(CardType),
@@ -303,6 +304,7 @@ impl KeywordAction {
                 | Self::ProtectionFromEverything
                 | Self::ProtectionFromChosenPlayer
                 | Self::ProtectionFromChosenColor
+                | Self::ProtectionFromColorsOutsideCommanderIdentity
                 | Self::ProtectionFromFilter(_)
                 | Self::ProtectionFromEachManaValueAmong(_)
                 | Self::ProtectionFromCardType(_)
@@ -499,6 +501,10 @@ impl KeywordAction {
             Self::ProtectionFromEverything => "Protection from everything".to_string(),
             Self::ProtectionFromChosenPlayer => "Protection from the chosen player".to_string(),
             Self::ProtectionFromChosenColor => "Protection from the chosen color".to_string(),
+            Self::ProtectionFromColorsOutsideCommanderIdentity => {
+                "Protection from each color that's not in your commander's color identity"
+                    .to_string()
+            }
             Self::ProtectionFromFilter(filter) => {
                 if *filter == ObjectFilter::default().multicolored() {
                     "Protection from multicolored".to_string()

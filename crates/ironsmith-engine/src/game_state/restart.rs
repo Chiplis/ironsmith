@@ -313,6 +313,7 @@ impl GameState {
                 if let Some(owner) = restarted.player_mut(card.owner) {
                     owner.add_commander(commander_identity);
                 }
+                restarted.record_commander_color_identity(card.owner, commander_identity, new_id);
             }
             if card.is_vanguard {
                 restarted_vanguard.cards.insert(card.owner, new_id);
@@ -407,6 +408,10 @@ impl GameState {
         // suspended parent frame attached to the rebuilt child so the parent
         // remains wholly unaffected and can still resume normally.
         restarted.subgame_parent = self.subgame_parent.take();
+        // CR 726.1/726.4: the host loop runs the new game's rule 103
+        // procedure (mulligans, opening-hand actions) and restarts the turn
+        // structure at turn 1's untap step once the effect finishes resolving.
+        restarted.restart_starting_procedure_pending = true;
         *self = restarted;
         exempt_new_ids
     }

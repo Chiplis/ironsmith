@@ -205,6 +205,13 @@ pub fn apply_keyword_action(
                 ),
             ))
         }
+        KeywordAction::ProtectionFromColorsOutsideCommanderIdentity => {
+            builder.with_ability(crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::protection(
+                    crate::ability::ProtectionFrom::ColorsOutsideCommanderIdentity,
+                ),
+            ))
+        }
         KeywordAction::ProtectionFromFilter(filter) => builder.protection_from_filter(filter),
         KeywordAction::ProtectionFromEachManaValueAmong(filter) => {
             builder.with_ability(crate::ability::Ability::static_ability(

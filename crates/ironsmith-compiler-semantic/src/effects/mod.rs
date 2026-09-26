@@ -28,6 +28,7 @@ pub use ironsmith_core::{
     ExecuteWithSourceEffect as CoreExecuteWithSourceEffect, ExertCostEffect, ExileEffect,
     ExileInsteadOfGraveyardEffect, ExileTaggedWhenSourceLeavesEffect, ExileTopOfLibraryEffect,
     ExileUntilDuration, ExileUntilEffect, ExperienceCountersEffect, ExploreEffect,
+    GivePlayerCountersEffect,
     ExtraTurnAfterNextTurnEffect, ExtraTurnEffect, FatesealEffect, FightEffect, FlipCoinEffect,
     FlipEffect, ForEachControllerOfTaggedEffect, ForEachCounterKindPutOrRemoveEffect,
     ForEachObject as CoreForEachObject,

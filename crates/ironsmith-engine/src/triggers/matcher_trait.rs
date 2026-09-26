@@ -24,6 +24,8 @@ pub enum SimultaneousTriggerKey {
     DamageBatch,
     /// All matching zone changes in one simultaneous action.
     ZoneChangeBatch,
+    /// All counters one instruction puts on one or more objects.
+    CounterBatch,
     /// Damage assignments are grouped independently for each source.
     DamageSource(ObjectId),
     /// Damage assignments are grouped independently for each recipient.

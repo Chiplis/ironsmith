@@ -239,10 +239,16 @@ fn this_spell_was_cast_from_zone(
         crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom {
             zone: from_zone, ..
         } => *from_zone == zone,
-        crate::alternative_cast::CastingMethod::Alternative(idx) => game
-            .object(source)
-            .and_then(|obj| obj.alternative_casts.get(*idx))
-            .is_some_and(|method| method.cast_from_zone() == zone),
+        // A native alternative (dash, evoke, blitz...) reports the hand, but a
+        // commander can use it from the command zone (CR 903.8): the recorded
+        // cast origin is authoritative.
+        crate::alternative_cast::CastingMethod::Alternative(idx) => recorded_cast_zone(game, source)
+            .or_else(|| {
+                game.object(source)
+                    .and_then(|obj| obj.alternative_casts.get(*idx))
+                    .map(|method| method.cast_from_zone())
+            })
+            .is_some_and(|cast_zone| cast_zone == zone),
         crate::alternative_cast::CastingMethod::Normal
         | crate::alternative_cast::CastingMethod::FaceDown
         | crate::alternative_cast::CastingMethod::SplitOtherHalf
@@ -259,18 +265,29 @@ fn this_spell_was_cast_from_non_hand(
         crate::alternative_cast::CastingMethod::Normal
         | crate::alternative_cast::CastingMethod::FaceDown
         | crate::alternative_cast::CastingMethod::SplitOtherHalf
-        | crate::alternative_cast::CastingMethod::Fuse => false,
+        | crate::alternative_cast::CastingMethod::Fuse => recorded_cast_zone(game, source)
+            .is_some_and(|cast_zone| cast_zone != Zone::Hand),
         crate::alternative_cast::CastingMethod::GrantedFlashback
         | crate::alternative_cast::CastingMethod::GrantedEscape { .. } => true,
         crate::alternative_cast::CastingMethod::PlayFrom { zone, .. }
         | crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { zone, .. } => {
             *zone != Zone::Hand
         }
-        crate::alternative_cast::CastingMethod::Alternative(idx) => game
-            .object(source)
-            .and_then(|obj| obj.alternative_casts.get(*idx))
-            .is_some_and(|method| method.cast_from_zone() != Zone::Hand),
+        crate::alternative_cast::CastingMethod::Alternative(idx) => recorded_cast_zone(game, source)
+            .or_else(|| {
+                game.object(source)
+                    .and_then(|obj| obj.alternative_casts.get(*idx))
+                    .map(|method| method.cast_from_zone())
+            })
+            .is_some_and(|cast_zone| cast_zone != Zone::Hand),
     }
+}
+
+/// The zone this object was most recently cast from, per the turn's cast
+/// history (the origin recorded at CR 601.2a).
+fn recorded_cast_zone(game: &GameState, source: ObjectId) -> Option<Zone> {
+    let stable_id = game.object(source)?.stable_id;
+    game.turn_store.turn_history.latest_cast_zone(stable_id)
 }
 
 fn source_escaped(game: &GameState, source: ObjectId) -> bool {
@@ -4442,6 +4459,20 @@ fn evaluate_condition_in_context(
                             && game.turn.phase == crate::game_state::Phase::Beginning
                             && game.turn.step == Some(crate::game_state::Step::Upkeep)
                     }
+                    crate::ability::ActivationTiming::DuringYourUpkeep => {
+                        game.is_active_player(ctx.controller)
+                            && game.turn.phase == crate::game_state::Phase::Beginning
+                            && game.turn.step == Some(crate::game_state::Step::Upkeep)
+                    }
+                    crate::ability::ActivationTiming::DuringOpponentsUpkeep => {
+                        !game.is_active_player(ctx.controller)
+                            && game.turn.phase == crate::game_state::Phase::Beginning
+                            && game.turn.step == Some(crate::game_state::Step::Upkeep)
+                    }
+                    crate::ability::ActivationTiming::DuringAnyUpkeep => {
+                        game.turn.phase == crate::game_state::Phase::Beginning
+                            && game.turn.step == Some(crate::game_state::Step::Upkeep)
+                    }
                 }
             })
         }
@@ -4845,10 +4876,9 @@ fn evaluate_condition_in_context(
         Condition::AttackedWithNOrMoreCreaturesThisTurn(count) => Ok(game
             .turn_store
             .turn_history
-            .creatures_attacked_this_turn
-            .iter()
-            .filter(|id| game.current_controller(**id) == Some(shared.controller))
-            .count() as u32
+            .creatures_attacked_by_player_this_turn
+            .get(&shared.controller)
+            .map_or(0, |creatures| creatures.len()) as u32
             >= *count),
         Condition::OpponentLostLifeThisTurn => {
             let filter_ctx = game.filter_context_for(shared.controller, shared.filter_source);

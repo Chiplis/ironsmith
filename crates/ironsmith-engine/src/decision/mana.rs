@@ -1332,13 +1332,43 @@ fn every_payable_proposal_violates_cant_cast(
 pub(crate) fn is_sorcery_speed_spell(spell: &crate::object::Object) -> bool {
     use crate::types::CardType;
 
-    spell.has_card_type(CardType::Sorcery)
-        || spell.has_card_type(CardType::Creature)
-        || spell.has_card_type(CardType::Artifact)
-        || spell.has_card_type(CardType::Enchantment)
-        || spell.has_card_type(CardType::Planeswalker)
+    // CR 709.3a: only the split half being cast is evaluated, so timing reads
+    // the shown half's own types, not both halves' combined types (CR 709.4).
+    // A fused split spell's view already carries both halves' types.
+    let has_card_type = |card_type: CardType| spell.card_types.contains(&card_type);
+    has_card_type(CardType::Sorcery)
+        || has_card_type(CardType::Creature)
+        || has_card_type(CardType::Artifact)
+        || has_card_type(CardType::Enchantment)
+        || has_card_type(CardType::Planeswalker)
         // CR 310.1 / 307.1: battles are permanent spells cast at sorcery speed.
-        || spell.has_card_type(CardType::Battle)
+        || has_card_type(CardType::Battle)
+}
+
+/// CR 709.3a: when a split card is cast, only the chosen half is evaluated to
+/// see whether it can be cast, so cast-legality views drop the combined
+/// characteristics a split card has in other zones (CR 709.4). A fused split
+/// spell keeps both halves (CR 709.4d); its view is built separately.
+fn without_combined_split_characteristics(
+    view: Option<crate::object::Object>,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> Option<crate::object::Object> {
+    if matches!(casting_method, CastingMethod::Fuse) {
+        return view;
+    }
+    match view {
+        Some(mut view) => {
+            view.split_combined = None;
+            Some(view)
+        }
+        None if spell.split_combined.is_some() => {
+            let mut view = spell.clone();
+            view.split_combined = None;
+            Some(view)
+        }
+        None => None,
+    }
 }
 
 pub(crate) fn spell_has_active_flash_with_view(
@@ -2483,7 +2513,9 @@ fn mana_cost_can_be_paid_with_view_at_x(
 ) -> bool {
     if game.object(spell_id).is_some_and(|spell| {
         game.controller_of(spell) == player
-            && (has_delve(spell) || has_convoke(spell) || has_improvise(spell))
+            && (spell_has_delve(game, spell)
+                || spell_has_convoke(game, spell)
+                || spell_has_improvise(game, spell))
     }) {
         let mut request = crate::mana_payment::ManaPaymentRequest::new(
             player,
@@ -2620,9 +2652,9 @@ pub(crate) fn max_x_payable_with_payment_resources(
     let spell = game.object(spell_id)?;
     let assist = game
         .current_has_static_ability_id(spell_id, crate::static_abilities::StaticAbilityId::Assist);
-    let delve = has_delve(spell);
-    let convoke = has_convoke(spell);
-    let improvise = has_improvise(spell);
+    let delve = spell_has_delve(game, spell);
+    let convoke = spell_has_convoke(game, spell);
+    let improvise = spell_has_improvise(game, spell);
     if !cost.has_x() || !(assist || delve || convoke || improvise) {
         return None;
     }
@@ -2769,6 +2801,7 @@ pub(crate) fn can_cast_spell_with_context(
         }
         _ => None,
     };
+    let cast_view = without_combined_split_characteristics(cast_view, spell, casting_method);
     let spell_for_checks = cast_view.as_ref().unwrap_or(spell);
 
     if let Some(method) = match casting_method {
@@ -2912,6 +2945,7 @@ pub(crate) fn can_cast_spell_with_context(
     if let Some(base_cost) = base_mana_cost.as_ref() {
         let cost_started_at = PerfTimer::start();
         let has_cost_adjustments = spell_has_intrinsic_cost_adjustments(spell_for_checks)
+            || !spell_granted_cost_static_abilities(game, spell_for_checks).is_empty()
             || matches!(
                 casting_method,
                 CastingMethod::PlayFrom { .. } | CastingMethod::SplitOtherHalfPlayFrom { .. }
@@ -3077,6 +3111,7 @@ pub(crate) fn can_cast_with_cost_with_context(
     } else {
         None
     };
+    let cast_view = without_combined_split_characteristics(cast_view, spell, casting_method);
     let spell_for_checks = cast_view.as_ref().unwrap_or(spell);
 
     if let Some(method) = match casting_method {
@@ -3216,6 +3251,7 @@ pub(crate) fn can_cast_with_cost_with_context(
     if let Some(cost) = mana_cost {
         let cost_started_at = PerfTimer::start();
         let has_cost_adjustments = spell_has_intrinsic_cost_adjustments(spell_for_checks)
+            || !spell_granted_cost_static_abilities(game, spell_for_checks).is_empty()
             || matches!(
                 casting_method,
                 CastingMethod::PlayFrom { .. } | CastingMethod::SplitOtherHalfPlayFrom { .. }
@@ -3401,12 +3437,9 @@ pub(crate) fn spell_view_for_disturb_cast(
 
     let other_def = game
         .linked_face_definition_by_name_or_id(spell.other_face_name.as_deref(), spell.other_face)?;
-    let front_colors = spell.colors();
+    // The back face's color comes from its own color indicator (CR 712.8e).
     let mut view = spell.clone();
     view.apply_definition_face(&other_def);
-    if view.mana_cost.is_none() && view.color_override.is_none() && !front_colors.is_empty() {
-        view.color_override = Some(front_colors);
-    }
     view.ensure_aura_cast_spell_effect();
     Some(view)
 }
@@ -3501,6 +3534,8 @@ pub(crate) fn spell_view_for_split_other_half_cast(
     let mut view = spell.clone();
     view.apply_definition_face(&other_def);
     view.ensure_aura_cast_spell_effect();
+    // CR 709.3a: only the half being cast is evaluated.
+    view.split_combined = None;
     Some(view)
 }
 
@@ -3557,6 +3592,8 @@ pub(crate) fn can_cast_with_alternative_with_context(
         },
         _ => None,
     };
+    let disturbed_view =
+        without_combined_split_characteristics(disturbed_view, spell, &CastingMethod::Normal);
     let base_spell_for_checks = disturbed_view.as_ref().unwrap_or(spell);
     let provisional_alternative_spell = (!base_spell_for_checks
         .alternative_casts
@@ -4552,7 +4589,7 @@ pub(crate) fn affinity_for_artifacts_reduction_with_view(
     spell: &crate::object::Object,
     view: &DerivedGameView<'_>,
 ) -> u32 {
-    if has_affinity_for_artifacts(spell) {
+    if spell_has_affinity_for_artifacts(game, spell) {
         count_artifacts_controlled_with_view(game, player, view)
     } else {
         0
@@ -4695,11 +4732,21 @@ pub(crate) fn collect_spell_cost_modifiers(
         spell.id,
     );
 
-    for ability in spell.abilities.iter() {
-        let AbilityKind::Static(static_ability) = &ability.kind else {
-            continue;
-        };
-        let functions_in_current_zone = ability.functions_in(&spell.zone);
+    // Abilities granted to the spell ("spells you cast have ...") contribute
+    // their this-spell reductions; their zone-functioning generic modifiers
+    // belong to the granting permanent (CR 601.2f).
+    let granted_cost_abilities = spell_granted_cost_static_abilities(game, spell);
+    let own_statics = spell.abilities.iter().filter_map(|ability| match &ability.kind {
+        AbilityKind::Static(static_ability) => {
+            Some((static_ability, ability.functions_in(&spell.zone)))
+        }
+        _ => None,
+    });
+    for (static_ability, functions_in_current_zone) in own_statics.chain(
+        granted_cost_abilities
+            .iter()
+            .map(|static_ability| (static_ability, false)),
+    ) {
         if let Some(reduction) = static_ability.this_spell_cost_reduction() {
             let casting_method_matches = reduction.alternative_cast.is_none_or(|kind| {
                 casting_method_matches_alternative_kind(game, player, spell, casting_method, kind)
@@ -5624,16 +5671,8 @@ pub fn calculate_delve_exile_count_with_targets(
     base_cost: &crate::mana::ManaCost,
     chosen_target_count: usize,
 ) -> u32 {
-    use crate::ability::AbilityKind;
-
     // Only calculate Delve if the spell actually has Delve
-    let has_delve_ability = spell.abilities.iter().any(|a| {
-        if let AbilityKind::Static(s) = &a.kind {
-            s.has_delve()
-        } else {
-            false
-        }
-    });
+    let has_delve_ability = spell_has_delve(game, spell);
     if !has_delve_ability {
         return 0;
     }
@@ -5716,6 +5755,97 @@ pub(crate) fn affinity_for_artifacts_reduction(
 ) -> u32 {
     let view = DerivedGameView::new(game);
     affinity_for_artifacts_reduction_with_view(game, player, spell, &view)
+}
+
+/// Static abilities other permanents currently grant to this spell ("Spells
+/// you cast have affinity for artifacts", "Nonartifact spells you cast have
+/// improvise"). CR 601.2f: the total cost is determined with the spell on the
+/// stack, where these grants apply; a card still in hand is evaluated as the
+/// prospective cast so legality agrees with payment.
+pub(crate) fn spell_granted_cost_static_abilities(
+    game: &GameState,
+    spell: &crate::object::Object,
+) -> Vec<crate::static_abilities::StaticAbility> {
+    let view = DerivedGameView::new(game);
+    let caster = game.controller_of(spell);
+    let mut granted = Vec::new();
+    for &permanent in &game.battlefield {
+        let Some(static_abilities) = view.static_abilities_rc(permanent) else {
+            continue;
+        };
+        for static_ability in static_abilities.iter() {
+            let Some(ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant)) =
+                static_ability.compiled_model().map(|model| &model.payload)
+            else {
+                continue;
+            };
+            if !static_ability.is_active(game, permanent) {
+                continue;
+            }
+            let ability =
+                crate::static_abilities::StaticAbilityModelInterpreter::ability_from_model(
+                    &grant.ability,
+                );
+            let crate::ability::AbilityKind::Static(granted_static) = ability.kind else {
+                continue;
+            };
+            if !(granted_static.has_convoke()
+                || granted_static.has_improvise()
+                || granted_static.has_delve()
+                || granted_static.id() == crate::static_abilities::StaticAbilityId::AffinityForArtifacts
+                || granted_static.this_spell_cost_reduction().is_some()
+                || granted_static.this_spell_cost_reduction_mana_cost().is_some())
+            {
+                continue;
+            }
+            let Some(permanent_object) = game.object(permanent) else {
+                continue;
+            };
+            let ctx = game
+                .filter_context_for(game.controller_of(permanent_object), Some(permanent))
+                .with_caster(Some(caster))
+                .with_prospective_cast(spell.id);
+            let mut filter = grant.filter.clone();
+            filter.zone = None;
+            if filter.matches_non_recursive(spell, &ctx, game) {
+                granted.push(granted_static);
+            }
+        }
+    }
+    granted
+}
+
+/// Convoke, intrinsic or granted to the spell (CR 702.51a).
+pub fn spell_has_convoke(game: &GameState, spell: &crate::object::Object) -> bool {
+    has_convoke(spell)
+        || spell_granted_cost_static_abilities(game, spell)
+            .iter()
+            .any(|ability| ability.has_convoke())
+}
+
+/// Improvise, intrinsic or granted to the spell (CR 702.126a).
+pub fn spell_has_improvise(game: &GameState, spell: &crate::object::Object) -> bool {
+    has_improvise(spell)
+        || spell_granted_cost_static_abilities(game, spell)
+            .iter()
+            .any(|ability| ability.has_improvise())
+}
+
+/// Delve, intrinsic or granted to the spell (CR 702.66a).
+pub fn spell_has_delve(game: &GameState, spell: &crate::object::Object) -> bool {
+    has_delve(spell)
+        || spell_granted_cost_static_abilities(game, spell)
+            .iter()
+            .any(|ability| ability.has_delve())
+}
+
+fn spell_has_affinity_for_artifacts(game: &GameState, spell: &crate::object::Object) -> bool {
+    has_affinity_for_artifacts(spell)
+        || spell_granted_cost_static_abilities(game, spell)
+            .iter()
+            .any(|ability| {
+                ability.id() == crate::static_abilities::StaticAbilityId::AffinityForArtifacts
+            })
 }
 
 fn has_affinity_for_artifacts(spell: &crate::object::Object) -> bool {
@@ -6649,20 +6779,14 @@ pub(crate) fn compute_potential_mana_with_view(
                             && (!view
                                 .object_has_card_type(perm_id, crate::types::CardType::Creature)
                                 || !game.is_summoning_sick(perm_id)
-                                || view.object_has_static_ability_id(
-                                    perm_id,
-                                    crate::static_abilities::StaticAbilityId::Haste,
-                                ));
+                                || view.object_has_haste_for_activation(perm_id));
                     }
                     if cost.requires_untap() {
                         return game.is_tapped(perm_id)
                             && (!view
                                 .object_has_card_type(perm_id, crate::types::CardType::Creature)
                                 || !game.is_summoning_sick(perm_id)
-                                || view.object_has_static_ability_id(
-                                    perm_id,
-                                    crate::static_abilities::StaticAbilityId::Haste,
-                                ));
+                                || view.object_has_haste_for_activation(perm_id));
                     }
                     true
                 })
@@ -6803,10 +6927,7 @@ pub(crate) fn simple_battlefield_mana_ability_output(
             }
             if view.object_has_card_type(permanent_id, crate::types::CardType::Creature)
                 && game.is_summoning_sick(permanent_id)
-                && !view.object_has_static_ability_id(
-                    permanent_id,
-                    crate::static_abilities::StaticAbilityId::Haste,
-                )
+                && !view.object_has_haste_for_activation(permanent_id)
             {
                 return None;
             }
@@ -6817,10 +6938,7 @@ pub(crate) fn simple_battlefield_mana_ability_output(
         if cost.requires_untap()
             && view.object_has_card_type(permanent_id, crate::types::CardType::Creature)
             && game.is_summoning_sick(permanent_id)
-            && !view.object_has_static_ability_id(
-                permanent_id,
-                crate::static_abilities::StaticAbilityId::Haste,
-            )
+            && !view.object_has_haste_for_activation(permanent_id)
         {
             return None;
         }

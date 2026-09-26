@@ -494,6 +494,7 @@ impl ActivationSourceFacts {
             .object(source)
             .map(|obj| game.controller_of(obj))
             .unwrap_or(game.turn.active_player);
+        let is_summoning_sick = game.is_summoning_sick(source);
         Self {
             controller,
             can_activate_abilities: game.can_activate_abilities_of(source),
@@ -502,11 +503,12 @@ impl ActivationSourceFacts {
                 .can_activate_non_mana_abilities_of(source),
             is_tapped: game.is_tapped(source),
             is_creature: view.object_has_card_type(source, crate::types::CardType::Creature),
-            is_summoning_sick: game.is_summoning_sick(source),
-            has_haste: view.object_has_static_ability_id(
-                source,
-                crate::static_abilities::StaticAbilityId::Haste,
-            ),
+            is_summoning_sick,
+            // CR 302.6: "activate abilities of creatures as though they had
+            // haste" (Thousand-Year Elixir, Tyvar) lifts the {T}/{Q}
+            // restriction exactly like haste does. Only read for sick sources
+            // (the permission scan walks the battlefield).
+            has_haste: is_summoning_sick && view.object_has_haste_for_activation(source),
         }
     }
 }

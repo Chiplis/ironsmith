@@ -2645,6 +2645,29 @@ impl GameState {
         if let Some(player) = self.player_mut(owner) {
             player.add_commander(object_id);
         }
+        self.record_commander_color_identity(owner, object_id, object_id);
+    }
+
+    /// Fix a commander's color identity as it is designated (CR 903.4a):
+    /// later changes to the object (face-down, copy exceptions, added colors)
+    /// don't change it. `card_object` is the object representing the card now.
+    pub fn record_commander_color_identity(
+        &mut self,
+        owner: PlayerId,
+        commander_id: ObjectId,
+        card_object: ObjectId,
+    ) {
+        let Some(identity) = self
+            .object(card_object)
+            .map(|object| self.commander_object_color_identity(object))
+        else {
+            return;
+        };
+        if let Some(player) = self.player_mut(owner) {
+            player
+                .commander_color_identities
+                .insert(commander_id, identity);
+        }
     }
 
     /// Enable or disable the CR 704.6c commander-damage state-based action.
@@ -2679,7 +2702,7 @@ impl GameState {
         // CR 903.3c: a commander that is a component of a merged permanent
         // keeps its commander designation even when it is not the top
         // component and therefore does not supply the permanent's stable id.
-        self.merged_permanent(obj.stable_id).and_then(|merged| {
+        let merged_identity = self.merged_permanent(obj.stable_id).and_then(|merged| {
             merged.components.iter().find_map(|component| {
                 let identity = component.object.stable_id.object_id();
                 (component.is_commander
@@ -2688,6 +2711,27 @@ impl GameState {
                         .iter()
                         .any(|player| player.commanders.contains(&identity)))
                 .then_some(identity)
+            })
+        });
+        if merged_identity.is_some() {
+            return merged_identity;
+        }
+
+        // CR 903.3b: a commander melded with the other card of its meld pair
+        // makes the melded permanent that player's commander.
+        self.melded_permanent_commander_component(obj.stable_id)
+    }
+
+    /// The commander identity of a card that is part of the melded permanent
+    /// with this stable id (CR 903.3b), if any.
+    fn melded_permanent_commander_component(&self, stable_id: StableId) -> Option<ObjectId> {
+        self.melded_permanent(stable_id).and_then(|melded| {
+            melded.components.iter().find_map(|component| {
+                let identity = component.stable_id.object_id();
+                self.players
+                    .iter()
+                    .any(|player| player.commanders.contains(&identity))
+                    .then_some(identity)
             })
         })
     }
@@ -2710,6 +2754,14 @@ impl GameState {
                                 component.object.stable_id.object_id() == commander_id
                             })
                         })
+                        // CR 903.3b: the melded permanent is the commander.
+                        || self
+                            .melded_permanent(permanent.stable_id)
+                            .is_some_and(|melded| {
+                                melded.components.iter().any(|component| {
+                                    component.stable_id.object_id() == commander_id
+                                })
+                            })
                 })
             })
     }

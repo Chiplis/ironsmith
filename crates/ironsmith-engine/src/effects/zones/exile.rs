@@ -209,6 +209,10 @@ impl EffectExecutor for ExileEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let pending_start = game.effect_store.pending_trigger_events.len();
+        // CR 603.10a: a multi-object exile shares one pre-event look-back.
+        let pinned_lookback = (!self.spec.is_single()
+            || matches!(self.spec.base(), ChooseSpec::Tagged(_)))
+            && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
         let outcome = (|| -> Result<EffectOutcome, ExecutionError> {
             // Handle targeted effects with special single-target behavior
             // BUT skip for special specs (Tagged, Source, SpecificObject) which don't use ctx.targets
@@ -407,6 +411,7 @@ impl EffectExecutor for ExileEffect {
                 .with_affected_objects(affected_ids)
                 .with_affected_object_memory(affected_memory))
         })();
+        crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned_lookback);
         // A single exile instruction moves its selected objects simultaneously.
         // Keep the original event payloads and their per-object replacement
         // outcomes, while giving this instruction a unique grouping identity.

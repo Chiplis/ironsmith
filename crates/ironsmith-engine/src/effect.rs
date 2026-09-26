@@ -1609,6 +1609,17 @@ impl RestrictionExt for Restriction {
                 }
             }
             Restriction::BeTargetedPlayerFrom(player_filter, source_filter) => {
+                // "You have protection from the chosen card type": the choice
+                // is the restriction source's (CR 702.16a), not the targeting
+                // spell's, so bind it now.
+                let bound_filter = source.and_then(|source| {
+                    crate::static_abilities::bind_chosen_filter_qualities(
+                        source_filter,
+                        game,
+                        source,
+                    )
+                });
+                let source_filter = bound_filter.as_ref().unwrap_or(source_filter);
                 for player in &game.players {
                     if player.is_in_game()
                         && player_matches_restriction_filter(player.id, player_filter)

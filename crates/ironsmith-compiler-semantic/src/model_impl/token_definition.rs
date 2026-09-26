@@ -52,6 +52,9 @@ pub enum TokenKeywordShape {
     FirstStrike,
     DoubleStrike,
     Hexproof,
+    Shroud,
+    /// "protection from black" / "protection from red and from white"
+    ProtectionFromColors(crate::color::ColorSet),
     Indestructible,
     Infect,
     Flash,

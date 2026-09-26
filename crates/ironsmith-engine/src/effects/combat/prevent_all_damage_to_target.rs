@@ -58,10 +58,10 @@ impl EffectExecutor for PreventAllDamageToTargetEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if !game.can_prevent_damage() {
-            return Ok(EffectOutcome::prevented());
-        }
-
+        // CR 615.12 / 614.17a: while damage can't be prevented the shield
+        // still exists and simply prevents nothing (the damage pipeline checks
+        // preventability per event), so it keeps working once the
+        // restriction ends later in its duration.
         if let Ok(objects) = resolve_objects_from_spec(game, &self.target, ctx)
             && !objects.is_empty()
         {

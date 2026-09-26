@@ -32,10 +32,10 @@ impl EffectExecutor for PreventAllCombatDamageFromEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let source_ids = resolve_objects_for_effect(game, ctx, &self.source)?;
 
-        if !game.can_prevent_damage() {
-            return Ok(EffectOutcome::resolved());
-        }
-
+        // CR 615.12 / 614.17a: while damage can't be prevented the shield
+        // still exists and simply prevents nothing (the damage pipeline checks
+        // preventability per event), so it keeps working once the
+        // restriction ends later in its duration.
         for source_id in source_ids {
             let mut filter = DamageFilter::combat();
             filter.from_specific_source = Some(source_id);

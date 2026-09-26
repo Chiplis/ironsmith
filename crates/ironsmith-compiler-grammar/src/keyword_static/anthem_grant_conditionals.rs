@@ -3398,6 +3398,11 @@ fn parse_conditional_source_prevention_and_grant(
 pub fn parse_filter_has_granted_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // "You and <permanents> have protection from ..." carries a player half
+    // this production would drop; the granted-keyword production owns it.
+    if matches!(parse_you_and_subject_protection_grant_line(tokens), Ok(Some(_))) {
+        return Ok(None);
+    }
     if let Some(abilities) = parse_conditional_source_prevention_and_grant(tokens)? {
         return Ok(Some(abilities));
     }

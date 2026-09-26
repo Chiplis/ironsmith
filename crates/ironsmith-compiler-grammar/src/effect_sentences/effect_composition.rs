@@ -1028,6 +1028,43 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
         token.lowercase_word();
     }
 
+    // "Choose any number of target creatures you control. For each of them,
+    // ..." (Twinflame): the declaration chooses targets (CR 115.1), so it must
+    // stay a target declaration rather than degrade to an untargeted choice.
+    // The chosen targets are tagged and iterated like the untargeted form.
+    if let Some(choice_shape) =
+        bundle_grammar::clause_dispatch_shapes::parse_choose_target_shape(&normalized_first)
+        && let Ok(target) = parse_target_phrase(choice_shape.target_tokens)
+        && chosen_target_collection_player_filter(&target).is_none()
+    {
+        let Some(loop_shape) = bundle_grammar::parse_for_each_chosen_shape(second) else {
+            return Ok(None);
+        };
+        let loop_body_effects = effect_sentences::parse_effect_sentence_lexed(loop_shape.body)?;
+        if loop_body_effects.is_empty() {
+            return Ok(None);
+        }
+        let choose_tag = crate::tag::CompilerReferenceTag::It.bind();
+        let mut combined = vec![
+            EffectAst::TagAffected {
+                effect: Box::new(EffectAst::subject_verb_explicit_target_only(target)),
+                tag: choose_tag.clone(),
+            },
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                tag: choose_tag,
+                effects: loop_body_effects,
+            }),
+        ];
+        if let Some(third) = third {
+            let trailing_effects = effect_sentences::parse_effect_sentence_lexed(third)?;
+            if trailing_effects.is_empty() {
+                return Ok(None);
+            }
+            combined.extend(trailing_effects);
+        }
+        return Ok(Some(combined));
+    }
+
     let Some((player, filter, count)) = parse_you_choose_objects_clause(&normalized_first)?
         .or_else(|| {
             crate::grammar::primitives::probe_shape(parse_target_player_choose_objects_clause(

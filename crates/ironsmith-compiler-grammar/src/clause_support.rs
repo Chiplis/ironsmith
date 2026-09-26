@@ -433,6 +433,10 @@ pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAct
             )),
             ProtectionTargetKind::Everything => Some(KeywordAction::ProtectionFromEverything),
             ProtectionTargetKind::AllColors => Some(KeywordAction::ProtectionFromAllColors),
+            ProtectionTargetKind::ColorsOutsideCommanderIdentity => {
+                Some(KeywordAction::ProtectionFromColorsOutsideCommanderIdentity)
+            }
+            ProtectionTargetKind::UnsupportedEachColor => None,
             ProtectionTargetKind::Named => parse_color(target.value)
                 .map(KeywordAction::ProtectionFrom)
                 .or_else(|| {

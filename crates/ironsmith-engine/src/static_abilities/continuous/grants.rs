@@ -906,7 +906,7 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
         &self,
         source: ObjectId,
         controller: PlayerId,
-        _game: &GameState,
+        game: &GameState,
     ) -> Vec<ContinuousEffect> {
         let mut effects = Vec::with_capacity(1 + self.additional_abilities.len());
         effects.push(effect_with_optional_static_condition(
@@ -914,7 +914,10 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
                 source,
                 controller,
                 self.effect_target(source),
-                Modification::AddAbilityGeneric(self.ability.clone()),
+                // "Creatures you control have protection from the chosen card
+                // type": the choice is the granting permanent's (CR 702.16a).
+                Modification::AddAbilityGeneric(self.ability.clone())
+                    .bind_chosen_protection_qualities(game, source),
             )
             .with_source_type(EffectSourceType::StaticAbility),
             &self.condition,
@@ -925,7 +928,8 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
                     source,
                     controller,
                     self.effect_target(source),
-                    Modification::AddAbilityGeneric(ability),
+                    Modification::AddAbilityGeneric(ability)
+                        .bind_chosen_protection_qualities(game, source),
                 )
                 .with_source_type(EffectSourceType::StaticAbility),
                 &self.condition,

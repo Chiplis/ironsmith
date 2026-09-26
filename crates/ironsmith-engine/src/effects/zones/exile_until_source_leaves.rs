@@ -7,7 +7,6 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::EventOutcome;
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
-use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
@@ -19,22 +18,30 @@ pub type ExileUntilDuration = ironsmith_core::ExileUntilDuration;
 /// Exile objects with an associated duration.
 pub type ExileUntilEffect = ironsmith_core::ExileUntilEffect;
 
-fn object_known_and_not_on_battlefield(
-    game: &GameState,
-    object_id: ObjectId,
-    snapshot: Option<&ObjectSnapshot>,
-) -> bool {
-    if let Some(object) = game.object(object_id) {
-        return object.zone != Zone::Battlefield;
-    }
-
-    let Some(snapshot) = snapshot else {
-        return false;
-    };
-
-    game.find_object_by_stable_id(snapshot.stable_id)
-        .and_then(|current_id| game.object(current_id))
+/// CR 610.3c / 400.7: the watched permanent has already left the battlefield
+/// if its object is gone, even if the same card has since come back as a new
+/// object (a Banisher Priest flickered in response to its own trigger).
+fn object_not_on_battlefield(game: &GameState, object_id: ObjectId) -> bool {
+    game.object(object_id)
         .is_none_or(|object| object.zone != Zone::Battlefield)
+}
+
+/// The source permanent this "until this leaves the battlefield" duration
+/// watches. A zone-change trigger follows its recorded destination object;
+/// any other source that is no longer the same object has already left.
+fn current_source_watcher(game: &GameState, ctx: &ExecutionContext) -> Option<ObjectId> {
+    let source = if game.object(ctx.source).is_some() {
+        ctx.source
+    } else if ctx
+        .triggering_event
+        .as_ref()
+        .is_some_and(|event| event.downcast::<crate::events::ZoneChangeEvent>().is_some())
+    {
+        crate::effects::helpers::resolve_source_object_id(game, ctx)?
+    } else {
+        return None;
+    };
+    (!object_not_on_battlefield(game, source)).then_some(source)
 }
 
 impl EffectExecutor for ExileUntilEffect {
@@ -55,23 +62,15 @@ impl EffectExecutor for ExileUntilEffect {
                 let Some(&watcher) = watchers.first() else {
                     return Ok(EffectOutcome::count(0));
                 };
-                if object_known_and_not_on_battlefield(
-                    game,
-                    watcher,
-                    ctx.target_snapshots.get(&watcher),
-                ) {
+                if object_not_on_battlefield(game, watcher) {
                     return Ok(EffectOutcome::count(0));
                 }
                 watcher
             } else {
-                if object_known_and_not_on_battlefield(
-                    game,
-                    ctx.source,
-                    ctx.source_snapshot.as_ref(),
-                ) {
+                let Some(watcher) = current_source_watcher(game, ctx) else {
                     return Ok(EffectOutcome::count(0));
-                }
-                ctx.source
+                };
+                watcher
             }
         } else {
             ctx.source
@@ -162,6 +161,7 @@ impl EffectExecutor for ExileUntilEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::snapshot::ObjectSnapshot;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::events::zones::matchers::WouldBeExiledMatcher;
     use crate::ids::{CardId, ObjectId, PlayerId};

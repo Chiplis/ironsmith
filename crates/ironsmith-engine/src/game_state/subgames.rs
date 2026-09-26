@@ -121,6 +121,17 @@ impl GameState {
         self.subgame_starting_procedure_pending = false;
     }
 
+    /// Whether a restart effect (CR 726) rebuilt this game and the host still
+    /// owes the new game's starting procedure (CR 103.5/103.6) and a fresh
+    /// turn structure starting at turn 1's untap step (CR 726.4).
+    pub fn restart_starting_procedure_pending(&self) -> bool {
+        self.restart_starting_procedure_pending
+    }
+
+    pub fn complete_restart_starting_procedure(&mut self) {
+        self.restart_starting_procedure_pending = false;
+    }
+
     pub fn take_subgame_just_resumed(&mut self) -> bool {
         std::mem::take(&mut self.subgame_just_resumed)
     }

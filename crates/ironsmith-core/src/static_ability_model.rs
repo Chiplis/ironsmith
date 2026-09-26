@@ -646,6 +646,13 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     },
     /// "Prevent all damage that would be dealt to you."
     PreventAllDamageToYou,
+    /// "[You] have protection from [quality]" (Absolute Virtue, Serra's
+    /// Emissary): CR 702.16b/c/e/j for a player.
+    PlayerProtectionFrom {
+        player: PlayerFilter,
+        source_filter: ObjectFilter,
+        display: String,
+    },
     /// "While an opponent is choosing targets as part of casting a spell they
     /// control or activating an ability they control, that player must choose
     /// at least one Flagbearer on the battlefield if able."
@@ -1925,6 +1932,15 @@ where
                 display,
             },
             StaticAbilityPayload::PreventAllDamageToYou => StaticAbilityPayload::PreventAllDamageToYou,
+            StaticAbilityPayload::PlayerProtectionFrom {
+                player,
+                source_filter,
+                display,
+            } => StaticAbilityPayload::PlayerProtectionFrom {
+                player,
+                source_filter,
+                display,
+            },
             StaticAbilityPayload::OpponentsMustTargetFlagbearers => {
                 StaticAbilityPayload::OpponentsMustTargetFlagbearers
             }
@@ -4460,6 +4476,27 @@ impl<
             payload: StaticAbilityPayload::OpponentsMustTargetFlagbearers,
         }
     }
+    /// A player has protection from sources matching `source_filter`
+    /// (CR 702.16): they can't be targeted, enchanted or dealt damage by
+    /// them. The filter is evaluated with the protection's source as the
+    /// filter source (so "the chosen card type" reads that permanent's choice).
+    pub fn player_protection_from(
+        player: PlayerFilter,
+        source_filter: ObjectFilter,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::PlayerProtectionFrom),
+            label: display.clone(),
+            payload: StaticAbilityPayload::PlayerProtectionFrom {
+                player,
+                source_filter,
+                display,
+            },
+        }
+    }
+
     pub fn prevent_all_damage_to_you() -> Self {
         Self {
             id: Some(StaticAbilityId::PreventAllDamageToYou),

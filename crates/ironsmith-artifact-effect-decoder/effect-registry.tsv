@@ -111,6 +111,7 @@ ForEachObjectCorrelatedResultEffect	ironsmith_core::ForEachObjectCorrelatedResul
 ForEachTaggedEffect	ironsmith_core::ForEachTaggedEffect<wire::WireEffect>
 ForEachTaggedPlayerEffect	ironsmith_core::ForEachTaggedPlayerEffect<wire::WireEffect>
 ForPlayersEffect	ironsmith_core::ForPlayersEffect<wire::WireEffect>
+GivePlayerCountersEffect	ironsmith_core::GivePlayerCountersEffect
 GainLifeEffect	ironsmith_core::GainLifeEffect
 GoadEffect	ironsmith_core::GoadEffect
 ClearGoadEffect	ironsmith_core::ClearGoadEffect

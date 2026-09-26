@@ -709,6 +709,15 @@ impl<'a> DerivedGameView<'a> {
             .is_some_and(|chars| chars.card_types.contains(&card_type))
     }
 
+    /// Haste for the {T}/{Q} activation restriction (CR 302.6): real haste,
+    /// or an "activate abilities ... as though they had haste" permission.
+    pub(crate) fn object_has_haste_for_activation(&self, object_id: ObjectId) -> bool {
+        self.object_has_static_ability_id(
+            object_id,
+            crate::static_abilities::StaticAbilityId::Haste,
+        ) || self.game.activates_abilities_as_though_haste(object_id)
+    }
+
     pub(crate) fn object_has_static_ability_id(
         &self,
         object_id: ObjectId,

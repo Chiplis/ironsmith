@@ -1152,6 +1152,19 @@ pub(super) fn can_stack_trigger_this_turn(
     let mut limits = Vec::new();
     once_per_turn_limits(condition, &mut limits);
 
+    // CR 603.2h: "Do this only once each turn" abilities trigger only if the
+    // indicated action hasn't been taken that turn. A trigger already waiting
+    // when the action is taken is stopped by the resolution gate instead.
+    if crate::effects::DoThisLimit::from_condition(
+        condition,
+        trigger.source,
+        trigger.trigger_identity,
+    )
+    .is_some_and(|limit| limit.reached(game))
+    {
+        return false;
+    }
+
     limits.iter().all(|limit| {
         verify_intervening_if(
             game,
@@ -1237,16 +1250,28 @@ fn choose_trigger_modes(
         return Some(Some(Vec::new()));
     }
 
+    // "Choose one that hasn't been chosen [this turn]" (CR 603.3c: the
+    // modes are chosen now, so earlier choices are unavailable now).
+    let restriction = crate::effects::composition::previously_chosen_mode_restriction(
+        game,
+        trigger.source,
+        effects.iter(),
+    );
+    let mode_available = |i: usize| {
+        !crate::effects::composition::restricted_mode_was_chosen(
+            game,
+            trigger.source,
+            restriction,
+            i,
+        ) && mode_is_legal_for_trigger(game, trigger, &effects, i)
+    };
+
     let mode_options: Vec<crate::decisions::specs::ModeOption> = modal_spec
         .mode_descriptions
         .iter()
         .enumerate()
         .map(|(i, desc)| {
-            crate::decisions::specs::ModeOption::with_legality(
-                i,
-                desc.clone(),
-                mode_is_legal_for_trigger(game, trigger, &effects, i),
-            )
+            crate::decisions::specs::ModeOption::with_legality(i, desc.clone(), mode_available(i))
         })
         .collect();
 
@@ -1276,7 +1301,7 @@ fn choose_trigger_modes(
     let mut valid = Vec::new();
     let mut selected_point_total = 0usize;
     for idx in chosen {
-        if !mode_is_legal_for_trigger(game, trigger, &effects, idx) {
+        if !mode_available(idx) {
             continue;
         }
         if !modal_spec.allow_repeated_modes && valid.contains(&idx) {
@@ -2768,16 +2793,22 @@ mod tests {
         };
         let life = |game: &GameState| game.player(alice).expect("alice").life;
         let mut expected = Vec::new();
-        for _ in 0..3 {
+        for round in 0..3 {
             let mut trigger_queue = TriggerQueue::new();
             for trigger in crate::triggers::check_triggers(&game, &event) {
                 trigger_queue.add(trigger);
             }
             put_triggers_on_stack(&mut game, &mut trigger_queue)
                 .expect("the limited ability still triggers");
-            assert_eq!(game.stack.len(), 1, "the limit never stops it triggering");
-            crate::game_loop::resolve_stack_entry_with(&mut game, &mut dm)
-                .expect("the limited ability resolves");
+            // CR 603.2h: once the action was taken this turn, the ability
+            // no longer triggers.
+            if round < 2 {
+                assert_eq!(game.stack.len(), 1, "triggers until the action is taken");
+                crate::game_loop::resolve_stack_entry_with(&mut game, &mut dm)
+                    .expect("the limited ability resolves");
+            } else {
+                assert!(game.stack.is_empty(), "no trigger after the action was taken");
+            }
             expected.push((dm.prompts, life(&game)));
         }
         assert_eq!(

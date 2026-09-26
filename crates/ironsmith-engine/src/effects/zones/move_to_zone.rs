@@ -1,6 +1,6 @@
 //! Move to zone effect implementation.
 
-use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
+use crate::combat_state::{AttackTarget, AttackerInfo};
 use crate::decisions::context::{OrderContext, SelectOptionsContext, SelectableOption};
 use crate::effect::{EffectOutcome, OutcomeObjectMemory};
 use crate::effects::helpers::{
@@ -263,103 +263,6 @@ fn matching_cost_candidate_count(
         .count()
 }
 
-fn enters_attacking_targets(game: &GameState, combat: &CombatState) -> Vec<AttackTarget> {
-    let mut defending_players = Vec::new();
-    for attacker in &combat.attackers {
-        let defending_player =
-            crate::combat_state::defending_player_for_attack_target(game, &attacker.target);
-        if let Some(player) = defending_player
-            && !defending_players.contains(&player)
-        {
-            defending_players.push(player);
-        }
-    }
-
-    let all_effects = game.all_continuous_effects();
-    let mut targets = Vec::new();
-    for defender in defending_players {
-        targets.push(AttackTarget::Player(defender));
-        for &object_id in &game.battlefield {
-            let Some(object) = game.object(object_id) else {
-                continue;
-            };
-            if game.controller_of(object) == defender
-                && object.zone == Zone::Battlefield
-                && game.object_has_card_type_with_effects(
-                    object_id,
-                    crate::types::CardType::Planeswalker,
-                    &all_effects,
-                )
-            {
-                targets.push(AttackTarget::Planeswalker(object_id));
-            } else if game.object_has_card_type_with_effects(
-                object_id,
-                crate::types::CardType::Battle,
-                &all_effects,
-            ) && game.battle_protector(object_id) == Some(defender)
-            {
-                targets.push(AttackTarget::Battle(object_id));
-            }
-        }
-    }
-    targets
-}
-
-fn attack_target_description(game: &GameState, target: &AttackTarget) -> String {
-    match target {
-        AttackTarget::Player(player) => game
-            .player(*player)
-            .map(|player| player.name.to_string())
-            .unwrap_or_else(|| format!("player {}", player.0)),
-        AttackTarget::Planeswalker(object_id) => game
-            .object(*object_id)
-            .map(|object| object.name.to_string())
-            .unwrap_or_else(|| format!("planeswalker #{}", object_id.0)),
-        AttackTarget::Battle(object_id) => game
-            .object(*object_id)
-            .map(|object| object.name.to_string())
-            .unwrap_or_else(|| format!("battle #{}", object_id.0)),
-        AttackTarget::Nothing { .. } => "nothing".to_string(),
-    }
-}
-
-fn choose_enters_attacking_target(
-    game: &GameState,
-    ctx: &mut ExecutionContext<'_>,
-    moved_id: crate::ids::ObjectId,
-) -> Option<AttackTarget> {
-    let combat = game.combat.as_ref()?;
-    let targets = enters_attacking_targets(game, combat);
-    if targets.len() <= 1 {
-        return targets.first().cloned();
-    }
-
-    let options = targets
-        .iter()
-        .enumerate()
-        .map(|(index, target)| {
-            crate::decisions::DisplayOption::new(index, attack_target_description(game, target))
-        })
-        .collect();
-    let chooser = game
-        .object(moved_id)
-        .map(|object| game.controller_of(object))
-        .unwrap_or(ctx.controller);
-    let source = ctx.source;
-    let selected = crate::decisions::make_decision(
-        game,
-        &mut *ctx.decision_maker,
-        chooser,
-        Some(source),
-        crate::decisions::ChoiceSpec::single(source, options),
-    );
-    let selected_index = selected.into_iter().next().unwrap_or(0);
-    targets
-        .get(selected_index)
-        .cloned()
-        .or_else(|| targets.first().cloned())
-}
-
 impl EffectExecutor for MoveToZoneEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
@@ -389,6 +292,51 @@ impl EffectExecutor for MoveToZoneEffect {
     }
 
     fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        // CR 603.10a: objects this instruction moves together share one
+        // pre-event look-back, so a leaves-the-battlefield observer moved in
+        // the same event sees every other object leave.
+        let pinned_lookback = (self.zone != Zone::Battlefield && (!self.target.is_single() || matches!(self.target.base(), ChooseSpec::Tagged(_))))
+            && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
+        let outcome = self.execute_with_shared_lookback(game, ctx);
+        crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned_lookback);
+        outcome
+    }
+
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        if self.target.is_target() {
+            Some(&self.target)
+        } else {
+            None
+        }
+    }
+
+    fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
+        if self.target.is_target() {
+            Some(self.target.count())
+        } else {
+            None
+        }
+    }
+
+    fn target_description(&self) -> &'static str {
+        "target to move"
+    }
+}
+
+trait SharedLookbackExecute {
+    fn execute_with_shared_lookback(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError>;
+}
+
+impl SharedLookbackExecute for MoveToZoneEffect {
+    fn execute_with_shared_lookback(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
@@ -694,7 +642,9 @@ impl EffectExecutor for MoveToZoneEffect {
                                 let targets = attack_targets_for_player(game, attack_player);
                                 choose_attack_target_for_player(game, ctx, attack_player, &targets)
                             } else {
-                                choose_enters_attacking_target(game, ctx, new_id)
+                                crate::effects::combat::choose_enters_attacking_target(
+                                    game, ctx, new_id,
+                                )
                             };
                             if let Some(target) = target
                                 && let Some(combat) = game.combat.as_mut()
@@ -759,26 +709,6 @@ impl EffectExecutor for MoveToZoneEffect {
             return Ok(outcome);
         }
         Ok(EffectOutcome::target_invalid())
-    }
-
-    fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        if self.target.is_target() {
-            Some(&self.target)
-        } else {
-            None
-        }
-    }
-
-    fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
-        if self.target.is_target() {
-            Some(self.target.count())
-        } else {
-            None
-        }
-    }
-
-    fn target_description(&self) -> &'static str {
-        "target to move"
     }
 }
 

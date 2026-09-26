@@ -2069,10 +2069,7 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
                 }
                 if view.object_has_card_type(permanent_id, CardType::Creature)
                     && game.is_summoning_sick(permanent_id)
-                    && !view.object_has_static_ability_id(
-                        permanent_id,
-                        crate::static_abilities::StaticAbilityId::Haste,
-                    )
+                    && !view.object_has_haste_for_activation(permanent_id)
                 {
                     if let Some(perf_ctx) = perf_ctx {
                         perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
@@ -2089,10 +2086,7 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
             if cost.requires_untap()
                 && view.object_has_card_type(permanent_id, CardType::Creature)
                 && game.is_summoning_sick(permanent_id)
-                && !view.object_has_static_ability_id(
-                    permanent_id,
-                    crate::static_abilities::StaticAbilityId::Haste,
-                )
+                && !view.object_has_haste_for_activation(permanent_id)
             {
                 if let Some(perf_ctx) = perf_ctx {
                     perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());

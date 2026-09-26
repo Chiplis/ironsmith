@@ -637,3 +637,123 @@ pub(super) fn opponents_sacrifice_or_discard_damage(
 
     Ok(Some(vec![offer, consequence]))
 }
+
+/// "For each creature exiled this way, its controller searches their library
+/// for a basic land card." followed by "Those players put those cards onto
+/// the battlefield tapped, then shuffle." (Winds of Abandon): the second
+/// sentence completes each iterated search. "Those cards" are the searched
+/// cards, not the exiled creatures, and "those players" are the searchers, so
+/// each player's found card enters tapped and that player shuffles.
+pub(super) fn for_each_search_then_those_players_put_onto_battlefield(
+    first: &SentenceInput,
+    second: &SentenceInput,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let second_words = crate::lexer::token_word_refs(second.lowered());
+    let tapped = if crate::word_primitives::parse_any_sequence_complete(
+        &second_words,
+        &[&[
+            "those",
+            "players",
+            "put",
+            "those",
+            "cards",
+            "onto",
+            "the",
+            "battlefield",
+            "tapped",
+            "then",
+            "shuffle",
+        ]],
+    ) {
+        true
+    } else if crate::word_primitives::parse_any_sequence_complete(
+        &second_words,
+        &[&[
+            "those",
+            "players",
+            "put",
+            "those",
+            "cards",
+            "onto",
+            "the",
+            "battlefield",
+            "then",
+            "shuffle",
+        ]],
+    ) {
+        false
+    } else {
+        return Ok(None);
+    };
+    let first_words = crate::lexer::token_word_refs(first.lowered());
+    if first_words.first() != Some(&"for") || first_words.get(1) != Some(&"each") {
+        return Ok(None);
+    }
+
+    let Some(mut effects) =
+        crate::effect_sentences::parse_for_each_exiled_this_way_sentence(first.lowered())?
+    else {
+        return Ok(None);
+    };
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects: body, .. })] =
+        effects.as_mut_slice()
+    else {
+        return Ok(None);
+    };
+    // The iterated body may be guarded by the iterated filter ("for each
+    // creature exiled this way" checks the object's last-known type).
+    let guarded = matches!(
+        body.as_slice(),
+        [EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_false, .. })]
+            if if_false.is_empty()
+    );
+    let body = if guarded {
+        let EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. }) =
+            &mut body[0]
+        else {
+            return Ok(None);
+        };
+        if_true
+    } else {
+        body
+    };
+    let [
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count,
+            count_value,
+            player,
+            zones,
+            search_mode: Some(search_mode),
+            ..
+        }),
+    ] = body.as_slice()
+    else {
+        return Ok(None);
+    };
+    if zones.as_slice() != [Zone::Library] {
+        return Ok(None);
+    }
+    // CR 701.23: each searching player puts the card they found onto the
+    // battlefield (under that player's control), then shuffles: the iterated
+    // search gains the destination and shuffle the second sentence supplies.
+    let search = EffectAst::subject_verb_search_library(
+        filter.clone(),
+        Zone::Battlefield,
+        *player,
+        *player,
+        *search_mode,
+        false,
+        None,
+        true,
+        *count,
+        count_value.clone(),
+        None,
+        crate::effect::SearchResultReferenceSurface::ThatCard,
+        false,
+        tapped,
+        false,
+    );
+    *body = vec![search];
+    Ok(Some(effects))
+}

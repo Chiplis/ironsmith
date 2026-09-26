@@ -68,17 +68,29 @@ impl EffectExecutor for ExchangeZonesEffect {
         let from_zone2 = Self::zone_objects(game, player, self.zone2);
         let mut moved = Vec::new();
 
-        for object_id in from_zone1 {
-            let Some(new_id) = game.move_object_by_effect(object_id, self.zone2) else {
-                return Ok(EffectOutcome::prevented());
-            };
-            moved.push(new_id);
-        }
-        for object_id in from_zone2 {
-            let Some(new_id) = game.move_object_by_effect(object_id, self.zone1) else {
-                return Ok(EffectOutcome::prevented());
-            };
-            moved.push(new_id);
+        // CR 614.1: each card still changes zones through the replacement
+        // pipeline (Rest in Peace, a commander's CR 903.9b choice), so one
+        // replaced card doesn't stop the rest of the exchange.
+        let moves = from_zone1
+            .into_iter()
+            .map(|object_id| (object_id, self.zone1, self.zone2))
+            .chain(
+                from_zone2
+                    .into_iter()
+                    .map(|object_id| (object_id, self.zone2, self.zone1)),
+            )
+            .collect::<Vec<_>>();
+        for (object_id, from, to) in moves {
+            if let crate::events::processing::EventOutcome::Proceed(result) = super::apply_zone_change(
+                game,
+                object_id,
+                from,
+                to,
+                ctx.cause.clone(),
+                &mut *ctx.decision_maker,
+            ) {
+                moved.extend(result.new_object_ids);
+            }
         }
 
         Ok(EffectOutcome::with_objects(moved))

@@ -2683,6 +2683,9 @@ fn build_registry_card_record_with_explicit_includes(
     {
         metadata_lines.push(format!("Type: {}", type_line.trim()));
     }
+    if let Some(line) = color_indicator_metadata_line(card, face) {
+        metadata_lines.push(line);
+    }
     if let Some(set_name) = first_printed_set_name {
         metadata_lines.push(format!("First printed set: {set_name}"));
     }
@@ -3004,6 +3007,9 @@ fn build_card_payload_for_face(card: &Value, face_index: usize) -> Option<CardPa
     {
         metadata_lines.push(format!("Type: {}", type_line.trim()));
     }
+    if let Some(line) = color_indicator_metadata_line(card, Some(face)) {
+        metadata_lines.push(line);
+    }
     if let Some(set_name) = first_printed_set_name {
         metadata_lines.push(format!("First printed set: {set_name}"));
     }
@@ -3080,10 +3086,33 @@ fn pick_field_preferring_face(card: &Value, face: Option<&Value>, key: &str) -> 
     card.get(key).and_then(value_to_string)
 }
 
+/// The "Color indicator: ..." metadata line for a face's Scryfall
+/// `color_indicator` (CR 204). The face's own value wins; a single-faced card
+/// keeps it on the root object.
+fn color_indicator_metadata_line(card: &Value, face: Option<&Value>) -> Option<String> {
+    let letters = face
+        .and_then(|value| value.get("color_indicator"))
+        .or_else(|| card.get("color_indicator"))
+        .and_then(Value::as_array)?;
+    let names = [
+        ("W", "White"),
+        ("U", "Blue"),
+        ("B", "Black"),
+        ("R", "Red"),
+        ("G", "Green"),
+    ]
+    .into_iter()
+    .filter(|(letter, _)| letters.iter().any(|value| value.as_str() == Some(*letter)))
+    .map(|(_, name)| name)
+    .collect::<Vec<_>>();
+    (!names.is_empty()).then(|| format!("Color indicator: {}", names.join(", ")))
+}
+
 fn linked_face_layout_from_card(card: &Value) -> Option<LinkedFaceLayout> {
     match card.get("layout").and_then(Value::as_str).map(str::trim) {
         Some("transform") => Some(LinkedFaceLayout::TransformLike),
         Some("split") => Some(LinkedFaceLayout::Split),
+        Some("flip") => Some(LinkedFaceLayout::Flip),
         _ => None,
     }
 }

@@ -67,7 +67,7 @@ pub fn calculate_convoke_creatures_to_tap(
     spell: &crate::object::Object,
     base_cost: &crate::mana::ManaCost,
 ) -> Vec<crate::ids::ObjectId> {
-    if !has_convoke(spell) {
+    if !spell_has_convoke(game, spell) {
         return Vec::new();
     }
 
@@ -80,7 +80,7 @@ pub fn calculate_convoke_creatures_to_tap(
     totals.add_generic_reduction(affinity_for_artifacts_reduction(game, player, spell));
     cost_after_reductions = totals.apply(&cost_after_reductions);
 
-    let has_delve_ability = has_delve(spell);
+    let has_delve_ability = spell_has_delve(game, spell);
 
     if has_delve_ability {
         let graveyard_count = count_cards_in_graveyard(game, player);
@@ -189,7 +189,7 @@ pub fn calculate_improvise_artifacts_to_tap(
     spell: &crate::object::Object,
     base_cost: &crate::mana::ManaCost,
 ) -> Vec<crate::ids::ObjectId> {
-    if !has_improvise(spell) {
+    if !spell_has_improvise(game, spell) {
         return Vec::new();
     }
 
@@ -202,14 +202,14 @@ pub fn calculate_improvise_artifacts_to_tap(
     totals.add_generic_reduction(affinity_for_artifacts_reduction(game, player, spell));
     cost_after_reductions = totals.apply(&cost_after_reductions);
 
-    let has_delve_ability = has_delve(spell);
+    let has_delve_ability = spell_has_delve(game, spell);
 
     if has_delve_ability {
         let graveyard_count = count_cards_in_graveyard(game, player);
         cost_after_reductions = cost_after_reductions.reduce_generic(graveyard_count);
     }
 
-    let has_convoke_ability = has_convoke(spell);
+    let has_convoke_ability = spell_has_convoke(game, spell);
 
     if has_convoke_ability {
         let (_, convoked_cost) = calculate_convoke_cost(game, player, &cost_after_reductions);

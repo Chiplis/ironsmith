@@ -29,6 +29,15 @@ const DURING_OPPONENTS_TURN_PREFIXES: &[&[&str]] = &[
     &["activate", "only", "during", "an", "opponents", "turn"],
     &["activate", "only", "during", "opponents", "turn"],
 ];
+const DURING_OPPONENTS_UPKEEP_PREFIXES: &[&[&str]] = &[
+    &["activate", "only", "during", "an", "opponents", "upkeep"],
+    &["activate", "only", "during", "opponents", "upkeep"],
+];
+const DURING_ANY_UPKEEP_PREFIXES: &[&[&str]] = &[
+    &["activate", "only", "during", "any", "upkeep", "step"],
+    &["activate", "only", "during", "any", "upkeep"],
+    &["activate", "only", "during", "each", "upkeep"],
+];
 const ANY_PLAYER_DURING_THEIR_TURN_BEFORE_END_STEP: &[&str] = &[
     "any", "player", "may", "activate", "this", "ability", "but", "only", "during", "their",
     "turn", "before", "the", "end", "step",
@@ -86,6 +95,18 @@ pub fn parse_activate_only_timing_lexed(tokens: &[OwnedLexToken]) -> Option<Acti
     let marker = parse_activate_only_timing_marker(tokens);
     if matches_any_prefix_tokens(tokens, ACTIVATE_ONLY_SORCERY_PREFIXES) {
         return Some(ActivationTiming::SorcerySpeed);
+    }
+    // Upkeep windows are checked before the once-each-turn marker so a
+    // combined "during your upkeep and only once each turn" keeps its step
+    // window; the per-turn limit is added by the restriction fact builder.
+    if matches_prefix_tokens(tokens, &["activate", "only", "during", "your", "upkeep"]) {
+        return Some(ActivationTiming::DuringYourUpkeep);
+    }
+    if matches_any_prefix_tokens(tokens, DURING_OPPONENTS_UPKEEP_PREFIXES) {
+        return Some(ActivationTiming::DuringOpponentsUpkeep);
+    }
+    if matches_any_prefix_tokens(tokens, DURING_ANY_UPKEEP_PREFIXES) {
+        return Some(ActivationTiming::DuringAnyUpkeep);
     }
     if matches_prefix_tokens(tokens, &["activate", "only", "once", "each", "turn"])
         || marker == Some(ActivateOnlyTimingMarker::OnceEachTurn)
@@ -257,15 +278,18 @@ fn parse_once_each_turn_and_if_activation_condition(
         return None;
     }
     let left = words.get(..split)?;
-    if !matches!(
-        left,
+    // "Activate only once and only if ..." (Goblin Ski Patrol) is the
+    // lifetime limit for this object (CR 602.5b), not a per-turn limit.
+    let limit = match left {
         ["activate", "only", "once", "each", "turn"]
-            | [
-                "activate", "this", "ability", "only", "once", "each", "turn"
-            ]
-    ) {
-        return None;
-    }
+        | ["activate", "this", "ability", "only", "once", "each", "turn"] => {
+            PredicateAst::MaxActivationsPerTurn(1)
+        }
+        ["activate", "only", "once"] | ["activate", "this", "ability", "only", "once"] => {
+            PredicateAst::MaxActivationsPerObject(1)
+        }
+        _ => return None,
+    };
 
     let right_tokens = token_slice_for_words(tokens, &view, split + 3, words.len())?;
     let mut prefixed_right = vec![
@@ -275,10 +299,7 @@ fn parse_once_each_turn_and_if_activation_condition(
     ];
     prefixed_right.extend_from_slice(right_tokens);
     let right = parse_activation_condition_lexed(&prefixed_right)?;
-    Some(PredicateAst::And(
-        Box::new(PredicateAst::MaxActivationsPerTurn(1)),
-        Box::new(right),
-    ))
+    Some(PredicateAst::And(Box::new(limit), Box::new(right)))
 }
 
 fn parse_source_entered_this_turn_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {

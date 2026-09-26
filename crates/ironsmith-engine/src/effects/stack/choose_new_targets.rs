@@ -64,7 +64,7 @@ impl EffectExecutor for ChooseNewTargetsEffect {
                 continue;
             }
             let requirements: Vec<TargetRequirementContext> =
-                slots.into_iter().map(|slot| slot.requirement).collect();
+                slots.iter().map(|slot| slot.requirement.clone()).collect();
 
             let chooser = if let Some(filter) = &self.chooser {
                 resolve_player_filter(game, filter, ctx)?
@@ -100,6 +100,11 @@ impl EffectExecutor for ChooseNewTargetsEffect {
                 return Ok(EffectOutcome::count(0));
             }
             let Some(new_targets) = normalize_targets_for_requirements(&requirements, proposed)
+                .filter(|targets| {
+                    super::retarget_stack_object::retarget_proposal_respects_other_targets(
+                        &slots, targets,
+                    )
+                })
             else {
                 if self.may {
                     continue;
@@ -119,6 +124,12 @@ impl EffectExecutor for ChooseNewTargetsEffect {
                 }
                 game.stack[stack_idx] = updated_entry;
                 changed += 1;
+                let final_targets = game.stack[stack_idx].targets.clone();
+                game.drop_pending_stale_becomes_targeted_events(
+                    object_id,
+                    entry.is_ability,
+                    &final_targets,
+                );
                 // Only targets that are new become the target (CR 115.7);
                 // unchanged ones were targeted when the object was created.
                 // Each distinct new target becomes a target once (CR 115.3).

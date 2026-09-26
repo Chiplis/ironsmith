@@ -89,6 +89,10 @@ pub enum CounterActionAst {
     ExperienceCounters {
         count: Value,
     },
+    /// "gets N rad counters" (CR 122.1i, 727).
+    RadCounters {
+        count: Value,
+    },
     TicketCounters {
         count: Value,
     },

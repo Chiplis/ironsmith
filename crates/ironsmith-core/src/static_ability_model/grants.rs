@@ -531,6 +531,13 @@ impl OptionalLifeAdditionalCost {
     }
 }
 
+/// Serde default for a missing `colored_only` flag (see
+/// [`CostReductionManaCost::colored_only`]).
+#[cfg(feature = "serde")]
+fn colored_only_default_for_stale_data() -> bool {
+    true
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 /// The condition guarding this static ability, over whatever vocabulary the
@@ -546,7 +553,12 @@ pub struct CostReductionManaCost<Cond = Condition> {
     /// "This effect reduces only the amount of colored mana you pay." Without
     /// it, the part of a colored reduction the cost doesn't require reduces
     /// generic mana instead (CR 118.7b-c).
-    #[cfg_attr(feature = "serde", serde(default))]
+    ///
+    /// A missing field defaults to `true`: payloads serialized before this
+    /// flag existed never spilled a colored reduction onto generic mana, so
+    /// stale compiled data (Morophon, the Defilers) keeps that safe behaviour
+    /// until it is re-baked. Current payloads always write the field.
+    #[cfg_attr(feature = "serde", serde(default = "colored_only_default_for_stale_data"))]
     pub colored_only: bool,
 }
 
@@ -770,8 +782,9 @@ pub struct ThisSpellCostReductionManaCost<Cond> {
     pub cost: ManaCost,
     pub repetitions: Option<Value>,
     pub condition: Cond,
-    /// See [`CostReductionManaCost::colored_only`] (CR 118.7b-c).
-    #[cfg_attr(feature = "serde", serde(default))]
+    /// See [`CostReductionManaCost::colored_only`] (CR 118.7b-c), including
+    /// why a missing field defaults to `true`.
+    #[cfg_attr(feature = "serde", serde(default = "colored_only_default_for_stale_data"))]
     pub colored_only: bool,
 }
 

@@ -2510,6 +2510,10 @@ pub struct CounterPutOnTrigger {
     pub count: CountMode,
     /// "on a permanent or player" — counters placed on players match too.
     pub include_players: bool,
+    /// "on one or more [objects]": counters one instruction puts on several
+    /// matching objects are one trigger event (CR 603.2c).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub one_or_more_objects: bool,
 }
 
 impl CounterPutOnTrigger {
@@ -2520,7 +2524,13 @@ impl CounterPutOnTrigger {
             source_controller: None,
             count: CountMode::One,
             include_players: false,
+            one_or_more_objects: false,
         }
+    }
+
+    pub fn one_or_more_objects(mut self) -> Self {
+        self.one_or_more_objects = true;
+        self
     }
 
     pub fn include_players(mut self) -> Self {

@@ -1139,6 +1139,23 @@ pub(super) fn apply_modes_response(
                 "Selected mode combination has no legal targets".to_string(),
             ));
         }
+        let restriction = crate::effects::composition::previously_chosen_mode_restriction(
+            game,
+            pending.source,
+            pending.effects.all_effects(),
+        );
+        if modes.iter().any(|&mode| {
+            crate::effects::composition::restricted_mode_was_chosen(
+                game,
+                pending.source,
+                restriction,
+                mode,
+            )
+        }) {
+            return Err(GameLoopError::InvalidState(
+                "Selected mode was already chosen".to_string(),
+            ));
+        }
 
         pending.chosen_modes = Some(modes.to_vec());
         pending.remaining_requirements = extract_target_requirements_from_program_with_modes(
@@ -2774,15 +2791,10 @@ pub(crate) fn propose_spell_cast(
                 let other_def = disturb_other_def
                     .as_ref()
                     .expect("disturb linked face should be resolved before mutating the spell");
-                let front_colors = obj.colors();
+                // The spell has only its back face's characteristics, whose
+                // color comes from its own color indicator (CR 712.8e, 204).
                 obj.apply_definition_face(other_def);
                 obj.cast_alternative_method = Some(Box::new(method.clone()));
-                if obj.mana_cost.is_none()
-                    && obj.color_override.is_none()
-                    && !front_colors.is_empty()
-                {
-                    obj.color_override = Some(front_colors);
-                }
             }
 
             if let crate::alternative_cast::AlternativeCastingMethod::Overload {

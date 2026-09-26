@@ -51,6 +51,7 @@ pub use permanent_tapped::PermanentTappedEvent;
 pub use permanent_untapped::PermanentUntappedEvent;
 pub use player_loses_game::{PlayerLosesGameEvent, WouldLoseGameMatcher};
 pub use players_finished_voting::{PlayerVote, PlayersFinishedVotingEvent};
+pub(crate) use players_finished_voting::vote_event_players_are_opponents;
 pub use search_library::SearchLibraryEvent;
 pub use shuffle_library::ShuffleLibraryEvent;
 pub use spell_countered::SpellCounteredEvent;

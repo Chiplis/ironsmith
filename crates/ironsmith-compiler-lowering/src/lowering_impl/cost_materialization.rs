@@ -640,12 +640,17 @@ fn lower_materialization_costs(
                         "sacrifice_cost_{sacrifice_tag_id}"
                     ));
                     sacrifice_tag_id += 1;
-                    costs.push(Cost::validated_effect(Effect::choose_objects(
+                    let aggregate_constraint = filter.target_set_aggregate_constraint.take();
+                    let mut choose = crate::effects::ChooseObjectsEffect::new(
                         filter,
                         *count,
                         PlayerFilter::You,
                         tag.clone(),
-                    )));
+                    );
+                    if let Some(constraint) = aggregate_constraint {
+                        choose = choose.with_aggregate_constraint(*constraint);
+                    }
+                    costs.push(Cost::validated_effect(Effect::new(choose)));
                     costs.push(Cost::validated_effect(Effect::sacrifice_player(
                         ObjectFilter::tagged(tag.clone()),
                         crate::effect::Value::Count(ObjectFilter::tagged(tag)),

@@ -164,6 +164,7 @@ fn compile_source(source: &CardSourceFile) -> Result<Vec<CompiledCardArtifact>, 
             let layout = match layout.as_str() {
                 "split" => LinkedFaceLayout::Split,
                 "prepare" => LinkedFaceLayout::Prepare,
+                "flip" => LinkedFaceLayout::Flip,
                 _ => LinkedFaceLayout::TransformLike,
             };
             faces

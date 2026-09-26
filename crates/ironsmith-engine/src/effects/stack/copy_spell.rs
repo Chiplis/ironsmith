@@ -193,6 +193,17 @@ pub(crate) fn create_stack_copy_from_object(
     copy_entry.saddle_contributors = original_entry.saddle_contributors.clone();
     copy_entry.tagged_objects = original_entry.tagged_objects.clone();
     copy_entry.effect_outcomes = original_entry.effect_outcomes.clone();
+    // A copy of a triggered ability refers to the same trigger event as the
+    // original ("that much", "that player", intervening-if recheck), and a
+    // copy of an activated ability keeps its activation context (CR 707.10,
+    // 603.4, 603.7c).
+    copy_entry.triggering_event = original_entry.triggering_event.clone();
+    copy_entry.event_value_amount = original_entry.event_value_amount;
+    copy_entry.trigger_identity = original_entry.trigger_identity;
+    copy_entry.ability_index = original_entry.ability_index;
+    copy_entry.intervening_if = original_entry.intervening_if.clone();
+    copy_entry.mana_usage_restrictions = original_entry.mana_usage_restrictions.clone();
+    copy_entry.mana_source_chosen_creature_type = original_entry.mana_source_chosen_creature_type;
     if !copy_entry.remap_target_distributions(&original_entry.targets) {
         return Err(ExecutionError::InvalidTarget);
     }
@@ -219,6 +230,35 @@ pub(crate) fn create_stack_copy_from_object(
 
     game.stack.push(copy_entry);
     Ok(copy_id)
+}
+
+/// Remove the stack object that stood in for a copy of an ability once that
+/// copy leaves the stack.
+///
+/// A copied ability is represented by a spell-copy object in the stack zone
+/// (so it can be retargeted and named like any stack object). Unlike a spell
+/// copy it never moves to another zone, so CR 704.5e never sees it: without
+/// this the object would linger for the rest of the game. The object is kept
+/// while any stack entry still uses it (an ability of a spell copy, such as
+/// a copied Lightning Storm, uses the spell copy itself).
+pub(crate) fn discard_departed_ability_copy_object(game: &mut GameState, entry: &StackEntry) {
+    if !entry.is_ability
+        || entry
+            .source_snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.object_id == entry.object_id)
+        || game
+            .stack
+            .iter()
+            .any(|other| other.object_id == entry.object_id)
+    {
+        return;
+    }
+    if game.object(entry.object_id).is_some_and(|object| {
+        object.kind == crate::object::ObjectKind::SpellCopy && object.zone == Zone::Stack
+    }) {
+        game.remove_object(entry.object_id);
+    }
 }
 
 pub(crate) fn create_stack_copy(

@@ -280,6 +280,7 @@ fn replace_creature_death_event_amounts(effects: &mut [EffectAst]) {
                 | SubjectVerbActionAst::Counters(CounterActionAst::PoisonCounters { count })
                 | SubjectVerbActionAst::Counters(CounterActionAst::EnergyCounters { count })
                 | SubjectVerbActionAst::Counters(CounterActionAst::ExperienceCounters { count })
+                | SubjectVerbActionAst::Counters(CounterActionAst::RadCounters { count })
                 | SubjectVerbActionAst::Counters(CounterActionAst::TicketCounters { count })
                 | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy {
                     amount: count,
@@ -3769,6 +3770,9 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
         )),
         KeywordAction::ProtectionFromChosenColor => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::ChosenColor,
+        )),
+        KeywordAction::ProtectionFromColorsOutsideCommanderIdentity => Some(StaticAbility::protection(
+            crate::ability::ProtectionFrom::ColorsOutsideCommanderIdentity,
         )),
         KeywordAction::ProtectionFromFilter(filter) => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::Permanents(filter),

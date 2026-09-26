@@ -78,10 +78,12 @@ fn additional_vote_modifiers_from_static_abilities(
         .iter()
         .filter_map(|&id| game.object(id))
         .filter(|obj| game.controller_of(obj) == player_id)
-        .flat_map(|obj| obj.abilities.iter())
-        .filter_map(|ability| match &ability.kind {
-            crate::ability::AbilityKind::Static(static_ability) => Some(static_ability),
-            _ => None,
+        // Current characteristics: an ability lost to Humility or gained
+        // from an effect counts as it is now (CR 613.1f).
+        .flat_map(|obj| {
+            game.calculated_characteristics_arc(obj.id)
+                .map(|calc| calc.static_abilities.to_vec())
+                .unwrap_or_default()
         })
         .fold((0u32, 0u32), |(mandatory, optional), ability| {
             (
@@ -407,6 +409,12 @@ fn queue_vote_events(
         option_names,
     )
     .with_player_tags(build_option_voter_tags(effect, votes));
+    let voter_teams: Vec<(PlayerId, usize)> = game
+        .players
+        .iter()
+        .filter_map(|player| game.team_index_for(player.id).map(|team| (player.id, team)))
+        .collect();
+    let voting_event = voting_event.with_voter_teams(voter_teams.clone());
 
     let vote_action_event = KeywordActionEvent::new(
         KeywordActionKind::Vote,
@@ -415,6 +423,7 @@ fn queue_vote_events(
         votes.len() as u32,
     )
     .with_votes(votes.to_vec())
+    .with_voter_teams(voter_teams)
     .with_player_tags(
         voting_event
             .player_tags

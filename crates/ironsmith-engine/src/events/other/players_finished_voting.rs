@@ -43,9 +43,37 @@ pub struct PlayersFinishedVotingEvent {
     ///
     /// Common tags include:
     /// - "voted_with_you": opponents who voted for at least one choice the controller voted for
-    /// - "voted_against_you": opponents who voted only for choices the controller didn't vote for
+    /// - "voted_against_you": opponents who voted for at least one choice the controller didn't vote for
     /// - "voted_for:{option_name}": players who voted for a specific option
     pub player_tags: HashMap<TagKey, Vec<PlayerId>>,
+    /// Team of each player when the game has teams, sorted by player. Empty
+    /// without a team configuration (every other player is an opponent).
+    /// Vote triggers that say "each opponent who voted ..." read it.
+    pub voter_teams: Vec<(PlayerId, usize)>,
+}
+
+/// Whether `first` and `second` are opponents given the team assignment
+/// recorded on a vote event (see [`GameState::are_opponents`]).
+pub(crate) fn vote_event_players_are_opponents(
+    voter_teams: &[(PlayerId, usize)],
+    first: PlayerId,
+    second: PlayerId,
+) -> bool {
+    if first == second {
+        return false;
+    }
+    if voter_teams.is_empty() {
+        return true;
+    }
+    let team_of = |player: PlayerId| {
+        voter_teams
+            .iter()
+            .find(|(candidate, _)| *candidate == player)
+            .map(|(_, team)| *team)
+    };
+    team_of(first)
+        .zip(team_of(second))
+        .is_some_and(|(first_team, second_team)| first_team != second_team)
 }
 
 impl PlayersFinishedVotingEvent {
@@ -53,7 +81,7 @@ impl PlayersFinishedVotingEvent {
     ///
     /// This constructor automatically computes the standard player tags:
     /// - "voted_with_you": opponents who share at least one vote with the controller
-    /// - "voted_against_you": opponents who share no votes with the controller
+    /// - "voted_against_you": players with a vote for a choice the controller didn't vote for
     pub fn new(
         source: ObjectId,
         controller: PlayerId,
@@ -88,11 +116,12 @@ impl PlayersFinishedVotingEvent {
                 .map(|v| v.option_index)
                 .collect();
 
+            // A player with several votes can have voted both for a choice
+            // the controller voted for and for one they didn't (CR 701.38d).
             if !controller_options.is_disjoint(&player_options) {
-                // They share at least one vote
                 voted_with_you.push(player);
-            } else {
-                // They share no votes
+            }
+            if !player_options.is_subset(&controller_options) {
                 voted_against_you.push(player);
             }
         }
@@ -116,7 +145,14 @@ impl PlayersFinishedVotingEvent {
             vote_counts,
             option_names,
             player_tags,
+            voter_teams: Vec::new(),
         }
+    }
+
+    /// Record the players' teams, for "each opponent who voted ..." checks.
+    pub fn with_voter_teams(mut self, voter_teams: Vec<(PlayerId, usize)>) -> Self {
+        self.voter_teams = voter_teams;
+        self
     }
 
     /// Create a new event with additional custom player tags.

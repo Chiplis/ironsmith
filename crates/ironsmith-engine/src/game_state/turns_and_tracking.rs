@@ -1015,6 +1015,9 @@ impl GameState {
             .retain(|(candidate, _), _| *candidate != player);
         self.turn_store.skip_next_combat_phases.remove(&player);
         self.turn_store
+            .skip_all_combat_phases_next_turn
+            .remove(&player);
+        self.turn_store
             .skip_current_turn_combat_phases
             .remove(&player);
         self.turn_store
@@ -1287,6 +1290,17 @@ impl GameState {
         self.turn_store.phase_schedule_continuation = None;
         self.turn_store.additional_phase_continuation = None;
         self.turn_store.skip_current_turn_combat_phases.clear();
+        // "Skips all combat phases of their next turn" covers every combat
+        // phase of that turn, including additional ones (CR 500.11).
+        if self
+            .turn_store
+            .skip_all_combat_phases_next_turn
+            .remove(&next_player)
+        {
+            self.turn_store
+                .skip_current_turn_combat_phases
+                .insert(next_player);
+        }
         self.turn_store.skip_current_turn_main_phases.clear();
         self.turn_store.added_steps.clear();
         self.turn_store.pending_added_steps.clear();
@@ -1817,6 +1831,14 @@ impl GameState {
             .turn_history
             .creatures_attacked_this_turn
             .insert(creature);
+        if let Some(controller) = self.current_controller(creature) {
+            self.turn_store
+                .turn_history
+                .creatures_attacked_by_player_this_turn
+                .entry(controller)
+                .or_default()
+                .insert(creature);
+        }
         *self
             .turn_store
             .turn_history
@@ -2480,6 +2502,28 @@ impl GameState {
         if entry.is_ability && entry.ability_id.is_none() {
             entry.ability_id = Some(self.allocate_stack_ability_id());
         }
+        // "Choose one that hasn't been chosen [this turn]": modes are chosen
+        // as the ability is activated or put on the stack (CR 602.2b,
+        // 603.3c), so that is when they become "chosen". Copies are made
+        // without this path and choose nothing.
+        if entry.is_ability
+            && let (Some(modes), Some(program)) = (&entry.chosen_modes, &entry.ability_effects)
+            && let Some((ability_index, this_turn)) =
+                crate::effects::composition::previously_chosen_mode_restriction(
+                    self,
+                    entry.object_id,
+                    program.all_effects(),
+                )
+        {
+            for &mode_index in modes {
+                self.record_ability_mode_choice(
+                    entry.object_id,
+                    ability_index,
+                    mode_index,
+                    this_turn,
+                );
+            }
+        }
         self.record_grand_melee_stack_provenance(entry.provenance);
         self.stack.push(entry);
         self.update_replacement_effects();
@@ -2860,31 +2904,87 @@ impl GameState {
 
         let mut identity = crate::color::ColorSet::COLORLESS;
 
+        let fixed_identities = self
+            .player(player_id)
+            .map(|player| player.commander_color_identities.clone())
+            .unwrap_or_default();
+
         for &commander_id in &commanders {
+            // CR 903.4a: the identity established when the commander was
+            // designated. The lookups below cover commanders designated
+            // without a recorded identity (e.g. hand-built states).
+            if let Some(fixed) = fixed_identities.get(&commander_id) {
+                identity = identity.union(*fixed);
+                continue;
+            }
             // Try to find the commander object - it might be on battlefield,
             // in command zone, or elsewhere
             if let Some(obj) = self.object(commander_id) {
                 identity = identity.union(self.commander_object_color_identity(obj));
-            } else {
+            } else if let Some(obj) = self
+                .objects
+                .values()
+                .find(|obj| obj.stable_id == StableId::from(commander_id))
+            {
                 // Commander might have moved zones and have a different ID.
-                // Search through all objects for one with matching stable_id
-                for obj in self.objects.values() {
-                    if obj.stable_id == StableId::from(commander_id) {
-                        identity = identity.union(self.commander_object_color_identity(obj));
-                        break;
-                    }
-                }
+                identity = identity.union(self.commander_object_color_identity(obj));
+            } else if let Some(component_identity) =
+                self.combined_commander_component_color_identity(commander_id)
+            {
+                identity = identity.union(component_identity);
             }
         }
 
         identity
     }
 
-    fn commander_object_color_identity(
+    /// Color identity of a commander card that is currently a component of a
+    /// merged (CR 730) or melded (CR 712.4a) permanent, so it has no object of
+    /// its own. Read from the component's printed front face (CR 903.4a).
+    fn combined_commander_component_color_identity(
+        &self,
+        commander_id: ObjectId,
+    ) -> Option<crate::color::ColorSet> {
+        let commander_stable_id = StableId::from(commander_id);
+        for &permanent_id in &self.battlefield {
+            let Some(permanent) = self.object(permanent_id) else {
+                continue;
+            };
+            if let Some(component) = self
+                .merged_permanent(permanent.stable_id)
+                .and_then(|merged| {
+                    merged
+                        .components
+                        .iter()
+                        .find(|component| component.object.stable_id == commander_stable_id)
+                })
+            {
+                return Some(self.commander_object_color_identity(&component.destination_object));
+            }
+            if let Some(component) = self
+                .melded_permanent(permanent.stable_id)
+                .and_then(|melded| {
+                    melded
+                        .components
+                        .iter()
+                        .find(|component| component.stable_id == commander_stable_id)
+                })
+            {
+                return self
+                    .linked_face_definition_by_name_or_id(Some(&component.name), None)
+                    .map(|definition| definition.card.color_identity());
+            }
+        }
+        None
+    }
+
+    pub(crate) fn commander_object_color_identity(
         &self,
         object: &crate::object::Object,
     ) -> crate::color::ColorSet {
-        let mut identity = object.color_identity();
+        // CR 903.4a: color identity is established before the game begins and
+        // doesn't change, so a face-down commander keeps its printed identity.
+        let mut identity = object.printed_color_identity();
         if let Some(other_face) = self.linked_face_definition_by_name_or_id(
             object.other_face_name.as_deref(),
             object.other_face,

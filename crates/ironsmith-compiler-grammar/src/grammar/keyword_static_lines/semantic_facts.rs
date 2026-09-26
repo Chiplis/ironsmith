@@ -43,7 +43,6 @@ pub enum StaticTextMarkerKind {
     /// "This effect doesn't remove Auras." (CR 702.16n).
     AurasRetentionClarification,
     YouHaveHexproof,
-    YouHaveProtectionFromOpponents,
     OpponentsCastOnlyAsSorcery,
     DoubleDamageToEnchantedPlayer,
 }
@@ -195,17 +194,6 @@ pub fn parse_static_text_marker_kind_tokens(
                     .value(StaticTextMarkerKind::AurasRetentionClarification),
                 semantic_phrase(&["you", "have", "hexproof"])
                     .value(StaticTextMarkerKind::YouHaveHexproof),
-                semantic_phrase(&[
-                    "you",
-                    "have",
-                    "protection",
-                    "from",
-                    "each",
-                    "of",
-                    "your",
-                    "opponents",
-                ])
-                .value(StaticTextMarkerKind::YouHaveProtectionFromOpponents),
                 semantic_phrase(&[
                     "each", "opponent", "can", "cast", "spells", "only", "any", "time", "they",
                     "could", "cast", "sorcery",

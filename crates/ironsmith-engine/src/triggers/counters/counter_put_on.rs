@@ -22,6 +22,9 @@ pub struct CounterPutOnTrigger {
     /// For example, adding two counters to a permanent with three counters
     /// crosses both the fourth and fifth counter ordinals.
     pub counter_number: Option<u32>,
+    /// "... on one or more [objects]": counters one instruction puts on
+    /// several matching objects are one trigger event (CR 603.2c).
+    pub one_or_more_objects: bool,
 }
 
 impl CounterPutOnTrigger {
@@ -33,7 +36,13 @@ impl CounterPutOnTrigger {
             count_mode: CountMode::Each,
             include_players: false,
             counter_number: None,
+            one_or_more_objects: false,
         }
+    }
+
+    pub fn one_or_more_objects(mut self) -> Self {
+        self.one_or_more_objects = true;
+        self
     }
 
     pub fn include_players(mut self) -> Self {
@@ -148,6 +157,17 @@ impl TriggerMatcher for CounterPutOnTrigger {
         Some(vec![EventKind::CounterPlaced, EventKind::MarkersChanged])
     }
 
+    fn simultaneous_trigger_key(
+        &self,
+        event: &TriggerEvent,
+    ) -> Option<crate::triggers::matcher_trait::SimultaneousTriggerKey> {
+        (self.one_or_more_objects
+            && self.count_mode == CountMode::OneOrMore
+            && self.counter_number.is_none()
+            && event.kind() == EventKind::MarkersChanged)
+            .then_some(crate::triggers::matcher_trait::SimultaneousTriggerKey::CounterBatch)
+    }
+
     fn trigger_count(&self, event: &TriggerEvent) -> u32 {
         if self.counter_number.is_some() {
             return 1;
@@ -214,6 +234,17 @@ impl TriggerMatcher for CounterPutOnTrigger {
             format!("{article} {description}")
         }
 
+        let recipient = |filter: &ObjectFilter| {
+            if self.one_or_more_objects {
+                format!(
+                    "one or more {}",
+                    crate::static_abilities::pluralized_subject_text(filter)
+                )
+            } else {
+                recipient_with_article(filter.description())
+            }
+        };
+
         let player_suffix = if self.include_players {
             " or player"
         } else {
@@ -235,7 +266,7 @@ impl TriggerMatcher for CounterPutOnTrigger {
             };
             return format!(
                 "Whenever {subject} {verb} {counter_phrase} on {}{player_suffix}",
-                recipient_with_article(self.filter.description())
+                recipient(&self.filter)
             );
         }
 
@@ -243,12 +274,12 @@ impl TriggerMatcher for CounterPutOnTrigger {
             CountMode::OneOrMore => format!(
                 "Whenever one or more {}s are put on {}{player_suffix}",
                 counters,
-                recipient_with_article(self.filter.description())
+                recipient(&self.filter)
             ),
             CountMode::Each => format!(
                 "Whenever a {} is put on {}{player_suffix}",
                 counters,
-                recipient_with_article(self.filter.description())
+                recipient(&self.filter)
             ),
         }
     }

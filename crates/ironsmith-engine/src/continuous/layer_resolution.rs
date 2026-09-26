@@ -452,7 +452,9 @@ pub(super) fn calculate_with_layers(
                             if *force_once_each_turn
                                 && let AbilityKind::Activated(activated) = &mut copied.kind
                             {
-                                activated.timing = crate::ability::ActivationTiming::OncePerTurn;
+                                // CR 602.5b / 113.3: the once-each-turn limit is added to the
+                                // borrowed ability's own restrictions, never replacing them.
+                                crate::continuous::add_once_each_turn_activation_limit(activated);
                             }
                             chars.abilities.push_with_origin(
                                 copied,

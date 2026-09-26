@@ -2355,6 +2355,32 @@ pub(crate) fn normalize_chosen_distinct_mana_values(
 }
 
 /// Resolve objects from `spec`, apply an operation per object, and shape the result.
+/// CR 603.10a / 603.6c: objects that one instruction moves out of a zone move
+/// simultaneously, so every zone-change event of that instruction looks back
+/// at the same pre-event trigger sources. A leaves-the-battlefield observer
+/// removed together with other permanents (Angelic Sleuth under Farewell)
+/// sees all of them leave, not only the ones processed before it.
+///
+/// Returns whether this call pinned the look-back; pass the result to
+/// [`end_simultaneous_zone_change_lookback`]. An enclosing pin (a sacrifice
+/// batch, state-based actions) is reused.
+pub(crate) fn begin_simultaneous_zone_change_lookback(game: &mut GameState) -> bool {
+    if game.simultaneous_event_lookback().is_some()
+        || !game.may_have_triggered_abilities_for_event_kind(crate::events::EventKind::ZoneChange)
+    {
+        return false;
+    }
+    let lookback = game.trigger_source_lookback_snapshots();
+    game.set_simultaneous_event_lookback(Some(lookback));
+    true
+}
+
+pub(crate) fn end_simultaneous_zone_change_lookback(game: &mut GameState, pinned: bool) {
+    if pinned {
+        game.set_simultaneous_event_lookback(None);
+    }
+}
+
 pub fn apply_to_selected_objects(
     game: &mut GameState,
     ctx: &mut ExecutionContext,

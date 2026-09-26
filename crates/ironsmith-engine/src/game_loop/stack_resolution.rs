@@ -978,7 +978,9 @@ pub(super) fn resolve_stack_entry_full(
         .with_mana_usage_restrictions(entry.mana_usage_restrictions.clone())
         .with_mana_source_chosen_creature_type(entry.mana_source_chosen_creature_type)
         .with_activation_mana_payment(entry.mana_spent_on_activation.clone())
-        .with_cause(EventCause::from_effect(entry.object_id, entry.controller))
+        // An ability's effects come from its source, including a copied
+        // ability, whose stack object is only a stand-in for the copy.
+        .with_cause(EventCause::from_effect(execution_source, entry.controller))
         .with_provenance(entry.provenance);
     if let Some(x) = entry.x_value {
         ctx = ctx.with_x(x);
@@ -1136,6 +1138,7 @@ pub(super) fn resolve_stack_entry_full(
                 &mut *decision_maker,
             );
         }
+        crate::effects::stack::discard_departed_ability_copy_object(game, &entry);
         return Ok(());
     }
 
@@ -1154,6 +1157,7 @@ pub(super) fn resolve_stack_entry_full(
             .as_ref()
             .is_some_and(|condition| format!("{condition:?}").contains("Active")),
     ) {
+        crate::effects::stack::discard_departed_ability_copy_object(game, &entry);
         return Ok(());
     }
 
@@ -1172,6 +1176,7 @@ pub(super) fn resolve_stack_entry_full(
         )
     {
         // Condition no longer true - ability resolves but does nothing
+        crate::effects::stack::discard_departed_ability_copy_object(game, &entry);
         return Ok(());
     }
     // If no triggering event is set (shouldn't happen for triggered abilities),
@@ -1232,14 +1237,21 @@ pub(super) fn resolve_stack_entry_full(
     }
     // Process events from effect outcomes for triggers
     if let Some(ref mut tq) = trigger_queue {
-        for event in all_events {
-            queue_triggers_from_event(game, tq, event, false);
-        }
+        crate::game_loop::queue_triggers_from_reported_events(game, tq, all_events, false);
     }
 
     // Process pending primitive trigger events emitted by effects and zone changes.
     if let Some(ref mut tq) = trigger_queue {
         drain_pending_trigger_events(game, tq);
+    }
+
+    // CR 702.122d: "whenever this Vehicle becomes crewed" triggers when a crew
+    // ability of it resolves, not when its crew cost is paid.
+    if let Some(ref mut tq) = trigger_queue
+        && let Some(event) =
+            crate::effects::permanents::crew_ability_resolved_event(game, &entry)
+    {
+        queue_triggers_from_event(game, tq, event, false);
     }
 
     if let Some(chapter_resolution) = chapter_resolution {
@@ -1303,6 +1315,7 @@ pub(super) fn resolve_stack_entry_full(
     // there until the spell entry resolves.
     if entry.is_ability {
         preserve_resolved_spell_ability_tags(game, execution_source, &ctx);
+        crate::effects::stack::discard_departed_ability_copy_object(game, &entry);
         return Ok(());
     }
 

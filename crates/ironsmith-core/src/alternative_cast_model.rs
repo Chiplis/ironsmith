@@ -154,6 +154,13 @@ where
             || matches!(self, Self::Composed { name, .. } if name.eq_ignore_ascii_case("More than meets the eye"))
     }
 
+    /// Methods whose rules text restricts them to casting the card from its
+    /// owner's hand, so a command-zone commander cast can't use them even
+    /// though they report `Zone::Hand` (warp, CR 702.185a).
+    pub fn requires_cast_from_hand(&self) -> bool {
+        matches!(self, Self::Warp { .. })
+    }
+
     pub fn cast_from_zone(&self) -> Zone {
         match self {
             Self::Dash { .. } | Self::Blitz { .. } => Zone::Hand,

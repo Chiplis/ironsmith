@@ -6,7 +6,6 @@ use crate::effects::helpers::{ObjectApplyResultPolicy, apply_to_selected_objects
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
-use crate::snapshot::ObjectSnapshot;
 use crate::target::SourceReferenceSurface;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
@@ -14,19 +13,10 @@ use crate::zone::Zone;
 /// How long an effect keeps a permanent phased out.
 pub type PhaseOutDuration = ironsmith_core::PhaseOutDuration;
 
-fn source_known_and_not_on_battlefield(
-    game: &GameState,
-    source: ObjectId,
-    source_snapshot: Option<&ObjectSnapshot>,
-) -> bool {
-    if let Some(source) = game.object(source) {
-        return source.zone != Zone::Battlefield;
-    }
-    let Some(snapshot) = source_snapshot else {
-        return false;
-    };
-    game.find_object_by_stable_id(snapshot.stable_id)
-        .and_then(|current_id| game.object(current_id))
+/// CR 400.7 / 610.3c: a source whose object is gone has left the battlefield,
+/// even if the same card has since returned as a new object.
+fn source_not_on_battlefield(game: &GameState, source: ObjectId) -> bool {
+    game.object(source)
         .is_none_or(|source| source.zone != Zone::Battlefield)
 }
 
@@ -107,7 +97,7 @@ impl EffectExecutor for PhaseOutEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         if self.duration == PhaseOutDuration::UntilSourceLeaves
-            && source_known_and_not_on_battlefield(game, ctx.source, ctx.source_snapshot.as_ref())
+            && source_not_on_battlefield(game, ctx.source)
         {
             return Ok(EffectOutcome::count(0));
         }
@@ -123,17 +113,14 @@ impl EffectExecutor for PhaseOutEffect {
             ctx,
             &self.spec,
             result_policy,
-            |game, ctx, object_id| {
+            |game, _ctx, object_id| {
                 if game
                     .object(object_id)
                     .is_some_and(|object| object.zone == Zone::Battlefield)
                     && !game.is_phased_out(object_id)
                     && game.can_phase_out(object_id)
+                    && !affected.contains(&object_id)
                 {
-                    game.phase_out(object_id);
-                    if self.duration == PhaseOutDuration::UntilSourceLeaves {
-                        game.hold_phased_out_until_source_leaves(object_id, ctx.source);
-                    }
                     affected.push(object_id);
                     Ok(true)
                 } else {
@@ -141,6 +128,14 @@ impl EffectExecutor for PhaseOutEffect {
                 }
             },
         )?;
+        // CR 702.26h: the selected permanents phase out at the same time, so
+        // an attachment phasing out with its host does so only indirectly.
+        game.phase_out_simultaneously(&affected);
+        if self.duration == PhaseOutDuration::UntilSourceLeaves {
+            for &object_id in &affected {
+                game.hold_phased_out_until_source_leaves(object_id, ctx.source);
+            }
+        }
 
         Ok(apply_result
             .outcome

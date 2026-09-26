@@ -68,6 +68,9 @@ pub use aura_swap::AuraSwapEffect;
 pub use behold::BeholdEffect;
 pub use bid_life::{BidLifeEffect, LifeBidStart};
 pub use choose_mode::ChooseModeEffect;
+pub(crate) use choose_mode_runtime::{
+    previously_chosen_mode_restriction, restricted_mode_was_chosen,
+};
 pub use choose_objects::ChooseObjectsEffect;
 pub use choose_spell_cast_history::ChooseSpellCastHistoryEffect;
 pub use conditional::ConditionalEffect;

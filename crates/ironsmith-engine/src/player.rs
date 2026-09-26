@@ -76,7 +76,15 @@ impl ManaSpendPolicy {
             | ManaSymbol::Blue
             | ManaSymbol::Black
             | ManaSymbol::Red
-            | ManaSymbol::Green => symbol == required || self.symbol_spends_as_any_color(symbol),
+            | ManaSymbol::Green => {
+                // CR 609.4b: "spend other mana only as though it were
+                // colorless" (Celestial Dawn) stops that mana paying even its
+                // own color.
+                (symbol == required
+                    && (!self.other_mana_only_as_colorless
+                        || self.any_color_mana_symbols.contains(&symbol)))
+                    || self.symbol_spends_as_any_color(symbol)
+            }
             ManaSymbol::Colorless => self.symbol_spends_as_colorless(symbol),
             ManaSymbol::Generic(_) => matches!(
                 symbol,
@@ -801,6 +809,9 @@ pub struct Player {
     /// Commanders can be legendary creatures, planeswalkers with "can be your commander",
     /// or certain artifacts (per recent rule changes).
     pub commanders: Vec<ObjectId>,
+    /// Each commander's color identity, fixed when it was designated
+    /// (CR 903.4a). Keyed like `commanders`; ordered for determinism.
+    pub commander_color_identities: std::collections::BTreeMap<ObjectId, crate::color::ColorSet>,
 
     // Commander damage tracking (commander identity -> damage)
     pub commander_damage: HashMap<ObjectId, u32>,
@@ -840,6 +851,7 @@ impl Player {
             companion: None,
             companion_special_action_used: false,
             commanders: Vec::new(),
+            commander_color_identities: std::collections::BTreeMap::new(),
             commander_damage: HashMap::new(),
         }
     }

@@ -2387,6 +2387,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Counters(CounterActionAst::ExperienceCounters { count }) => {
                 f.debug_tuple("ExperienceCounters").field(count).finish()
             }
+            Self::Counters(CounterActionAst::RadCounters { count }) => {
+                f.debug_tuple("RadCounters").field(count).finish()
+            }
             Self::Counters(CounterActionAst::TicketCounters { count }) => {
                 f.debug_tuple("TicketCounters").field(count).finish()
             }

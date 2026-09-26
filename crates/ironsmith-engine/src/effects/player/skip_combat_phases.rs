@@ -37,7 +37,9 @@ impl EffectExecutor for SkipCombatPhasesEffect {
             return Ok(EffectOutcome::resolved());
         }
         let turn_player = game.team_turn_representative(player_id);
-        game.turn_store.skip_next_combat_phases.insert(turn_player);
+        game.turn_store
+            .skip_all_combat_phases_next_turn
+            .insert(turn_player);
         Ok(EffectOutcome::resolved())
     }
 }
@@ -62,7 +64,7 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert!(game.turn_store.skip_next_combat_phases.contains(&alice));
+        assert!(game.turn_store.skip_all_combat_phases_next_turn.contains(&alice));
     }
 
     #[test]
@@ -77,7 +79,7 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert!(!game.turn_store.skip_next_combat_phases.contains(&alice));
-        assert!(game.turn_store.skip_next_combat_phases.contains(&bob));
+        assert!(!game.turn_store.skip_all_combat_phases_next_turn.contains(&alice));
+        assert!(game.turn_store.skip_all_combat_phases_next_turn.contains(&bob));
     }
 }

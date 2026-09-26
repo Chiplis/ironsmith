@@ -12,6 +12,7 @@ use super::reference_state::ReferenceEnv;
 pub enum MetadataLine {
     ManaCost(String),
     TypeLine(String),
+    ColorIndicator(String),
     FirstPrintedSet(String),
     AttractionLights(String),
     PowerToughness(String),

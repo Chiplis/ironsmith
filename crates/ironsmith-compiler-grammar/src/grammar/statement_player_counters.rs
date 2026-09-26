@@ -21,6 +21,7 @@ pub enum PlayerCounterKind {
     Energy,
     Experience,
     Ticket,
+    Rad,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,6 +116,7 @@ fn player_counter_tail(
         primitives::kw("energy").value(PlayerCounterKind::Energy),
         primitives::kw("experience").value(PlayerCounterKind::Experience),
         primitives::kw("ticket").value(PlayerCounterKind::Ticket),
+        primitives::kw("rad").value(PlayerCounterKind::Rad),
     ))
     .parse_next(input)?;
     alt((primitives::kw("counter"), primitives::kw("counters"))).parse_next(input)?;

@@ -5,6 +5,7 @@ use std::ops::Range;
 pub enum MetadataLine {
     ManaCost(String),
     TypeLine(String),
+    ColorIndicator(String),
     FirstPrintedSet(String),
     AttractionLights(String),
     PowerToughness(String),

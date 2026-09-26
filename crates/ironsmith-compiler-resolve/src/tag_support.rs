@@ -1348,6 +1348,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Counters(CounterActionAst::PoisonCounters { count: amount })
         | SubjectVerbActionAst::Counters(CounterActionAst::EnergyCounters { count: amount })
         | SubjectVerbActionAst::Counters(CounterActionAst::ExperienceCounters { count: amount })
+        | SubjectVerbActionAst::Counters(CounterActionAst::RadCounters { count: amount })
         | SubjectVerbActionAst::Counters(CounterActionAst::TicketCounters { count: amount })
         | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy { amount })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal { amount })

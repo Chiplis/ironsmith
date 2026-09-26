@@ -74,7 +74,8 @@ fn counter_one_stack_object_of_kind(
             .filter(|&index| game.stack[index].is_ability),
     };
     if let Some(index) = ability_index {
-        game.stack.remove(index);
+        let entry = game.stack.remove(index);
+        super::copy_spell::discard_departed_ability_copy_object(game, &entry);
         return EffectOutcome::resolved();
     }
     if matches!(
@@ -244,7 +245,8 @@ pub(crate) fn counter_stack_entry_at(
     }
     // "Can't be countered" protects spells; it never reaches an ability,
     // even one whose source is such a spell (a storm trigger).
-    game.stack.remove(index);
+    let entry = game.stack.remove(index);
+    super::copy_spell::discard_departed_ability_copy_object(game, &entry);
     EffectOutcome::resolved()
 }
 

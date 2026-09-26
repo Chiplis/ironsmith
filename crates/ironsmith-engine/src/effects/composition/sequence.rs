@@ -165,9 +165,20 @@ impl EffectExecutor for SequenceEffect {
                     ctx.with_temp_target_assignments(scoped_assignments.clone(), |ctx| {
                         execute_effect(game, effect, ctx)
                     })
-                })?
+                })
             } else {
-                execute_effect(game, effect, ctx)?
+                execute_effect(game, effect, ctx)
+            };
+            // CR 608.2b: a coordinated sibling whose targets have all become
+            // illegal does nothing, and the other siblings still resolve.
+            // Executors that report the empty scope as `Err(InvalidTarget)`
+            // are treated like a target-invalid outcome here; authored
+            // `then` surfaces keep propagating the error.
+            let outcome = match outcome {
+                Err(ExecutionError::InvalidTarget) if self.surface.is_coordinated() => {
+                    EffectOutcome::target_invalid()
+                }
+                other => other?,
             };
             events.extend(outcome.events.clone());
             execution_facts.extend(outcome.execution_facts.clone());

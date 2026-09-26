@@ -3379,6 +3379,26 @@ impl ExperienceCountersEffect {
     }
 }
 
+/// A player gets counters of a typed kind that has no dedicated effect
+/// (rad counters, CR 122.1i).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct GivePlayerCountersEffect {
+    pub counter_type: CounterType,
+    pub count: Value,
+    pub player: PlayerFilter,
+}
+
+impl GivePlayerCountersEffect {
+    pub fn new(counter_type: CounterType, count: impl Into<Value>, player: PlayerFilter) -> Self {
+        Self {
+            counter_type,
+            count: count.into(),
+            player,
+        }
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct TicketCountersEffect {

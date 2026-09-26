@@ -5439,6 +5439,14 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_rad_counters(player: PlayerAst, count: Value) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::Counters(CounterActionAst::RadCounters { count }),
+        )
+    }
+
     pub fn subject_verb_ticket_counters(player: PlayerAst, count: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,

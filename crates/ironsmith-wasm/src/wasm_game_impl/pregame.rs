@@ -2364,6 +2364,34 @@ impl WasmGame {
         true
     }
 
+    /// CR 726.1/726.4: after a restart effect rebuilt the game, discard the
+    /// old game's turn runner and priority state and run the new game's rule
+    /// 103 procedure; the fresh runner then starts turn 1 at its untap step.
+    /// Triggers the restart effect's remaining instructions queued (CR 726.4)
+    /// stay queued for the new game's first priority.
+    pub(super) fn initialize_restart_pregame_if_pending(&mut self) -> bool {
+        if !self.game.restart_starting_procedure_pending() || self.pregame.is_some() {
+            return false;
+        }
+        let turn_order = self.game.team_apnap_player_order();
+        let opening_hand_sizes = turn_order
+            .iter()
+            .copied()
+            .map(|player| (player, self.game.vanguard_starting_hand_size(player)))
+            .collect::<HashMap<_, _>>();
+        self.runner = None;
+        self.runner_awaiting_priority = false;
+        self.runner_pending_decision = false;
+        self.priority_state = PriorityLoopState::new(self.game.players.len());
+        self.pregame = Some(PregameState::new_with_hand_sizes(
+            &turn_order,
+            7,
+            opening_hand_sizes,
+            self.match_format,
+        ));
+        true
+    }
+
     pub(super) fn restore_subgame_host_if_resumed(&mut self) -> bool {
         if !self.game.take_subgame_just_resumed() {
             return false;
@@ -2399,16 +2427,11 @@ impl WasmGame {
                     round_mulliganers,
                 } if undecided_players.is_empty() => {
                     if round_mulliganers.is_empty() {
-                        let queue = pregame
-                            .player_order
-                            .iter()
-                            .copied()
-                            .filter(|player| pregame.cards_to_bottom(*player) > 0)
-                            .collect();
+                        // Every mulligan already bottomed its cards (CR 103.5).
                         if let Some(pregame) = self.pregame.as_mut() {
-                            pregame.stage = PregameStage::BottomCards {
-                                queue,
-                                pending_order: None,
+                            pregame.stage = PregameStage::OpeningActions {
+                                current_index: 0,
+                                pending_hand_exile: None,
                             };
                         }
                         continue;
@@ -2428,10 +2451,20 @@ impl WasmGame {
                             .unwrap_or(7);
                         self.shuffle_hand_into_library_and_draw(player, opening_hand_size);
                     }
+                    // CR 103.5: a mulligan draws a new hand and then puts
+                    // cards equal to the counted mulligans on the bottom,
+                    // before the next round of declarations (so "any time you
+                    // could mulligan" actions, CR 103.5b, see the reduced hand).
                     if let Some(pregame) = self.pregame.as_mut() {
-                        pregame.stage = PregameStage::MulliganDecision {
-                            undecided_players: mulliganers,
-                            round_mulliganers: Vec::new(),
+                        let queue = mulliganers
+                            .iter()
+                            .copied()
+                            .filter(|player| pregame.cards_to_bottom(*player) > 0)
+                            .collect();
+                        pregame.stage = PregameStage::BottomCards {
+                            queue,
+                            pending_order: None,
+                            resume_mulligan_decision: mulliganers,
                         };
                     }
                     continue;
@@ -2439,11 +2472,13 @@ impl WasmGame {
                 PregameStage::BottomCards {
                     queue,
                     pending_order,
+                    resume_mulligan_decision,
                 } if queue.is_empty() && pending_order.is_none() => {
+                    let undecided_players = resume_mulligan_decision.clone();
                     if let Some(pregame) = self.pregame.as_mut() {
-                        pregame.stage = PregameStage::OpeningActions {
-                            current_index: 0,
-                            pending_hand_exile: None,
+                        pregame.stage = PregameStage::MulliganDecision {
+                            undecided_players,
+                            round_mulliganers: Vec::new(),
                         };
                     }
                     continue;
@@ -2470,6 +2505,7 @@ impl WasmGame {
                     if self.game.is_subgame() {
                         self.game.complete_subgame_starting_procedure();
                     }
+                    self.game.complete_restart_starting_procedure();
                     self.pregame = None;
                     continue;
                 }
@@ -2502,6 +2538,7 @@ impl WasmGame {
             PregameStage::BottomCards {
                 queue,
                 pending_order,
+                ..
             } => {
                 if let Some((player, selected_cards)) = pending_order {
                     let items = selected_cards
@@ -2896,6 +2933,7 @@ impl WasmGame {
                     Some(PregameStage::BottomCards {
                         queue,
                         pending_order,
+                        ..
                     }) if pending_order.is_none() => {
                         let Some(player) = queue.first().copied() else {
                             return restore(

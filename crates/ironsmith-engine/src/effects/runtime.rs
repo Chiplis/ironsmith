@@ -154,12 +154,12 @@ pub(crate) fn match_triggers_at_instruction_boundary<'a>(
         return true;
     }
     let mut matched = crate::triggers::TriggerQueue::new();
-    for event in fresh {
+    for event in &fresh {
         game.effect_store
             .matched_outcome_events
             .insert(event.occurrence_key(), event.clone());
-        crate::game_loop::queue_triggers_from_event(game, &mut matched, event, false);
     }
+    crate::game_loop::queue_triggers_from_reported_events(game, &mut matched, fresh, false);
     crate::game_loop::drain_pending_trigger_events(game, &mut matched);
     game.defer_trigger_entries(matched.take_all());
     true

@@ -175,6 +175,7 @@ pub struct TrailingModalGateSpec<'a> {
 pub enum MetadataLineKind {
     ManaCost,
     TypeLine,
+    ColorIndicator,
     FirstPrintedSet,
     AttractionLights,
     PowerToughness,
@@ -293,6 +294,13 @@ pub fn split_metadata_line_lexed(tokens: &[OwnedLexToken]) -> Option<MetadataLin
     match_metadata_prefix(tokens, &["mana", "cost"], MetadataLineKind::ManaCost)
         .or_else(|| match_metadata_prefix(tokens, &["type", "line"], MetadataLineKind::TypeLine))
         .or_else(|| match_metadata_prefix(tokens, &["type"], MetadataLineKind::TypeLine))
+        .or_else(|| {
+            match_metadata_prefix(
+                tokens,
+                &["color", "indicator"],
+                MetadataLineKind::ColorIndicator,
+            )
+        })
         .or_else(|| {
             match_metadata_prefix(
                 tokens,

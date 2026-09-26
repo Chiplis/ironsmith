@@ -1775,6 +1775,18 @@ impl Effect {
         Self::new(crate::effects::ExperienceCountersEffect::new(count, player))
     }
 
+    pub fn player_counters(
+        counter_type: crate::object::CounterType,
+        count: impl Into<Value>,
+        player: crate::target::PlayerFilter,
+    ) -> Self {
+        Self::new(crate::effects::GivePlayerCountersEffect::new(
+            counter_type,
+            count,
+            player,
+        ))
+    }
+
     pub fn detain(target: crate::target::ChooseSpec) -> Self {
         Self::new(crate::effects::DetainEffect::new(target))
     }

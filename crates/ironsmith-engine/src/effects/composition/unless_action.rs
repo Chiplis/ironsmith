@@ -79,9 +79,123 @@ impl UnlessActionEffect {
     }
 }
 
+impl UnlessActionEffect {
+    /// CR 118.12: the alternative in "[effect] unless [player] [does X]"
+    /// works like a cost. A player who can't do all of it can't choose to do
+    /// it (Avatar of Discord: discarding one card of two doesn't keep it).
+    /// Only alternatives whose feasibility can be checked are gated; an
+    /// unknown shape stays offerable.
+    fn alternative_is_infeasible(
+        &self,
+        game: &GameState,
+        ctx: &ExecutionContext,
+        deciding_player: PlayerId,
+    ) -> bool {
+        let definitely_unpayable =
+            |result: Result<(), CostValidationError>| -> bool {
+                matches!(result, Err(err) if !matches!(err, CostValidationError::Other(_)))
+            };
+        for effect in &self.alternative {
+            if let Some(discard) = effect.downcast_ref::<crate::effects::DiscardEffect>() {
+                let Ok(discarder) = resolve_player_filter(game, &discard.player, ctx) else {
+                    continue;
+                };
+                let mut concrete = discard.clone();
+                concrete.player = PlayerFilter::Specific(discarder);
+                if definitely_unpayable(CostExecutableEffect::can_execute_as_cost(
+                    &concrete, game, ctx.source, discarder,
+                )) {
+                    return true;
+                }
+                continue;
+            }
+            if let Some(cost_effect) = effect.0.as_cost_executable()
+                && definitely_unpayable(CostExecutableEffect::can_execute_as_cost(
+                    cost_effect,
+                    game,
+                    ctx.source,
+                    deciding_player,
+                ))
+            {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+/// The per-player part of a simultaneous "each opponent ... unless they
+/// [do X]" (CR 101.4 / 608.2e): the choice is made while preparing, the
+/// alternative or the main effects happen at commit.
+#[derive(Debug)]
+struct UnlessActionProposal {
+    effects: Vec<Effect>,
+    alternative: Vec<Effect>,
+    wants_alternative: bool,
+    iterated_player: Option<PlayerId>,
+}
+
+impl crate::effects::SimultaneousEffectProposal for UnlessActionProposal {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let proposal = *self;
+        ctx.with_temp_iterated_player(proposal.iterated_player, |ctx| {
+            let mut attempted_alternative_events = Vec::new();
+            if proposal.wants_alternative {
+                let mut alternative_outcome =
+                    execute_effect_sequence(game, ctx, &proposal.alternative)?;
+                if alternative_outcome.something_happened() {
+                    return Ok(alternative_outcome);
+                }
+                attempted_alternative_events.append(&mut alternative_outcome.events);
+            }
+            let mut main_outcome = execute_effect_sequence(game, ctx, &proposal.effects)?;
+            main_outcome
+                .events
+                .append(&mut attempted_alternative_events);
+            Ok(main_outcome)
+        })
+    }
+}
+
 impl EffectExecutor for UnlessActionEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
+    }
+
+    fn supports_simultaneous_player_action(&self) -> bool {
+        self.player == PlayerFilter::IteratedPlayer
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        if self.player != PlayerFilter::IteratedPlayer {
+            return Err(ExecutionError::Impossible(
+                "simultaneous unless-action requires an iterated-player chooser".to_string(),
+            ));
+        }
+        let deciding_player = resolve_player_filter(game, &self.player, ctx)?;
+        let wants_alternative = !self.alternative_is_infeasible(game, ctx, deciding_player)
+            && make_boolean_decision(
+                game,
+                &mut ctx.decision_maker,
+                deciding_player,
+                ctx.source,
+                "Perform alternative action to prevent effect?".to_string(),
+                FallbackStrategy::Accept,
+            );
+        Ok(Box::new(UnlessActionProposal {
+            effects: self.effects.clone(),
+            alternative: self.alternative.clone(),
+            wants_alternative,
+            iterated_player: ctx.iteration.iterated_player,
+        }))
     }
 
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
@@ -110,6 +224,9 @@ impl EffectExecutor for UnlessActionEffect {
         let mut attempted_alternative_events = Vec::new();
 
         for deciding_player in deciding_players {
+            if self.alternative_is_infeasible(game, ctx, deciding_player) {
+                continue;
+            }
             // Ask the player if they want to perform the alternative action.
             let wants_alternative = make_boolean_decision(
                 game,

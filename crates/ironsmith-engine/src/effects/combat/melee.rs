@@ -1,6 +1,5 @@
 //! Melee keyword effect implementation.
 
-use crate::combat_state::AttackTarget;
 use crate::continuous::{EffectTarget, Modification};
 use crate::effect::{Effect, EffectOutcome, Until};
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
@@ -26,26 +25,24 @@ impl EffectExecutor for MeleeEffect {
         let source = game
             .object(ctx.source)
             .ok_or(ExecutionError::ObjectNotFound(ctx.source))?;
-        let Some(combat) = game.combat.as_ref() else {
+        if game.combat.is_none() {
             return Ok(EffectOutcome::count(0));
-        };
-        let mut attacked_opponents = HashSet::new();
-
-        for attacker in &combat.attackers {
-            let Some(attacking_creature) = game.object(attacker.creature) else {
-                continue;
-            };
-            if game.controller_of(attacking_creature) != game.controller_of(source) {
-                continue;
-            }
-            // Attacking a planeswalker or battle doesn't attack its
-            // controller or protector (CR 702.121a counts opponents attacked).
-            if let AttackTarget::Player(player) = attacker.target {
-                attacked_opponents.insert(player);
-            }
         }
+        let controller = game.controller_of(source);
+        // CR 702.121a: count each opponent this player attacked with a
+        // creature this combat, as declared. Attacking a planeswalker or
+        // battle doesn't attack its controller or protector; creatures put
+        // onto the battlefield attacking never attacked (CR 508.4); and a
+        // creature later removed from combat still attacked.
+        let mut attacked_opponents: HashSet<crate::ids::PlayerId> = game
+            .turn_store
+            .turn_history
+            .players_attacked_in_combat
+            .get(&(game.turn_store.combat_phases_started_this_turn, controller))
+            .cloned()
+            .unwrap_or_default();
 
-        attacked_opponents.remove(&game.controller_of(source));
+        attacked_opponents.remove(&controller);
         let amount = attacked_opponents.len() as i32;
         if amount <= 0 {
             return Ok(EffectOutcome::count(0));
@@ -118,6 +115,14 @@ mod tests {
             ],
             ..CombatState::default()
         });
+        // Attack declaration records the attacked players (CR 702.121a).
+        game.turn_store
+            .turn_history
+            .players_attacked_in_combat
+            .insert(
+                (game.turn_store.combat_phases_started_this_turn, alice),
+                [bob, cara].into_iter().collect(),
+            );
 
         let source = melee_creature;
         let mut dm = crate::decision::SelectFirstDecisionMaker;

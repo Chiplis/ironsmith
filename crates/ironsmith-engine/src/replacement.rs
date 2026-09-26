@@ -822,6 +822,33 @@ impl ReplacementEffectManager {
     ///
     /// Returns true if the effect was found and removed, false if it wasn't
     /// a one-shot effect or didn't exist.
+    /// Consume `redirected` damage from a one-shot "the next N damage ...
+    /// is dealt to ... instead" redirection shield. The shield stays until
+    /// all N damage has been redirected; it is removed once exhausted.
+    /// Returns false when `id` is not such a shield (callers then consume it
+    /// normally).
+    pub fn consume_redirect_damage_amount(
+        &mut self,
+        id: ReplacementEffectId,
+        redirected: u32,
+    ) -> bool {
+        if !self.one_shot_effects.contains(&id) {
+            return false;
+        }
+        let Some(effect) = self.effects.iter_mut().find(|effect| effect.id == id) else {
+            return false;
+        };
+        let ReplacementAction::RedirectDamageAmount { amount, .. } = &mut effect.replacement
+        else {
+            return false;
+        };
+        if redirected < *amount {
+            *amount -= redirected;
+            return true;
+        }
+        self.mark_effect_used(id)
+    }
+
     pub fn mark_effect_used(&mut self, id: ReplacementEffectId) -> bool {
         if self.batch_one_shot_effects.contains(&id) {
             self.pending_batch_one_shot_effects.insert(id);

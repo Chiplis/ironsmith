@@ -4429,6 +4429,33 @@ pub fn parse_during_your_turn_graveyard_cards_have_retrace_line(
     ))
 }
 
+/// "You have protection from each of your opponents." (Absolute Virtue):
+/// CR 702.16b/c/e/j — opponents' sources can't target, enchant or damage you.
+pub fn parse_you_have_protection_from_opponents_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let tokens = trim_edge_punctuation_tokens(tokens);
+    if parser_token_word_refs(tokens).as_slice()
+        != [
+            "you",
+            "have",
+            "protection",
+            "from",
+            "each",
+            "of",
+            "your",
+            "opponents",
+        ]
+    {
+        return Ok(None);
+    }
+    Ok(Some(vec![StaticAbility::player_protection_from(
+        PlayerFilter::You,
+        ObjectFilter::default().controlled_by(PlayerFilter::Opponent),
+        "You have protection from each of your opponents",
+    )]))
+}
+
 /// "Any player may cast creature spells with mana value 3 or less without
 /// paying their mana costs and as though they had flash." (Aluren): a free
 /// alternative cast from hand and flash timing for the same spells.

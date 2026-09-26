@@ -2613,6 +2613,13 @@ pub(crate) fn describe_mana_activation_condition(condition: &crate::ConditionExp
             ActivationTiming::DuringSourceOwnersUpkeep => {
                 "Activate only during this card's owner's upkeep".to_string()
             }
+            ActivationTiming::DuringYourUpkeep => "Activate only during your upkeep".to_string(),
+            ActivationTiming::DuringOpponentsUpkeep => {
+                "Activate only during an opponent's upkeep".to_string()
+            }
+            ActivationTiming::DuringAnyUpkeep => {
+                "Activate only during any upkeep step".to_string()
+            }
         },
         crate::ConditionExpr::MaxActivationsPerObject(limit) => {
             if *limit == 1 { "Activate only once".to_string() }

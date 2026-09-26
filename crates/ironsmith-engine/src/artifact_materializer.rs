@@ -251,6 +251,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "ExperienceCountersEffect" => {
             decode_as::<T, ironsmith_core::ExperienceCountersEffect>(effect)
         }
+        "GivePlayerCountersEffect" => {
+            decode_as::<T, ironsmith_core::GivePlayerCountersEffect>(effect)
+        }
         "ExploreEffect" => decode_as::<T, ironsmith_core::ExploreEffect>(effect),
         "ExtraTurnAfterNextTurnEffect" => {
             decode_as::<T, ironsmith_core::ExtraTurnAfterNextTurnEffect>(effect)

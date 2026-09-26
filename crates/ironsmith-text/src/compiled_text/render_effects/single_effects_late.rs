@@ -1081,6 +1081,11 @@ pub(crate) fn describe_activation_timing_clause(timing: &ActivationTiming) -> Op
         ActivationTiming::DuringSourceOwnersUpkeep => {
             Some("Activate only during this card's owner's upkeep")
         }
+        ActivationTiming::DuringYourUpkeep => Some("Activate only during your upkeep"),
+        ActivationTiming::DuringOpponentsUpkeep => {
+            Some("Activate only during an opponent's upkeep")
+        }
+        ActivationTiming::DuringAnyUpkeep => Some("Activate only during any upkeep step"),
     }
 }
 

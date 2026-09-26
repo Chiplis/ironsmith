@@ -330,6 +330,21 @@ const PAIR_SHAPES: &[Shape] = &[
         },
     },
     Shape {
+        id: RuleId::new("for-each-search-those-players-put-onto-battlefield"),
+        head: HeadDiscriminator::words(&["for"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            statements(
+                sentences,
+                sentence_idx,
+                for_each_search_then_those_players_put_onto_battlefield(
+                    &sentences[sentence_idx],
+                    &sentences[sentence_idx + 1],
+                ),
+            )
+        },
+    },
+    Shape {
         id: RuleId::new("counter-spell-artifact-creature-battlefield-replacement"),
         head: HeadDiscriminator::words(&["counter"]),
         consumed: 2,

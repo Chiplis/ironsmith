@@ -3391,6 +3391,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
                     "during this card's owner's upkeep"
                 }
+                crate::ability::ActivationTiming::DuringYourUpkeep => "during your upkeep",
+                crate::ability::ActivationTiming::DuringOpponentsUpkeep => {
+                    "during an opponent's upkeep"
+                }
+                crate::ability::ActivationTiming::DuringAnyUpkeep => "during any upkeep step",
             };
             format!("timing restriction: {label}")
         }

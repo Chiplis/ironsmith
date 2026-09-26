@@ -718,7 +718,8 @@ pub(crate) fn resolve(
                     let Some(obj) = game.object(card_id) else {
                         continue;
                     };
-                    for card_type in &obj.card_types {
+                    // CR 709.4: a split card has both halves' card types.
+                    for card_type in obj.zone_card_types() {
                         types.insert(*card_type);
                     }
                 }

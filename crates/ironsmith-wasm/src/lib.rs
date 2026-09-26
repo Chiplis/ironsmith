@@ -4949,6 +4949,9 @@ enum PregameStage {
     BottomCards {
         queue: Vec<PlayerId>,
         pending_order: Option<(PlayerId, Vec<ObjectId>)>,
+        /// CR 103.5: bottoming is part of each mulligan, so after the
+        /// mulliganing players bottom their cards they declare again.
+        resume_mulligan_decision: Vec<PlayerId>,
     },
     OpeningActions {
         current_index: usize,

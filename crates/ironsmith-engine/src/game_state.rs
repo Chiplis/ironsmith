@@ -786,9 +786,13 @@ pub struct TurnStore {
     pub tracked_draw_step_player: Option<PlayerId>,
     /// Cards the tracked player has already drawn in the current draw step.
     pub cards_drawn_this_draw_step: u32,
-    /// Players who will skip all combat phases on their next turn.
+    /// Players who will skip their next combat phase this turn.
     /// Checked and cleared when entering combat phase.
     pub skip_next_combat_phases: HashSet<PlayerId>,
+    /// Players who will skip all combat phases of their next turn. Moved into
+    /// `skip_current_turn_combat_phases` when that player's next turn begins,
+    /// so additional combat phases of that turn are skipped too (CR 500.11).
+    pub skip_all_combat_phases_next_turn: HashSet<PlayerId>,
     /// Players who will skip each remaining combat phase this turn.
     /// Cleared when the turn advances.
     pub skip_current_turn_combat_phases: HashSet<PlayerId>,
@@ -1681,6 +1685,12 @@ pub struct CantEffectTracker {
     /// Players that can't be targeted by sources matching a filter.
     pub cant_target_players_from: Vec<PlayerCantBeTargetedFrom>,
 
+    /// Players with protection from sources matching a filter (CR 702.16).
+    /// Targeting and damage are handled by their own trackers; this is the
+    /// single "player has protection from X" record for the other
+    /// consequences (can't be enchanted, CR 702.16c/e).
+    pub player_protections: Vec<PlayerProtectionFrom>,
+
     /// Permanents that can't be countered while on the stack.
     /// Example: Vexing Shusher, Prowling Serpopard
     pub cant_be_countered: HashSet<ObjectId>,
@@ -1704,6 +1714,15 @@ pub struct CantEffectTracker {
     /// A `None` entry retains the whole pool; `Some(color)` retains that color.
     /// Example: Upwelling, Kruphix (all mana); Omnath, Locus of Mana (green)
     pub dont_lose_unspent_mana: HashMap<PlayerId, HashSet<Option<crate::color::Color>>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayerProtectionFrom {
+    pub player: PlayerId,
+    pub source_filter: crate::target::ObjectFilter,
+    /// The permanent granting the protection; the filter's source.
+    pub protection_source: ObjectId,
+    pub controller: PlayerId,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1810,8 +1829,12 @@ impl RestrictionEffectInstance {
                 .object(self.source)
                 .is_some_and(|obj| obj.zone == Zone::Battlefield && game.is_tapped(self.source)),
             crate::effect::Until::YouStopControllingThis => {
+                // CR 702.26d: a phased-out source is treated as though it
+                // doesn't exist, so the duration ends.
                 game.object(self.source).is_some_and(|obj| {
-                    obj.zone == Zone::Battlefield && game.controller_of(obj) == self.controller
+                    obj.zone == Zone::Battlefield
+                        && !game.is_phased_out(self.source)
+                        && game.controller_of(obj) == self.controller
                 })
             }
             crate::effect::Until::ForAsLongAs(ref predicate) => {
@@ -1854,8 +1877,12 @@ impl GoadEffectInstance {
                 .object(self.source)
                 .is_some_and(|obj| obj.zone == Zone::Battlefield && game.is_tapped(self.source)),
             crate::effect::Until::YouStopControllingThis => {
+                // CR 702.26d: a phased-out source is treated as though it
+                // doesn't exist, so the duration ends.
                 game.object(self.source).is_some_and(|obj| {
-                    obj.zone == Zone::Battlefield && game.controller_of(obj) == self.goaded_by
+                    obj.zone == Zone::Battlefield
+                        && !game.is_phased_out(self.source)
+                        && game.controller_of(obj) == self.goaded_by
                 })
             }
             _ => true,
@@ -2109,6 +2136,8 @@ impl CantEffectTracker {
         self.cant_target_players.extend(other.cant_target_players);
         self.cant_target_players_from
             .extend(other.cant_target_players_from.clone());
+        self.player_protections
+            .extend(other.player_protections.clone());
         self.cant_be_countered.extend(other.cant_be_countered);
         self.cant_transform.extend(other.cant_transform);
         self.cant_turn_face_up.extend(other.cant_turn_face_up);
@@ -2170,6 +2199,7 @@ impl CantEffectTracker {
         self.cant_be_targeted_from.clear();
         self.cant_target_players.clear();
         self.cant_target_players_from.clear();
+        self.player_protections.clear();
         self.cant_be_countered.clear();
         self.cant_transform.clear();
         self.cant_turn_face_up.clear();
@@ -3527,6 +3557,10 @@ pub struct GameState {
     /// The active child has drawn its initial hands but has not yet completed
     /// the ordinary rule 103 mulligan/opening-action procedure.
     subgame_starting_procedure_pending: bool,
+    /// A restart effect rebuilt this game (CR 726.1): the new game's rule 103
+    /// mulligan/opening-action procedure and a fresh turn structure are still
+    /// owed by the host loop before turn 1 begins.
+    restart_starting_procedure_pending: bool,
     /// One-shot signal for host loops that need to restore their suspended
     /// turn-runner context after `finish_subgame_with` resumes a parent.
     subgame_just_resumed: bool,
@@ -3827,6 +3861,7 @@ impl GameState {
             shared_team_turns: None,
             subgame_parent: None,
             subgame_starting_procedure_pending: false,
+            restart_starting_procedure_pending: false,
             subgame_just_resumed: false,
             choice_store: Arc::new(ChoiceStore::default()),
             metadata: MetadataStateStore {

@@ -1285,9 +1285,8 @@ impl WasmGame {
         let definition = eligible[sample_index].clone();
         let layout = match definition.card.linked_face_layout {
             ironsmith::card::LinkedFaceLayout::Split => CustomCardLayoutInput::Split,
-            ironsmith::card::LinkedFaceLayout::TransformLike => {
-                CustomCardLayoutInput::TransformLike
-            }
+            ironsmith::card::LinkedFaceLayout::TransformLike
+            | ironsmith::card::LinkedFaceLayout::Flip => CustomCardLayoutInput::TransformLike,
             ironsmith::card::LinkedFaceLayout::Prepare => CustomCardLayoutInput::Prepare,
             ironsmith::card::LinkedFaceLayout::None => CustomCardLayoutInput::Single,
         };

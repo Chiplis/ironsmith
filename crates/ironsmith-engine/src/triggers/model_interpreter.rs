@@ -91,6 +91,9 @@ fn convert_counter_put_on_trigger(
     if trigger.include_players {
         out = out.include_players();
     }
+    if trigger.one_or_more_objects {
+        out = out.one_or_more_objects();
+    }
     out = out.count(convert_count_mode(trigger.count));
     crate::triggers::Trigger::new(out)
 }

@@ -36,11 +36,10 @@ impl EffectExecutor for PreventAllDamageEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // Check if damage can be prevented globally
-        if !game.can_prevent_damage() {
-            return Ok(EffectOutcome::prevented());
-        }
-
+        // CR 615.12 / 614.17a: while damage can't be prevented the shield
+        // still exists and simply prevents nothing (the damage pipeline checks
+        // preventability per event), so it keeps working once the
+        // restriction ends later in its duration.
         let mut damage_filter = self.damage_filter.clone();
         if let Some(source_target) = &self.source_target {
             damage_filter.from_specific_source =

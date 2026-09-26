@@ -181,6 +181,7 @@ impl WasmGame {
         let linked_layout = match layout {
             "split" => ironsmith::card::LinkedFaceLayout::Split,
             "prepare" => ironsmith::card::LinkedFaceLayout::Prepare,
+            "flip" => ironsmith::card::LinkedFaceLayout::Flip,
             _ => ironsmith::card::LinkedFaceLayout::TransformLike,
         };
         let front_id = CardId::new();

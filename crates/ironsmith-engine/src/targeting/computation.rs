@@ -709,6 +709,11 @@ pub(crate) fn protection_from_subject_with_view(
         crate::ability::ProtectionFrom::EachManaValueAmong(filter) => {
             mana_value_matches_scope(game, target_id, source.protection_mana_value(), filter)
         }
+        crate::ability::ProtectionFrom::ColorsOutsideCommanderIdentity => {
+            !colors_outside_commander_identity(game, game.controller_of(target))
+                .intersection(source.protection_colors(view))
+                .is_empty()
+        }
         _ => subject_matches_protection(source, protection_from, game, view),
     }
 }
@@ -756,6 +761,9 @@ fn subject_matches_protection(
         // Protection from the chosen player is target-specific and handled by the caller.
         ProtectionFrom::ChosenPlayer => false,
         ProtectionFrom::ChosenColor => false,
+        // Relative to the protected permanent's controller; handled by
+        // `protection_from_subject_with_view`.
+        ProtectionFrom::ColorsOutsideCommanderIdentity => false,
         // Protection from a card type
         ProtectionFrom::CardType(card_type) => source.protection_has_card_type(view, *card_type),
         // Protection from permanents matching a filter
@@ -773,6 +781,28 @@ fn subject_matches_protection(
         // Protection from colorless (sources with no colors)
         ProtectionFrom::Colorless => source_colors.is_empty(),
     }
+}
+
+/// The colors outside `player`'s commander color identity (CR 903.4). A
+/// player with no commander has an empty identity, so every color is outside.
+pub(crate) fn colors_outside_commander_identity(
+    game: &GameState,
+    player: crate::ids::PlayerId,
+) -> crate::color::ColorSet {
+    let identity = game.get_commander_color_identity(player);
+    let mut outside = crate::color::ColorSet::new();
+    for color in [
+        crate::color::ColorSet::WHITE,
+        crate::color::ColorSet::BLUE,
+        crate::color::ColorSet::BLACK,
+        crate::color::ColorSet::RED,
+        crate::color::ColorSet::GREEN,
+    ] {
+        if identity.intersection(color).is_empty() {
+            outside = outside.union(color);
+        }
+    }
+    outside
 }
 
 fn mana_value_matches_scope(

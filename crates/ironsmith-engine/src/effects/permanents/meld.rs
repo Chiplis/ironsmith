@@ -95,13 +95,32 @@ impl EffectExecutor for MeldEffect {
         let Some(exiled_counterpart) = game.object(counterpart_exile_id) else {
             return Ok(EffectOutcome::resolved());
         };
+        // CR 701.42b/c: only the two cards of the meld pair can be melded. A
+        // permanent that was merely copying the counterpart (a Clone named
+        // Gisela) is no longer named that once exiled, so it stays in exile.
         if exiled_source.zone != Zone::Exile
             || exiled_counterpart.zone != Zone::Exile
             || exiled_source.kind != ObjectKind::Card
             || exiled_counterpart.kind != ObjectKind::Card
+            || crate::cards::meld_counterpart_name(&exiled_source.name)
+                .is_none_or(|name| !name.eq_ignore_ascii_case(counterpart_name))
+            || !exiled_counterpart
+                .name
+                .eq_ignore_ascii_case(counterpart_name)
         {
             return Ok(EffectOutcome::resolved());
         }
+
+        // CR 712.8g: the melded permanent's mana value is the sum of the mana
+        // values of its front faces.
+        let front_faces_mana_cost = crate::mana::ManaCost::from_pips(
+            exiled_source
+                .mana_cost
+                .iter()
+                .chain(exiled_counterpart.mana_cost.iter())
+                .flat_map(|cost| cost.pips().iter().cloned())
+                .collect(),
+        );
 
         let Some(result_def) =
             game.linked_face_definition_by_name_or_id(Some(&self.result_name), None)
@@ -131,6 +150,9 @@ impl EffectExecutor for MeldEffect {
             BattlefieldEntryOptions::specific(ctx.controller, self.enters_tapped),
         ) {
             BattlefieldEntryOutcome::Moved(new_id) => {
+                if let Some(melded) = game.object_mut(new_id) {
+                    melded.linked_face_mana_cost = Some(front_faces_mana_cost.into());
+                }
                 game.set_melded_permanent(new_id, meld_components);
                 game.remove_object(source_exile_id);
                 game.remove_object(counterpart_exile_id);

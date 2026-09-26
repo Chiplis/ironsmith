@@ -105,13 +105,24 @@ pub fn parse_sacrifice_segment_tokens(
                 "rewrite sacrifice parser is missing an object filter".to_string(),
             ));
         }
-        SacrificeCostShape::Chosen(shape) => ActivationCostSegmentCst::SacrificeChosen {
-            count: shape.count,
-            filter: filters::parse_object_filter_with_grammar_entrypoint_lexed(
-                &tokens[shape.filter_first..],
-                shape.other,
-            )?,
-        },
+        SacrificeCostShape::Chosen(shape) => {
+            let filter_tokens = &tokens[shape.filter_first..];
+            let mut filter =
+                filters::parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, shape.other)?;
+            // "any number of creatures with total power 12 or greater"
+            // (Phyrexian Dreadnought): the comparison bounds the chosen set,
+            // not each creature (CR 118.3).
+            filter.target_set_aggregate_constraint =
+                crate::grammar::shared_util::aggregate_constraints::lift_total_mana_value_choice_constraint(
+                    filter_tokens,
+                    &mut filter,
+                )
+                .map(Box::new);
+            ActivationCostSegmentCst::SacrificeChosen {
+                count: shape.count,
+                filter,
+            }
+        }
     })
 }
 

@@ -270,6 +270,7 @@ fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextError
     let metadata = match surface.kind {
         MetadataLineKind::ManaCost => MetadataLine::ManaCost(surface.value),
         MetadataLineKind::TypeLine => MetadataLine::TypeLine(surface.value),
+        MetadataLineKind::ColorIndicator => MetadataLine::ColorIndicator(surface.value),
         MetadataLineKind::FirstPrintedSet => MetadataLine::FirstPrintedSet(surface.value),
         MetadataLineKind::AttractionLights => MetadataLine::AttractionLights(surface.value),
         MetadataLineKind::PowerToughness => MetadataLine::PowerToughness(surface.value),
@@ -284,6 +285,9 @@ fn materialize_structural_metadata(value: &crate::front_end::MetadataLine) -> Me
     match value {
         crate::front_end::MetadataLine::ManaCost(value) => MetadataLine::ManaCost(value.clone()),
         crate::front_end::MetadataLine::TypeLine(value) => MetadataLine::TypeLine(value.clone()),
+        crate::front_end::MetadataLine::ColorIndicator(value) => {
+            MetadataLine::ColorIndicator(value.clone())
+        }
         crate::front_end::MetadataLine::FirstPrintedSet(value) => {
             MetadataLine::FirstPrintedSet(value.clone())
         }

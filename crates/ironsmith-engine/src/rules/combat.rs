@@ -456,6 +456,14 @@ fn protection_prevents_blocking_with_view(
         ProtectionFrom::ChosenPlayer => game
             .chosen_player(attacker.id)
             .is_some_and(|chosen| game.controller_of(blocker) == chosen),
+        ProtectionFrom::ColorsOutsideCommanderIdentity => {
+            !crate::targeting::colors_outside_commander_identity(
+                game,
+                game.controller_of(attacker),
+            )
+            .intersection(blocker_colors)
+            .is_empty()
+        }
         // Auras such as Cho-Manno's Blessing store the choice on the Aura.
         ProtectionFrom::ChosenColor => {
             game.chosen_color(attacker.id)

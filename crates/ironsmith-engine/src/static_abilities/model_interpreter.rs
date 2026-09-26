@@ -1212,6 +1212,15 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::PreventAllDamageToYou => {
                 StaticAbility::prevent_all_damage_to_you()
             }
+            ironsmith_core::StaticAbilityPayload::PlayerProtectionFrom {
+                player,
+                source_filter,
+                display,
+            } => StaticAbility::player_protection_from(
+                player.clone(),
+                source_filter.clone(),
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::OpponentsMustTargetFlagbearers => {
                 StaticAbility::opponents_must_target_flagbearers()
             }

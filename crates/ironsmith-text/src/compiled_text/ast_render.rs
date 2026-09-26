@@ -2361,7 +2361,12 @@ fn render_keyword_list_with_separator(
     for keyword in keywords {
         let lower = keyword.trim_end_matches('.').to_ascii_lowercase();
         if let Some(from) = lower.strip_prefix("protection from ") {
-            protections.push(from.to_string());
+            // One protection quality can be carried by several runtime
+            // abilities (Absolute Virtue's targeting and damage halves);
+            // render it once.
+            if !protections.iter().any(|existing| existing == from) {
+                protections.push(from.to_string());
+            }
         } else {
             items.push(lower);
         }

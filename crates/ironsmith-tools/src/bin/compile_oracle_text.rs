@@ -21,6 +21,7 @@ fn text_includes_metadata(text: &str) -> bool {
     text.lines().map(str::trim).any(|line| {
         line.starts_with("Mana cost:")
             || line.starts_with("Type:")
+            || line.starts_with("Color indicator:")
             || line.starts_with("Power/Toughness:")
             || line.starts_with("Loyalty:")
             || line.starts_with("Defense:")
@@ -90,6 +91,23 @@ fn metadata_lines_from_definition(definition: &CardDefinition) -> Vec<String> {
     }
     if !type_line.trim().is_empty() {
         metadata_lines.push(format!("Type: {}", type_line.trim()));
+    }
+
+    if let Some(colors) = definition.card.color_indicator {
+        let names = [
+            (ironsmith::color::Color::White, "White"),
+            (ironsmith::color::Color::Blue, "Blue"),
+            (ironsmith::color::Color::Black, "Black"),
+            (ironsmith::color::Color::Red, "Red"),
+            (ironsmith::color::Color::Green, "Green"),
+        ]
+        .into_iter()
+        .filter(|(color, _)| colors.contains(*color))
+        .map(|(_, name)| name)
+        .collect::<Vec<_>>();
+        if !names.is_empty() {
+            metadata_lines.push(format!("Color indicator: {}", names.join(", ")));
+        }
     }
 
     if let Some(set_name) = definition

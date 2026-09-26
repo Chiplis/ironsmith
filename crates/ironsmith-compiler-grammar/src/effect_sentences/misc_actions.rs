@@ -423,6 +423,55 @@ pub fn parse_get(
         return Ok(EffectAst::subject_verb_poison_counters(player, count));
     }
 
+    if let Some(rad_idx) = tokens.iter().position(|token| token.is_word("rad"))
+        && tokens
+            .get(rad_idx + 1)
+            .is_some_and(|token| token.is_word("counter") || token.is_word("counters"))
+    {
+        // "gets N rad counters [for each ...]" (CR 122.1i). Any other tail
+        // ("... if they don't have any rad counters") is a condition this
+        // shape does not model, so reject it instead of dropping it.
+        let count_tokens = &tokens[..rad_idx];
+        let tail = &tokens[rad_idx + 2..];
+        let tail = if tail.last().is_some_and(|token| token.kind == TokenKind::Period) {
+            &tail[..tail.len() - 1]
+        } else {
+            tail
+        };
+        let count_is_complete = count_tokens.is_empty()
+            || matches!(
+                crate::lexer::token_word_refs(count_tokens).as_slice(),
+                ["a" | "an" | "another" | "one"]
+            )
+            || parse_value(count_tokens).is_some_and(|(_, used)| used == count_tokens.len());
+        let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+        // "a number of rad counters equal to its power" (Feral Ghoul).
+        if matches!(
+            crate::lexer::token_word_refs(count_tokens).as_slice(),
+            ["a", "number", "of"]
+        ) && grammar::match_word_prefix(tail, &["equal", "to"]).is_some()
+        {
+            let mut amount_tokens = Vec::with_capacity(tail.len() + 1);
+            amount_tokens.push(OwnedLexToken::word("life", tokens[rad_idx + 1].span));
+            amount_tokens.extend_from_slice(tail);
+            if let Some(count) =
+                crate::effect_sentences::verb_handlers::parse_life_equal_to_value(&amount_tokens)?
+            {
+                return Ok(EffectAst::subject_verb_rad_counters(player, count));
+            }
+        }
+        let tail_is_for_each =
+            tail.is_empty() || grammar::match_word_prefix(tail, &["for", "each"]).is_some();
+        if !count_is_complete || !tail_is_for_each {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported rad counter clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        let count = parse_named_player_counter_count(tokens, &clause_words)?;
+        return Ok(EffectAst::subject_verb_rad_counters(player, count));
+    }
+
     if grammar::contains_word(tokens, "experience")
         && (grammar::contains_word(tokens, "counter") || grammar::contains_word(tokens, "counters"))
     {

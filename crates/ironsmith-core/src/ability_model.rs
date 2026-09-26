@@ -25,6 +25,13 @@ pub enum ActivationTiming {
     /// hidden zone and CR 702.57b keys its permission to the card's owner,
     /// not to the ability's controller.
     DuringSourceOwnersUpkeep,
+    /// "Activate only during your upkeep": the ability's controller is the
+    /// active player and the game is in the upkeep step.
+    DuringYourUpkeep,
+    /// "Activate only during an opponent's upkeep".
+    DuringOpponentsUpkeep,
+    /// "Activate only during any upkeep step".
+    DuringAnyUpkeep,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -297,6 +304,10 @@ pub enum ProtectionFrom {
     EachManaValueAmong(ObjectFilter),
     ChosenPlayer,
     ChosenColor,
+    /// "protection from each color that's not in your commander's color
+    /// identity" (Commander's Plate), for the protected permanent's
+    /// controller (CR 903.4).
+    ColorsOutsideCommanderIdentity,
     Everything,
 }
 

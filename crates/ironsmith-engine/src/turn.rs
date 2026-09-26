@@ -598,9 +598,7 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
         .flat_map(|player| game.directly_phased_out_under(*player))
         .filter(|id| game.can_phase_in(*id))
         .collect::<Vec<_>>();
-    for id in phase_out {
-        game.phase_out(id);
-    }
+    game.phase_out_simultaneously(&phase_out);
     for id in phase_in {
         game.phase_in(id);
     }

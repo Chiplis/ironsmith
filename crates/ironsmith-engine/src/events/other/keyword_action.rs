@@ -49,6 +49,9 @@ pub struct KeywordActionEvent {
     /// with {X} in its cost). Linked "when you cycle this card" triggers use
     /// that value for their own X (Shark Typhoon).
     pub x_value: Option<u32>,
+    /// For vote actions: each player's team when the game has teams (see
+    /// `PlayersFinishedVotingEvent::voter_teams`).
+    pub voter_teams: Vec<(PlayerId, usize)>,
 }
 
 impl KeywordActionEvent {
@@ -66,7 +69,13 @@ impl KeywordActionEvent {
             unlocked_door_triggers: None,
             unlocked_door_ability_range: None,
             x_value: None,
+            voter_teams: Vec::new(),
         }
+    }
+
+    pub fn with_voter_teams(mut self, voter_teams: Vec<(PlayerId, usize)>) -> Self {
+        self.voter_teams = voter_teams;
+        self
     }
 
     pub fn with_x_value(mut self, x_value: Option<u32>) -> Self {

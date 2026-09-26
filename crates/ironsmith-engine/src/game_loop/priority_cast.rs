@@ -1642,6 +1642,91 @@ pub(super) fn activation_stage_after_modes(pending: &PendingActivation) -> Activ
     }
 }
 
+/// CR 602.2b applies 601.2b-f to activated abilities: X is announced before
+/// the total cost is determined (CR 107.3a), so generic cost reductions and
+/// the "less than one mana" floor see X as generic mana. Lock the announced
+/// X into every plain mana component before pricing.
+pub(super) fn activation_cost_with_locked_x(
+    cost: &crate::cost::TotalCost,
+    x_value: u32,
+) -> crate::cost::TotalCost {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::OneOf(branches) => crate::cost::TotalCost::one_of(
+            branches
+                .iter()
+                .map(|branch| activation_cost_with_locked_x(branch, x_value))
+                .collect(),
+        ),
+        ironsmith_core::TotalCostKind::All(components) => crate::cost::TotalCost::from_costs(
+            components
+                .iter()
+                .map(|component| match component.mana_cost_ref() {
+                    Some(mana) if mana.has_x() => crate::costs::Cost::mana(
+                        crate::decision::mana_cost_with_locked_x_and_generic_reduction(
+                            mana, x_value, 0,
+                        ),
+                    ),
+                    _ => component.clone(),
+                })
+                .collect(),
+        ),
+    }
+}
+
+/// The selected branch of an activation cost (or the cost itself).
+fn selected_activation_cost_branch(
+    cost: &crate::cost::TotalCost,
+    selected: Option<usize>,
+) -> Option<crate::cost::TotalCost> {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(_) => Some(cost.clone()),
+        ironsmith_core::TotalCostKind::OneOf(branches) => branches.get(selected?).cloned(),
+    }
+}
+
+fn activation_cost_mana_value(cost: &crate::cost::TotalCost) -> u32 {
+    cost.as_all().map_or(0, |components| {
+        components
+            .iter()
+            .filter_map(|component| {
+                component
+                    .mana_cost_ref()
+                    .or_else(|| component.dynamic_mana_cost_ref().map(|dynamic| &dynamic.base))
+            })
+            .map(crate::mana::ManaCost::mana_value)
+            .sum()
+    })
+}
+
+/// Generic reductions that the symbolic `{X}` activation cost could not
+/// absorb but will apply once X is announced (CR 602.2b, 601.2f). The X
+/// prompt adds this to the affordable maximum.
+fn activation_x_reduction_headroom(game: &GameState, pending: &PendingActivation) -> u32 {
+    const REDUCTION_PROBE_X: u32 = 1_000;
+    let Some(ability) = game.current_ability(pending.source, pending.ability_index) else {
+        return 0;
+    };
+    let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
+        return 0;
+    };
+    let reduction = |base: &crate::cost::TotalCost| {
+        let priced = crate::decision::calculate_effective_activation_total_cost_with_chosen_targets(
+            game,
+            pending.activator,
+            pending.source,
+            base,
+            &pending.chosen_targets,
+        );
+        let base = selected_activation_cost_branch(base, pending.selected_alternative_cost);
+        let priced = selected_activation_cost_branch(&priced, pending.selected_alternative_cost);
+        base.zip(priced).map_or(0, |(base, priced)| {
+            activation_cost_mana_value(&base).saturating_sub(activation_cost_mana_value(&priced))
+        })
+    };
+    let locked = activation_cost_with_locked_x(&activated.mana_cost, REDUCTION_PROBE_X);
+    reduction(&locked).saturating_sub(reduction(&activated.mana_cost))
+}
+
 pub(super) fn assign_pending_activation_cost(
     game: &GameState,
     pending: &mut PendingActivation,
@@ -1741,12 +1826,24 @@ pub(super) fn check_activation_modes_or_continue(
             ));
         }
 
+        // "Choose one that hasn't been chosen [this turn]" (CR 602.2b: the
+        // modes are chosen now, so earlier choices are unavailable now).
+        let restriction = crate::effects::composition::previously_chosen_mode_restriction(
+            game,
+            source,
+            effects.iter(),
+        );
         let mode_options: Vec<crate::decisions::specs::ModeOption> = modal_spec
             .mode_descriptions
             .iter()
             .enumerate()
             .map(|(i, desc)| {
-                let legal = spell_has_legal_targets_with_mode_preview(
+                let legal = !crate::effects::composition::restricted_mode_was_chosen(
+                    game,
+                    source,
+                    restriction,
+                    i,
+                ) && spell_has_legal_targets_with_mode_preview(
                     game,
                     &effects,
                     player,
@@ -5977,6 +6074,18 @@ pub(super) fn continue_activation(
                 } else {
                     None
                 };
+                if let Some(mana_max) = max_x.as_mut()
+                    && let Some(cost) = pending.mana_cost_to_pay.as_ref()
+                {
+                    let x_pips = cost
+                        .pips()
+                        .iter()
+                        .filter(|pip| pip.contains(&crate::mana::ManaSymbol::X))
+                        .count()
+                        .max(1) as u32;
+                    *mana_max = mana_max
+                        .saturating_add(activation_x_reduction_headroom(game, &pending) / x_pips);
+                }
                 if let Some(cost_max_x) = max_x_from_activation_cost_steps(
                     game,
                     pending.activator,

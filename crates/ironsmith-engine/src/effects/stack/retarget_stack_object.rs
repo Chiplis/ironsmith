@@ -72,6 +72,32 @@ pub(super) struct RetargetSlot {
     pub(super) spec: ChooseSpec,
     pub(super) range: Range<usize>,
     pub(super) requirement: TargetRequirementContext,
+    /// "Another target ...": this slot's new targets can't repeat the new
+    /// targets of the earlier object slots (CR 115.7, 601.2c). The slots are
+    /// chosen together, so this is checked on the combined proposal
+    /// ([`retarget_proposal_respects_other_targets`]).
+    pub(super) excludes_prior_object_targets: bool,
+}
+
+/// Whether a combined new-target proposal keeps every "another target" slot
+/// distinct from the earlier object slots' new targets.
+pub(super) fn retarget_proposal_respects_other_targets(
+    slots: &[RetargetSlot],
+    targets: &[Target],
+) -> bool {
+    slots.iter().enumerate().all(|(index, slot)| {
+        if !slot.excludes_prior_object_targets {
+            return true;
+        }
+        let Some(own) = targets.get(slot.range.clone()) else {
+            return false;
+        };
+        slots[..index]
+            .iter()
+            .filter(|prior| matches!(prior.spec.base(), ChooseSpec::Object(_)))
+            .filter_map(|prior| targets.get(prior.range.clone()))
+            .all(|prior_targets| !own.iter().any(|target| prior_targets.contains(target)))
+    })
 }
 
 pub(super) fn stack_entry_retarget_requirements(
@@ -81,7 +107,7 @@ pub(super) fn stack_entry_retarget_requirements(
 ) -> Option<Vec<RetargetSlot>> {
     let view = crate::derived_view::DerivedGameView::new(game);
     let slot_requirement =
-        |spec: &ChooseSpec, range: &Range<usize>, computed: Vec<Target>, excluded: &[Target]| {
+        |spec: &ChooseSpec, range: &Range<usize>, computed: Vec<Target>, relative: bool| {
             let existing = entry.targets.get(range.clone()).unwrap_or(&[]);
             // Current targets first, so a default choice leaves them unchanged.
             let mut legal: Vec<Target> = Vec::new();
@@ -93,9 +119,7 @@ pub(super) fn stack_entry_retarget_requirements(
                 }
             }
             for target in computed {
-                if !legal.contains(&target)
-                    && (!excluded.contains(&target) || existing.contains(&target))
-                {
+                if !legal.contains(&target) {
                     legal.push(target);
                 }
             }
@@ -121,6 +145,7 @@ pub(super) fn stack_entry_retarget_requirements(
                     distinct_player_group: None,
                     shared_player_group: None,
                 },
+                excludes_prior_object_targets: relative,
             }
         };
 
@@ -130,21 +155,19 @@ pub(super) fn stack_entry_retarget_requirements(
             if assignment.range.end > entry.targets.len() {
                 return None;
             }
+            // The "another target" exclusion is against the earlier slots'
+            // *new* targets, so it is checked on the combined proposal rather
+            // than against the entry's current targets here.
             let crate::game_loop::AssignmentLegalTargets {
                 legal_targets,
                 relative_object_target,
-                prior_object_targets,
+                ..
             } = crate::game_loop::stack_entry_assignment_legal_targets(game, entry, index, &view);
-            let excluded: &[Target] = if relative_object_target {
-                &prior_object_targets
-            } else {
-                &[]
-            };
             slots.push(slot_requirement(
                 &assignment.spec,
                 &assignment.range,
                 legal_targets,
-                excluded,
+                relative_object_target,
             ));
         }
         return Some(slots);
@@ -193,7 +216,7 @@ pub(super) fn stack_entry_retarget_requirements(
             .iter()
             .zip(probe_requirements)
             .zip(ranges.iter())
-            .map(|((spec, probe), range)| slot_requirement(spec, range, probe.legal_targets, &[]))
+            .map(|((spec, probe), range)| slot_requirement(spec, range, probe.legal_targets, false))
             .collect(),
     )
 }
@@ -442,6 +465,9 @@ impl EffectExecutor for RetargetStackObjectEffect {
                     else {
                         continue;
                     };
+                    if !retarget_proposal_respects_other_targets(&slots, &new_targets) {
+                        continue;
+                    }
 
                     if game.stack[stack_idx].targets != new_targets {
                         let old_targets = game.stack[stack_idx].targets.clone();
@@ -452,6 +478,12 @@ impl EffectExecutor for RetargetStackObjectEffect {
                         }
                         game.stack[stack_idx] = updated_entry;
                         changed += 1;
+                        let final_targets = game.stack[stack_idx].targets.clone();
+                        game.drop_pending_stale_becomes_targeted_events(
+                            object_id,
+                            entry.is_ability,
+                            &final_targets,
+                        );
                         // Each new target becomes a target once (CR 115.3,
                         // 115.7); unchanged ones were targeted already.
                         let mut newly_targeted: Vec<Target> = Vec::new();
@@ -502,6 +534,11 @@ impl EffectExecutor for RetargetStackObjectEffect {
                         }
                         for idx in range.clone() {
                             if entry.targets.get(idx).is_some_and(|t| *t == fixed_target) {
+                                continue;
+                            }
+                            let mut proposal = entry.targets.clone();
+                            proposal[idx] = fixed_target;
+                            if !retarget_proposal_respects_other_targets(&slots, &proposal) {
                                 continue;
                             }
                             eligible_indices.push(idx);
@@ -563,6 +600,12 @@ impl EffectExecutor for RetargetStackObjectEffect {
                         if updated_entry.remap_target_distributions(&old_targets) {
                             game.stack[stack_idx] = updated_entry;
                             changed += 1;
+                            let final_targets = game.stack[stack_idx].targets.clone();
+                            game.drop_pending_stale_becomes_targeted_events(
+                                object_id,
+                                entry.is_ability,
+                                &final_targets,
+                            );
                             push_becomes_targeted_event(
                                 &mut events,
                                 fixed_target,

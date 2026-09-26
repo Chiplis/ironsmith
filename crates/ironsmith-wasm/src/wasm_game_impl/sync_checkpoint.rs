@@ -112,6 +112,10 @@ struct SyncPlayer {
     graveyard: Vec<u64>,
     sideboard: Vec<u64>,
     commanders: Vec<u64>,
+    /// Commander color identities fixed at designation (CR 903.4a), in
+    /// commander-id order.
+    #[serde(default)]
+    commander_color_identities: Vec<(u64, ironsmith::color::ColorSet)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2198,6 +2202,11 @@ impl WasmGame {
                 graveyard: raw_ids(&player.graveyard),
                 sideboard: raw_ids(&player.sideboard),
                 commanders: raw_ids(&player.commanders),
+                commander_color_identities: player
+                    .commander_color_identities
+                    .iter()
+                    .map(|(id, identity)| (id.0, *identity))
+                    .collect(),
             })
             .collect();
 
@@ -3513,6 +3522,11 @@ impl WasmGame {
                 player.graveyard = object_ids(player_checkpoint.graveyard.clone()).into();
                 player.sideboard = object_ids(player_checkpoint.sideboard.clone()).into();
                 player.commanders = object_ids(player_checkpoint.commanders.clone());
+                player.commander_color_identities = player_checkpoint
+                    .commander_color_identities
+                    .iter()
+                    .map(|(id, identity)| (ObjectId::from_raw(*id), *identity))
+                    .collect();
             }
         }
 

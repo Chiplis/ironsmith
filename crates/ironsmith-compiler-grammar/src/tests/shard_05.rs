@@ -4059,10 +4059,10 @@ pub(super) fn absolute_virtue_player_protection_from_opponents_parses_as_targeti
         .expect("Absolute Virtue static line should parse");
     let debug = format!("{:?}", def.abilities);
     assert!(
-        debug.contains("BeTargetedPlayerFrom")
+        debug.contains("PlayerProtectionFrom")
             && debug.contains("You")
             && debug.contains("controller: Some(Opponent)"),
-        "expected player targeting restriction from opponent-controlled sources, got {debug}"
+        "expected player protection from opponent-controlled sources, got {debug}"
     );
 }
 

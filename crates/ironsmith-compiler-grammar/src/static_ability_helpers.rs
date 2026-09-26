@@ -135,6 +135,9 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
         KeywordAction::ProtectionFromChosenColor => Some(CompilerStaticAbility::protection(
             crate::ability::ProtectionFrom::ChosenColor,
         )),
+        KeywordAction::ProtectionFromColorsOutsideCommanderIdentity => Some(CompilerStaticAbility::protection(
+            crate::ability::ProtectionFrom::ColorsOutsideCommanderIdentity,
+        )),
         KeywordAction::ProtectionFromFilter(filter) => Some(CompilerStaticAbility::protection(
             crate::ability::ProtectionFrom::Permanents(filter),
         )),

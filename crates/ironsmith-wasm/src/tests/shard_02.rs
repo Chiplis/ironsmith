@@ -1485,11 +1485,10 @@ pub(super) fn commander_second_mulligan_bottoms_one_card() {
     dispatch_matching_priority_action(&mut wasm, |action| {
         matches!(action, LegalAction::KeepOpeningHand)
     });
+    // CR 103.5: the bottoming is part of the mulligan itself, before the
+    // next keep/mulligan declaration.
     dispatch_matching_priority_action(&mut wasm, |action| {
         matches!(action, LegalAction::TakeMulligan)
-    });
-    dispatch_matching_priority_action(&mut wasm, |action| {
-        matches!(action, LegalAction::KeepOpeningHand)
     });
 
     match wasm.pending_decision.as_ref() {

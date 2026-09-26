@@ -661,6 +661,10 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("once"),
             StaticAbilityLineHeadHint::Pair("once", "during"),
         ],
+        "parse_you_have_protection_from_opponents_line" => vec![
+            StaticAbilityLineHeadHint::Single("you"),
+            StaticAbilityLineHeadHint::Pair("you", "have"),
+        ],
         "parse_player_may_cast_spells_free_and_flash_line" => vec![
             StaticAbilityLineHeadHint::Pair("any", "player"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
@@ -1612,6 +1616,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_you_may_cast_exile_counter_cards_with_mana_permission_line
         ),
         multi_static_ability_ast_rule!(parse_player_may_cast_spells_free_and_flash_line),
+        multi_static_ability_ast_rule!(parse_you_have_protection_from_opponents_line),
         multi_static_ability_ast_rule!(parse_surveilled_graveyard_play_life_cost_line),
         multi_static_ability_ast_rule!(parse_source_exiled_play_life_cost_line),
         single_static_ability_ast_rule!(parse_as_you_cascade_land_drop_line),
@@ -3321,15 +3326,6 @@ pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticA
                         ObjectFilter::default().controlled_by(PlayerFilter::Opponent),
                     ),
                     "You have hexproof".to_string(),
-                )
-            }
-            keyword_static_lines::StaticTextMarkerKind::YouHaveProtectionFromOpponents => {
-                StaticAbility::restriction(
-                    crate::effect::Restriction::be_targeted_player_from(
-                        PlayerFilter::You,
-                        ObjectFilter::default().controlled_by(PlayerFilter::Opponent),
-                    ),
-                    "You have protection from each of your opponents".to_string(),
                 )
             }
             keyword_static_lines::StaticTextMarkerKind::OpponentsCastOnlyAsSorcery => {

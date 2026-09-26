@@ -12,6 +12,10 @@ pub enum LinkedFaceLayout {
     None,
     TransformLike,
     Split,
+    /// A Kamigawa flip card (CR 710): the two halves are printed on one face,
+    /// so the permanent can flip but is not double-faced and can't transform
+    /// (CR 712.9).
+    Flip,
     /// Two faces where the back is a prepare spell: never cast from hand, only
     /// as a copy while the front permanent is prepared.
     Prepare,

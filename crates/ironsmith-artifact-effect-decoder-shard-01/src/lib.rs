@@ -73,6 +73,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "ExperienceCountersEffect" => {
             decode_as::<ironsmith_core::ExperienceCountersEffect>(payload).map(Some)
         }
+        "GivePlayerCountersEffect" => {
+            decode_as::<ironsmith_core::GivePlayerCountersEffect>(payload).map(Some)
+        }
         "ExtraTurnAfterNextTurnEffect" => {
             decode_as::<ironsmith_core::ExtraTurnAfterNextTurnEffect>(payload).map(Some)
         }

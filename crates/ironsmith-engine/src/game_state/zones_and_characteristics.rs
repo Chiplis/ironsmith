@@ -135,13 +135,28 @@ impl GameState {
     /// This is a zone-change rule, not a replacement effect, so callers must
     /// check it before proposing ETB replacements or collecting entry choices.
     pub(crate) fn card_cannot_enter_battlefield(&self, object_id: ObjectId) -> bool {
+        self.token_cannot_change_zones(object_id, Zone::Battlefield)
+            || self.object(object_id).is_some_and(|object| {
+                (object.kind == crate::object::ObjectKind::Card
+                    && object.card_types.iter().any(|card_type| {
+                        matches!(card_type, CardType::Instant | CardType::Sorcery)
+                    }))
+                    || self.entry_prohibited_by_cant_effect(object)
+            })
+    }
+
+    /// CR 111.8: a token that has left the battlefield can't move to another
+    /// zone or come back onto the battlefield; it stays where it is until
+    /// state-based actions remove it (CR 704.5d).
+    ///
+    /// Tokens are staged in the command zone while being created, and a copy
+    /// of a card (CR 707.12) is created as a token in the card's zone and then
+    /// cast, so those two moves are not departures from the battlefield.
+    pub(crate) fn token_cannot_change_zones(&self, object_id: ObjectId, new_zone: Zone) -> bool {
         self.object(object_id).is_some_and(|object| {
-            (object.kind == crate::object::ObjectKind::Card
-                && object
-                    .card_types
-                    .iter()
-                    .any(|card_type| matches!(card_type, CardType::Instant | CardType::Sorcery)))
-                || self.entry_prohibited_by_cant_effect(object)
+            object.kind == crate::object::ObjectKind::Token
+                && !matches!(object.zone, Zone::Battlefield | Zone::Command | Zone::Stack)
+                && new_zone != Zone::Stack
         })
     }
 
@@ -475,6 +490,9 @@ impl GameState {
         if new_zone == Zone::Battlefield && self.card_cannot_enter_battlefield(old_id) {
             return None;
         }
+        if self.token_cannot_change_zones(old_id, new_zone) {
+            return None;
+        }
         // Use the object's current typed abilities while it is still in the
         // origin zone. This honors ability-loss effects on the battlefield and
         // still lets an all-zone retention ability operate from other zones.
@@ -776,6 +794,11 @@ impl GameState {
             new_zone == Zone::Stack || (old_zone == Zone::Stack && new_zone == Zone::Battlefield);
         let preserve_optional_costs_paid = old_zone == Zone::Stack && new_zone == Zone::Battlefield;
         let preserve_x_value = old_zone == Zone::Stack && new_zone == Zone::Battlefield;
+        // Restore enters-as characteristics first, so the printed values saved
+        // by the face-down, bestow and prototype overlays below always win.
+        if old_zone == Zone::Battlefield && new_zone != Zone::Battlefield {
+            new_object.end_enters_as_copy_overlay();
+        }
         if !preserve_prototype_overlay {
             new_object.end_prototype_cast_overlay();
         }
@@ -787,9 +810,6 @@ impl GameState {
             // card in its new zone as a "Face-down creature" / Aura.
             new_object.end_bestow_cast_overlay();
             new_object.end_face_down_cast_overlay();
-        }
-        if old_zone == Zone::Battlefield && new_zone != Zone::Battlefield {
-            new_object.end_enters_as_copy_overlay();
         }
         if !preserve_x_value {
             new_object.x_value = None;
@@ -858,11 +878,16 @@ impl GameState {
         // CR 712.8a / 712.14: outside the battlefield and the stack a
         // transforming double-faced card has only its front face, and it
         // enters the battlefield front face up unless an effect says otherwise.
+        // A flipped flip card likewise leaves as the unflipped card (CR 710.2,
+        // 710.4).
         let leaves_battlefield_or_stack = matches!(old_zone, Zone::Battlefield | Zone::Stack)
             && !matches!(new_zone, Zone::Battlefield | Zone::Stack);
         if (leaves_battlefield_or_stack
             || (old_zone == Zone::Exile && new_zone == Zone::Battlefield))
-            && new_object.linked_face_layout == LinkedFaceLayout::TransformLike
+            && matches!(
+                new_object.linked_face_layout,
+                LinkedFaceLayout::TransformLike | LinkedFaceLayout::Flip
+            )
             && let Some(front_def) =
                 self.default_face_definition_for_transform_like_return(&new_object)
         {
@@ -910,8 +935,13 @@ impl GameState {
             }
         }
 
+        // CR 406.3 / 400.7: a face-down exiled card that leaves exile is a new
+        // object that enters face up (a Hideaway land played from exile, a
+        // Praetor's Grasp card put onto the battlefield) unless the effect
+        // itself says face down, which uses the face-down cast overlay. Only a
+        // face-down permanent or spell carries its status onto the battlefield.
         if new_zone == Zone::Battlefield
-            && (was_face_down
+            && ((was_face_down && matches!(old_zone, Zone::Battlefield | Zone::Stack))
                 || self
                     .object(new_id)
                     .is_some_and(|obj| obj.face_down_cast_state.is_some()))
@@ -998,12 +1028,18 @@ impl GameState {
             object.other_face_name.as_deref(),
             object.other_face,
         )?;
-        if other_def.card.linked_face_layout != LinkedFaceLayout::TransformLike {
+        let returns_to_default_face = |layout: LinkedFaceLayout| {
+            matches!(
+                layout,
+                LinkedFaceLayout::TransformLike | LinkedFaceLayout::Flip
+            )
+        };
+        if !returns_to_default_face(other_def.card.linked_face_layout) {
             return None;
         }
         let current_def =
             self.linked_face_definition_by_name_or_id(Some(&object.name), object.card)?;
-        if current_def.card.linked_face_layout != LinkedFaceLayout::TransformLike {
+        if !returns_to_default_face(current_def.card.linked_face_layout) {
             return None;
         }
 
@@ -2307,7 +2343,12 @@ impl GameState {
             self.tap(new_id);
         }
 
-        // Apply enters with counters
+        // Apply enters with counters. Counters an object is given as it
+        // enters are "put" on it (CR 122.6): each kind gets a counter
+        // timestamp (613.7c) and a counters-put event, which "whenever
+        // counters are put on" triggers and turn history see. The object's
+        // controller puts them (122.6a).
+        let mut entry_counters: Vec<(crate::object::CounterType, u32)> = Vec::new();
         for (counter_type, count) in result
             .enters_with_counters
             .iter()
@@ -2315,6 +2356,43 @@ impl GameState {
         {
             if let Some(obj) = self.object_mut(new_id) {
                 *obj.counters.entry(*counter_type).or_insert(0) += count;
+            }
+            if *count == 0 {
+                continue;
+            }
+            match entry_counters
+                .iter_mut()
+                .find(|(existing, _)| existing == counter_type)
+            {
+                Some((_, total)) => *total = total.saturating_add(*count),
+                None => entry_counters.push((*counter_type, *count)),
+            }
+        }
+        if !entry_counters.is_empty() {
+            self.mark_continuous_state_dirty();
+            let entering_controller = self
+                .object(new_id)
+                .map(|object| self.controller_of(object));
+            for (counter_type, count) in entry_counters {
+                self.effect_store
+                    .continuous_effects
+                    .record_counter_change(new_id, counter_type);
+                let count_after = self.counter_count(new_id, counter_type);
+                let event_provenance = self
+                    .provenance_graph_mut()
+                    .alloc_root_event(crate::events::EventKind::MarkersChanged);
+                let event = crate::triggers::TriggerEvent::new_with_provenance(
+                    crate::events::MarkersChangedEvent::added(
+                        counter_type,
+                        new_id,
+                        count,
+                        Some(new_id),
+                        entering_controller,
+                    )
+                    .with_count_after(count_after),
+                    event_provenance,
+                );
+                self.queue_trigger_event(event_provenance, event);
             }
         }
 
@@ -2354,12 +2432,17 @@ impl GameState {
             let filter_ctx = self.filter_context_for(chooser, Some(new_id));
             let chosen_target = match filter {
                 AuraAttachmentFilter::Object(filter) => {
+                    // CR 303.4f: the object needn't be a permanent. An enchant
+                    // ability naming another zone ("enchant creature card in a
+                    // graveyard") picks from that zone (Animate Dead returned
+                    // by Sun Titan or found by Zur).
+                    let candidate_zone = filter.zone.unwrap_or(Zone::Battlefield);
                     let mut candidates = Vec::new();
                     for (id, candidate) in &self.objects {
                         // CR 702.26b: phased-out permanents are treated as
                         // though they don't exist.
                         if *id == new_id
-                            || candidate.zone != Zone::Battlefield
+                            || candidate.zone != candidate_zone
                             || self.is_phased_out(*id)
                         {
                             continue;
@@ -2377,6 +2460,9 @@ impl GameState {
                         }
                     }
 
+                    // The object map's iteration order is hash-based; offer
+                    // the choice (and its fallback) in a stable order.
+                    candidates.sort_by_key(|candidate| candidate.id);
                     if candidates.is_empty() {
                         None
                     } else {
@@ -2404,9 +2490,16 @@ impl GameState {
                         .filter(|player| {
                             player.is_in_game()
                                 && filter.matches_player(player.id, &filter_ctx)
-                                && !crate::effects::permanents::player_has_protection_from_everything(
-                                    self, player.id,
-                                )
+                                && !match self.object(new_id) {
+                                    Some(aura) => {
+                                        crate::effects::permanents::player_has_protection_from_object(
+                                            self, player.id, aura,
+                                        )
+                                    }
+                                    None => crate::effects::permanents::player_has_protection_from_everything(
+                                        self, player.id,
+                                    ),
+                                }
                         })
                         .map(|player| (player.id, player.name.to_string()))
                         .collect::<Vec<_>>();
@@ -3131,6 +3224,7 @@ impl GameState {
 
         let obj = self.object_mut(id)?;
         obj.add_counters(counter_type, amount);
+        let count_after = obj.counters.get(&counter_type).copied().unwrap_or(0);
         self.effect_store
             .continuous_effects
             .record_counter_change(id, counter_type);
@@ -3139,6 +3233,8 @@ impl GameState {
         let event_provenance = self
             .provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::MarkersChanged);
+        // The event-time count lets chapter abilities (CR 714.2b) and
+        // "Nth counter" triggers (122.7) compare the exact before/after pair.
         Some(crate::triggers::TriggerEvent::new_with_provenance(
             crate::events::MarkersChangedEvent::added(
                 counter_type,
@@ -3146,7 +3242,8 @@ impl GameState {
                 amount,
                 source,
                 source_controller,
-            ),
+            )
+            .with_count_after(count_after),
             event_provenance,
         ))
     }

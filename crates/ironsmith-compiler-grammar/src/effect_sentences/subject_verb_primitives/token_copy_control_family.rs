@@ -278,17 +278,37 @@ pub fn parse_sacrifice_any_number_sentence(
         } else {
             parse_object_filter(shape.filter_tokens, false)?
         };
+    let mut parsed_filter = parsed_filter;
+    // "creatures with total power 12 or greater" bounds the whole chosen
+    // set, not each creature (CR 118.3: the cost must be paid in full).
+    let aggregate_constraint =
+        crate::grammar::shared_util::aggregate_constraints::lift_total_mana_value_choice_constraint(
+            shape.filter_tokens,
+            &mut parsed_filter,
+        );
     let filter = sacrifice_choice_filter(parsed_filter);
     let tag = crate::tag::CompilerReferenceTag::It.bind();
 
-    let mut effects = vec![
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+    let choose = match aggregate_constraint {
+        Some(constraint) => {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+                filter,
+                count: ChoiceCount::any_number(),
+                player: PlayerAst::Implicit,
+                tag: tag.clone(),
+                constraint,
+            })
+        }
+        None => EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             count: ChoiceCount::any_number(),
             count_value: None,
             player: PlayerAst::Implicit,
             tag: tag.clone(),
         }),
+    };
+    let mut effects = vec![
+        choose,
         EffectAst::subject_verb_sacrifice_all(PlayerAst::Implicit, ObjectFilter::tagged(tag)),
     ];
     if let Some(tail_tokens) = shape.tail_tokens {

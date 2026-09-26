@@ -4727,6 +4727,35 @@
         };
         return format!("{player} {} {amount}", player_verb(&player, "get", "gets"));
     }
+    if let Some(player_counters) = effect.downcast_ref::<crate::effects::PlayerCountersEffect>() {
+        let player = describe_player_filter(&player_counters.player);
+        let kind = describe_counter_type(player_counters.counter_type);
+        let amount = if let Some((multiplier, basis)) =
+            describe_for_each_multiplier_and_basis(&player_counters.count)
+        {
+            let counters = if multiplier == 1 {
+                format!("{} counter", with_indefinite_article(&kind))
+            } else {
+                let multiplier =
+                    number_word(multiplier).unwrap_or_else(|| multiplier.to_string());
+                format!("{multiplier} {kind} counters")
+            };
+            format!("{counters} for each {basis}")
+        } else {
+            match player_counters.count {
+                Value::Fixed(1) => format!("{} counter", with_indefinite_article(&kind)),
+                Value::Fixed(_) | Value::X | Value::EventValue(_) => format!(
+                    "{} {kind} counters",
+                    describe_value(&player_counters.count)
+                ),
+                _ => format!(
+                    "a number of {kind} counters equal to {}",
+                    describe_value(&player_counters.count)
+                ),
+            }
+        };
+        return format!("{player} {} {amount}", player_verb(&player, "get", "gets"));
+    }
     if let Some(for_each_counter_kind) =
         effect.downcast_ref::<crate::effects::ForEachCounterKindPutOrRemoveEffect>()
     {

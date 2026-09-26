@@ -271,8 +271,15 @@ impl ZoneChangeTrigger {
 
     /// "When ~ dies"
     pub fn this_dies() -> Self {
-        // "dies" is a creature-only game term; encode that in the trigger metadata.
-        Self::dies(ObjectFilter::creature()).this()
+        // "Dies" means "is put into a graveyard from the battlefield" for any
+        // permanent (CR 700.4), not only creatures: an uncrewed Vehicle or a
+        // Role Aura with "when this dies" triggers too. The object with the
+        // ability is the whole subject, so no type filter applies.
+        Self::new()
+            .from(Zone::Battlefield)
+            .to(Zone::Graveyard)
+            .graveyard_surface(GraveyardTriggerSurface::Dies)
+            .this()
     }
 
     /// "Whenever a [filter] enters the battlefield"
@@ -1203,6 +1210,12 @@ impl ZoneChangeTrigger {
         }
         if self.object_filter.card_types.len() == 1 {
             return self.object_filter.card_types[0].self_subject(fallback);
+        }
+        // An untyped "when this dies" is almost always printed on a creature.
+        if self.object_filter.card_types.is_empty()
+            && self.graveyard_surface == Some(GraveyardTriggerSurface::Dies)
+        {
+            return "creature";
         }
         fallback
     }

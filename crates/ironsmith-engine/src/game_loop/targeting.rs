@@ -93,6 +93,44 @@ pub(crate) fn queue_triggers_from_event(
     }
 }
 
+/// Queue trigger matches for events one instruction reported, in order.
+///
+/// Counters one instruction put on several objects form one simultaneous
+/// event (CR 603.2c): consecutive counter events sharing a simultaneous batch
+/// are matched together, so a "one or more ... on one or more ..." trigger
+/// fires once for the whole placement.
+pub(crate) fn queue_triggers_from_reported_events(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    events: Vec<TriggerEvent>,
+    include_delayed: bool,
+) {
+    let mut events = events.into_iter().peekable();
+    while let Some(event) = events.next() {
+        if let Some(batch) = event.simultaneous_batch()
+            && event.kind() == crate::events::EventKind::MarkersChanged
+            && events
+                .peek()
+                .is_some_and(|next| next.simultaneous_batch() == Some(batch))
+        {
+            let mut simultaneous = vec![event];
+            while let Some(next) = events.next_if(|next| next.simultaneous_batch() == Some(batch)) {
+                simultaneous.push(next);
+            }
+            queue_triggers_for_simultaneous_events(game, trigger_queue, simultaneous.clone());
+            if include_delayed {
+                for event in &simultaneous {
+                    for trigger in crate::triggers::check_delayed_triggers(game, event) {
+                        trigger_queue.add(trigger);
+                    }
+                }
+            }
+            continue;
+        }
+        queue_triggers_from_event(game, trigger_queue, event, include_delayed);
+    }
+}
+
 /// Queue trigger matches for each event in this list.
 pub(super) fn queue_triggers_for_events(
     game: &mut GameState,
@@ -605,6 +643,7 @@ pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut Tr
                     crate::events::EventKind::Damage
                         | crate::events::EventKind::LifeLoss
                         | crate::events::EventKind::ZoneChange
+                        | crate::events::EventKind::MarkersChanged
                 )
             {
                 let mut simultaneous = vec![event];

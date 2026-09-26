@@ -4414,6 +4414,18 @@ impl StaticAbility {
         })
     }
 
+    pub fn player_protection_from(
+        player: crate::target::PlayerFilter,
+        source_filter: crate::target::ObjectFilter,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(misc::PlayerProtectionFrom {
+            player,
+            source_filter,
+            display: display.into(),
+        })
+    }
+
     pub fn prevent_all_damage_to_you() -> Self {
         Self::new(misc::PreventAllDamageToYou)
     }

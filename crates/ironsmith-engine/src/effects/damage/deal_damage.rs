@@ -122,10 +122,40 @@ fn apply_simultaneous_damage_outcome_opts(
     cause: crate::events::cause::EventCause,
     dm: &mut dyn crate::decision::DecisionMaker,
 ) -> EffectOutcome {
-    crate::events::processing::with_deferred_prevention_follow_ups(game, dm, |game, dm| {
-        let events = initial_targets
+    apply_simultaneous_damage_assignments_opts(
+        game,
+        source,
+        source_snapshot,
+        initial_targets
             .into_iter()
-            .map(|target| SimultaneousDamageEvent {
+            .map(|target| (target, amount))
+            .collect(),
+        source_is_combat,
+        unpreventable,
+        provenance,
+        cause,
+        dm,
+    )
+}
+
+/// Deals possibly different amounts from one source to several recipients as
+/// one simultaneous damage event (one batch, one lifelink gain: CR 702.15e).
+#[allow(clippy::too_many_arguments)]
+fn apply_simultaneous_damage_assignments_opts(
+    game: &mut GameState,
+    source: crate::ids::ObjectId,
+    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    assignments: Vec<(DamageTarget, u32)>,
+    source_is_combat: bool,
+    unpreventable: bool,
+    provenance: crate::provenance::ProvNodeId,
+    cause: crate::events::cause::EventCause,
+    dm: &mut dyn crate::decision::DecisionMaker,
+) -> EffectOutcome {
+    crate::events::processing::with_deferred_prevention_follow_ups(game, dm, |game, dm| {
+        let events = assignments
+            .into_iter()
+            .map(|(target, amount)| SimultaneousDamageEvent {
                 source,
                 target,
                 amount,
@@ -294,6 +324,9 @@ fn apply_processed_damage_results(
     outcome
 }
 
+/// CR 120.4a / 120.10: excess damage dealt to a permanent. A permanent that
+/// is more than one of creature, planeswalker and battle uses the greatest of
+/// the per-type excess amounts.
 fn excess_damage_to_object(
     game: &GameState,
     target: crate::ids::ObjectId,
@@ -306,27 +339,28 @@ fn excess_damage_to_object(
     let Some(object) = game.object(target) else {
         return 0;
     };
-    if object.has_card_type(CardType::Creature) {
+    let mut excess: Option<u32> = None;
+    if game.current_has_card_type(target, CardType::Creature) {
         let lethal = if keywords.has_deathtouch {
-            1
+            Some(1)
         } else {
-            let Some(toughness) = game
-                .calculated_toughness(target)
+            game.calculated_toughness(target)
                 .or_else(|| object.toughness())
-            else {
-                return 0;
-            };
-            (toughness - game.damage_on(target) as i32).max(0) as u32
+                .map(|toughness| (toughness - game.damage_on(target) as i32).max(0) as u32)
         };
-        return amount.saturating_sub(lethal);
+        if let Some(lethal) = lethal {
+            excess = Some(excess.unwrap_or(0).max(amount.saturating_sub(lethal)));
+        }
     }
-    if object.has_card_type(CardType::Planeswalker) {
-        return amount.saturating_sub(object.loyalty().unwrap_or(0));
+    if game.current_has_card_type(target, CardType::Planeswalker) {
+        let loyalty = object.loyalty().unwrap_or(0);
+        excess = Some(excess.unwrap_or(0).max(amount.saturating_sub(loyalty)));
     }
-    if object.has_card_type(CardType::Battle) {
-        return amount.saturating_sub(object.defense().unwrap_or(0));
+    if game.current_has_card_type(target, CardType::Battle) {
+        let defense = object.defense().unwrap_or(0);
+        excess = Some(excess.unwrap_or(0).max(amount.saturating_sub(defense)));
     }
-    0
+    excess.unwrap_or(0)
 }
 
 fn object_can_be_dealt_damage(object: &crate::object::Object) -> bool {
@@ -367,7 +401,7 @@ impl ExcessDamageRedirectExt for DealDamageEffect {
         let Some(object) = game.object(object_id) else {
             return Ok(None);
         };
-        if !object.has_card_type(CardType::Creature) {
+        if !game.current_is_creature(object_id) {
             return Ok(None);
         }
         let controller = game.controller_of(object);
@@ -380,34 +414,23 @@ impl ExcessDamageRedirectExt for DealDamageEffect {
         if excess == 0 {
             return Ok(None);
         }
-        let to_creature = apply_processed_damage_outcome_opts(
+        // CR 120.4a modifies the one damage event: the lethal part and the
+        // redirected excess are dealt simultaneously, so lifelink yields a
+        // single life-gain event (CR 702.15e) and watchers see one batch.
+        Ok(Some(apply_simultaneous_damage_assignments_opts(
             game,
             ctx.source,
             ctx.source_snapshot.as_ref(),
-            DamageTarget::Object(object_id),
-            amount - excess,
+            vec![
+                (DamageTarget::Object(object_id), amount - excess),
+                (DamageTarget::Player(controller), excess),
+            ],
             self.source_is_combat,
             self.unpreventable,
             ctx.provenance,
             ctx.cause.clone(),
             &mut *ctx.decision_maker,
-        );
-        let to_controller = apply_processed_damage_outcome_opts(
-            game,
-            ctx.source,
-            ctx.source_snapshot.as_ref(),
-            DamageTarget::Player(controller),
-            excess,
-            self.source_is_combat,
-            self.unpreventable,
-            ctx.provenance,
-            ctx.cause.clone(),
-            &mut *ctx.decision_maker,
-        );
-        Ok(Some(EffectOutcome::aggregate_summing_counts([
-            to_creature,
-            to_controller,
-        ])))
+        )))
     }
 }
 

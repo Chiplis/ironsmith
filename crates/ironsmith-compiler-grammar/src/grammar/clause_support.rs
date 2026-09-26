@@ -37,6 +37,12 @@ pub enum ProtectionTargetKind {
     Multicolored,
     Everything,
     AllColors,
+    /// "each color that's not in your commander's color identity"
+    ColorsOutsideCommanderIdentity,
+    /// "each color [qualifier]" whose qualifier has no model ("each color
+    /// among permanents you control"): rejected rather than read as all
+    /// colors.
+    UnsupportedEachColor,
     Named,
 }
 
@@ -401,6 +407,16 @@ fn classify_protection_target(words: &[&str], target_word: usize) -> ProtectionT
         || word_phrase_prefix(tail, &["the", "chosen", "type"])
     {
         return ProtectionTargetKind::ChosenCardType;
+    }
+    if word_phrase_prefix(tail, &["each", "color"]) && tail.len() > 2 {
+        let qualifier = &tail[2..];
+        if matches!(
+            qualifier,
+            ["thats" | "that's" | "that’s", "not", "in", "your", "commanders" | "commander's" | "commander’s", "color", "identity", ..]
+        ) {
+            return ProtectionTargetKind::ColorsOutsideCommanderIdentity;
+        }
+        return ProtectionTargetKind::UnsupportedEachColor;
     }
     if word_phrase_prefix(tail, &["all", "color"])
         || word_phrase_prefix(tail, &["all", "colors"])

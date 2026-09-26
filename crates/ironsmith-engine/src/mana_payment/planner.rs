@@ -159,7 +159,7 @@ pub fn mana_payment_source_inventory(
         && let Some(spell) = game.object(request.source)
         && game.controller_of(spell) == request.payer
     {
-        if crate::decision::has_convoke(spell) {
+        if crate::decision::spell_has_convoke(game, spell) {
             for (source, _) in crate::decision::get_convoke_creatures(game, request.payer) {
                 if request.reserved_tap_sources.contains(&source) {
                     continue;
@@ -170,7 +170,7 @@ pub fn mana_payment_source_inventory(
                 }
             }
         }
-        if crate::decision::has_delve(spell) {
+        if crate::decision::spell_has_delve(game, spell) {
             for source in delve_cards(game, request) {
                 by_source
                     .entry(source)
@@ -178,7 +178,7 @@ pub fn mana_payment_source_inventory(
                     .push(ManaPaymentSourceKind::Delve);
             }
         }
-        if crate::decision::has_improvise(spell) {
+        if crate::decision::spell_has_improvise(game, spell) {
             for source in crate::decision::get_improvise_artifacts(game, request.payer) {
                 if request.reserved_tap_sources.contains(&source) {
                     continue;
@@ -586,9 +586,9 @@ fn affordability_solver_sees_every_resource(
         let Some(source) = game.object(request.source) else {
             return false;
         };
-        if crate::decision::has_convoke(source)
-            || crate::decision::has_delve(source)
-            || crate::decision::has_improvise(source)
+        if crate::decision::spell_has_convoke(game, source)
+            || crate::decision::spell_has_delve(game, source)
+            || crate::decision::spell_has_improvise(game, source)
         {
             return false;
         }
@@ -1343,7 +1343,7 @@ fn alternative_payment_selections(
         }];
     }
     let mut sources = Vec::new();
-    if crate::decision::has_convoke(source) {
+    if crate::decision::spell_has_convoke(game, source) {
         sources.extend(
             crate::decision::get_convoke_creatures(game, request.payer)
                 .into_iter()
@@ -1362,7 +1362,7 @@ fn alternative_payment_selections(
                 }),
         );
     }
-    if crate::decision::has_delve(source) {
+    if crate::decision::spell_has_delve(game, source) {
         sources.extend(
             delve_cards(game, request)
                 .into_iter()
@@ -1378,7 +1378,7 @@ fn alternative_payment_selections(
                 }),
         );
     }
-    if crate::decision::has_improvise(source) {
+    if crate::decision::spell_has_improvise(game, source) {
         for artifact in crate::decision::get_improvise_artifacts(game, request.payer) {
             if request.preferences.excluded_sources.contains(&artifact)
                 || request.reserved_tap_sources.contains(&artifact)

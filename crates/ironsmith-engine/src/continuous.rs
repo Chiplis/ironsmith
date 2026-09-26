@@ -687,6 +687,41 @@ impl Modification {
     }
 
     /// Returns which sublayer this modification applies in (for Layer 7 only).
+    /// Bind "the chosen card type/color" in a granted protection or
+    /// hexproof-from ability to the choice recorded for `chooser_source`, the
+    /// object that grants it (CR 702.16a, 702.11d).
+    pub(crate) fn bind_chosen_protection_qualities(
+        self,
+        game: &crate::game_state::GameState,
+        chooser_source: ObjectId,
+    ) -> Self {
+        match self {
+            Modification::AddAbility(ability) => {
+                match crate::static_abilities::bind_chosen_protection_qualities(
+                    &ability,
+                    game,
+                    chooser_source,
+                ) {
+                    Some(bound) => Modification::AddAbility(bound),
+                    None => Modification::AddAbility(ability),
+                }
+            }
+            Modification::AddAbilityGeneric(mut ability) => {
+                if let crate::ability::AbilityKind::Static(static_ability) = &ability.kind
+                    && let Some(bound) = crate::static_abilities::bind_chosen_protection_qualities(
+                        static_ability,
+                        game,
+                        chooser_source,
+                    )
+                {
+                    ability.kind = crate::ability::AbilityKind::Static(bound);
+                }
+                Modification::AddAbilityGeneric(ability)
+            }
+            other => other,
+        }
+    }
+
     pub fn pt_sublayer(&self) -> Option<PtSublayer> {
         match self {
             Modification::SetPower { sublayer, .. }
@@ -801,7 +836,10 @@ impl ContinuousEffectManager {
             effect.timestamp = self.next_timestamp();
         }
 
-        if matches!(effect.duration, Until::ForAsLongAs(_)) {
+        if matches!(
+            effect.duration,
+            Until::ForAsLongAs(_) | Until::YouStopControllingThis
+        ) {
             self.latched_duration_states
                 .get_mut()
                 .insert(id, LatchedDurationState::Started);
@@ -2382,6 +2420,8 @@ fn calculate_characteristics_layer_batch_with_effects(
     }
 
     let mut pending_level_pt: HashMap<ObjectId, (i32, i32, u64)> = HashMap::new();
+    let mut counters_applied_before_switch: std::collections::HashSet<ObjectId> =
+        std::collections::HashSet::new();
     for (idx, &id) in order.iter().enumerate() {
         if abilities_removed.contains(&id) {
             continue;
@@ -2484,6 +2524,13 @@ fn calculate_characteristics_layer_batch_with_effects(
                     chars.toughness = Some(lt);
                     pending_level_pt.remove(id);
                 }
+                // CR 613.4c/613.4d: counters are part of 7c, so they apply
+                // before the first 7d switch effect.
+                if effect.modification.pt_sublayer() == Some(PtSublayer::Switching)
+                    && counters_applied_before_switch.insert(*id)
+                {
+                    apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
+                }
                 let mut removed = abilities_removed.contains(id);
                 apply_modification_to_chars(
                     effect,
@@ -2530,7 +2577,9 @@ fn calculate_characteristics_layer_batch_with_effects(
         apply_reconfigure_attached_type_rule(object, chars);
         guards[idx].update(chars);
 
-        apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
+        if !counters_applied_before_switch.contains(&id) {
+            apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
+        }
         guards[idx].update(chars);
 
         add_intrinsic_basic_land_mana_abilities(chars);
@@ -3147,6 +3196,7 @@ fn calculate_with_layers_direct_internal(
     // Level abilities apply in 7b with the leveler's timestamp (CR 711.2b);
     // they're interleaved with the other P/T effects by timestamp below.
     let mut pending_level_pt = None;
+    let mut counters_applied = false;
     if !abilities_removed {
         if let Some((lp, lt)) = get_level_ability_pt(object) {
             let timestamp = game
@@ -3263,6 +3313,14 @@ fn calculate_with_layers_direct_internal(
                 chars.toughness = Some(lt);
                 pending_level_pt = None;
             }
+            // CR 613.4c/613.4d: counters are part of 7c, so they apply before
+            // the first 7d switch effect.
+            if !counters_applied
+                && effect.modification.pt_sublayer() == Some(PtSublayer::Switching)
+            {
+                apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
+                counters_applied = true;
+            }
             apply_modification_to_chars(
                 effect,
                 &mut chars,
@@ -3287,8 +3345,11 @@ fn calculate_with_layers_direct_internal(
     apply_reconfigure_attached_type_rule(object, &mut chars);
     calc_guard.update(&chars);
 
-    // Apply counter modifications for Layer 7c (after other 7c effects by timestamp)
-    apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
+    // Apply counter modifications for Layer 7c (after other 7c effects by
+    // timestamp) unless a 7d switch already needed them.
+    if !counters_applied {
+        apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
+    }
     calc_guard.update(&chars);
 
     add_intrinsic_basic_land_mana_abilities(&mut chars);
@@ -3473,23 +3534,36 @@ fn effect_target_applies_to_direct(
         return resolution_effect_zone_applies(effect, object.zone);
     }
 
+    // CR 801.10: under a limited range of influence, an ability can't
+    // affect objects controlled by players outside its controller's range.
+    // (Resolution effects already locked range-checked targets above.)
+    let within_range = || {
+        game.limited_range_of_influence().is_none()
+            || game.source_is_exempt_from_range(Some(effect.source))
+            || game.player_is_within_range(effect.controller, chars.controller)
+    };
+
     // For StaticAbility, CharacteristicDefining, Combat, and Copy effects,
     // check the EffectTarget as normal (they apply dynamically).
     match &effect.applies_to {
         EffectTarget::Specific(id) => *id == object.id,
         EffectTarget::Source => effect.source == object.id,
-        EffectTarget::AllPermanents => object.zone == Zone::Battlefield,
+        EffectTarget::AllPermanents => object.zone == Zone::Battlefield && within_range(),
         EffectTarget::AllCreatures => {
-            object.zone == Zone::Battlefield && chars.card_types.contains(&CardType::Creature)
+            object.zone == Zone::Battlefield
+                && chars.card_types.contains(&CardType::Creature)
+                && within_range()
         }
-        EffectTarget::Filter(filter) => filter_matches_with_characteristics(
-            filter,
-            object,
-            chars,
-            game,
-            effect.controller,
-            effect.source,
-        ),
+        EffectTarget::Filter(filter) => {
+            filter_matches_with_characteristics(
+                filter,
+                object,
+                chars,
+                game,
+                effect.controller,
+                effect.source,
+            ) && within_range()
+        }
         EffectTarget::AttachedTo(source_id) => {
             // The effect applies to whatever permanent the source is attached to
             if let Some(source) = objects.get(source_id) {
@@ -3722,12 +3796,24 @@ fn continuous_effect_duration_is_active(
         Until::SourceUntaps => game
             .object(effect.source)
             .is_some_and(|obj| obj.zone == Zone::Battlefield && game.is_tapped(effect.source)),
-        Until::YouStopControllingThis => game.object(effect.source).is_some_and(|obj| {
-            obj.zone == Zone::Battlefield
+        Until::YouStopControllingThis => {
+            // CR 611.2b: once "for as long as you control this" has ended it
+            // doesn't begin again when control returns. CR 702.26d/f: a
+            // phased-out source is treated as though it doesn't exist, so the
+            // duration ends when it phases out.
+            let manager = &game.effect_store.continuous_effects;
+            if manager.latched_duration_is_expired(effect.id) {
+                return false;
+            }
+            let active = continuous_duration_object_is_visible(game, effect.source)
                 && game
                     .current_controller_excluding_change_effect(effect.source, Some(effect.id))
-                    .is_some_and(|controller| controller == effect.controller)
-        }),
+                    .is_some_and(|controller| controller == effect.controller);
+            if !active {
+                manager.expire_latched_duration(effect.id);
+            }
+            active
+        }
         Until::ForAsLongAs(ref predicate) => {
             let manager = &game.effect_store.continuous_effects;
             if manager.latched_duration_is_expired(effect.id) {
@@ -4782,7 +4868,9 @@ fn apply_modification_to_chars(
                     if *force_once_each_turn
                         && let AbilityKind::Activated(activated) = &mut copied.kind
                     {
-                        activated.timing = crate::ability::ActivationTiming::OncePerTurn;
+                        // CR 602.5b / 113.3: the once-each-turn limit is added to the
+                        // borrowed ability's own restrictions, never replacing them.
+                        crate::continuous::add_once_each_turn_activation_limit(activated);
                     }
                     chars.abilities.push_with_origin(
                         copied,
@@ -5175,4 +5263,20 @@ pub fn insert_name_sticker_words(name: &str, sticker: &str, after: usize) -> Str
     let position = after.min(words.len());
     words.splice(position..position, sticker.split_whitespace());
     words.join(" ")
+}
+
+/// Add "activate ... only once each turn" to an activated ability on top of
+/// its existing timing and restrictions (CR 602.5b).
+pub(crate) fn add_once_each_turn_activation_limit(activated: &mut crate::ability::ActivatedAbility) {
+    if activated.timing == crate::ability::ActivationTiming::AnyTime {
+        activated.timing = crate::ability::ActivationTiming::OncePerTurn;
+        return;
+    }
+    if activated.timing == crate::ability::ActivationTiming::OncePerTurn {
+        return;
+    }
+    let limit = crate::ConditionExpr::MaxActivationsPerTurn(1);
+    if !activated.activation_restrictions.contains(&limit) {
+        activated.activation_restrictions.push(limit);
+    }
 }

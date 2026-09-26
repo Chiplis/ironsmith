@@ -487,6 +487,8 @@ pub enum TriggerSpec {
         source_controller: Option<PlayerFilter>,
         one_or_more: bool,
         include_players: bool,
+        /// "on one or more [objects]" (plural recipients, CR 603.2c).
+        one_or_more_objects: bool,
     },
     NthCounterPutOn {
         filter: ObjectFilter,

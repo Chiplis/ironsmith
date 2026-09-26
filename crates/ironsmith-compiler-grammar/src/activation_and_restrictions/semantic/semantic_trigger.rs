@@ -2495,6 +2495,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         let object_word_start = counter_word_idx + 2;
         let object_tokens = trigger_counter_recipient_tokens(tokens, object_word_start, &words)?;
         let (object_tokens, include_players) = split_counter_recipient_or_player(&object_tokens);
+        let one_or_more_objects = subject_starts_one_or_more(
+            &ActivationRestrictionCompatWords::new(object_tokens).to_word_refs(),
+        );
         let filter = parse_object_filter_lexed(object_tokens, false).map_err(|_| {
             CardTextError::ParseError(format!(
                 "unsupported counter recipient filter in trigger clause (clause: '{}')",
@@ -2508,6 +2511,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             source_controller: Some(source_controller),
             one_or_more,
             include_players,
+            one_or_more_objects,
         });
     }
 
@@ -3927,6 +3931,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         let object_word_start = counter_word_idx + 4;
         let object_tokens = trigger_counter_recipient_tokens(tokens, object_word_start, &words)?;
         let (object_tokens, include_players) = split_counter_recipient_or_player(&object_tokens);
+        let one_or_more_objects = subject_starts_one_or_more(
+            &ActivationRestrictionCompatWords::new(object_tokens).to_word_refs(),
+        );
         let filter = parse_object_filter_lexed(object_tokens, false).map_err(|_| {
             CardTextError::ParseError(format!(
                 "unsupported counter recipient filter in trigger clause (clause: '{}')",
@@ -3953,6 +3960,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             source_controller: None,
             one_or_more,
             include_players,
+            one_or_more_objects,
         });
     }
 

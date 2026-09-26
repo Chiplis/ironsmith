@@ -843,7 +843,8 @@ impl EffectExecutor for ApplyContinuousEffect {
             let resolved_modification = materialize_granted_entry_counter_source(
                 resolve_set_pt_modification(self, game, ctx, &modification)?,
                 ctx.source,
-            );
+            )
+            .bind_chosen_protection_qualities(game, ctx.source);
             if let Modification::ChangeController(new_controller) = &resolved_modification {
                 // CR 800.4b: an effect cannot give control of an object to a
                 // player who has left the game.

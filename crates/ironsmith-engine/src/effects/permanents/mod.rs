@@ -87,6 +87,29 @@ pub(crate) fn player_has_protection_from_everything(
         })
 }
 
+/// Whether `player` has protection from the object `source` (CR 702.16):
+/// the single player-protection query. Fed by `player_protections`
+/// (PlayerProtectionFrom abilities: Absolute Virtue, "protection from the
+/// chosen card type") and by protection from everything.
+pub(crate) fn player_has_protection_from_object(
+    game: &GameState,
+    player: crate::ids::PlayerId,
+    source: &crate::object::Object,
+) -> bool {
+    game.effect_store
+        .cant_effects
+        .player_protections
+        .iter()
+        .any(|protection| {
+            protection.player == player && {
+                let filter_ctx = game
+                    .filter_context_for(protection.controller, Some(protection.protection_source));
+                protection.source_filter.matches(source, &filter_ctx, game)
+            }
+        })
+        || player_has_protection_from_everything(game, player)
+}
+
 pub(crate) fn attachment_can_attach_to_target(
     game: &GameState,
     attachment_id: ObjectId,
@@ -110,10 +133,11 @@ pub(crate) fn attachment_can_attach_to_target(
 
     let subtypes = game.calculated_subtypes(attachment_id);
     if subtypes.contains(&Subtype::Aura) {
-        // CR 702.16c/702.16j: a player with protection from everything can't
-        // be enchanted; attached Auras fall off as a state-based action.
+        // CR 702.16c/e/j: a player can't be enchanted by Auras with a quality
+        // they have protection from; attached ones fall off as a state-based
+        // action (704.5m).
         if let AttachmentTarget::Player(player) = target
-            && player_has_protection_from_everything(game, player)
+            && player_has_protection_from_object(game, player, attachment)
         {
             return false;
         }
@@ -275,6 +299,7 @@ pub use become_color_choice::BecomeColorChoiceEffect;
 pub use become_creature_type_choice::BecomeCreatureTypeChoiceEffect;
 pub use conspire::ConspireCostEffect;
 pub use crew::CrewCostEffect;
+pub(crate) use crew::crew_ability_resolved_event;
 pub use detain::DetainEffect;
 pub use earthbend::EarthbendEffect;
 pub use evolve::EvolveEffect;

@@ -74,8 +74,15 @@ impl EffectExecutor for MonstrosityEffect {
             );
         }
 
-        // Return a special result that indicates monstrosity happened
-        // The game loop will need to generate the BecameMonstrous event
-        Ok(EffectOutcome::monstrosity_applied(source_id, n_value))
+        // "When this creature becomes monstrous" triggers now, and its X is
+        // the monstrosity X (CR 701.37b-c).
+        Ok(
+            EffectOutcome::monstrosity_applied(source_id, n_value).with_event(
+                crate::triggers::TriggerEvent::new_with_provenance(
+                    crate::events::BecameMonstrousEvent::new(source_id, ctx.controller, n_value),
+                    ctx.provenance,
+                ),
+            ),
+        )
     }
 }

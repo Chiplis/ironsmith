@@ -724,10 +724,14 @@ impl Object {
     /// - a split card outside the stack has the combined mana value of both
     ///   halves (CR 709.4);
     /// - a transforming double-faced card with its back face up has the mana
-    ///   value of its front face (CR 712.8c, 712.8e).
+    ///   value of its front face (CR 712.8c, 712.8e);
+    /// - a melded permanent (no linked-face layout, no mana cost of its own)
+    ///   has the summed mana value of its two front faces (CR 712.8g). A copy
+    ///   of it doesn't copy this, so its mana value is 0.
     pub fn linked_face_mana_value(&self) -> Option<u32> {
         let linked = self.linked_face_mana_cost.as_deref()?;
         match self.linked_face_layout {
+            LinkedFaceLayout::None if self.mana_cost.is_none() => Some(linked.mana_value()),
             LinkedFaceLayout::Split if !matches!(self.zone, Zone::Stack | Zone::Battlefield) => {
                 let own = self.mana_cost.as_deref().map_or(0, ManaCost::mana_value);
                 Some(own + linked.mana_value())
@@ -957,6 +961,17 @@ impl Object {
     pub fn apply_definition_face(&mut self, def: &crate::cards::CardDefinition) {
         let handles = CardSharedHandles::from_definition(def);
         self.apply_definition_face_with_shared(def, &handles);
+    }
+
+    /// Turn a flip card to its flipped half. The flipped half's name, text,
+    /// types and power/toughness apply, but the card's color and mana cost
+    /// don't change (CR 710.1b-c).
+    pub fn apply_flipped_face(&mut self, def: &crate::cards::CardDefinition) {
+        let mana_cost = self.mana_cost.clone();
+        let color_override = self.color_override;
+        self.apply_definition_face(def);
+        self.mana_cost = mana_cost;
+        self.color_override = color_override;
     }
 
     pub(crate) fn apply_definition_face_with_shared(
@@ -1918,32 +1933,60 @@ impl Object {
         if self.enters_as_copy_restore_state.is_some() {
             return;
         }
-        self.enters_as_copy_restore_state = Some(Box::new(EntersAsCopyRestoreState {
-            printed: FaceDownCastState {
-                name: self.name.clone(),
-                first_printed_set_name: self.first_printed_set_name.clone(),
-                mana_cost: self.mana_cost.clone(),
-                color_override: self.color_override,
-                supertypes: self.supertypes.clone(),
-                card_types: self.card_types.clone(),
-                subtypes: self.subtypes.clone(),
-                compiled_card_text: self.compiled_card_text.clone(),
-                ability_labels: self.ability_labels.clone(),
-                rules_text_color_identity: self.rules_text_color_identity,
-                base_power: self.base_power,
-                base_toughness: self.base_toughness,
-                base_loyalty: self.base_loyalty,
-                base_defense: self.base_defense,
-                abilities: self.abilities.clone(),
-                spell_effect: self.spell_effect.clone(),
-                aura_attach_filter: self.aura_attach_filter.clone(),
+        // A face-down, prototyped or bestowed permanent's live copiable fields
+        // are that overlay's values; the true printed values are the ones the
+        // overlay saved (CR 708.9, 702.160, 702.103). Capturing the overlay
+        // values instead would bring them back when the permanent leaves the
+        // battlefield, even after it was turned face up.
+        let mut printed = match self.face_down_cast_state.as_deref() {
+            Some(face_down) => FaceDownCastState {
                 disguise_ward: false,
+                ..face_down.clone()
             },
+            None => self.live_copiable_restore_fields(),
+        };
+        if let Some(prototype) = &self.prototype_cast_state {
+            printed.mana_cost = prototype.mana_cost.clone();
+            printed.color_override = prototype.color_override;
+            printed.base_power = prototype.base_power;
+            printed.base_toughness = prototype.base_toughness;
+        }
+        if let Some(bestow) = self.bestow_cast_state.as_deref() {
+            printed.card_types = bestow.card_types.clone();
+            printed.subtypes = bestow.subtypes.clone();
+            printed.aura_attach_filter = bestow.aura_attach_filter.clone();
+            printed.spell_effect = bestow.spell_effect.clone();
+        }
+        self.enters_as_copy_restore_state = Some(Box::new(EntersAsCopyRestoreState {
+            printed,
             other_face: self.other_face,
             other_face_name: self.other_face_name.clone(),
             linked_face_layout: self.linked_face_layout,
             has_fuse: self.has_fuse,
         }));
+    }
+
+    fn live_copiable_restore_fields(&self) -> FaceDownCastState {
+        FaceDownCastState {
+            name: self.name.clone(),
+            first_printed_set_name: self.first_printed_set_name.clone(),
+            mana_cost: self.mana_cost.clone(),
+            color_override: self.color_override,
+            supertypes: self.supertypes.clone(),
+            card_types: self.card_types.clone(),
+            subtypes: self.subtypes.clone(),
+            compiled_card_text: self.compiled_card_text.clone(),
+            ability_labels: self.ability_labels.clone(),
+            rules_text_color_identity: self.rules_text_color_identity,
+            base_power: self.base_power,
+            base_toughness: self.base_toughness,
+            base_loyalty: self.base_loyalty,
+            base_defense: self.base_defense,
+            abilities: self.abilities.clone(),
+            spell_effect: self.spell_effect.clone(),
+            aura_attach_filter: self.aura_attach_filter.clone(),
+            disguise_ward: false,
+        }
     }
 
     /// Restore the printed copiable fields saved by
@@ -2051,13 +2094,39 @@ impl Object {
     /// - Color indicator/override
     /// - Mana symbols in rules text (e.g., "{T}: Add {G}")
     pub fn color_identity(&self) -> ColorSet {
+        Self::color_identity_from_parts(
+            self.mana_cost.as_deref(),
+            self.color_override,
+            self.rules_text_color_identity,
+        )
+    }
+
+    /// Color identity from the printed characteristics (CR 903.4a): under a
+    /// face-down overlay this reads the face-up card's values, which the
+    /// overlay only hides.
+    pub fn printed_color_identity(&self) -> ColorSet {
+        match self.face_down_cast_state.as_deref() {
+            Some(printed) => Self::color_identity_from_parts(
+                printed.mana_cost.as_deref(),
+                printed.color_override,
+                printed.rules_text_color_identity,
+            ),
+            None => self.color_identity(),
+        }
+    }
+
+    fn color_identity_from_parts(
+        mana_cost: Option<&ManaCost>,
+        color_override: Option<ColorSet>,
+        rules_text_color_identity: ColorSet,
+    ) -> ColorSet {
         use crate::color::Color;
         use crate::mana::ManaSymbol;
 
         let mut identity = ColorSet::COLORLESS;
 
         // Add colors from mana cost
-        if let Some(mana_cost) = &self.mana_cost {
+        if let Some(mana_cost) = mana_cost {
             for pip in mana_cost.pips() {
                 for symbol in pip {
                     match symbol {
@@ -2073,13 +2142,11 @@ impl Object {
         }
 
         // Add colors from color indicator/override
-        if let Some(override_colors) = self.color_override {
+        if let Some(override_colors) = color_override {
             identity = identity.union(override_colors);
         }
 
-        identity = identity.union(self.rules_text_color_identity);
-
-        identity
+        identity.union(rules_text_color_identity)
     }
 
     /// Returns the current power of this creature.

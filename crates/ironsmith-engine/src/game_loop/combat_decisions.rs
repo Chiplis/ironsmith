@@ -1065,11 +1065,24 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
             .iter()
             .map(|declaration| declaration.controller)
             .collect::<std::collections::HashSet<_>>();
+        let combat_phase = game.turn_store.combat_phases_started_this_turn;
         let history = &mut game.turn_store.turn_history;
         history.players_attacked_this_turn.extend(attacking_players);
         for prepared_decl in &surviving_declarations {
             let creature = prepared_decl.declaration.creature;
             history.creatures_attacked_this_turn.insert(creature);
+            history
+                .creatures_attacked_by_player_this_turn
+                .entry(prepared_decl.controller)
+                .or_default()
+                .insert(creature);
+            if let AttackTarget::Player(defender) = prepared_decl.declaration.target {
+                history
+                    .players_attacked_in_combat
+                    .entry((combat_phase, prepared_decl.controller))
+                    .or_default()
+                    .insert(defender);
+            }
             if matches!(prepared_decl.declaration.target, AttackTarget::Battle(_)) {
                 history
                     .creatures_attacked_battles_this_turn
@@ -1684,6 +1697,35 @@ pub fn finish_blocker_declaration_transaction(
     result
 }
 
+/// Like [`finish_blocker_declaration_transaction`], but leaves the block
+/// trigger events unqueued and returns the declared (blocker, attacker) pairs.
+///
+/// Under CR 802.4 each defending player declares in turn, but declaring
+/// blockers is still one turn-based action (CR 509.1): the caller collects
+/// every defending player's pairs and then queues the events once with
+/// [`queue_block_declaration_events`], so "one or more ... become blocked"
+/// triggers fire once and see the complete blocking configuration.
+pub fn finish_blocker_declaration_transaction_deferring_triggers(
+    transaction: BlockDeclarationTransaction,
+    game: &mut GameState,
+    combat: &mut CombatState,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<Vec<(ObjectId, ObjectId)>, GameLoopError> {
+    let BlockDeclarationTransaction {
+        game_checkpoint,
+        combat_checkpoint,
+        trigger_queue_checkpoint: _,
+        prepared,
+    } = transaction;
+    let pairs = prepared.pairs.clone();
+    let result = apply_prepared_blocker_declaration_state(game, combat, prepared, decision_maker);
+    if result.is_err() {
+        *game = game_checkpoint;
+        *combat = combat_checkpoint;
+    }
+    result.map(|()| pairs)
+}
+
 fn apply_blocker_declarations_with_dm(
     game: &mut GameState,
     combat: &mut CombatState,
@@ -1860,11 +1902,26 @@ fn apply_prepared_blocker_declarations(
     prepared: PreparedBlockerDeclarations,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<(), GameLoopError> {
+    let pairs = prepared.pairs.clone();
+    let defending_player = prepared.defending_player;
+    apply_prepared_blocker_declaration_state(game, combat, prepared, decision_maker)?;
+    queue_block_declaration_events(game, combat, trigger_queue, &pairs, defending_player);
+    Ok(())
+}
+
+/// Publishes the prepared blocking configuration and pays its locked costs,
+/// without emitting any block trigger events.
+fn apply_prepared_blocker_declaration_state(
+    game: &mut GameState,
+    combat: &mut CombatState,
+    prepared: PreparedBlockerDeclarations,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<(), GameLoopError> {
     let PreparedBlockerDeclarations {
-        pairs,
+        pairs: _,
         next_combat,
         locked_costs,
-        defending_player,
+        defending_player: _,
     } = prepared;
     game.combat = Some(next_combat.clone());
     game.mark_continuous_state_dirty();
@@ -1892,7 +1949,20 @@ fn apply_prepared_blocker_declarations(
     game.combat = Some(combat.clone());
     game.mark_continuous_state_dirty();
     game.refresh_continuous_state();
+    Ok(())
+}
 
+/// Queues the declare-blockers trigger events (blocks, becomes blocked,
+/// attacks and isn't blocked) as one simultaneous batch. `defending_player`
+/// limits the attacker-level events to creatures attacking that player; pass
+/// `None` once every defending player has declared.
+pub fn queue_block_declaration_events(
+    game: &mut GameState,
+    combat: &CombatState,
+    trigger_queue: &mut TriggerQueue,
+    pairs: &[(ObjectId, ObjectId)],
+    defending_player: Option<PlayerId>,
+) {
     // Capture every required event snapshot before checking any trigger. A
     // trigger check can update pass-local state, but all declaration events
     // must describe the same completed blocking configuration.
@@ -1903,7 +1973,7 @@ fn apply_prepared_blocker_declarations(
             snapshot_ids.push(id);
         }
     };
-    for (blocker, attacker) in &pairs {
+    for (blocker, attacker) in pairs {
         remember_snapshot(*blocker);
         remember_snapshot(*attacker);
     }
@@ -1949,7 +2019,7 @@ fn apply_prepared_blocker_declarations(
     );
 
     // Emit block triggers (per declaration).
-    for (blocker, attacker) in &pairs {
+    for (blocker, attacker) in pairs {
         let event_provenance = game
             .provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::CreatureBlocked);
@@ -2035,8 +2105,6 @@ fn apply_prepared_blocker_declarations(
     }
 
     queue_triggers_for_simultaneous_events(game, trigger_queue, block_events);
-
-    Ok(())
 }
 
 /// Get a decision context for ordering blockers (damage assignment order).

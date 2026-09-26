@@ -901,6 +901,114 @@ fn parse_union_subject_keyword_grants(
     Ok(Some(compiled))
 }
 
+/// "You and <permanents> have protection from <quality>." (Serra's Emissary)
+///
+/// The permanent half is an ordinary grant. The player half (CR 702.16k:
+/// the player can't be targeted, dealt damage, or enchanted by anything with
+/// that quality) lowers to its observable halves: a player targeting
+/// restriction and a prevention of all damage to you from matching sources.
+fn parse_you_and_subject_protection_grant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if words.len() < 3 || words[0] != "you" || words[1] != "and" {
+        return Ok(None);
+    }
+    let Some(and_index) = tokens
+        .iter()
+        .position(|token| token.is_word("and"))
+    else {
+        return Ok(None);
+    };
+    let rest = &tokens[and_index + 1..];
+    let rest_words = crate::lexer::parser_token_word_refs(rest);
+    if !rest_words.windows(3).any(|window| window == ["have", "protection", "from"]) {
+        return Ok(None);
+    }
+    let Some(mut abilities) = parse_granted_keyword_static_line(rest)? else {
+        return Ok(None);
+    };
+    let source_filters: Vec<ObjectFilter> = abilities
+        .iter()
+        .filter_map(granted_protection_source_filter)
+        .collect();
+    if source_filters.len() != 1 {
+        return Ok(None);
+    }
+    let source_filter = source_filters.into_iter().next().expect("one filter");
+    let protection_words = rest_words
+        .iter()
+        .position(|word| *word == "protection")
+        .map(|index| rest_words[index..].join(" "))
+        .unwrap_or_else(|| "protection".to_string());
+    // CR 702.16: a player with protection can't be targeted, dealt damage or
+    // enchanted by sources with that quality; one ability covers all three.
+    abilities.push(StaticAbilityAst::Static(StaticAbility::player_protection_from(
+        PlayerFilter::You,
+        source_filter,
+        format!("You have {protection_words}"),
+    )));
+    Ok(Some(abilities))
+}
+
+/// The source filter a granted protection ability protects against, when it
+/// is expressible as an object filter.
+fn granted_protection_source_filter(ability: &StaticAbilityAst) -> Option<ObjectFilter> {
+    fn from_keyword(action: &KeywordAction) -> Option<ObjectFilter> {
+        match action {
+            KeywordAction::ProtectionFrom(colors) => Some(ObjectFilter {
+                colors: Some(*colors),
+                ..ObjectFilter::default()
+            }),
+            KeywordAction::ProtectionFromFilter(filter) => Some(filter.clone()),
+            KeywordAction::ProtectionFromCardType(card_type) => Some(ObjectFilter {
+                card_types: vec![*card_type],
+                ..ObjectFilter::default()
+            }),
+            KeywordAction::ProtectionFromChosenColor => Some(ObjectFilter {
+                chosen_color: true,
+                ..ObjectFilter::default()
+            }),
+            KeywordAction::ProtectionFromEverything => Some(ObjectFilter::default()),
+            _ => None,
+        }
+    }
+    fn from_static(ability: &StaticAbilityAst) -> Option<ObjectFilter> {
+        match ability {
+            StaticAbilityAst::KeywordAction(action) => from_keyword(action),
+            StaticAbilityAst::Static(core) => match &core.payload {
+                ironsmith_core::StaticAbilityPayload::Protection(from) => match from {
+                    crate::ability::ProtectionFrom::Permanents(filter) => Some(filter.clone()),
+                    crate::ability::ProtectionFrom::Color(colors) => Some(ObjectFilter {
+                        colors: Some(*colors),
+                        ..ObjectFilter::default()
+                    }),
+                    crate::ability::ProtectionFrom::CardType(card_type) => Some(ObjectFilter {
+                        card_types: vec![*card_type],
+                        ..ObjectFilter::default()
+                    }),
+                    crate::ability::ProtectionFrom::ChosenColor => Some(ObjectFilter {
+                        chosen_color: true,
+                        ..ObjectFilter::default()
+                    }),
+                    crate::ability::ProtectionFrom::Everything => Some(ObjectFilter::default()),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+    match ability {
+        StaticAbilityAst::GrantKeywordAction { action, .. } => from_keyword(action),
+        StaticAbilityAst::GrantStaticAbility { ability, .. } => from_static(ability),
+        StaticAbilityAst::WithSetQuantifierSurface { ability, .. } => {
+            granted_protection_source_filter(ability)
+        }
+        _ => None,
+    }
+}
+
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -938,6 +1046,9 @@ pub fn parse_granted_keyword_static_line(
         if !bound {
             return Err(CardTextError::ParseError("where-X grant binding has no supported X threshold".into()));
         }
+        return Ok(Some(abilities));
+    }
+    if let Some(abilities) = parse_you_and_subject_protection_grant_line(tokens)? {
         return Ok(Some(abilities));
     }
     // A full characteristic-setting bundle owns its type, color and P/T

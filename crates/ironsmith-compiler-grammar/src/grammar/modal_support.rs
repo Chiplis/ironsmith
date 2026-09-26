@@ -541,6 +541,9 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Counters(CounterActionAst::ExperienceCounters {
                 count: amount,
             })
+            | SubjectVerbActionAst::Counters(CounterActionAst::RadCounters {
+                count: amount,
+            })
             | SubjectVerbActionAst::Counters(CounterActionAst::TicketCounters { count: amount })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy { amount })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal {

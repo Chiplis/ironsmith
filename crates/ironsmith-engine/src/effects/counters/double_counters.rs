@@ -75,6 +75,8 @@ impl EffectExecutor for DoubleCountersEffect {
 
         let mut outcomes = Vec::new();
         let mut affected_objects = Vec::new();
+        // One doubling is one simultaneous counter-placing event (CR 603.2c).
+        let mut counter_batch: Option<crate::provenance::ProvNodeId> = None;
         for target_id in target_ids {
             let counters = game
                 .object(target_id)
@@ -106,13 +108,24 @@ impl EffectExecutor for DoubleCountersEffect {
                     outcomes.push(EffectOutcome::prevented());
                     continue;
                 }
-                if let Some(event) = game.add_counters_with_source(
-                    target_id,
-                    counter_type,
-                    final_count,
-                    Some(ctx.source),
-                    Some(ctx.controller),
-                ) {
+                if let Some(event) = game
+                    .add_counters_with_source(
+                        target_id,
+                        counter_type,
+                        final_count,
+                        Some(ctx.source),
+                        Some(ctx.controller),
+                    )
+                    .map(|event| {
+                    let batch = *counter_batch.get_or_insert_with(|| {
+                        game.alloc_child_event_provenance(
+                            ctx.provenance,
+                            crate::events::EventKind::MarkersChanged,
+                        )
+                    });
+                    event.with_simultaneous_batch(batch)
+                })
+                {
                     affected_objects.push(target_id);
                     outcomes.push(EffectOutcome::count(final_count as i32).with_event(event));
                 }

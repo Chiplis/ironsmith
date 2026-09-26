@@ -205,6 +205,9 @@ impl EffectExecutor for ProliferateEffect {
                 .filter(|player_id| eligible_players.contains(player_id))
                 .collect();
 
+            // One proliferate is one simultaneous counter-placing event
+            // (CR 603.2c).
+            let mut counter_batch: Option<crate::provenance::ProvNodeId> = None;
             for perm_id in chosen_permanents {
                 let Some(counter_types): Option<Vec<CounterType>> =
                     game.object(perm_id).and_then(|obj| {
@@ -221,13 +224,24 @@ impl EffectExecutor for ProliferateEffect {
                     if final_count == 0 {
                         continue;
                     }
-                    if let Some(event) = game.add_counters_with_source(
-                        perm_id,
-                        ct,
-                        final_count,
-                        Some(ctx.source),
-                        Some(ctx.controller),
-                    ) {
+                    if let Some(event) = game
+                        .add_counters_with_source(
+                            perm_id,
+                            ct,
+                            final_count,
+                            Some(ctx.source),
+                            Some(ctx.controller),
+                        )
+                        .map(|event| {
+                    let batch = *counter_batch.get_or_insert_with(|| {
+                        game.alloc_child_event_provenance(
+                            ctx.provenance,
+                            crate::events::EventKind::MarkersChanged,
+                        )
+                    });
+                    event.with_simultaneous_batch(batch)
+                })
+                    {
                         received_counter = true;
                         outcome = outcome.with_event(event);
                     }

@@ -2055,7 +2055,14 @@ fn has_specialized_document_line_shape(ctx: &LineDispatchContext<'_>) -> bool {
     sticker_sheet_ticket_marker_result(ctx).is_some()
         || normalize_trailing_keyword_activation_sentence_lexed(tokens).is_some()
         || line_grammar::parse_max_speed_line(tokens).is_some()
-        || split_label_prefix_lexed(tokens).is_some()
+        // A cost keyword's own dash ("Suspend 4—{1}{R}") is not a presentation
+        // label: the labeled-line family declines it so the structured keyword
+        // grammar owns it. Keywords without a dedicated keyword-line family
+        // (suspend, strive, ...) must therefore still reach the static
+        // keyword-ability grammar here.
+        || split_label_prefix_lexed(tokens).is_some_and(|(_, label_tokens, _)| {
+            document_grammar::parse_preserved_keyword_label_tokens(label_tokens).is_none()
+        })
         || line_grammar::parse_championed_with_this_trigger(tokens).is_some()
         || partner_with_name_from_line(ctx.line).is_some()
         || line_grammar::parse_partner_variant(tokens).is_some()

@@ -88,6 +88,15 @@ pub struct TurnHistory {
     /// has paid to ignore until the turn ends.
     pub players_ignoring_source_static_effects_this_turn: HashSet<(ObjectId, PlayerId)>,
     pub creatures_attacked_this_turn: HashSet<ObjectId>,
+    /// Creatures each player declared as attackers this turn, keyed by the
+    /// attacking player at declaration. "Attacked with" is a turn-history fact
+    /// that survives the creature leaving the battlefield or changing control.
+    pub creatures_attacked_by_player_this_turn: HashMap<PlayerId, HashSet<ObjectId>>,
+    /// Players each player attacked with a declared attacker, keyed by
+    /// (combat phase number this turn, attacking player). Creatures put onto
+    /// the battlefield attacking never "attacked" (CR 508.4), and removal from
+    /// combat doesn't undo the attack (CR 702.121a melee counts these).
+    pub players_attacked_in_combat: HashMap<(u32, PlayerId), HashSet<PlayerId>>,
     pub creatures_attacked_battles_this_turn: HashSet<ObjectId>,
     pub creature_attack_counts_this_turn: HashMap<ObjectId, u32>,
     pub crewed_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
@@ -124,6 +133,8 @@ impl TurnHistory {
         self.players_ignoring_source_static_effects_this_turn
             .clear();
         self.creatures_attacked_this_turn.clear();
+        self.creatures_attacked_by_player_this_turn.clear();
+        self.players_attacked_in_combat.clear();
         self.creatures_attacked_battles_this_turn.clear();
         self.creature_attack_counts_this_turn.clear();
         self.crewed_this_turn.clear();

@@ -127,6 +127,9 @@ fn convert_line(line: RecognizedLine) -> OracleGrammarLine {
             let (kind, value) = match line.value {
                 crate::model::facts::MetadataLine::ManaCost(value) => ("ManaCost", value),
                 crate::model::facts::MetadataLine::TypeLine(value) => ("TypeLine", value),
+                crate::model::facts::MetadataLine::ColorIndicator(value) => {
+                    ("ColorIndicator", value)
+                }
                 crate::model::facts::MetadataLine::FirstPrintedSet(value) => {
                     ("FirstPrintedSet", value)
                 }

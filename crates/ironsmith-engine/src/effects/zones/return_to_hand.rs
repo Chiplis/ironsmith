@@ -66,6 +66,62 @@ impl EffectExecutor for ReturnToHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        // CR 603.10a: objects this instruction moves together share one
+        // pre-event look-back, so a leaves-the-battlefield observer moved in
+        // the same event sees every other object leave.
+        let pinned_lookback = (!self.spec.is_single() || matches!(self.spec.base(), ChooseSpec::Tagged(_)))
+            && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
+        let outcome = self.execute_with_shared_lookback(game, ctx);
+        crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned_lookback);
+        outcome
+    }
+
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        if self.spec.is_target() {
+            Some(&self.spec)
+        } else {
+            None
+        }
+    }
+
+    fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
+        if self.spec.is_target() {
+            Some(self.spec.count())
+        } else {
+            None
+        }
+    }
+
+    fn target_description(&self) -> &'static str {
+        "permanent to return"
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        match self.spec.base() {
+            ChooseSpec::Source => Some("Return this source to its owner's hand".to_string()),
+            ChooseSpec::Object(filter) => Some(format!(
+                "Return a {} you control to its owner's hand",
+                filter.description()
+            )),
+            _ => None,
+        }
+    }
+}
+
+trait SharedLookbackExecute {
+    fn execute_with_shared_lookback(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError>;
+}
+
+impl SharedLookbackExecute for ReturnToHandEffect {
+    fn execute_with_shared_lookback(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
         let resolve_tagged_targets = |game: &GameState,
                                       ctx: &ExecutionContext,
                                       spec: &ChooseSpec|
@@ -271,37 +327,6 @@ impl EffectExecutor for ReturnToHandEffect {
         };
 
         Ok(apply_result.outcome)
-    }
-
-    fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        if self.spec.is_target() {
-            Some(&self.spec)
-        } else {
-            None
-        }
-    }
-
-    fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
-        if self.spec.is_target() {
-            Some(self.spec.count())
-        } else {
-            None
-        }
-    }
-
-    fn target_description(&self) -> &'static str {
-        "permanent to return"
-    }
-
-    fn cost_description(&self) -> Option<String> {
-        match self.spec.base() {
-            ChooseSpec::Source => Some("Return this source to its owner's hand".to_string()),
-            ChooseSpec::Object(filter) => Some(format!(
-                "Return a {} you control to its owner's hand",
-                filter.description()
-            )),
-            _ => None,
-        }
     }
 }
 

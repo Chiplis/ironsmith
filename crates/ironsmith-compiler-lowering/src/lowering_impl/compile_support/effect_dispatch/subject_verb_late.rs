@@ -78,6 +78,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAllAttachedTo { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::ExperienceCounters { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::RadCounters { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { .. })
             | SubjectVerbActionAst::Counters(
                 CounterActionAst::ForEachCounterKindPutOrRemove { .. }
@@ -1870,6 +1871,28 @@ pub(super) fn compile_subject_verb_late(
                 false,
                 Effect::experience_counters,
                 Effect::experience_counters_player,
+            )
+        }
+        SubjectVerbActionAst::Counters(CounterActionAst::RadCounters { count }) => {
+            compile_subject_verb_player_value_effect(
+                role,
+                player,
+                count,
+                ctx,
+                true,
+                true,
+                true,
+                false,
+                |count| {
+                    Effect::player_counters(
+                        crate::object::CounterType::Rad,
+                        count,
+                        PlayerFilter::You,
+                    )
+                },
+                |count, player| {
+                    Effect::player_counters(crate::object::CounterType::Rad, count, player)
+                },
             )
         }
         SubjectVerbActionAst::Counters(CounterActionAst::TicketCounters { count }) => {

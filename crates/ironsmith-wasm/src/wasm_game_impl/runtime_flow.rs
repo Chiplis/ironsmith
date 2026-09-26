@@ -173,6 +173,7 @@ impl WasmGame {
 
         self.restore_subgame_host_if_resumed();
         self.initialize_subgame_pregame_if_pending();
+        self.initialize_restart_pregame_if_pending();
         self.prune_grand_melee_host_lanes();
 
         if self.pregame.is_some() {
@@ -352,8 +353,9 @@ impl WasmGame {
                     }
                     GameProgress::StackResolved => {
                         let resumed_parent = self.restore_subgame_host_if_resumed();
-                        let started_child =
-                            !resumed_parent && self.initialize_subgame_pregame_if_pending();
+                        let started_child = (!resumed_parent
+                            && self.initialize_subgame_pregame_if_pending())
+                            || self.initialize_restart_pregame_if_pending();
                         // New priority round after resolution — fresh epoch.
                         self.pending_action_checkpoint = None;
                         self.priority_epoch_checkpoint = None;
@@ -420,6 +422,7 @@ impl WasmGame {
             GameProgress::StackResolved => {
                 self.restore_subgame_host_if_resumed();
                 self.initialize_subgame_pregame_if_pending();
+                self.initialize_restart_pregame_if_pending();
                 self.pending_action_checkpoint = None;
                 self.priority_epoch_checkpoint = None;
                 self.priority_epoch_has_undoable_action = false;

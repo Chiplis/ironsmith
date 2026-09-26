@@ -903,10 +903,14 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             source_controller,
             one_or_more,
             include_players,
+            one_or_more_objects,
         } => {
             let mut trigger = crate::triggers::CounterPutOnTrigger::new(filter);
             if include_players {
                 trigger = trigger.include_players();
+            }
+            if one_or_more_objects {
+                trigger = trigger.one_or_more_objects();
             }
             if let Some(counter_type) = counter_type {
                 trigger = trigger.counter_type(counter_type);

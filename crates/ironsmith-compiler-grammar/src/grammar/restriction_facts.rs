@@ -21,10 +21,104 @@ pub fn parse_activation_restriction_tokens(
         .then(|| parse_activation_restriction_surface_tokens(tokens))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TrailingOnceLimit {
+    EachTurn,
+    Lifetime,
+}
+
+/// Split a trailing "and only once [each turn]" off an "Activate only ..."
+/// sentence ("Activate only as a sorcery and only once each turn.",
+/// "Activate only if ... and only once."). A bare "Activate only once." is a
+/// lifetime limit with nothing left over.
+fn split_trailing_once_limit(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], TrailingOnceLimit)> {
+    let word_positions: Vec<usize> = tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.as_word().is_some())
+        .map(|(idx, _)| idx)
+        .collect();
+    let words: Vec<&str> = word_positions
+        .iter()
+        .map(|&idx| tokens[idx].parser_text())
+        .collect();
+    if words.as_slice() == ["activate", "only", "once"]
+        || words.as_slice() == ["activate", "this", "ability", "only", "once"]
+    {
+        return Some((&[], TrailingOnceLimit::Lifetime));
+    }
+    let (tail_len, limit) = if words.ends_with(&["and", "only", "once", "each", "turn"]) {
+        (5, TrailingOnceLimit::EachTurn)
+    } else if words.ends_with(&["and", "only", "once"]) {
+        (3, TrailingOnceLimit::Lifetime)
+    } else {
+        return None;
+    };
+    if words.len() <= tail_len + 2 {
+        return None;
+    }
+    let and_idx = word_positions[words.len() - tail_len];
+    Some((&tokens[..and_idx], limit))
+}
+
 pub fn parse_activation_restriction_surface_tokens(
     tokens: &[OwnedLexToken],
 ) -> ParsedActivationRestriction {
-    let timing = abilities::parse_activate_only_timing_lexed(tokens);
+    let mut timing = abilities::parse_activate_only_timing_lexed(tokens);
+    let mut condition = abilities::parse_activation_condition_lexed(tokens)
+        .and_then(|condition| strip_redundant_once_per_turn_condition(condition, timing.as_ref()));
+    // CR 602.5b: every stated restriction applies. A single-timing parse keeps
+    // only the first timing of "as a sorcery and only once each turn" or
+    // "during your upkeep and only once each turn", and "only once" has no
+    // timing at all, so re-read the leading part and add the limit
+    // explicitly. The combined "during your turn and only once each turn"
+    // shape is already fully read as OncePerTurn plus a timing condition.
+    if let Some((leading, limit)) = split_trailing_once_limit(tokens)
+        && !(limit == TrailingOnceLimit::EachTurn
+            && timing == Some(ActivationTiming::OncePerTurn)
+            && condition.is_some())
+    {
+        let (leading_timing, leading_condition) = if leading.is_empty() {
+            (None, None)
+        } else {
+            (
+                abilities::parse_activate_only_timing_lexed(leading),
+                abilities::parse_activation_condition_lexed(leading),
+            )
+        };
+        if leading.is_empty() || leading_timing.is_some() || leading_condition.is_some() {
+            let limit = match limit {
+                TrailingOnceLimit::EachTurn => PredicateAst::MaxActivationsPerTurn(1),
+                TrailingOnceLimit::Lifetime => PredicateAst::MaxActivationsPerObject(1),
+            };
+            timing = leading_timing;
+            condition = Some(match leading_condition {
+                Some(leading_condition) => {
+                    PredicateAst::And(Box::new(leading_condition), Box::new(limit))
+                }
+                None => limit,
+            });
+        }
+    }
+    // "Activate only during your upkeep and only if you control a Swamp.":
+    // the timing parse reads the window only; read the "only if" half as its
+    // own condition so it is not dropped.
+    if condition.is_none()
+        && timing.is_some_and(|timing| timing != ActivationTiming::OncePerTurn)
+        && let Some(and_idx) = crate::slice_primitives::find_window_by(tokens, 3, |window| {
+            window[0].is_word("and") && window[1].is_word("only") && window[2].is_word("if")
+        })
+    {
+        let mut prefixed_right = vec![
+            OwnedLexToken::synthetic_word("activate"),
+            OwnedLexToken::synthetic_word("only"),
+            OwnedLexToken::synthetic_word("if"),
+        ];
+        prefixed_right.extend_from_slice(&tokens[and_idx + 3..]);
+        condition = abilities::parse_activation_condition_lexed(&prefixed_right);
+    }
     let normalization = if timing == Some(ActivationTiming::OncePerTurn) {
         match parse_once_per_turn_activation_restriction_tokens(tokens) {
             ActivationRestrictionNormalization::Redundant => {
@@ -37,8 +131,6 @@ pub fn parse_activation_restriction_surface_tokens(
     } else {
         ActivationRestrictionNormalizationFact::Preserve
     };
-    let condition = abilities::parse_activation_condition_lexed(tokens)
-        .and_then(|condition| strip_redundant_once_per_turn_condition(condition, timing.as_ref()));
     ParsedActivationRestriction {
         presentation_text: normalized_surface(tokens),
         timing,

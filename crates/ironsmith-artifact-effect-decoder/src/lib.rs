@@ -118,6 +118,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "ExileTopOfLibraryEffect" => Some(EffectFamily::ZoneLibrary),
         "ExileUntilEffect" => Some(EffectFamily::ZoneLibrary),
         "ExperienceCountersEffect" => Some(EffectFamily::Player),
+        "GivePlayerCountersEffect" => Some(EffectFamily::Player),
         "ExploreEffect" => Some(EffectFamily::CompositionAL),
         "ExtraTurnAfterNextTurnEffect" => Some(EffectFamily::Player),
         "ExtraTurnEffect" => Some(EffectFamily::Player),

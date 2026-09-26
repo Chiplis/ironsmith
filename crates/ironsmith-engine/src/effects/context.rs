@@ -916,12 +916,16 @@ impl<'a> ExecutionContext<'a> {
 
         // If the event is vote-related, compute tags from THIS ability controller's perspective.
         if let Some(voting_event) = event.downcast::<crate::events::PlayersFinishedVotingEvent>() {
-            self.apply_voting_tags(&voting_event.votes, &voting_event.player_tags);
+            self.apply_voting_tags(
+                &voting_event.votes,
+                &voting_event.player_tags,
+                &voting_event.voter_teams,
+            );
         } else if let Some(action_event) = event.downcast::<crate::events::KeywordActionEvent>()
             && action_event.action == crate::events::KeywordActionKind::Vote
             && let Some(votes) = &action_event.votes
         {
-            self.apply_voting_tags(votes, &action_event.player_tags);
+            self.apply_voting_tags(votes, &action_event.player_tags, &action_event.voter_teams);
         }
 
         if let Some(action_event) = event.downcast::<crate::events::KeywordActionEvent>() {
@@ -964,6 +968,7 @@ impl<'a> ExecutionContext<'a> {
         &mut self,
         votes: &[crate::events::PlayerVote],
         extra_tags: &HashMap<TagKey, Vec<PlayerId>>,
+        voter_teams: &[(PlayerId, usize)],
     ) {
         use std::collections::{HashMap, HashSet};
 
@@ -976,7 +981,14 @@ impl<'a> ExecutionContext<'a> {
 
         // Build per-player options excluding this controller.
         let mut options_by_player: HashMap<PlayerId, HashSet<usize>> = HashMap::new();
-        for vote in votes.iter().filter(|v| v.player != self.controller) {
+        // "Each opponent who voted ...": teammates are never included.
+        for vote in votes.iter().filter(|v| {
+            crate::events::other::vote_event_players_are_opponents(
+                voter_teams,
+                self.controller,
+                v.player,
+            )
+        }) {
             options_by_player
                 .entry(vote.player)
                 .or_default()
@@ -986,10 +998,14 @@ impl<'a> ExecutionContext<'a> {
         let mut voted_with_me = Vec::new();
         let mut voted_against_me = Vec::new();
 
+        // A player with several votes (CR 701.38d) can have voted both for a
+        // choice this controller voted for and for one they didn't; they are
+        // in both groups.
         for (player, player_options) in options_by_player {
             if !my_options.is_disjoint(&player_options) {
                 voted_with_me.push(player);
-            } else if !my_options.is_empty() {
+            }
+            if !my_options.is_empty() && !player_options.is_subset(&my_options) {
                 voted_against_me.push(player);
             }
         }

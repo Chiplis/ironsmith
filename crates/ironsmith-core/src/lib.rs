@@ -113,7 +113,7 @@ pub use effect::{
     ExileTopLibrarySurface, ExileTopOfLibraryEffect, ExileUntilDuration, ExileUntilEffect,
     ExiledWithSourceDestinationSurface, ExiledWithSourceMoveSurface,
     ExiledWithSourceMoveVerbSurface, ExiledWithSourceReferenceSurface,
-    ExiledWithSourceSubjectSurface, ExperienceCountersEffect, ExploreEffect,
+    ExiledWithSourceSubjectSurface, ExperienceCountersEffect, ExploreEffect, GivePlayerCountersEffect,
     ExtraTurnAfterNextTurnEffect, ExtraTurnEffect, FatesealEffect, FightEffect, FlipCoinEffect,
     FlipEffect, ForEachControllerOfTaggedEffect, ForEachCounterKindPutOrRemoveEffect,
     ForEachObject, ForEachObjectCorrelatedResultEffect, ForEachTaggedEffect,
