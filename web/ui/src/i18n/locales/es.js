@@ -634,6 +634,8 @@ export const ui = {
   "Communal": "Compartido",
   "Compile {0}": "Compilar {0}",
   "Compile Card": "Compilar carta",
+  "Load counter showcase": "Cargar prueba de contadores",
+  "Loading counters...": "Cargando contadores...",
   "Compile card failed: {0}": "Error al compilar la carta: {0}",
   "Compile Status": "Estado de compilación",
   "Compiled {0}": "Se compiló {0}",

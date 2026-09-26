@@ -1,4 +1,4 @@
-import { counterSymbolUrl } from "@/lib/mana-assets";
+import { counterDisplayLabel, counterSymbolUrl } from "@/lib/mana-assets";
 import { cardArtColors } from "@/lib/card-art-colors";
 import LoadingCardArt from "./LoadingCardArt";
 import MobileArenaCardFace from "./MobileArenaCardFace";
@@ -111,6 +111,9 @@ function glowPhaseFromSeed(seed) {
 }
 
 function abbreviateCounterKind(rawKind) {
+  const powerToughnessLabel = counterDisplayLabel(rawKind);
+  if (powerToughnessLabel) return powerToughnessLabel;
+
   const directMap = {
     "Plus One Plus One": "+1",
     "Minus One Minus One": "-1",
@@ -150,6 +153,12 @@ function abbreviateCounterKind(rawKind) {
 }
 
 function counterPalette(rawKind) {
+  if (counterDisplayLabel(rawKind)?.startsWith("+")) {
+    return { accent: "#70d8a1", fill: "rgba(77, 168, 111, 0.28)", stroke: "#aef0ca" };
+  }
+  if (counterDisplayLabel(rawKind)?.startsWith("-")) {
+    return { accent: "#df6d83", fill: "rgba(160, 64, 82, 0.28)", stroke: "#ffb0c1" };
+  }
   switch (rawKind) {
     case "Plus One Plus One":
       return { accent: "#70d8a1", fill: "rgba(77, 168, 111, 0.28)", stroke: "#aef0ca" };
@@ -230,7 +239,8 @@ function buildCounterBadge(counter) {
   const rawKind = String(counter?.kind || "").trim();
   if (!rawKind || !Number.isFinite(amount) || amount <= 0) return null;
 
-  if (rawKind === "Plus One Plus One") {
+  const powerToughnessLabel = counterDisplayLabel(rawKind);
+  if (powerToughnessLabel === "+1/+1") {
     return {
       amount,
       fullLabel: `${amount} +1/+1 counter${amount === 1 ? "" : "s"}`,
@@ -239,7 +249,7 @@ function buildCounterBadge(counter) {
       icon: counterSymbolUrl(rawKind),
     };
   }
-  if (rawKind === "Minus One Minus One") {
+  if (powerToughnessLabel === "-1/-1") {
     return {
       amount,
       fullLabel: `${amount} -1/-1 counter${amount === 1 ? "" : "s"}`,
@@ -249,11 +259,12 @@ function buildCounterBadge(counter) {
     };
   }
 
+  const displayLabel = powerToughnessLabel || rawKind;
   return {
     amount,
-    fullLabel: `${amount} ${rawKind.toLowerCase()} counter${amount === 1 ? "" : "s"}`,
-    shortLabel: abbreviateCounterKind(rawKind),
-    palette: counterPalette(rawKind),
+    fullLabel: `${amount} ${displayLabel.toLowerCase()} counter${amount === 1 ? "" : "s"}`,
+    shortLabel: powerToughnessLabel || abbreviateCounterKind(rawKind),
+    palette: counterPalette(displayLabel),
     icon: counterSymbolUrl(rawKind),
   };
 }

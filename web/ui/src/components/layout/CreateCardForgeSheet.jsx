@@ -68,6 +68,76 @@ function blankDraft() {
   };
 }
 
+// These cards intentionally use the compiler's existing "enters with"
+// grammar.  The forge can therefore exercise the real counter snapshot path
+// without adding a test-only mutation to the engine.
+const COUNTER_LAB_PRESETS = [
+  {
+    id: "plus-one",
+    label: "+1/+1",
+    name: "Counter Lab Plus One",
+    cardTypes: ["Creature"],
+    power: "2",
+    toughness: "2",
+    oracleText: "This creature enters with one +1/+1 counter on it.",
+  },
+  {
+    id: "minus-one",
+    label: "-1/-1",
+    name: "Counter Lab Minus One",
+    cardTypes: ["Creature"],
+    power: "2",
+    toughness: "2",
+    oracleText: "This creature enters with one -1/-1 counter on it.",
+  },
+  {
+    id: "charge",
+    label: "charge",
+    name: "Counter Lab Charge",
+    cardTypes: ["Artifact"],
+    oracleText: "This artifact enters with three charge counters on it.",
+  },
+  {
+    id: "time",
+    label: "time",
+    name: "Counter Lab Time",
+    cardTypes: ["Artifact"],
+    oracleText: "This artifact enters with three time counters on it.",
+  },
+  {
+    id: "stun",
+    label: "stun",
+    name: "Counter Lab Stun",
+    cardTypes: ["Creature"],
+    power: "3",
+    toughness: "3",
+    oracleText: "This creature enters with two stun counters on it.",
+  },
+  {
+    id: "lore",
+    label: "lore",
+    name: "Counter Lab Lore",
+    cardTypes: ["Enchantment"],
+    oracleText: "This enchantment enters with one lore counter on it.",
+  },
+];
+
+function counterLabDraft(preset) {
+  const face = blankFace(preset.name);
+  return {
+    layout: "single",
+    hasFuse: false,
+    faces: [{
+      ...face,
+      name: preset.name,
+      cardTypes: [...preset.cardTypes],
+      oracleText: preset.oracleText,
+      power: preset.power || "",
+      toughness: preset.toughness || "",
+    }],
+  };
+}
+
 function cloneDraft(draft) {
   return {
     layout: draft?.layout || "single",
@@ -393,6 +463,7 @@ export default function CreateCardForgeSheet({
   const [open, setOpen] = useState(false);
   const [seedLoading, setSeedLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [counterLabLoading, setCounterLabLoading] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [seedDraft, setSeedDraft] = useState(null);
@@ -546,6 +617,52 @@ export default function CreateCardForgeSheet({
     });
   }, [draft, game, primaryName, refresh, runWasmInteraction, selectedPlayer, setStatus, skipTriggers, zone]);
 
+  const handleCounterLab = useCallback(async () => {
+    return runWasmInteraction(async () => {
+      if (!game || typeof game.createCustomCard !== "function") {
+        setStatus("This WASM build does not expose custom card compilation", true);
+        return;
+      }
+
+      setCounterLabLoading(true);
+      const created = [];
+      const failed = [];
+      try {
+        for (const preset of COUNTER_LAB_PRESETS) {
+          try {
+            await game.createCustomCard({
+              draft: normalizeDraftForApi(counterLabDraft(preset)),
+              playerIndex: selectedPlayer,
+              zoneName: "battlefield",
+              // The counter-bearing static abilities must resolve on entry.
+              skipTriggers: false,
+            });
+            created.push(preset.label);
+          } catch (error) {
+            failed.push(`${preset.label}: ${String(error?.message || error)}`);
+          }
+        }
+
+        if (created.length === 0) {
+          setStatus("Counter showcase could not compile any card", true);
+          return;
+        }
+
+        setOpen(false);
+        await refresh(
+          `Counter showcase: ${created.length} cards on the battlefield${
+            failed.length > 0 ? ` (${failed.length} skipped)` : ""
+          }`
+        );
+        if (failed.length > 0) {
+          console.warn("Counter showcase skipped presets:", failed);
+        }
+      } finally {
+        setCounterLabLoading(false);
+      }
+    });
+  }, [game, refresh, runWasmInteraction, selectedPlayer, setStatus]);
+
   const faceTabs = useMemo(() => (
     draft.faces.map((face, index) => ({
       value: `face-${index}`,
@@ -615,6 +732,16 @@ export default function CreateCardForgeSheet({
                 disabled={!seedDraft}
                 onClick={resetToSeed}
               >{ui("Reset Seed")}</Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="stone-pill"
+                disabled={disabled || submitting || counterLabLoading}
+                onClick={() => void handleCounterLab()}
+              >
+                {counterLabLoading ? ui("Loading counters...") : ui("Load counter showcase")}
+              </Button>
             </div>
           </div>
 
