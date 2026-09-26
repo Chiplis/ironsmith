@@ -172,6 +172,15 @@ const TRIGGER_ZONE_HINT_PHRASES: &[(&[&str], Zone)] = &[
         Zone::Command,
     ),
 ];
+const TRIGGER_ZONE_OR_BATTLEFIELD_HINT_PHRASES: &[&[&str]] = &[
+    &[
+        "if", "this", "is", "in", "the", "command", "zone", "or", "on", "the", "battlefield",
+    ],
+    &[
+        "if", "this", "card", "is", "in", "the", "command", "zone", "or", "on", "the",
+        "battlefield",
+    ],
+];
 const RETURN_SELF_FROM_GRAVEYARD_PHRASES: &[&[&str]] = &[
     &["return", "this", "from", "your", "graveyard"],
     &["return", "this", "card", "from", "your", "graveyard"],
@@ -181,6 +190,9 @@ const DISCARD_THIS_CARD_PHRASE: &[&str] = &["discard", "this", "card"];
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TriggerFunctionalZoneFacts {
     pub explicit_zone: Option<Zone>,
+    /// The zone hint continues "... or on the battlefield" (eminence), so the
+    /// ability functions in both the explicit zone and the battlefield.
+    pub explicit_zone_or_battlefield: bool,
     pub returns_self_from_graveyard: bool,
     pub discards_this_card: bool,
 }

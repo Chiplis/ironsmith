@@ -586,8 +586,10 @@ pub fn parse_shuffle(
         ResourceShuffleShape::HandIntoLibrary { player } => {
             let owner = crate::grammar::effects::zone_counter_shapes::player_filter_for_half_reference(player)
                 .ok_or_else(|| CardTextError::ParseError("unsupported hand owner in shuffle".to_string()))?;
+            // "shuffles their hand into their library" names every card in
+            // that hand, not a target (CR 701.24a, 115.1).
             Ok(EffectAst::subject_verb_shuffle_all_objects_into_library(player,
-                TargetAst::Object(ObjectFilter::default().in_zone(Zone::Hand).owned_by(owner), span_from_tokens(tokens), None)))
+                TargetAst::Object(ObjectFilter::default().in_zone(Zone::Hand).owned_by(owner), None, None)))
         }
         ResourceShuffleShape::TaggedIntoLibrary {
             player: destination_player,

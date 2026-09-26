@@ -820,6 +820,10 @@ fn should_parse_delayed_trigger_line_as_spell_effect(
     let is_delayed_effect = document_grammar::parse_next_cast_trigger_surface(tokens).is_some()
         || effect_grammar::delayed_sentence_shapes::parse_delayed_this_turn_shape(tokens).is_some()
         || effect_grammar::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(tokens)
+            .is_some()
+        // "At the beginning of the next/each combat this turn, ..." on an
+        // instant or sorcery is a delayed trigger the spell creates.
+        || effect_grammar::delayed_sentence_shapes::parse_delayed_next_combat_shape(tokens)
             .is_some();
     let is_source_spell_cast_trigger = grammar::parse_prefix(
         tokens,
@@ -2297,10 +2301,15 @@ fn split_trigger_sentence_chunks_rewrite_lexed(
             is_delayed_when_that_dies_this_turn_followup_sentence(sentence_tokens)
                 || is_delayed_when_that_leaves_battlefield_followup_sentence(sentence_tokens)
                 || is_delayed_next_end_step_followup_sentence(sentence_tokens)
+                // CR 603.7: a "When/Whenever ... this turn, ..." or "When you
+                // next ..." sentence inside a triggered ability is a delayed
+                // trigger that ability creates, never a sibling ability of
+                // the permanent, whatever its subject.
                 || effect_grammar::delayed_sentence_shapes::parse_delayed_this_turn_shape(
                     sentence_tokens,
                 )
-                .is_some_and(|shape| shape.references_previous_creature);
+                .is_some()
+                || document_grammar::parse_next_cast_trigger_surface(sentence_tokens).is_some();
         let sentence_is_attack_group_followup =
             is_attack_group_combat_damage_followup_sentence(sentence_tokens);
         if !current.is_empty()

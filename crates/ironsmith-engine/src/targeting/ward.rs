@@ -177,8 +177,11 @@ pub fn handle_ward_payment(
     }
 
     if should_pay {
-        // Player chose to pay - attempt to deduct the cost
-        if pay_ward_cost(game, caster, source, &ward_cost.cost, decision_maker) {
+        // Player chose to pay - attempt to deduct the cost. References in
+        // the cost ("life equal to its power") are to the ward permanent,
+        // not the targeting object (CR 702.21a); the payer stays the
+        // targeting object's controller.
+        if pay_ward_cost(game, caster, ward_cost.target, &ward_cost.cost, decision_maker) {
             WardPaymentResult::Paid
         } else {
             // Couldn't actually pay the cost

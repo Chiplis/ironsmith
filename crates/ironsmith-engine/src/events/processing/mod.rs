@@ -3508,7 +3508,9 @@ impl crate::events::ReplacementMatcher for PreventionShieldReplacementMatcher {
         else {
             return false;
         };
-        if !shield.has_prevention_remaining() {
+        if !shield.has_prevention_remaining()
+            || !crate::prevention::shield_duration_is_active(shield, ctx.game)
+        {
             return false;
         }
 
@@ -4267,7 +4269,25 @@ fn execute_prevention_follow_ups(
 /// Process a life gain event using the new Event type.
 ///
 /// This is the Event-based version of `process_life_gain_event`.
+///
+/// Tied replacements (CR 616.1: Rhox Faithmender plus Boon Reflection) are
+/// applied one after another in a deterministic order, so every applicable
+/// doubler still applies.
 pub fn process_life_gain_with_event(game: &mut GameState, player: PlayerId, amount: u32) -> u32 {
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    process_life_gain_with_event_with_dm(game, player, amount, &mut dm)
+}
+
+/// Process a life gain event, asking the affected player to order tied life
+/// gain replacements (CR 616.1).
+///
+/// Returns the final amount of life to gain (0 while a choice is pending).
+pub fn process_life_gain_with_event_with_dm(
+    game: &mut GameState,
+    player: PlayerId,
+    amount: u32,
+    dm: &mut (impl DecisionMaker + ?Sized),
+) -> u32 {
     use crate::events::{LifeGainEvent, downcast_event};
 
     if !game.can_gain_life(player) {
@@ -4275,9 +4295,7 @@ pub fn process_life_gain_with_event(game: &mut GameState, player: PlayerId, amou
     }
 
     let event = Event::life_gain(player, amount);
-    let result = process_trait_event(game, event);
-
-    match result {
+    match process_with_dm(game, event, dm) {
         TraitEventResult::Prevented => 0,
         TraitEventResult::Proceed(e) | TraitEventResult::Modified(e) => {
             if let Some(life_gain) = downcast_event::<LifeGainEvent>(e.inner()) {
@@ -4286,6 +4304,42 @@ pub fn process_life_gain_with_event(game: &mut GameState, player: PlayerId, amou
                 amount
             }
         }
+        // A replacement-order choice is still pending; nothing is gained yet.
+        TraitEventResult::NeedsChoice { .. } => 0,
+        _ => amount,
+    }
+}
+
+/// Process a life loss event through replacement effects (CR 614.1a, 119.3):
+/// "if an opponent would lose life, they lose twice that much life instead"
+/// (Bloodletter of Aclazotz). Life lost because of damage (CR 120.3a) is a
+/// life-loss event too; `from_damage` records that.
+///
+/// Returns the final amount of life to lose. Paying life isn't routed here.
+pub fn process_life_loss_with_event(
+    game: &mut GameState,
+    player: PlayerId,
+    amount: u32,
+    from_damage: bool,
+) -> u32 {
+    use crate::events::{LifeLossEvent, downcast_event};
+
+    if amount == 0 || !game.can_lose_life(player) {
+        return 0;
+    }
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let event = Event::life_loss(player, amount, from_damage);
+    match process_with_dm(game, event, &mut dm) {
+        TraitEventResult::Prevented => 0,
+        TraitEventResult::Proceed(e) | TraitEventResult::Modified(e) => {
+            if let Some(life_loss) = downcast_event::<LifeLossEvent>(e.inner()) {
+                life_loss.amount
+            } else {
+                amount
+            }
+        }
+        TraitEventResult::NeedsChoice { .. } => 0,
         _ => amount,
     }
 }

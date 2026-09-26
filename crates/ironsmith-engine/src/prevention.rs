@@ -68,6 +68,11 @@ pub struct PreventionShield {
 
     /// Turn this shield was created (for end-of-turn cleanup)
     pub created_turn: u32,
+
+    /// CR 800.4m: a turn-relative shield whose controller left the game ends
+    /// when the turn in question would have begun. `Some(turn)` removes the
+    /// shield at the start of that turn (or any later one).
+    pub expires_before_turn: Option<u32>,
 }
 
 impl PreventionShield {
@@ -91,6 +96,7 @@ impl PreventionShield {
             follow_up_targets: Vec::new(),
             follow_up_target_assignments: Vec::new(),
             created_turn: 0, // Set when added to manager
+            expires_before_turn: None,
         }
     }
 
@@ -170,6 +176,48 @@ impl PreventionShield {
     pub fn circle_of_protection(source: ObjectId, controller: PlayerId, color: Color) -> Self {
         Self::prevent_next_n(source, controller, PreventionTarget::You, u32::MAX)
             .with_filter(DamageFilter::from_color(color))
+    }
+}
+
+/// Whether a shield's duration still covers the current moment (CR 611.2a,
+/// 611.2b). Turn-boundary expiry removes finished turn-relative shields; this
+/// covers the part of a turn after an "until your next upkeep" duration ended
+/// and object-relative durations, which end whenever their object changes.
+pub(crate) fn shield_duration_is_active(
+    shield: &PreventionShield,
+    game: &crate::game_state::GameState,
+) -> bool {
+    use crate::game_state::{Phase, Step};
+    use crate::zone::Zone;
+    match &shield.duration {
+        Until::YourNextTurn => {
+            !(game.turn.turn_number > shield.created_turn
+                && game.is_active_player(shield.controller))
+        }
+        Until::YourNextUpkeep => {
+            if game.turn.turn_number <= shield.created_turn
+                || !game.is_active_player(shield.controller)
+            {
+                true
+            } else if matches!(game.turn.phase, Phase::Beginning) {
+                !matches!(game.turn.step, Some(Step::Upkeep | Step::Draw))
+            } else {
+                false
+            }
+        }
+        Until::ThisLeavesTheBattlefield => game
+            .object(shield.source)
+            .is_some_and(|object| object.zone == Zone::Battlefield),
+        Until::YouStopControllingThis => {
+            game.object(shield.source)
+                .is_some_and(|object| object.zone == Zone::Battlefield)
+                && !game.is_phased_out(shield.source)
+                && game.current_controller(shield.source) == Some(shield.controller)
+        }
+        Until::ForAsLongAs(predicate) => {
+            crate::continuous::continuous_duration_predicate_matches(predicate, game)
+        }
+        _ => true,
     }
 }
 
@@ -395,6 +443,58 @@ impl PreventionEffectManager {
             .collect::<Vec<_>>();
         self.prevented_totals
             .retain(|id, _| active.contains(id) || retained_metrics.contains(id));
+    }
+
+    /// Remove turn-relative shields whose duration ended at this turn boundary.
+    ///
+    /// CR 611.2a: "until your next turn" ends when the controller's next turn
+    /// begins; "until your next upkeep" and "until the end of your next turn"
+    /// have ended by the start of the turn after the controller's next turn
+    /// (`shield_duration_is_active` covers the rest of that turn).
+    pub fn expire_at_turn_start(
+        &mut self,
+        turn_number: u32,
+        completed_turn_players: &[PlayerId],
+        active_players: &[PlayerId],
+    ) {
+        self.current_turn = turn_number;
+        let completed_turn_number = turn_number.saturating_sub(1);
+        self.shields.retain(|shield| {
+            if shield
+                .expires_before_turn
+                .is_some_and(|boundary| turn_number >= boundary)
+            {
+                return false;
+            }
+            match shield.duration {
+                Until::YourNextTurn => {
+                    !(turn_number > shield.created_turn
+                        && active_players.contains(&shield.controller))
+                }
+                Until::YourNextUpkeep | Until::YourNextTurnEnd => {
+                    !(completed_turn_number > shield.created_turn
+                        && completed_turn_players.contains(&shield.controller))
+                }
+                _ => true,
+            }
+        });
+    }
+
+    /// CR 800.4m: turn-relative shields controlled by a departing player last
+    /// until that player's next turn would have begun.
+    pub fn prepare_for_departing_player(&mut self, player: PlayerId, turn_boundary: u32) {
+        for shield in self.shields.iter_mut().filter(|shield| {
+            shield.controller == player
+                && matches!(
+                    shield.duration,
+                    Until::YourNextTurn
+                        | Until::YourNextTurnEnd
+                        | Until::YourNextUpkeep
+                        | Until::ControllersNextUntapStep
+                )
+        }) {
+            shield.expires_before_turn = Some(turn_boundary);
+        }
     }
 
     /// Set the current turn number.

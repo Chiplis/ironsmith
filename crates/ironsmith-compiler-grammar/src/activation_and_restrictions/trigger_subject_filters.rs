@@ -595,6 +595,8 @@ pub fn parse_attack_trigger_subject_filter_lexed(
     let Some(mut filter) = parse_trigger_subject_filter_lexed(subject_tokens)? else {
         return Ok(None);
     };
+    // "a creature you control that's enchanted or equipped" (Reyav).
+    crate::object_filters::split_enchanted_or_equipped_disjunction(&mut filter, subject_tokens);
 
     if filter.card_types.is_empty() {
         // Only creatures attack, so a bare-subtype subject ("a Samurai or

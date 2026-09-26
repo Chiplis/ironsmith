@@ -36,19 +36,41 @@ impl EffectExecutor for PreventAllCombatDamageEffect {
                 super::PreventAllCombatDamageFromEffect::new(source.clone(), self.until.clone())
                     .execute(game, ctx)
             }
+            CombatDamagePreventionTarget::ToAndFrom(object) => {
+                // CR 615.1: two shields — combat damage the object would deal
+                // and combat damage that would be dealt to it.
+                super::PreventAllCombatDamageFromEffect::new(object.clone(), self.until.clone())
+                    .execute(game, ctx)?;
+                super::PreventAllDamageToTargetEffect::new(object.clone(), self.until.clone())
+                    .with_filter(DamageFilter::combat())
+                    .execute(game, ctx)
+                    .or_else(|error| match error {
+                        // The object is gone: nothing left to protect.
+                        ExecutionError::InvalidTarget => Ok(EffectOutcome::resolved()),
+                        other => Err(other),
+                    })
+            }
         }
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
         match &self.target {
-            CombatDamagePreventionTarget::From(source) if source.is_target() => Some(source),
+            CombatDamagePreventionTarget::From(source)
+            | CombatDamagePreventionTarget::ToAndFrom(source)
+                if source.is_target() =>
+            {
+                Some(source)
+            }
             _ => None,
         }
     }
 
     fn get_target_count(&self) -> Option<ChoiceCount> {
         match &self.target {
-            CombatDamagePreventionTarget::From(source) if source.is_target() => {
+            CombatDamagePreventionTarget::From(source)
+            | CombatDamagePreventionTarget::ToAndFrom(source)
+                if source.is_target() =>
+            {
                 Some(source.count())
             }
             _ => None,

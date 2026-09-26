@@ -1929,6 +1929,10 @@ impl ActivatedAbilityCostIncrease {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActivatedAbilityCostCondition {
     TargetsExactly { count: usize, filter: ObjectFilter },
+    /// The ability being activated is an equip ability (CR 702.6), optionally
+    /// one with a target matching `targeting`, evaluated relative to the cost
+    /// modifier's source ("that target this creature").
+    EquipAbility { targeting: Option<ObjectFilter> },
 }
 
 fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCondition) -> String {
@@ -1972,20 +1976,56 @@ fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCon
                 )
             }
         }
+        ActivatedAbilityCostCondition::EquipAbility { targeting: None } => {
+            "if it's an equip ability".to_string()
+        }
+        ActivatedAbilityCostCondition::EquipAbility {
+            targeting: Some(filter),
+        } => format!("if it's an equip ability that targets {}", filter.description()),
     }
 }
 
+/// Whether `condition` holds for activating an ability of `source`.
+/// `modifier_source` is the permanent whose static ability carries the
+/// condition; `ability` describes the ability being activated when known
+/// (without it, an ability-kind condition is assumed to hold).
 pub fn activated_ability_cost_condition_is_active_for_activation(
     game: &crate::game_state::GameState,
     source: crate::ids::ObjectId,
+    modifier_source: crate::ids::ObjectId,
     condition: &ActivatedAbilityCostCondition,
     chosen_targets: &[crate::game_state::Target],
+    ability: Option<crate::decision::ActivationCostAbility>,
 ) -> bool {
     let Some(source_obj) = game.object(source) else {
         return false;
     };
     let controller = game.controller_of(source_obj);
     match condition {
+        ActivatedAbilityCostCondition::EquipAbility { targeting } => {
+            if ability.is_some_and(|ability| !ability.equip) {
+                return false;
+            }
+            let Some(filter) = targeting else {
+                return true;
+            };
+            // Before targets are chosen the price is only an estimate; it is
+            // recomputed once they are (CR 601.2f, 602.2b).
+            if chosen_targets.is_empty() {
+                return true;
+            }
+            let Some(modifier) = game.object(modifier_source) else {
+                return false;
+            };
+            let modifier_controller = game.controller_of(modifier);
+            let filter_ctx = game.filter_context_for(modifier_controller, Some(modifier_source));
+            chosen_targets.iter().any(|target| match target {
+                crate::game_state::Target::Object(object_id) => game
+                    .object(*object_id)
+                    .is_some_and(|object| filter.matches(object, &filter_ctx, game)),
+                crate::game_state::Target::Player(_) => false,
+            })
+        }
         ActivatedAbilityCostCondition::TargetsExactly { count, filter } => {
             let opponents = game
                 .turn_store
@@ -2050,7 +2090,12 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
                 describe_types_among_scope(filter)
             ));
         }
-        if let Some(condition) = &self.condition {
+        // An authored display already states the equip-ability scope
+        // ("Equip abilities you activate that target ...").
+        if let Some(condition) = &self.condition
+            && !(self.display.is_some()
+                && matches!(condition, ActivatedAbilityCostCondition::EquipAbility { .. }))
+        {
             line.push(' ');
             line.push_str(&describe_activated_ability_cost_condition(condition));
         }

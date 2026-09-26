@@ -143,6 +143,10 @@ pub fn register_prevention_shield(
         .with_follow_up_effects(follow_up_effects)
         .with_follow_up_targets(follow_up_targets)
         .with_follow_up_target_assignments(follow_up_target_assignments);
+    // Turn-relative shield durations are measured from the creation turn.
+    game.effect_store
+        .prevention_effects
+        .set_turn(game.turn.turn_number);
     game.effect_store.prevention_effects.add_shield(shield)
 }
 

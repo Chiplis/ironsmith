@@ -15,6 +15,7 @@ from typing import Dict, Iterable, List, Tuple
 
 from stream_scryfall_blocks import (
     build_block,
+    format_color_indicator_line,
     has_digital_only_oracle_marker,
     is_non_paper_print,
     is_non_playable,
@@ -180,6 +181,10 @@ def collect_unique_blocks(
         attraction_lights = face.get("attraction_lights") or card.get(
             "attraction_lights"
         )
+        # A face's color indicator (CR 204) sets its color; back faces of
+        # double-faced cards usually have no mana cost, so this is their only
+        # source of color (CR 712.8e).
+        color_indicator = face.get("color_indicator")
 
         if not name or not type_line:
             return None
@@ -201,6 +206,9 @@ def collect_unique_blocks(
         if mana_cost:
             lines.append(f"Mana cost: {mana_cost}")
         lines.append(f"Type: {type_line}")
+        color_indicator_line = format_color_indicator_line(color_indicator)
+        if color_indicator_line:
+            lines.append(color_indicator_line)
         if isinstance(attraction_lights, list) and attraction_lights:
             lines.append(
                 "Attraction lights: "
@@ -444,6 +452,7 @@ def write_generated_source(
     lines.append("    back_block: String,")
     lines.append("    back_score: f32,")
     lines.append("    combined_name: String,")
+    lines.append("    is_flip: bool,")
     lines.append("}")
     lines.append("")
     lines.append("#[derive(Clone)]")
@@ -524,6 +533,7 @@ def write_generated_source(
     lines.append(
         '        let combined_name = read_string(bytes, &mut cursor).expect("missing flip combined name");'
     )
+    lines.append('        let is_flip = read_u32(bytes, &mut cursor).expect("missing flip layout flag") != 0;')
     lines.append("        flips.push(FlipCardText {")
     lines.append("            front_name,")
     lines.append("            front_block,")
@@ -532,6 +542,7 @@ def write_generated_source(
     lines.append("            back_block,")
     lines.append("            back_score,")
     lines.append("            combined_name,")
+    lines.append("            is_flip,")
     lines.append("        });")
     lines.append("    }")
     lines.append("")
@@ -752,8 +763,9 @@ def write_generated_source(
     lines.append("    front_block: &str,")
     lines.append("    back_name: &str,")
     lines.append("    back_block: &str,")
+    lines.append("    is_flip: bool,")
     lines.append(") {")
-    lines.append("    if let Ok(mut parsed) = parse_generated_flip_card_result(front_name, front_block, back_name, back_block) {")
+    lines.append("    if let Ok(mut parsed) = parse_generated_flip_card_result(front_name, front_block, back_name, back_block, is_flip) {")
     lines.append("        cards.append(&mut parsed);")
     lines.append("    }")
     lines.append("}")
@@ -763,6 +775,7 @@ def write_generated_source(
     lines.append("    front_block: &str,")
     lines.append("    back_name: &str,")
     lines.append("    back_block: &str,")
+    lines.append("    is_flip: bool,")
     lines.append(") -> Result<Vec<CardDefinition>, String> {")
     lines.append("    let front_id = CardId::new();")
     lines.append("    let back_id = CardId::new();")
@@ -778,8 +791,14 @@ def write_generated_source(
     lines.append("    back.card.other_face = Some(front_id);")
     lines.append('    front.card.other_face_name = Some(back_name.to_string());')
     lines.append('    back.card.other_face_name = Some(front_name.to_string());')
-    lines.append("    front.card.linked_face_layout = crate::card::LinkedFaceLayout::TransformLike;")
-    lines.append("    back.card.linked_face_layout = crate::card::LinkedFaceLayout::TransformLike;")
+    lines.append("    // A flip card is not double-faced, so it can flip but not transform.")
+    lines.append("    let layout = if is_flip {")
+    lines.append("        crate::card::LinkedFaceLayout::Flip")
+    lines.append("    } else {")
+    lines.append("        crate::card::LinkedFaceLayout::TransformLike")
+    lines.append("    };")
+    lines.append("    front.card.linked_face_layout = layout;")
+    lines.append("    back.card.linked_face_layout = layout;")
     lines.append("    if let Some(detail) = super::generated_definition_unsupported_mechanics_message(&front) {")
     lines.append("        return Err(detail);")
     lines.append("    }")
@@ -858,6 +877,7 @@ def write_generated_source(
     lines.append("                entry.front_block.as_str(),")
     lines.append("                entry.back_name.as_str(),")
     lines.append("                entry.back_block.as_str(),")
+    lines.append("                entry.is_flip,")
     lines.append("            );")
     lines.append("        }")
     lines.append("    }")
@@ -909,7 +929,7 @@ def write_generated_source(
     lines.append("        }")
     lines.append("        for entry in &texts.flips {")
     lines.append(
-        "            parse_generated_flip_card(&mut cards, entry.front_name.as_str(), entry.front_block.as_str(), entry.back_name.as_str(), entry.back_block.as_str());"
+        "            parse_generated_flip_card(&mut cards, entry.front_name.as_str(), entry.front_block.as_str(), entry.back_name.as_str(), entry.back_block.as_str(), entry.is_flip);"
     )
     lines.append("        }")
     lines.append("        for entry in &texts.splits {")
@@ -1157,7 +1177,7 @@ def write_generated_payload(
         back_block,
         back_score,
         combined_name,
-        _metadata,
+        metadata,
     ) in flips_ordered:
         append_string(payload, front_name)
         append_string(payload, front_block)
@@ -1166,6 +1186,7 @@ def write_generated_payload(
         append_string(payload, back_block)
         append_f32(payload, back_score)
         append_string(payload, combined_name)
+        append_u32(payload, 1 if metadata.get("layout") == "flip" else 0)
 
     append_u32(payload, len(splits_ordered))
     for (
@@ -1253,6 +1274,11 @@ def compact_scryfall_metadata(card: dict, *, face: dict | None = None) -> dict:
 
 def compact_linked_scryfall_metadata(card: dict, front: dict, back: dict) -> dict:
     metadata = compact_scryfall_metadata(card)
+    # The Scryfall layout keeps flip cards apart from double-faced cards: a
+    # flip card can flip but not transform (CR 712.9).
+    layout = card.get("layout")
+    if isinstance(layout, str) and layout.strip():
+        metadata["layout"] = layout.strip().lower()
     metadata["faces"] = [
         compact_scryfall_metadata(card, face=front),
         compact_scryfall_metadata(card, face=back),
@@ -1478,7 +1504,7 @@ def write_frontend_card_assets(
             metadata,
         ) = entry
         payload = frontend_asset_payload_for_linked(
-            layout="transform_like",
+            layout="flip" if metadata.get("layout") == "flip" else "transform_like",
             front_name=front_name,
             front_block=front_block,
             front_score=front_score,

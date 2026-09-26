@@ -27,14 +27,31 @@ pub enum EquipCostPayer {
     Opponent,
 }
 
+/// Which target an equip-cost modifier requires ("... that target X").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EquipCostTarget {
+    Any,
+    /// "that target this creature" (Dwarven Mauler).
+    Source,
+    /// "that target enchanted creature" (Strong Back).
+    EnchantedCreature,
+    /// "that target equipped creature".
+    EquippedCreature,
+    /// A "that target ..." tail this grammar doesn't know.
+    Unsupported,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EquipCostModifierHead {
     pub cost_token: usize,
     pub payer: EquipCostPayer,
     pub source_relative_equipment: bool,
     /// "Equip abilities you activate that target this creature" (Dwarven
-    /// Mauler): only equip abilities targeting the source.
-    pub targets_source: bool,
+    /// Mauler): only equip abilities targeting the given object.
+    pub target: EquipCostTarget,
+    /// "Equip abilities you activate of other Equipment" (Bladehold
+    /// War-Whip).
+    pub other_equipment: bool,
 }
 
 pub fn parse_starting_life_bonus_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
@@ -130,15 +147,23 @@ pub fn parse_equip_cost_modifier_head_tokens(
         return None;
     }
     let cost_token = static_keyword_cost_shapes::parse_last_cost_verb(tokens)?.token;
-    let targets_source = equip_abilities_head
-        && primitives::find_prefix(tokens, || {
-            alt((
-                primitives::phrase(&["that", "target", "this", "creature"]),
-                primitives::phrase(&["that", "target", "this", "permanent"]),
-            ))
-            .void()
-        })
-        .is_some();
+    let has_phrase = |phrase: &'static [&'static str]| {
+        primitives::find_prefix(tokens, || primitives::phrase(phrase).void()).is_some()
+    };
+    let target = if !equip_abilities_head || !has_phrase(&["that", "target"]) {
+        EquipCostTarget::Any
+    } else if has_phrase(&["that", "target", "this", "creature"])
+        || has_phrase(&["that", "target", "this", "permanent"])
+    {
+        EquipCostTarget::Source
+    } else if has_phrase(&["that", "target", "enchanted", "creature"]) {
+        EquipCostTarget::EnchantedCreature
+    } else if has_phrase(&["that", "target", "equipped", "creature"]) {
+        EquipCostTarget::EquippedCreature
+    } else {
+        EquipCostTarget::Unsupported
+    };
+    let other_equipment = equip_abilities_head && has_phrase(&["of", "other", "equipment"]);
     let payer = if primitives::find_prefix(tokens, || {
         alt((
             primitives::phrase(&["you", "pay"]),
@@ -167,7 +192,8 @@ pub fn parse_equip_cost_modifier_head_tokens(
         cost_token,
         payer,
         source_relative_equipment,
-        targets_source,
+        target,
+        other_equipment,
     })
 }
 

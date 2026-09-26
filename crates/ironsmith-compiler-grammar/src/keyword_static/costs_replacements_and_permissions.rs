@@ -448,6 +448,14 @@ pub fn parse_spells_cost_modifier_line(
     else {
         return Ok(None);
     };
+    // A chosen-option label ("• Dragons — Spells your opponents cast ...",
+    // Monastery Siege) is not part of the spell subject; parse the body alone.
+    if let Some(label_end) = tokens[..spells_token_idx]
+        .iter()
+        .rposition(|token| matches!(token.kind, crate::lexer::TokenKind::EmDash))
+    {
+        return parse_spells_cost_modifier_line(&tokens[label_end + 1..]);
+    }
 
     let first_spell_fact = static_mid_facts::parse_first_spell_each_turn_cost_fact(tokens);
     let second_spell_each_turn = crate::word_primitives::sequence_occurs(
@@ -1236,11 +1244,35 @@ pub fn parse_equip_cost_modifier_line(
         return Ok(None);
     };
 
-    let mut filter = if head.source_relative_equipment {
-        ObjectFilter::source().with_ability_marker("equip")
-    } else {
-        ObjectFilter::default().with_ability_marker("equip")
+    use keyword_static_lines::EquipCostTarget;
+    // The ability being activated must be an equip ability, and for "that
+    // target ..." one with such a target (CR 601.2f, 602.2b). Both are facts
+    // about the activation, not about the Equipment, which may have other
+    // activated abilities.
+    let targeting = match head.target {
+        EquipCostTarget::Any => None,
+        EquipCostTarget::Source => Some(ObjectFilter::source()),
+        EquipCostTarget::EnchantedCreature | EquipCostTarget::EquippedCreature => {
+            let mut filter = ObjectFilter::creature();
+            filter.with_attached_object = Some(Box::new(ObjectFilter::source()));
+            Some(filter)
+        }
+        EquipCostTarget::Unsupported => {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported equip cost modifier target (clause: '{}')",
+                crate::lexer::token_word_refs(tokens).join(" ")
+            )));
+        }
     };
+    let mut filter = if head.source_relative_equipment {
+        ObjectFilter::source()
+    } else {
+        ObjectFilter::default()
+    };
+    if head.other_equipment {
+        filter.subtypes.push(crate::types::Subtype::Equipment);
+        filter.other = true;
+    }
     match head.payer {
         keyword_static_lines::EquipCostPayer::You => filter.controller = Some(PlayerFilter::You),
         keyword_static_lines::EquipCostPayer::Opponent => {
@@ -1248,17 +1280,26 @@ pub fn parse_equip_cost_modifier_line(
         }
         keyword_static_lines::EquipCostPayer::Unspecified => {}
     }
-    if head.targets_source {
-        filter.targets_object = Some(Box::new(ObjectFilter::source()));
-    }
 
     if direction == CostModifierDirection::Less {
         let amount_text = format!("{{{amount}}}");
         let display = if head.source_relative_equipment {
             format!("This Equipment's equip abilities cost {amount_text} less to activate")
-        } else if head.targets_source {
+        } else if head.target == EquipCostTarget::Source {
             format!(
                 "Equip abilities you activate that target this creature cost {amount_text} less to activate"
+            )
+        } else if head.target == EquipCostTarget::EnchantedCreature {
+            format!(
+                "Equip abilities you activate that target enchanted creature cost {amount_text} less to activate"
+            )
+        } else if head.target == EquipCostTarget::EquippedCreature {
+            format!(
+                "Equip abilities you activate that target equipped creature cost {amount_text} less to activate"
+            )
+        } else if head.other_equipment {
+            format!(
+                "Equip abilities you activate of other Equipment cost {amount_text} less to activate"
             )
         } else if filter.controller == Some(PlayerFilter::Opponent) {
             format!("Equip costs your opponents pay cost {amount_text} less")
@@ -1271,8 +1312,15 @@ pub fn parse_equip_cost_modifier_line(
                 amount as u32,
                 None,
                 display,
+            )
+            .with_activated_ability_cost_condition(
+                crate::static_abilities::ActivatedAbilityCostCondition::EquipAbility { targeting },
             ),
         ));
+    }
+    let mut filter = filter.with_ability_marker("equip");
+    if let Some(targeting) = targeting {
+        filter.targets_object = Some(Box::new(targeting));
     }
 
     let increase = ironsmith_core::TotalCost::<crate::model::CompilerCost>::mana(
@@ -2854,6 +2902,7 @@ pub fn parse_double_counters_replacement_line(
                 None,
                 display_text_for_tokens(tokens, true),
             )
+            .effect_caused_counters_only()
         }
         keyword_static_lines::CounterReplacementShape::EnergyYouGet => {
             StaticAbility::double_player_counters_replacement(
@@ -5531,6 +5580,7 @@ pub fn build_replacement_creature_token(
             tapped: false,
             attacking: false,
             attack_target_player: None,
+            combat_entry: Default::default(),
             exile_at_end_of_combat: false,
             sacrifice_at_end_of_combat: false,
             sacrifice_at_next_end_step: false,

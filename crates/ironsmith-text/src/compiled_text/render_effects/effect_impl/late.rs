@@ -412,6 +412,10 @@
                 text.push_str(", attacking");
                 text.push_str(&attack_target_suffix());
             }
+            if let Some(attacker) = &create_token.enters_blocking {
+                text.push_str(if singular { " that's blocking " } else { " that are blocking " });
+                text.push_str(&describe_choose_spec(attacker));
+            }
             text
         };
         let describe_created_token_blueprint = || {
@@ -2820,12 +2824,19 @@
                 describe_prevention_follow_up_target(&prevent_all_target.target)
             );
         }
-        return format!(
+        let mut rendered = format!(
             "Prevent all {} that would be dealt to {} {}",
             damage_text,
             describe_choose_spec(&prevent_all_target.target),
             timing
         );
+        if !prevent_all_target.follow_up_effects.is_empty() {
+            rendered.push_str(&format!(
+                ". For each 1 damage prevented this way, {}",
+                lowercase_first(&describe_effect_list(&prevent_all_target.follow_up_effects))
+            ));
+        }
+        return rendered;
     }
     if let Some(replace_next) =
         effect.downcast_ref::<crate::effects::ReplaceNextDamageToTargetEffect>()
@@ -3140,6 +3151,10 @@
                     )
                 })
             }
+            crate::effects::CombatDamagePreventionTarget::ToAndFrom(object) => format!(
+                "Prevent all combat damage that would be dealt to and dealt by {} {timing}",
+                describe_choose_spec(object)
+            ),
         };
     }
     if let Some(prevent_all) = effect.downcast_ref::<crate::effects::PreventAllDamageEffect>() {

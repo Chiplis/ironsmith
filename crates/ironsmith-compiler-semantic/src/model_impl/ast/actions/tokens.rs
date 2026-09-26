@@ -2,6 +2,18 @@
 
 use super::*;
 
+/// Less common ways a created token enters combat.
+#[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
+pub struct TokenCombatEntryAst {
+    /// "a token that's blocking <that creature>" (CR 509.4): the attacking
+    /// creature each token enters blocking.
+    pub blocking: Option<TargetAst>,
+    /// "attacking that player or a planeswalker they control": the token's
+    /// controller chooses among `attack_target_player` and the planeswalkers
+    /// that player controls (CR 508.4).
+    pub attack_target_includes_planeswalkers: bool,
+}
+
 #[derive(Clone, PartialEq, TagKeyWalk)]
 pub enum TokenActionAst {
     CreateTokenCopy {
@@ -85,6 +97,9 @@ pub enum TokenActionAst {
         /// Authored player attacked by the created token (for example,
         /// `attacking that player` inside a per-opponent loop).
         attack_target_player: Option<PlayerAst>,
+        /// Less common combat-entry modifiers (blocking, attacking a player
+        /// or a planeswalker they control). Defaults to none.
+        combat_entry: TokenCombatEntryAst,
         exile_at_end_of_combat: bool,
         sacrifice_at_end_of_combat: bool,
         sacrifice_at_next_end_step: bool,

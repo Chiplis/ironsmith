@@ -2813,16 +2813,22 @@ pub(super) fn describe_structural_craft_keyword(
         .find_map(craft_material_cost)
         .or_else(|| craft_material_from_tagged_costs(costs))?;
     let effects = activated.effects.flattened_default_effects();
+    // Craft lowers to one "return this card transformed" move (CR 702.167a);
+    // older definitions pair an untransformed return with a Transform effect.
     let (return_effect, transform_effect) = match effects {
-        [return_effect, transform_effect] => (return_effect, transform_effect),
-        [sequence_effect] => {
-            let sequence = structural_unwrap_render_wrappers(sequence_effect)
-                .downcast_ref::<crate::effects::SequenceEffect>()?;
-            let [return_effect, transform_effect] = sequence.effects.as_slice() else {
-                return None;
-            };
-            (return_effect, transform_effect)
+        [return_effect] => {
+            match structural_unwrap_render_wrappers(return_effect)
+                .downcast_ref::<crate::effects::SequenceEffect>()
+            {
+                Some(sequence) => match sequence.effects.as_slice() {
+                    [return_effect] => (return_effect, None),
+                    [return_effect, transform_effect] => (return_effect, Some(transform_effect)),
+                    _ => return None,
+                },
+                None => (return_effect, None),
+            }
         }
+        [return_effect, transform_effect] => (return_effect, Some(transform_effect)),
         _ => return None,
     };
     let returns_source = return_effect
@@ -2835,10 +2841,13 @@ pub(super) fn describe_structural_craft_keyword(
                     crate::effects::BattlefieldController::Owner
                 )
                 && move_to_zone.transfer_exiled_with_source_links
+                && (move_to_zone.enters_transformed || transform_effect.is_some())
         });
-    let transforms_source = transform_effect
-        .downcast_ref::<crate::effects::TransformEffect>()
-        .is_some_and(|transform| matches!(transform.target, ChooseSpec::Source));
+    let transforms_source = transform_effect.is_none_or(|transform_effect| {
+        transform_effect
+            .downcast_ref::<crate::effects::TransformEffect>()
+            .is_some_and(|transform| matches!(transform.target, ChooseSpec::Source))
+    });
     if !returns_source || !transforms_source {
         return None;
     }

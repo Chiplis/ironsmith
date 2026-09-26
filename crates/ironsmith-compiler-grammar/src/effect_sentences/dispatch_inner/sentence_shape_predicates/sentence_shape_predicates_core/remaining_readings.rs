@@ -88,6 +88,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_joint_draw(input)),
     },
     Reading {
+        id: RuleId::new("joint-life"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_joint_life(input)),
+    },
+    Reading {
         id: RuleId::new("target-player-resource-coordination"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -300,6 +306,21 @@ fn read_joint_draw(input: &RemainingSentence<'_>) -> Result<Option<Vec<EffectAst
         {
             return Ok(Some(effects));
         }
+    Ok(None)
+}
+fn read_joint_life(input: &RemainingSentence<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = input.tokens;
+    // "You and that player each gain that much life" (Angel of Destiny): two
+    // player subjects sharing one life verb. Claim it before broad
+    // subject/verb parsing keeps only the leading `you`.
+    if effect_grammar::subject_verb_registry_shapes::parse_joint_life_shape(tokens).is_some()
+        && let Some(effects) =
+            super::super::super::subject_verb_primitives::parse_sentence_you_and_player_each_gain_or_lose_life(
+                SubjectVerbPrimitiveClause::new(tokens),
+            )?
+    {
+        return Ok(Some(effects));
+    }
     Ok(None)
 }
 fn read_target_player_resource_coordination(

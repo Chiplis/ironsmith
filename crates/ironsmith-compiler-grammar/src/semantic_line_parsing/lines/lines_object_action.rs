@@ -177,6 +177,7 @@ pub(super) fn standard_gift_create_token_effect(
             tapped,
             attacking: false,
             attack_target_player: None,
+            combat_entry: Default::default(),
             exile_at_end_of_combat: false,
             sacrifice_at_end_of_combat: false,
             sacrifice_at_next_end_step: false,

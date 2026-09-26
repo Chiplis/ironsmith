@@ -1710,12 +1710,18 @@ fn activation_x_reduction_headroom(game: &GameState, pending: &PendingActivation
         return 0;
     };
     let reduction = |base: &crate::cost::TotalCost| {
-        let priced = crate::decision::calculate_effective_activation_total_cost_with_chosen_targets(
+        let priced = crate::decision::calculate_effective_activation_total_cost_for_ability(
             game,
             pending.activator,
             pending.source,
             base,
             &pending.chosen_targets,
+            Some(crate::decision::ActivationCostAbility::of(
+                game,
+                pending.activator,
+                pending.source,
+                activated,
+            )),
         );
         let base = selected_activation_cost_branch(base, pending.selected_alternative_cost);
         let priced = selected_activation_cost_branch(&priced, pending.selected_alternative_cost);
@@ -2117,6 +2123,28 @@ pub(super) fn check_optional_costs_or_continue(
     } else {
         Vec::new().into()
     };
+
+    // "Cast as though it had flash if you pay {N} more": when this cast is
+    // being made at a time only that permission allows, its cost must be
+    // announced (CR 601.2b, 601.2f); otherwise the completed proposal would
+    // be cancelled (CR 601.2e).
+    if !pending.effect_driven
+        && let Some(flash_index) = optional_costs
+            .iter()
+            .position(|cost| cost.kind == ironsmith_core::OptionalCostKind::FlashTiming)
+        && !pending.required_optional_cost_indices.contains(&flash_index)
+        && game.object(pending.spell_id).is_some_and(|spell| {
+            !crate::decision::completed_cast_proposal_is_legal(
+                game,
+                pending.caster,
+                spell,
+                &pending.casting_method,
+                &pending.chosen_targets,
+            )
+        })
+    {
+        pending.required_optional_cost_indices.push(flash_index);
+    }
 
     if optional_costs.is_empty() {
         // CR 601.2b announces variable values only after modes and alternative/
@@ -4444,6 +4472,13 @@ fn collect_available_mana_abilities(
                 .is_ok()
             {
                 if !include(perm_id, ability) {
+                    continue;
+                }
+                // A declaration's cost-payment window isn't a time an
+                // instant could be cast (CR 602.5d).
+                if let crate::ability::AbilityKind::Activated(activated) = &ability.kind
+                    && crate::special_actions::activation_restricted_to_instant_timing(activated)
+                {
                     continue;
                 }
                 let desc = describe_mana_ability(game, perm_id, player, &ability.kind);

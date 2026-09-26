@@ -597,7 +597,14 @@ fn parse_next_end_step_prefix_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()
 }
 
 fn parse_next_combat_prefix_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    primitives::phrase(&["at", "the", "beginning", "of", "the", "next", "combat"]).parse_next(input)
+    alt((
+        primitives::phrase(&["at", "the", "beginning", "of", "the", "next", "combat"]),
+        // "At the beginning of each combat this turn" (Full Throttle): a
+        // turn-long delayed trigger, parsed by the same next-combat reader.
+        primitives::phrase(&["at", "the", "beginning", "of", "each", "combat"]),
+    ))
+    .void()
+    .parse_next(input)
 }
 
 fn parse_end_combat_delayed_lexed<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {

@@ -492,3 +492,79 @@ impl GameState {
         cards
     }
 }
+
+impl GameState {
+    /// Battlefield entries still owed by a restarting effect (CR 726.4).
+    pub fn pending_restart_battlefield_entries(&self) -> &[PendingRestartBattlefieldEntry] {
+        &self.pending_restart_battlefield_entries
+    }
+
+    /// Restore deferred restart entries (sync checkpoints).
+    pub fn set_pending_restart_battlefield_entries(
+        &mut self,
+        entries: Vec<PendingRestartBattlefieldEntry>,
+    ) {
+        self.pending_restart_battlefield_entries = entries;
+    }
+
+    pub(crate) fn defer_restart_battlefield_entry(&mut self, entry: PendingRestartBattlefieldEntry) {
+        if !entry.cards.is_empty() {
+            self.pending_restart_battlefield_entries.push(entry);
+        }
+    }
+
+    /// CR 726.4: the restarting effect finishes resolving just before the new
+    /// game's first untap step, after mulligans and opening-hand actions. Put
+    /// the cards it left in exile onto the battlefield now, as one event per
+    /// deferred instruction. Resulting triggers wait for the first priority.
+    pub fn apply_pending_restart_battlefield_entries(&mut self) {
+        let entries = std::mem::take(&mut self.pending_restart_battlefield_entries);
+        for entry in entries {
+            let cards = entry
+                .cards
+                .iter()
+                .copied()
+                .filter(|id| self.object(*id).is_some_and(|object| object.zone == Zone::Exile))
+                .collect::<Vec<_>>();
+            let Some(&first) = cards.first() else {
+                continue;
+            };
+            let Some(owner) = self.object(first).map(|object| object.owner) else {
+                continue;
+            };
+            let snapshots = cards
+                .iter()
+                .filter_map(|id| {
+                    self.object(*id)
+                        .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, self))
+                })
+                .collect::<Vec<_>>();
+            let tag = crate::tag::TagKey::from("restart_battlefield_entry");
+            let mut effect = crate::effects::MoveToZoneEffect::new(
+                crate::target::ChooseSpec::Tagged(tag.clone()),
+                Zone::Battlefield,
+                false,
+            );
+            effect.battlefield_controller = if entry.controller.is_some() {
+                crate::effects::BattlefieldController::You
+            } else {
+                crate::effects::BattlefieldController::Owner
+            };
+            effect.enters_tapped = entry.enters_tapped;
+            let mut dm = crate::decision::SelectFirstDecisionMaker;
+            let mut ctx = crate::effects::ExecutionContext::new(
+                first,
+                entry.controller.unwrap_or(owner),
+                &mut dm,
+            );
+            ctx.tag_objects(tag, snapshots);
+            if let Ok(outcome) =
+                crate::effects::execute_effect(self, &crate::effect::Effect::new(effect), &mut ctx)
+            {
+                for event in outcome.events {
+                    self.queue_trigger_event(event.provenance(), event);
+                }
+            }
+        }
+    }
+}

@@ -631,6 +631,9 @@ pub struct PreventAllDamageToTargetEffect<E> {
     pub target: ChooseSpec,
     pub until: Until,
     pub follow_up_effects: Vec<E>,
+    /// Only combat damage is prevented (Inkshield).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub combat_only: bool,
 }
 
 impl<E> PreventAllDamageToTargetEffect<E> {
@@ -639,7 +642,13 @@ impl<E> PreventAllDamageToTargetEffect<E> {
             target,
             until,
             follow_up_effects: Vec::new(),
+            combat_only: false,
         }
+    }
+
+    pub fn combat_only(mut self) -> Self {
+        self.combat_only = true;
+        self
     }
 
     pub fn with_follow_up_effects(mut self, effects: Vec<E>) -> Self {
@@ -2946,6 +2955,10 @@ pub enum CombatDamagePreventionTarget {
     Players,
     You,
     From(ChooseSpec),
+    /// "combat damage that would be dealt to and dealt by <object>" (Maze of
+    /// Ith): both the damage the object would deal and the damage that would
+    /// be dealt to it.
+    ToAndFrom(ChooseSpec),
 }
 
 /// Makes the chosen object assign no combat damage for the specified duration.

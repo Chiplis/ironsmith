@@ -247,7 +247,15 @@ fn queue_incremental_combat_damage_event(
     let mut groups_from_this_event: std::collections::HashMap<DamageBatchTriggerKey, Vec<usize>> =
         std::collections::HashMap::new();
     for candidate in candidates.entries {
-        let Some(crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageBatch) = candidate
+        use crate::triggers::matcher_trait::SimultaneousTriggerKey;
+        // All combat damage is one simultaneous event (CR 510.2): merge the
+        // per-assignment matches of "one or more" (DamageBatch) and
+        // per-source / per-recipient (DamageSource / DamageTarget) triggers.
+        let Some(
+            group @ (SimultaneousTriggerKey::DamageBatch
+            | SimultaneousTriggerKey::DamageSource(_)
+            | SimultaneousTriggerKey::DamageTarget(_)),
+        ) = candidate
             .ability
             .trigger
             .simultaneous_trigger_key(&candidate.triggering_event)
@@ -255,21 +263,20 @@ fn queue_incremental_combat_damage_event(
             trigger_queue.add(candidate);
             continue;
         };
-        let key = (
-            candidate.source_stable_id,
-            candidate.trigger_identity,
-            crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageBatch,
-        );
+        let key = (candidate.source_stable_id, candidate.trigger_identity, group);
 
         if let Some(existing_indices) = damage_batch_groups.get(&key) {
             if let Some(amount) = candidate.event_value_amount {
                 for index in existing_indices {
                     if let Some(existing) = trigger_queue.entries.get_mut(*index) {
-                        existing.event_value_amount = Some(
-                            existing
+                        existing.event_value_amount = Some(match group {
+                            SimultaneousTriggerKey::DamageBatch => existing
                                 .event_value_amount
                                 .map_or(amount, |prior| prior.max(amount)),
-                        );
+                            // "that much damage" is the total dealt to (or by)
+                            // this object in the event.
+                            _ => existing.event_value_amount.unwrap_or(0) + amount,
+                        });
                     }
                 }
             }

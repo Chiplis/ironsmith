@@ -302,6 +302,7 @@ fn parse_line_semantic_facts_tokens_with_optional_context(
             presentation_label: None,
             functional_zones: TriggerFunctionalZoneFacts {
                 explicit_zone: trigger_zones.explicit_zone,
+                explicit_zone_or_battlefield: trigger_zones.explicit_zone_or_battlefield,
                 returns_self_from_graveyard: trigger_zones.returns_self_from_graveyard,
                 discards_this_card: trigger_zones.discards_this_card,
             },

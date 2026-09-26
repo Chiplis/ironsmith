@@ -361,6 +361,12 @@ pub trait ReplacementMatcher: Debug + Send + Sync + ReplacementMatcherClone {
     /// `true` if this replacement effect should apply to the event.
     fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool;
 
+    /// For token-creation replacements: the filter a token group must match
+    /// for this replacement to modify it (`None` = every group).
+    fn token_group_filter(&self) -> Option<&crate::target::ObjectFilter> {
+        None
+    }
+
     /// Whether this matcher applies only because a token merged permanent has
     /// a nontoken card component. CR 730.3e uses this to partition the
     /// replacement between card and token components.

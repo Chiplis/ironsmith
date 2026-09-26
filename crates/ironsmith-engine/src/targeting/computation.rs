@@ -446,9 +446,10 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
         return TargetingResult::Invalid(TargetingInvalidReason::HasShroud);
     }
 
-    // Check for hexproof (only blocks opponents)
+    // Check for hexproof (only blocks opponents; teammates aren't opponents
+    // in team formats, CR 702.11b / 810.2)
     if target_abilities.iter().any(|a| a.has_hexproof())
-        && game.controller_of(target) != caster
+        && game.are_opponents(game.controller_of(target), caster)
         && !ignores_hexproof
     {
         return TargetingResult::Invalid(TargetingInvalidReason::HasHexproof);
@@ -485,7 +486,7 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
             return TargetingResult::Invalid(TargetingInvalidReason::HasProtection);
         }
         if game.is_untargetable(target_id)
-            && game.controller_of(target) != caster
+            && game.are_opponents(game.controller_of(target), caster)
             && !ignores_hexproof
             && !ignores_shroud
         {
@@ -496,21 +497,30 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
 
     // Check for HexproofFrom. A permission to target "as though it didn't
     // have hexproof" also covers "hexproof from [quality]" (CR 702.11e).
-    if game.controller_of(target) != source.protection_controller(game)
+    if game.are_opponents(game.controller_of(target), source.protection_controller(game))
         && !ignores_hexproof
         && !game
             .effect_store
             .cant_effects
             .ignores_hexproof_from_for_object(game, target_id, permission_player)
     {
+        let hexproof_ctx = game.filter_context_for(caster, Some(source.object_id()));
+        // A live object on the stack is a spell; any other targeting source
+        // (a permanent, a card in another zone, or last-known information)
+        // is targeting with one of its abilities. That ability isn't on the
+        // stack while its targets are chosen (CR 602.2b, 603.3d) and has
+        // left it by the resolution recheck (CR 608.2b), so a stack-kind
+        // quality can't be read from a stack entry.
+        let targeting_with_ability = !(source.is_live() && source.zone() == Zone::Stack);
         for ability in target_abilities.iter() {
-            if let Some(filter) = ability.hexproof_from_filter()
-                && source.matches(
-                    filter,
-                    &game.filter_context_for(caster, Some(source.object_id())),
-                    game,
-                )
-            {
+            let Some(filter) = ability.hexproof_from_filter() else {
+                continue;
+            };
+            let matches = source.matches(filter, &hexproof_ctx, game)
+                || (targeting_with_ability
+                    && ability_kind_quality_filter(filter)
+                        .is_some_and(|filter| source.matches(&filter, &hexproof_ctx, game)));
+            if matches {
                 return TargetingResult::Invalid(TargetingInvalidReason::HasHexproofFrom);
             }
         }
@@ -524,7 +534,7 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
     // Check CantEffectTracker for "can't be targeted" effects
     // Note: This includes both shroud and hexproof tracked separately
     if game.is_untargetable(target_id)
-        && game.controller_of(target) != caster
+        && game.are_opponents(game.controller_of(target), caster)
         && !ignores_hexproof
         && !ignores_shroud
     {
@@ -558,6 +568,55 @@ pub fn has_protection_from_source(
 ) -> bool {
     let view = crate::derived_view::DerivedGameView::new(game);
     has_protection_from_source_with_view(game, target_id, source_id, &view)
+}
+
+/// Rewrite a "hexproof from [activated/triggered] abilities" quality for a
+/// source that is targeting with an ability not (or no longer) on the stack
+/// (Volatile Stormdrake, CR 702.11d). Ability-kind stack constraints are
+/// treated as satisfied and spell-only branches are dropped; the remaining
+/// characteristics are still read from the source. Returns `None` when the
+/// filter has no ability-kind constraint, so the ordinary match stands.
+///
+/// The targeting ability's exact kind isn't known here, so "activated" and
+/// "triggered" both match; no printed quality names only one of them.
+fn ability_kind_quality_filter(filter: &crate::target::ObjectFilter) -> Option<crate::target::ObjectFilter> {
+    use crate::filter::StackObjectKind;
+    fn rewrite(filter: &crate::target::ObjectFilter) -> Option<(crate::target::ObjectFilter, bool)> {
+        let mut rewritten = filter.clone();
+        let mut changed = false;
+        match filter.stack_kind {
+            Some(StackObjectKind::Spell) => return None,
+            Some(
+                StackObjectKind::Ability
+                | StackObjectKind::ActivatedAbility
+                | StackObjectKind::TriggeredAbility
+                | StackObjectKind::SpellOrAbility,
+            ) => {
+                rewritten.stack_kind = None;
+                if rewritten.zone == Some(Zone::Stack) {
+                    rewritten.zone = None;
+                }
+                changed = true;
+            }
+            None => {}
+        }
+        if !filter.any_of.is_empty() {
+            rewritten.any_of.clear();
+            for branch in &filter.any_of {
+                if let Some((branch, branch_changed)) = rewrite(branch) {
+                    changed |= branch_changed;
+                    rewritten.any_of.push(branch);
+                } else {
+                    changed = true;
+                }
+            }
+            if rewritten.any_of.is_empty() {
+                return None;
+            }
+        }
+        Some((rewritten, changed))
+    }
+    rewrite(filter).and_then(|(filter, changed)| changed.then_some(filter))
 }
 
 /// Test protection granted by an attached permanent whose chosen quality is
@@ -714,6 +773,17 @@ pub(crate) fn protection_from_subject_with_view(
                 .intersection(source.protection_colors(view))
                 .is_empty()
         }
+        // "Protection from creatures your opponents control" (Crypsis): the
+        // quality is read from the protected permanent's point of view, as
+        // blocking already does (`protection_prevents_blocking_with_view`).
+        crate::ability::ProtectionFrom::Permanents(filter) => {
+            let mut filter_ctx =
+                game.filter_context_for(game.controller_of(target), Some(source.object_id()));
+            if source.zone() == Zone::Stack {
+                filter_ctx.caster = Some(source.protection_controller(game));
+            }
+            source.matches(filter, &filter_ctx, game)
+        }
         _ => subject_matches_protection(source, protection_from, game, view),
     }
 }
@@ -825,12 +895,8 @@ fn mana_value_matches_scope(
 }
 
 fn object_mana_value(object: &Object) -> Option<i32> {
-    Some(
-        object
-            .mana_cost
-            .as_ref()
-            .map_or(0, |cost| cost.mana_value() as i32),
-    )
+    // CR 712.8e / 712.8g: linked-face mana value for melded and back faces.
+    Some(crate::filter::object_mana_value_for_filter(object))
 }
 
 // These adapters choose characteristics only; protection rules are interpreted

@@ -7,8 +7,29 @@ use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilterExt;
 use crate::game_state::GameState;
+use crate::ids::ObjectId;
 use crate::target::ObjectFilter;
 pub use ironsmith_core::CantEffect;
+
+/// The object "this" names for a restriction this resolution creates.
+///
+/// CR 400.7, 611.2c: the source is the object it still is, or the object a
+/// zone-change trigger recorded it becoming. Any other zone change makes it
+/// a new object the restriction doesn't affect — including for activated
+/// abilities and spells, which carry no triggering event to follow.
+fn restriction_source_object(game: &GameState, ctx: &ExecutionContext) -> Option<ObjectId> {
+    if game.object(ctx.source).is_some() {
+        return Some(ctx.source);
+    }
+    if ctx
+        .triggering_event
+        .as_ref()
+        .is_some_and(|event| event.downcast::<crate::events::ZoneChangeEvent>().is_some())
+    {
+        return crate::effects::helpers::resolve_source_object_id(game, ctx);
+    }
+    None
+}
 
 fn collapse_tagged_filter_to_specific_objects(
     filter: &ObjectFilter,
@@ -18,12 +39,9 @@ fn collapse_tagged_filter_to_specific_objects(
     if filter.source {
         // CR 400.7: follow the source only to the object it still is (or a
         // zone-change trigger's recorded destination), never to the same card
-        // after an unrelated zone change.
-        let source = crate::effects::helpers::resolve_source_object_id(game, ctx);
-        if let Some(source) = source {
-            return ObjectFilter::specific(source);
-        }
-        return filter.clone();
+        // after an unrelated zone change. A source that is gone binds the
+        // restriction to its old object, which nothing is anymore.
+        return ObjectFilter::specific(restriction_source_object(game, ctx).unwrap_or(ctx.source));
     }
     if filter.tagged_constraints.is_empty() {
         return filter.clone();
@@ -48,11 +66,10 @@ fn collapse_tagged_filter_to_specific_objects(
         .collect::<Vec<_>>();
 
     if object_ids.is_empty()
-        && let Some(source) = crate::effects::helpers::resolve_source_object_id(game, ctx)
-            .filter(|source| {
-                game.object(*source)
-                    .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
-            })
+        && let Some(source) = restriction_source_object(game, ctx).filter(|source| {
+            game.object(*source)
+                .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+        })
     {
         object_ids.push(source);
     }

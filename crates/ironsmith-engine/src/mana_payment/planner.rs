@@ -1862,6 +1862,8 @@ fn collect_activation_choices_inner(
                 )
                 .is_err()
                 || ability_mana_is_unusable_for_request(game, request, source, mana_ability)
+                // Paying a cost is never a time an instant could be cast.
+                || crate::special_actions::activation_restricted_to_instant_timing(mana_ability)
             {
                 continue;
             }

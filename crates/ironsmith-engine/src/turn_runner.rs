@@ -229,6 +229,33 @@ struct PendingDrawReplacementChoice {
     applied_effect_keys: std::collections::HashSet<crate::replacement::ReplacementEffectKey>,
 }
 
+/// Choices asked while the runner applies one SBA check (CR 616.1: which
+/// replacement effect applies to a dying creature, "you may ... instead",
+/// battle protectors). Answers are replayed against a private copy until the
+/// whole check can be applied without a new prompt.
+#[derive(Debug, Clone)]
+struct PendingSbaChoices {
+    answers: Vec<AttackCostAnswer>,
+    prompt: DecisionContext,
+    response: Option<AttackCostAnswer>,
+}
+
+/// A draw-step draw replaced by effects that ask for choices (CR 616.1,
+/// 608.2d: Abundance's land/nonland choice, Underrealm Lich's pick). The
+/// effects run on a private copy with the answers so far and are published
+/// only once every prompt has been answered.
+#[derive(Debug, Clone)]
+struct PendingDrawReplacementEffects {
+    player: PlayerId,
+    effects: Vec<crate::effect::Effect>,
+    effect_id: crate::replacement::ReplacementEffectId,
+    source: ObjectId,
+    controller: PlayerId,
+    answers: Vec<AttackCostAnswer>,
+    prompt: Option<DecisionContext>,
+    response: Option<AttackCostAnswer>,
+}
+
 fn draw_replacement_choice_context(
     game: &GameState,
     pending: &PendingDrawReplacementChoice,
@@ -509,6 +536,10 @@ pub struct TurnRunner {
     pending_draw_replacement: Option<PendingDrawReplacementChoice>,
     /// Pending first-draw reveal decisions that pause the draw step.
     pending_draw_reveal: Option<PendingDrawRevealChoice>,
+    /// Draw-step replacement effects waiting on their controller's choices.
+    pending_draw_replacement_effects: Option<PendingDrawReplacementEffects>,
+    /// Choices of an SBA check the runner is applying.
+    pending_sba_choices: Option<PendingSbaChoices>,
     /// Active teammates whose turn-based draw is still pending this draw step.
     remaining_draw_players: Vec<PlayerId>,
     /// Draw events accumulated while shared-team draw choices pause and resume.
@@ -554,6 +585,8 @@ impl TurnRunner {
             pending_boolean: None,
             pending_draw_replacement: None,
             pending_draw_reveal: None,
+            pending_draw_replacement_effects: None,
+            pending_sba_choices: None,
             remaining_draw_players: Vec::new(),
             shared_draw_events: Vec::new(),
             pending_commander_choice: None,
@@ -675,6 +708,12 @@ impl TurnRunner {
             // Beginning Phase
             // ================================================================
             TurnState::BeginTurn => {
+                // CR 726.4: a restarting effect's deferred battlefield entries
+                // happen just before the new game's first untap step (hosts
+                // that run the rule 103 procedure apply them when it ends).
+                if !game.pending_restart_battlefield_entries().is_empty() {
+                    game.apply_pending_restart_battlefield_entries();
+                }
                 game.record_turn_start_hand_sizes();
                 for player in game.turn_players() {
                     game.activate_pending_player_control(player);
@@ -924,6 +963,9 @@ impl TurnRunner {
 
             TurnState::BeginCombatPriority => {
                 game.empty_mana_pools();
+                // Creatures put onto the battlefield attacking during this
+                // step were recorded in `game.combat` (CR 508.4).
+                self.sync_combat_from_game(game);
                 self.state = finish_step(
                     game,
                     Step::BeginCombat,
@@ -1578,10 +1620,42 @@ impl TurnRunner {
                     RunnerProgress::Complete(()) => {
                         // CR 724.1d-f: end combat, skip the end step, and enter
                         // the ordinary resumable cleanup procedure directly.
+                        let ending_combat = matches!(game.turn.phase, Phase::Combat);
+                        if ending_combat {
+                            // CR 500.5a / 511.3: combat ends here, so "until end
+                            // of combat" mana and effects expire now. Naming the
+                            // end-of-combat step lets mana-retention cleanup see
+                            // the combat boundary (as in `EndCombatPhaseSbas`).
+                            game.turn.step = Some(Step::EndCombat);
+                        }
                         game.empty_mana_pools();
                         crate::combat_state::end_combat(&mut self.combat);
                         if let Some(combat) = game.combat.as_mut() {
                             crate::combat_state::end_combat(combat);
+                        }
+                        if ending_combat {
+                            game.cleanup_effects_end_of_combat();
+                        }
+                        // CR 724.1d: every phase and step between here and the
+                        // cleanup step is skipped, including additional phases
+                        // and steps created earlier this turn. Only steps added
+                        // after the cleanup step itself survive.
+                        {
+                            let store = &mut game.turn_store;
+                            store.additional_phases.clear();
+                            store.additional_phase_orders.clear();
+                            store.additional_phase_only_steps.clear();
+                            store.additional_phase_continuation = None;
+                            store.phase_schedule_continuation = None;
+                            store.pending_added_steps.clear();
+                            store.active_added_step = None;
+                            store.added_step_continuation = None;
+                            store.added_steps.retain(|added| {
+                                added.placement
+                                    == crate::game_state::AddedStepPlacement::AfterStep(
+                                        Step::Cleanup,
+                                    )
+                            });
                         }
                         game.turn.phase = Phase::Ending;
                         game.turn.step = Some(Step::Cleanup);
@@ -1675,6 +1749,14 @@ impl TurnRunner {
 
     /// Provide a discard selection in response to a `Decision(SelectObjects(...))`.
     pub fn respond_discard(&mut self, cards: Vec<ObjectId>) {
+        if let Some(pending) = self.pending_sba_choices.as_mut() {
+            pending.response = Some(AttackCostAnswer::Objects(cards));
+            return;
+        }
+        if let Some(pending) = self.pending_draw_replacement_effects.as_mut() {
+            pending.response = Some(AttackCostAnswer::Objects(cards));
+            return;
+        }
         if let Some(pending) = self.pending_attacker_payment_choices.as_mut() {
             pending.response = Some(AttackCostAnswer::Objects(cards));
             return;
@@ -1684,6 +1766,14 @@ impl TurnRunner {
 
     /// Provide a boolean response in response to a `Decision(Boolean(...))`.
     pub fn respond_boolean(&mut self, answer: bool) {
+        if let Some(pending) = self.pending_sba_choices.as_mut() {
+            pending.response = Some(AttackCostAnswer::Boolean(answer));
+            return;
+        }
+        if let Some(pending) = self.pending_draw_replacement_effects.as_mut() {
+            pending.response = Some(AttackCostAnswer::Boolean(answer));
+            return;
+        }
         if let Some(pending) = self.pending_attacker_payment_choices.as_mut() {
             pending.response = Some(AttackCostAnswer::Boolean(answer));
             return;
@@ -1693,6 +1783,14 @@ impl TurnRunner {
 
     /// Provide a response to a runner-driven single-select options decision.
     pub fn respond_options(&mut self, option_indices: Vec<usize>) {
+        if let Some(pending) = self.pending_sba_choices.as_mut() {
+            pending.response = Some(AttackCostAnswer::Options(option_indices));
+            return;
+        }
+        if let Some(pending) = self.pending_draw_replacement_effects.as_mut() {
+            pending.response = Some(AttackCostAnswer::Options(option_indices));
+            return;
+        }
         if let Some(pending) = self.pending_attacker_payment_choices.as_mut() {
             pending.response = Some(AttackCostAnswer::Options(option_indices));
             return;
@@ -1831,7 +1929,19 @@ impl TurnRunner {
             // Caller already provided a discard selection (from a prior Decision yield).
             // Apply it with an auto-pass DM for madness replacement.
             let mut auto_dm = crate::decision::AutoPassDecisionMaker;
+            let discarding_player = cleanup_discard_owner(game, &discard);
             crate::turn::apply_cleanup_discard(game, &discard, &mut auto_dm);
+            // CR 805.4: each teammate of a shared turn discards to their own
+            // maximum hand size before the rest of the cleanup step.
+            if let Some(player) = discarding_player
+                && let Some((next, spec)) =
+                    crate::turn::get_cleanup_discard_spec_after(game, Some(player))
+            {
+                use crate::decisions::DecisionSpec;
+                let ctx = spec.build_context(next, None, game);
+                self.state = TurnState::CleanupDiscard;
+                return Ok(TurnAction::Decision(ctx));
+            }
             self.state = TurnState::CleanupApply;
             return Ok(TurnAction::Continue);
         }
@@ -1856,7 +1966,18 @@ impl TurnRunner {
     ) -> Result<TurnAction, GameLoopError> {
         if let Some(discard) = self.pending_discard.take() {
             let mut auto_dm = crate::decision::AutoPassDecisionMaker;
+            let discarding_player = cleanup_discard_owner(game, &discard);
             crate::turn::apply_cleanup_discard(game, &discard, &mut auto_dm);
+            // CR 805.4: each teammate discards before the next cleanup pass.
+            if let Some(player) = discarding_player
+                && let Some((next, spec)) =
+                    crate::turn::get_cleanup_discard_spec_after(game, Some(player))
+            {
+                use crate::decisions::DecisionSpec;
+                let ctx = spec.build_context(next, None, game);
+                self.state = TurnState::CleanupRecursiveDiscard;
+                return Ok(TurnAction::Decision(ctx));
+            }
             // Another cleanup step
             self.state = TurnState::CleanupApply;
             return Ok(TurnAction::Continue);
@@ -1916,6 +2037,21 @@ impl TurnRunner {
         game.sync_draw_step_tracking();
         if let Some(pending) = self.pending_draw_reveal.take() {
             return self.finish_pending_draw_reveal_choices(game, pending);
+        }
+        if let Some(mut pending) = self.pending_draw_replacement_effects.take() {
+            if pending.player == active_player {
+                let Some(answer) = pending.response.take() else {
+                    let prompt = pending
+                        .prompt
+                        .clone()
+                        .expect("a paused draw replacement has a prompt");
+                    self.pending_draw_replacement_effects = Some(pending);
+                    return RunnerProgress::NeedsDecision(prompt);
+                };
+                pending.answers.push(answer);
+                return self.run_draw_replacement_effects(game, pending);
+            }
+            self.pending_draw_replacement_effects = Some(pending);
         }
         if !game
             .player(active_player)
@@ -2016,19 +2152,26 @@ impl TurnRunner {
                     }
                     TraitEventResult::Replaced {
                         effects,
+                        effect_id,
                         source,
                         controller,
                         ..
                     } => {
-                        let mut dm = AutoPassDecisionMaker;
-                        let mut ctx =
-                            crate::effects::ExecutionContext::new(source, controller, &mut dm);
-                        ctx.iteration.iterated_player = Some(active_player);
-                        for effect in effects {
-                            let _ = crate::effects::execute_effect(game, &effect, &mut ctx);
-                        }
-                        game.reset_priority_for_new_window();
-                        return RunnerProgress::Complete(Vec::new());
+                        // CR 616.1 / 608.2d: the replacement's own choices
+                        // belong to its controller, so surface them.
+                        return self.run_draw_replacement_effects(
+                            game,
+                            PendingDrawReplacementEffects {
+                                player: active_player,
+                                effects,
+                                effect_id,
+                                source,
+                                controller,
+                                answers: Vec::new(),
+                                prompt: None,
+                                response: None,
+                            },
+                        );
                     }
                     TraitEventResult::Prevented => {
                         game.reset_priority_for_new_window();
@@ -2130,6 +2273,42 @@ impl TurnRunner {
 
         game.reset_priority_for_new_window();
         RunnerProgress::Complete(Vec::new())
+    }
+
+    /// Run a draw-step draw's replacement effects with the answers collected
+    /// so far. A new prompt pauses the draw step without publishing anything;
+    /// otherwise the result (including its events, with CR 614.5 suppression
+    /// of the applied replacement) is committed.
+    fn run_draw_replacement_effects(
+        &mut self,
+        game: &mut GameState,
+        mut pending: PendingDrawReplacementEffects,
+    ) -> RunnerProgress<Vec<crate::triggers::TriggerEvent>> {
+        let mut hypothetical = game.clone();
+        let mut dm = QueuedAttackCostDecisionMaker::new(pending.answers.clone());
+        let outcome = {
+            let mut ctx =
+                crate::effects::ExecutionContext::new(pending.source, pending.controller, &mut dm);
+            ctx.iteration.iterated_player = Some(pending.player);
+            crate::effects::cards::execute_draw_replacement_effects(
+                &mut hypothetical,
+                &mut ctx,
+                pending.effects.clone(),
+                pending.effect_id,
+                pending.source,
+                pending.controller,
+                pending.player,
+            )
+        };
+        if let Some(prompt) = dm.pending_prompt.take() {
+            pending.prompt = Some(prompt.clone());
+            pending.response = None;
+            self.pending_draw_replacement_effects = Some(pending);
+            return RunnerProgress::NeedsDecision(prompt);
+        }
+        *game = hypothetical;
+        game.reset_priority_for_new_window();
+        RunnerProgress::Complete(outcome.map(|outcome| outcome.events).unwrap_or_default())
     }
 
     fn finish_pending_draw_reveal_choices(
@@ -2249,6 +2428,7 @@ impl TurnRunner {
                 self.pending_draw_replacement = None;
                 self.pending_legend_choice = None;
                 self.pending_sector_designations = None;
+                self.pending_sba_choices = None;
                 return Ok(RunnerProgress::Complete(()));
             }
 
@@ -2378,14 +2558,63 @@ impl TurnRunner {
             }
 
             if !other_actions.is_empty() || !legend_keeps.is_empty() {
-                let mut auto_dm = crate::decision::AutoPassDecisionMaker;
-                let applied = apply_state_based_actions_with_legend_choices(
-                    game,
-                    other_actions,
-                    &legend_keeps,
-                    all_effects.as_slice(),
-                    &mut auto_dm,
-                );
+                // CR 616.1: replacement-effect (and other) choices made while
+                // these SBAs are performed belong to the affected players.
+                // Probe the check on a private copy with the answers so far;
+                // publish it only once no new prompt is raised.
+                let may_prompt = !game.effect_store.replacement_effects.effects().is_empty()
+                    || other_actions.iter().any(|action| {
+                        matches!(
+                            action,
+                            StateBasedAction::BattleProtectorChoice(_)
+                                | StateBasedAction::PlayerLoses { .. }
+                        )
+                    });
+                let applied = if may_prompt {
+                    let answers = match self.pending_sba_choices.take() {
+                        Some(mut pending) => {
+                            let Some(answer) = pending.response.take() else {
+                                let prompt = pending.prompt.clone();
+                                self.pending_sba_choices = Some(pending);
+                                self.resolved_legend_keeps = legend_keeps;
+                                return Ok(RunnerProgress::NeedsDecision(prompt));
+                            };
+                            pending.answers.push(answer);
+                            pending.answers
+                        }
+                        None => Vec::new(),
+                    };
+                    let mut hypothetical = game.clone();
+                    let mut dm = QueuedAttackCostDecisionMaker::new(answers.clone());
+                    let applied = apply_state_based_actions_with_legend_choices(
+                        &mut hypothetical,
+                        other_actions,
+                        &legend_keeps,
+                        all_effects.as_slice(),
+                        &mut dm,
+                    );
+                    if let Some(prompt) = dm.pending_prompt.take() {
+                        self.pending_sba_choices = Some(PendingSbaChoices {
+                            answers,
+                            prompt: prompt.clone(),
+                            response: None,
+                        });
+                        self.resolved_legend_keeps = legend_keeps;
+                        return Ok(RunnerProgress::NeedsDecision(prompt));
+                    }
+                    *game = hypothetical;
+                    applied
+                } else {
+                    self.pending_sba_choices = None;
+                    let mut auto_dm = crate::decision::AutoPassDecisionMaker;
+                    apply_state_based_actions_with_legend_choices(
+                        game,
+                        other_actions,
+                        &legend_keeps,
+                        all_effects.as_slice(),
+                        &mut auto_dm,
+                    )
+                };
                 // CR 704.5h: this check consumed the deathtouch damage tracked
                 // since the previous one (regeneration / umbra armor survivors
                 // must not be destroyed again by the next pass).
@@ -2397,6 +2626,7 @@ impl TurnRunner {
                     self.pending_draw_replacement = None;
                     self.pending_legend_choice = None;
                     self.pending_sector_designations = None;
+                    self.pending_sba_choices = None;
                     return Ok(RunnerProgress::Complete(()));
                 }
                 continue;
@@ -2410,6 +2640,7 @@ impl TurnRunner {
                 self.pending_draw_replacement = None;
                 self.pending_legend_choice = None;
                 self.pending_sector_designations = None;
+                self.pending_sba_choices = None;
                 return Ok(RunnerProgress::Complete(()));
             };
 
@@ -2633,6 +2864,14 @@ fn resolve_schedule_destination(
         }
     }
     runner_state_for_destination(destination)
+}
+
+/// The player whose hand a chosen cleanup discard came from.
+fn cleanup_discard_owner(game: &GameState, discard: &[crate::ids::ObjectId]) -> Option<PlayerId> {
+    discard
+        .first()
+        .and_then(|card| game.object(*card))
+        .map(|card| card.owner)
 }
 
 fn prepare_phase_schedule(game: &mut GameState, normal_next: TurnScheduleDestination) {

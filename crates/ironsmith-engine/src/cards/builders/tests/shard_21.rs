@@ -2723,7 +2723,7 @@ pub(super) fn parse_craft_keyword_line_as_activated_ability() {
         debug.contains("Activated")
             && debug.contains("EmitKeywordActionEffect")
             && debug.contains("Craft")
-            && debug.contains("TransformEffect"),
+            && debug.contains("enters_transformed: true"),
         "craft should lower to an activated ability, got {debug}"
     );
 }

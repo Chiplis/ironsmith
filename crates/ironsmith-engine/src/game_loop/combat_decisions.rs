@@ -1023,7 +1023,20 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
     // final combat state off to the side, then publish it once so every attack
     // trigger observes the complete declaration.
     let mut next_combat = combat.clone();
-    next_combat.attackers.clear();
+    // CR 508.4: a creature put onto the battlefield attacking during the
+    // beginning of combat step is already attacking and stays attacking
+    // through the declaration; it isn't declared, so it isn't rebuilt here.
+    let declared = prepared
+        .declarations
+        .iter()
+        .map(|prepared_decl| prepared_decl.declaration.creature)
+        .collect::<std::collections::HashSet<_>>();
+    next_combat.attackers.retain(|info| {
+        !declared.contains(&info.creature)
+            && game
+                .object(info.creature)
+                .is_some_and(|object| object.zone == Zone::Battlefield)
+    });
     next_combat.attacking_bands.clear();
     next_combat.had_to_attack_this_combat.clear();
     game.refresh_continuous_state();

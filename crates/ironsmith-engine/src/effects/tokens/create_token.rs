@@ -199,12 +199,16 @@ impl EffectExecutor for CreateTokenEffect {
             self.exile_at_next_end_step,
             self.next_end_step_player.clone(),
         );
+        // An attack target that can't be resolved (for example no defending
+        // player in this context) doesn't stop the tokens being created; they
+        // fall back to the ordinary CR 508.4 choice.
         let (configured_attack_player, attack_player_only) = match &self.attack_target_mode {
             Some(CopyAttackTargetMode::Player(player_filter)) => {
-                (Some(resolve_player_filter(game, player_filter, ctx)?), true)
+                let player = resolve_player_filter(game, player_filter, ctx).ok();
+                (player, player.is_some())
             }
             Some(CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player_filter)) => (
-                Some(resolve_player_filter(game, player_filter, ctx)?),
+                resolve_player_filter(game, player_filter, ctx).ok(),
                 false,
             ),
             None => (None, false),
@@ -214,6 +218,14 @@ impl EffectExecutor for CreateTokenEffect {
             self.enters_attacking && configured_attack_player.is_none(),
         );
 
+        // CR 509.4: "a token that's blocking <that creature>" names what it
+        // blocks; resolve the attacker once for every token.
+        let blocking_attacker = match &self.enters_blocking {
+            Some(spec) => crate::effects::helpers::resolve_objects_for_effect(game, ctx, spec)
+                .ok()
+                .and_then(|ids| ids.first().copied()),
+            None => None,
+        };
         let mut created_ids = Vec::with_capacity(count);
         let mut events = Vec::with_capacity(count);
         let pending_start = game.effect_store.pending_trigger_events.len();
@@ -265,7 +277,11 @@ impl EffectExecutor for CreateTokenEffect {
                     &mut events,
                 )?;
 
-                if let Some(attack_player) = configured_attack_player {
+                // CR 506.3a/b/f, 508.4: only a creature controlled by an
+                // attacking player, during combat, becomes attacking.
+                if let Some(attack_player) = configured_attack_player
+                    && crate::effects::combat::can_enter_attacking(game, entered_id)
+                {
                     let chosen_target = if attack_player_only {
                         game.player(attack_player)
                             .is_some_and(|player| player.is_in_game())
@@ -276,14 +292,19 @@ impl EffectExecutor for CreateTokenEffect {
                             .then(|| choose_attack_target(game, ctx, attack_player, &targets))
                             .flatten()
                     };
-                    if let Some(chosen_target) = chosen_target
-                        && let Some(combat) = game.combat.as_mut()
-                    {
+                    if let Some(chosen_target) = chosen_target {
+                        let combat = game.combat.get_or_insert_with(Default::default);
                         combat.attackers.push(AttackerInfo {
                             creature: entered_id,
                             target: chosen_target,
                         });
                     }
+                }
+
+                if let Some(attacker) = blocking_attacker {
+                    crate::effects::combat::put_onto_battlefield_blocking(
+                        game, entered_id, attacker,
+                    );
                 }
 
                 schedule_token_cleanup(

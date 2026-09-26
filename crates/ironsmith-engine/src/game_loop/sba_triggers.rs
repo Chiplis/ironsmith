@@ -1139,9 +1139,10 @@ pub(super) fn can_stack_trigger_this_turn(
     // triggers of the same ability can wait in the queue together.
     fn once_per_turn_limits(condition: &crate::ConditionExpr, out: &mut Vec<crate::ConditionExpr>) {
         match condition {
-            crate::ConditionExpr::FirstTimeThisTurn | crate::ConditionExpr::MaxTimesEachTurn(_) => {
-                out.push(condition.clone())
-            }
+            // "For the first time each turn" is an event-history gate decided
+            // at match time; every instance from that first event may be
+            // stacked (CR 603.2d).
+            crate::ConditionExpr::MaxTimesEachTurn(_) => out.push(condition.clone()),
             crate::ConditionExpr::And(first, second) => {
                 once_per_turn_limits(first, out);
                 once_per_turn_limits(second, out);
@@ -1152,18 +1153,10 @@ pub(super) fn can_stack_trigger_this_turn(
     let mut limits = Vec::new();
     once_per_turn_limits(condition, &mut limits);
 
-    // CR 603.2h: "Do this only once each turn" abilities trigger only if the
-    // indicated action hasn't been taken that turn. A trigger already waiting
-    // when the action is taken is stopped by the resolution gate instead.
-    if crate::effects::DoThisLimit::from_condition(
-        condition,
-        trigger.source,
-        trigger.trigger_identity,
-    )
-    .is_some_and(|limit| limit.reached(game))
-    {
-        return false;
-    }
+    // CR 603.2h ("Do this only once each turn") is decided when the event
+    // happens (condition_eval, at match time); a trigger that was already
+    // waiting when the action was taken still goes on the stack, and the
+    // resolution gate stops the action.
 
     limits.iter().all(|limit| {
         verify_intervening_if(
@@ -1324,6 +1317,11 @@ fn choose_trigger_modes(
     }
 
     if selected_point_total < min_modes {
+        return None;
+    }
+    // CR 700.2b / 603.3c: if no mode is chosen ("choose up to one" with
+    // nothing picked), the ability is removed from the stack instead.
+    if valid.is_empty() {
         return None;
     }
     if !spell_has_legal_targets_with_modes(

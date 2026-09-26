@@ -145,8 +145,13 @@ impl EffectExecutor for ExchangeLifeTotalsEffect {
                 ));
             }
         } else if life1 > life2 {
-            let lost = (life1 - life2) as u32;
-            game.lose_life(player1_id, lost);
+            let lost = crate::events::processing::process_life_loss_with_event(
+                game,
+                player1_id,
+                (life1 - life2) as u32,
+                false,
+            );
+            let lost = game.lose_life(player1_id, lost);
             if lost > 0 {
                 outcome = outcome.with_event(TriggerEvent::new_with_provenance(
                     crate::events::LifeLossEvent::from_effect(player1_id, lost),
@@ -167,8 +172,13 @@ impl EffectExecutor for ExchangeLifeTotalsEffect {
                 ));
             }
         } else if life2 > life1 {
-            let lost = (life2 - life1) as u32;
-            game.lose_life(player2_id, lost);
+            let lost = crate::events::processing::process_life_loss_with_event(
+                game,
+                player2_id,
+                (life2 - life1) as u32,
+                false,
+            );
+            let lost = game.lose_life(player2_id, lost);
             if lost > 0 {
                 outcome = outcome.with_event(TriggerEvent::new_with_provenance(
                     crate::events::LifeLossEvent::from_effect(player2_id, lost),

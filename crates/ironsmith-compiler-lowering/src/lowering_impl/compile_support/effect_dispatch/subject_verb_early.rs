@@ -625,19 +625,21 @@ pub(super) fn compile_subject_verb_early(
             Vec::new(),
         )),
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnSourceTransformedFromExile) => {
+            // CR 702.167a / 712.14a: craft returns the card with its back face
+            // up. Entering transformed isn't transforming (CR 701.27), so the
+            // back face's entry replacements apply, no transform event fires,
+            // and a card that isn't a DFC stays in exile.
             Ok((
-                vec![
-                    Effect::new(
-                        crate::effects::MoveToZoneEffect::new(
-                            ChooseSpec::Source,
-                            Zone::Battlefield,
-                            false,
-                        )
-                        .under_owner_control()
-                        .transfer_exiled_with_source_links(),
-                    ),
-                    Effect::transform(ChooseSpec::Source),
-                ],
+                vec![Effect::new(
+                    crate::effects::MoveToZoneEffect::new(
+                        ChooseSpec::Source,
+                        Zone::Battlefield,
+                        false,
+                    )
+                    .under_owner_control()
+                    .transfer_exiled_with_source_links()
+                    .transformed(),
+                )],
                 Vec::new(),
             ))
         }
@@ -2421,9 +2423,12 @@ pub(super) fn compile_subject_verb_early(
                 duration,
                 source,
                 source_would_deal_surface,
+                dealt_to_and_by,
             },
         ) => compile_effect_for_target(source, ctx, |spec| {
-            if *source_would_deal_surface {
+            if *dealt_to_and_by {
+                Effect::prevent_all_combat_damage_to_and_from(spec, duration.clone())
+            } else if *source_would_deal_surface {
                 Effect::prevent_all_combat_damage_source_would_deal(spec, duration.clone())
             } else {
                 Effect::prevent_all_combat_damage_from(spec, duration.clone())
@@ -2477,11 +2482,37 @@ pub(super) fn compile_subject_verb_early(
             Vec::new(),
         )),
         SubjectVerbActionAst::DamagePrevention(
-            DamagePreventionActionAst::PreventAllCombatDamageToYou { duration },
-        ) => Ok((
-            vec![Effect::prevent_all_combat_damage_to_you(duration.clone())],
-            Vec::new(),
-        )),
+            DamagePreventionActionAst::PreventAllCombatDamageToYou {
+                duration,
+                follow_up_effects,
+            },
+        ) => {
+            if follow_up_effects.is_empty() {
+                return Ok(Some((
+                    vec![Effect::prevent_all_combat_damage_to_you(duration.clone())],
+                    Vec::new(),
+                )));
+            }
+            // CR 615.5: the follow-up happens as each damage event is
+            // prevented, reading that event's prevented amount.
+            let mut follow_up_ctx =
+                EffectLoweringContext::from_parts(ctx.id_gen_context(), ctx.lowering_frame());
+            follow_up_ctx.allow_life_event_value = true;
+            let (follow_ups, follow_up_choices) =
+                compile_effects(follow_up_effects, &mut follow_up_ctx)?;
+            ctx.apply_id_gen_context(follow_up_ctx.id_gen_context());
+            Ok((
+                vec![Effect::new(
+                    crate::effects::PreventAllDamageToTargetEffect::new(
+                        ChooseSpec::SourceController,
+                        duration.clone(),
+                    )
+                    .combat_only()
+                    .with_follow_up_effects(follow_ups),
+                )],
+                follow_up_choices,
+            ))
+        }
         SubjectVerbActionAst::DamagePrevention(
             DamagePreventionActionAst::PreventNextTimeDamage {
                 source,

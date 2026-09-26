@@ -43,9 +43,13 @@ impl EffectExecutor for RadiationEffect {
         });
 
         for _ in 0..nonland_cards_milled {
-            if game.lose_life(player, 1) == 1 {
+            // CR 614.1a: the radiation life loss is a life-loss event.
+            let amount =
+                crate::events::processing::process_life_loss_with_event(game, player, 1, false);
+            let lost = game.lose_life(player, amount);
+            if lost > 0 {
                 outcome.events.push(TriggerEvent::new_with_provenance(
-                    LifeLossEvent::from_radiation(player, 1),
+                    LifeLossEvent::from_radiation(player, 1).with_amount(lost),
                     ctx.provenance,
                 ));
             }

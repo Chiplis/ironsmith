@@ -1307,10 +1307,13 @@ impl WasmGame {
             LegalAction::CastSpell { spell_id, .. } => Some(*spell_id),
             LegalAction::ActivateAbility { source, .. }
             | LegalAction::ActivateManaAbility { source, .. } => Some(*source),
-            LegalAction::PlayLand { land_id } => Some(*land_id),
+            LegalAction::PlayLand { land_id } | LegalAction::PlayLandBackFace { land_id } => {
+                Some(*land_id)
+            }
             LegalAction::TurnFaceUp { creature_id, .. } => Some(*creature_id),
             LegalAction::SpecialAction(action) => match action {
                 SpecialAction::PlayLand { card_id }
+                | SpecialAction::PlayLandBackFace { card_id }
                 | SpecialAction::Suspend { card_id }
                 | SpecialAction::Foretell { card_id }
                 | SpecialAction::Plot { card_id }
@@ -1375,6 +1378,26 @@ impl WasmGame {
                     label: format!(
                         "Play {}",
                         self.game.current_name(*land_id).unwrap_or_default()
+                    ),
+                },
+            }),
+            // CR 712.12: the back face of a land//land modal DFC.
+            LegalAction::PlayLandBackFace { land_id } => Some(AvailableAction {
+                id,
+                kind: AvailableActionKind::Cast {
+                    card_id: object_id(&self.game, *land_id),
+                    mode: PlayCardMode::Normal,
+                    label: format!(
+                        "Play {}",
+                        self.game
+                            .object(*land_id)
+                            .and_then(|object| {
+                                ironsmith::decision::linked_back_face_land_definition(
+                                    &self.game, object,
+                                )
+                            })
+                            .map(|def| def.card.name)
+                            .unwrap_or_default()
                     ),
                 },
             }),

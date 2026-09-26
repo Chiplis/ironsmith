@@ -35,6 +35,17 @@ impl IsDealtDamageTrigger {
         }
     }
 
+    /// "is dealt excess [combat] damage": keeps the excess requirement for
+    /// wordings that don't also say "noncombat".
+    pub fn excess(target: ChooseSpec, combat_only: bool) -> Self {
+        Self {
+            target,
+            combat_only,
+            noncombat_only: false,
+            excess_only: true,
+        }
+    }
+
     pub fn excess_noncombat(target: ChooseSpec) -> Self {
         Self {
             target,
@@ -42,6 +53,12 @@ impl IsDealtDamageTrigger {
             noncombat_only: true,
             excess_only: true,
         }
+    }
+}
+
+impl IsDealtDamageTrigger {
+    fn is_one_or_more(&self) -> bool {
+        matches!(base_spec(&self.target), ChooseSpec::Object(filter) if filter.union_is_one_or_more())
     }
 }
 
@@ -74,16 +91,24 @@ impl TriggerMatcher for IsDealtDamageTrigger {
     }
 
     fn simultaneous_trigger_key(&self, event: &TriggerEvent) -> Option<SimultaneousTriggerKey> {
-        let ChooseSpec::Object(filter) = base_spec(&self.target) else {
-            return None;
-        };
-        (filter.union_is_one_or_more() && event.downcast::<DamageEvent>().is_some())
-            .then_some(SimultaneousTriggerKey::DamageBatch)
+        let damage = event.downcast::<DamageEvent>()?;
+        if self.is_one_or_more() {
+            return Some(SimultaneousTriggerKey::DamageBatch);
+        }
+        // CR 603.2c / 120.4b: damage dealt simultaneously by several sources
+        // (combat damage from multiple blockers) is one event for each
+        // recipient, so "whenever this creature is dealt damage" triggers once
+        // per recipient, with "that much" being the total.
+        Some(SimultaneousTriggerKey::DamageTarget(damage.target))
     }
 
     fn display(&self) -> String {
         let damage_text = if self.excess_only && self.noncombat_only {
             "excess noncombat damage"
+        } else if self.excess_only && self.combat_only {
+            "excess combat damage"
+        } else if self.excess_only {
+            "excess damage"
         } else if self.combat_only {
             "combat damage"
         } else if self.noncombat_only {
@@ -132,12 +157,22 @@ impl TriggerMatcher for IsDealtDamageTrigger {
     }
 
     fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
-        if !self.excess_only || !self.matches(event, ctx) {
+        if self.excess_only {
+            if !self.matches(event, ctx) {
+                return None;
+            }
+            return event
+                .downcast::<DamageEvent>()
+                .map(|damage| damage.excess_damage as i32);
+        }
+        // Per-recipient groups sum "that much damage" across the sources
+        // merged into one trigger (see `simultaneous_trigger_key`).
+        if self.is_one_or_more() || !self.matches(event, ctx) {
             return None;
         }
         event
             .downcast::<DamageEvent>()
-            .map(|damage| damage.excess_damage as i32)
+            .map(|damage| damage.amount as i32)
     }
 }
 

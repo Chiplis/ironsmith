@@ -1175,8 +1175,17 @@ pub fn parse_prevent_damage_sentence_lexed(
     if let Some((_, source_tokens)) =
         primitives::strip_lexed_prefix_phrases(&core_tokens, PREVENT_DAMAGE_TO_AND_BY_PREFIXES)
     {
+        // CR 615.1: "dealt to and dealt by" prevents both directions.
         let (source, has_color_condition) =
             parse_prevent_damage_source_target_lexed(source_tokens, &words)?;
+        if !has_color_condition {
+            return Ok(Some(
+                EffectAst::subject_verb_prevent_all_combat_damage_to_and_from_source(
+                    source,
+                    crate::effect::Until::EndOfTurn,
+                ),
+            ));
+        }
         return Ok(Some(prevent_damage_effect_with_optional_condition(
             source,
             has_color_condition,

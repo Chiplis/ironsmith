@@ -355,11 +355,25 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             for (idx, snapshot) in tagged.iter().enumerate() {
                 if idx < object_ids.len()
                     && game.object(object_ids[idx]).is_none()
-                    && let Some(resolved) = resolve_tagged_object_id(game, snapshot)
+                    && let Some(resolved) = resolve_tagged_object_id(game, ctx, snapshot)
                 {
                     object_ids[idx] = resolved;
                 }
             }
+        }
+        // CR 726.4: after a restart, "then put those cards onto the
+        // battlefield" happens once the new game's starting procedure is done.
+        if ctx.restarted_game && self.zone == Zone::Battlefield {
+            let controller = match self.battlefield_controller {
+                BattlefieldController::You => Some(ctx.controller),
+                BattlefieldController::Owner | BattlefieldController::Preserve => None,
+            };
+            game.defer_restart_battlefield_entry(crate::game_state::PendingRestartBattlefieldEntry {
+                cards: object_ids,
+                controller,
+                enters_tapped: self.enters_tapped,
+            });
+            return Ok(EffectOutcome::resolved());
         }
         // CR 400.7: an object that has left the zone its trigger recorded is
         // a new object. A tagged reference to the triggering object follows
@@ -637,7 +651,11 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             {
                 match outcome {
                     BattlefieldEntryOutcome::Moved(new_id) => {
-                        if self.enters_attacking {
+                        // CR 506.3a/b/f, 508.4: only a creature controlled by
+                        // an attacking player, during combat, becomes attacking.
+                        if self.enters_attacking
+                            && crate::effects::combat::can_enter_attacking(game, new_id)
+                        {
                             let target = if let Some(attack_player) = configured_attack_player {
                                 let targets = attack_targets_for_player(game, attack_player);
                                 choose_attack_target_for_player(game, ctx, attack_player, &targets)
@@ -646,9 +664,8 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                                     game, ctx, new_id,
                                 )
                             };
-                            if let Some(target) = target
-                                && let Some(combat) = game.combat.as_mut()
-                            {
+                            if let Some(target) = target {
+                                let combat = game.combat.get_or_insert_with(Default::default);
                                 combat.attackers.push(AttackerInfo {
                                     creature: new_id,
                                     target,
@@ -835,6 +852,7 @@ mod tests {
             ],
             ..CombatState::default()
         });
+        game.turn.phase = crate::game_state::Phase::Combat;
 
         let mut decision_maker = ChooseLastOptionDecisionMaker;
         let mut ctx = ExecutionContext::new(paladin, alice, &mut decision_maker);

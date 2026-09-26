@@ -329,16 +329,24 @@ pub fn parse_exile_then_return_same_object_sentence(
         return Ok(None);
     }
 
-    if shape.delayed_until_end_of_combat {
+    let effects = if shape.delayed_until_end_of_combat {
         let mut delayed_effects = first_effects;
         delayed_effects.extend(second_effects);
-        return Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat {
+        vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat {
             effects: delayed_effects,
+        })]
+    } else {
+        first_effects.extend(second_effects);
+        first_effects
+    };
+    // CR 603.5 / 608.2d: "you may exile ..., then return it" leaves the
+    // whole blink to the controller's choice.
+    if shape.optional {
+        return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::May {
+            effects,
         })]));
     }
-
-    first_effects.extend(second_effects);
-    Ok(Some(first_effects))
+    Ok(Some(effects))
 }
 
 pub fn parse_exile_up_to_one_each_target_type_sentence(

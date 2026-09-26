@@ -672,6 +672,44 @@ pub enum DamageSourceConstraint {
     Specific(ObjectId),
     /// Damage is dealt by a source matching this filter.
     Filter(ObjectFilter),
+    /// Damage is dealt by a specific chosen object that must still match the
+    /// quality it was chosen for (CR 615.9: "a red source of your choice"
+    /// rechecks the source's properties when the damage would be dealt).
+    SpecificMatching {
+        source: ObjectId,
+        filter: ObjectFilter,
+    },
+}
+
+impl DamageSourceConstraint {
+    /// Whether the damage source satisfies this constraint, using the source's
+    /// current characteristics or its last known information.
+    pub(crate) fn matches_damage_source(
+        &self,
+        source: ObjectId,
+        ctx: &crate::events::EventContext,
+    ) -> bool {
+        let filter_matches = |filter: &ObjectFilter| {
+            let matches_current = ctx
+                .game
+                .object(source)
+                .is_some_and(|obj| filter.matches(obj, &ctx.filter_ctx, ctx.game));
+            matches_current
+                || ctx
+                    .event_source_snapshot
+                    .filter(|snapshot| snapshot.object_id == source)
+                    .is_some_and(|snapshot| {
+                        filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+                    })
+        };
+        match self {
+            DamageSourceConstraint::Specific(id) => source == *id,
+            DamageSourceConstraint::Filter(filter) => filter_matches(filter),
+            DamageSourceConstraint::SpecificMatching { source: id, filter } => {
+                source == *id && filter_matches(filter)
+            }
+        }
+    }
 }
 
 /// Constraint for matching damage targets.
@@ -726,27 +764,8 @@ impl ReplacementMatcher for PreventableDamageConstraintMatcher {
         }
 
         // Source constraint.
-        match &self.source {
-            DamageSourceConstraint::Specific(id) => {
-                if &damage.source != id {
-                    return false;
-                }
-            }
-            DamageSourceConstraint::Filter(filter) => {
-                let matches_current = ctx
-                    .game
-                    .object(damage.source)
-                    .is_some_and(|obj| filter.matches(obj, &ctx.filter_ctx, ctx.game));
-                let matches_lki = ctx
-                    .event_source_snapshot
-                    .filter(|snapshot| snapshot.object_id == damage.source)
-                    .is_some_and(|snapshot| {
-                        filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
-                    });
-                if !matches_current && !matches_lki {
-                    return false;
-                }
-            }
+        if !self.source.matches_damage_source(damage.source, ctx) {
+            return false;
         }
 
         // Target constraint.

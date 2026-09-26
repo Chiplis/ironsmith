@@ -1103,6 +1103,11 @@ impl Trigger {
         Self::new(IsDealtDamageTrigger::combat_only(target))
     }
 
+    /// Create a "whenever [target] is dealt excess [combat] damage" trigger.
+    pub fn is_dealt_excess_damage(target: ChooseSpec, combat_only: bool) -> Self {
+        Self::new(IsDealtDamageTrigger::excess(target, combat_only))
+    }
+
     /// Create a "whenever [target] is dealt excess noncombat damage" trigger.
     pub fn is_dealt_excess_noncombat_damage(target: ChooseSpec) -> Self {
         Self::new(IsDealtDamageTrigger::excess_noncombat(target))

@@ -346,6 +346,9 @@ pub fn derive_triggered_ability_functional_zones_from_facts(
     };
     if let Some(explicit_zone) = &facts.explicit_zone {
         zones = vec![*explicit_zone];
+        if facts.explicit_zone_or_battlefield && *explicit_zone != Zone::Battlefield {
+            zones.push(Zone::Battlefield);
+        }
     }
     if facts.returns_self_from_graveyard && !trigger_references_attached_object(trigger) {
         zones = vec![Zone::Graveyard];

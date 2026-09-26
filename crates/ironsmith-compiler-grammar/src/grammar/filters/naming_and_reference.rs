@@ -1032,6 +1032,14 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
         if word == MULTICOLORED_WORD {
             filter.multicolored = true;
         }
+        // "Historic spells you cast cost {1} less" (Jhoira's Familiar,
+        // CR 700.6) and "monocolored spells".
+        match word {
+            "historic" => filter.historic = true,
+            "nonhistoric" => filter.nonhistoric = true,
+            "monocolored" => filter.monocolored = true,
+            _ => {}
+        }
         if let Some(color) = parse_color(word) {
             let existing = filter.colors.unwrap_or_default();
             filter.colors = Some(existing.union(color));

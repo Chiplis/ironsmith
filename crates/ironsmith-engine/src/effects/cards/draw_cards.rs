@@ -18,7 +18,7 @@ use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub use ironsmith_core::DrawCardsEffect;
 
-fn execute_draw_replacement_effects(
+pub(crate) fn execute_draw_replacement_effects(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     effects: Vec<Effect>,

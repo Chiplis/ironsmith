@@ -333,13 +333,12 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                 visit(match property {
                     NumericProperty::Power => chars.power,
                     NumericProperty::Toughness => chars.toughness,
-                    // Layer extrema have always treated absent mana costs as zero.
-                    NumericProperty::ManaValue => Some(
-                        object
-                            .mana_cost
-                            .as_ref()
-                            .map_or(0, |cost| cost.mana_value() as i32),
-                    ),
+                    // Absent mana costs count as zero; melded permanents and
+                    // transformed back faces use their front faces' mana value
+                    // (CR 712.8e, 712.8g).
+                    NumericProperty::ManaValue => {
+                        Some(crate::filter::object_mana_value_for_filter(object))
+                    }
                     NumericProperty::ManaSpent => Some(object.mana_spent_to_cast.total() as i32),
                     NumericProperty::ColorCount => Some(chars.colors.count() as i32),
                 })

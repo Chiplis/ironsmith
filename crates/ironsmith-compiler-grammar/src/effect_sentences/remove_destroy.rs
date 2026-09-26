@@ -387,7 +387,13 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
     ) {
         return Ok(EffectAst::Coordinated {
             effects: vec![
-                EffectAst::subject_verb_destroy(TargetAst::Source(None)),
+                // The subject half is bound by lowering to whatever the block
+                // trigger watches (the source, or the equipped/enchanted
+                // creature — Dead-Iron Sledge).
+                EffectAst::subject_verb_destroy(TargetAst::Tagged(
+                    crate::tag::TagRef::of(ironsmith_core::BLOCK_PAIR_SUBJECT_TAG),
+                    None,
+                )),
                 EffectAst::subject_verb_destroy(TargetAst::Tagged(
                     crate::tag::CompilerReferenceTag::It.bind(),
                     None,

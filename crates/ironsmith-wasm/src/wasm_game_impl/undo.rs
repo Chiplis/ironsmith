@@ -55,6 +55,7 @@ impl WasmGame {
             action,
             LegalAction::PassPriority
                 | LegalAction::PlayLand { .. }
+                | LegalAction::PlayLandBackFace { .. }
                 | LegalAction::KeepOpeningHand
                 | LegalAction::TakeMulligan
                 | LegalAction::ContinuePregame

@@ -2101,9 +2101,10 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
         .iter()
         .filter_map(|action| {
             let obj_id = match action {
-                StateBasedAction::ObjectDies(obj_id) | StateBasedAction::AuraFallsOff(obj_id) => {
-                    *obj_id
-                }
+                StateBasedAction::ObjectDies(obj_id)
+                | StateBasedAction::AuraFallsOff(obj_id)
+                | StateBasedAction::PlaneswalkerDies(obj_id)
+                | StateBasedAction::BattleDies(obj_id) => *obj_id,
                 _ => return None,
             };
             game.object(obj_id).map(|obj| {
@@ -2132,7 +2133,14 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
 
     let mut any_applied = false;
     let mut processed_player_losses = HashSet::new();
-    for action in actions {
+    // CR 704.3 / 800.4a: every SBA of one check happens at once, and a losing
+    // player's objects leave the game only after that event. Perform the
+    // permanent SBAs first so the loser's creatures still die (and a stolen
+    // one still reaches its owner's graveyard) before the departure sweep.
+    let (player_losses, other_actions): (Vec<_>, Vec<_>) = actions
+        .into_iter()
+        .partition(|action| matches!(action, StateBasedAction::PlayerLoses { .. }));
+    for action in other_actions.into_iter().chain(player_losses) {
         // Skip legend rule - it requires player choice
         if matches!(action, StateBasedAction::LegendRuleViolation { .. }) {
             continue;
@@ -2461,32 +2469,38 @@ fn apply_single_sba_with_snapshots(
 
         StateBasedAction::PlaneswalkerDies(obj_id) => {
             // Process through replacement effects (e.g., Yawgmoth's Will)
-            use crate::events::processing::{ZoneChangeOutcome, process_zone_change};
-            let outcome = process_zone_change(
+            use crate::events::processing::{ZoneChangeOutcome, process_zone_change_with_snapshot};
+            // CR 704.8: LKI comes from before any SBA of this check.
+            let pre_snapshot = pre_captured_snapshots.get(&obj_id).cloned();
+            let outcome = process_zone_change_with_snapshot(
                 game,
                 obj_id,
                 Zone::Battlefield,
                 Zone::Graveyard,
                 crate::events::cause::EventCause::from_sba(),
                 decision_maker,
+                pre_snapshot.clone(),
             );
             if let ZoneChangeOutcome::Proceed(final_zone) = outcome {
-                game.move_object_by_sba(obj_id, final_zone);
+                game.move_object_by_sba_with_snapshot(obj_id, final_zone, pre_snapshot);
             }
         }
 
         StateBasedAction::BattleDies(obj_id) => {
-            use crate::events::processing::{ZoneChangeOutcome, process_zone_change};
-            let outcome = process_zone_change(
+            use crate::events::processing::{ZoneChangeOutcome, process_zone_change_with_snapshot};
+            // CR 704.8: LKI comes from before any SBA of this check.
+            let pre_snapshot = pre_captured_snapshots.get(&obj_id).cloned();
+            let outcome = process_zone_change_with_snapshot(
                 game,
                 obj_id,
                 Zone::Battlefield,
                 Zone::Graveyard,
                 crate::events::cause::EventCause::from_sba(),
                 decision_maker,
+                pre_snapshot.clone(),
             );
             if let ZoneChangeOutcome::Proceed(final_zone) = outcome {
-                game.move_object_by_sba(obj_id, final_zone);
+                game.move_object_by_sba_with_snapshot(obj_id, final_zone, pre_snapshot);
             }
         }
 

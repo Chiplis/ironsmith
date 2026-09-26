@@ -907,8 +907,59 @@ fn invert_except_by_blocker_filter(allowed: &ObjectFilter) -> Option<ObjectFilte
             disallowed = disallowed.without_type(card_type);
         }
 
+        // Only type, subtype, supertype, keyword and color qualifiers can be
+        // inverted here. Any other constraint (power, controller, token...)
+        // would be silently dropped, making every creature a disallowed
+        // blocker, so refuse the reading instead.
+        if clause.power.is_some()
+            || clause.toughness.is_some()
+            || clause.mana_value.is_some()
+            || clause.controller.is_some()
+            || clause.owner.is_some()
+            || clause.token
+            || clause.nontoken
+            || clause.tapped
+            || clause.untapped
+            || clause.other
+            || clause.name.is_some()
+            || clause.multicolored
+            || clause.colorless
+            || clause.monocolored
+            || clause.with_counter.is_some()
+            || clause.without_counter.is_some()
+            || !clause.excluded_card_types.is_empty()
+            || !clause.excluded_subtypes.is_empty()
+            || !clause.excluded_supertypes.is_empty()
+            || !clause.excluded_colors.is_empty()
+            || !clause.excluded_static_abilities.is_empty()
+            || !clause.ability_markers.is_empty()
+            || !clause.excluded_ability_markers.is_empty()
+        {
+            return None;
+        }
+
+        // A single allowed clause is a conjunction ("black Walls"); its
+        // inversion would be a disjunction of the negated qualifiers, which
+        // this flat filter can't express (CR 509.1b).
+        let qualifier_count = clause
+            .card_types
+            .iter()
+            .chain(clause.all_card_types.iter())
+            .filter(|card_type| **card_type != CardType::Creature)
+            .count()
+            + clause.subtypes.len()
+            + clause.supertypes.len()
+            + clause.static_abilities.len()
+            + usize::from(clause.colors.is_some());
+        if qualifier_count > 1 {
+            return None;
+        }
+
         for subtype in &clause.subtypes {
             disallowed = disallowed.without_subtype(*subtype);
+        }
+        for supertype in &clause.supertypes {
+            disallowed = disallowed.without_supertype(*supertype);
         }
         for ability in &clause.static_abilities {
             disallowed = disallowed.without_static_ability(*ability);

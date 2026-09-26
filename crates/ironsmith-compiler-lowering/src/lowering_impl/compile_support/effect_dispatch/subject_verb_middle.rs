@@ -103,6 +103,37 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
     )
 }
 
+/// The attack target and blocking entry of a created token (CR 508.4, 509.4).
+fn apply_token_combat_entry(
+    mut effect: crate::effects::CreateTokenEffect,
+    attack_target_player: Option<PlayerAst>,
+    combat_entry: &ironsmith_compiler_semantic::cards::builders::TokenCombatEntryAst,
+    ctx: &mut EffectLoweringContext,
+) -> Result<(crate::effects::CreateTokenEffect, Vec<ChooseSpec>), CardTextError> {
+    let mut choices = Vec::new();
+    if let Some(attack_target_player) = attack_target_player {
+        // "attacking that opponent" inside "for each opponent, ..." is the
+        // iterated opponent; otherwise the attacked (defending) player.
+        let attacked = if attack_target_player == PlayerAst::Defending && ctx.iterated_player {
+            PlayerFilter::IteratedPlayer
+        } else {
+            resolve_non_target_player_filter(attack_target_player, &current_reference_env(ctx))?
+        };
+        effect = if combat_entry.attack_target_includes_planeswalkers {
+            effect.attacking_player_or_planeswalker_controlled_by(attacked)
+        } else {
+            effect.attacking_player(attacked)
+        };
+    }
+    if let Some(blocked) = &combat_entry.blocking {
+        let (spec, target_choices) =
+            resolve_target_spec_with_choices(blocked, &current_reference_env(ctx))?;
+        choices.extend(target_choices);
+        effect = effect.blocking(spec);
+    }
+    Ok((effect, choices))
+}
+
 pub(super) fn compile_create_token_with_mods_action(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
@@ -118,6 +149,7 @@ pub(super) fn compile_create_token_with_mods_action(
         tapped,
         attacking,
         attack_target_player,
+        combat_entry,
         exile_at_end_of_combat,
         sacrifice_at_end_of_combat,
         sacrifice_at_next_end_step,
@@ -171,12 +203,10 @@ pub(super) fn compile_create_token_with_mods_action(
     if *attacking {
         effect = effect.attacking();
     }
-    if let Some(attack_target_player) = attack_target_player {
-        effect = effect.attacking_player(resolve_non_target_player_filter(
-            *attack_target_player,
-            &current_reference_env(ctx),
-        )?);
-    }
+    let (next, combat_choices) =
+        apply_token_combat_entry(effect, *attack_target_player, combat_entry, ctx)?;
+    effect = next;
+    choices.extend(combat_choices);
     if *exile_at_end_of_combat {
         effect = effect.exile_at_end_of_combat();
     }
@@ -2893,6 +2923,7 @@ pub(super) fn compile_subject_verb_middle(
             tapped,
             attacking,
             attack_target_player,
+            combat_entry,
             exile_at_end_of_combat,
             sacrifice_at_end_of_combat,
             sacrifice_at_next_end_step,
@@ -2948,12 +2979,10 @@ pub(super) fn compile_subject_verb_middle(
             if *attacking {
                 effect = effect.attacking();
             }
-            if let Some(attack_target_player) = attack_target_player {
-                effect = effect.attacking_player(resolve_non_target_player_filter(
-                    *attack_target_player,
-                    &current_reference_env(ctx),
-                )?);
-            }
+            let (next, combat_choices) =
+                apply_token_combat_entry(effect, *attack_target_player, combat_entry, ctx)?;
+            effect = next;
+            choices.extend(combat_choices);
             if *exile_at_end_of_combat {
                 effect = effect.exile_at_end_of_combat();
             }

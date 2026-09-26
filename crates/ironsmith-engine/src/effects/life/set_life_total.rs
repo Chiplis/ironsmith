@@ -95,8 +95,18 @@ fn apply_set_life_total(
             crate::effect::OutcomeStatus::Prevented,
         ));
     }
-    let lost = (current - amount) as u32;
-    game.lose_life(player_id, lost);
+    let lost = crate::events::processing::process_life_loss_with_event(
+        game,
+        player_id,
+        (current - amount) as u32,
+        false,
+    );
+    let lost = game.lose_life(player_id, lost);
+    if lost == 0 {
+        return Ok(EffectOutcome::from_status(
+            crate::effect::OutcomeStatus::Prevented,
+        ));
+    }
     Ok(
         EffectOutcome::count(lost as i32).with_event(TriggerEvent::new_with_provenance(
             crate::events::LifeLossEvent::from_effect(player_id, lost),

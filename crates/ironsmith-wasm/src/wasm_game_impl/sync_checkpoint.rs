@@ -472,6 +472,17 @@ pub(crate) struct SyncCheckpoint {
 /// State built from runtime programs (continuous effects, delayed triggers,
 /// replacement/prevention shields, pending triggers) has no wire encoding; a
 /// same-engine rollback must use a runtime savepoint instead of a checkpoint.
+/// One deferred restart battlefield entry (plain card ids of the new game).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncRestartBattlefieldEntry {
+    cards: Vec<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    controller: Option<u8>,
+    #[serde(default)]
+    enters_tapped: bool,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncRulesState {
@@ -488,6 +499,12 @@ struct SyncRulesState {
     is_night: bool,
     #[serde(default)]
     extra_turns: Vec<u8>,
+    /// CR 726.4: battlefield entries a restart effect still owes the new game.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pending_restart_battlefield_entries: Vec<SyncRestartBattlefieldEntry>,
+    /// Extra turns scheduled after a player's next turn: (player, creation turn).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    extra_turns_after_next_turn: Vec<(u8, u32)>,
     #[serde(default)]
     current_turn_is_extra: bool,
     #[serde(default)]
@@ -2520,6 +2537,23 @@ impl WasmGame {
                     .map(|player| player.0)
                     .collect()
             },
+            pending_restart_battlefield_entries: self
+                .game
+                .pending_restart_battlefield_entries()
+                .iter()
+                .map(|entry| SyncRestartBattlefieldEntry {
+                    cards: entry.cards.iter().map(|id| id.0).collect(),
+                    controller: entry.controller.map(|player| player.0),
+                    enters_tapped: entry.enters_tapped,
+                })
+                .collect(),
+            extra_turns_after_next_turn: self
+                .game
+                .turn_store
+                .extra_turns_after_next_turn
+                .iter()
+                .map(|(player, turn)| (player.0, *turn))
+                .collect(),
             current_turn_is_extra: self.game.turn_store.current_turn_is_extra,
             normal_turn_anchor: self
                 .game
@@ -2817,6 +2851,22 @@ impl WasmGame {
         self.game.initiative = rules.initiative.map(PlayerId::from_index);
         self.game.has_day_night = rules.has_day_night;
         self.game.is_night = rules.has_day_night && rules.is_night;
+        self.game.set_pending_restart_battlefield_entries(
+            rules
+                .pending_restart_battlefield_entries
+                .iter()
+                .map(|entry| ironsmith::game_state::PendingRestartBattlefieldEntry {
+                    cards: entry.cards.iter().copied().map(ObjectId::from_raw).collect(),
+                    controller: entry.controller.map(PlayerId::from_index),
+                    enters_tapped: entry.enters_tapped,
+                })
+                .collect(),
+        );
+        self.game.turn_store.extra_turns_after_next_turn = rules
+            .extra_turns_after_next_turn
+            .iter()
+            .map(|(player, turn)| (PlayerId::from_index(*player), *turn))
+            .collect();
         self.game.turn_store.current_turn_is_extra = rules.current_turn_is_extra;
         self.game.turn_store.normal_turn_anchor =
             rules.normal_turn_anchor.map(PlayerId::from_index);

@@ -874,6 +874,11 @@ impl<Cond: ConditionConjunction> RemoveCardTypesForFilter<Cond> {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum ActivatedAbilityCostCondition {
     TargetsExactly { count: usize, filter: ObjectFilter },
+    /// The ability being activated is an equip ability (CR 702.6), optionally
+    /// one with a target matching `targeting`, read relative to the cost
+    /// modifier's source ("equip abilities you activate that target this
+    /// creature").
+    EquipAbility { targeting: Option<ObjectFilter> },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

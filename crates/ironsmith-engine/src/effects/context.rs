@@ -347,6 +347,21 @@ pub struct ExecutionContext<'a> {
     /// distinct printed effects that add or skip the same structure.
     pub(crate) executing_effect: Option<usize>,
     pub(crate) shared_team_structure_operations: HashSet<(usize, usize, &'static str)>,
+    /// Queue slot of the extra turn most recently created by this resolution
+    /// (`TurnStore::extra_turns`), so a following "that turn" delayed trigger
+    /// can be bound to it (CR 500.7, 603.7).
+    pub(crate) created_extra_turn_index: Option<usize>,
+    /// This resolution restarted the game (CR 726): its later battlefield
+    /// entries are deferred until the new game's first untap step.
+    pub(crate) restarted_game: bool,
+    /// The first object id allocated after this stack entry began resolving.
+    ///
+    /// Objects with an id at or above it were moved into their current zone
+    /// by this resolution, so its instructions may find them (CR 400.7j).
+    /// Any other move of a tagged object makes it a new object this
+    /// resolution can't follow (CR 400.7, 603.6c, 603.7c). `None` outside a
+    /// stack resolution keeps the unrestricted stable-identity lookup.
+    pub resolution_object_id_floor: Option<ObjectId>,
 }
 
 impl std::fmt::Debug for ExecutionContext<'_> {
@@ -441,6 +456,9 @@ impl<'a> ExecutionContext<'a> {
             replacement: ReplacementExecutionContext::default(),
             executing_effect: None,
             shared_team_structure_operations: HashSet::new(),
+            created_extra_turn_index: None,
+            restarted_game: false,
+            resolution_object_id_floor: None,
         }
     }
 
@@ -493,6 +511,9 @@ impl<'a> ExecutionContext<'a> {
             replacement: ReplacementExecutionContext::default(),
             executing_effect: None,
             shared_team_structure_operations: HashSet::new(),
+            created_extra_turn_index: None,
+            restarted_game: false,
+            resolution_object_id_floor: None,
         }
     }
 
@@ -535,6 +556,9 @@ impl<'a> ExecutionContext<'a> {
             replacement: self.replacement,
             executing_effect: self.executing_effect,
             shared_team_structure_operations: self.shared_team_structure_operations,
+            created_extra_turn_index: self.created_extra_turn_index,
+            restarted_game: self.restarted_game,
+            resolution_object_id_floor: self.resolution_object_id_floor,
         }
     }
 

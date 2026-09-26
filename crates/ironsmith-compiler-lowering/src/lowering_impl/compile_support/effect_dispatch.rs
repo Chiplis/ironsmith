@@ -2107,6 +2107,7 @@ fn is_plain_fixed_token_creation(subject_verb: &SubjectVerbEffectAst) -> bool {
                 tapped: false,
                 attacking: false,
                 attack_target_player: None,
+                combat_entry,
                 exile_at_end_of_combat: false,
                 sacrifice_at_end_of_combat: false,
                 sacrifice_at_next_end_step: false,
@@ -2114,7 +2115,7 @@ fn is_plain_fixed_token_creation(subject_verb: &SubjectVerbEffectAst) -> bool {
                 granted_abilities,
                 ability_presentation: None,
                 ..
-            }) if granted_abilities.is_empty()
+            }) if granted_abilities.is_empty() && *combat_entry == Default::default()
         )
 }
 

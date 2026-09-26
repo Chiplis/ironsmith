@@ -6092,7 +6092,7 @@ impl StaticAbilityKind for AttachedAbilityGrant {
         &self,
         source: ObjectId,
         controller: PlayerId,
-        _game: &GameState,
+        game: &GameState,
     ) -> Vec<ContinuousEffect> {
         // Removing all abilities is itself a layer-6 modification. Adding a
         // granted static ability whose payload removes abilities would require
@@ -6126,10 +6126,13 @@ impl StaticAbilityKind for AttachedAbilityGrant {
                 source,
                 controller,
                 EffectTarget::AttachedTo(source),
+                // Chosen or controller-relative protection qualities belong
+                // to the attached granting object (CR 702.16a, 903.4).
                 Modification::AddAbilityGeneric(materialize_named_granting_source(
                     &self.ability,
                     source,
-                )),
+                ))
+                .bind_chosen_protection_qualities(game, source),
             )
             .with_source_type(EffectSourceType::StaticAbility),
             &self.condition,
@@ -6142,7 +6145,8 @@ impl StaticAbilityKind for AttachedAbilityGrant {
                     EffectTarget::AttachedTo(source),
                     Modification::AddAbilityGeneric(materialize_named_granting_source(
                         &ability, source,
-                    )),
+                    ))
+                    .bind_chosen_protection_qualities(game, source),
                 )
                 .with_source_type(EffectSourceType::StaticAbility),
                 &self.condition,

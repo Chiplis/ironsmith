@@ -48,6 +48,9 @@ pub struct CopySourceClauseSpec {
     pub enters_tapped: bool,
     pub enters_attacking: bool,
     pub attacks_that_player_or_planeswalker: bool,
+    /// "... attacking that opponent/player" with no "that's" (Mardu
+    /// Siegebreaker): the copy attacks exactly that player (CR 508.4).
+    pub attacks_that_player_only: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -237,14 +240,27 @@ pub fn parse_copy_source_clause_tokens(tokens: &[OwnedLexToken]) -> Option<CopyS
             break;
         }
     }
-    let source = source_tail.get(..source_end)?;
+    let mut source = source_tail.get(..source_end)?;
+    let source_words = CreationTokens::new(source).words();
+    let attacks_that_player_only = source_words.len() > 3
+        && matches!(
+            source_words[source_words.len() - 3..],
+            ["attacking", "that", "opponent" | "player"]
+        );
+    if attacks_that_player_only {
+        let cut = CreationTokens::new(source).boundary(source_words.len() - 3)?;
+        source = trim_lexed_commas(&source[..cut]);
+    }
     let tail = parse_copy_source_tail_tokens(source);
     let inline = parse_inline_combat_tokens(&tail.source_tokens);
     Some(CopySourceClauseSpec {
         source_tokens: inline.source_tokens,
         enters_tapped: tail.enters_tapped || inline.enters_tapped,
-        enters_attacking: tail.enters_attacking || inline.enters_attacking,
+        enters_attacking: tail.enters_attacking
+            || inline.enters_attacking
+            || attacks_that_player_only,
         attacks_that_player_or_planeswalker: inline.attacks_that_player_or_planeswalker,
+        attacks_that_player_only,
     })
 }
 

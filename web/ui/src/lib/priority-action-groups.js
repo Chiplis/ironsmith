@@ -24,6 +24,9 @@ export function zoneLabelFromAction(zone) {
 export function formatPriorityActionLabel(action) {
   const label = action?.label || "";
   if (action?.kind === "play_land") {
+    // A land//land modal DFC also offers its back face (CR 712.12); keep the
+    // engine label ("Play <back face name>") so the two plays stay distinct.
+    if (action.action_ref?.back_face && label) return label;
     return `Play ${zoneLabelFromAction(action.from_zone)}`;
   }
   if (action?.kind === "cast_spell") {

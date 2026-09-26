@@ -71,6 +71,7 @@ pub use crate::model::ast::{
     PredicateAst, RandomActionAst, ReplacementActionAst, RevealLookActionAst, SourcePredicateAst,
     StackActionAst, StatChangeActionAst, StaticAbilityAst, SubjectVerbActionAst,
     SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TokenActionAst,
+    TokenCombatEntryAst,
     TriggerFrequencyPredicateAst, TriggerSpec, TriggeringPredicateAst, TurnEventPredicateAst,
     TurnHistoryPredicateAst, TurnStructureActionAst, VoteEffectAst, ZoneMoveActionAst,
 };

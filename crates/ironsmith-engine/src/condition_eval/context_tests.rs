@@ -340,8 +340,11 @@ fn do_this_limit_never_stops_registration_or_resolution() {
     };
     let condition = Condition::DoThisMaxTimesEachTurn(1);
     game.record_trigger_fired(source, identity);
-    game.record_do_this_action(source, identity);
     assert!(evaluate_condition_external(&game, &condition, &external));
+    // CR 603.2h: once the action was taken this turn, the ability no longer
+    // triggers (checked when the event happens); resolution is never stopped.
+    game.record_do_this_action(source, identity);
+    assert!(!evaluate_condition_external(&game, &condition, &external));
     let mut exec = ExecutionContext::new_default(source, alice);
     exec.trigger_identity = Some(identity);
     assert!(evaluate_condition_resolution(&game, &condition, &exec).unwrap());
@@ -357,7 +360,14 @@ fn trigger_limits_are_checked_at_registration_without_rejecting_resolution() {
         trigger_identity: Some(identity),
         ..Default::default()
     };
-    let conditions = [Condition::FirstTimeThisTurn, Condition::MaxTimesEachTurn(1)];
+    // "For the first time each turn" is an event-history gate decided in
+    // trigger matching (CR 603.2d), so only the fire-count limit is here.
+    assert!(evaluate_condition_external(
+        &game,
+        &Condition::FirstTimeThisTurn,
+        &external
+    ));
+    let conditions = [Condition::MaxTimesEachTurn(1)];
     for condition in &conditions {
         assert!(evaluate_condition_external(&game, condition, &external));
     }

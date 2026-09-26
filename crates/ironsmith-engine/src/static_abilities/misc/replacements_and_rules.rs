@@ -574,6 +574,10 @@ pub struct DoubleCountersReplacement {
     pub includes_permanents: bool,
     /// Halve (rounded down) instead of doubling.
     pub halve: bool,
+    /// "If an effect would put ..." (Doubling Season): only counters put on
+    /// by an effect (or entering with counters) are doubled; cost and
+    /// game-rule placements such as +N loyalty costs are not.
+    pub effect_only: bool,
     pub display: String,
 }
 
@@ -586,6 +590,7 @@ impl DoubleCountersReplacement {
             actor: None,
             includes_permanents: false,
             halve: false,
+            effect_only: false,
             display,
         }
     }
@@ -602,6 +607,7 @@ impl DoubleCountersReplacement {
             actor: None,
             includes_permanents: false,
             halve: false,
+            effect_only: false,
             display,
         }
     }
@@ -616,8 +622,14 @@ impl DoubleCountersReplacement {
             actor: Some(actor),
             includes_permanents: true,
             halve,
+            effect_only: false,
             display,
         }
+    }
+
+    pub fn effect_caused_only(mut self) -> Self {
+        self.effect_only = true;
+        self
     }
 }
 
@@ -630,6 +642,7 @@ struct WouldPutCountersOrEnterWithCountersMatcher {
     counter_type: Option<CounterType>,
     actor: Option<PlayerFilter>,
     includes_permanents: bool,
+    effect_only: bool,
 }
 
 impl WouldPutCountersOrEnterWithCountersMatcher {
@@ -663,6 +676,12 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
                     return false;
                 }
                 if !self.actor_matches(put_counters.cause.source_controller, ctx.game) {
+                    return false;
+                }
+                // Doubling Season ruling: loyalty (and other) counters put on
+                // as a cost, by combat damage (wither) or by a game rule
+                // aren't put on "by an effect".
+                if self.effect_only && !put_counters.cause.cause_type.is_effect_like() {
                     return false;
                 }
                 match put_counters.target {
@@ -748,6 +767,7 @@ impl StaticAbilityKind for DoubleCountersReplacement {
                 counter_type: self.counter_type,
                 actor: self.actor.clone(),
                 includes_permanents: self.includes_permanents,
+                effect_only: self.effect_only,
             },
             if self.halve {
                 ReplacementAction::HalveCounters {
@@ -821,6 +841,7 @@ impl StaticAbilityKind for AddCountersPlacementReplacement {
                 counter_type: self.counter_type,
                 actor: None,
                 includes_permanents: false,
+                effect_only: false,
             },
             ReplacementAction::AddCountersToPlacement {
                 counter_type: self.counter_type,
@@ -882,6 +903,7 @@ impl StaticAbilityKind for PlayerCounterPerTurnLimitReplacement {
                 counter_type: Some(self.counter_type),
                 actor: None,
                 includes_permanents: false,
+                effect_only: false,
             },
             ReplacementAction::SetPlayerCountersAndLockForTurn {
                 counter_type: self.counter_type,

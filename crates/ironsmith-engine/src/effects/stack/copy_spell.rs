@@ -176,7 +176,9 @@ pub(crate) fn create_stack_copy_from_object(
     copy_entry.x_value = original_entry.x_value;
     copy_entry.activation_cost_has_x = original_entry.activation_cost_has_x;
     copy_entry.activation_cost_has_tap = original_entry.activation_cost_has_tap;
-    copy_entry.mana_spent_on_activation = original_entry.mana_spent_on_activation.clone();
+    // CR 707.10: mana isn't copiable, so a copied ability has no mana spent
+    // to activate it either.
+    copy_entry.mana_spent_on_activation = crate::player::ManaPool::default();
     copy_entry.ability_effects = original_entry.ability_effects.clone();
     copy_entry.is_ability = original_entry.is_ability;
     copy_entry.casting_method = original_entry.casting_method.clone();

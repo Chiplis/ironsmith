@@ -216,6 +216,30 @@ def is_non_playable(card, type_line, oracle_text):
     return False
 
 
+COLOR_INDICATOR_NAMES = {
+    "W": "White",
+    "U": "Blue",
+    "B": "Black",
+    "R": "Red",
+    "G": "Green",
+}
+
+
+def format_color_indicator_line(color_indicator):
+    """Return a "Color indicator: ..." metadata line for a Scryfall
+    color_indicator list (CR 204), or None when there is none."""
+    if not isinstance(color_indicator, list):
+        return None
+    names = [
+        COLOR_INDICATOR_NAMES[letter]
+        for letter in ("W", "U", "B", "R", "G")
+        if letter in color_indicator
+    ]
+    if not names:
+        return None
+    return "Color indicator: " + ", ".join(names)
+
+
 def build_block(card):
     faces = card.get("card_faces") or []
     face = faces[0] if faces else None
@@ -232,6 +256,7 @@ def build_block(card):
     loyalty = pick_field(card, face, "loyalty")
     defense = pick_field(card, face, "defense")
     attraction_lights = pick_field(card, face, "attraction_lights")
+    color_indicator = pick_field(card, face, "color_indicator")
     first_printed_set_name = card.get("first_printed_set_name")
 
     if is_non_playable(card, type_line, oracle_text):
@@ -242,6 +267,9 @@ def build_block(card):
         lines.append(f"Mana cost: {mana_cost}")
     if type_line:
         lines.append(f"Type: {type_line}")
+    color_indicator_line = format_color_indicator_line(color_indicator)
+    if color_indicator_line:
+        lines.append(color_indicator_line)
     if first_printed_set_name:
         lines.append(f"First printed set: {first_printed_set_name}")
     if isinstance(attraction_lights, list) and attraction_lights:

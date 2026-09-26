@@ -128,12 +128,10 @@ fn clashing_players_in_apnap_order(
 
 fn card_mana_value(game: &GameState, card: Option<ObjectId>) -> Option<u32> {
     card.and_then(|card_id| {
-        game.object(card_id).map(|object| {
-            object
-                .mana_cost
-                .as_ref()
-                .map_or(0, |cost| cost.mana_value())
-        })
+        // CR 709.4b: a split card outside the stack has the combined mana
+        // value of its halves, so use the shared filter helper.
+        game.object(card_id)
+            .map(|object| crate::filter::object_mana_value_for_filter(object).max(0) as u32)
     })
 }
 

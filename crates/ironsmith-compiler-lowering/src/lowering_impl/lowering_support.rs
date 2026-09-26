@@ -1738,6 +1738,82 @@ fn bind_stack_retargets_to_triggering_object(effects: &mut [EffectAst]) {
     }
 }
 
+/// "destroy both creatures": the subject half is the permanent the block
+/// trigger watches — the equipped/enchanted creature for an attached
+/// subject ("Whenever equipped creature blocks or becomes blocked by a
+/// creature", Dead-Iron Sledge), otherwise the source.
+fn bind_block_pair_subject(effects: &mut [EffectAst], trigger: Option<&TriggerSpec>) {
+    fn subject_filter(trigger: &TriggerSpec) -> Option<&ObjectFilter> {
+        match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => subject_filter(trigger),
+            TriggerSpec::BlocksOrBecomesBlockedByObject { subject, .. } => Some(subject),
+            _ => None,
+        }
+    }
+    let attached_tag = trigger.and_then(subject_filter).and_then(|subject| {
+        [
+            crate::tag::CompilerReferenceTag::Equipped,
+            crate::tag::CompilerReferenceTag::Enchanted,
+        ]
+        .into_iter()
+        .find(|tag| {
+            subject
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == tag.as_str())
+        })
+    });
+    // With an attached subject, "it" would default to that attachment, so
+    // the other half names the trigger's other participant explicitly.
+    let other_tag = attached_tag
+        .and(trigger)
+        .and_then(default_trigger_last_object_tag);
+    fn destroy_target(effect: &mut EffectAst) -> Option<&mut TargetAst> {
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. }) =
+                &mut subject_verb.action
+        {
+            return Some(target);
+        }
+        None
+    }
+    fn visit_list(
+        effects: &mut [EffectAst],
+        attached: Option<crate::tag::CompilerReferenceTag>,
+        other_tag: Option<&crate::cards::builders::TagKey>,
+    ) {
+        let mut rebind_next_it = false;
+        for effect in effects.iter_mut() {
+            if let Some(target) = destroy_target(effect) {
+                if matches!(target, TargetAst::Tagged(tag, _)
+                    if tag.as_str() == ironsmith_core::BLOCK_PAIR_SUBJECT_TAG)
+                {
+                    *target = match attached {
+                        Some(tag) => TargetAst::Tagged(tag.bind(), None),
+                        None => TargetAst::Source(None),
+                    };
+                    rebind_next_it = true;
+                    continue;
+                }
+                if rebind_next_it
+                    && let Some(other_tag) = other_tag
+                    && matches!(target, TargetAst::Tagged(tag, _)
+                        if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
+                {
+                    *target = TargetAst::Tagged(crate::tag::TagRef::of(other_tag.clone()), None);
+                }
+                rebind_next_it = false;
+                continue;
+            }
+            rebind_next_it = false;
+            for_each_nested_effects_mut(effect, true, |nested| {
+                visit_list(nested, attached, other_tag);
+            });
+        }
+    }
+    visit_list(effects, attached_tag, other_tag.as_ref());
+}
+
 fn resolve_phase_step_it_targets_to_source(effects: &mut [EffectAst]) {
     for effect in effects {
         resolve_bare_it_effect_targets_to_source(effect);
@@ -2004,6 +2080,9 @@ fn stage_effects_from_normalized(
     default_last_object_prelude: Option<EffectPreludeTag>,
     include_trigger_prelude: bool,
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
+    // Any "both creatures" subject left unbound (no block trigger in view)
+    // is the source.
+    bind_block_pair_subject(&mut semantic_effects, None);
     let references_equipped = effects_reference_tag(&semantic_effects, "equipped");
     let references_enchanted = effects_reference_tag(&semantic_effects, "enchanted");
     let references_triggering_source =
@@ -2764,6 +2843,7 @@ pub fn stage_effects_with_trigger_context_for_lowering(
             bind_stack_retargets_to_triggering_object(&mut normalized);
         }
     }
+    bind_block_pair_subject(&mut normalized, trigger);
     if effects_have_creature_death_gate(&normalized) {
         replace_creature_death_event_amounts(&mut normalized);
     }
@@ -3244,6 +3324,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
         }
     }
 
+    bind_block_pair_subject(&mut body_effects, Some(&trigger));
     let intervening_if_uses_trigger_object = intervening_if
         .as_ref()
         .is_some_and(predicate_uses_implicit_object_reference);

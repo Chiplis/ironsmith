@@ -117,7 +117,7 @@ fn execute_transform_like_action(
             .and_then(|snapshots| {
                 snapshots
                     .iter()
-                    .find_map(|snapshot| resolve_tagged_object_id(game, snapshot))
+                    .find_map(|snapshot| resolve_tagged_object_id(game, ctx, snapshot))
             })
             .ok_or(ExecutionError::InvalidTarget)?
     } else {

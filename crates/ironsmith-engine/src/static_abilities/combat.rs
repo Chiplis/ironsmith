@@ -113,6 +113,8 @@ impl StaticAbilityKind for AttackCost {
 #[derive(Debug, Clone)]
 pub(crate) struct ImposedAttackCost {
     pub payer: PlayerId,
+    /// The attacking creature this cost is charged for.
+    pub attacker: ObjectId,
     pub source: ObjectId,
     pub controller: PlayerId,
     pub cost: crate::cost::TotalCost,
@@ -125,6 +127,15 @@ impl ImposedAttackCost {
         game: &GameState,
     ) -> Result<crate::cost::TotalCost, crate::cost::CostPaymentError> {
         let mut ctx = crate::effects::ExecutionContext::new_default(self.source, self.controller);
+        // A cost whose amount reads "that creature" (Nils) reads the attacker.
+        if let Some(attacker) = game.object(self.attacker) {
+            ctx.set_tagged_objects(
+                ironsmith_core::TAXED_ATTACKER_TAG,
+                vec![crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    attacker, game,
+                )],
+            );
+        }
         self.cost.clone().try_map(|component| {
             let Some(dynamic) = component.dynamic_mana_cost_ref() else {
                 return Ok(component);
@@ -156,23 +167,41 @@ pub(crate) fn imposed_attack_costs_for_target(
             continue;
         };
         let controller = game.controller_of(object);
-        if controller != defender {
-            continue;
-        }
-        let abilities = view
-            .calculated_characteristics_arc(source)
-            .map(|chars| chars.static_abilities.to_vec())
-            .unwrap_or_else(|| {
-                object
+        let calculated = view.calculated_characteristics_arc(source);
+        let fallback;
+        let abilities: &[super::StaticAbility] = match &calculated {
+            Some(chars) => &chars.static_abilities,
+            None => {
+                fallback = object
                     .abilities
                     .iter()
                     .filter_map(|ability| match &ability.kind {
                         crate::ability::AbilityKind::Static(ability) => Some(ability.clone()),
                         _ => None,
                     })
-                    .collect()
-            });
+                    .collect::<Vec<_>>();
+                &fallback
+            }
+        };
         for ability in abilities {
+            // CR 508.1d/h: costs the attacker itself carries ("this creature
+            // can't attack ... unless you pay ..."), whatever it attacks and
+            // whoever controls the imposing permanent.
+            if let Some(cost) =
+                ability.self_attack_cost_for_declaration(game, source, controller, attacker.id)
+            {
+                costs.push(ImposedAttackCost {
+                    payer,
+                    attacker: attacker.id,
+                    source,
+                    controller,
+                    cost,
+                    display: ability.display(),
+                });
+            }
+            if controller != defender {
+                continue;
+            }
             if let Some(cost) = ability.attack_cost_for_declaration(
                 game,
                 source,
@@ -182,6 +211,7 @@ pub(crate) fn imposed_attack_costs_for_target(
             ) {
                 costs.push(ImposedAttackCost {
                     payer,
+                    attacker: attacker.id,
                     source,
                     controller,
                     cost,
@@ -207,6 +237,11 @@ pub struct BlockCost {
     attackers: ObjectFilter,
     cost: crate::cost::TotalCost,
     display_text: String,
+    /// "can't attack or block unless ...": the blocker-side creature pays the
+    /// same cost to attack (CR 508.1d/h).
+    also_attack_cost: bool,
+    /// "can't attack unless ...": there is no blocking half at all.
+    attack_only: bool,
 }
 
 impl BlockCost {
@@ -222,7 +257,24 @@ impl BlockCost {
             attackers,
             cost,
             display_text: display.into(),
+            also_attack_cost: false,
+            attack_only: false,
         }
+    }
+
+    /// Also charge this cost when the blocker-side creature attacks.
+    pub fn also_attacking(mut self, also_attack_cost: bool) -> Self {
+        self.also_attack_cost = also_attack_cost;
+        self
+    }
+
+    /// Charge this cost only when that creature attacks, never to block.
+    pub fn attack_only(mut self, attack_only: bool) -> Self {
+        self.attack_only = attack_only;
+        if attack_only {
+            self.also_attack_cost = true;
+        }
+        self
     }
 
     pub fn attached(
@@ -237,6 +289,8 @@ impl BlockCost {
             attackers,
             cost,
             display_text: display.into(),
+            also_attack_cost: false,
+            attack_only: false,
         }
     }
 
@@ -278,6 +332,9 @@ impl StaticAbilityKind for BlockCost {
         blocker: ObjectId,
         attacker: ObjectId,
     ) -> Option<crate::cost::TotalCost> {
+        if self.attack_only {
+            return None;
+        }
         let opponents = game
             .players
             .iter()
@@ -300,6 +357,30 @@ impl StaticAbilityKind for BlockCost {
             self.blockers.matches(blocker, &filter_ctx, game)
         };
         (blocker_relation_matches && self.attackers.matches(attacker, &filter_ctx, game))
+            .then(|| self.cost.clone())
+    }
+
+    fn self_attack_cost_for_declaration(
+        &self,
+        game: &GameState,
+        ability_source: ObjectId,
+        ability_controller: PlayerId,
+        attacker: ObjectId,
+    ) -> Option<crate::cost::TotalCost> {
+        if !self.also_attack_cost {
+            return None;
+        }
+        let filter_ctx = game.filter_context_for(ability_controller, Some(ability_source));
+        let attacker = game.object(attacker)?;
+        let relation_matches = if self.blocker_is_attached_to_source {
+            game.object(ability_source)
+                .and_then(|source| source.attached_to)
+                .and_then(crate::object::AttachmentTarget::object_id)
+                == Some(attacker.id)
+        } else {
+            true
+        };
+        (relation_matches && self.blockers.matches(attacker, &filter_ctx, game))
             .then(|| self.cost.clone())
     }
 
@@ -335,7 +416,9 @@ impl StaticAbilityKind for BlockCost {
                 cost,
                 self.display_text.clone(),
             )
-        };
+        }
+        .also_attacking(self.also_attack_cost)
+        .attack_only(self.attack_only);
         Ok(Some(super::StaticAbility::new(materialized)))
     }
 }

@@ -34,7 +34,9 @@ pub fn legal_action_source(action: &LegalAction) -> Option<ObjectId> {
         LegalAction::CastSpell { spell_id, .. } => Some(*spell_id),
         LegalAction::ActivateAbility { source, .. }
         | LegalAction::ActivateManaAbility { source, .. } => Some(*source),
-        LegalAction::PlayLand { land_id } => Some(*land_id),
+        LegalAction::PlayLand { land_id } | LegalAction::PlayLandBackFace { land_id } => {
+            Some(*land_id)
+        }
         LegalAction::TurnFaceUp { creature_id, .. } => Some(*creature_id),
         _ => None,
     }
@@ -502,6 +504,24 @@ fn append_cast_actions_from_zone_for_card(
     }
 }
 
+/// CR 712.12: offer the back face of a land//land modal DFC as its own land
+/// play, alongside the front-face `PlayLand`.
+fn push_back_face_land_play_action(
+    game: &GameState,
+    actions: &mut Vec<LegalAction>,
+    player: PlayerId,
+    card_id: ObjectId,
+    card: &crate::object::Object,
+) {
+    if crate::decision::linked_back_face_land_definition(game, card).is_none() {
+        return;
+    }
+    let action = SpecialAction::PlayLandBackFace { card_id };
+    if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
+        actions.push(LegalAction::PlayLandBackFace { land_id: card_id });
+    }
+}
+
 fn append_granted_land_play_actions_from_public_zone(
     game: &GameState,
     actions: &mut Vec<LegalAction>,
@@ -529,6 +549,7 @@ fn append_granted_land_play_actions_from_public_zone(
         if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
             actions.push(LegalAction::PlayLand { land_id: card_id });
         }
+        push_back_face_land_play_action(game, actions, player, card_id, card);
     });
 }
 
@@ -552,6 +573,7 @@ fn append_adventure_exiled_land_play_actions(
         if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
             actions.push(LegalAction::PlayLand { land_id: card_id });
         }
+        push_back_face_land_play_action(game, actions, player, card_id, card);
     }
 }
 
@@ -622,6 +644,13 @@ fn add_land_actions(
                     land_id: summary.card_id,
                 });
             }
+            push_back_face_land_play_action(
+                game,
+                actions,
+                player,
+                summary.card_id,
+                summary.card,
+            );
         }
     }
     if graveyard_has_active_grants {
@@ -652,6 +681,7 @@ fn add_land_actions(
         if can_perform_check(&action, game, player).is_ok() {
             actions.push(LegalAction::PlayLand { land_id: card_id });
         }
+        push_back_face_land_play_action(game, actions, player, card_id, card);
     }
 }
 
@@ -1555,7 +1585,7 @@ fn activated_minimum_x_cost_is_payable(
         .is_none_or(|maximum| maximum >= minimum)
 }
 
-fn is_equip_ability(
+pub(crate) fn is_equip_ability(
     game: &GameState,
     source: ObjectId,
     activated: &crate::ability::ActivatedAbility,
@@ -2348,6 +2378,7 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
             source,
             &activated.mana_cost,
             &[],
+            Some(ActivationCostAbility::of(game, controller, source, activated)),
             view,
         )
     };

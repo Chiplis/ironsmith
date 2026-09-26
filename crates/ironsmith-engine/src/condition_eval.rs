@@ -4299,15 +4299,11 @@ fn evaluate_condition_in_context(
             }))
         } // Registration limits must not invalidate an already-registered trigger
           // when its condition is checked again during resolution.
-        Condition::FirstTimeThisTurn => {
-            let Some(ctx) = ctx.external() else {
-                return Ok(true);
-            };
-            Ok(ctx
-                .trigger_identity
-                .map(|id| game.trigger_fire_count_this_turn(ctx.source, id) == 0)
-                .unwrap_or(true))
-        }
+        // "For the first time each turn" is part of the trigger event and is
+        // decided from the turn's event history when the event is matched
+        // (`triggers::check::first_time_this_turn_event`), not by how often
+        // this ability has triggered (CR 603.2, 603.2d).
+        Condition::FirstTimeThisTurn => Ok(true),
         Condition::SourceFirstCrewedThisTurn => {
             let Some(ctx) = ctx.external() else {
                 return Ok(true);
@@ -4318,10 +4314,20 @@ fn evaluate_condition_in_context(
                 ctx.triggering_event,
             ))
         }
-        // "Do this only once each turn" never stops the ability from
-        // triggering or resolving; it limits the optional instruction, which
-        // `MayEffect` gates through the resolution's `DoThisLimit`.
-        Condition::DoThisMaxTimesEachTurn(_) => Ok(true),
+        // CR 603.2h: "Do this only once each turn" abilities trigger only if
+        // the action hasn't been taken yet this turn when the event happens
+        // (checked at match time, when the trigger identity is known). It
+        // never stops a triggered ability from resolving; the optional
+        // instruction is gated by the resolution's `DoThisLimit` instead.
+        Condition::DoThisMaxTimesEachTurn(limit) => {
+            let Some(ctx) = ctx.external() else {
+                return Ok(true);
+            };
+            Ok(ctx
+                .trigger_identity
+                .map(|id| game.do_this_action_count_this_turn(ctx.source, id) < *limit)
+                .unwrap_or(true))
+        }
         Condition::MaxTimesEachTurn(limit) => {
             let Some(ctx) = ctx.external() else {
                 return Ok(true);

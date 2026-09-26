@@ -2505,6 +2505,12 @@ impl WasmGame {
                     if self.game.is_subgame() {
                         self.game.complete_subgame_starting_procedure();
                     }
+                    if self.game.restart_starting_procedure_pending() {
+                        // CR 726.4: the restarting effect finishes resolving
+                        // now, after the rule 103 procedure and just before
+                        // turn 1's untap step.
+                        self.game.apply_pending_restart_battlefield_entries();
+                    }
                     self.game.complete_restart_starting_procedure();
                     self.pregame = None;
                     continue;

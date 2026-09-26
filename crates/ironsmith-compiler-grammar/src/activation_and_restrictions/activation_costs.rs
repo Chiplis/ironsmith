@@ -172,38 +172,62 @@ fn typed_attack_tax_static_ability(
     else {
         return Ok(None);
     };
-    if crate::lexer::token_word_refs(&tokens[unless + 1..pays]) != ["their", "controller"] {
-        return Ok(None);
-    }
-    let Some(per) = tokens
-        .iter()
-        .enumerate()
-        .skip(pays + 1)
-        .find_map(|(index, token)| token.is_word("for").then_some(index))
-    else {
-        return Ok(None);
+    // "Each creature ... can't attack you ... unless its controller pays
+    // {X}, where X is ... on that creature" (Nils): a per-attacker tax whose
+    // amount reads the attacker being taxed.
+    let singular_payer = match crate::lexer::token_word_refs(&tokens[unless + 1..pays]).as_slice()
+    {
+        ["their", "controller"] => false,
+        ["its", "controller"] => true,
+        _ => return Ok(None),
     };
     let where_index = tokens
         .iter()
         .enumerate()
-        .skip(per)
+        .skip(pays + 1)
         .find_map(|(index, token)| token.is_word("where").then_some(index));
+    let per = if singular_payer {
+        tokens
+            .iter()
+            .enumerate()
+            .skip(pays + 1)
+            .find_map(|(index, token)| token.is_word("for").then_some(index))
+            .filter(|per| where_index.is_none_or(|where_index| *per < where_index))
+            .unwrap_or(where_index.unwrap_or(tokens.len()))
+    } else {
+        let Some(per) = tokens
+            .iter()
+            .enumerate()
+            .skip(pays + 1)
+            .find_map(|(index, token)| token.is_word("for").then_some(index))
+        else {
+            return Ok(None);
+        };
+        per
+    };
     let per_words =
         crate::lexer::token_word_refs(&tokens[per..where_index.unwrap_or(tokens.len())]);
-    if !matches!(
-        per_words.as_slice(),
-        ["for", "each", "of", "those", "creatures"]
-            | [
-                "for",
-                "each",
-                "creature",
-                "they",
-                "control",
-                "that's" | "thats",
-                "attacking",
-                "you"
-            ]
-    ) {
+    let per_words = per_words
+        .iter()
+        .copied()
+        .filter(|word| !matches!(*word, "," | "."))
+        .collect::<Vec<_>>();
+    if !(singular_payer && per_words.is_empty())
+        && !matches!(
+            per_words.as_slice(),
+            ["for", "each", "of", "those", "creatures"]
+                | [
+                    "for",
+                    "each",
+                    "creature",
+                    "they",
+                    "control",
+                    "that's" | "thats",
+                    "attacking",
+                    "you"
+                ]
+        )
+    {
         return Ok(None);
     }
     let Some(attackers) = parse_subject_object_filter(&tokens[..cant])? else {
@@ -215,9 +239,28 @@ fn typed_attack_tax_static_ability(
         ));
     };
     if let Some(where_index) = where_index {
-        let value = parse_value_binding_clause_lexed(&tokens[where_index..]).ok_or_else(|| {
-            CardTextError::ParseError("unsupported attack-cost X definition".into())
-        })?;
+        let where_words = crate::lexer::token_word_refs(&tokens[where_index..]);
+        let names_taxed_attacker = crate::word_primitives::sequence_occurs(
+            &where_words,
+            &["counters", "on", "that", "creature"],
+        ) || crate::word_primitives::sequence_occurs(
+            &where_words,
+            &["counters", "on", "it"],
+        );
+        let value = if singular_payer && names_taxed_attacker {
+            // The attacker being taxed is bound under this tag when the
+            // cost is locked in at declaration (CR 508.1d/h).
+            crate::effect::Value::CountersOn(
+                Box::new(crate::target::ChooseSpec::Tagged(
+                    ironsmith_core::TAXED_ATTACKER_TAG.into(),
+                )),
+                None,
+            )
+        } else {
+            parse_value_binding_clause_lexed(&tokens[where_index..]).ok_or_else(|| {
+                CardTextError::ParseError("unsupported attack-cost X definition".into())
+            })?
+        };
         let mut bound = false;
         cost = cost.try_map(|component| -> Result<_, CardTextError> {
             Ok(match component {
@@ -435,15 +478,29 @@ fn block_cost_static_ability(
 
     let action_tokens = trim_edge_punctuation_tokens(&tokens[cant_index + 1..unless_index]);
     let action_words = crate::lexer::token_word_refs(action_tokens);
-    let attackers = if crate::word_primitives::parse_any_sequence_complete(
-        &action_words,
-        &[&["block"], &["attack", "or", "block"]],
-    ) {
-        // A number of cards use the combined restriction wording even when
-        // the declaration-time cost is the CR 509.1d blocking cost.  Keep the
-        // typed BlockCost lowering for that shared wording; the attack-side
-        // restriction is handled by the ordinary cant/attack parser when it
-        // has its own semantics.
+    // "can't attack or block unless ...": one typed BlockCost that also
+    // charges the same cost when that creature attacks (CR 508.1d/h,
+    // 509.1d). Nothing else lowers the attack half of this wording.
+    let also_attack_cost =
+        crate::word_primitives::parse_sequence_complete(&action_words, &["attack", "or", "block"]);
+    // "This/Enchanted creature can't attack unless you/its controller pays
+    // ..." (Brainwash): the same declaration cost with only its attack side.
+    let attack_only = crate::word_primitives::parse_sequence_complete(&action_words, &["attack"])
+        && crate::word_primitives::parse_any_sequence_complete(
+            &subject_words,
+            &[
+                &["this"],
+                &["this", "creature"],
+                &["enchanted", "creature"],
+                &["equipped", "creature"],
+            ],
+        );
+    let attackers = if attack_only
+        || crate::word_primitives::parse_any_sequence_complete(
+            &action_words,
+            &[&["block"], &["attack", "or", "block"]],
+        )
+    {
         ObjectFilter::creature()
     } else if crate::word_primitives::parse_sequence_prefix(&action_words, &["block"]) {
         let Some(block_token_index) =
@@ -497,6 +554,14 @@ fn block_cost_static_ability(
     if subject_words.contains(&"creatures") {
         cost_tokens = trim_edge_punctuation_tokens(strip_per_blocking_creature_tail(cost_tokens));
     }
+    // The attack-only reading claims just explicit payments; any other
+    // "can't attack unless ..." wording keeps its own grammar.
+    if attack_only
+        && (direct_action_cost
+            || !matches!(parse_payment_clause_as_total_cost(cost_tokens), Ok(Some(_))))
+    {
+        return Ok(None);
+    }
     let parsed_cost = if direct_action_cost {
         Some(parse_compiler_activation_cost(cost_tokens)?)
     } else {
@@ -510,10 +575,17 @@ fn block_cost_static_ability(
     };
 
     let display = format_negated_restriction_display(tokens);
-    Ok(Some(if blocker_is_attached_to_source {
+    let ability = if blocker_is_attached_to_source {
         StaticAbility::attached_block_cost(blockers, attackers, cost, display)
     } else {
         StaticAbility::block_cost(blockers, attackers, cost, display)
+    };
+    Ok(Some(if attack_only {
+        ability.with_block_cost_attack_only()
+    } else if also_attack_cost {
+        ability.with_block_cost_also_attacking()
+    } else {
+        ability
     }))
 }
 

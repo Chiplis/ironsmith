@@ -133,7 +133,8 @@ pub(crate) fn view_hidden_candidate_objects(
 /// Zone changes create a new `ObjectId` (Magic rule 400.7). Tag snapshots
 /// captured before the move still carry the old id. This helper tries the
 /// snapshot's `object_id` first; when that object no longer exists it falls
-/// back to `stable_id`.
+/// back to `stable_id`, but only where the resolving instruction may find
+/// the new object (see [`tagged_object_follow_permitted`]).
 ///
 /// Use this only for effects that need to **physically locate** an object in
 /// order to move it (e.g. `MoveToZoneEffect`). Effects that read
@@ -141,6 +142,7 @@ pub(crate) fn view_hidden_candidate_objects(
 /// to preserve last-known-information semantics.
 pub(crate) fn resolve_tagged_object_id(
     game: &GameState,
+    ctx: &ExecutionContext,
     snapshot: &ObjectSnapshot,
 ) -> Option<ObjectId> {
     // A tag naming an ability on the stack by its own stack id ("that spell
@@ -150,7 +152,26 @@ pub(crate) fn resolve_tagged_object_id(
     }
     // Zone changes create a fresh ObjectId while retaining the stable
     // identity. Prefer that indexed current object when a tag snapshot is
-    // stale; the old object record may remain available for LKI queries.
+    // stale and this resolution may find it; the old object record may
+    // remain available for LKI queries.
+    if let Some(current_id) = game.find_object_by_stable_id(snapshot.stable_id)
+        && current_id != snapshot.object_id
+        && tagged_object_follow_permitted(ctx, snapshot, current_id)
+    {
+        return Some(current_id);
+    }
+    game.object(snapshot.object_id).map(|_| snapshot.object_id)
+}
+
+/// Context-free variant of [`resolve_tagged_object_id`] for value readers
+/// that only project a tagged snapshot's current zone.
+pub(crate) fn resolve_tagged_object_id_unscoped(
+    game: &GameState,
+    snapshot: &ObjectSnapshot,
+) -> Option<ObjectId> {
+    if game.stack_ability_entry(snapshot.object_id).is_some() {
+        return Some(snapshot.object_id);
+    }
     if let Some(current_id) = game.find_object_by_stable_id(snapshot.stable_id)
         && current_id != snapshot.object_id
     {
@@ -160,6 +181,87 @@ pub(crate) fn resolve_tagged_object_id(
         return Some(snapshot.object_id);
     }
     game.find_object_by_stable_id(snapshot.stable_id)
+}
+
+/// Whether a resolving instruction may treat `current_id` — the object the
+/// tagged card is now — as the object `snapshot` recorded.
+///
+/// CR 400.7: an object that changes zones becomes a new object. The
+/// exceptions a resolving spell or ability relies on are:
+/// - it moved the object itself during this resolution (CR 400.7j);
+/// - it triggered on that very move and looks in the zone the object went
+///   to (CR 400.7e, 603.6c, 603.10);
+/// - its cost moved the object (CR 400.7j), which only spells and activated
+///   abilities can observe here: their costs are paid before resolution.
+///
+/// Everything else — a delayed trigger's object (CR 603.7c), a triggered
+/// ability's object that moved again while it waited on the stack, an
+/// object that left and returned — is a new object the ability can't find.
+pub(crate) fn tagged_object_follow_permitted(
+    ctx: &ExecutionContext,
+    snapshot: &ObjectSnapshot,
+    current_id: ObjectId,
+) -> bool {
+    let Some(floor) = ctx.resolution_object_id_floor else {
+        return true;
+    };
+    if current_id.0 >= floor.0 {
+        return true;
+    }
+    let Some(event) = ctx.triggering_event.as_ref() else {
+        return true;
+    };
+    if let Some(zone_change) = event.downcast::<crate::events::ZoneChangeEvent>() {
+        let names_moved_object = zone_change.objects.contains(&snapshot.object_id)
+            || zone_change.result_objects.contains(&snapshot.object_id)
+            || zone_change
+                .snapshots
+                .iter()
+                .chain(zone_change.snapshot.iter())
+                .any(|moved| moved.stable_id == snapshot.stable_id);
+        if !names_moved_object {
+            return false;
+        }
+        // Only the object the triggering move created, in the zone it went
+        // to first. A card that has since moved again is a new object.
+        return if zone_change.result_objects.is_empty() {
+            zone_change.objects.contains(&current_id)
+        } else {
+            zone_change.result_objects.contains(&current_id)
+        };
+    }
+    // Other events that move their object (a sacrifice, a discard) don't
+    // record the object it became, so the object they name is still found.
+    event.object_id() == Some(snapshot.object_id)
+        || event
+            .inner()
+            .snapshots()
+            .iter()
+            .any(|named| named.stable_id == snapshot.stable_id)
+}
+
+/// Re-point tagged snapshots at the objects their cards are now, where the
+/// current resolution may find them, before those tags outlive it (a delayed
+/// or reflexive triggered ability). Snapshots it may not follow keep their
+/// recorded object, which a later resolution won't find either
+/// (CR 603.7c, 400.7).
+pub(crate) fn pin_tagged_objects_to_current(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    tagged_objects: &mut HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
+) {
+    for snapshots in tagged_objects.values_mut() {
+        for snapshot in snapshots.iter_mut() {
+            if let Some(current) = game.find_object_by_stable_id(snapshot.stable_id)
+                && current != snapshot.object_id
+                && tagged_object_follow_permitted(ctx, snapshot, current)
+                && let Some(object) = game.object(current)
+            {
+                snapshot.object_id = current;
+                snapshot.zone = object.zone;
+            }
+        }
+    }
 }
 
 pub(crate) fn resolve_source_object_id(
@@ -885,7 +987,7 @@ pub(crate) fn preview_object_ids_for_choose_spec(
                 .map(|tagged| {
                     let mut ids: Vec<ObjectId> = tagged
                         .iter()
-                        .filter_map(|snapshot| resolve_tagged_object_id(game, snapshot))
+                        .filter_map(|snapshot| resolve_tagged_object_id(game, ctx, snapshot))
                         .collect();
                     ids.sort();
                     ids.dedup();
@@ -997,7 +1099,7 @@ fn value_tagged_snapshot_matches_filter(
     let Some(required_zone) = filter.zone else {
         return false;
     };
-    let Some(current_id) = resolve_tagged_object_id(game, snapshot) else {
+    let Some(current_id) = resolve_tagged_object_id_unscoped(game, snapshot) else {
         return false;
     };
     let Some(current) = game.object(current_id) else {
@@ -2523,7 +2625,7 @@ pub fn resolve_objects_from_spec(
                         .ok_or_else(|| ExecutionError::TagNotFound(tag.to_string()))?;
                     let objects: Vec<ObjectId> = tagged
                         .iter()
-                        .filter_map(|snapshot| resolve_tagged_object_id(game, snapshot))
+                        .filter_map(|snapshot| resolve_tagged_object_id(game, ctx, snapshot))
                         .collect();
                     if objects.is_empty() {
                         return Err(ExecutionError::InvalidTarget);
@@ -2642,7 +2744,7 @@ pub fn resolve_objects_from_spec(
             for constraint in &filter.tagged_constraints {
                 if let Some(snapshots) = ctx.get_tagged_all(&constraint.tag) {
                     for snapshot in snapshots {
-                        if let Some(object_id) = resolve_tagged_object_id(game, snapshot)
+                        if let Some(object_id) = resolve_tagged_object_id(game, ctx, snapshot)
                             && !tagged_candidates.contains(&object_id)
                         {
                             tagged_candidates.push(object_id);
@@ -2650,7 +2752,22 @@ pub fn resolve_objects_from_spec(
                     }
                 }
             }
-            let candidate_ids = if tagged_candidates.is_empty() {
+            // A tagged object this resolution can't find anymore (it changed
+            // zones, CR 400.7) mustn't come back through the filter scan,
+            // which matches tagged objects by stable identity.
+            let tagged_objects_unfindable = tagged_candidates.is_empty()
+                && filter.tagged_constraints.iter().any(|constraint| {
+                    matches!(
+                        constraint.relation,
+                        crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                            | crate::filter::TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered
+                    ) && ctx
+                        .get_tagged_all(&constraint.tag)
+                        .is_some_and(|snapshots| !snapshots.is_empty())
+                });
+            let candidate_ids = if tagged_objects_unfindable {
+                Vec::new()
+            } else if tagged_candidates.is_empty() {
                 candidate_ids_for_filter(game, filter)
             } else {
                 tagged_candidates
@@ -2728,7 +2845,7 @@ pub fn resolve_objects_from_spec(
             };
             Ok(tagged
                 .iter()
-                .filter_map(|snapshot| resolve_tagged_object_id(game, snapshot))
+                .filter_map(|snapshot| resolve_tagged_object_id(game, ctx, snapshot))
                 .collect())
         }
 
@@ -4536,7 +4653,11 @@ mod tests {
             .expect("object should return to the battlefield");
 
         assert_eq!(
-            resolve_tagged_object_id(&game, &snapshot),
+            resolve_tagged_object_id(
+                &game,
+                &ExecutionContext::new_default(returned_id, alice),
+                &snapshot
+            ),
             Some(returned_id),
             "tagged object helper should follow the current object after a round trip"
         );

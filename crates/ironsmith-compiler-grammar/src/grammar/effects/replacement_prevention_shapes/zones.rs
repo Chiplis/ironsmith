@@ -31,6 +31,8 @@ pub struct ExileReturnSameShape<'a> {
     pub return_tokens: &'a [OwnedLexToken],
     pub counter_tokens: Option<&'a [OwnedLexToken]>,
     pub delayed_until_end_of_combat: bool,
+    /// A leading "you may": the whole exile-then-return is optional.
+    pub optional: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -250,10 +252,16 @@ pub fn parse_exile_return_same_shape(tokens: &[OwnedLexToken]) -> Option<ExileRe
         return None;
     }
     let tokens = trim_lexed_commas(tokens);
-    let tokens = primitives::parse_prefix(tokens, primitives::phrase(&["you", "may"]))
-        .map(|(_, rest)| rest)
-        .or_else(|| primitives::parse_prefix(tokens, primitives::kw("you")).map(|(_, rest)| rest))
-        .unwrap_or(tokens);
+    let (tokens, optional) =
+        match primitives::parse_prefix(tokens, primitives::phrase(&["you", "may"])) {
+            Some((_, rest)) => (rest, true),
+            None => (
+                primitives::parse_prefix(tokens, primitives::kw("you"))
+                    .map(|(_, rest)| rest)
+                    .unwrap_or(tokens),
+                false,
+            ),
+        };
     let (exile_tokens, return_tokens) =
         primitives::split_lexed_once_on_separator(tokens, || primitives::kw("then").void())?;
     primitives::parse_prefix(exile_tokens, primitives::kw("exile"))?;
@@ -269,6 +277,7 @@ pub fn parse_exile_return_same_shape(tokens: &[OwnedLexToken]) -> Option<ExileRe
         return_tokens,
         counter_tokens,
         delayed_until_end_of_combat,
+        optional,
     })
 }
 

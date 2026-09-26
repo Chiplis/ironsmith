@@ -557,12 +557,9 @@ pub(super) fn calculate_with_layers(
                     ));
                 }
                 Modification::RemoveAbility(ability) => {
-                    chars.static_abilities.retain(|candidate| {
-                        candidate != ability
-                            && !(ability.id() == crate::static_abilities::StaticAbilityId::Banding
-                                && candidate.id()
-                                    == crate::static_abilities::StaticAbilityId::BandsWithOther)
-                    });
+                    chars
+                        .static_abilities
+                        .retain(|candidate| !static_ability_matches_loss(candidate, ability));
                 }
                 Modification::RemoveStaticAbilityFamily(id) => {
                     chars.abilities.retain(|candidate| {
@@ -578,11 +575,7 @@ pub(super) fn calculate_with_layers(
                         .retain(|candidate| !object_ability_matches_loss(candidate, ability));
                     if let AbilityKind::Static(static_ability) = &ability.kind {
                         chars.static_abilities.retain(|candidate| {
-                            candidate != static_ability
-                                && !(static_ability.id()
-                                    == crate::static_abilities::StaticAbilityId::Banding
-                                    && candidate.id()
-                                        == crate::static_abilities::StaticAbilityId::BandsWithOther)
+                            !static_ability_matches_loss(candidate, static_ability)
                         });
                     }
                 }

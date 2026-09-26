@@ -109,6 +109,20 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
                 crate::tag::CompilerReferenceTag::Triggering.bind(),
             )))
         }
+        // "a player attacks you [or a planeswalker you control] ..., that
+        // player": you are the defender, so "that player" is the attacker.
+        TriggerSpec::Attacks(filter)
+        | TriggerSpec::AttacksOneOrMore(filter)
+        | TriggerSpec::AttacksOneOrMoreWithMinTotal { filter, .. }
+        | TriggerSpec::AttacksOneOrMoreWithExactTotal { filter, .. }
+        | TriggerSpec::AttacksOneOrMoreWithAggregate { filter, .. }
+            if filter.attacking_player_or_planeswalker_controlled_by
+                == Some(PlayerFilter::You) =>
+        {
+            Some(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::Triggering.bind(),
+            )))
+        }
         TriggerSpec::Attacks(filter) | TriggerSpec::AttacksOneOrMore(filter)
             if filter
                 .attacking_player_or_planeswalker_controlled_by

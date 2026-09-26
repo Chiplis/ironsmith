@@ -976,13 +976,19 @@ impl StaticAbilityKind for PlayerProtectionFrom {
             .filter(|player| player.is_in_game() && self.player.matches_player(player.id, &filter_ctx))
             .map(|player| player.id)
             .collect();
+        // "You have protection from the chosen card type" (Serra's Emissary):
+        // the choice is this ability's source's (CR 702.16a), not the
+        // targeting spell's, so bind it before the targeting check sees it.
+        let bound_filter =
+            crate::static_abilities::bind_chosen_filter_qualities(&self.source_filter, game, source);
+        let target_filter = bound_filter.as_ref().unwrap_or(&self.source_filter);
         for player in protected {
             let tracker = &mut game.effect_store.cant_effects;
             tracker
                 .cant_target_players_from
                 .push(crate::game_state::PlayerCantBeTargetedFrom {
                     player,
-                    source_filter: self.source_filter.clone(),
+                    source_filter: target_filter.clone(),
                     controller,
                 });
             tracker

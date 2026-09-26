@@ -357,7 +357,13 @@ fn excess_damage_to_object(
         excess = Some(excess.unwrap_or(0).max(amount.saturating_sub(loyalty)));
     }
     if game.current_has_card_type(target, CardType::Battle) {
-        let defense = object.defense().unwrap_or(0);
+        // CR 310.4c / 120.4a: a battle's defense is the number of defense
+        // counters on it, not its printed defense.
+        let defense = object
+            .counters
+            .get(&crate::object::CounterType::Defense)
+            .copied()
+            .unwrap_or(0);
         excess = Some(excess.unwrap_or(0).max(amount.saturating_sub(defense)));
     }
     excess.unwrap_or(0)

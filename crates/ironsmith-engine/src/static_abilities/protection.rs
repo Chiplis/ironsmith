@@ -586,6 +586,35 @@ pub(crate) fn bind_chosen_protection_qualities(
     game: &crate::game_state::GameState,
     chooser_source: crate::ids::ObjectId,
 ) -> Option<super::StaticAbility> {
+    // "Protection from the chosen color" granted by a spell or another
+    // permanent (Brave the Elements, Ward Sliver): the color is the one
+    // chosen for the granting object, not for the protected creature.
+    if ability.has_protection()
+        && matches!(ability.protection_from(), Some(ProtectionFrom::ChosenColor))
+    {
+        let color = game.chosen_color(chooser_source)?;
+        return Some(super::StaticAbility::protection(ProtectionFrom::Color(
+            crate::color::ColorSet::from(color),
+        )));
+    }
+    // Commander's Plate: "your commander's color identity" is the identity
+    // of the granting object's controller (CR 903.4), which can differ from
+    // the protected permanent's controller after a control change.
+    if ability.has_protection()
+        && matches!(
+            ability.protection_from(),
+            Some(ProtectionFrom::ColorsOutsideCommanderIdentity)
+        )
+    {
+        let granter = game.object(chooser_source)?;
+        let outside = crate::targeting::colors_outside_commander_identity(
+            game,
+            game.controller_of(granter),
+        );
+        return Some(super::StaticAbility::protection(ProtectionFrom::Color(
+            outside,
+        )));
+    }
     if let Some(ProtectionFrom::Permanents(filter)) = ability.protection_from() {
         let bound = bind_chosen_filter_qualities(filter, game, chooser_source)?;
         return Some(super::StaticAbility::protection(ProtectionFrom::Permanents(
@@ -612,6 +641,17 @@ pub(crate) fn bind_chosen_filter_qualities(
         bound.chosen_card_type = false;
         if !bound.all_card_types.contains(&card_type) {
             bound.all_card_types.push(card_type);
+        }
+        changed = true;
+    }
+    // "protection from creatures of the chosen type" (Riders of Gavony).
+    if bound.chosen_creature_type
+        && !bound.has_chosen_type_this_way_surface()
+        && let Some(subtype) = game.chosen_creature_type(chooser_source)
+    {
+        bound.chosen_creature_type = false;
+        if !bound.all_subtypes.contains(&subtype) {
+            bound.all_subtypes.push(subtype);
         }
         changed = true;
     }

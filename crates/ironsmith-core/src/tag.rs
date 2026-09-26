@@ -51,6 +51,15 @@ pub const DELAYED_TARGET_PLAYERS_TAG: &str = "__delayed_target_players__";
 /// memory instead.
 pub const CHOSEN_OBJECTS_TAG: &str = "__chosen_objects__";
 
+/// "both creatures" in a "<subject> blocks or becomes blocked by a creature"
+/// trigger: the subject half of the pair. Lowering rebinds it to the source
+/// or to the attached (equipped/enchanted) creature the trigger watches.
+pub const BLOCK_PAIR_SUBJECT_TAG: &str = "__block_pair_subject__";
+
+/// The attacking creature an attack cost is being charged for (CR 508.1d),
+/// bound while that cost's dynamic amount is resolved.
+pub const TAXED_ATTACKER_TAG: &str = "__taxed_attacker__";
+
 /// One source snapshot per mana unit spent to cast the current spell.
 pub const MANA_SOURCES_SPENT_TO_CAST_TAG: &str = "__mana_sources_spent_to_cast__";
 /// The spell or ability whose transaction consumed one concrete mana unit.

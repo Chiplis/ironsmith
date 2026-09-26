@@ -388,6 +388,7 @@ mod tests {
                 tapped: false,
                 attacking: false,
                 attack_target_player: None,
+                combat_entry: Default::default(),
                 exile_at_end_of_combat: false,
                 sacrifice_at_end_of_combat: false,
                 sacrifice_at_next_end_step: false,

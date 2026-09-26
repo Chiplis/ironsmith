@@ -1062,9 +1062,24 @@ fn execute_draw_step_for_player_with(
 pub fn get_cleanup_discard_spec(
     game: &GameState,
 ) -> Option<(PlayerId, crate::decisions::specs::DiscardToHandSizeSpec)> {
+    get_cleanup_discard_spec_after(game, None)
+}
+
+/// Like [`get_cleanup_discard_spec`], but only considers active players after
+/// `after` in turn-player order. CR 805.4 / 514.1: in a shared team turn every
+/// active player discards down to their own maximum hand size, so the cleanup
+/// procedure asks each teammate in turn.
+pub fn get_cleanup_discard_spec_after(
+    game: &GameState,
+    after: Option<PlayerId>,
+) -> Option<(PlayerId, crate::decisions::specs::DiscardToHandSizeSpec)> {
     use crate::decisions::specs::DiscardToHandSizeSpec;
 
-    for active_player in game.turn_players() {
+    let turn_players = game.turn_players();
+    let start = after
+        .and_then(|after| turn_players.iter().position(|player| *player == after))
+        .map_or(0, |index| index + 1);
+    for active_player in turn_players.into_iter().skip(start) {
         let Some(player) = game.player(active_player) else {
             continue;
         };

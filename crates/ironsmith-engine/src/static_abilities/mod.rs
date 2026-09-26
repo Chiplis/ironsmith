@@ -618,6 +618,19 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// CR 508.1d/h: a cost `attacker`'s controller must pay for it to
+    /// attack at all (whatever it attacks), imposed by this ability of
+    /// `source` ("this creature can't attack ... unless you pay ...").
+    fn self_attack_cost_for_declaration(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+        _attacker: ObjectId,
+    ) -> Option<crate::cost::TotalCost> {
+        None
+    }
+
     fn attack_cost_model(&self) -> Option<&AttackCost> {
         None
     }
@@ -1917,6 +1930,16 @@ impl StaticAbility {
     ) -> Option<crate::cost::TotalCost> {
         self.0
             .attack_cost_for_declaration(game, source, controller, attacker, target)
+    }
+    pub fn self_attack_cost_for_declaration(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        attacker: ObjectId,
+    ) -> Option<crate::cost::TotalCost> {
+        self.0
+            .self_attack_cost_for_declaration(game, source, controller, attacker)
     }
     pub fn attack_cost_model(&self) -> Option<&AttackCost> {
         self.0.attack_cost_model()
@@ -3991,6 +4014,15 @@ impl StaticAbility {
             counter_type,
             display,
         ))
+    }
+
+    /// "If an effect would put one or more counters on ..." (Doubling Season).
+    pub fn double_effect_counters_replacement(
+        filter: crate::target::ObjectFilter,
+        counter_type: Option<crate::object::CounterType>,
+        display: String,
+    ) -> Self {
+        Self::new(DoubleCountersReplacement::new(filter, counter_type, display).effect_caused_only())
     }
 
     pub fn double_player_counters_replacement(

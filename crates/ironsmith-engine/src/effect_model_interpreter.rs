@@ -345,6 +345,9 @@ where
         if let Some(attack_target_mode) = &payload.attack_target_mode {
             converted = converted.attack_target_mode(attack_target_mode.clone());
         }
+        if let Some(attacker) = &payload.enters_blocking {
+            converted = converted.blocking(attacker.clone());
+        }
         if payload.suppress_aura_attachment_choice {
             converted = converted.suppress_aura_attachment_choice();
         }
@@ -740,16 +743,18 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::PreventAllDamageToTargetEffect<M::Effect>>(&effect)
     {
-        return Ok(Effect::new(
-            crate::effects::PreventAllDamageToTargetEffect::new(
-                payload.target.clone(),
-                payload.until.clone(),
-            )
-            .with_follow_up_effects(convert_effects(
-                payload.follow_up_effects.iter().cloned(),
-                hooks,
-            )?),
-        ));
+        let mut prevent = crate::effects::PreventAllDamageToTargetEffect::new(
+            payload.target.clone(),
+            payload.until.clone(),
+        )
+        .with_follow_up_effects(convert_effects(
+            payload.follow_up_effects.iter().cloned(),
+            hooks,
+        )?);
+        if payload.combat_only {
+            prevent = prevent.with_filter(crate::prevention::DamageFilter::combat());
+        }
+        return Ok(Effect::new(prevent));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::PreventDamageEffect<M::Effect>>(&effect)

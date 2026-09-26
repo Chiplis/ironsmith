@@ -1478,22 +1478,18 @@ fn materialize_alternative_cast(
     builder: CardDefinitionBuilder,
     mut method: crate::alternative_cast::AlternativeCastingMethod,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
+    // "You may cast this spell as though it had flash if you pay {N} more":
+    // the {N} is an optional additional cost that grants flash timing, not
+    // an alternative cost (CR 118.8, 601.2f), so it combines with free casts
+    // and other alternative costs.
     if let crate::alternative_cast::AlternativeCastingMethod::FlashWithAdditionalCost {
         additional_cost,
         ..
     } = &method
     {
-        let printed = builder
-            .card_builder
-            .mana_cost_ref()
-            .cloned()
-            .unwrap_or_default();
-        let mut pips = printed.pips().to_vec();
-        pips.extend(additional_cost.pips().iter().cloned());
-        method = crate::alternative_cast::AlternativeCastingMethod::flash_with_additional_cost(
-            additional_cost.clone(),
-            crate::cost::TotalCost::mana(crate::mana::ManaCost::from_pips(pips)),
-        );
+        return Ok(builder.optional_cost(crate::cost::OptionalCost::flash_timing(
+            crate::cost::TotalCost::mana(additional_cost.clone()),
+        )));
     }
     if let crate::alternative_cast::AlternativeCastingMethod::Retrace { total_cost } = &method {
         let printed = builder

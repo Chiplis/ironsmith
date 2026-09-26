@@ -1358,6 +1358,17 @@ impl Effect {
         ))
     }
 
+    /// "Prevent all combat damage that would be dealt to and dealt by <X>".
+    pub fn prevent_all_combat_damage_to_and_from(
+        target: crate::target::ChooseSpec,
+        until: Until,
+    ) -> Self {
+        Self::new(crate::effects::PreventAllCombatDamageEffect::new(
+            crate::effects::CombatDamagePreventionTarget::ToAndFrom(target),
+            until,
+        ))
+    }
+
     pub fn prevent_all_combat_damage_source_would_deal(
         target: crate::target::ChooseSpec,
         until: Until,

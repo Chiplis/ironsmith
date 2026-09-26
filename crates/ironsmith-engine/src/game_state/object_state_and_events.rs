@@ -1046,21 +1046,32 @@ impl GameState {
 
     /// Apply day/night setup rules for a permanent that just entered the battlefield.
     pub fn handle_day_night_object_entered(&mut self, id: ObjectId) {
-        let Some((sets_day_if_unset, daybound_or_nightbound)) =
-            self.object(id).and_then(|object| {
-                (object.zone == Zone::Battlefield).then(|| {
-                    (
-                        Self::object_starts_daytime_if_unset_as_enters(object),
-                        Self::object_has_day_or_nightbound_keyword(object),
-                    )
-                })
+        let Some((sets_day_if_unset, daybound, nightbound)) = self.object(id).and_then(|object| {
+            (object.zone == Zone::Battlefield).then(|| {
+                (
+                    Self::object_starts_daytime_if_unset_as_enters(object),
+                    Self::object_has_daybound_keyword(object),
+                    Self::object_has_nightbound_keyword(object),
+                )
             })
-        else {
+        }) else {
             return;
         };
+        let daybound_or_nightbound = daybound || nightbound;
 
-        if !self.has_day_night && (sets_day_if_unset || daybound_or_nightbound) {
-            self.set_daytime(true);
+        if !self.has_day_night {
+            if sets_day_if_unset || daybound {
+                // CR 702.145d: a daybound permanent makes it day.
+                self.set_daytime(true);
+            } else if nightbound {
+                // CR 702.145g: a nightbound permanent makes it night, unless
+                // a daybound permanent is on the battlefield (702.145d).
+                let daybound_on_battlefield = self.battlefield.iter().any(|&other| {
+                    self.object(other)
+                        .is_some_and(|object| Self::object_has_daybound_keyword(object))
+                });
+                self.set_daytime(daybound_on_battlefield);
+            }
         }
         // CR 702.145b / 712.14: if it is night, a daybound double-faced
         // permanent enters transformed. Entering transformed isn't
@@ -2807,13 +2818,34 @@ impl GameState {
         current_is_secondary_face: bool,
     ) -> Object {
         let mut destination = object.clone();
-        if object.kind == crate::object::ObjectKind::Card
-            && current_is_secondary_face
-            && let Some(front_definition) = self.linked_face_definition_by_name_or_id(
-                object.other_face_name.as_deref(),
-                object.other_face,
-            )
-        {
+        // Each component becomes a new object with its printed characteristics
+        // (CR 729.3, 400.7): a Clone's copy effect ends (CR 707.2), a
+        // face-down card is turned face up (CR 708.9), and prototype/bestow
+        // cast characteristics end (CR 718.4, 702.103). Same order as an
+        // ordinary battlefield leave.
+        destination.end_enters_as_copy_overlay();
+        destination.end_prototype_cast_overlay();
+        destination.end_bestow_cast_overlay();
+        destination.end_face_down_cast_overlay();
+        if destination.kind != crate::object::ObjectKind::Card {
+            return destination;
+        }
+        // CR 712.8a: outside the battlefield a transforming DFC has only its
+        // front face. Decide by the printed faces rather than transform-count
+        // parity, which misses permanents that entered transformed.
+        let front_definition = self
+            .default_face_definition_for_transform_like_return(&destination)
+            .or_else(|| {
+                (current_is_secondary_face && destination.name == object.name)
+                    .then(|| {
+                        self.linked_face_definition_by_name_or_id(
+                            destination.other_face_name.as_deref(),
+                            destination.other_face,
+                        )
+                    })
+                    .flatten()
+            });
+        if let Some(front_definition) = front_definition {
             destination.apply_definition_face(&front_definition);
         }
         destination

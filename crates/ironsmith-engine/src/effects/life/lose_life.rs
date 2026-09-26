@@ -30,16 +30,28 @@ impl SimultaneousEffectProposal for LoseLifeProposal {
         if game.player(self.player).is_none() {
             return Err(ExecutionError::PlayerNotFound(self.player));
         }
-        game.lose_life(self.player, self.amount);
-
-        let outcome = EffectOutcome::count(self.amount as i32);
         if self.amount == 0 {
-            return Ok(outcome);
+            return Ok(EffectOutcome::count(0));
         }
-        Ok(outcome.with_event(TriggerEvent::new_with_provenance(
-            LifeLossEvent::from_effect(self.player, self.amount),
-            self.provenance,
-        )))
+        // CR 614.1a: life-loss replacements (Bloodletter of Aclazotz) modify
+        // the amount; CR 119.8: a player who can't lose life loses none, so
+        // there is no "life lost this way" and no life-loss event.
+        let amount = crate::events::processing::process_life_loss_with_event(
+            game,
+            self.player,
+            self.amount,
+            false,
+        );
+        let lost = game.lose_life(self.player, amount);
+        if lost == 0 {
+            return Ok(EffectOutcome::prevented());
+        }
+        Ok(EffectOutcome::count(lost as i32).with_event(
+            TriggerEvent::new_with_provenance(
+                LifeLossEvent::from_effect(self.player, lost),
+                self.provenance,
+            ),
+        ))
     }
 }
 

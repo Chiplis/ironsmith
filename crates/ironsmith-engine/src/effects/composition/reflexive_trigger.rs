@@ -329,6 +329,10 @@ impl EffectExecutor for ReflexiveTriggerEffect {
         if !tagged_objects.contains_key(&it_tag) && !fallback_it_snapshots.is_empty() {
             tagged_objects.insert(it_tag, fallback_it_snapshots);
         }
+        // The reflexive ability resolves later, as its own resolution: carry
+        // the objects this resolution moved as the objects they became
+        // (CR 400.7j), and nothing it couldn't follow itself.
+        crate::effects::helpers::pin_tagged_objects_to_current(game, ctx, &mut tagged_objects);
 
         // CR 603.12: a reflexive triggered ability triggers now but, like any
         // triggered ability, is put on the stack the next time a player would

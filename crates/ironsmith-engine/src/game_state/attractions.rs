@@ -180,6 +180,33 @@ impl GameState {
         self.bump_mutation_revision();
     }
 
+    /// CR 717.6: a card with an Astrotorium back that would be put into a
+    /// zone other than the battlefield, exile or the command zone goes to its
+    /// owner's command zone instead (its "junkyard", CR 717.6a). The
+    /// replacement may apply more than once to one event, so it is applied to
+    /// the move's final destination, after every other replacement.
+    pub(crate) fn attraction_card_destination(&self, object: ObjectId, requested: Zone) -> Zone {
+        if matches!(requested, Zone::Battlefield | Zone::Exile | Zone::Command) {
+            return requested;
+        }
+        if self.is_attraction_card(object) {
+            Zone::Command
+        } else {
+            requested
+        }
+    }
+
+    /// Whether `object` is one of the physical Attraction cards (CR 717.1).
+    pub(crate) fn is_attraction_card(&self, object: ObjectId) -> bool {
+        let Some(state) = self.attractions.as_ref() else {
+            return false;
+        };
+        self.object(object).is_some_and(|candidate| {
+            candidate.kind == crate::object::ObjectKind::Card
+                && state.lights.contains_key(&candidate.stable_id)
+        })
+    }
+
     pub(crate) fn note_attraction_left_battlefield(&mut self, object: ObjectId) {
         if let Some(state) = self.attractions.as_mut() {
             state.face_up.retain(|candidate| *candidate != object);

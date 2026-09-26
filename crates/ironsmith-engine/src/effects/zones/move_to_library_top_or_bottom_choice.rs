@@ -111,7 +111,7 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
             for (idx, snapshot) in tagged.iter().enumerate() {
                 if idx < object_ids.len()
                     && game.object(object_ids[idx]).is_none()
-                    && let Some(resolved) = resolve_tagged_object_id(game, snapshot)
+                    && let Some(resolved) = resolve_tagged_object_id(game, ctx, snapshot)
                 {
                     object_ids[idx] = resolved;
                 }

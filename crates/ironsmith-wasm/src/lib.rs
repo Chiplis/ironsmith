@@ -2239,6 +2239,9 @@ enum PriorityActionRef {
     },
     PlayLand {
         land_id: u64,
+        /// CR 712.12: play a land//land modal DFC as its back face.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        back_face: bool,
     },
     ActivateManaAbility {
         source: u64,
@@ -2261,6 +2264,8 @@ enum PriorityActionRef {
 enum SpecialActionRef {
     PlayLand {
         card_id: u64,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        back_face: bool,
     },
     TurnFaceUp {
         permanent_id: u64,

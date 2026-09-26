@@ -486,6 +486,8 @@ pub(crate) fn interpret_trigger_model(
         } => {
             if excess_only && noncombat_only {
                 crate::triggers::Trigger::is_dealt_excess_noncombat_damage(target)
+            } else if excess_only {
+                crate::triggers::Trigger::is_dealt_excess_damage(target, combat_only)
             } else if combat_only {
                 crate::triggers::Trigger::is_dealt_combat_damage(target)
             } else {

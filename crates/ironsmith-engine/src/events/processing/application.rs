@@ -194,6 +194,14 @@ pub(super) fn apply_trait_replacement(
         }
 
         ReplacementAction::Double => {
+            if let Some(create_tokens) =
+                crate::events::downcast_event::<crate::events::CreateTokensEvent>(event.inner())
+            {
+                let covers = token_groups_covered(game, effect, create_tokens);
+                let modified =
+                    create_tokens.scaled_groups(covers, |count| count.saturating_mul(2));
+                return TraitApplyResult::Modified(event.rewrap(modified));
+            }
             let modified = apply_trait_double(&event);
             match modified {
                 Some(e) => TraitApplyResult::Modified(e),
@@ -505,7 +513,19 @@ pub(super) fn apply_trait_replacement(
             let Some(create_tokens) = downcast_event::<CreateTokensEvent>(event.inner()) else {
                 return TraitApplyResult::Unchanged(event);
             };
-            match apply_trait_add_tokens(&event, *token, create_tokens.count) {
+            // "that many": every covered token, including ones an earlier
+            // replacement added (CR 616.1).
+            let that_many = {
+                let covers = token_groups_covered(game, effect, create_tokens);
+                let mut that_many = if covers(None) { create_tokens.count } else { 0 };
+                for (kind, count) in &create_tokens.additional_tokens {
+                    if covers(Some(*kind)) {
+                        that_many = that_many.saturating_add(*count);
+                    }
+                }
+                that_many
+            };
+            match apply_trait_add_tokens(&event, *token, that_many) {
                 Some(e) => TraitApplyResult::Modified(e),
                 None => TraitApplyResult::Unchanged(event),
             }
@@ -517,6 +537,9 @@ pub(super) fn apply_trait_replacement(
             let Some(create_tokens) = downcast_event::<CreateTokensEvent>(event.inner()) else {
                 return TraitApplyResult::Unchanged(event);
             };
+            // Each token group of one of `kinds` (the original token or one an
+            // earlier replacement added, CR 616.1) becomes one of each kind.
+            let covers = token_groups_covered(game, effect, create_tokens);
             let created_kind = create_tokens.token.as_ref().and_then(|token| {
                 kinds.iter().copied().find(|kind| {
                     token.has_subtype(match kind {
@@ -531,10 +554,23 @@ pub(super) fn apply_trait_replacement(
                     })
                 })
             });
+            let mut groups: Vec<(ironsmith_core::AdditionalTokenKind, u32)> = Vec::new();
+            if let Some(kind) = created_kind
+                && covers(None)
+            {
+                groups.push((kind, create_tokens.count));
+            }
+            for (kind, count) in &create_tokens.additional_tokens {
+                if kinds.contains(kind) && covers(Some(*kind)) {
+                    groups.push((*kind, *count));
+                }
+            }
             let mut modified = create_tokens.clone();
-            for kind in kinds {
-                if Some(*kind) != created_kind {
-                    modified = modified.with_additional_tokens(*kind, create_tokens.count);
+            for (group_kind, group_count) in groups {
+                for kind in kinds {
+                    if *kind != group_kind {
+                        modified = modified.with_additional_tokens(*kind, group_count);
+                    }
                 }
             }
             TraitApplyResult::Modified(event.rewrap(modified))
@@ -1036,6 +1072,37 @@ pub(super) fn find_matching_sacrificable_permanents(
         .collect()
 }
 
+/// Which token groups of a token-creation event a replacement's token filter
+/// covers: `None` is the original token, `Some(kind)` a group an earlier
+/// replacement added (CR 616.1, 614.1).
+fn token_groups_covered<'a>(
+    game: &'a GameState,
+    effect: &'a ReplacementEffect,
+    create_tokens: &'a crate::events::CreateTokensEvent,
+) -> impl Fn(Option<ironsmith_core::AdditionalTokenKind>) -> bool + 'a {
+    let filter = effect
+        .matcher
+        .as_ref()
+        .and_then(|matcher| matcher.token_group_filter());
+    let filter_ctx = game.filter_context_for(effect.controller, Some(effect.source));
+    move |group| {
+        let Some(filter) = filter else {
+            return true;
+        };
+        match group {
+            None => create_tokens
+                .token
+                .as_ref()
+                .is_some_and(|token| filter.matches(token, &filter_ctx, game)),
+            Some(kind) => filter.matches(
+                &crate::events::tokens::additional_token_object(kind, create_tokens.controller),
+                &filter_ctx,
+                game,
+            ),
+        }
+    }
+}
+
 fn apply_trait_add_tokens(
     event: &Event,
     token: ironsmith_core::AdditionalTokenKind,
@@ -1128,9 +1195,12 @@ fn apply_trait_modification(
         EventKind::CreateTokens => {
             let create_tokens = downcast_event::<CreateTokensEvent>(event.inner())?;
             let modified = match modification {
-                EventModification::Multiply(factor) => {
-                    create_tokens.with_count(create_tokens.count.saturating_mul(*factor))
-                }
+                // "N times that many of those tokens" scales every covered
+                // group, including tokens an earlier replacement added.
+                EventModification::Multiply(factor) => create_tokens.scaled_groups(
+                    token_groups_covered(game, effect, create_tokens),
+                    |count| count.saturating_mul(*factor),
+                ),
                 EventModification::Add(delta) => {
                     create_tokens.with_count((create_tokens.count as i32 + delta).max(0) as u32)
                 }

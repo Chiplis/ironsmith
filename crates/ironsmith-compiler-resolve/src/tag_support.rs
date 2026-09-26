@@ -951,6 +951,7 @@ pub fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
                     count,
                     dynamic_power_toughness,
                     attached_to,
+                    combat_entry,
                     ..
                 }),
             ..
@@ -962,6 +963,10 @@ pub fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
                         value_references_tag(power, tag) || value_references_tag(toughness, tag)
                     })
                 || attached_to
+                    .as_ref()
+                    .is_some_and(|target| target_references_tag(target, tag))
+                || combat_entry
+                    .blocking
                     .as_ref()
                     .is_some_and(|target| target_references_tag(target, tag))
         }
@@ -2253,9 +2258,12 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 count,
                 dynamic_power_toughness,
                 attached_to,
+                combat_entry,
                 ..
             }) => {
-                value_references_tag(count, crate::tag::CompilerReferenceTag::It.as_str())
+                combat_entry.blocking.as_ref().is_some_and(|target| {
+                    target_references_tag(target, crate::tag::CompilerReferenceTag::It.as_str())
+                }) || value_references_tag(count, crate::tag::CompilerReferenceTag::It.as_str())
                     || dynamic_power_toughness
                         .as_ref()
                         .is_some_and(|(power, toughness)| {

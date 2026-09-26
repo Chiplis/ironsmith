@@ -143,6 +143,38 @@ impl GameState {
             self.update_replacement_effects();
             self.update_cant_effects();
         }
+
+        // CR 800.4c: when the effect giving an in-game player control ends and
+        // control would revert to a player who has left the game, the object
+        // is exiled immediately (not as a state-based action).
+        if !self.turn_store.departed_player_history.is_empty()
+            && !self.turn_store.leave_game_in_progress
+            && self.exile_permanents_controlled_by_departed_players()
+        {
+            self.refresh_continuous_state();
+        }
+    }
+
+    /// Exile every permanent whose current controller has left the game.
+    /// Returns whether anything moved.
+    fn exile_permanents_controlled_by_departed_players(&mut self) -> bool {
+        let controlled_by_absent_player = self
+            .battlefield
+            .iter()
+            .copied()
+            .filter(|&id| {
+                self.current_controller(id).is_some_and(|controller| {
+                    !self
+                        .player(controller)
+                        .is_some_and(|candidate| candidate.is_in_game())
+                })
+            })
+            .collect::<Vec<_>>();
+        let moved = !controlled_by_absent_player.is_empty();
+        for object_id in controlled_by_absent_player {
+            let _ = self.move_object_by_game_rule(object_id, Zone::Exile);
+        }
+        moved
     }
 
     /// Translate changes in derived control into CR 302.6 state.
@@ -2781,13 +2813,14 @@ impl GameState {
             _ => return requested_zone,
         };
 
-        // A merged permanent moves as one object, then its components become
-        // separate new objects. CR 730.3d and 903.9b let only the commander
-        // component use the hand/library command-zone replacement.
-        if self
-            .object(object_id)
-            .is_some_and(|object| self.merged_permanent(object.stable_id).is_some())
-        {
+        // A merged or melded permanent moves as one object, then its
+        // components become separate new objects. CR 730.3d, 903.9b and
+        // 903.9c let only the commander component use the hand/library
+        // command-zone replacement; see `prepare_merged_component_destinations`.
+        if self.object(object_id).is_some_and(|object| {
+            self.merged_permanent(object.stable_id).is_some()
+                || self.melded_permanent(object.stable_id).is_some()
+        }) {
             return requested_zone;
         }
 
@@ -2815,7 +2848,7 @@ impl GameState {
     }
 
     /// Resolve hand/library commander replacement choices independently for
-    /// the physical components of a merged permanent.
+    /// the physical components of a merged or melded permanent.
     pub(crate) fn prepare_merged_component_destinations(
         &mut self,
         object_id: ObjectId,
@@ -2828,18 +2861,49 @@ impl GameState {
         let Some(stable_id) = self.object(object_id).map(|object| object.stable_id) else {
             return;
         };
-        let Some(merged) = self.merged_permanent(stable_id).cloned() else {
-            return;
-        };
-
-        let mut destinations = Vec::with_capacity(merged.components.len());
-        for component in &merged.components {
-            let commander_identity = component.object.stable_id.object_id();
-            let is_commander = component.is_commander
-                || self
-                    .players
+        // (is_commander, owner, name) for each physical component, in the
+        // order the split creates the new objects.
+        let components: Vec<(bool, PlayerId, String)> =
+            if let Some(merged) = self.merged_permanent(stable_id) {
+                merged
+                    .components
                     .iter()
-                    .any(|player| player.commanders.contains(&commander_identity));
+                    .map(|component| {
+                        let commander_identity = component.object.stable_id.object_id();
+                        (
+                            component.is_commander
+                                || self
+                                    .players
+                                    .iter()
+                                    .any(|player| player.commanders.contains(&commander_identity)),
+                            component.object.owner,
+                            component.object.name.to_string(),
+                        )
+                    })
+                    .collect()
+            } else if let Some(melded) = self.melded_permanent(stable_id) {
+                // CR 903.9c: only the meld card that is a commander may go to
+                // the command zone; the other card goes to hand/library.
+                melded
+                    .components
+                    .iter()
+                    .map(|component| {
+                        let commander_identity = component.stable_id.object_id();
+                        (
+                            self.players
+                                .iter()
+                                .any(|player| player.commanders.contains(&commander_identity)),
+                            component.owner,
+                            component.name.clone(),
+                        )
+                    })
+                    .collect()
+            } else {
+                return;
+            };
+
+        let mut destinations = Vec::with_capacity(components.len());
+        for (is_commander, owner, name) in components {
             if !is_commander {
                 destinations.push(requested_zone);
                 continue;
@@ -2850,11 +2914,11 @@ impl GameState {
                 _ => unreachable!(),
             };
             let choice = crate::decisions::context::BooleanContext::new(
-                component.object.owner,
+                owner,
                 Some(object_id),
                 format!("move it to the command zone instead of {destination_text}"),
             )
-            .with_source_name(component.object.name.to_string());
+            .with_source_name(name);
             destinations.push(if decision_maker.decide_boolean(self, &choice) {
                 Zone::Command
             } else {

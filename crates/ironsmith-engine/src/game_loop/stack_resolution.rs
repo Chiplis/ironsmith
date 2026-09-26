@@ -982,6 +982,11 @@ pub(super) fn resolve_stack_entry_full(
         // ability, whose stack object is only a stand-in for the copy.
         .with_cause(EventCause::from_effect(execution_source, entry.controller))
         .with_provenance(entry.provenance);
+    // CR 400.7j: only objects this resolution moves are new objects its
+    // instructions may still find.
+    ctx.resolution_object_id_floor = Some(crate::ids::ObjectId::from_raw(
+        game.next_object_id_counter(),
+    ));
     if let Some(x) = entry.x_value {
         ctx = ctx.with_x(x);
     }
@@ -1958,6 +1963,7 @@ pub(super) fn resolve_stack_entry_full(
                             expires_at_turn: None,
                             expires_before_controller_turn_after: None,
                             expires_at_end_of_combat: false,
+                            bound_extra_turn_index: None,
                             while_any_tagged_object_in_zone: None,
                             target_objects: vec![exiled_id],
                             ability_source: None,

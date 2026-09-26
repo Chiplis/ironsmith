@@ -122,3 +122,60 @@ pub(super) fn effect_duration_for_gain_followup_carry(effect: &EffectAst) -> Opt
         Some(duration.clone())
     }
 }
+
+/// Fold a bare "loses B until end of turn" arm (parsed with a synthetic "it"
+/// subject) back into the preceding lose-ability effect over the shared
+/// subject: "Permanents your opponents control lose hexproof and
+/// indestructible until end of turn" is one removal of both abilities from
+/// the same locked set, for the stated duration (CR 611.2a, 611.2c).
+/// `followup` is always the synthetic implicit-"it" arm built by the chain
+/// splitter. Returns false when `previous` isn't a lose-ability effect,
+/// leaving both untouched.
+pub(super) fn merge_shared_subject_lose_followup(
+    previous: &mut EffectAst,
+    followup: &EffectAst,
+) -> bool {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
+                abilities: followup_abilities,
+                duration: followup_duration,
+                ..
+            }),
+        ..
+    }) = followup
+    else {
+        return false;
+    };
+    let (abilities, duration) = match previous {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::StatChanges(
+                    StatChangeActionAst::RemoveAbilitiesAll {
+                        abilities,
+                        duration,
+                        condition: None,
+                        ..
+                    },
+                ),
+            ..
+        }) => (abilities, duration),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
+                    abilities,
+                    duration,
+                    ..
+                }),
+            ..
+        }) => (abilities, duration),
+        _ => return false,
+    };
+    if !matches!(duration, Until::Forever) && duration != followup_duration {
+        return false;
+    }
+    abilities.extend(followup_abilities.iter().cloned());
+    *duration = followup_duration.clone();
+    true
+}
+

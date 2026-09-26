@@ -37,6 +37,7 @@ pub struct DelayedTriggerConfig {
     /// whose turn number is greater than this anchor.
     pub expires_before_controller_turn_after: Option<u32>,
     pub expires_at_end_of_combat: bool,
+    pub bound_extra_turn_index: Option<usize>,
     pub while_any_tagged_object_in_zone: Option<(TagKey, crate::zone::Zone)>,
     pub target_objects: Vec<ObjectId>,
     pub ability_source: Option<ObjectId>,
@@ -65,6 +66,7 @@ impl DelayedTriggerConfig {
             expires_at_turn: None,
             expires_before_controller_turn_after: None,
             expires_at_end_of_combat: false,
+            bound_extra_turn_index: None,
             while_any_tagged_object_in_zone: None,
             target_objects,
             ability_source: None,
@@ -95,6 +97,11 @@ impl DelayedTriggerConfig {
 
     pub fn with_expires_at_end_of_combat(mut self, expires: bool) -> Self {
         self.expires_at_end_of_combat = expires;
+        self
+    }
+
+    pub fn with_bound_extra_turn_index(mut self, index: Option<usize>) -> Self {
+        self.bound_extra_turn_index = index;
         self
     }
 
@@ -180,6 +187,7 @@ pub(crate) struct DelayedTriggerTemplate {
     pub expires_at_turn: Option<u32>,
     pub expires_before_controller_turn_after: Option<u32>,
     pub expires_at_end_of_combat: bool,
+    pub bound_extra_turn_index: Option<usize>,
     pub while_any_tagged_object_in_zone: Option<(TagKey, crate::zone::Zone)>,
     pub ability_source: Option<ObjectId>,
     pub controller: PlayerId,
@@ -206,6 +214,7 @@ impl DelayedTriggerTemplate {
             expires_at_turn: None,
             expires_before_controller_turn_after: None,
             expires_at_end_of_combat: false,
+            bound_extra_turn_index: None,
             while_any_tagged_object_in_zone: None,
             ability_source: None,
             controller,
@@ -235,6 +244,11 @@ impl DelayedTriggerTemplate {
 
     pub fn with_expires_at_end_of_combat(mut self, expires: bool) -> Self {
         self.expires_at_end_of_combat = expires;
+        self
+    }
+
+    pub fn with_bound_extra_turn_index(mut self, index: Option<usize>) -> Self {
+        self.bound_extra_turn_index = index;
         self
     }
 
@@ -309,22 +323,13 @@ pub fn queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig)
         .map(|(stable_id, name, snapshot)| (Some(stable_id), Some(name), Some(snapshot)))
         .unwrap_or((None, None, None));
 
-    // Pin every tagged object to the incarnation it has as the delayed
-    // trigger is created. "Sacrifice it at the beginning of the next end
-    // step" affects that permanent only; if it later leaves and returns it's
-    // a new object the delayed trigger can't find (CR 603.7c, 400.7).
-    let mut tagged_objects = config.tagged_objects;
-    for snapshots in tagged_objects.values_mut() {
-        for snapshot in snapshots.iter_mut() {
-            if let Some(current) = game.find_object_by_stable_id(snapshot.stable_id)
-                && current != snapshot.object_id
-                && let Some(object) = game.object(current)
-            {
-                snapshot.object_id = current;
-                snapshot.zone = object.zone;
-            }
-        }
-    }
+    // Tagged objects are pinned to the incarnation they have as the delayed
+    // trigger is created by the scheduling effect, which knows which moves
+    // its resolution may follow (`pin_tagged_objects_to_current`). "Sacrifice
+    // it at the beginning of the next end step" affects that permanent only;
+    // if it later leaves and returns it's a new object the delayed trigger
+    // can't find (CR 603.7c, 400.7).
+    let tagged_objects = config.tagged_objects;
 
     game.effect_store.delayed_triggers.push(DelayedTrigger {
         trigger: config.trigger,
@@ -335,6 +340,7 @@ pub fn queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig)
         expires_at_turn: config.expires_at_turn,
         expires_before_controller_turn_after: config.expires_before_controller_turn_after,
         expires_at_end_of_combat: config.expires_at_end_of_combat,
+        bound_extra_turn_index: config.bound_extra_turn_index,
         while_any_tagged_object_in_zone: config.while_any_tagged_object_in_zone,
         target_objects: config.target_objects,
         ability_source: config.ability_source,
@@ -375,6 +381,7 @@ pub(crate) fn queue_delayed_from_template(
                     template.expires_before_controller_turn_after,
                 )
                 .with_expires_at_end_of_combat(template.expires_at_end_of_combat)
+                .with_bound_extra_turn_index(template.bound_extra_turn_index)
                 .while_any_tagged_object_in_zone_opt(template.while_any_tagged_object_in_zone)
                 .with_ability_source(template.ability_source)
                 .with_x_value(template.x_value)
@@ -404,6 +411,7 @@ pub(crate) fn queue_delayed_from_template(
                         template.expires_before_controller_turn_after,
                     )
                     .with_expires_at_end_of_combat(template.expires_at_end_of_combat)
+                .with_bound_extra_turn_index(template.bound_extra_turn_index)
                     .while_any_tagged_object_in_zone_opt(
                         template.while_any_tagged_object_in_zone.clone(),
                     )

@@ -18,7 +18,7 @@ impl SpecialAction {
         use crate::cost::TotalCost;
         use crate::costs::PaymentReason;
         let (source, cost, reason) = match *self {
-            Self::PlayLand { .. } | Self::TurnConspiracyFaceUp { .. }
+            Self::PlayLand { .. } | Self::PlayLandBackFace { .. } | Self::TurnConspiracyFaceUp { .. }
             // Mana abilities already own a nested, interactive cost transaction.
             | Self::ActivateManaAbility { .. } => return Ok(None),
             Self::Plot { card_id } => (card_id, TotalCost::mana(plot_cost(game.object(card_id).ok_or(ActionError::ObjectNotFound)?).ok_or(ActionError::NoSuchAbility)?), PaymentReason::Other),

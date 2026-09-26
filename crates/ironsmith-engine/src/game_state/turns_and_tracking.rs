@@ -680,6 +680,17 @@ impl GameState {
     /// state, and future turns that can no longer involve that player are also
     /// pruned in the same atomic procedure.
     pub fn leave_game(&mut self, player: PlayerId) -> bool {
+        // The departure procedure performs its own CR 800.4a/c sweep once the
+        // control effects it ends are gone; suppress the refresh-time sweep
+        // until then.
+        let was_in_progress =
+            std::mem::replace(&mut self.turn_store.leave_game_in_progress, true);
+        let left = self.leave_game_procedure(player);
+        self.turn_store.leave_game_in_progress = was_in_progress;
+        left
+    }
+
+    fn leave_game_procedure(&mut self, player: PlayerId) -> bool {
         if self
             .player(player)
             .is_none_or(|candidate| candidate.has_left_game)
@@ -816,6 +827,9 @@ impl GameState {
             .prepare_for_departing_player(player, departing_turn_boundary.saturating_sub(1));
         self.effect_store
             .replacement_effects
+            .prepare_for_departing_player(player, departing_turn_boundary);
+        self.effect_store
+            .prevention_effects
             .prepare_for_departing_player(player, departing_turn_boundary);
         self.effect_store
             .delayed_triggers
@@ -1006,9 +1020,33 @@ impl GameState {
 
         // Remove future turn and per-player step state. An active player's turn
         // itself continues without that player (CR 800.4j); only priority moves.
+        // Keep "that turn" delayed-trigger bindings pointing at the same
+        // queued extra turns after the departed player's entries are removed.
+        let mut remaining_slot = 0usize;
+        let slot_remap = self
+            .turn_store
+            .extra_turns
+            .iter()
+            .map(|candidate| {
+                (*candidate != player).then(|| {
+                    remaining_slot += 1;
+                    remaining_slot - 1
+                })
+            })
+            .collect::<Vec<_>>();
+        self.effect_store.delayed_triggers.retain_mut(|delayed| {
+            let Some(slot) = delayed.bound_extra_turn_index else {
+                return true;
+            };
+            delayed.bound_extra_turn_index = slot_remap.get(slot).copied().flatten();
+            delayed.bound_extra_turn_index.is_some()
+        });
         self.turn_store
             .extra_turns
             .retain(|candidate| *candidate != player);
+        self.turn_store
+            .extra_turns_after_next_turn
+            .retain(|(candidate, _)| *candidate != player);
         self.turn_store.skip_next_turn.remove_all(player);
         self.turn_store
             .skipped_steps
@@ -1202,11 +1240,37 @@ impl GameState {
     /// 2. If any candidate turn should be skipped, it is skipped (and removed from the skip list)
     /// 3. Otherwise, proceed to the next player in turn order
     pub fn next_turn(&mut self) {
+        self.queue_extra_turns_after_completed_turn();
         if self.grand_melee.is_some() {
             self.next_grand_melee_turn();
             return;
         }
         self.next_turn_single_lane();
+    }
+
+    /// CR 500.7: an extra turn scheduled "after that player's next turn" is
+    /// added as that turn ends, so it is taken directly after it.
+    fn queue_extra_turns_after_completed_turn(&mut self) {
+        if self.turn_store.extra_turns_after_next_turn.is_empty() {
+            return;
+        }
+        let completed_turn = self.turn.turn_number;
+        let completed_players = self.turn_players();
+        let mut due = Vec::new();
+        self.turn_store
+            .extra_turns_after_next_turn
+            .retain(|(player, created_turn)| {
+                let is_due =
+                    completed_turn > *created_turn && completed_players.contains(player);
+                if is_due {
+                    due.push(*player);
+                }
+                !is_due
+            });
+        for player in due {
+            let turn_player = self.team_turn_representative(player);
+            self.turn_store.extra_turns.push(turn_player);
+        }
     }
 
     pub(crate) fn next_turn_single_lane(&mut self) {
@@ -1223,6 +1287,7 @@ impl GameState {
         extra_turn_override: Option<bool>,
     ) {
         let completed_turn_players = self.turn_players();
+        let completed_turn_players_for_durations = completed_turn_players.clone();
         // CR 500.7: an extra turn is inserted after the turn that created it;
         // normal turn order resumes from the last normal turn's player.
         let turn_order_anchor = self.normal_turn_order_anchor();
@@ -1234,9 +1299,11 @@ impl GameState {
             .position(|&player| player == turn_order_anchor)
             .unwrap_or(0);
         let mut normal_index = (current_index + 1) % self.turn_store.turn_order.len();
+        let mut selected_extra_turn_slot = None;
         let (next_player, selected_from_extra_turn_queue) = loop {
             let (candidate, is_extra_turn) =
                 if let Some(extra_turn) = self.turn_store.extra_turns.pop() {
+                    selected_extra_turn_slot = Some(self.turn_store.extra_turns.len());
                     (self.team_turn_representative(extra_turn), true)
                 } else if self.shared_team_turns_enabled() {
                     let player = self
@@ -1250,22 +1317,39 @@ impl GameState {
                     (player, false)
                 };
 
-            if !self
+            let skipped = !self
                 .player(candidate)
                 .is_some_and(|player| player.is_in_game())
-            {
-                continue;
-            }
-            if extra_turn_override.unwrap_or(is_extra_turn)
-                && self.player_skips_extra_turn(candidate)
-            {
-                continue;
-            }
-            if self.consume_team_turn_skip(candidate) {
+                || (extra_turn_override.unwrap_or(is_extra_turn)
+                    && self.player_skips_extra_turn(candidate))
+                || self.consume_team_turn_skip(candidate);
+            if skipped {
+                // CR 614.10a: a skipped extra turn never happens, so "that
+                // turn" delayed triggers bound to it cease to exist.
+                if let Some(slot) = selected_extra_turn_slot.take() {
+                    self.effect_store
+                        .delayed_triggers
+                        .retain(|delayed| delayed.bound_extra_turn_index != Some(slot));
+                }
                 continue;
             }
             break (candidate, is_extra_turn);
         };
+        // The extra turn a "that turn" delayed trigger waited for begins now:
+        // bind it to this turn's number so it can fire during this turn only.
+        if let Some(slot) = selected_extra_turn_slot {
+            let turn_number = self.turn.turn_number + 1;
+            for delayed in self
+                .effect_store
+                .delayed_triggers
+                .iter_mut()
+                .filter(|delayed| delayed.bound_extra_turn_index == Some(slot))
+            {
+                delayed.bound_extra_turn_index = None;
+                delayed.not_before_turn = Some(turn_number);
+                delayed.expires_at_turn = Some(turn_number);
+            }
+        }
 
         // Reset turn state
         self.turn_store.current_turn_is_extra =
@@ -1371,6 +1455,16 @@ impl GameState {
         self.effect_store
             .replacement_effects
             .expire_at_turn_start(self.turn.turn_number, &active_players);
+        self.effect_store.continuous_effects.expire_at_turn_start(
+            self.turn.turn_number,
+            &completed_turn_players_for_durations,
+            &active_players,
+        );
+        self.effect_store.prevention_effects.expire_at_turn_start(
+            self.turn.turn_number,
+            &completed_turn_players_for_durations,
+            &active_players,
+        );
 
         // Begin the shared turn independently for each active player.
         for player in self.turn_players() {

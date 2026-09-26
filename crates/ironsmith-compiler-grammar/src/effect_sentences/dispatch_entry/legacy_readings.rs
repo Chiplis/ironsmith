@@ -155,6 +155,10 @@ const READINGS: &[Reading] = &[
                 .is_none()
                 && effect_grammar::delayed_sentence_shapes::parse_delayed_this_turn_shape(tokens)
                     .is_none()
+                // "At the beginning of the next/each combat this turn, ..."
+                // is a delayed trigger the effect creates.
+                && effect_grammar::delayed_sentence_shapes::parse_delayed_next_combat_shape(tokens)
+                    .is_none()
         },
         read: |input| input.outcome(read_trigger_line_sentence(input)),
     },

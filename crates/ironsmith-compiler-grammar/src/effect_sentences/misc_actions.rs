@@ -682,6 +682,29 @@ pub fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError>
             result_conjunction: false,
         });
     }
+    // "untap it and all Samurai you control" (Godo): the named object plus
+    // a separate set — a union of two untaps, not one conjunctive filter.
+    if let UntapActionShape::Explicit { target_tokens } =
+        misc_action_shapes::parse_untap_action_tokens(tokens)
+        && let Some(and_idx) = target_tokens.windows(2).position(|pair| {
+            pair[0].is_word("and") && (pair[1].is_word("all") || pair[1].is_word("each"))
+        })
+        && and_idx > 0
+        && and_idx + 2 < target_tokens.len()
+        && let Ok(mut left) = parse_target_phrase(&target_tokens[..and_idx])
+        && let Ok(mut right) = parse_object_filter(&target_tokens[and_idx + 2..], false)
+    {
+        constrain_untap_target_to_battlefield(&mut left);
+        constrain_untap_filter_to_battlefield(&mut right);
+        return Ok(EffectAst::Coordinated {
+            effects: vec![
+                EffectAst::subject_verb_untap(left),
+                EffectAst::subject_verb_untap_all(right),
+            ],
+            leading_duration: false,
+            result_conjunction: false,
+        });
+    }
     match misc_action_shapes::parse_untap_action_tokens(tokens) {
         UntapActionShape::All { filter_tokens } => {
             let mut filter = parse_object_filter(filter_tokens, false)?;

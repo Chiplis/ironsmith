@@ -2078,6 +2078,9 @@ use crate::recognition::ParseOutcome;
 mod trigger_clause_readings;
 
 pub fn parse_trigger_clause_lexed(tokens: &[OwnedLexToken]) -> Result<TriggerSpec, CardTextError> {
+    if let Some(qualified) = try_parse_while_source_is_attacking_trigger_lexed(tokens)? {
+        return Ok(qualified);
+    }
     // Beginning-of-combat clauses are a small, complete phase-event grammar.
     // Recognize that shape before entering the legacy aggregate matcher,
     // whose large filter temporaries otherwise dominate this hot path's
@@ -2089,6 +2092,42 @@ pub fn parse_trigger_clause_lexed(tokens: &[OwnedLexToken]) -> Result<TriggerSpe
         ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
     parse_trigger_clause_lexed_unstacked(tokens)
+}
+
+/// "<event> while this creature is attacking" (Fire Lord Azula): the event
+/// triggers only while the source is an attacking creature, checked when the
+/// event happens.
+fn try_parse_while_source_is_attacking_trigger_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    let trimmed = trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::token_word_refs(trimmed);
+    let suffix_len = if words.ends_with(&["while", "this", "creature", "is", "attacking"]) {
+        5
+    } else if words.ends_with(&["while", "this", "is", "attacking"]) {
+        4
+    } else {
+        return Ok(None);
+    };
+    let head_word_count = words.len() - suffix_len;
+    if head_word_count == 0 {
+        return Ok(None);
+    }
+    let Some(while_token_idx) = trigger_word_token_start(trimmed, head_word_count) else {
+        return Ok(None);
+    };
+    let head = trim_edge_punctuation_tokens(&trimmed[..while_token_idx]);
+    if head.is_empty() {
+        return Ok(None);
+    }
+    let trigger = parse_trigger_clause_lexed(head)?;
+    Ok(Some(TriggerSpec::ConditionQualified {
+        trigger: Box::new(trigger),
+        condition: crate::cards::builders::PredicateAst::Source(
+            crate::cards::builders::SourcePredicateAst::SourceIsAttacking,
+        ),
+        surface: "this creature is attacking".to_string(),
+    }))
 }
 
 fn try_parse_simple_beginning_of_combat_trigger_lexed(

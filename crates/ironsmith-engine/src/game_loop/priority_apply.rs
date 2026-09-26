@@ -313,14 +313,20 @@ pub fn apply_priority_response_with_dm(
         | LegalAction::UsePregameAction { .. } => Err(GameLoopError::InvalidState(
             "Pregame actions can't be used during the normal priority loop".to_string(),
         )),
-        LegalAction::PlayLand { land_id } => {
+        LegalAction::PlayLand { land_id } | LegalAction::PlayLandBackFace { land_id } => {
             // Play the land with ETB replacement handling
             let player = game
                 .turn
                 .priority_player
                 .ok_or_else(|| GameLoopError::InvalidState("No priority player".to_string()))?;
 
-            let action = crate::special_actions::SpecialAction::PlayLand { card_id: *land_id };
+            // CR 712.12: the land face chosen for a modal DFC.
+            let back_face = matches!(action, LegalAction::PlayLandBackFace { .. });
+            let action = if back_face {
+                crate::special_actions::SpecialAction::PlayLandBackFace { card_id: *land_id }
+            } else {
+                crate::special_actions::SpecialAction::PlayLand { card_id: *land_id }
+            };
 
             // Validate that the player can play the land
             crate::special_actions::can_perform(&action, game, player, &mut *decision_maker)
@@ -336,16 +342,7 @@ pub fn apply_priority_response_with_dm(
                     .effect_store
                     .grant_registry
                     .land_play_from_permissions_enters_tapped(game, *land_id, old_zone, player);
-            if let Some(linked_land_def) = game
-                .object(*land_id)
-                .and_then(|object| crate::decision::linked_other_face_land_definition(game, object))
-                && let Some(object) = game.object_mut(*land_id)
-            {
-                object.apply_definition_face(&linked_land_def);
-                // CR 712.8f: a modal DFC played as its land back face has only that
-                // face's characteristics, so no front-face mana value carries over.
-                object.linked_face_mana_cost = None;
-            }
+            crate::special_actions::apply_land_play_face(game, *land_id, back_face);
             let result = if permission_forces_tapped {
                 game.move_object_with_etb_processing_with_dm_and_forced_tapped(
                     *land_id,
@@ -639,8 +636,13 @@ pub fn apply_priority_response_with_dm(
                 .turn
                 .priority_player
                 .ok_or_else(|| GameLoopError::InvalidState("No priority player".to_string()))?;
-            let cost = crate::decision::calculate_effective_activation_total_cost(
-                game, player, *source, &base_cost,
+            let cost = crate::decision::calculate_effective_activation_total_cost_for_ability(
+                game,
+                player,
+                *source,
+                &base_cost,
+                &[],
+                crate::decision::ActivationCostAbility::at(game, player, *source, *ability_index),
             );
             let activation_cost_has_tap = total_cost_contains_tap(&cost);
             let alternative_cost_branches = cost
@@ -829,8 +831,18 @@ pub fn apply_priority_response_with_dm(
                 let base_cost = mana_ability.mana_cost.clone();
                 let mana_usage_restrictions = mana_ability.mana_usage_restrictions.clone();
                 let mana_source_chosen_creature_type = game.chosen_creature_type(*source);
-                let cost = crate::decision::calculate_effective_activation_total_cost(
-                    game, player, *source, &base_cost,
+                let cost = crate::decision::calculate_effective_activation_total_cost_for_ability(
+                    game,
+                    player,
+                    *source,
+                    &base_cost,
+                    &[],
+                    Some(crate::decision::ActivationCostAbility::of(
+                        game,
+                        player,
+                        *source,
+                        mana_ability,
+                    )),
                 );
                 let activation_cost_has_tap = cost.costs().iter().any(|cost| cost.requires_tap());
                 let mana_production_provenance =
@@ -1290,14 +1302,19 @@ pub(super) fn apply_targets_response(
                 ),
                 None => activated.mana_cost.clone(),
             };
-            let repriced =
-                crate::decision::calculate_effective_activation_total_cost_with_chosen_targets(
+            let repriced = crate::decision::calculate_effective_activation_total_cost_for_ability(
+                game,
+                pending.activator,
+                pending.source,
+                &base_cost,
+                &pending.chosen_targets,
+                Some(crate::decision::ActivationCostAbility::of(
                     game,
                     pending.activator,
                     pending.source,
-                    &base_cost,
-                    &pending.chosen_targets,
-                );
+                    activated,
+                )),
+            );
             let locked_cost = match repriced.kind() {
                 ironsmith_core::TotalCostKind::All(_) => repriced.clone(),
                 ironsmith_core::TotalCostKind::OneOf(branches) => {
@@ -1499,14 +1516,19 @@ pub(super) fn apply_x_value_response(
         {
             let locked =
                 super::priority_cast::activation_cost_with_locked_x(&activated.mana_cost, x_value);
-            let repriced =
-                crate::decision::calculate_effective_activation_total_cost_with_chosen_targets(
+            let repriced = crate::decision::calculate_effective_activation_total_cost_for_ability(
+                game,
+                pending.activator,
+                pending.source,
+                &locked,
+                &pending.chosen_targets,
+                Some(crate::decision::ActivationCostAbility::of(
                     game,
                     pending.activator,
                     pending.source,
-                    &locked,
-                    &pending.chosen_targets,
-                );
+                    activated,
+                )),
+            );
             let locked_cost = match repriced.kind() {
                 ironsmith_core::TotalCostKind::All(_) => Some(repriced.clone()),
                 ironsmith_core::TotalCostKind::OneOf(branches) => pending

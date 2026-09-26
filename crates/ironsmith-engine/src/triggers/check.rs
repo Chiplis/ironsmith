@@ -418,6 +418,11 @@ pub struct DelayedTrigger {
     pub expires_before_controller_turn_after: Option<u32>,
     /// Whether this delayed trigger expires as the current combat ends.
     pub expires_at_end_of_combat: bool,
+    /// "That turn": the registration belongs to the extra turn queued at this
+    /// slot of `TurnStore::extra_turns` (CR 500.7, 603.7). It can't trigger
+    /// until that turn begins, is rebound to that turn's number when it does,
+    /// and ceases to exist if that turn is skipped.
+    pub bound_extra_turn_index: Option<usize>,
     /// Collection-scoped lifetime captured when the trigger was registered.
     pub while_any_tagged_object_in_zone: Option<(crate::tag::TagKey, crate::zone::Zone)>,
     /// Specific objects this trigger targets.
@@ -493,8 +498,9 @@ impl TriggerQueue {
         if let Some(source_snapshot) = source_snapshot {
             event = event.with_source_snapshot(source_snapshot);
         }
+        // "For the first time each turn" is an event-history gate checked at
+        // match time, not a limit on how often the ability triggers.
         let trigger_limit = match entry.ability.intervening_if.as_ref() {
-            Some(crate::ConditionExpr::FirstTimeThisTurn) => Some(1),
             Some(crate::ConditionExpr::MaxTimesEachTurn(limit)) => Some(*limit),
             _ => None,
         };
@@ -2169,6 +2175,9 @@ fn check_battlefield_trigger_subscriber(
     let event_value_amount = trigger_ability
         .trigger
         .event_value_amount(trigger_event, &ctx);
+    if !first_time_this_turn_event(game, trigger_ability, trigger_event, &ctx) {
+        return;
+    }
     if let Some(ref condition) = trigger_ability.intervening_if
         && !verify_intervening_if(
             game,
@@ -2438,6 +2447,9 @@ fn collect_lookback_source_triggers(
             let event_value_amount = trigger_ability
                 .trigger
                 .event_value_amount(trigger_event, &ctx);
+            if !first_time_this_turn_event(game, trigger_ability, trigger_event, &ctx) {
+                continue;
+            }
             if let Some(ref condition) = trigger_ability.intervening_if
                 && !verify_intervening_if(
                     game,
@@ -2600,6 +2612,9 @@ fn check_triggers_with_view_and_registry(
                 let event_value_amount = trigger_ability
                     .trigger
                     .event_value_amount(trigger_event, &ctx);
+                if !first_time_this_turn_event(game, trigger_ability, trigger_event, &ctx) {
+                    continue;
+                }
                 if let Some(ref condition) = trigger_ability.intervening_if
                     && !verify_intervening_if(
                         game,
@@ -2681,6 +2696,9 @@ fn check_triggers_with_view_and_registry(
                 let event_value_amount = trigger_ability
                     .trigger
                     .event_value_amount(trigger_event, &ctx);
+                if !first_time_this_turn_event(game, trigger_ability, trigger_event, &ctx) {
+                    continue;
+                }
                 if let Some(ref condition) = trigger_ability.intervening_if
                     && !verify_intervening_if(
                         game,
@@ -3247,6 +3265,7 @@ pub(crate) fn take_delayed_untap_step_actions(
         if delayed
             .not_before_turn
             .is_some_and(|min_turn| game.turn.turn_number < min_turn)
+            || delayed.bound_extra_turn_index.is_some()
         {
             continue;
         }
@@ -3578,6 +3597,9 @@ fn check_triggers_in_zone(
             let event_value_amount = trigger_ability
                 .trigger
                 .event_value_amount(trigger_event, &ctx);
+            if !first_time_this_turn_event(game, trigger_ability, trigger_event, &ctx) {
+                continue;
+            }
             if let Some(ref condition) = trigger_ability.intervening_if
                 && !verify_intervening_if(
                     game,
@@ -3868,6 +3890,59 @@ pub fn generate_step_trigger_events_for_active_players(game: &GameState) -> Vec<
 }
 
 /// Verify if an intervening-if condition is met.
+/// CR 603.2 / 603.2d: "... for the first time each turn" is part of the
+/// trigger event, defined by the turn's history. The ability triggers only if
+/// no earlier event this turn matched its trigger event, whether or not this
+/// object was on the battlefield then or the ability triggered (an intervening
+/// "if" that was false, or a flickered watcher, doesn't reset it). Several
+/// instances of one trigger from the same event (CR 603.2d doublers) all count
+/// as the first time.
+pub(crate) fn first_time_this_turn_event(
+    game: &GameState,
+    trigger_ability: &TriggeredAbility,
+    trigger_event: &TriggerEvent,
+    ctx: &TriggerContext,
+) -> bool {
+    fn requires_first_time(condition: &crate::ConditionExpr) -> bool {
+        match condition {
+            crate::ConditionExpr::FirstTimeThisTurn => true,
+            crate::ConditionExpr::And(left, right) => {
+                requires_first_time(left) || requires_first_time(right)
+            }
+            _ => false,
+        }
+    }
+    if !trigger_ability
+        .intervening_if
+        .as_ref()
+        .is_some_and(requires_first_time)
+    {
+        return true;
+    }
+    // Only events recorded before this one count; events of the same
+    // simultaneous action recorded after it are not "earlier".
+    let records = &game.turn_store.turn_history.event_records;
+    let provenance = trigger_event.provenance();
+    let end = records
+        .iter()
+        .position(|record| record.event.ptr_eq(trigger_event))
+        .or_else(|| {
+            // A re-built copy of the same event: locate it by provenance.
+            (provenance != crate::provenance::ProvNodeId::default())
+                .then(|| {
+                    records.iter().position(|record| {
+                        record.event.provenance() == provenance
+                            && record.event.kind() == trigger_event.kind()
+                    })
+                })
+                .flatten()
+        })
+        .unwrap_or(records.len());
+    !records[..end]
+        .iter()
+        .any(|record| trigger_ability.trigger.matches(&record.event, ctx))
+}
+
 pub fn verify_intervening_if(
     game: &GameState,
     condition: &crate::ConditionExpr,

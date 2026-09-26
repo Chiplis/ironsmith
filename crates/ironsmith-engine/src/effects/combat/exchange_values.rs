@@ -197,8 +197,13 @@ impl ExchangeValuesEffect {
                 ));
             }
         } else {
-            let lost = (current - next_value) as u32;
-            game.lose_life(player, lost);
+            let lost = crate::events::processing::process_life_loss_with_event(
+                game,
+                player,
+                (current - next_value) as u32,
+                false,
+            );
+            let lost = game.lose_life(player, lost);
             if lost > 0 {
                 outcome = outcome.with_event(TriggerEvent::new_with_provenance(
                     crate::events::LifeLossEvent::from_effect(player, lost),

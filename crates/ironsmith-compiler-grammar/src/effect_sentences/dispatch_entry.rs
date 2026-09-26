@@ -5119,8 +5119,10 @@ fn parse_composable_typed_statements(
     }
     let mut effects = Vec::new();
     let is_document = sentences.len() > 1;
+    let mut sentence_starts = Vec::with_capacity(sentences.len());
     for sentence in sentences {
         let sentence_start = effects.len();
+        sentence_starts.push(sentence_start);
         if matches!(
             crate::grammar::token_definitions::parse_token_reminder_sentence_kind_tokens(sentence),
             Some(crate::grammar::token_definitions::TokenReminderSentenceKind::PowerToughness)
@@ -5260,7 +5262,78 @@ fn parse_composable_typed_statements(
         return Ok(None);
     }
 
+    correlate_if_a_player_does_with_each_player(&mut effects, sentences, &sentence_starts);
     Ok(Some(effects))
+}
+
+/// "Each player may <action>. If a player does, <effects about that player>."
+/// (Orzhov Advokist): the result gate belongs to each participant, so the
+/// consequence runs once per player who did it, with "that player" bound to
+/// that participant (the same rewrite the sentence dispatcher applies).
+fn correlate_if_a_player_does_with_each_player(
+    effects: &mut [EffectAst],
+    sentences: &[&[OwnedLexToken]],
+    sentence_starts: &[usize],
+) {
+    fn last_is_each_player(effect: &EffectAst) -> bool {
+        match effect {
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. }) => true,
+            EffectAst::SourceSentence { effects, .. } => {
+                effects.last().is_some_and(last_is_each_player)
+            }
+            _ => false,
+        }
+    }
+    for (sentence_idx, sentence) in sentences.iter().enumerate().skip(1) {
+        let words = crate::lexer::token_word_refs(sentence);
+        if !crate::word_primitives::parse_sequence_prefix(&words, &["if", "a", "player", "does"]) {
+            continue;
+        }
+        let entry = sentence_starts[sentence_idx];
+        if entry == 0 || entry >= effects.len() || !last_is_each_player(&effects[entry - 1]) {
+            continue;
+        }
+        let gate = match &mut effects[entry] {
+            EffectAst::SourceSentence { effects: inner, .. } if inner.len() == 1 => &mut inner[0],
+            other => other,
+        };
+        let (predicate, followups) = match gate {
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate,
+                effects: followups,
+            }) => (predicate.clone(), followups.clone()),
+            // The typed control-flow form of the same result gate.
+            EffectAst::ControlFlow(control) => {
+                use crate::model::control_flow::{
+                    ConditionPositionAst, ControlFlowNodeAst, ControlPredicateAst,
+                };
+                let ControlFlowNodeAst::Condition {
+                    condition,
+                    consequence_program,
+                    alternative_program: None,
+                    reflexive: false,
+                } = &control.node
+                else {
+                    continue;
+                };
+                let (ConditionPositionAst::ResultCondition, ControlPredicateAst::Result(predicate)) =
+                    (&condition.position, &condition.predicate)
+                else {
+                    continue;
+                };
+                let Some(program) = control.program(*consequence_program) else {
+                    continue;
+                };
+                (predicate.clone(), program.effects.clone())
+            }
+            _ => continue,
+        };
+        *gate = EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid {
+            effects: followups,
+            predicate: None,
+            result_predicate: predicate,
+        });
+    }
 }
 
 /// A following "before it fights" clause modifies the first fighter before

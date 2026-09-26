@@ -463,6 +463,10 @@ pub enum SpecialAction {
     /// Play a land from hand to the battlefield.
     PlayLand { card_id: ObjectId },
 
+    /// Play a land//land modal double-faced card as its back face
+    /// (CR 712.12).
+    PlayLandBackFace { card_id: ObjectId },
+
     /// Turn a face-down permanent face up via a turn-face-up special action.
     TurnFaceUp {
         permanent_id: ObjectId,
@@ -651,7 +655,10 @@ pub fn can_perform_check(
     player: PlayerId,
 ) -> Result<(), ActionError> {
     match action {
-        SpecialAction::PlayLand { card_id } => can_play_land(game, player, *card_id),
+        SpecialAction::PlayLand { card_id } => can_play_land(game, player, *card_id, false),
+        SpecialAction::PlayLandBackFace { card_id } => {
+            can_play_land(game, player, *card_id, true)
+        }
         SpecialAction::TurnFaceUp {
             permanent_id,
             method,
@@ -727,7 +734,10 @@ fn finish_special_action(
 ) -> Result<(), ActionError> {
     match action {
         SpecialAction::PlayLand { card_id } => {
-            perform_play_land(game, player, card_id, decision_maker)
+            perform_play_land(game, player, card_id, false, decision_maker)
+        }
+        SpecialAction::PlayLandBackFace { card_id } => {
+            perform_play_land(game, player, card_id, true, decision_maker)
         }
         SpecialAction::TurnFaceUp {
             permanent_id,
@@ -1127,7 +1137,12 @@ fn perform_roll_planar_die(game: &mut GameState, player: PlayerId) -> Result<(),
 
 // === Play Land ===
 
-fn can_play_land(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result<(), ActionError> {
+fn can_play_land(
+    game: &GameState,
+    player: PlayerId,
+    card_id: ObjectId,
+    back_face: bool,
+) -> Result<(), ActionError> {
     // Must be the active player
     if !game.is_active_player(player) {
         return Err(ActionError::NotActivePlayer);
@@ -1160,15 +1175,14 @@ fn can_play_land(game: &GameState, player: PlayerId, card_id: ObjectId) -> Resul
 
     // Check the object exists
     let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
-    let land_face = if object.has_card_type(CardType::Land) {
-        None
-    } else {
-        let definition = crate::decision::linked_other_face_land_definition(game, object)
-            .ok_or(ActionError::NotALand)?;
-        let mut face = object.clone();
-        face.apply_definition_face(&definition);
-        Some(face)
-    };
+    // CR 712.12: validate the face the player chose to play.
+    let land_face = crate::decision::land_play_face_definition(game, object, back_face)
+        .map_err(|()| ActionError::NotALand)?
+        .map(|definition| {
+            let mut face = object.clone();
+            face.apply_definition_face(&definition);
+            face
+        });
     let proposed_land = land_face.as_ref().unwrap_or(object);
     let permission_view = crate::derived_view::DerivedGameView::new(game);
     let can_play_from_zone = object.zone == Zone::Hand
@@ -1182,13 +1196,6 @@ fn can_play_land(game: &GameState, player: PlayerId, card_id: ObjectId) -> Resul
             expected: Zone::Hand,
             actual: object.zone,
         });
-    }
-
-    // Check the object is a land, or can be played using its linked land face.
-    if !object.has_card_type(CardType::Land)
-        && crate::decision::linked_other_face_land_definition(game, object).is_none()
-    {
-        return Err(ActionError::NotALand);
     }
 
     // Normal land plays from hand require ownership. External permissions
@@ -1220,24 +1227,31 @@ pub(crate) fn shared_usage_to_consume_for_land_play(
         .shared_usage_to_consume_for_play_from(game, card_id, object.zone, player, None)
 }
 
-fn perform_play_land(
-    game: &mut GameState,
-    player: PlayerId,
-    card_id: ObjectId,
-    decision_maker: &mut impl crate::decision::DecisionMaker,
-) -> Result<(), ActionError> {
-    let shared_usage_to_consume = shared_usage_to_consume_for_land_play(game, player, card_id);
-    let cause = crate::events::cause::EventCause::from_special_action(Some(card_id), player);
-    if let Some(linked_land_def) = game
+/// Turn a card about to be played as a land to the face chosen for the land
+/// play (CR 712.12), before it moves so the face's entry replacements apply.
+pub(crate) fn apply_land_play_face(game: &mut GameState, card_id: ObjectId, back_face: bool) {
+    if let Some(Ok(Some(land_def))) = game
         .object(card_id)
-        .and_then(|object| crate::decision::linked_other_face_land_definition(game, object))
+        .map(|object| crate::decision::land_play_face_definition(game, object, back_face))
         && let Some(object) = game.object_mut(card_id)
     {
-        object.apply_definition_face(&linked_land_def);
+        object.apply_definition_face(&land_def);
         // CR 712.8f: a modal DFC played as its land back face has only that
         // face's characteristics, so no front-face mana value carries over.
         object.linked_face_mana_cost = None;
     }
+}
+
+fn perform_play_land(
+    game: &mut GameState,
+    player: PlayerId,
+    card_id: ObjectId,
+    back_face: bool,
+    decision_maker: &mut impl crate::decision::DecisionMaker,
+) -> Result<(), ActionError> {
+    let shared_usage_to_consume = shared_usage_to_consume_for_land_play(game, player, card_id);
+    let cause = crate::events::cause::EventCause::from_special_action(Some(card_id), player);
+    apply_land_play_face(game, card_id, back_face);
 
     // Move the land to the battlefield with ETB replacement processing.
     let result = game
@@ -1821,6 +1835,21 @@ fn cost_error_to_action_error(err: CostPaymentError) -> ActionError {
     }
 }
 
+/// "Activate only as an instant" (Lion's Eye Diamond): the ability can be
+/// activated only when its controller could cast an instant, which is while
+/// holding priority and never in the middle of casting a spell, activating an
+/// ability or paying a cost (CR 602.5d, 605.3a).
+pub(crate) fn activation_restricted_to_instant_timing(
+    activated: &crate::ability::ActivatedAbility,
+) -> bool {
+    activated.additional_restrictions.iter().any(|restriction| {
+        restriction
+            .trim()
+            .trim_end_matches('.')
+            .eq_ignore_ascii_case("activate only as an instant")
+    })
+}
+
 fn can_activate_mana_ability_with_cost_checks(
     game: &GameState,
     player: PlayerId,
@@ -1900,11 +1929,18 @@ fn can_activate_mana_ability(
         permanent_id,
         ability_index,
         |mana_ability| {
-            let total_cost = crate::decision::calculate_effective_activation_total_cost(
+            let total_cost = crate::decision::calculate_effective_activation_total_cost_for_ability(
                 game,
                 player,
                 permanent_id,
                 &mana_ability.mana_cost,
+                &[],
+                Some(crate::decision::ActivationCostAbility::of(
+                    game,
+                    player,
+                    permanent_id,
+                    mana_ability,
+                )),
             );
             // Check mana costs from TotalCost (for abilities like Blood Celebrant that cost {B})
             let ctx = CostContext::new(permanent_id, player, decision_maker)
@@ -2131,6 +2167,12 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
             permanent_id,
             &mana_ability.mana_cost,
             &[],
+            Some(crate::decision::ActivationCostAbility::of(
+                game,
+                player,
+                permanent_id,
+                mana_ability,
+            )),
             view,
         )
     } else {
@@ -2373,11 +2415,18 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
     if let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind
         && mana_ability.is_runtime_mana_ability(game, permanent_id, player)
     {
-        let total_cost = crate::decision::calculate_effective_activation_total_cost(
+        let total_cost = crate::decision::calculate_effective_activation_total_cost_for_ability(
             game,
             player,
             permanent_id,
             &mana_ability.mana_cost,
+            &[],
+            Some(crate::decision::ActivationCostAbility::of(
+                game,
+                player,
+                permanent_id,
+                mana_ability,
+            )),
         );
         let mana_production_provenance =
             mana_production_provenance_for_activation_cost(&total_cost);

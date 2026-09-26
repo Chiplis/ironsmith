@@ -1261,6 +1261,7 @@ pub fn lower_complete_simple_create_shape(
             tapped: false,
             attacking: false,
             attack_target_player: None,
+            combat_entry: Default::default(),
             exile_at_end_of_combat: false,
             sacrifice_at_end_of_combat: false,
             sacrifice_at_next_end_step: false,
@@ -1368,6 +1369,33 @@ pub fn parse_create(
     if let Some(attached) = creation_grammar::parse_attachment_clause_tokens(&tail_tokens) {
         attached_to_target = Some(parse_target_phrase(attached.target_tokens)?);
         tail_tokens = attached.prefix_tokens.to_vec();
+    }
+    // CR 509.4: "... token that's blocking that creature" (Brimaz) names the
+    // attacker the token enters blocking.
+    let mut blocking_target: Option<TargetAst> = None;
+    if let Some(blocking_idx) = tail_tokens.iter().rposition(|token| token.is_word("blocking"))
+        && blocking_idx + 1 < tail_tokens.len()
+    {
+        let modifier_start = if blocking_idx >= 1
+            && tail_tokens[blocking_idx - 1].is_any_word(&["that's", "thats", "that’s"])
+        {
+            Some(blocking_idx - 1)
+        } else if blocking_idx >= 2
+            && tail_tokens[blocking_idx - 2].is_word("that")
+            && tail_tokens[blocking_idx - 1].is_any_word(&["is", "are"])
+        {
+            Some(blocking_idx - 2)
+        } else {
+            None
+        };
+        let target_tokens = crate::util::trim_edge_punctuation(&tail_tokens[blocking_idx + 1..]);
+        if let Some(modifier_start) = modifier_start
+            && !target_tokens.is_empty()
+            && let Ok(target) = parse_target_phrase(&target_tokens)
+        {
+            blocking_target = Some(target);
+            tail_tokens.truncate(modifier_start);
+        }
     }
     let tail_words = token_word_refs(&tail_tokens);
     let tail_surface = creation_grammar::CreationWords::new(&tail_words);
@@ -1566,6 +1594,7 @@ pub fn parse_create(
                 || token_modifier_surface.has(CreateWord::Attacking)
                 || copy_modifier_surface.has(CreateWord::Attacking);
             let mut attack_target_player_or_planeswalker_controlled_by = None;
+            let mut attack_target_player_only = false;
             if player == PlayerAst::Implicit {
                 player = PlayerAst::You;
             }
@@ -1589,9 +1618,11 @@ pub fn parse_create(
             {
                 enters_tapped = source_clause.enters_tapped;
                 enters_attacking = source_clause.enters_attacking;
-                attack_target_player_or_planeswalker_controlled_by = source_clause
+                attack_target_player_or_planeswalker_controlled_by = (source_clause
                     .attacks_that_player_or_planeswalker
+                    || source_clause.attacks_that_player_only)
                     .then_some(PlayerAst::That);
+                attack_target_player_only = source_clause.attacks_that_player_only;
                 if !source_clause.source_tokens.is_empty() {
                     if let Some(token_word_idx) =
                         creation_grammar::CreationWords::new(&clause_words)
@@ -1615,7 +1646,7 @@ pub fn parse_create(
                             enters_attacking,
                             attack_target_player_or_planeswalker_controlled_by,
                             entry_tapped_attacking_followup: false,
-                            attack_target_player_only: false,
+                            attack_target_player_only,
                             half_power_toughness_round_up: half_pt,
                             has_haste,
                             haste_followup_reference_surface: None,
@@ -1657,7 +1688,7 @@ pub fn parse_create(
                     enters_attacking,
                     attack_target_player_or_planeswalker_controlled_by,
                     entry_tapped_attacking_followup: false,
-                    attack_target_player_only: false,
+                    attack_target_player_only,
                     half_power_toughness_round_up: half_pt,
                     has_haste,
                     haste_followup_reference_surface: None,
@@ -1922,9 +1953,19 @@ pub fn parse_create(
     let modifier_surface = creation_grammar::CreationWords::new(&modifier_tail_words);
     tapped |= modifier_surface.has(CreateWord::Tapped);
     attacking |= modifier_surface.has(CreateWord::Attacking);
-    let attack_target_player = (attacking
-        && modifier_surface.has_phrase(CreatePhrase::AttackingThatPlayer))
-    .then_some(PlayerAst::That);
+    // CR 508.4: "attacking that player/opponent" names what the token
+    // attacks. "That opponent" is the attacked (defending) player outside a
+    // per-opponent iteration (Combat Calligrapher); lowering rebinds it to
+    // the iterated opponent inside one.
+    let attack_target_player = if !attacking {
+        None
+    } else if modifier_surface.has_phrase(CreatePhrase::AttackingThatPlayer) {
+        Some(PlayerAst::That)
+    } else if modifier_surface.has_phrase(CreatePhrase::AttackingThatOpponent) {
+        Some(PlayerAst::Defending)
+    } else {
+        None
+    };
     // Some legacy subject scans can mistake the trailing `that player` for
     // the create actor. It is the attack target; an otherwise implicit create
     // remains controlled by the ability's controller.
@@ -1960,6 +2001,14 @@ pub fn parse_create(
             tapped,
             attacking,
             attack_target_player,
+            combat_entry: crate::cards::builders::TokenCombatEntryAst {
+                blocking: blocking_target,
+                // "attacking that player or a planeswalker they control"
+                // (Adeline): the controller picks among that player and
+                // their planeswalkers (CR 508.4).
+                attack_target_includes_planeswalkers: attack_target_player.is_some()
+                    && modifier_surface.has_phrase(CreatePhrase::AttackTarget),
+            },
             exile_at_end_of_combat: false,
             sacrifice_at_end_of_combat: false,
             sacrifice_at_next_end_step,

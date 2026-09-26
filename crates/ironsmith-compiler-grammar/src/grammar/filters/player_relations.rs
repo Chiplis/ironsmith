@@ -284,8 +284,10 @@ fn parse_owner_controller_pair_word_slice(
     separator: &'static str,
     leading_both: bool,
 ) -> WResult<(PlayerRelationVerb, PlayerRelationVerb)> {
+    // "you (both) own and control": the joint relation needs no "both"
+    // (Yorion, Sky Nomad). CR 108.3, 108.4: owner and controller both bind.
     if leading_both {
-        primitives::word_slice_exact("both")
+        opt(primitives::word_slice_exact("both"))
             .void()
             .parse_next(input)?;
     }

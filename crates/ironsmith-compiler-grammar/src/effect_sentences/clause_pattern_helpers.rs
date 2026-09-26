@@ -183,7 +183,14 @@ pub fn parse_verb_first_clause(
     {
         return Ok(None);
     }
-    let effect = parse_effect_with_verb(verb, None, &tokens[1..])?;
+    let mut effect = parse_effect_with_verb(verb, None, &tokens[1..])?;
+    // An imperative "discard ..." (base form, no subject) is an instruction
+    // to the ability's controller (CR 109.5). Bind it now so lowering never
+    // carries a trigger's "that player" onto it (Mask of Memory: "you may
+    // draw two cards. If you do, discard a card.").
+    if verb == Verb::Discard {
+        super::chain_carry::bind_implicit_player_context(&mut effect, PlayerAst::You);
+    }
     Ok(Some(effect))
 }
 

@@ -869,6 +869,34 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
+    // "this creature attacks, blocks, or becomes the target of a spell": a
+    // three-item verb list sharing one subject. Split the leading verb off
+    // and union it with the remaining two-item "or" clause.
+    if let Some(comma_idx) = tokens.iter().position(|token| token.is_comma())
+        && let Some(attack_idx) = trigger_atom_token(tokens, TriggerClauseAtom::Attack)
+        && attack_idx > 0
+        && attack_idx + 1 == comma_idx
+        && tokens
+            .get(comma_idx + 1)
+            .is_some_and(|token| trigger_token_is_atom(token, TriggerClauseAtom::Block))
+        && split_trigger_or_index(&tokens[comma_idx + 1..]).is_some()
+    {
+        let subject = &tokens[..attack_idx];
+        let first = &tokens[..comma_idx];
+        let mut rest = subject.to_vec();
+        rest.extend(
+            trim_commas(&tokens[comma_idx + 1..])
+                .into_iter()
+                .filter(|token| !token.is_comma()),
+        );
+        if let (Ok(left), Ok(right)) = (
+            parse_trigger_clause_lexed(first),
+            parse_trigger_clause_lexed(&rest),
+        ) {
+            return Ok(TriggerSpec::Either(Box::new(left), Box::new(right)));
+        }
+    }
+
     if let Some(or_idx) = split_trigger_or_index(tokens) {
         let left_tokens = &tokens[..or_idx];
         let right_tokens = &tokens[or_idx + 1..];
@@ -899,6 +927,14 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             .is_some_and(|word| matches!(*word, "play" | "plays"))
         {
             trigger_atom_token(left_tokens, TriggerClauseAtom::Cast)
+        } else if right_words
+            .first()
+            .is_some_and(|word| matches!(*word, "becomes" | "become"))
+        {
+            // "enchanted creature blocks or becomes blocked": the right arm
+            // shares the left arm's subject, not the ability's source.
+            trigger_atom_token(left_tokens, TriggerClauseAtom::Block)
+                .or_else(|| trigger_atom_token(left_tokens, TriggerClauseAtom::Attack))
         } else {
             None
         };
@@ -1683,6 +1719,33 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                         ));
                     }
                 }
+            }
+        }
+        // CR 603.2, 603.6a: "When this land enters untapped" / "enters
+        // tapped" is part of the trigger event, so the source-bound trigger
+        // keeps the entering permanent's tapped status.
+        let source_subject =
+            token_trigger_pattern_accepts(subject_tokens, &THIS_DESTINATION_TRIGGER_NAME_PATTERN)
+                || source_reference_surface_for_trigger_subject(subject_tokens).is_some();
+        if source_subject && enters_origin.is_none() {
+            let entered_untapped = trigger_pattern_accepts(&words, UNTAPPED_WORD_PATTERN);
+            if entered_untapped || trigger_pattern_accepts(&words, TAPPED_WORD_PATTERN) {
+                let subject_word_view = ActivationRestrictionCompatWords::new(subject_tokens);
+                let subject_words = subject_word_view.to_word_refs();
+                let mut filter =
+                    trigger_grammar::parse_source_trigger_subject_words(&subject_words).filter;
+                filter.source = true;
+                return Ok(if entered_untapped {
+                    TriggerSpec::EntersBattlefieldUntapped {
+                        filter,
+                        cause_filter: None,
+                    }
+                } else {
+                    TriggerSpec::EntersBattlefieldTapped {
+                        filter,
+                        cause_filter: None,
+                    }
+                });
             }
         }
         if token_trigger_pattern_accepts(subject_tokens, &THIS_DESTINATION_TRIGGER_NAME_PATTERN) {
@@ -3443,11 +3506,32 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 && let Some((source, source_surface)) =
                     parse_damage_source_trigger_filter_lexed(subject_tokens)?
             {
-                return Ok(TriggerSpec::DealsDamageToPlayer {
+                let trigger = TriggerSpec::DealsDamageToPlayer {
                     source,
                     player,
                     source_surface,
-                });
+                };
+                // "deals 5 or more damage to a player" (Dragonborn Champion):
+                // the event's damage amount must meet the threshold when the
+                // damage is dealt.
+                if !amount_words.is_empty()
+                    && let Some((amount, _)) =
+                        parse_filter_comparison_tokens("damage amount", &amount_words, &words)?
+                    && let Some((operator, threshold)) = damage_amount_comparison_operator(&amount)
+                {
+                    return Ok(TriggerSpec::ConditionQualified {
+                        trigger: Box::new(trigger),
+                        condition: crate::cards::builders::PredicateAst::ValueComparison {
+                            left: crate::effect::Value::EventValue(
+                                crate::effect::EventValueSpec::Amount,
+                            ),
+                            operator,
+                            right: crate::effect::Value::Fixed(threshold),
+                        },
+                        surface: format!("the damage is {}", amount_words.join(" ")),
+                    });
+                }
+                return Ok(trigger);
             }
             // A self-name subject ("Lu Xun deals damage to an opponent")
             // yields no source filter; keep the recipient instead of
@@ -4746,4 +4830,22 @@ pub(super) fn parse_ability_of_object_trigger_tail_lexed(
         filter.chosen_creature_type = true;
     }
     Ok(Some((filter, tail.non_mana_only)))
+}
+
+/// The single-threshold comparisons a damage-amount trigger qualifier can
+/// express as a value comparison against the event's amount.
+fn damage_amount_comparison_operator(
+    comparison: &crate::filter::Comparison,
+) -> Option<(crate::effect::ValueComparisonOperator, i32)> {
+    use crate::effect::ValueComparisonOperator as Op;
+    use crate::filter::Comparison as Cmp;
+    Some(match comparison {
+        Cmp::GreaterThan(n) => (Op::GreaterThan, *n),
+        Cmp::GreaterThanOrEqual(n) => (Op::GreaterThanOrEqual, *n),
+        Cmp::Equal(n) => (Op::Equal, *n),
+        Cmp::LessThan(n) => (Op::LessThan, *n),
+        Cmp::LessThanOrEqual(n) => (Op::LessThanOrEqual, *n),
+        Cmp::NotEqual(n) => (Op::NotEqual, *n),
+        _ => return None,
+    })
 }

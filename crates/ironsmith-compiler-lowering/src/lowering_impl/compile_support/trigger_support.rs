@@ -366,9 +366,13 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             condition,
             surface,
         } => {
+            // The qualification is checked against the triggering event, so
+            // it may read that event's amount ("deals 5 or more damage").
+            let mut condition_ctx = super::EffectLoweringContext::new();
+            condition_ctx.allow_life_event_value = true;
             let condition = super::compile_condition_from_predicate_ast(
                 &condition,
-                &mut super::EffectLoweringContext::new(),
+                &mut condition_ctx,
                 &None,
             )
             .expect("grammar-proven trigger qualification must lower");

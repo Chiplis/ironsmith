@@ -5640,6 +5640,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_value(amount, seed_tag)
                     + bind_unresolved_it_in_filter(filter, seed_tag)
             }
+            SubjectVerbActionAst::Damage(DamageActionAst::ExcessDamageToController { .. }) => 0,
             SubjectVerbActionAst::Counters(CounterActionAst::PutCountersAll {
                 count,
                 filter,
@@ -6465,9 +6466,13 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 count,
                 dynamic_power_toughness,
                 attached_to,
+                combat_entry,
                 ..
             }) => {
                 let mut replacements = bind_unresolved_it_in_value(count, seed_tag);
+                if let Some(target) = combat_entry.blocking.as_mut() {
+                    replacements += bind_unresolved_it_in_target(target, seed_tag);
+                }
                 if let Some((power, toughness)) = dynamic_power_toughness.as_mut() {
                     replacements += bind_unresolved_it_in_value(power, seed_tag);
                     replacements += bind_unresolved_it_in_value(toughness, seed_tag);
@@ -7992,6 +7997,7 @@ mod tests {
                     tapped: false,
                     attacking: false,
                     attack_target_player: None,
+                    combat_entry: Default::default(),
                     exile_at_end_of_combat: false,
                     sacrifice_at_end_of_combat: false,
                     sacrifice_at_next_end_step: false,
@@ -8743,6 +8749,7 @@ mod tests {
                     tapped: false,
                     attacking: false,
                     attack_target_player: None,
+                    combat_entry: Default::default(),
                     exile_at_end_of_combat: false,
                     sacrifice_at_end_of_combat: false,
                     sacrifice_at_next_end_step: false,
@@ -8919,6 +8926,7 @@ mod tests {
                     tapped: false,
                     attacking: false,
                     attack_target_player: None,
+                    combat_entry: Default::default(),
                     exile_at_end_of_combat: false,
                     sacrifice_at_end_of_combat: false,
                     sacrifice_at_next_end_step: false,

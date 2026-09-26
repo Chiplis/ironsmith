@@ -904,12 +904,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     duration,
                     source,
                     source_would_deal_surface,
+                    dealt_to_and_by,
                 },
             ) => f
                 .debug_struct("PreventAllCombatDamageFromSource")
                 .field("duration", duration)
                 .field("source", source)
                 .field("source_would_deal_surface", source_would_deal_surface)
+                .field("dealt_to_and_by", dealt_to_and_by)
                 .finish(),
             Self::DamagePrevention(
                 DamagePreventionActionAst::PreventAllCombatDamageFromSourceFilter {
@@ -931,9 +933,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamageToYou {
                 duration,
+                follow_up_effects,
             }) => f
                 .debug_struct("PreventAllCombatDamageToYou")
                 .field("duration", duration)
+                .field("follow_up_effects", follow_up_effects)
                 .finish(),
             Self::DamagePrevention(DamagePreventionActionAst::PreventNextTimeDamage {
                 source,

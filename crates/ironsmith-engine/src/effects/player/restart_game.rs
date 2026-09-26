@@ -17,6 +17,9 @@ impl EffectExecutor for RestartGameEffect {
             None => Vec::new(),
         };
         let restarted_cards = game.restart_game(ctx.controller, &cards_left_in_exile);
+        // CR 726.4: the rest of this effect finishes resolving just before
+        // the new game's first untap step.
+        ctx.restarted_game = true;
         Ok(EffectOutcome::resolved().with_affected_objects_from_game(game, restarted_cards))
     }
 

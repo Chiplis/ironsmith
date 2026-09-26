@@ -28,7 +28,9 @@ pub fn parse_delayed_next_combat_phase_this_turn_sentence(
     Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
         trigger: TriggerSpec::BeginningOfCombat(PlayerFilter::Any),
         effects: delayed_effects,
-        one_shot: true,
+        // CR 603.7c: "each combat this turn" triggers every combat until the
+        // turn ends; "the next combat" only once.
+        one_shot: !shape.each_combat,
         until_end_of_combat: false,
         attach_to_previous_ability: false,
     })]))

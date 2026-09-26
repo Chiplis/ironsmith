@@ -38,6 +38,12 @@ impl EffectExecutor for ExtraTurnEffect {
         // Add an extra turn for this player
         let turn_player = game.team_turn_representative(player_id);
         game.turn_store.extra_turns.push(turn_player);
+        // Grand Melee reuses the queue to focus marker lanes, so slots don't
+        // identify turns there.
+        ctx.created_extra_turn_index = game
+            .grand_melee()
+            .is_none()
+            .then(|| game.turn_store.extra_turns.len() - 1);
         game.record_ui_effect_event("extra_turn", Some(player_id), None, Vec::new(), None, None);
 
         Ok(EffectOutcome::resolved())

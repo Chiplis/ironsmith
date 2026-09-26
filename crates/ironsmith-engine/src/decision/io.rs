@@ -2466,6 +2466,17 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
             );
             format!("Play {}", name)
         }
+        LegalAction::PlayLandBackFace { land_id } => {
+            let name = game.object(*land_id).map_or_else(
+                || "?".to_string(),
+                |object| {
+                    crate::decision::linked_back_face_land_definition(game, object)
+                        .map(|def| def.card.name)
+                        .unwrap_or_else(|| object.name.to_string())
+                },
+            );
+            format!("Play {}", name)
+        }
         LegalAction::CastSpell {
             spell_id,
             casting_method,
@@ -2726,7 +2737,10 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
             format!("{cost_prefix}Turn this face-down permanent face up. ({name})")
         }
         LegalAction::SpecialAction(special) => match special {
-            crate::special_actions::SpecialAction::PlayLand { .. } => "Play land".to_string(),
+            crate::special_actions::SpecialAction::PlayLand { .. }
+            | crate::special_actions::SpecialAction::PlayLandBackFace { .. } => {
+                "Play land".to_string()
+            }
             crate::special_actions::SpecialAction::TurnFaceUp {
                 permanent_id,
                 method,

@@ -77,6 +77,10 @@ pub enum LegalAction {
     /// Play a land from hand.
     PlayLand { land_id: ObjectId },
 
+    /// Play a modal double-faced card whose faces are both lands as its back
+    /// face (CR 712.12). `PlayLand` plays such a card front face up.
+    PlayLandBackFace { land_id: ObjectId },
+
     /// Activate a mana ability (doesn't use stack).
     ActivateManaAbility {
         source: ObjectId,

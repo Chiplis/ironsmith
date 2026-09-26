@@ -901,6 +901,7 @@ fn finalize_public_object_filter(
     tokens: &[OwnedLexToken],
 ) -> ObjectFilter {
     apply_phyrexian_mana_cost_predicate(&mut filter, tokens);
+    split_enchanted_or_equipped_disjunction(&mut filter, tokens);
     super::grammar::filters::apply_supertype_or_mana_capability_union(&mut filter, tokens);
     preserve_combat_role_disjunction(&mut filter, tokens);
     preserve_public_spell_filter_facts(&mut filter, tokens);
@@ -1047,6 +1048,61 @@ pub fn parse_object_filter(
     }
     let filter = parse_object_filter_inner(tokens, other)?;
     Ok(finalize_public_object_filter(filter, tokens))
+}
+
+/// "a creature that's enchanted or equipped" (Reyav, Master Smith) is a
+/// disjunction of two attachment states. The adjective scan records both as
+/// conjunctive tagged constraints; move them into `any_of` alternatives.
+pub(crate) fn split_enchanted_or_equipped_disjunction(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
+    let words = crate::lexer::token_word_refs(tokens);
+    let disjunction = words.windows(3).any(|window| {
+        matches!(
+            window,
+            ["enchanted", "or", "equipped"] | ["equipped", "or", "enchanted"]
+        )
+    });
+    if !disjunction || !filter.any_of.is_empty() {
+        return;
+    }
+    let is_state = |constraint: &crate::target::TaggedObjectConstraint, tag: crate::tag::CompilerReferenceTag| {
+        constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str() == tag.as_str()
+    };
+    let enchanted = crate::tag::CompilerReferenceTag::Enchanted;
+    let equipped = crate::tag::CompilerReferenceTag::Equipped;
+    let (Some(enchanted_idx), Some(equipped_idx)) = (
+        filter
+            .tagged_constraints
+            .iter()
+            .position(|constraint| is_state(constraint, enchanted)),
+        filter
+            .tagged_constraints
+            .iter()
+            .position(|constraint| is_state(constraint, equipped)),
+    ) else {
+        return;
+    };
+    let enchanted_constraint = filter.tagged_constraints[enchanted_idx].clone();
+    let equipped_constraint = filter.tagged_constraints[equipped_idx].clone();
+    let (first, second) = if enchanted_idx > equipped_idx {
+        (enchanted_idx, equipped_idx)
+    } else {
+        (equipped_idx, enchanted_idx)
+    };
+    filter.tagged_constraints.remove(first);
+    filter.tagged_constraints.remove(second);
+    let card_types = filter.card_types.clone();
+    let alternative = |constraint: crate::target::TaggedObjectConstraint| {
+        let mut branch = ObjectFilter::default();
+        // Repeat the base noun so each branch reads "enchanted creature".
+        branch.card_types = card_types.clone();
+        branch.tagged_constraints.push(constraint);
+        branch
+    };
+    filter.any_of = vec![
+        alternative(enchanted_constraint),
+        alternative(equipped_constraint),
+    ];
 }
 
 fn apply_phyrexian_mana_cost_predicate(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {

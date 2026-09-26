@@ -2904,11 +2904,19 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        // CR 702.11e: an effect that looks for a permanent with hexproof also
+        // finds one with a "hexproof from [quality]" ability.
+        let has_static_ability_id = |ability_id: StaticAbilityId| {
+            subject.tail_has_static_ability_id(ability_id)
+                || (ability_id == StaticAbilityId::Hexproof
+                    && subject.tail_has_static_ability_id(StaticAbilityId::HexproofFrom))
+        };
+
         // Required static ability IDs
         if self
             .static_abilities
             .iter()
-            .any(|ability_id| !subject.tail_has_static_ability_id(*ability_id))
+            .any(|ability_id| !has_static_ability_id(*ability_id))
         {
             return false;
         }
@@ -2917,7 +2925,7 @@ impl ObjectFilterExt for ObjectFilter {
         if self
             .excluded_static_abilities
             .iter()
-            .any(|ability_id| subject.tail_has_static_ability_id(*ability_id))
+            .any(|ability_id| has_static_ability_id(*ability_id))
         {
             return false;
         }

@@ -1345,7 +1345,9 @@ impl Object {
             has_fuse: source.has_fuse,
             optional_costs: source.optional_costs.clone(),
             optional_costs_paid: source.optional_costs_paid.clone(),
-            mana_spent_to_cast: source.mana_spent_to_cast.clone(),
+            // CR 707.10: mana isn't an object, so a copy of a spell has no mana
+            // spent to cast it (converge, adamant, "if {G} was spent" read 0).
+            mana_spent_to_cast: ManaPool::default(),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: source.temporary_static_ability_grants.clone(),
             x_value: source.x_value,

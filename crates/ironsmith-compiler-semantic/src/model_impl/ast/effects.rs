@@ -435,6 +435,26 @@ impl EffectAst {
                     duration,
                     source,
                     source_would_deal_surface,
+                    dealt_to_and_by: false,
+                },
+            ),
+        )
+    }
+
+    /// "Prevent all combat damage that would be dealt to and dealt by <X>".
+    pub fn subject_verb_prevent_all_combat_damage_to_and_from_source(
+        source: TargetAst,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllCombatDamageFromSource {
+                    duration,
+                    source,
+                    source_would_deal_surface: false,
+                    dealt_to_and_by: true,
                 },
             ),
         )
@@ -490,7 +510,10 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::PreventAllCombatDamageToYou { duration },
+                DamagePreventionActionAst::PreventAllCombatDamageToYou {
+                    duration,
+                    follow_up_effects: Vec::new(),
+                },
             ),
         )
     }

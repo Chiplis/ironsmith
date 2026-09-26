@@ -98,7 +98,8 @@ pub(crate) fn queue_triggers_from_event(
 /// Counters one instruction put on several objects form one simultaneous
 /// event (CR 603.2c): consecutive counter events sharing a simultaneous batch
 /// are matched together, so a "one or more ... on one or more ..." trigger
-/// fires once for the whole placement.
+/// fires once for the whole placement. Dice rolled by one instruction are
+/// grouped the same way for "whenever you roll one or more dice".
 pub(crate) fn queue_triggers_from_reported_events(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
@@ -108,7 +109,10 @@ pub(crate) fn queue_triggers_from_reported_events(
     let mut events = events.into_iter().peekable();
     while let Some(event) = events.next() {
         if let Some(batch) = event.simultaneous_batch()
-            && event.kind() == crate::events::EventKind::MarkersChanged
+            && matches!(
+                event.kind(),
+                crate::events::EventKind::MarkersChanged | crate::events::EventKind::DieRolled
+            )
             && events
                 .peek()
                 .is_some_and(|next| next.simultaneous_batch() == Some(batch))
@@ -164,7 +168,12 @@ pub(super) fn queue_triggers_for_simultaneous_events(
     let mut speed_controllers = std::collections::HashSet::new();
     let mut simultaneous_groups_seen = HashSet::new();
     let mut zone_groups = std::collections::HashMap::new();
+    // Queue indices of per-source / per-recipient damage groups, so later
+    // assignments in the same action add their amount ("that much damage").
+    let mut damage_groups: std::collections::HashMap<_, Vec<usize>> =
+        std::collections::HashMap::new();
     for triggers in trigger_groups {
+        let mut damage_groups_from_this_event = Vec::new();
         let mut zone_occurrences = std::collections::HashMap::new();
         // Delay inserting keys until this event's complete group is handled.
         // That preserves multiple identical ability instances on one object,
@@ -207,7 +216,27 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                     }
                     zone_groups.insert(instance_key, trigger_queue.entries.len());
                 } else if simultaneous_groups_seen.contains(&key) {
+                    if matches!(
+                        group,
+                        crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSource(_)
+                            | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageTarget(_)
+                    ) && let Some(amount) = trigger.event_value_amount
+                        && let Some(indices) = damage_groups.get(&key)
+                    {
+                        for &index in indices {
+                            let previous: &mut crate::triggers::TriggeredAbilityEntry =
+                                &mut trigger_queue.entries[index];
+                            previous.event_value_amount =
+                                Some(previous.event_value_amount.unwrap_or(0) + amount);
+                        }
+                    }
                     continue;
+                } else if matches!(
+                    group,
+                    crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSource(_)
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageTarget(_)
+                ) {
+                    damage_groups_from_this_event.push((key, trigger_queue.entries.len()));
                 }
                 groups_from_this_event.push(key);
             }
@@ -220,6 +249,9 @@ pub(super) fn queue_triggers_for_simultaneous_events(
             trigger_queue.add(trigger);
         }
         simultaneous_groups_seen.extend(groups_from_this_event);
+        for (key, index) in damage_groups_from_this_event {
+            damage_groups.entry(key).or_default().push(index);
+        }
     }
 }
 

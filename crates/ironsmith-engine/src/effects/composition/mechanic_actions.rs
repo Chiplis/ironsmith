@@ -601,10 +601,9 @@ impl EffectExecutor for OpenAttractionEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let controller = game
-            .object(ctx.source)
-            .map(|source| game.controller_of(source))
-            .unwrap_or(ctx.controller);
+        // CR 701.51b: "you" is the controller of the instruction, not
+        // whoever controls its source now.
+        let controller = ctx.controller;
 
         // CR 701.51a-b: only a player with an Attraction deck can open one,
         // and opening moves that deck's top card face up onto the battlefield
@@ -1132,6 +1131,8 @@ impl EffectExecutor for PopulateEffect {
                 .battlefield
                 .iter()
                 .copied()
+                // CR 702.26b: a phased-out token can't be populated.
+                .filter(|&id| !game.is_phased_out(id))
                 .filter(|&id| {
                     game.object(id).is_some_and(|obj| {
                         game.controller_of(obj) == ctx.controller
@@ -3258,6 +3259,7 @@ mod tests {
             target: AttackTarget::Player(bob),
         });
         game.combat = Some(combat);
+        game.turn.phase = crate::game_state::Phase::Combat;
 
         let mut dm = SelectIdsDecisionMaker {
             choices: VecDeque::from([vec![rhino]]),

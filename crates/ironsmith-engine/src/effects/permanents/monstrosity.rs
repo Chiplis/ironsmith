@@ -52,8 +52,11 @@ impl EffectExecutor for MonstrosityEffect {
         }
 
         // Put N +1/+1 counters on it and mark as monstrous
+        // The counter events reach trigger matching only through the outcome,
+        // so they are chained into ours (CR 701.37a, 603.2).
+        let mut counter_events = Vec::new();
         if n_value > 0 {
-            ctx.with_temp_targets(vec![ResolvedTarget::Object(source_id)], |ctx| {
+            let counters_outcome = ctx.with_temp_targets(vec![ResolvedTarget::Object(source_id)], |ctx| {
                 let counters_effect = PutCountersEffect::new(
                     CounterType::PlusOnePlusOne,
                     n_value,
@@ -61,6 +64,7 @@ impl EffectExecutor for MonstrosityEffect {
                 );
                 execute_effect(game, &Effect::new(counters_effect), ctx)
             })?;
+            counter_events = counters_outcome.events;
         }
         game.set_monstrous(source_id);
         if let Some(stable_id) = game.object(source_id).map(|o| o.stable_id) {
@@ -77,7 +81,9 @@ impl EffectExecutor for MonstrosityEffect {
         // "When this creature becomes monstrous" triggers now, and its X is
         // the monstrosity X (CR 701.37b-c).
         Ok(
-            EffectOutcome::monstrosity_applied(source_id, n_value).with_event(
+            EffectOutcome::monstrosity_applied(source_id, n_value)
+                .with_events(counter_events)
+                .with_event(
                 crate::triggers::TriggerEvent::new_with_provenance(
                     crate::events::BecameMonstrousEvent::new(source_id, ctx.controller, n_value),
                     ctx.provenance,

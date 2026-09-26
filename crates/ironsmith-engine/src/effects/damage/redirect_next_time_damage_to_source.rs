@@ -9,7 +9,6 @@ use crate::events::damage::matchers::{
     DamageFromSourceMatcher, DamageSourceConstraint, DamageToPlayerOrObjectMatcher,
 };
 use crate::events::traits::{EventKind, GameEventType, ReplacementMatcher};
-use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::replacement::{RedirectTarget, RedirectWhich, ReplacementAction, ReplacementEffect};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
@@ -39,13 +38,7 @@ impl ReplacementMatcher for DamageSourceToSpecificTargetMatcher {
         if damage.target != self.target {
             return false;
         }
-        match &self.source {
-            DamageSourceConstraint::Specific(source) => damage.source == *source,
-            DamageSourceConstraint::Filter(filter) => ctx
-                .game
-                .object(damage.source)
-                .is_some_and(|object| filter.matches(object, &ctx.filter_ctx, ctx.game)),
-        }
+        self.source.matches_damage_source(damage.source, ctx)
     }
 
     fn display(&self) -> String {
@@ -283,6 +276,9 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
             let filter = match source_constraint {
                 DamageSourceConstraint::Specific(source) => ObjectFilter::specific(source),
                 DamageSourceConstraint::Filter(filter) => filter,
+                DamageSourceConstraint::SpecificMatching { source, .. } => {
+                    ObjectFilter::specific(source)
+                }
             };
             ReplacementEffect::with_matcher(
                 ctx.source,

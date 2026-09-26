@@ -4569,6 +4569,10 @@ pub struct CreateTokenEffect<D> {
     /// legal planeswalker they control, depending on the mode) instead of
     /// copying the originating attacker's target.
     pub attack_target_mode: Option<CopyAttackTargetMode>,
+    /// "a token that's blocking <that creature>" (CR 509.1, 506.3e): each
+    /// created token enters blocking this attacking creature.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub enters_blocking: Option<ChooseSpec>,
     pub exile_at_end_of_combat: bool,
     pub sacrifice_at_end_of_combat: bool,
     pub sacrifice_at_next_end_step: bool,
@@ -4598,6 +4602,7 @@ impl<D> CreateTokenEffect<D> {
             enters_tapped: false,
             enters_attacking: false,
             attack_target_mode: None,
+            enters_blocking: None,
             exile_at_end_of_combat: false,
             sacrifice_at_end_of_combat: false,
             sacrifice_at_next_end_step: false,
@@ -4656,6 +4661,11 @@ impl<D> CreateTokenEffect<D> {
         self.attack_target_mode = Some(CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(
             player,
         ));
+        self
+    }
+
+    pub fn blocking(mut self, attacker: ChooseSpec) -> Self {
+        self.enters_blocking = Some(attacker);
         self
     }
 

@@ -2331,6 +2331,9 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             if tag.as_str().contains("copied") {
                 return "the copy".to_string();
             }
+            if tag.as_str() == ironsmith_core::TAXED_ATTACKER_TAG {
+                return "that creature".to_string();
+            }
             if tag.as_str() == "equipped" {
                 return "equipped creature".to_string();
             }

@@ -26,6 +26,8 @@ pub enum SimultaneousTriggerKey {
     ZoneChangeBatch,
     /// All counters one instruction puts on one or more objects.
     CounterBatch,
+    /// All dice one instruction rolls ("whenever you roll one or more dice").
+    DieRollBatch,
     /// Damage assignments are grouped independently for each source.
     DamageSource(ObjectId),
     /// Damage assignments are grouped independently for each recipient.

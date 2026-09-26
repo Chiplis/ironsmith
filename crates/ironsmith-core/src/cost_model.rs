@@ -937,6 +937,12 @@ pub enum OptionalCostKind {
     Additional,
     /// "you may collect evidence N" (CR 701.59); "if evidence was collected".
     CollectEvidence,
+    /// "You may cast this spell as though it had flash if you pay {N} more
+    /// to cast it" (Rout, Harbinger of the Tides): an optional additional
+    /// cost (CR 118.8, 601.2f) whose payment grants flash timing for this
+    /// cast. Being an additional cost, it combines with any way of casting
+    /// the spell, including alternative costs and free casts.
+    FlashTiming,
     /// A later condition referring to a verified alternative casting method.
     AlternativeCast(AlternativeCostReference),
     CustomUnsupported(String),
@@ -976,6 +982,7 @@ impl OptionalCostKind {
             "spectacle" => Self::Spectacle,
             "additional" | "additional cost" => Self::Additional,
             "evidence" | "collect evidence" => Self::CollectEvidence,
+            "flash" => Self::FlashTiming,
             _ if lower.starts_with("granted casualty") => Self::GrantedCasualty,
             _ if lower.starts_with("kicker ") => Self::Kicker,
             _ if lower.starts_with("gift ") => Self::Gift,
@@ -1024,6 +1031,7 @@ impl OptionalCostKind {
             Self::Spectacle => "Spectacle",
             Self::Additional => "Additional",
             Self::CollectEvidence => "Evidence",
+            Self::FlashTiming => "Flash",
             Self::AlternativeCast(reference) => reference.method_name(),
             Self::CustomUnsupported(label) => label.as_str(),
         }
@@ -1287,6 +1295,12 @@ impl<C> OptionalCost<C> {
 
     pub fn offspring(cost: TotalCost<C>) -> Self {
         Self::typed(OptionalCostKind::Offspring, "Offspring", cost)
+    }
+
+    /// "... as though it had flash if you pay {N} more" (see
+    /// [`OptionalCostKind::FlashTiming`]).
+    pub fn flash_timing(cost: TotalCost<C>) -> Self {
+        Self::typed(OptionalCostKind::FlashTiming, "Flash", cost)
     }
 
     pub fn custom(label: impl Into<String>, cost: TotalCost<C>) -> Self {

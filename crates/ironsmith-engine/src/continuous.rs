@@ -1036,6 +1036,49 @@ impl ContinuousEffectManager {
         removed
     }
 
+    /// Remove turn-relative effects whose duration ended at this turn boundary.
+    ///
+    /// CR 611.2a: an "until your next turn" effect ends once, when its
+    /// controller's next turn begins, and an "until your next upkeep" effect
+    /// ends during that turn's upkeep. The duration predicate alone would let
+    /// both apply again on every later turn of another player, so remove them
+    /// here: "next turn" effects when the controller's next turn starts, and
+    /// "next upkeep" effects at the start of the turn after the controller's
+    /// next turn (the predicate already reports them inactive from that
+    /// upkeep's end on).
+    pub fn expire_at_turn_start(
+        &mut self,
+        turn_number: u32,
+        completed_turn_players: &[PlayerId],
+        active_players: &[PlayerId],
+    ) {
+        let completed_turn_number = turn_number.saturating_sub(1);
+        let expired = |effect: &ContinuousEffect| match effect.duration {
+            Until::YourNextTurn => {
+                turn_number > effect.expires_end_of_turn
+                    && active_players.contains(&effect.controller)
+            }
+            Until::YourNextUpkeep => {
+                completed_turn_number > effect.expires_end_of_turn
+                    && completed_turn_players.contains(&effect.controller)
+            }
+            _ => false,
+        };
+        if !self.effects.iter().any(expired) {
+            return;
+        }
+        let effects = Arc::make_mut(&mut self.effects);
+        let states = self.latched_duration_states.get_mut();
+        effects.retain(|effect| {
+            let keep = !expired(effect);
+            if !keep {
+                states.remove(&effect.id);
+            }
+            keep
+        });
+        self.revision += 1;
+    }
+
     /// Remove all effects whose outer duration ends with the current turn.
     pub fn cleanup_end_of_turn(&mut self) {
         let effects = Arc::make_mut(&mut self.effects);
@@ -4595,15 +4638,38 @@ fn object_abilities_match(candidate: &Ability, template: &Ability) -> bool {
 /// CR 702.22h makes losing banding also remove every "bands with other"
 /// ability. Treat that rule as part of layer-six ability-loss matching so it
 /// applies equally to ordinary loss and "can't have or gain" prohibitions.
+///
+/// CR 702.11e likewise makes losing hexproof remove every "hexproof from
+/// [quality]" ability.
 fn object_ability_matches_loss(candidate: &Ability, template: &Ability) -> bool {
     object_abilities_match(candidate, template)
         || matches!(
             (&candidate.kind, &template.kind),
             (AbilityKind::Static(candidate), AbilityKind::Static(template))
-                if template.id() == crate::static_abilities::StaticAbilityId::Banding
-                    && candidate.id()
-                        == crate::static_abilities::StaticAbilityId::BandsWithOther
+                if static_ability_family_matches_loss(candidate, template)
         )
+}
+
+/// Static-ability form of [`object_ability_matches_loss`].
+pub(crate) fn static_ability_matches_loss(
+    candidate: &crate::static_abilities::StaticAbility,
+    template: &crate::static_abilities::StaticAbility,
+) -> bool {
+    candidate == template || static_ability_family_matches_loss(candidate, template)
+}
+
+/// Rule-defined families: losing banding removes "bands with other"
+/// (CR 702.22h); losing hexproof removes "hexproof from" (CR 702.11e).
+fn static_ability_family_matches_loss(
+    candidate: &crate::static_abilities::StaticAbility,
+    template: &crate::static_abilities::StaticAbility,
+) -> bool {
+    use crate::static_abilities::StaticAbilityId;
+    matches!(
+        (template.id(), candidate.id()),
+        (StaticAbilityId::Banding, StaticAbilityId::BandsWithOther)
+            | (StaticAbilityId::Hexproof, StaticAbilityId::HexproofFrom)
+    )
 }
 
 /// Record and enforce characteristic-level ability prohibitions.
@@ -4644,7 +4710,8 @@ pub(crate) fn prune_ability_gain_prohibitions(chars: &mut CalculatedCharacterist
         !prohibited.iter().any(|template| {
             matches!(
                 &template.kind,
-                AbilityKind::Static(prohibited_static) if candidate == prohibited_static
+                AbilityKind::Static(prohibited_static)
+                    if static_ability_matches_loss(candidate, prohibited_static)
             )
         })
     });
@@ -4981,31 +5048,23 @@ fn apply_modification_to_chars(
             // Compare abilities directly using new type
             chars.abilities.retain(|a| {
                 if let AbilityKind::Static(ref sa) = a.kind {
-                    sa != ability
-                        && !(ability.id() == crate::static_abilities::StaticAbilityId::Banding
-                            && sa.id() == crate::static_abilities::StaticAbilityId::BandsWithOther)
+                    !static_ability_matches_loss(sa, ability)
                 } else {
                     true
                 }
             });
-            chars.static_abilities.retain(|sa| {
-                sa != ability
-                    && !(ability.id() == crate::static_abilities::StaticAbilityId::Banding
-                        && sa.id() == crate::static_abilities::StaticAbilityId::BandsWithOther)
-            });
+            chars
+                .static_abilities
+                .retain(|sa| !static_ability_matches_loss(sa, ability));
         }
         Modification::RemoveAbilityGeneric { ability, .. } => {
             chars
                 .abilities
                 .retain(|candidate| !object_ability_matches_loss(candidate, ability));
             if let AbilityKind::Static(static_ability) = &ability.kind {
-                chars.static_abilities.retain(|candidate| {
-                    candidate != static_ability
-                        && !(static_ability.id()
-                            == crate::static_abilities::StaticAbilityId::Banding
-                            && candidate.id()
-                                == crate::static_abilities::StaticAbilityId::BandsWithOther)
-                });
+                chars
+                    .static_abilities
+                    .retain(|candidate| !static_ability_matches_loss(candidate, static_ability));
             }
         }
         Modification::RemoveStaticAbilityFamily(id) => {

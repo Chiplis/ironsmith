@@ -1920,6 +1920,18 @@ fn parse_effect_chain_inner_lexed_unstacked(
                 if let Some(duration) = &carried_duration {
                     apply_carried_effect_duration(&mut effect, duration);
                 }
+                // "<subject> lose A and B until end of turn": the bare arm
+                // shares the preceding subject and its trailing duration.
+                if losing
+                    && effects.last_mut().is_some_and(|previous| {
+                        chain_carry_ability_programs::merge_shared_subject_lose_followup(
+                            previous, &effect,
+                        )
+                    })
+                {
+                    previous_segment = Some(segment);
+                    continue;
+                }
                 effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
                 previous_segment = Some(segment);
                 continue;
@@ -2571,6 +2583,48 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
                 return true;
             }
             false
+        }
+        SubjectVerbActionAst::DamagePrevention(
+            DamagePreventionActionAst::PreventAllCombatDamageToYou {
+                follow_up_effects, ..
+            },
+        ) if follow_up_effects.is_empty() => {
+            // "For each 1 damage prevented this way, create ..." (Inkshield):
+            // one created token per prevented damage, as it is prevented.
+            let words = crate::lexer::token_word_refs(sentence);
+            let prefix = ["for", "each", "1", "damage", "prevented", "this", "way"];
+            if !crate::word_primitives::parse_sequence_prefix(&words, &prefix) {
+                return false;
+            }
+            let Some(body_start) = sentence
+                .iter()
+                .position(|token| token.is_word("way"))
+                .map(|idx| idx + 1)
+            else {
+                return false;
+            };
+            let body = crate::util::trim_edge_punctuation(&sentence[body_start..]);
+            let Ok(mut body_effects) = super::parse_effect_sentence_lexed(&body) else {
+                return false;
+            };
+            let [
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
+                            count, ..
+                        }),
+                    ..
+                }),
+            ] = body_effects.as_mut_slice()
+            else {
+                return false;
+            };
+            if !matches!(count, Value::Fixed(1)) {
+                return false;
+            }
+            *count = Value::EventValue(crate::effect::EventValueSpec::Amount);
+            *follow_up_effects = body_effects;
+            true
         }
         SubjectVerbActionAst::DamagePrevention(
             DamagePreventionActionAst::PreventAllDamageToTarget {

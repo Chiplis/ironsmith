@@ -201,11 +201,18 @@ fn activation_mana_payment_available(
         }
     }
 
-    let cost = ironsmith::decision::calculate_effective_activation_total_cost(
+    let cost = ironsmith::decision::calculate_effective_activation_total_cost_for_ability(
         game,
         payer,
         *source,
         &activated.mana_cost,
+        &[],
+        Some(ironsmith::decision::ActivationCostAbility::of(
+            game,
+            payer,
+            *source,
+            activated,
+        )),
     );
     let available = check_cost(
         game,
@@ -327,7 +334,7 @@ pub(super) fn action_drag_metadata(
             Some(zone_name(Zone::Hand)),
             Some(zone_name(Zone::Battlefield)),
         ),
-        LegalAction::PlayLand { land_id } => (
+        LegalAction::PlayLand { land_id } | LegalAction::PlayLandBackFace { land_id } => (
             "play_land",
             Some(land_id.0),
             None,
@@ -376,7 +383,8 @@ pub(super) fn action_drag_metadata(
             Some(zone_name(Zone::Battlefield)),
         ),
         LegalAction::SpecialAction(action) => match action {
-            ironsmith::special_actions::SpecialAction::PlayLand { card_id } => (
+            ironsmith::special_actions::SpecialAction::PlayLand { card_id }
+            | ironsmith::special_actions::SpecialAction::PlayLandBackFace { card_id } => (
                 "special_action",
                 Some(card_id.0),
                 None,
@@ -511,6 +519,17 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
                 || object_name(game, *land_id),
                 |object| {
                     ironsmith::decision::linked_other_face_land_definition(game, object)
+                        .map(|def| def.card.name)
+                        .unwrap_or_else(|| object.name.to_string())
+                },
+            );
+            format!("Play {}", name)
+        }
+        LegalAction::PlayLandBackFace { land_id } => {
+            let name = game.object(*land_id).map_or_else(
+                || object_name(game, *land_id),
+                |object| {
+                    ironsmith::decision::linked_back_face_land_definition(game, object)
                         .map(|def| def.card.name)
                         .unwrap_or_else(|| object.name.to_string())
                 },
@@ -676,7 +695,8 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
             )
         }
         LegalAction::SpecialAction(action) => match action {
-            ironsmith::special_actions::SpecialAction::PlayLand { card_id } => {
+            ironsmith::special_actions::SpecialAction::PlayLand { card_id }
+            | ironsmith::special_actions::SpecialAction::PlayLandBackFace { card_id } => {
                 format!("Play {}", object_name(game, *card_id))
             }
             ironsmith::special_actions::SpecialAction::TurnFaceUp {
@@ -958,7 +978,9 @@ pub(super) fn object_visible_to_perspective(
 pub(super) fn redacted_action_label(action: &LegalAction) -> String {
     match action {
         LegalAction::CastSpell { .. } => "Cast hidden spell".to_string(),
-        LegalAction::PlayLand { .. } => "Play hidden land".to_string(),
+        LegalAction::PlayLand { .. } | LegalAction::PlayLandBackFace { .. } => {
+            "Play hidden land".to_string()
+        }
         LegalAction::UsePregameAction { .. } => "Use hidden pregame action".to_string(),
         _ => "Hidden action".to_string(),
     }
@@ -1016,7 +1038,14 @@ pub(super) fn priority_action_ref(action: &LegalAction) -> PriorityActionRef {
             source: source.0,
             ability_index: *ability_index,
         },
-        LegalAction::PlayLand { land_id } => PriorityActionRef::PlayLand { land_id: land_id.0 },
+        LegalAction::PlayLand { land_id } => PriorityActionRef::PlayLand {
+            land_id: land_id.0,
+            back_face: false,
+        },
+        LegalAction::PlayLandBackFace { land_id } => PriorityActionRef::PlayLand {
+            land_id: land_id.0,
+            back_face: true,
+        },
         LegalAction::ActivateManaAbility {
             source,
             ability_index,
@@ -1042,7 +1071,16 @@ pub(super) fn special_action_ref(
 ) -> SpecialActionRef {
     match action {
         ironsmith::special_actions::SpecialAction::PlayLand { card_id } => {
-            SpecialActionRef::PlayLand { card_id: card_id.0 }
+            SpecialActionRef::PlayLand {
+                card_id: card_id.0,
+                back_face: false,
+            }
+        }
+        ironsmith::special_actions::SpecialAction::PlayLandBackFace { card_id } => {
+            SpecialActionRef::PlayLand {
+                card_id: card_id.0,
+                back_face: true,
+            }
         }
         ironsmith::special_actions::SpecialAction::TurnFaceUp {
             permanent_id,
@@ -1195,7 +1233,7 @@ pub(super) fn resolve_priority_action(
             let source = match action_ref {
                 PriorityActionRef::CastSpell { spell_id, .. } => Some(ObjectId::from_raw(*spell_id)),
                 PriorityActionRef::ActivateAbility { source, .. } | PriorityActionRef::ActivateManaAbility { source, .. } => Some(ObjectId::from_raw(*source)),
-                PriorityActionRef::PlayLand { land_id } => Some(ObjectId::from_raw(*land_id)),
+                PriorityActionRef::PlayLand { land_id, .. } => Some(ObjectId::from_raw(*land_id)),
                 PriorityActionRef::TurnFaceUp { creature_id, .. } => Some(ObjectId::from_raw(*creature_id)),
                 _ => None,
             };

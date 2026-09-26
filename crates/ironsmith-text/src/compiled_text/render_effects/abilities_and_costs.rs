@@ -3035,6 +3035,16 @@ pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
     if let Some(line) = optional_additional_source_line(cost) {
         return line;
     }
+    if cost.kind == OptionalCostKind::FlashTiming {
+        let amount = cost
+            .cost
+            .mana_cost()
+            .map(|mana| mana.to_oracle())
+            .unwrap_or_else(|| describe_total_cost_payment(&cost.cost));
+        return format!(
+            "You may cast this spell as though it had flash if you pay {amount} more to cast it"
+        );
+    }
 
     if cost.kind == OptionalCostKind::Additional
         && let Some(costs) = cost.cost.as_all()

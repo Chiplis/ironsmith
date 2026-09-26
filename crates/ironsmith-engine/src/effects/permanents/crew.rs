@@ -32,7 +32,6 @@ const FIRST_CREWED_THIS_TURN_TAG: &str = "__first_crewed_this_turn";
 // Cost-time tags carried on the crew ability's stack entry until it resolves.
 const PENDING_CREW_ACTIVATION_TAG: &str = "__crew_activation_pending";
 const PENDING_CREWERS_TAG: &str = "__crew_activation_pending_crewers";
-const PENDING_FIRST_CREWED_TAG: &str = "__crew_activation_pending_first";
 
 /// CR 702.122a: crew taps any number of *other* untapped creatures.
 fn crew_candidates(game: &GameState, source: ObjectId, controller: PlayerId) -> Vec<ObjectId> {
@@ -217,7 +216,6 @@ fn stash_pending_crew_activation(
     game: &GameState,
     ctx: &mut ExecutionContext,
     crewers: &[ObjectId],
-    is_first_crewed_this_turn: bool,
 ) {
     let Some(vehicle_snapshot) = game
         .object(ctx.source)
@@ -234,15 +232,14 @@ fn stash_pending_crew_activation(
         .collect::<Vec<_>>();
     ctx.set_tagged_objects(PENDING_CREW_ACTIVATION_TAG, vec![vehicle_snapshot.clone()]);
     ctx.set_tagged_objects(PENDING_CREWERS_TAG, crewer_snapshots);
-    if is_first_crewed_this_turn {
-        ctx.set_tagged_objects(PENDING_FIRST_CREWED_TAG, vec![vehicle_snapshot]);
-    }
 }
 
 /// CR 702.122d: builds the Vehicle's "becomes crewed" keyword-action event
-/// when a crew ability resolves. Returns `None` for any other stack entry.
+/// when a crew ability resolves, and records the resolution for "becomes
+/// crewed for the first time each turn". Returns `None` for any other stack
+/// entry.
 pub(crate) fn crew_ability_resolved_event(
-    game: &GameState,
+    game: &mut GameState,
     entry: &crate::game_state::StackEntry,
 ) -> Option<TriggerEvent> {
     if !entry.is_ability {
@@ -263,9 +260,14 @@ pub(crate) fn crew_ability_resolved_event(
         .get(&TagKey::from(PENDING_CREWERS_TAG))
         .cloned()
         .unwrap_or_default();
-    let is_first_crewed_this_turn = entry
-        .tagged_objects
-        .contains_key(&TagKey::from(PENDING_FIRST_CREWED_TAG));
+    // CR 702.122d: the first crew ability of this Vehicle to *resolve* this
+    // turn is its first "becomes crewed"; a countered activation or a
+    // loyalty-paid crew doesn't distort this.
+    let is_first_crewed_this_turn = game
+        .turn_store
+        .turn_history
+        .crew_abilities_resolved_this_turn
+        .insert(vehicle);
     let mut object_tags = HashMap::new();
     object_tags.insert(
         TagKey::from(CREWED_VEHICLE_TAG),
@@ -313,13 +315,7 @@ impl EffectExecutor for CrewCostEffect {
         if candidates.is_empty() && self.required_power > 0 {
             if can_pay_loyalty_crew_alternative(game, ctx.source, controller) {
                 let event = pay_loyalty_crew_alternative(game, ctx.source, controller)?;
-                let is_first_crewed_this_turn = game
-                    .turn_store
-                    .turn_history
-                    .crewed_this_turn
-                    .get(&ctx.source)
-                    .is_none_or(|crewers| crewers.is_empty());
-                stash_pending_crew_activation(game, ctx, &[], is_first_crewed_this_turn);
+                stash_pending_crew_activation(game, ctx, &[]);
                 return Ok(EffectOutcome::resolved().with_events(vec![event]));
             }
             return Err(ExecutionError::Impossible(
@@ -372,13 +368,7 @@ impl EffectExecutor for CrewCostEffect {
         if total_power < required {
             if can_pay_loyalty_crew_alternative(game, ctx.source, controller) {
                 let event = pay_loyalty_crew_alternative(game, ctx.source, controller)?;
-                let is_first_crewed_this_turn = game
-                    .turn_store
-                    .turn_history
-                    .crewed_this_turn
-                    .get(&ctx.source)
-                    .is_none_or(|crewers| crewers.is_empty());
-                stash_pending_crew_activation(game, ctx, &[], is_first_crewed_this_turn);
+                stash_pending_crew_activation(game, ctx, &[]);
                 return Ok(EffectOutcome::resolved().with_events(vec![event]));
             }
             return Err(ExecutionError::Impossible(
@@ -388,12 +378,6 @@ impl EffectExecutor for CrewCostEffect {
 
         let mut events = Vec::new();
         let crew_count = chosen.len();
-        let is_first_crewed_this_turn = game
-            .turn_store
-            .turn_history
-            .crewed_this_turn
-            .get(&ctx.source)
-            .is_none_or(|crewers| crewers.is_empty());
         for id in chosen.iter() {
             if game.object(*id).is_some() && !game.is_tapped(*id) {
                 game.tap(*id);
@@ -407,7 +391,7 @@ impl EffectExecutor for CrewCostEffect {
         // resolves", so the Vehicle-level event is deferred to resolution.
         // Stash what it needs on the activation's cost tags; the stack entry
         // carries them to `crew_ability_resolved_event`.
-        stash_pending_crew_activation(game, ctx, &chosen, is_first_crewed_this_turn);
+        stash_pending_crew_activation(game, ctx, &chosen);
         for id in chosen.iter() {
             events.push(keyword_crew_event(
                 game,

@@ -424,6 +424,13 @@ fn parse_spell_cast_history_count(
             false,
         ),
         (&["you", "cast", "this", "turn"], PlayerFilter::You, false),
+        // "for each other spell that player has cast this turn" (Damping
+        // Sphere): the player casting the spell being priced.
+        (
+            &["that", "player", "has", "cast", "this", "turn"],
+            PlayerFilter::IteratedPlayer,
+            false,
+        ),
         (&["cast", "this", "turn"], PlayerFilter::Any, false),
     ];
 

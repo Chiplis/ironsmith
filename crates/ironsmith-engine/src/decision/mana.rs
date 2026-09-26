@@ -169,8 +169,24 @@ fn resolve_cost_reduction_amount(
     controller: PlayerId,
     reduction: &crate::static_abilities::CostReduction,
 ) -> i32 {
-    let per_characteristic =
-        resolve_cost_modifier_value_for_source(game, source, controller, &reduction.reduction);
+    resolve_cost_reduction_amount_for_caster(game, spell, source, controller, controller, reduction)
+}
+
+fn resolve_cost_reduction_amount_for_caster(
+    game: &GameState,
+    spell: &crate::object::Object,
+    source: ObjectId,
+    controller: PlayerId,
+    caster: PlayerId,
+    reduction: &crate::static_abilities::CostReduction,
+) -> i32 {
+    let per_characteristic = resolve_cost_modifier_value_for_cast(
+        game,
+        source,
+        controller,
+        caster,
+        &reduction.reduction,
+    );
     let Some(intersection) = &reduction.characteristic_intersection else {
         return per_characteristic;
     };
@@ -231,7 +247,53 @@ fn maximum_emerge_reduction(
         .unwrap_or(0)
 }
 
+/// What the activation cost pipeline needs to know about the activated
+/// ability being priced (CR 601.2f, 602.2b): some modifiers apply only to
+/// abilities that aren't mana abilities (Tithe Taker, CR 605.1a) or only to
+/// equip abilities (Auriok Steelshaper, CR 702.6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ActivationCostAbility {
+    pub mana_ability: bool,
+    pub equip: bool,
+}
+
+impl ActivationCostAbility {
+    /// Facts for the activated ability at `ability_index` of `source`, if
+    /// there is one.
+    pub fn at(
+        game: &GameState,
+        activator: PlayerId,
+        source: ObjectId,
+        ability_index: usize,
+    ) -> Option<Self> {
+        let ability = game.current_ability(source, ability_index)?;
+        match &ability.kind {
+            crate::ability::AbilityKind::Activated(activated) => {
+                Some(Self::of(game, activator, source, activated))
+            }
+            _ => None,
+        }
+    }
+
+    pub fn of(
+        game: &GameState,
+        activator: PlayerId,
+        source: ObjectId,
+        activated: &crate::ability::ActivatedAbility,
+    ) -> Self {
+        use crate::ability::ActivatedAbilityRuntimeExt as _;
+        Self {
+            mana_ability: activated.is_runtime_mana_ability(game, source, activator),
+            equip: super::legal_actions::is_equip_ability(game, source, activated),
+        }
+    }
+}
+
 /// Calculate activated-ability cost after applying battlefield static cost modifiers.
+///
+/// Without the ability, modifiers restricted to a kind of ability are applied
+/// as if it qualified; prefer
+/// [`calculate_effective_activation_total_cost_for_ability`].
 pub fn calculate_effective_activation_total_cost(
     game: &GameState,
     activator: PlayerId,
@@ -261,6 +323,29 @@ pub fn calculate_effective_activation_total_cost_with_chosen_targets(
         ability_source,
         cost,
         chosen_targets,
+        None,
+        &view,
+    )
+}
+
+/// Calculate the total cost of activating `ability` (see
+/// [`ActivationCostAbility`]) after static cost modifiers.
+pub fn calculate_effective_activation_total_cost_for_ability(
+    game: &GameState,
+    activator: PlayerId,
+    ability_source: ObjectId,
+    cost: &crate::cost::TotalCost,
+    chosen_targets: &[Target],
+    ability: Option<ActivationCostAbility>,
+) -> crate::cost::TotalCost {
+    let view = DerivedGameView::new(game);
+    calculate_effective_activation_total_cost_with_view(
+        game,
+        activator,
+        ability_source,
+        cost,
+        chosen_targets,
+        ability,
         &view,
     )
 }
@@ -271,6 +356,7 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
     ability_source: ObjectId,
     cost: &crate::cost::TotalCost,
     chosen_targets: &[Target],
+    ability: Option<ActivationCostAbility>,
     view: &DerivedGameView<'_>,
 ) -> crate::cost::TotalCost {
     use crate::ability::AbilityKind;
@@ -287,6 +373,7 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
                         ability_source,
                         branch,
                         chosen_targets,
+                        ability,
                         view,
                     )
                 })
@@ -356,6 +443,10 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
                 if let Some(activator_filter) = &increase.activator
                     && !player_filter_matches_game(activator_filter, activator, game, &filter_ctx)
                 {
+                    continue;
+                }
+                // "... unless they're mana abilities" (Tithe Taker).
+                if increase.non_mana_only && ability.is_some_and(|ability| ability.mana_ability) {
                     continue;
                 }
                 if !increase
@@ -435,6 +526,7 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
                 ability_source,
                 mana_cost,
                 chosen_targets,
+                ability,
                 view,
             );
             costs.push(crate::costs::Cost::mana(reduced));
@@ -452,6 +544,7 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
                     ability_source,
                     &base,
                     chosen_targets,
+                    ability,
                     view,
                 );
             }
@@ -478,6 +571,7 @@ pub fn calculate_effective_activation_mana_cost(
         ability_source,
         base_cost,
         &[],
+        None,
         &view,
     )
 }
@@ -488,6 +582,7 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view(
     ability_source: ObjectId,
     base_cost: &crate::mana::ManaCost,
     chosen_targets: &[Target],
+    ability: Option<ActivationCostAbility>,
     view: &DerivedGameView<'_>,
 ) -> crate::mana::ManaCost {
     use crate::ability::AbilityKind;
@@ -562,8 +657,10 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view(
                     && !crate::static_abilities::activated_ability_cost_condition_is_active_for_activation(
                         game,
                         ability_source,
+                        source_id,
                         condition,
                         chosen_targets,
+                        ability,
                     )
                 {
                     continue;
@@ -1644,14 +1741,41 @@ pub(crate) fn spell_cast_restrictions_allow(
     player: PlayerId,
     spell: &crate::object::Object,
 ) -> bool {
-    spell.abilities.iter().all(|ability| {
-        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
-            return true;
-        };
-        let Some(kind) = static_ability.this_spell_cast_restriction_kind() else {
-            return true;
-        };
-        this_spell_cast_restriction_allows(game, player, &kind)
+    legendary_spell_cast_restriction_allows(game, player, spell)
+        && spell.abilities.iter().all(|ability| {
+            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                return true;
+            };
+            let Some(kind) = static_ability.this_spell_cast_restriction_kind() else {
+                return true;
+            };
+            this_spell_cast_restriction_allows(game, player, &kind)
+        })
+}
+
+/// CR 205.4e: a player can't cast a legendary instant or sorcery spell unless
+/// that player controls a legendary creature or a legendary planeswalker.
+/// `spell` is the cast view, so a split/adventure half is checked by itself.
+fn legendary_spell_cast_restriction_allows(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+) -> bool {
+    use crate::types::Supertype;
+
+    if !spell.has_supertype(Supertype::Legendary)
+        || !(spell.has_card_type(CardType::Instant) || spell.has_card_type(CardType::Sorcery))
+    {
+        return true;
+    }
+    game.battlefield.iter().any(|&id| {
+        game.object(id)
+            .is_some_and(|object| game.controller_of(object) == player)
+            && game.current_characteristics(id).is_some_and(|chars| {
+                chars.supertypes.contains(&Supertype::Legendary)
+                    && (chars.card_types.contains(&CardType::Creature)
+                        || chars.card_types.contains(&CardType::Planeswalker))
+            })
     })
 }
 
@@ -1788,10 +1912,27 @@ fn casting_method_grants_flash_timing(
         }
         _ => None,
     };
+    // Legacy (pre-rebake) definitions still carry the alternative-cast form.
     matches!(
         method,
         Some(crate::alternative_cast::AlternativeCastingMethod::FlashWithAdditionalCost { .. })
-    )
+    ) || flash_timing_optional_cost_grants_timing(spell)
+}
+
+/// "Cast this spell as though it had flash if you pay {N} more" (an optional
+/// additional cost, CR 601.2f). Before the cast is proposed the permission is
+/// available (the cost is chosen later, with whatever casting method); once
+/// the spell is on the stack, it holds only if that cost was announced. As
+/// with Offering, the completed-proposal check (CR 601.2e) cancels a cast
+/// that relied on flash timing without paying it.
+fn flash_timing_optional_cost_grants_timing(spell: &crate::object::Object) -> bool {
+    spell.optional_costs.iter().any(|optional| {
+        optional.kind == ironsmith_core::OptionalCostKind::FlashTiming
+            && (spell.zone != Zone::Stack
+                || spell
+                    .optional_costs_paid
+                    .was_paid_label(optional.cost_ref()))
+    })
 }
 
 fn casting_method_grants_library_search_timing(
@@ -1837,6 +1978,18 @@ fn casting_method_grants_special_timing(
     spell_id: ObjectId,
     casting_method: &CastingMethod,
 ) -> bool {
+    // "Can cast spells only any time they could cast a sorcery" (Teferi, Time
+    // Raveler) restricts the player; flash-like casting permissions don't
+    // override it (CR 307.5, 601.3).
+    if ctx
+        .game
+        .effect_store
+        .cant_effects
+        .cast_spells_only_as_sorcery
+        .contains(&ctx.player)
+    {
+        return false;
+    }
     offering_grants_timing(ctx.game, ctx.player, spell)
         || casting_method_grants_flash_timing(ctx.game, ctx.player, spell, casting_method)
         || casting_method_grants_sneak_timing(ctx.game, spell, casting_method)
@@ -3485,6 +3638,50 @@ pub fn linked_other_face_land_definition(
 
     linked_face_definition(game, spell)
         .filter(|def| def.card.card_types.contains(&crate::types::CardType::Land))
+}
+
+/// CR 712.12: a player playing a modal double-faced card as a land chooses
+/// one of its faces that's a land. When the front face is itself a land and
+/// the back face is also a land (the Pathways), this is the back face; the
+/// front face is played by an ordinary [`LegalAction::PlayLand`].
+///
+/// Outside the battlefield and the stack the card shows its front face
+/// (CR 712.8a), so its linked face is its back face.
+pub fn linked_back_face_land_definition(
+    game: &GameState,
+    card: &crate::object::Object,
+) -> Option<crate::cards::CardDefinition> {
+    if card.linked_face_layout != crate::card::LinkedFaceLayout::TransformLike
+        || !card.has_card_type(crate::types::CardType::Land)
+        || matches!(card.zone, Zone::Battlefield | Zone::Stack)
+    {
+        return None;
+    }
+
+    linked_face_definition(game, card)
+        .filter(|def| def.card.card_types.contains(&crate::types::CardType::Land))
+}
+
+/// The face a land play puts onto the battlefield, if it isn't the card's
+/// current face: the back face when explicitly chosen, or the linked land
+/// face of a card whose front face isn't a land. `Err` when the chosen face
+/// isn't a land.
+pub(crate) fn land_play_face_definition(
+    game: &GameState,
+    card: &crate::object::Object,
+    back_face: bool,
+) -> Result<Option<crate::cards::CardDefinition>, ()> {
+    if back_face {
+        return linked_back_face_land_definition(game, card)
+            .map(Some)
+            .ok_or(());
+    }
+    if card.has_card_type(crate::types::CardType::Land) {
+        return Ok(None);
+    }
+    linked_other_face_land_definition(game, card)
+        .map(Some)
+        .ok_or(())
 }
 
 pub(crate) fn spell_has_adventure_half(game: &GameState, spell: &crate::object::Object) -> bool {
@@ -5154,7 +5351,7 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                         1
                     };
                     let amount =
-                        resolve_cost_reduction_amount(game, spell, perm_id, controller, reduction)
+                        resolve_cost_reduction_amount_for_caster(game, spell, perm_id, controller, caster, reduction)
                             .saturating_mul(multiplier);
                     if amount > 0 {
                         total_reduction = total_reduction.saturating_add(amount);
@@ -5177,10 +5374,11 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                     } else {
                         1
                     };
-                    let amount = resolve_cost_modifier_value_for_source(
+                    let amount = resolve_cost_modifier_value_for_cast(
                         game,
                         perm_id,
                         controller,
+                        caster,
                         &increase.increase,
                     )
                     .saturating_mul(multiplier);
@@ -5281,7 +5479,7 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                         1
                     };
                     let amount =
-                        resolve_cost_reduction_amount(game, spell, perm_id, controller, reduction)
+                        resolve_cost_reduction_amount_for_caster(game, spell, perm_id, controller, caster, reduction)
                             .saturating_mul(multiplier);
                     if amount > 0 {
                         total_reduction = total_reduction.saturating_add(amount);
@@ -5304,10 +5502,11 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                     } else {
                         1
                     };
-                    let amount = resolve_cost_modifier_value_for_source(
+                    let amount = resolve_cost_modifier_value_for_cast(
                         game,
                         perm_id,
                         controller,
+                        caster,
                         &increase.increase,
                     )
                     .saturating_mul(multiplier);
@@ -5645,6 +5844,22 @@ pub(crate) fn resolve_cost_modifier_value_for_source(
 ) -> i32 {
     let mut dm = SelectFirstDecisionMaker;
     let ctx = ExecutionContext::new(source, controller, &mut dm);
+    resolve_value(game, value, &ctx).unwrap_or(0)
+}
+
+/// Resolve a spell cost modifier's amount for a cast by `caster`, who is
+/// "that player" in the amount ("for each other spell that player has cast
+/// this turn", Damping Sphere).
+pub(crate) fn resolve_cost_modifier_value_for_cast(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    caster: PlayerId,
+    value: &crate::effect::Value,
+) -> i32 {
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = ExecutionContext::new(source, controller, &mut dm);
+    ctx.iteration.iterated_player = Some(caster);
     resolve_value(game, value, &ctx).unwrap_or(0)
 }
 

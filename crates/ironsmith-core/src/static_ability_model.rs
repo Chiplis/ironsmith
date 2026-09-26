@@ -622,6 +622,14 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         attackers: ObjectFilter,
         cost: TotalCost<C>,
         display: String,
+        /// "can't attack or block unless ...": the same cost is also due when
+        /// the blocker-side creature attacks (CR 508.1d/h).
+        #[cfg_attr(feature = "serde", serde(default))]
+        also_attack_cost: bool,
+        /// "can't attack unless ..." with no blocking half (Brainwash): only
+        /// the attack-side cost exists; `blockers` names the attacker.
+        #[cfg_attr(feature = "serde", serde(default))]
+        attack_only: bool,
     },
     MayChooseNotToUntapDuringUntapStep(String),
     UntapDuringEachOtherPlayersUntapStep {
@@ -1007,6 +1015,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         /// "half that many ... rounded down" instead of "twice that many".
         #[cfg_attr(feature = "serde", serde(default))]
         halve: bool,
+        /// "If an effect would put ..." (Doubling Season): counters put on
+        /// as a cost or by a game rule aren't doubled (CR 614.1a rulings).
+        #[cfg_attr(feature = "serde", serde(default))]
+        effect_only: bool,
         display: String,
     },
     AddCountersPlacementReplacement {
@@ -1901,12 +1913,16 @@ where
                 attackers,
                 cost,
                 display,
+                also_attack_cost,
+                attack_only,
             } => StaticAbilityPayload::BlockCost {
                 blockers,
                 blocker_is_attached_to_source,
                 attackers,
                 cost: map_total_cost(cost, map_cost)?,
                 display,
+                also_attack_cost,
+                attack_only,
             },
             StaticAbilityPayload::MayChooseNotToUntapDuringUntapStep(subject) => {
                 StaticAbilityPayload::MayChooseNotToUntapDuringUntapStep(subject)
@@ -2510,6 +2526,7 @@ where
                 actor,
                 includes_permanents,
                 halve,
+                effect_only,
                 display,
             } => StaticAbilityPayload::DoubleCountersReplacement {
                 filter,
@@ -2518,6 +2535,7 @@ where
                 actor,
                 includes_permanents,
                 halve,
+                effect_only,
                 display,
             },
             StaticAbilityPayload::AddCountersPlacementReplacement {
@@ -4229,9 +4247,38 @@ impl<
                 attackers,
                 cost,
                 display,
+                also_attack_cost: false,
+                attack_only: false,
             },
         }
     }
+    /// Marks a block cost as also charged when that creature attacks
+    /// ("can't attack or block unless ..."). No-op for other payloads.
+    pub fn with_block_cost_also_attacking(mut self) -> Self {
+        if let StaticAbilityPayload::BlockCost {
+            also_attack_cost, ..
+        } = &mut self.payload
+        {
+            *also_attack_cost = true;
+        }
+        self
+    }
+
+    /// Marks a block cost as an attack-only cost ("can't attack unless ...").
+    /// No-op for other payloads.
+    pub fn with_block_cost_attack_only(mut self) -> Self {
+        if let StaticAbilityPayload::BlockCost {
+            also_attack_cost,
+            attack_only,
+            ..
+        } = &mut self.payload
+        {
+            *also_attack_cost = true;
+            *attack_only = true;
+        }
+        self
+    }
+
     pub fn attached_block_cost(
         blockers: ObjectFilter,
         attackers: ObjectFilter,
@@ -4248,6 +4295,8 @@ impl<
                 attackers,
                 cost,
                 display,
+                also_attack_cost: false,
+                attack_only: false,
             },
         }
     }
@@ -4300,6 +4349,21 @@ impl<
                 minimum_total_mana,
             },
         }
+    }
+    /// Attach an activation condition to an activated-ability cost
+    /// reduction; other payloads are returned unchanged.
+    pub fn with_activated_ability_cost_condition(
+        mut self,
+        condition: ActivatedAbilityCostCondition,
+    ) -> Self {
+        if let StaticAbilityPayload::ActivatedAbilityCostReduction {
+            condition: existing,
+            ..
+        } = &mut self.payload
+        {
+            *existing = Some(condition);
+        }
+        self
     }
     pub fn reduce_activated_ability_costs_if_targets(
         filter: ObjectFilter,
@@ -6456,9 +6520,21 @@ impl<
                 actor: None,
                 includes_permanents: false,
                 halve: false,
+                effect_only: false,
                 display,
             },
         }
+    }
+
+    /// Restrict a counter-doubling replacement to counters put on by an
+    /// effect ("If an effect would put one or more counters ...").
+    pub fn effect_caused_counters_only(mut self) -> Self {
+        if let StaticAbilityPayload::DoubleCountersReplacement { effect_only, .. } =
+            &mut self.payload
+        {
+            *effect_only = true;
+        }
+        self
     }
 
     /// "If you would put one or more counters on a permanent or player, put
@@ -6481,6 +6557,7 @@ impl<
                 actor: Some(actor),
                 includes_permanents: true,
                 halve,
+                effect_only: false,
                 display,
             },
         }
@@ -6561,6 +6638,7 @@ impl<
                 actor: None,
                 includes_permanents: false,
                 halve: false,
+                effect_only: false,
                 display,
             },
         }

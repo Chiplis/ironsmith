@@ -41,7 +41,9 @@ impl EffectExecutor for RingTemptsYouEffect {
             .iter()
             .copied()
             .filter(|&id| {
-                game.current_controller(id) == Some(player_id)
+                // CR 702.26b: a phased-out creature can't become Ring-bearer.
+                !game.is_phased_out(id)
+                    && game.current_controller(id) == Some(player_id)
                     && game.object_has_card_type(id, CardType::Creature)
             })
             .collect::<Vec<_>>();

@@ -16,6 +16,9 @@ pub enum DamagePreventionActionAst {
         duration: Until,
         source: TargetAst,
         source_would_deal_surface: bool,
+        /// "that would be dealt to and dealt by <source>": also prevent the
+        /// combat damage dealt to it.
+        dealt_to_and_by: bool,
     },
     PreventAllCombatDamageFromSourceFilter {
         duration: Until,
@@ -27,6 +30,9 @@ pub enum DamagePreventionActionAst {
     },
     PreventAllCombatDamageToYou {
         duration: Until,
+        /// "For each 1 damage prevented this way, ..." (Inkshield): run as
+        /// each damage event is prevented, reading the prevented amount.
+        follow_up_effects: Vec<EffectAst>,
     },
     PreventNextTimeDamage {
         source: PreventNextTimeDamageSourceAst,

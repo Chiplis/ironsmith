@@ -487,6 +487,20 @@ impl GameState {
         if self.is_conspiracy_card(old_id) && new_zone != Zone::Command {
             return Some(old_id);
         }
+        // CR 717.6: an Attraction card goes to its owner's junkyard in the
+        // command zone instead of a graveyard, hand or library.
+        let new_zone = self.attraction_card_destination(old_id, new_zone);
+        // One already in the command zone (its Attraction deck or junkyard)
+        // stays where it is.
+        if new_zone == Zone::Command
+            && self.is_attraction_card(old_id)
+            && self
+                .objects
+                .get(&old_id)
+                .is_some_and(|object| object.zone == Zone::Command)
+        {
+            return Some(old_id);
+        }
         if new_zone == Zone::Battlefield && self.card_cannot_enter_battlefield(old_id) {
             return None;
         }
@@ -714,9 +728,20 @@ impl GameState {
             && new_zone != Zone::Battlefield
             && let Some(melded) = self.melded_permanent(old_object.stable_id).cloned()
         {
+            // CR 903.9c: per-component commander destinations, if any.
+            let component_destinations = self
+                .commander_tracking_mut()
+                .pending_merged_component_destinations
+                .remove(&old_object.stable_id);
             let mut result_object_ids = Vec::with_capacity(melded.components.len());
-            for component in &melded.components {
-                let new_component_id = self.create_meld_component_object(component, new_zone)?;
+            for (index, component) in melded.components.iter().enumerate() {
+                let component_zone = component_destinations
+                    .as_ref()
+                    .and_then(|destinations| destinations.get(index))
+                    .copied()
+                    .unwrap_or(new_zone);
+                let new_component_id =
+                    self.create_meld_component_object(component, component_zone)?;
                 result_object_ids.push(new_component_id);
             }
             self.commander_tracking_mut()
@@ -1020,7 +1045,7 @@ impl GameState {
         Some(new_id)
     }
 
-    fn default_face_definition_for_transform_like_return(
+    pub(crate) fn default_face_definition_for_transform_like_return(
         &self,
         object: &Object,
     ) -> Option<crate::cards::CardDefinition> {
@@ -4400,8 +4425,24 @@ impl GameState {
                     .collect()
             };
 
-        // Now apply each ability's restrictions using the trait method
+        // Now apply each ability's restrictions using the trait method.
+        // Maximum-hand-size modifications are rule changes applied in
+        // timestamp order (CR 613.11, 402.2) together with the spell-created
+        // "no maximum hand size" effects below, so defer them.
+        let mut hand_size_modifications: Vec<(u64, HandSizeModification)> = Vec::new();
         for (static_ability, permanent_id, controller) in abilities_to_apply {
+            if Self::static_ability_modifies_maximum_hand_size(&static_ability) {
+                let timestamp = self
+                    .effect_store
+                    .continuous_effects
+                    .get_object_timestamp(permanent_id)
+                    .unwrap_or(0);
+                hand_size_modifications.push((
+                    timestamp,
+                    HandSizeModification::Static(static_ability, permanent_id, controller),
+                ));
+                continue;
+            }
             static_ability.apply_restrictions(self, permanent_id, controller);
         }
 
@@ -4434,6 +4475,14 @@ impl GameState {
 
         let mut restriction_tracker = CantEffectTracker::default();
         for effect in active_restrictions {
+            if matches!(
+                effect.restriction,
+                crate::effect::Restriction::NoMaximumHandSize(_)
+            ) {
+                hand_size_modifications
+                    .push((effect.timestamp, HandSizeModification::Restriction(effect)));
+                continue;
+            }
             effect.restriction.apply_with_tagged_objects(
                 self,
                 &mut restriction_tracker,
@@ -4442,6 +4491,24 @@ impl GameState {
                 effect.iterated_player,
                 &effect.tagged_objects,
             );
+        }
+        hand_size_modifications.sort_by_key(|(timestamp, _)| *timestamp);
+        for (_, modification) in hand_size_modifications {
+            match modification {
+                HandSizeModification::Static(static_ability, permanent_id, controller) => {
+                    static_ability.apply_restrictions(self, permanent_id, controller);
+                }
+                HandSizeModification::Restriction(effect) => {
+                    effect.restriction.apply_with_tagged_objects(
+                        self,
+                        &mut restriction_tracker,
+                        effect.controller,
+                        Some(effect.source),
+                        effect.iterated_player,
+                        &effect.tagged_objects,
+                    );
+                }
+            }
         }
         self.effect_store.cant_effects.merge(restriction_tracker);
 
@@ -4459,6 +4526,18 @@ impl GameState {
                 .remove_regeneration_shields_from_source(object_id);
             self.clear_regeneration_shields(object_id);
         }
+    }
+
+    fn static_ability_modifies_maximum_hand_size(static_ability: &StaticAbility) -> bool {
+        use crate::static_abilities::StaticAbilityId;
+        matches!(
+            static_ability.id(),
+            StaticAbilityId::NoMaximumHandSize
+                | StaticAbilityId::SetMaximumHandSize
+                | StaticAbilityId::ReduceMaximumHandSize
+                | StaticAbilityId::IncreaseMaximumHandSize
+                | StaticAbilityId::MaximumHandSizeSevenMinusYourGraveyardCardTypes
+        )
     }
 
     fn cant_effects_static_scan_can_stay_empty(&self, all_effects: &[ContinuousEffect]) -> bool {
@@ -4845,4 +4924,10 @@ fn is_synthetic_granted_suspend(
         crate::alternative_cast::AlternativeCastingMethod::Suspend { cost, time: 0 }
             if cost.is_empty()
     )
+}
+
+/// One maximum-hand-size modification awaiting timestamp-ordered application.
+enum HandSizeModification {
+    Static(StaticAbility, ObjectId, PlayerId),
+    Restriction(super::RestrictionEffectInstance),
 }

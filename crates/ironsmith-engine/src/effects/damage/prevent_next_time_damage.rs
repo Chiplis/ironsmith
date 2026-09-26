@@ -169,7 +169,18 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
                     return Ok(EffectOutcome::count(0));
                 };
                 chosen_source = Some(chosen);
-                DamageSourceConstraint::Specific(chosen)
+                match choice {
+                    // CR 615.9: the chosen source must still have the quality
+                    // when it would deal the damage, or the shield doesn't
+                    // apply (and isn't used up).
+                    PreventNextTimeDamageSource::ChoiceMatching(filter) => {
+                        DamageSourceConstraint::SpecificMatching {
+                            source: chosen,
+                            filter: filter.clone(),
+                        }
+                    }
+                    _ => DamageSourceConstraint::Specific(chosen),
+                }
             }
         };
 

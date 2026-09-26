@@ -293,10 +293,11 @@ fn i049_unchosen_group_rolls_emit_no_event_ui_or_history_entry() {
     .expect("roll and choose resolves");
 
     assert_eq!(outcome.as_count(), Some(2));
-    assert_eq!(outcome.events.len(), 1);
+    // CR 706.1/706.4: both dice were rolled (only an ignored roll never
+    // happened, CR 706.6); the Endeavor cards use "the other result".
+    assert_eq!(outcome.events.len(), 2);
     assert!(
-        !game
-            .turn_store
+        game.turn_store
             .turn_history
             .player_rolled_result_this_turn(alice, 6)
     );
@@ -328,9 +329,9 @@ fn i049_tied_group_results_still_complete_exactly_one_roll() {
     )
     .expect("roll and choose resolves");
 
-    assert_eq!(outcome.events.len(), 1);
+    assert_eq!(outcome.events.len(), 2);
     assert_eq!(
         game.turn_store.turn_history.die_rolls_this_turn[&alice],
-        vec![4]
+        vec![4, 4]
     );
 }

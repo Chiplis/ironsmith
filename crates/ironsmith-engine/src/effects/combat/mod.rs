@@ -31,7 +31,9 @@ mod set_base_power_toughness;
 
 pub use assign_no_combat_damage::AssignNoCombatDamageEffect;
 pub use enter_attacking::EnterAttackingEffect;
-pub(crate) use enter_attacking::choose_enters_attacking_target;
+pub(crate) use enter_attacking::{
+    can_enter_attacking, choose_enters_attacking_target, put_onto_battlefield_blocking,
+};
 pub use exchange_values::{ExchangeValueKind, ExchangeValueOperand, ExchangeValuesEffect};
 pub use fight::FightEffect;
 pub use goad::{ClearGoadEffect, GoadEffect};

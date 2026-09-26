@@ -288,6 +288,7 @@ mod tests {
             target: AttackTarget::Player(bob),
         });
         game.combat = Some(combat);
+        game.turn.phase = crate::game_state::Phase::Combat;
 
         // Get and execute the attack trigger
         let geist = game.object(geist_id).unwrap();

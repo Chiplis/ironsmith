@@ -474,7 +474,11 @@ impl EffectExecutor for CreateTokenCopyEffect {
                     &mut events,
                 )?;
 
-                if let Some(attack_player) = configured_attack_player {
+                // CR 506.3a/b/f, 508.4: only a creature controlled by an
+                // attacking player, during combat, becomes attacking.
+                if let Some(attack_player) = configured_attack_player
+                    && crate::effects::combat::can_enter_attacking(game, entered_id)
+                {
                     let chosen_target = if attack_player_only {
                         game.player(attack_player)
                             .is_some_and(|player| player.is_in_game())
@@ -485,9 +489,8 @@ impl EffectExecutor for CreateTokenCopyEffect {
                             .then(|| choose_attack_target(game, ctx, attack_player, &targets))
                             .flatten()
                     };
-                    if let Some(chosen_target) = chosen_target
-                        && let Some(combat) = game.combat.as_mut()
-                    {
+                    if let Some(chosen_target) = chosen_target {
+                        let combat = game.combat.get_or_insert_with(Default::default);
                         combat.attackers.push(AttackerInfo {
                             creature: entered_id,
                             target: chosen_target,
@@ -1115,6 +1118,7 @@ mod tests {
             target: AttackTarget::Player(bob),
         });
         game.combat = Some(combat);
+        game.turn.phase = crate::game_state::Phase::Combat;
 
         let mut ctx = ExecutionContext::new_default(source, alice)
             .with_targets(vec![ResolvedTarget::Object(creature_id)]);
@@ -1180,6 +1184,7 @@ mod tests {
         let source = create_creature(&mut game, "Source Attacker", alice);
         let charlie_walker = create_planeswalker(&mut game, "Charlie Walker", charlie);
         game.combat = Some(CombatState::default());
+        game.turn.phase = crate::game_state::Phase::Combat;
 
         let mut dm = ChooseLastOptionDecisionMaker;
         let mut ctx = ExecutionContext::new(source, alice, &mut dm)

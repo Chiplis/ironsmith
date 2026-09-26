@@ -80,11 +80,16 @@ impl EffectExecutor for RollDiceChooseResultEffect {
             .find_map(|(idx, roll)| (idx != chosen_idx).then_some(roll.result))
             .unwrap_or(chosen.result);
 
-        game.turn_store
-            .turn_history
-            .record_die_roll(player, chosen.result);
-        // The chosen result is the roll recorded by this effect, so it must
-        // invalidate any continuous effects that depend on die-roll history.
+        // CR 706.1 / 706.4: every die was rolled; only the chosen result is
+        // used by the effect, but both count as rolls for history and for
+        // "whenever you roll ..." triggers.
+        for roll in &rolls {
+            game.turn_store
+                .turn_history
+                .record_die_roll(player, roll.result);
+        }
+        // The recorded rolls must invalidate any continuous effects that
+        // depend on die-roll history.
         game.mark_continuous_state_dirty();
         game.record_ui_effect_event(
             "die_roll",
@@ -94,19 +99,35 @@ impl EffectExecutor for RollDiceChooseResultEffect {
             Some(i64::from(chosen.result)),
             Some(format!("d{}", self.sides)),
         );
-        let event = crate::triggers::TriggerEvent::new_with_provenance(
-            DieRolledEvent::new_with_natural_result(
-                player,
-                ctx.source,
-                chosen.natural_result,
-                chosen.result,
-                self.sides,
-            ),
+        let batch = game.alloc_child_event_provenance(
             ctx.provenance,
+            crate::events::EventKind::DieRolled,
         );
+        // Each die is its own event (distinct provenance, so turn history
+        // keeps both), sharing one simultaneous batch.
+        let events = rolls
+            .iter()
+            .map(|roll| {
+                let provenance = game.alloc_child_event_provenance(
+                    ctx.provenance,
+                    crate::events::EventKind::DieRolled,
+                );
+                crate::triggers::TriggerEvent::new_with_provenance(
+                    DieRolledEvent::new_with_natural_result(
+                        player,
+                        ctx.source,
+                        roll.natural_result,
+                        roll.result,
+                        self.sides,
+                    ),
+                    provenance,
+                )
+                .with_simultaneous_batch(batch)
+            })
+            .collect::<Vec<_>>();
 
         Ok(EffectOutcome::count(chosen.result as i32)
-            .with_event(event)
+            .with_events(events)
             .with_execution_fact(ExecutionFact::ChosenNumber(chosen.result))
             .with_execution_fact(ExecutionFact::OtherNumber(other)))
     }

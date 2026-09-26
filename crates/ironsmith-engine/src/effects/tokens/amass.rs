@@ -33,6 +33,8 @@ fn army_creature_candidates(game: &GameState, controller: PlayerId) -> Vec<Objec
     game.battlefield
         .iter()
         .copied()
+        // CR 702.26b: a phased-out Army is treated as though it doesn't exist.
+        .filter(|&id| !game.is_phased_out(id))
         .filter(|&id| {
             game.object(id).is_some_and(|obj| {
                 game.controller_of(obj) == controller

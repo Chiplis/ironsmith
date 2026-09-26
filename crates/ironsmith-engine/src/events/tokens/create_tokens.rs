@@ -50,11 +50,38 @@ impl CreateTokensEvent {
         }
     }
 
+    /// Every token group doubled, including tokens an earlier replacement
+    /// added (CR 616.1: each replacement applies to the modified event).
     pub fn doubled(&self) -> Self {
-        Self {
-            count: self.count.saturating_mul(2),
-            ..self.clone()
+        self.scaled_groups(|_| true, |count| count.saturating_mul(2))
+    }
+
+    /// Total number of tokens this event would create, across the original
+    /// token and every group added by an earlier replacement.
+    pub fn total_count(&self) -> u32 {
+        self.additional_tokens
+            .iter()
+            .fold(self.count, |total, (_, count)| total.saturating_add(*count))
+    }
+
+    /// Rewrite the count of each token group `matches` accepts. The original
+    /// group is `None`; added groups pass their kind.
+    pub fn scaled_groups(
+        &self,
+        matches: impl Fn(Option<AdditionalTokenKind>) -> bool,
+        scale: impl Fn(u32) -> u32,
+    ) -> Self {
+        let mut next = self.clone();
+        if matches(None) {
+            next.count = scale(next.count);
         }
+        for (kind, count) in &mut next.additional_tokens {
+            if matches(Some(*kind)) {
+                *count = scale(*count);
+            }
+        }
+        next.additional_tokens.retain(|(_, count)| *count > 0);
+        next
     }
 
     pub fn with_count(&self, count: u32) -> Self {
@@ -97,4 +124,25 @@ impl GameEventType for CreateTokensEvent {
     fn as_any(&self) -> &dyn Any {
         self
     }
+}
+
+/// Token definition for a token kind a replacement effect adds.
+pub fn additional_token_definition(kind: AdditionalTokenKind) -> crate::cards::CardDefinition {
+    match kind {
+        AdditionalTokenKind::Treasure => crate::cards::tokens::treasure_token_definition(),
+        AdditionalTokenKind::Food => crate::cards::tokens::food_token_definition(),
+        AdditionalTokenKind::Clue => crate::cards::tokens::clue_token_definition(),
+        AdditionalTokenKind::Squirrel => crate::cards::tokens::squirrel_token_definition(),
+    }
+}
+
+/// The characteristics of an added token group, for matching later
+/// replacements' token filters ("If you would create one or more Treasure
+/// tokens" sees a Treasure an earlier replacement added).
+pub fn additional_token_object(kind: AdditionalTokenKind, controller: PlayerId) -> Object {
+    Object::from_token_definition(
+        crate::ids::ObjectId::from_raw(0),
+        &additional_token_definition(kind),
+        controller,
+    )
 }

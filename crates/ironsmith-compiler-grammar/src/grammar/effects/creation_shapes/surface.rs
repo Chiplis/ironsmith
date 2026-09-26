@@ -139,6 +139,7 @@ pub enum CreationPhrase {
     AtEndOfCombat,
     AttachedTo,
     AttackingThatPlayer,
+    AttackingThatOpponent,
     AttackTarget,
     BasicLandTypes,
     CardExiledThisWay,
@@ -189,6 +190,7 @@ impl CreationPhrase {
             Self::AtEndOfCombat => &[&["at", "end", "of", "combat"]],
             Self::AttachedTo => &[&["attached", "to"]],
             Self::AttackingThatPlayer => &[&["attacking", "that", "player"]],
+            Self::AttackingThatOpponent => &[&["attacking", "that", "opponent"]],
             Self::AttackTarget => &[
                 &[
                     "that",

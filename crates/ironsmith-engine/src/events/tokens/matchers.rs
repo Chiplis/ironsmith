@@ -61,13 +61,30 @@ impl ReplacementMatcher for WouldCreateTokensUnderControlMatcher {
         }
 
         if let Some(token_filter) = &self.token_filter {
+            // Tokens an earlier replacement added are part of the event too
+            // (CR 616.1), so any matching group makes this apply.
             return create_tokens
                 .token
                 .as_ref()
-                .is_some_and(|token| token_filter.matches(token, &ctx.filter_ctx, ctx.game));
+                .is_some_and(|token| token_filter.matches(token, &ctx.filter_ctx, ctx.game))
+                || create_tokens.additional_tokens.iter().any(|(kind, count)| {
+                    *count > 0
+                        && token_filter.matches(
+                            &super::create_tokens::additional_token_object(
+                                *kind,
+                                create_tokens.controller,
+                            ),
+                            &ctx.filter_ctx,
+                            ctx.game,
+                        )
+                });
         }
 
         true
+    }
+
+    fn token_group_filter(&self) -> Option<&ObjectFilter> {
+        self.token_filter.as_ref()
     }
 
     fn display(&self) -> String {

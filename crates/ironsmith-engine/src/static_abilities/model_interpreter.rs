@@ -587,6 +587,11 @@ impl StaticAbilityModelInterpreter {
                             count: *count,
                             filter: filter.clone(),
                         },
+                        ironsmith_core::ActivatedAbilityCostCondition::EquipAbility { targeting } => {
+                            super::ActivatedAbilityCostCondition::EquipAbility {
+                                targeting: targeting.clone(),
+                            }
+                        }
                     });
                 }
                 Some(converted)
@@ -1178,22 +1183,29 @@ impl StaticAbilityModelInterpreter {
                 attackers,
                 cost,
                 display,
+                also_attack_cost,
+                attack_only,
             } => {
-                if *blocker_is_attached_to_source {
-                    StaticAbility::attached_block_cost(
+                let block_cost = if *blocker_is_attached_to_source {
+                    super::BlockCost::attached(
                         blockers.clone(),
                         attackers.clone(),
                         cost.clone(),
                         display.clone(),
                     )
                 } else {
-                    StaticAbility::block_cost(
+                    super::BlockCost::new(
                         blockers.clone(),
                         attackers.clone(),
                         cost.clone(),
                         display.clone(),
                     )
-                }
+                };
+                StaticAbility::new(
+                    block_cost
+                        .also_attacking(*also_attack_cost)
+                        .attack_only(*attack_only),
+                )
             }
             ironsmith_core::StaticAbilityPayload::MayChooseNotToUntapDuringUntapStep(subject) => {
                 StaticAbility::may_choose_not_to_untap_during_untap_step(subject.clone())
@@ -1754,11 +1766,17 @@ impl StaticAbilityModelInterpreter {
                 filter,
                 player_filter,
                 counter_type,
+                effect_only,
                 display,
                 ..
             } => match player_filter {
                 Some(player_filter) => StaticAbility::double_player_counters_replacement(
                     player_filter.clone(),
+                    *counter_type,
+                    display.clone(),
+                ),
+                None if *effect_only => StaticAbility::double_effect_counters_replacement(
+                    filter.clone(),
                     *counter_type,
                     display.clone(),
                 ),
@@ -2737,6 +2755,16 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     ) -> Option<crate::cost::TotalCost> {
         self.leaf_static_ability()?
             .attack_cost_for_declaration(game, source, controller, attacker, target)
+    }
+    fn self_attack_cost_for_declaration(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        attacker: ObjectId,
+    ) -> Option<crate::cost::TotalCost> {
+        self.leaf_static_ability()?
+            .self_attack_cost_for_declaration(game, source, controller, attacker)
     }
     fn attack_cost_model(&self) -> Option<&super::AttackCost> {
         self.leaf_static_ability()?.attack_cost_model()

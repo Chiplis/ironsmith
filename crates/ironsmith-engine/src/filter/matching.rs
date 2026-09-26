@@ -993,10 +993,17 @@ pub(super) fn matches_subject(
         let Some(source_id) = ctx.source else {
             return false;
         };
-        let Some(source_obj) = game.object(source_id) else {
-            return false;
+        // CR 608.2b / 112.7a (mentor rulings): once the source has left its
+        // zone, use its power as it last existed there.
+        let source_power = match game.object(source_id) {
+            Some(source_obj) => subject.source_power(source_obj, game, allow_calculated_pt),
+            None => ctx
+                .source_snapshot
+                .as_ref()
+                .filter(|snapshot| snapshot.object_id == source_id)
+                .and_then(|snapshot| snapshot.power),
         };
-        let Some(source_power) = subject.source_power(source_obj, game, allow_calculated_pt) else {
+        let Some(source_power) = source_power else {
             return false;
         };
         match relation {

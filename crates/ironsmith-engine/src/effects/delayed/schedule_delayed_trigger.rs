@@ -309,6 +309,11 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 }
                 let mut delayed_tagged_objects = tagged_objects.clone();
                 delayed_tagged_objects.insert(tag.clone(), vec![snapshot.clone()]);
+                crate::effects::helpers::pin_tagged_objects_to_current(
+                    game,
+                    ctx,
+                    &mut delayed_tagged_objects,
+                );
                 let delayed = DelayedTriggerTemplate::new(
                     self.trigger.clone(),
                     self.effects.clone(),
@@ -352,6 +357,8 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
             return Ok(EffectOutcome::count(matched));
         }
 
+        let mut tagged_objects = tagged_objects;
+        crate::effects::helpers::pin_tagged_objects_to_current(game, ctx, &mut tagged_objects);
         let delayed = DelayedTriggerTemplate::new(
             self.trigger.clone(),
             self.effects.clone(),
@@ -375,6 +382,14 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 .then_some(game.turn.turn_number),
         )
         .with_expires_at_end_of_combat(self.until_end_of_combat)
+        // "At the beginning of that turn's end step" after "take an extra turn
+        // after this one" (Final Fortune): the trigger belongs to that extra
+        // turn, not merely to the next turn (CR 500.7, 603.7).
+        .with_bound_extra_turn_index(
+            self.start_next_turn
+                .then_some(ctx.created_extra_turn_index)
+                .flatten(),
+        )
         .while_any_tagged_object_in_zone_opt(self.while_any_tagged_object_in_zone.clone())
         .with_tagged_objects(tagged_objects)
         .with_tagged_players(tagged_players)

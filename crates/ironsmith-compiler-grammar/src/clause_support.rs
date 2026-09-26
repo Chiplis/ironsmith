@@ -374,7 +374,7 @@ pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAct
     let chain = clause_grammar::parse_protection_chain_tokens(tokens)?;
     let words = TokenWordView::new(tokens).word_refs();
     let mut actions = Vec::new();
-    for target in &chain.targets {
+    for (target_index, target) in chain.targets.iter().enumerate() {
         let action = match target.kind {
             ProtectionTargetKind::EachManaValueAmong { filter_word_first } => {
                 let filter_token_first = *TokenWordView::new(tokens)
@@ -437,14 +437,50 @@ pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAct
                 Some(KeywordAction::ProtectionFromColorsOutsideCommanderIdentity)
             }
             ProtectionTargetKind::UnsupportedEachColor => None,
-            ProtectionTargetKind::Named => parse_color(target.value)
-                .map(KeywordAction::ProtectionFrom)
-                .or_else(|| {
-                    parse_card_type(target.value).map(KeywordAction::ProtectionFromCardType)
-                })
-                .or_else(|| {
-                    parse_subtype_flexible(target.value).map(KeywordAction::ProtectionFromSubtype)
-                }),
+            ProtectionTargetKind::Named => {
+                // The quality runs from the named word to the next "from"
+                // (or the end); "and"/"or" before that "from" is a separator.
+                let end_word = chain
+                    .targets
+                    .get(target_index + 1)
+                    .map_or(words.len(), |next| next.target_word.saturating_sub(1));
+                let mut tail_end = end_word;
+                while tail_end > target.target_word + 1
+                    && matches!(words.get(tail_end - 1), Some(&("and" | "or")))
+                {
+                    tail_end -= 1;
+                }
+                if tail_end <= target.target_word + 1 {
+                    parse_color(target.value)
+                        .map(KeywordAction::ProtectionFrom)
+                        .or_else(|| {
+                            parse_card_type(target.value)
+                                .map(KeywordAction::ProtectionFromCardType)
+                        })
+                        .or_else(|| {
+                            parse_subtype_flexible(target.value)
+                                .map(KeywordAction::ProtectionFromSubtype)
+                        })
+                } else {
+                    // A qualified quality ("creatures of the chosen type",
+                    // "creatures your opponents control", "God creatures")
+                    // is a whole object filter (CR 702.16a); dropping the
+                    // qualifiers would widen the protection, so a tail that
+                    // doesn't parse fails the chain.
+                    let view = TokenWordView::new(tokens);
+                    let token_end = view
+                        .token_start_indices()
+                        .get(tail_end)
+                        .copied()
+                        .unwrap_or(tokens.len());
+                    let filter_tokens = trim_commas(&tokens[target.target_token_first..token_end]);
+                    crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
+                        &filter_tokens,
+                        false,
+                    ))
+                    .map(KeywordAction::ProtectionFromFilter)
+                }
+            }
         }?;
         crate::slice_primitives::push_unique(&mut actions, action);
     }

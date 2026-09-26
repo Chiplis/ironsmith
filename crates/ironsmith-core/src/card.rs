@@ -182,13 +182,31 @@ impl Card {
     }
 
     /// Parses mana symbols from rules text and returns the colors found.
+    ///
+    /// Parenthesized text is reminder text (CR 207.2) and is ignored when
+    /// determining color identity (CR 903.4c), so symbols inside parentheses
+    /// (firebending's "add {R}", extort's "{W/B}") don't count.
     fn parse_colors_from_text(text: &str) -> ColorSet {
         let mut colors = ColorSet::COLORLESS;
         let chars: Vec<char> = text.chars().collect();
         let mut i = 0;
+        let mut paren_depth = 0usize;
 
         while i < chars.len() {
-            if chars[i] == '{' {
+            match chars[i] {
+                '(' => {
+                    paren_depth += 1;
+                    i += 1;
+                    continue;
+                }
+                ')' => {
+                    paren_depth = paren_depth.saturating_sub(1);
+                    i += 1;
+                    continue;
+                }
+                _ => {}
+            }
+            if paren_depth == 0 && chars[i] == '{' {
                 // Find the closing brace
                 if let Some(end) = chars[i..].iter().position(|&c| c == '}') {
                     let symbol: String = chars[i + 1..i + end].iter().collect();

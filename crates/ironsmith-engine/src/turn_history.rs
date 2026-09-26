@@ -100,6 +100,10 @@ pub struct TurnHistory {
     pub creatures_attacked_battles_this_turn: HashSet<ObjectId>,
     pub creature_attack_counts_this_turn: HashMap<ObjectId, u32>,
     pub crewed_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
+    /// Vehicles a crew ability of which resolved this turn (CR 702.122d:
+    /// that is what "becomes crewed" means, so "for the first time each
+    /// turn" is decided here, not when a crew cost is paid).
+    pub crew_abilities_resolved_this_turn: HashSet<ObjectId>,
     pub saddled_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
     pub spell_warped_this_turn: bool,
     /// Spells each player has cast this game (never cleared between turns).
@@ -138,6 +142,7 @@ impl TurnHistory {
         self.creatures_attacked_battles_this_turn.clear();
         self.creature_attack_counts_this_turn.clear();
         self.crewed_this_turn.clear();
+        self.crew_abilities_resolved_this_turn.clear();
         self.saddled_this_turn.clear();
         self.spell_warped_this_turn = false;
         self.event_records.clear();

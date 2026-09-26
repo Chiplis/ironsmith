@@ -33,6 +33,9 @@ pub struct DelayedTaggedLeavesShape<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DelayedNextCombatShape<'a> {
     pub effect_tokens: &'a [OwnedLexToken],
+    /// "each combat this turn" rather than "the next combat this turn": the
+    /// delayed trigger fires every combat until end of turn.
+    pub each_combat: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -216,17 +219,25 @@ pub fn parse_delayed_next_combat_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DelayedNextCombatShape<'_>> {
     let tokens = trimmed(tokens);
-    let (_, after_header) = primitives::parse_prefix(
+    let ((each_combat, _, _, _), after_header) = primitives::parse_prefix(
         tokens,
         (
-            primitives::phrase(&["at", "the", "beginning", "of", "the", "next", "combat"]),
+            alt((
+                primitives::phrase(&["at", "the", "beginning", "of", "the", "next", "combat"])
+                    .value(false),
+                primitives::phrase(&["at", "the", "beginning", "of", "each", "combat"])
+                    .value(true),
+            )),
             opt(primitives::kw("phase")),
             primitives::phrase(&["this", "turn"]),
             primitives::comma(),
         ),
     )?;
     let effect_tokens = trimmed(after_header);
-    (!effect_tokens.is_empty()).then_some(DelayedNextCombatShape { effect_tokens })
+    (!effect_tokens.is_empty()).then_some(DelayedNextCombatShape {
+        effect_tokens,
+        each_combat,
+    })
 }
 
 fn end_step_owner<'a>(input: &mut LexStream<'a>) -> WResult<PlayerFilter> {

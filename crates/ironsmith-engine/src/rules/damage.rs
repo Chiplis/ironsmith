@@ -170,6 +170,11 @@ pub(crate) fn apply_processed_damage_assignment(
             }
             // Damage is still dealt even when a replacement/restriction stops the life loss.
             let life_lost = if game.can_damage_cause_life_loss(player_id) {
+                // CR 120.3a / 614.1a: the life loss from damage is a life-loss
+                // event, so "would lose life" replacements modify it.
+                let amount = crate::events::processing::process_life_loss_with_event(
+                    game, player_id, amount, true,
+                );
                 // "Damage that would reduce your life total to less than 1
                 // reduces it to 1 instead": the full damage is still dealt.
                 let amount = if game.damage_cant_reduce_life_below_one(player_id)

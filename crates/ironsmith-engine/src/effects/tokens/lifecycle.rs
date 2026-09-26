@@ -56,20 +56,8 @@ pub(crate) fn create_replacement_additional_tokens(
 ) -> Result<Vec<ObjectId>, ExecutionError> {
     let mut created_ids = Vec::new();
     for (token_kind, requested_count) in additional_tokens {
-        let token_definition = match token_kind {
-            ironsmith_core::AdditionalTokenKind::Treasure => {
-                crate::cards::tokens::treasure_token_definition()
-            }
-            ironsmith_core::AdditionalTokenKind::Food => {
-                crate::cards::tokens::food_token_definition()
-            }
-            ironsmith_core::AdditionalTokenKind::Clue => {
-                crate::cards::tokens::clue_token_definition()
-            }
-            ironsmith_core::AdditionalTokenKind::Squirrel => {
-                crate::cards::tokens::squirrel_token_definition()
-            }
-        };
+        let token_definition =
+            crate::events::tokens::additional_token_definition(*token_kind);
         let count = (*requested_count as usize).min(remaining_token_slots(game, controller_id));
         for _ in 0..count {
             let id = game.new_object_id();
@@ -462,6 +450,16 @@ mod tests {
         let token_id = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);
         let mut events = Vec::new();
+        game.add_object(Object::new_token(
+            token_id,
+            alice,
+            "Token".to_string(),
+            vec![CardType::Creature],
+            Vec::new(),
+            Some(1),
+            Some(1),
+            ColorSet::default(),
+        ));
 
         game.combat = Some(CombatState {
             attackers: vec![AttackerInfo {
@@ -470,6 +468,7 @@ mod tests {
             }],
             ..CombatState::default()
         });
+        game.turn.phase = crate::game_state::Phase::Combat;
 
         apply_token_battlefield_entry(
             &mut game,

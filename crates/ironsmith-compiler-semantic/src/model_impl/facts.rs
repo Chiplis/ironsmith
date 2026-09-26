@@ -134,6 +134,9 @@ pub struct TriggeredLineSemanticFacts {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TriggerFunctionalZoneFacts {
     pub explicit_zone: Option<Zone>,
+    /// CR 113.6b: "if this is in the command zone or on the battlefield"
+    /// (eminence) makes the ability function in both zones.
+    pub explicit_zone_or_battlefield: bool,
     pub returns_self_from_graveyard: bool,
     pub discards_this_card: bool,
 }

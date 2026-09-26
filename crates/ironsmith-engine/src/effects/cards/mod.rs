@@ -66,5 +66,6 @@ pub(crate) use draw_cards::{
     AutomaticDrawRevealCandidate, HiddenDrawRevealMode, automatic_draw_reveal_boolean_context,
     automatic_draw_reveal_candidate_for_pending, automatic_reveal_events_for_draw,
     collect_automatic_draw_reveal_candidates, emit_automatic_draw_reveal_event,
-    hidden_automatic_draw_reveal_description, pending_hidden_automatic_draw_reveal,
+    execute_draw_replacement_effects, hidden_automatic_draw_reveal_description,
+    pending_hidden_automatic_draw_reveal,
 };

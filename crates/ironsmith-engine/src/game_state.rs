@@ -754,6 +754,11 @@ pub struct TurnStore {
     /// Extra turns queued up (Time Walk, etc.).
     /// Players take these turns in order after the current turn ends.
     pub extra_turns: Vec<PlayerId>,
+    /// CR 500.7: "that player takes an extra turn after that player's next
+    /// turn" (Emrakul, the Promised End). Each entry is (player, turn number
+    /// when created); the extra turn is added directly after that player's
+    /// first turn numbered above the creation turn, with no trigger involved.
+    pub extra_turns_after_next_turn: Vec<(PlayerId, u32)>,
     /// Additional phases inserted after the current phase.
     /// These are consumed before the normal turn sequence advances.
     pub additional_phases: Vec<Phase>,
@@ -820,6 +825,8 @@ pub struct TurnStore {
     previous_upkeep_turn_by_player: HashMap<PlayerId, u32>,
     /// Frozen LKI and bounded "last turn" windows for departed players.
     departed_player_history: HashMap<PlayerId, DepartedPlayerHistory>,
+    /// True while `leave_game` is running (CR 800.4c exile is deferred to it).
+    pub(crate) leave_game_in_progress: bool,
     /// Hand sizes captured as the current turn began, before the untap step.
     pub hand_sizes_at_turn_start: HashMap<PlayerId, usize>,
     /// Total number of spells cast during the immediately previous turn.
@@ -1765,6 +1772,17 @@ pub fn name_sticker_unique_vowels(name: &str) -> u32 {
         .count() as u32
 }
 
+/// One deferred "put these cards onto the battlefield" instruction of a
+/// restarting effect (CR 726.4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingRestartBattlefieldEntry {
+    /// The cards, as objects of the new game (the exempt cards left in exile).
+    pub cards: Vec<ObjectId>,
+    /// Who controls them; `None` means each card's owner.
+    pub controller: Option<PlayerId>,
+    pub enters_tapped: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct RestrictionEffectInstance {
     pub restriction: crate::effect::Restriction,
@@ -1777,6 +1795,9 @@ pub struct RestrictionEffectInstance {
     pub duration: crate::effect::Until,
     pub expires_end_of_turn: u32,
     pub consumed_next_untap: bool,
+    /// Creation timestamp, for rule modifications that must be applied in
+    /// timestamp order (maximum hand size, CR 613.11 / 402.2).
+    pub timestamp: u64,
 }
 
 impl RestrictionEffectInstance {
@@ -3561,6 +3582,12 @@ pub struct GameState {
     /// mulligan/opening-action procedure and a fresh turn structure are still
     /// owed by the host loop before turn 1 begins.
     restart_starting_procedure_pending: bool,
+    /// CR 726.4: battlefield entries a restarting effect's later instructions
+    /// ("then put those cards onto the battlefield") owe the new game. They
+    /// run once the new game's rule 103 procedure is done, just before turn
+    /// 1's untap step. Plain data (card ids in the new game), so it survives
+    /// sync checkpoints.
+    pending_restart_battlefield_entries: Vec<PendingRestartBattlefieldEntry>,
     /// One-shot signal for host loops that need to restore their suspended
     /// turn-runner context after `finish_subgame_with` resumes a parent.
     subgame_just_resumed: bool,
@@ -3862,6 +3889,7 @@ impl GameState {
             subgame_parent: None,
             subgame_starting_procedure_pending: false,
             restart_starting_procedure_pending: false,
+            pending_restart_battlefield_entries: Vec::new(),
             subgame_just_resumed: false,
             choice_store: Arc::new(ChoiceStore::default()),
             metadata: MetadataStateStore {
@@ -5396,6 +5424,8 @@ impl GameState {
             }
         };
 
+        self.effect_store.continuous_effects.advance_timestamp();
+        let timestamp = self.effect_store.continuous_effects.current_timestamp();
         self.effect_store
             .restriction_effects
             .push(RestrictionEffectInstance {
@@ -5409,6 +5439,7 @@ impl GameState {
                 duration,
                 expires_end_of_turn,
                 consumed_next_untap: false,
+                timestamp,
             });
     }
 

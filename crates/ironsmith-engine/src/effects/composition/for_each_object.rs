@@ -47,7 +47,8 @@ fn matching_objects(
         candidates
             .into_iter()
             .filter_map(|snapshot| {
-                let current_id = crate::effects::helpers::resolve_tagged_object_id(game, &snapshot);
+                let current_id =
+                    crate::effects::helpers::resolve_tagged_object_id(game, ctx, &snapshot);
                 let matched_as_lki = effect.filter.matches_snapshot(&snapshot, &filter_ctx, game);
                 let matched_current = current_id
                     .and_then(|id| game.object(id))
