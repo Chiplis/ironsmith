@@ -1664,17 +1664,6 @@ export default function GameCard({
           </div>
         ) : null}
 
-        {variant === "battlefield" && !useTokenBattlefield && counterBadges.length > 0 && (
-          <div className="battlefield-counter-rail">
-            {counterBadges.map((badge, index) => (
-              <BattlefieldCounterBadge
-                key={`${badge.fullLabel}-${index}`}
-                badge={badge}
-              />
-            ))}
-          </div>
-        )}
-
         {variant === "battlefield" && centerOverlay && (
           <div className="pointer-events-none absolute inset-0 z-[4] flex items-center justify-center">
             <div className="pointer-events-auto">
@@ -1698,6 +1687,16 @@ export default function GameCard({
         )}
 
       </div>
+      {variant === "battlefield" && !useTokenBattlefield && counterBadges.length > 0 && (
+        <div className="battlefield-counter-rail">
+          {counterBadges.map((badge, index) => (
+            <BattlefieldCounterBadge
+              key={`${badge.fullLabel}-${index}`}
+              badge={badge}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
