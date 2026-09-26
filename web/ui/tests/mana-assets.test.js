@@ -24,6 +24,15 @@ test('counter mappings cover named and keyword counters with safe fallback', () 
   assert.equal(manaSymbolUrl(' w/u/p '), '/mana/symbols/W-U-P.svg');
 });
 
+test('compact counter glyphs stay local and use the small-ui variants', async () => {
+  for (const [kind, file] of [['Lore', 'lore.svg'], ['Time', 'time.svg'], ['Charge', 'charge.svg']]) {
+    const url = counterSymbolUrl(kind);
+    assert.equal(url, `/counters/${file}`);
+    const svg = await readFile(new URL(`../public${url}`, import.meta.url), 'utf8');
+    assert.match(svg, /viewBox="0 0 16 16"/);
+  }
+});
+
 test('numeric power and toughness counters keep their exact visible labels', () => {
   for (const [kind, expected] of [
     ['Plus Two Plus Two', '+2/+2'],
