@@ -1667,9 +1667,9 @@
   box-sizing: border-box;
   padding: 0 clamp(3px, calc(var(--bf-card-width, 124px) * 0.038), 5px);
   overflow: visible;
-  border: 1px solid #8e98a6;
+  border: 1px solid var(--counter-stroke, #dcecff);
   border-radius: 0;
-  background-color: #080a0d !important;
+  background-color: var(--counter-fill, #1b2d49) !important;
   background-image: none;
   color: #fff;
   opacity: 1;
@@ -1681,7 +1681,7 @@
   font-family: Rajdhani, "Avenir Next", "Segoe UI", system-ui, sans-serif;
   line-height: 1;
   box-shadow:
-    inset 0 1px 0 #8e98a6,
+    inset 0 1px 0 var(--counter-stroke, #dcecff),
     0 2px 7px #000;
 }
 
@@ -1692,7 +1692,7 @@
   aspect-ratio: 1;
   padding: 0;
   border-radius: 0;
-  border: 1px solid #8e98a6;
+  border: 1px solid var(--counter-stroke, #dcecff);
   clip-path: polygon(50% 0, 88% 17%, 82% 73%, 50% 100%, 18% 73%, 12% 17%);
 }
 
@@ -1721,8 +1721,8 @@
 .game-card.inspected .battlefield-counter-chip {
   opacity: 1;
   mix-blend-mode: normal;
-  background-color: #080a0d !important;
-  border-color: #8e98a6;
+  background-color: var(--counter-fill, #1b2d49) !important;
+  border-color: var(--counter-stroke, #dcecff);
   filter: none;
 }
 
