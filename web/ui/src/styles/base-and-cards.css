@@ -1671,14 +1671,14 @@
   align-items: center;
   justify-content: center;
   gap: clamp(2px, calc(var(--bf-card-width, 124px) * 0.022), 3px);
-  width: clamp(36px, calc(var(--bf-card-width, 124px) * 0.34), 48px);
-  min-height: clamp(20px, calc(var(--bf-card-height, 96px) * 0.19), 27px);
+  width: clamp(28px, calc(var(--bf-card-width, 124px) * 0.3), 72px);
+  min-height: clamp(17px, calc(var(--bf-card-height, 96px) * 0.18), 40px);
   box-sizing: border-box;
-  padding: 0 clamp(4px, calc(var(--bf-card-width, 124px) * 0.035), 5px)
-    0 clamp(19px, calc(var(--bf-card-width, 124px) * 0.17), 24px);
+  padding: 0 clamp(3px, calc(var(--bf-card-width, 124px) * 0.02), 8px)
+    0 clamp(15px, calc(var(--bf-card-width, 124px) * 0.14), 30px);
   overflow: visible;
   border: 1px solid var(--counter-stroke, #dcecff);
-  border-radius: 4px 8px 8px 4px;
+  border-radius: 3px 7px 7px 3px;
   background-color: var(--counter-fill, #1b2d49) !important;
   background-image: none;
   color: #fff;
@@ -1702,10 +1702,10 @@
   top: -1px;
   bottom: -1px;
   z-index: 0;
-  width: clamp(21px, calc(var(--bf-card-width, 124px) * 0.2), 27px);
+  width: clamp(16px, calc(var(--bf-card-width, 124px) * 0.25), 36px);
   border: 1px solid var(--counter-stroke, #dcecff);
   border-radius: 4px 50% 50% 4px;
-  background: var(--counter-accent, #a7c3e7);
+  background: var(--counter-fill, #1b2d49);
   pointer-events: none;
 }
 
@@ -1717,25 +1717,20 @@
 }
 
 .battlefield-counter-chip--loyalty {
-  width: clamp(36px, calc(var(--bf-card-width, 124px) * 0.34), 48px);
-  height: clamp(20px, calc(var(--bf-card-height, 96px) * 0.19), 27px);
+  width: clamp(28px, calc(var(--bf-card-width, 124px) * 0.3), 72px);
+  height: clamp(17px, calc(var(--bf-card-height, 96px) * 0.18), 40px);
   min-height: 0;
   aspect-ratio: auto;
-  padding: 0 clamp(4px, calc(var(--bf-card-width, 124px) * 0.035), 5px)
-    0 clamp(19px, calc(var(--bf-card-width, 124px) * 0.17), 24px);
-  border-radius: 4px 8px 8px 4px;
+  padding: 0 clamp(3px, calc(var(--bf-card-width, 124px) * 0.02), 8px)
+    0 clamp(15px, calc(var(--bf-card-width, 124px) * 0.14), 30px);
+  border-radius: 3px 7px 7px 3px;
   border: 1px solid var(--counter-stroke, #dcecff);
   clip-path: none;
 }
 
 .battlefield-counter-chip--shape-charge,
 .battlefield-counter-chip--shape-time {
-  width: clamp(28px, calc(var(--bf-card-width, 124px) * 0.29), 38px);
-  height: clamp(24px, calc(var(--bf-card-height, 96px) * 0.24), 32px);
-  min-height: 0;
-  padding: 0 clamp(4px, calc(var(--bf-card-width, 124px) * 0.035), 5px)
-    0 clamp(19px, calc(var(--bf-card-width, 124px) * 0.17), 24px);
-  border-radius: 4px 8px 8px 4px;
+  border-radius: 3px 7px 7px 3px;
   clip-path: none;
   justify-content: space-between;
 }
@@ -1752,12 +1747,12 @@
 
 .battlefield-counter-chip--shape-charge::before,
 .battlefield-counter-chip--shape-time::before {
-  width: clamp(22px, calc(var(--bf-card-height, 96px) * 0.23), 29px);
+  width: clamp(17px, calc(var(--bf-card-width, 124px) * 0.25), 38px);
   border-radius: 50%;
 }
 
 .battlefield-counter-chip--shape-loyalty::before {
-  width: clamp(22px, calc(var(--bf-card-height, 96px) * 0.23), 29px);
+  width: clamp(17px, calc(var(--bf-card-width, 124px) * 0.25), 38px);
   border-radius: 4px;
   clip-path: polygon(50% 0, 90% 16%, 84% 73%, 50% 100%, 16% 73%, 10% 16%);
 }
@@ -1775,8 +1770,8 @@
 .battlefield-counter-chip--loyalty .battlefield-counter-icon {
   position: relative;
   inset: auto;
-  width: clamp(11px, calc(var(--bf-card-width, 124px) * 0.1), 14px);
-  height: clamp(11px, calc(var(--bf-card-width, 124px) * 0.1), 14px);
+  width: clamp(9px, calc(var(--bf-card-width, 124px) * 0.1), 20px);
+  height: clamp(9px, calc(var(--bf-card-width, 124px) * 0.1), 20px);
   opacity: 1;
 }
 
@@ -1806,7 +1801,7 @@
   flex: 0 0 auto;
   min-width: 1.1em;
   color: #fff;
-  font-size: clamp(11px, calc(var(--bf-card-width, 124px) * 0.106), 14px);
+  font-size: clamp(11px, calc(var(--bf-card-width, 124px) * 0.1), 24px);
   font-weight: 800;
   letter-spacing: -0.04em;
   text-align: center;
@@ -1831,8 +1826,8 @@
 .battlefield-counter-icon--lore,
 .battlefield-counter-icon--time,
 .battlefield-counter-icon--charge {
-  width: clamp(11px, calc(var(--bf-card-width, 124px) * 0.1), 14px);
-  height: clamp(11px, calc(var(--bf-card-width, 124px) * 0.1), 14px);
+  width: clamp(10px, calc(var(--bf-card-width, 124px) * 0.11), 20px);
+  height: clamp(10px, calc(var(--bf-card-width, 124px) * 0.11), 20px);
   filter: brightness(0) invert(1);
 }
 
