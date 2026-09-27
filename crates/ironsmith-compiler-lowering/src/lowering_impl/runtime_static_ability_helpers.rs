@@ -438,9 +438,13 @@ pub fn suspend_exile_triggered_abilities() -> Vec<Ability> {
         },
         Ability {
             kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
-                trigger: Trigger::new(crate::triggers::CounterRemovedFromTrigger::new(
-                    ObjectFilter::source(),
-                )),
+                // CR 702.62a: "When the last time counter is removed from
+                // this card, if it's exiled, you may play it ..."
+                trigger: Trigger::new(
+                    crate::triggers::CounterRemovedFromTrigger::new(ObjectFilter::source())
+                        .counter_type(crate::object::CounterType::Time)
+                        .last(),
+                ),
                 effects: ResolutionProgram::from_effects(vec![Effect::may(vec![Effect::new(
                     crate::effects::CastSourceEffect::new()
                         .without_paying_mana_cost()
@@ -448,8 +452,8 @@ pub fn suspend_exile_triggered_abilities() -> Vec<Ability> {
                         .cast_as_suspend(),
                 )])]),
                 choices: vec![],
-                intervening_if: Some(crate::ConditionExpr::SourceHasNoCounter(
-                    crate::object::CounterType::Time,
+                intervening_if: Some(crate::ConditionExpr::SourceIsInZone(
+                    crate::zone::Zone::Exile,
                 )),
                 presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Suspend)),
             }),
@@ -476,6 +480,8 @@ fn graveyard_return_counter_ability(
                 Effect::new(crate::effects::TagMatchingObjectsEffect::new(
                     filter, return_tag,
                 )),
+                // CR 702.79a / 702.93a: it returns "with a counter on it", an
+                // entry counter placed as it enters (CR 122.6), not afterwards.
                 Effect::new(
                     crate::effects::MoveToZoneEffect::new(
                         crate::target::ChooseSpec::Tagged(
@@ -484,17 +490,14 @@ fn graveyard_return_counter_ability(
                         crate::zone::Zone::Battlefield,
                         true,
                     )
-                    .under_owner_control(),
-                )
-                .tag(returned_tag),
-                Effect::for_each_tagged(
-                    returned_tag,
-                    vec![Effect::put_counters(
+                    .under_owner_control()
+                    .with_entry_counter(ironsmith_core::BattlefieldEntryCounterSpec::new(
                         counter_type,
                         1,
-                        crate::target::ChooseSpec::Iterated,
-                    )],
-                ),
+                        ironsmith_core::BattlefieldEntryCounterSurface::Inline,
+                    )),
+                )
+                .tag(returned_tag),
             ]),
             choices: vec![],
             intervening_if: Some(crate::ConditionExpr::Not(Box::new(

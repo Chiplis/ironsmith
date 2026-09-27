@@ -4,17 +4,10 @@
 //! - "Destroy target creature. It can't be regenerated."
 //! - "Destroy all creatures. They can't be regenerated."
 
-use crate::effect::{
-    ChoiceCount, EffectOutcome, ExecutionFact, OutcomeObjectMemory, OutcomeStatus,
-};
+use crate::effect::{ChoiceCount, EffectOutcome};
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{
-    ObjectApplyResultPolicy, apply_single_target_object_from_spec, apply_to_selected_objects,
-};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::processing::{EventOutcome, process_destroy};
 use crate::game_state::GameState;
-use crate::snapshot::ObjectSnapshot;
 use crate::target::{ChooseSpec, ObjectFilter};
 
 /// Effect that destroys permanents while ignoring regeneration shields.
@@ -65,31 +58,6 @@ impl DestroyNoRegenerationEffect {
         self.creature_destroyed_this_way_surface = present;
         self
     }
-
-    fn destroy_object_no_regen(
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        object_id: crate::ids::ObjectId,
-    ) -> Result<Option<OutcomeStatus>, ExecutionError> {
-        // Regeneration shields are one-shot replacement effects; "can't be regenerated"
-        // means they can't replace this destruction.
-        //
-        // We clear both:
-        // - trait-based one-shot replacement effects (current regeneration implementation)
-        // - older shield counters (older implementation)
-        game.effect_store
-            .replacement_effects
-            .remove_regeneration_shields_from_source(object_id);
-        game.clear_regeneration_shields(object_id);
-
-        let result = process_destroy(game, object_id, Some(ctx.source), &mut *ctx.decision_maker);
-        match result {
-            EventOutcome::Proceed(_) => Ok(None),
-            EventOutcome::Prevented => Ok(Some(crate::effect::OutcomeStatus::Protected)),
-            EventOutcome::Replaced => Ok(Some(crate::effect::OutcomeStatus::Replaced)),
-            EventOutcome::NotApplicable => Ok(Some(crate::effect::OutcomeStatus::TargetInvalid)),
-        }
-    }
 }
 
 impl EffectExecutor for DestroyNoRegenerationEffect {
@@ -98,54 +66,14 @@ impl EffectExecutor for DestroyNoRegenerationEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        // Regeneration shields are one-shot replacement effects; "can't be
+        // regenerated" means they can't replace this destruction (CR 701.19c).
+        // Otherwise this is an ordinary destroy: a mass destruction is one
+        // simultaneous event (CR 701.8a, 603.10a).
         if self.spec.is_target() && self.spec.is_single() {
-            return apply_single_target_object_from_spec(
-                game,
-                ctx,
-                &self.spec,
-                Self::destroy_object_no_regen,
-            );
+            return super::destroy::execute_single_target_destroy(game, ctx, &self.spec, false);
         }
-
-        let mut destroyed_objects = Vec::new();
-        let mut destroyed_memory = Vec::new();
-        let apply_result = match apply_to_selected_objects(
-            game,
-            ctx,
-            &self.spec,
-            ObjectApplyResultPolicy::CountApplied,
-            |game, ctx, object_id| {
-                game.effect_store
-                    .replacement_effects
-                    .remove_regeneration_shields_from_source(object_id);
-                game.clear_regeneration_shields(object_id);
-                let pre_snapshot = game.object(object_id).map(|obj| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                });
-                let result =
-                    process_destroy(game, object_id, Some(ctx.source), &mut *ctx.decision_maker);
-                if matches!(result, EventOutcome::Proceed(crate::zone::Zone::Graveyard)) {
-                    if let Some(snapshot) = pre_snapshot.as_ref() {
-                        destroyed_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
-                    }
-                    destroyed_objects.extend(game.take_zone_change_results(object_id));
-                    return Ok(true);
-                }
-                Ok(false)
-            },
-        ) {
-            Ok(result) => result,
-            Err(_) => return Ok(EffectOutcome::target_invalid()),
-        };
-
-        let mut outcome = EffectOutcome::count(apply_result.applied_count as i32);
-        if !destroyed_objects.is_empty() {
-            outcome =
-                outcome.with_execution_fact(ExecutionFact::AffectedObjects(destroyed_objects));
-            outcome = outcome.with_affected_object_memory(destroyed_memory);
-        }
-
-        Ok(outcome)
+        super::destroy::execute_simultaneous_destroy(game, ctx, &self.spec, false)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

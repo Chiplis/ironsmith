@@ -110,6 +110,12 @@ pub struct TurnHistory {
     pub spells_cast_this_game: HashMap<PlayerId, u32>,
     pub event_records: Vec<TurnEventRecord>,
     pub staged_event_records: Vec<TurnEventRecord>,
+    /// Index into `event_records` where the simultaneous action whose events
+    /// are being matched began (CR 603.2c: e.g. all combat damage of one
+    /// step, CR 510.2). Records from that index on are the same event, not
+    /// earlier ones, for "for the first time each turn". Transient: set and
+    /// restored around one batch's trigger matching.
+    pub simultaneous_batch_start: Option<usize>,
 }
 
 impl TurnHistory {
@@ -147,8 +153,20 @@ impl TurnHistory {
         self.spell_warped_this_turn = false;
         self.event_records.clear();
         self.staged_event_records.clear();
+        self.simultaneous_batch_start = None;
 
         spells_cast_last_turn_total
+    }
+
+    /// Mark the start of one simultaneous action's events; returns the
+    /// previous mark for [`Self::end_simultaneous_batch`].
+    pub(crate) fn begin_simultaneous_batch(&mut self) -> Option<usize> {
+        self.simultaneous_batch_start
+            .replace(self.event_records.len())
+    }
+
+    pub(crate) fn end_simultaneous_batch(&mut self, previous: Option<usize>) {
+        self.simultaneous_batch_start = previous;
     }
 
     pub(crate) fn projected_records(&self) -> impl DoubleEndedIterator<Item = &TurnEventRecord> {
@@ -232,28 +250,32 @@ impl TurnHistory {
             .count() as u32
     }
 
-    pub fn total_creatures_died_this_turn(&self) -> u32 {
+    /// Pre-change snapshots of every object that left the battlefield this
+    /// turn and went to `to` (any zone when `None`). A simultaneous batch
+    /// record ("destroy all", devour) contributes each of its objects
+    /// (CR 700.4, 603.6c), not only its first one.
+    fn battlefield_departure_snapshots(
+        &self,
+        to: Option<Zone>,
+    ) -> impl Iterator<Item = &crate::snapshot::ObjectSnapshot> + '_ {
         self.projected_records()
             .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
-            .filter(|event| event.is_dies())
-            .filter(|event| {
-                event
-                    .snapshot
-                    .as_ref()
-                    .is_some_and(|snapshot| snapshot.card_types.contains(&CardType::Creature))
+            .filter(move |event| {
+                event.from == Zone::Battlefield && to.is_none_or(|zone| event.to == zone)
             })
+            .flat_map(|event| event.snapshots().iter())
+    }
+
+    pub fn total_creatures_died_this_turn(&self) -> u32 {
+        self.battlefield_departure_snapshots(Some(Zone::Graveyard))
+            .filter(|snapshot| snapshot.card_types.contains(&CardType::Creature))
             .count() as u32
     }
 
     pub fn creatures_died_under_controller(&self, player: PlayerId) -> u32 {
-        self.projected_records()
-            .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
-            .filter(|event| event.is_dies())
-            .filter(|event| {
-                event.snapshot.as_ref().is_some_and(|snapshot| {
-                    snapshot.controller == player
-                        && snapshot.card_types.contains(&CardType::Creature)
-                })
+        self.battlefield_departure_snapshots(Some(Zone::Graveyard))
+            .filter(|snapshot| {
+                snapshot.controller == player && snapshot.card_types.contains(&CardType::Creature)
             })
             .count() as u32
     }
@@ -696,6 +718,25 @@ impl TurnHistory {
         })
     }
 
+    /// Last known information of `object` as it left its zone this turn.
+    ///
+    /// Object ids are not reused across zone changes, so the latest zone
+    /// change that moved `object` holds the snapshot taken right before it
+    /// moved (CR 608.2h). Used for an ability that triggered while its source
+    /// was still there and is put on the stack after the source left.
+    pub fn departed_object_snapshot(&self, object: ObjectId) -> Option<&ObjectSnapshot> {
+        self.projected_records().rev().find_map(|record| {
+            let event = record.event.downcast::<ZoneChangeEvent>()?;
+            if !event.objects.contains(&object) {
+                return None;
+            }
+            event
+                .snapshots()
+                .iter()
+                .find(|snapshot| snapshot.object_id == object)
+        })
+    }
+
     pub fn object_was_surveilled_this_turn(&self, stable_id: StableId) -> bool {
         self.projected_records()
             .filter_map(|record| record.event.downcast::<KeywordActionEvent>())
@@ -1108,15 +1149,8 @@ impl TurnHistory {
     }
 
     pub fn permanents_left_battlefield_under_controller(&self, player: PlayerId) -> u32 {
-        self.projected_records()
-            .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
-            .filter(|event| event.from == Zone::Battlefield)
-            .filter(|event| {
-                event
-                    .snapshot
-                    .as_ref()
-                    .is_some_and(|snapshot| snapshot.controller == player)
-            })
+        self.battlefield_departure_snapshots(None)
+            .filter(|snapshot| snapshot.controller == player)
             .count() as u32
     }
 
@@ -1124,19 +1158,13 @@ impl TurnHistory {
         self.projected_records()
             .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
             .filter(|event| event.from == Zone::Battlefield)
-            .count() as u32
+            .map(|event| event.objects.len().max(event.snapshots().len()).max(1))
+            .sum::<usize>() as u32
     }
 
     pub fn nonland_permanents_left_battlefield_this_turn(&self) -> u32 {
-        self.projected_records()
-            .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
-            .filter(|event| event.from == Zone::Battlefield)
-            .filter(|event| {
-                event
-                    .snapshot
-                    .as_ref()
-                    .is_some_and(|snapshot| !snapshot.card_types.contains(&CardType::Land))
-            })
+        self.battlefield_departure_snapshots(None)
+            .filter(|snapshot| !snapshot.card_types.contains(&CardType::Land))
             .count() as u32
     }
 
@@ -1145,14 +1173,9 @@ impl TurnHistory {
     }
 
     pub fn creatures_left_battlefield_under_controller(&self, player: PlayerId) -> u32 {
-        self.projected_records()
-            .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
-            .filter(|event| event.from == Zone::Battlefield)
-            .filter(|event| {
-                event.snapshot.as_ref().is_some_and(|snapshot| {
-                    snapshot.controller == player
-                        && snapshot.card_types.contains(&CardType::Creature)
-                })
+        self.battlefield_departure_snapshots(None)
+            .filter(|snapshot| {
+                snapshot.controller == player && snapshot.card_types.contains(&CardType::Creature)
             })
             .count() as u32
     }
@@ -1421,6 +1444,32 @@ pub(crate) fn resolve_turn_history_count(
                     && filter.matches_snapshot(snapshot, filter_ctx, game)
             })
             .count() as i32,
+        TurnHistoryCount::SacrificedCardTypes { player, filter } => {
+            // A card type counts once however many sacrificed permanents had
+            // it; each permanent is read as it last existed on the battlefield.
+            let mut card_types = Vec::<CardType>::new();
+            for record in history.projected_records() {
+                let Some(event) = record.event.downcast::<SacrificeEvent>() else {
+                    continue;
+                };
+                let Some(snapshot) = event.snapshot.as_ref().or(record.object_snapshot.as_ref())
+                else {
+                    continue;
+                };
+                let sacrificing_player = event.sacrificing_player.unwrap_or(snapshot.controller);
+                if !player.matches_player(sacrificing_player, filter_ctx)
+                    || !filter.matches_snapshot(snapshot, filter_ctx, game)
+                {
+                    continue;
+                }
+                for card_type in &snapshot.card_types {
+                    if !card_types.contains(card_type) {
+                        card_types.push(*card_type);
+                    }
+                }
+            }
+            card_types.len() as i32
+        }
         TurnHistoryCount::CountersPutOn {
             source_controller,
             counter_type,
@@ -1570,6 +1619,12 @@ pub(crate) fn resolve_turn_history_count(
             }
             seen.len() as i32
         }
+        TurnHistoryCount::CardsDrawn(player) => history
+            .projected_records()
+            .filter_map(|record| record.event.downcast::<CardsDrawnEvent>())
+            .filter(|event| player.matches_player(event.player, filter_ctx))
+            .map(CardsDrawnEvent::amount)
+            .sum::<u32>() as i32,
         TurnHistoryCount::Cycled(player) => {
             let mut seen = HashSet::new();
             for record in history.projected_records() {

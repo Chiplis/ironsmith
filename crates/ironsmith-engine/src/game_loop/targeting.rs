@@ -106,27 +106,47 @@ pub(crate) fn queue_triggers_from_reported_events(
     events: Vec<TriggerEvent>,
     include_delayed: bool,
 ) {
-    let mut events = events.into_iter().peekable();
-    while let Some(event) = events.next() {
-        if let Some(batch) = event.simultaneous_batch()
-            && matches!(
+    let groups_by_batch = |event: &TriggerEvent| {
+        event.simultaneous_batch().filter(|_| {
+            matches!(
                 event.kind(),
-                crate::events::EventKind::MarkersChanged | crate::events::EventKind::DieRolled
+                crate::events::EventKind::MarkersChanged
+                    | crate::events::EventKind::DieRolled
+                    | crate::events::EventKind::Damage
+                    | crate::events::EventKind::LifeLoss
+                    | crate::events::EventKind::ZoneChange
             )
-            && events
-                .peek()
-                .is_some_and(|next| next.simultaneous_batch() == Some(batch))
+        })
+    };
+    let mut events = events.into_iter().map(Some).collect::<Vec<_>>();
+    for index in 0..events.len() {
+        let Some(event) = events[index].take() else {
+            continue;
+        };
+        if let Some(batch) = groups_by_batch(&event)
+            && events[index + 1..]
+                .iter()
+                .flatten()
+                .any(|next| groups_by_batch(next) == Some(batch))
         {
+            // Damage one instruction deals to several recipients (or from
+            // several sources) is one event too (CR 603.2c, 120.3).
             let mut simultaneous = vec![event];
-            while let Some(next) = events.next_if(|next| next.simultaneous_batch() == Some(batch)) {
-                simultaneous.push(next);
+            for later in events.iter_mut().skip(index + 1) {
+                if later
+                    .as_ref()
+                    .is_some_and(|next| groups_by_batch(next) == Some(batch))
+                {
+                    simultaneous.extend(later.take());
+                }
             }
             queue_triggers_for_simultaneous_events(game, trigger_queue, simultaneous.clone());
             if include_delayed {
-                for event in &simultaneous {
-                    for trigger in crate::triggers::check_delayed_triggers(game, event) {
-                        trigger_queue.add(trigger);
-                    }
+                for trigger in crate::triggers::check_delayed_triggers_for_simultaneous_events(
+                    game,
+                    &simultaneous,
+                ) {
+                    trigger_queue.add(trigger);
                 }
             }
             continue;
@@ -159,6 +179,7 @@ pub(super) fn queue_triggers_for_simultaneous_events(
         .into_iter()
         .map(|event| game.ensure_trigger_event_provenance(event))
         .collect::<Vec<_>>();
+    let previous_batch_start = game.turn_store.turn_history.begin_simultaneous_batch();
     for event in &events {
         game.record_turn_history_event(event);
     }
@@ -201,17 +222,10 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                             previous.event_value_amount =
                                 Some(previous.event_value_amount.unwrap_or(0) + amount);
                         }
-                        for (tag, snapshots) in trigger.tagged_objects {
-                            let combined = previous.tagged_objects.entry(tag).or_default();
-                            for snapshot in snapshots {
-                                if !combined
-                                    .iter()
-                                    .any(|old| old.object_id == snapshot.object_id)
-                                {
-                                    combined.push(snapshot);
-                                }
-                            }
-                        }
+                        crate::triggers::merge_trigger_group_tags(
+                            &mut previous.tagged_objects,
+                            &trigger.tagged_objects,
+                        );
                         continue;
                     }
                     zone_groups.insert(instance_key, trigger_queue.entries.len());
@@ -220,14 +234,19 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                         group,
                         crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSource(_)
                             | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageTarget(_)
-                    ) && let Some(amount) = trigger.event_value_amount
-                        && let Some(indices) = damage_groups.get(&key)
+                    ) && let Some(indices) = damage_groups.get(&key)
                     {
                         for &index in indices {
                             let previous: &mut crate::triggers::TriggeredAbilityEntry =
                                 &mut trigger_queue.entries[index];
-                            previous.event_value_amount =
-                                Some(previous.event_value_amount.unwrap_or(0) + amount);
+                            if let Some(amount) = trigger.event_value_amount {
+                                previous.event_value_amount =
+                                    Some(previous.event_value_amount.unwrap_or(0) + amount);
+                            }
+                            crate::triggers::merge_trigger_group_tags(
+                                &mut previous.tagged_objects,
+                                &trigger.tagged_objects,
+                            );
                         }
                     }
                     continue;
@@ -253,6 +272,9 @@ pub(super) fn queue_triggers_for_simultaneous_events(
             damage_groups.entry(key).or_default().push(index);
         }
     }
+    game.turn_store
+        .turn_history
+        .end_simultaneous_batch(previous_batch_start);
 }
 
 pub(super) fn target_events_from_targets(
@@ -656,6 +678,27 @@ fn simultaneous_rule_ltb_batch_events(pending_events: &[TriggerEvent]) -> Vec<Tr
 }
 
 pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut TriggerQueue) {
+    drain_pending_trigger_events_inner(game, trigger_queue, None);
+}
+
+/// `drain_pending_trigger_events` for a caller with a player decision
+/// channel: exile-until returns whose duration ends here (CR 610.3c) ask
+/// their entry choices (a returned Clone's copy, an Aura's object, an
+/// optional entry payment) through `decision_maker` instead of taking the
+/// default answer.
+pub fn drain_pending_trigger_events_with_dm(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    decision_maker: &mut dyn DecisionMaker,
+) {
+    drain_pending_trigger_events_inner(game, trigger_queue, Some(decision_maker));
+}
+
+fn drain_pending_trigger_events_inner(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    mut decision_maker: Option<&mut dyn DecisionMaker>,
+) {
     for entry in game.take_pending_trigger_entries() {
         trigger_queue.add(entry);
     }
@@ -664,43 +707,71 @@ pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut Tr
     loop {
         let pending_events = game.take_pending_trigger_events();
         if pending_events.is_empty() {
+            // CR 610.3c: exile-until durations that ended are returned with
+            // the players answering the entry choices; without a player
+            // decision channel they wait for the next caller that has one.
+            if let Some(dm) = decision_maker.as_deref_mut()
+                && dm.answers_player_choices()
+                && game.has_pending_duration_end_returns()
+            {
+                game.process_pending_duration_end_returns(dm);
+                if dm.awaiting_choice() {
+                    break;
+                }
+                continue;
+            }
             break;
         }
+        // CR 610.3c: a card exiled "until" its source leaves returns right
+        // after that source leaves, as a new event. Every event already
+        // pending happened before that return, so they are all matched first
+        // (CR 603.2): a returning creature doesn't see them. The return's own
+        // events are matched on the next pass.
+        let mut departed_sources = Vec::new();
         let batch_lki_events = simultaneous_rule_ltb_batch_events(&pending_events);
-        let mut pending_events = pending_events.into_iter().peekable();
-        while let Some(event) = pending_events.next() {
-            if let Some(batch) = event.simultaneous_batch()
-                && matches!(
+        let groups_by_batch = |event: &TriggerEvent| {
+            event.simultaneous_batch().filter(|_| {
+                matches!(
                     event.kind(),
                     crate::events::EventKind::Damage
                         | crate::events::EventKind::LifeLoss
                         | crate::events::EventKind::ZoneChange
                         | crate::events::EventKind::MarkersChanged
                 )
-            {
+            })
+        };
+        let mut pending_events = pending_events.into_iter().map(Some).collect::<Vec<_>>();
+        for index in 0..pending_events.len() {
+            let Some(event) = pending_events[index].take() else {
+                continue;
+            };
+            if let Some(batch) = groups_by_batch(&event) {
+                // CR 603.2c: every event of one simultaneous action is matched
+                // together, even when unrelated events (a sacrifice event, a
+                // replacement's follow-up) were queued between them.
                 let mut simultaneous = vec![event];
-                while pending_events
-                    .peek()
-                    .is_some_and(|next| next.simultaneous_batch() == Some(batch))
-                {
-                    simultaneous.push(
-                        pending_events
-                            .next()
-                            .expect("peeked simultaneous event should still be present"),
-                    );
+                for later in pending_events.iter_mut().skip(index + 1) {
+                    if later
+                        .as_ref()
+                        .is_some_and(|next| groups_by_batch(next) == Some(batch))
+                    {
+                        simultaneous.extend(later.take());
+                    }
                 }
                 queue_triggers_for_simultaneous_events(game, trigger_queue, simultaneous.clone());
+                // CR 603.7b: a one-shot delayed trigger sees the whole group.
+                for trigger in crate::triggers::check_delayed_triggers_for_simultaneous_events(
+                    game,
+                    &simultaneous,
+                ) {
+                    trigger_queue.add(trigger);
+                }
                 for event in &simultaneous {
-                    for trigger in crate::triggers::check_delayed_triggers(game, event) {
-                        trigger_queue.add(trigger);
-                    }
                     if let Some(change) = event.downcast::<crate::events::ZoneChangeEvent>()
                         && change.from == crate::zone::Zone::Battlefield
                         && change.to != crate::zone::Zone::Battlefield
                     {
-                        for source in &change.objects {
-                            game.return_exiled_for_source_leave(*source);
-                        }
+                        departed_sources.extend(change.objects.iter().copied());
                     }
                 }
                 continue;
@@ -720,9 +791,7 @@ pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut Tr
                 &mut one_or_more_zone_changes_seen,
             );
             if let Some(source_ids) = source_leave {
-                for source_id in source_ids {
-                    game.return_exiled_for_source_leave(source_id);
-                }
+                departed_sources.extend(source_ids);
             }
         }
 
@@ -759,6 +828,10 @@ pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut Tr
                     trigger_queue.add(trigger);
                 }
             }
+        }
+
+        for source_id in departed_sources {
+            game.return_exiled_for_source_leave(source_id);
         }
     }
 }
@@ -3952,7 +4025,7 @@ fn prior_player_or_planeswalker_target(
                     Target::Player(player) => Some(*player),
                     Target::Object(object) => game
                         .object(*object)
-                        .filter(|object| object.has_card_type(CardType::Planeswalker))
+                        .filter(|_| game.current_has_card_type(*object, CardType::Planeswalker))
                         .and_then(|_| view.current_controller(*object)),
                 })
         })
@@ -4059,6 +4132,19 @@ pub(crate) fn stack_entry_assignment_legal_targets(
             view,
         )
     };
+    // CR 115.5: a spell or ability on the stack is an illegal target for
+    // itself (matters when its targets are changed or new ones chosen).
+    // An ability's `object_id` is its source permanent, which it may target;
+    // the ability itself is named by `ability_id`.
+    let self_id = if entry.is_ability {
+        entry.ability_id
+    } else {
+        Some(entry.object_id)
+    };
+    let mut legal_targets = legal_targets;
+    if let Some(self_id) = self_id {
+        legal_targets.retain(|target| *target != Target::Object(self_id));
+    }
     AssignmentLegalTargets {
         legal_targets,
         relative_object_target,

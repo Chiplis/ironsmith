@@ -167,8 +167,11 @@ fn apply_simultaneous_damage_assignments_opts(
             .collect::<Vec<_>>();
         let processed =
             process_simultaneous_damage_assignments_with_event_with_dm(game, &events, dm);
-        let simultaneous_batch =
-            game.alloc_child_event_provenance(provenance, crate::events::EventKind::Damage);
+        // Several sources dealing damage at once ("each creature you control
+        // deals damage ...") share the enclosing simultaneous action.
+        let simultaneous_batch = game.simultaneous_action_batch().unwrap_or_else(|| {
+            game.alloc_child_event_provenance(provenance, crate::events::EventKind::Damage)
+        });
 
         apply_processed_damage_results(
             game,
@@ -369,10 +372,14 @@ fn excess_damage_to_object(
     excess.unwrap_or(0)
 }
 
-fn object_can_be_dealt_damage(object: &crate::object::Object) -> bool {
-    object.has_card_type(CardType::Creature)
-        || object.has_card_type(CardType::Planeswalker)
-        || object.has_card_type(CardType::Battle)
+/// CR 120.3 / 120.4: damage can be dealt to a creature, planeswalker or
+/// battle. Reads the object's current (layered) card types so an animated
+/// land or a crewed Vehicle is a legal recipient.
+pub(crate) fn object_can_be_dealt_damage(game: &GameState, object_id: crate::ids::ObjectId) -> bool {
+    game.object(object_id).is_some()
+        && (game.current_has_card_type(object_id, CardType::Creature)
+            || game.current_has_card_type(object_id, CardType::Planeswalker)
+            || game.current_has_card_type(object_id, CardType::Battle))
 }
 
 trait ExcessDamageRedirectExt {
@@ -487,8 +494,8 @@ impl EffectExecutor for DealDamageEffect {
 
         if let ChooseSpec::Iterated = &self.target {
             if let Some(object_id) = ctx.iteration.iterated_object {
-                if let Some(obj) = game.object(object_id) {
-                    if !object_can_be_dealt_damage(obj) {
+                if game.object(object_id).is_some() {
+                    if !object_can_be_dealt_damage(game, object_id) {
                         return Ok(EffectOutcome::target_invalid());
                     }
                     return Ok(apply_processed_damage_outcome_opts(
@@ -544,9 +551,8 @@ impl EffectExecutor for DealDamageEffect {
                     ));
                 }
                 AttackEventTarget::Planeswalker(object_id) => {
-                    if !game
-                        .object(object_id)
-                        .is_some_and(|obj| obj.has_card_type(CardType::Planeswalker))
+                    if game.object(object_id).is_none()
+                        || !game.current_has_card_type(object_id, CardType::Planeswalker)
                     {
                         return Ok(EffectOutcome::target_invalid());
                     }
@@ -564,9 +570,8 @@ impl EffectExecutor for DealDamageEffect {
                     ));
                 }
                 AttackEventTarget::Battle(object_id) => {
-                    if !game
-                        .object(object_id)
-                        .is_some_and(|obj| obj.has_card_type(CardType::Battle))
+                    if game.object(object_id).is_none()
+                        || !game.current_has_card_type(object_id, CardType::Battle)
                     {
                         return Ok(EffectOutcome::target_invalid());
                     }
@@ -651,9 +656,7 @@ impl EffectExecutor for DealDamageEffect {
         {
             let recipient = match damage.target {
                 DamageTarget::Object(object_id)
-                    if game
-                        .object(object_id)
-                        .is_some_and(object_can_be_dealt_damage) =>
+                    if object_can_be_dealt_damage(game, object_id) =>
                 {
                     Some(DamageTarget::Object(object_id))
                 }
@@ -710,10 +713,7 @@ impl EffectExecutor for DealDamageEffect {
                                 damage_targets.push(DamageTarget::Player(*player_id));
                             }
                             ResolvedTarget::Object(object_id) => {
-                                if !game
-                                    .object(*object_id)
-                                    .is_some_and(object_can_be_dealt_damage)
-                                {
+                                if !object_can_be_dealt_damage(game, *object_id) {
                                     continue;
                                 }
                                 damage_targets.push(DamageTarget::Object(*object_id));
@@ -858,7 +858,8 @@ impl EffectExecutor for DealDamageEffect {
         if let Ok(object_ids) = resolve_objects_for_effect(game, ctx, &self.target)
             && let Some(object_id) = object_ids.into_iter().find(|object_id| {
                 game.object(*object_id).is_some_and(|obj| {
-                    obj.zone == crate::zone::Zone::Battlefield && object_can_be_dealt_damage(obj)
+                    obj.zone == crate::zone::Zone::Battlefield
+                        && object_can_be_dealt_damage(game, *object_id)
                 })
             })
         {
@@ -904,8 +905,8 @@ impl EffectExecutor for DealDamageEffect {
                     ));
                 }
                 ResolvedTarget::Object(object_id) => {
-                    if let Some(obj) = game.object(*object_id) {
-                        if !object_can_be_dealt_damage(obj) {
+                    if game.object(*object_id).is_some() {
+                        if !object_can_be_dealt_damage(game, *object_id) {
                             continue;
                         }
                         return Ok(apply_processed_damage_outcome_opts(

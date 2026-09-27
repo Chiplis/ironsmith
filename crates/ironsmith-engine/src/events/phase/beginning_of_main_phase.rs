@@ -68,12 +68,23 @@ impl GameEventType for BeginningOfPrecombatMainPhaseEvent {
 pub struct BeginningOfPostcombatMainPhaseEvent {
     /// The player whose main phase it is
     pub player: PlayerId,
+    /// Which main phase of the turn this is (CR 505.1b), when known.
+    pub main_phase_ordinal: Option<u32>,
 }
 
 impl BeginningOfPostcombatMainPhaseEvent {
     /// Create a new beginning of postcombat main phase event.
     pub fn new(player: PlayerId) -> Self {
-        Self { player }
+        Self {
+            player,
+            main_phase_ordinal: None,
+        }
+    }
+
+    /// Record which main phase of the turn is beginning (CR 505.1b).
+    pub fn with_main_phase_ordinal(mut self, ordinal: u32) -> Self {
+        self.main_phase_ordinal = Some(ordinal);
+        self
     }
 }
 

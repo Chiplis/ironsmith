@@ -119,6 +119,14 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_spells_cost_reduction_and_cant_be_countered_line(input)),
     },
     Reading {
+        id: RuleId::new("double-conditional-this-spell-cost-reduction-line"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| {
+            input.outcome(read_double_conditional_this_spell_cost_reduction_line(input))
+        },
+    },
+    Reading {
         id: RuleId::new("first-spell-cost-reduction-and-flash-line"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -133,6 +141,7 @@ const READINGS: &[Reading] = &[
                 && !input.read_by("spell-and-player-activated-ability-cost-modifier-line")
                 && !input.read_by("spell-cost-increase-per-target-beyond-first-line")
                 && !input.read_by("spells-cost-reduction-and-cant-be-countered-line")
+                && !input.read_by("double-conditional-this-spell-cost-reduction-line")
         },
         read: |input| input.outcome(read_spells_cost_modifier_line(input)),
     },
@@ -333,6 +342,20 @@ fn read_spells_cost_reduction_and_cant_be_countered_line(
     // filter for both executable static abilities.
     if let Some(abilities) =
         crate::keyword_static::parse_spells_cost_reduction_and_cant_be_countered_line(lexed)?
+    {
+        return Ok(Some(LineAst::StaticAbilities(
+            abilities.into_iter().map(Into::into).collect(),
+        )));
+    }
+    Ok(None)
+}
+fn read_double_conditional_this_spell_cost_reduction_line(
+    input: &StaticLine<'_>,
+) -> Result<Option<LineAst>, CardTextError> {
+    if let Some(abilities) =
+        crate::keyword_static::parse_double_conditional_this_spell_cost_reduction_line(
+            input.tokens,
+        )?
     {
         return Ok(Some(LineAst::StaticAbilities(
             abilities.into_iter().map(Into::into).collect(),

@@ -618,6 +618,9 @@ pub enum TriggerSpec {
     DealsCombatDamageToPlayerOneOrMore {
         source: ObjectFilter,
         player: PlayerFilter,
+        /// "... to a player" (once for each damaged player, CR 603.2c) as
+        /// opposed to "... to one or more players".
+        each_damaged_player: bool,
     },
     YouCastThisSpell,
     KeywordAction {

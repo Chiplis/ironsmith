@@ -207,6 +207,10 @@ impl WasmGame {
         back_definition.card.other_face = Some(front_id);
         back_definition.card.other_face_name = Some(front.name.clone());
         back_definition.card.linked_face_layout = linked_layout;
+        // CR 712.1 / 712.12: a transforming DFC, unlike a modal one, can't be
+        // played as a land using its back face.
+        front_definition.card.transforming_dfc = layout == "transform";
+        back_definition.card.transforming_dfc = layout == "transform";
         if linked_layout == ironsmith::card::LinkedFaceLayout::Split {
             front_definition.has_fuse = has_fuse;
             back_definition.has_fuse = has_fuse;

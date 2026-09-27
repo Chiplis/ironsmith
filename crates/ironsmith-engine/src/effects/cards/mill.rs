@@ -85,6 +85,9 @@ impl EffectExecutor for MillEffect {
         let mut milled_memory = Vec::new();
         let mut any_prevented = false;
 
+        // CR 701.17a / 603.2c: the cards are milled at the same time, as one
+        // event ("whenever one or more cards are put into your graveyard").
+        let opened_batch = game.open_simultaneous_action();
         for card_id in cards_to_mill {
             let Some(from_zone) = game.object(card_id).map(|obj| obj.zone) else {
                 continue;
@@ -117,6 +120,7 @@ impl EffectExecutor for MillEffect {
                 EventOutcome::Replaced | EventOutcome::NotApplicable => {}
             }
         }
+        game.close_simultaneous_action(opened_batch);
 
         if !milled.is_empty() {
             return Ok(EffectOutcome::with_objects(milled.clone())

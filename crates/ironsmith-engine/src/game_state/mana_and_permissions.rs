@@ -437,11 +437,14 @@ impl GameState {
             .battlefield
             .iter()
             .copied()
+            // CR 702.26b: a phased-out permanent's Ascend doesn't function,
+            // and phased-out permanents aren't counted.
             .filter(|&object_id| {
-                self.current_has_static_ability_id(
-                    object_id,
-                    crate::static_abilities::StaticAbilityId::Ascend,
-                )
+                !self.is_phased_out(object_id)
+                    && self.current_has_static_ability_id(
+                        object_id,
+                        crate::static_abilities::StaticAbilityId::Ascend,
+                    )
             })
             .filter_map(|object_id| self.controller_of_id(object_id))
             .collect::<HashSet<_>>();
@@ -454,7 +457,10 @@ impl GameState {
                         .battlefield
                         .iter()
                         .copied()
-                        .filter(|&object_id| self.controller_of_id(object_id) == Some(player))
+                        .filter(|&object_id| {
+                            !self.is_phased_out(object_id)
+                                && self.controller_of_id(object_id) == Some(player)
+                        })
                         .count()
                         >= 10
             })

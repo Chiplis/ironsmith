@@ -86,14 +86,14 @@ fn source_was_cast(
         && let Some(etb) = event.downcast::<crate::events::EnterBattlefieldEvent>()
         && etb.object == source
     {
-        return etb.from == Zone::Stack;
+        return etb.from == Zone::Stack && !resolved_from_uncast_spell_copy(game, source, None);
     }
     if let Some(event) = triggering_event
         && let Some(zc) = event.downcast::<crate::events::ZoneChangeEvent>()
         && zc.to == Zone::Battlefield
         && zc.objects.contains(&source)
     {
-        return zc.from == Zone::Stack;
+        return zc.from == Zone::Stack && !resolved_from_uncast_spell_copy(game, source, None);
     }
     game.turn_store
         .turn_history
@@ -120,6 +120,32 @@ fn source_was_cast_from_zone(
         == Some(zone)
 }
 
+/// CR 707.10 / 707.10f: a copy of a permanent spell becomes a token as it
+/// resolves, and it was never cast. Tokens are never otherwise on the stack, so
+/// a token that entered from the stack without a cast record (CR 707.12 cast
+/// copies have one) came from an uncast spell copy.
+fn resolved_from_uncast_spell_copy(
+    game: &GameState,
+    object_id: ObjectId,
+    snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+) -> bool {
+    let (kind, stable_id) = match game.object(object_id) {
+        Some(obj) => (obj.kind, obj.stable_id),
+        None => match snapshot {
+            Some(snapshot) => (snapshot.kind, snapshot.stable_id),
+            None => return false,
+        },
+    };
+    matches!(
+        kind,
+        crate::object::ObjectKind::Token | crate::object::ObjectKind::SpellCopy
+    ) && game
+        .turn_store
+        .turn_history
+        .latest_cast_zone(stable_id)
+        .is_none()
+}
+
 fn tagged_object_was_cast(game: &GameState, tag: &crate::TagKey, ctx: &ExecutionContext) -> bool {
     let Some(tagged) = ctx.get_tagged_all(tag.as_str()) else {
         return false;
@@ -129,6 +155,7 @@ fn tagged_object_was_cast(game: &GameState, tag: &crate::TagKey, ctx: &Execution
             && let Some(etb) = event.downcast::<crate::events::EnterBattlefieldEvent>()
             && etb.from == Zone::Stack
             && etb.object == snapshot.object_id
+            && !resolved_from_uncast_spell_copy(game, snapshot.object_id, Some(snapshot))
         {
             return true;
         }
@@ -137,6 +164,7 @@ fn tagged_object_was_cast(game: &GameState, tag: &crate::TagKey, ctx: &Execution
             && zc.from == Zone::Stack
             && zc.to == Zone::Battlefield
             && zc.objects.contains(&snapshot.object_id)
+            && !resolved_from_uncast_spell_copy(game, snapshot.object_id, Some(snapshot))
         {
             return true;
         }
@@ -224,12 +252,35 @@ fn triggering_spell_colored_mana_spent_at_least(
         .is_some_and(|obj| mana_pool_colored_total(&obj.mana_spent_to_cast) >= amount)
 }
 
+/// CR 707.10: a copy of a spell isn't cast. It copies the casting method (the
+/// alternative cost paid) but not the zone the original was cast from, so an
+/// uncast spell copy was never cast from any zone. A copy that was itself cast
+/// (CR 707.12) has its own cast record and is unaffected.
+fn is_uncast_spell_copy(game: &GameState, source: ObjectId) -> bool {
+    game.object(source).is_some_and(|obj| {
+        obj.kind == crate::object::ObjectKind::SpellCopy
+            && game
+                .turn_store
+                .turn_history
+                .latest_cast_zone(obj.stable_id)
+                .is_none()
+            && game
+                .turn_store
+                .turn_history
+                .spell_cast_order(source)
+                .is_none()
+    })
+}
+
 fn this_spell_was_cast_from_zone(
     game: &GameState,
     source: ObjectId,
     ctx: &ExecutionContext,
     zone: Zone,
 ) -> bool {
+    if is_uncast_spell_copy(game, source) {
+        return false;
+    }
     match &ctx.casting_method {
         crate::alternative_cast::CastingMethod::GrantedFlashback => zone == Zone::Graveyard,
         crate::alternative_cast::CastingMethod::GrantedEscape { .. } => zone == Zone::Graveyard,
@@ -261,6 +312,9 @@ fn this_spell_was_cast_from_non_hand(
     source: ObjectId,
     ctx: &ExecutionContext,
 ) -> bool {
+    if is_uncast_spell_copy(game, source) {
+        return false;
+    }
     match &ctx.casting_method {
         crate::alternative_cast::CastingMethod::Normal
         | crate::alternative_cast::CastingMethod::FaceDown
@@ -2009,14 +2063,19 @@ fn object_matching_was_put_into_graveyard_from_battlefield_this_turn(
         .iter()
         .chain(game.turn_store.turn_history.staged_event_records.iter())
         .any(|record| {
-            record
+            // A simultaneous batch record covers every object it moved.
+            let Some(event) = record
                 .event
                 .downcast::<crate::events::zones::ZoneChangeEvent>()
-                .is_some_and(|event| event.from == Zone::Battlefield && event.to == Zone::Graveyard)
-                && record
-                    .object_snapshot
-                    .as_ref()
-                    .is_some_and(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                .filter(|event| event.from == Zone::Battlefield && event.to == Zone::Graveyard)
+            else {
+                return false;
+            };
+            event
+                .snapshots()
+                .iter()
+                .chain(record.object_snapshot.as_ref())
+                .any(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
         })
 }
 
@@ -2066,10 +2125,11 @@ fn creatures_dealt_damage_by_source_died_this_turn(
             continue;
         }
         for victim_id in &event.objects {
+            // Each victim of a simultaneous batch record has its own LKI.
             let snapshot = event
-                .snapshot
-                .as_ref()
-                .filter(|snapshot| snapshot.object_id == *victim_id)
+                .snapshots()
+                .iter()
+                .find(|snapshot| snapshot.object_id == *victim_id)
                 .or_else(|| {
                     record
                         .object_snapshot
@@ -2541,6 +2601,20 @@ fn evaluate_turn_history_condition(
                         .event
                         .downcast::<crate::events::LandPlayedEvent>()
                         .is_some_and(|event| players.contains(&event.player))
+                })
+        }
+        TurnHistoryCondition::PlayerActivatedLoyaltyAbilityThisTurn(player) => {
+            let players = matching_players(player);
+            game.turn_store
+                .turn_history
+                .projected_records()
+                .any(|record| {
+                    record
+                        .event
+                        .downcast::<crate::events::AbilityActivatedEvent>()
+                        .is_some_and(|event| {
+                            event.is_loyalty_ability && players.contains(&event.activator)
+                        })
                 })
         }
         TurnHistoryCondition::TriggeringObjectDied => ctx
@@ -3884,11 +3958,8 @@ fn evaluate_condition_in_context(
             let Some(source_obj) = game.object(ctx.source) else {
                 return Ok(false);
             };
-            let target_mana_value = target_obj
-                .mana_cost
-                .as_ref()
-                .map(|cost| cost.mana_value())
-                .unwrap_or(0);
+            let target_mana_value =
+                crate::filter::object_mana_value_for_filter(target_obj).max(0) as u32;
             let colors_spent = [
                 source_obj.mana_spent_to_cast.white,
                 source_obj.mana_spent_to_cast.blue,
@@ -4430,7 +4501,8 @@ fn evaluate_condition_in_context(
                     return Ok(true);
                 }
                 match timing {
-                    crate::ability::ActivationTiming::AnyTime => true,
+                    crate::ability::ActivationTiming::AnyTime
+                    | crate::ability::ActivationTiming::AsInstant => true,
                     crate::ability::ActivationTiming::DuringCombat => {
                         matches!(game.turn.phase, crate::game_state::Phase::Combat)
                     }

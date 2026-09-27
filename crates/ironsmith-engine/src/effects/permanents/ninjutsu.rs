@@ -366,7 +366,7 @@ fn attack_target_still_valid(
         AttackTarget::Planeswalker(planeswalker) => game.object(*planeswalker).is_some_and(|obj| {
             let controller = game.controller_of(obj);
             obj.zone == Zone::Battlefield
-                && obj.has_card_type(CardType::Planeswalker)
+                && game.current_has_card_type(*planeswalker, CardType::Planeswalker)
                 && controller != attacker_controller
                 && game.are_opponents(attacker_controller, controller)
                 && game
@@ -375,7 +375,7 @@ fn attack_target_still_valid(
         }),
         AttackTarget::Battle(battle) => game.object(*battle).is_some_and(|obj| {
             obj.zone == Zone::Battlefield
-                && obj.has_card_type(CardType::Battle)
+                && game.current_has_card_type(*battle, CardType::Battle)
                 && game.battle_protector(*battle).is_some_and(|protector| {
                     game.player(protector)
                         .is_some_and(|player| player.is_in_game())

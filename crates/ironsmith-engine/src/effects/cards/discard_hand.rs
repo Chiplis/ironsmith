@@ -33,65 +33,77 @@ impl EffectExecutor for DiscardHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        use crate::events::processing::execute_discard;
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-
-        let hand_cards: Vec<_> = game
-            .player(player_id)
-            .map(|p| p.hand.to_vec())
-            .unwrap_or_default();
-
-        let count = hand_cards.len();
-
-        // Hidden-information matches: the owner reveals the hand publicly
-        // before any card moves, so every peer applies Madness (CR 702.35a)
-        // and discard triggers to the same identities (see
-        // `game_state::hidden_hand_choices`). Never prompts otherwise.
-        if hand_cards
-            .iter()
-            .any(|id| game.hidden_identity_is_private(*id))
-        {
-            let to_reveal: Vec<_> = hand_cards
-                .iter()
-                .copied()
-                .filter(|id| *id != ctx.source)
-                .collect();
-            if game
-                .reveal_private_hidden_cards_publicly(
-                    &mut *ctx.decision_maker,
-                    player_id,
-                    ctx.source,
-                    &to_reveal,
-                    "Reveal the cards you discard",
-                    false,
-                )
-                .is_none()
-            {
-                return Ok(EffectOutcome::count(0));
-            }
-        }
-
-        // Discard each card using the event system. The cause is inherited from
-        // the execution context so discard-as-cost stays cost-caused.
-        let cause = ctx.cause.clone();
-        for card_id in hand_cards {
-            execute_discard(
-                game,
-                card_id,
-                player_id,
-                cause.clone(),
-                false,
-                ctx.provenance,
-                &mut *ctx.decision_maker,
-            );
-        }
-
-        Ok(EffectOutcome::count(count as i32))
+        // CR 603.2c: discarding a hand is one event for "one or more" triggers.
+        let opened_batch = game.open_simultaneous_action();
+        let outcome = execute_discard_hand(self, game, ctx);
+        game.close_simultaneous_action(opened_batch);
+        outcome
     }
 
     fn cost_description(&self) -> Option<String> {
         Some("Discard your hand".to_string())
     }
+}
+
+fn execute_discard_hand(
+    this: &DiscardHandEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<EffectOutcome, ExecutionError> {
+    use crate::events::processing::execute_discard;
+    let player_id = resolve_player_filter(game, &this.player, ctx)?;
+
+    let hand_cards: Vec<_> = game
+        .player(player_id)
+        .map(|p| p.hand.to_vec())
+        .unwrap_or_default();
+
+    let count = hand_cards.len();
+
+    // Hidden-information matches: the owner reveals the hand publicly
+    // before any card moves, so every peer applies Madness (CR 702.35a)
+    // and discard triggers to the same identities (see
+    // `game_state::hidden_hand_choices`). Never prompts otherwise.
+    if hand_cards
+        .iter()
+        .any(|id| game.hidden_identity_is_private(*id))
+    {
+        let to_reveal: Vec<_> = hand_cards
+            .iter()
+            .copied()
+            .filter(|id| *id != ctx.source)
+            .collect();
+        if game
+            .reveal_private_hidden_cards_publicly(
+                &mut *ctx.decision_maker,
+                player_id,
+                ctx.source,
+                &to_reveal,
+                "Reveal the cards you discard",
+                false,
+            )
+            .is_none()
+        {
+            return Ok(EffectOutcome::count(0));
+        }
+    }
+
+    // Discard each card using the event system. The cause is inherited from
+    // the execution context so discard-as-cost stays cost-caused.
+    let cause = ctx.cause.clone();
+    for card_id in hand_cards {
+        execute_discard(
+            game,
+            card_id,
+            player_id,
+            cause.clone(),
+            false,
+            ctx.provenance,
+            &mut *ctx.decision_maker,
+        );
+    }
+
+    Ok(EffectOutcome::count(count as i32))
 }
 
 impl CostExecutableEffect for DiscardHandEffect {

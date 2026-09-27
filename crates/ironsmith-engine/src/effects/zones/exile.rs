@@ -429,7 +429,10 @@ impl EffectExecutor for ExileEffect {
                 let pending_start =
                     pending_start.min(game.effect_store.pending_trigger_events.len());
                 for event in &mut game.effect_store.pending_trigger_events[pending_start..] {
-                    if event
+                    // Events already stamped by the pinned simultaneous
+                    // action keep its identity.
+                    if event.simultaneous_batch().is_none()
+                        && event
                         .downcast::<crate::events::ZoneChangeEvent>()
                         .is_some_and(|change| {
                             if change.snapshots().is_empty() {

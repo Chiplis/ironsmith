@@ -1032,6 +1032,17 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                     return !Self::PriorEffectResult(positive).evaluate_outcome(outcome);
                 }
                 if !prior_result_filter_has_lki_constraints(&surface.filter) {
+                    // CR 701.19a / 701.8a: regeneration (or a shield counter)
+                    // replaces the destruction, so a regenerated permanent
+                    // wasn't "destroyed this way". Destroy effects remember
+                    // exactly the permanents they destroyed.
+                    if surface.action == crate::effect::PriorEffectAction::Destroyed {
+                        if let Some(memories) = outcome.affected_object_memory() {
+                            return !memories.is_empty();
+                        }
+                        return outcome.status != OutcomeStatus::Replaced
+                            && Self::Happened.evaluate_outcome(outcome);
+                    }
                     if surface.action == crate::effect::PriorEffectAction::Drawn {
                         let drawn: u32 = outcome
                             .events_of_type::<crate::events::CardsDrawnEvent>()

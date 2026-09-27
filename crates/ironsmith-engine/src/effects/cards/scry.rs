@@ -6,7 +6,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
-use crate::filter::{FilterContext, PlayerFilterExt};
+use crate::filter::PlayerFilterExt;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::PlayerFilter;
@@ -354,7 +354,9 @@ impl EffectExecutor for EachPlayerScryEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let filter_ctx = FilterContext::new(ctx.controller).with_source(ctx.source);
+        // The execution context's filter context carries the opponent and
+        // teammate lists "each opponent" matches against.
+        let filter_ctx = ctx.filter_context(game);
         let players: Vec<PlayerId> = players_in_turn_order(game)
             .into_iter()
             .filter(|player_id| self.player_filter.matches_player(*player_id, &filter_ctx))

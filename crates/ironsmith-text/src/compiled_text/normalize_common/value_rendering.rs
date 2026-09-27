@@ -2404,6 +2404,9 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                 ChooseSpec::Object(filter) if filter.target_set_different_controllers => {
                     " controlled by different players"
                 }
+                ChooseSpec::Object(filter) if filter.target_set_shared_creature_type => {
+                    " that share a creature type"
+                }
                 _ => "",
             };
             let random_suffix = if count.is_random() {
@@ -5043,6 +5046,19 @@ pub(crate) fn describe_turn_history_for_each_basis(value: &Value) -> Option<Stri
                 ),
             })
         }
+        Value::TurnHistoryCount(TurnHistoryCount::SacrificedCardTypes { player, filter }) => {
+            let subject = pluralize_noun_phrase(&describe_history_event_object(filter));
+            Some(match player {
+                PlayerFilter::You => {
+                    format!("card type among {subject} you've sacrificed this turn")
+                }
+                PlayerFilter::Any => format!("card type among {subject} sacrificed this turn"),
+                other => format!(
+                    "card type among {subject} {} sacrificed this turn",
+                    describe_player_filter(other)
+                ),
+            })
+        }
         Value::TurnHistoryCount(TurnHistoryCount::SpellsCast {
             player,
             filter,
@@ -5206,6 +5222,11 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
             pluralize_noun_phrase(&describe_for_each_filter(filter)),
             describe_player_filter(player)
         ),
+        TurnHistoryCount::SacrificedCardTypes { player, filter } => format!(
+            "the number of card types among {} {} sacrificed this turn",
+            pluralize_noun_phrase(&describe_for_each_filter(filter)),
+            describe_player_filter(player)
+        ),
         TurnHistoryCount::CountersPutOn {
             source_controller,
             counter_type,
@@ -5265,6 +5286,16 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
             }
             _ => format!(
                 "the number of cards {} cycled or discarded this turn",
+                describe_player_filter(player)
+            ),
+        },
+        TurnHistoryCount::CardsDrawn(player) => match player {
+            PlayerFilter::You => "the number of cards you've drawn this turn".to_string(),
+            PlayerFilter::Opponent => {
+                "the number of cards your opponents have drawn this turn".to_string()
+            }
+            _ => format!(
+                "the number of cards {} drew this turn",
                 describe_player_filter(player)
             ),
         },
@@ -5898,6 +5929,30 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 .unwrap_or_else(|| minimum.to_string());
             format!(
                 "the number of {players} with {minimum} or more cards in hand"
+            )
+        }
+        Value::PlayersWhoControl { players, filter } => {
+            let mut controlled_filter = filter.clone();
+            if controlled_filter.zone == Some(Zone::Battlefield) {
+                controlled_filter.zone = None;
+            }
+            let players = match players {
+                PlayerFilter::Any => "players".to_string(),
+                PlayerFilter::Opponent => "opponents".to_string(),
+                other => describe_player_set_filter(other),
+            };
+            format!(
+                "the number of {players} who control {}",
+                {
+                    let noun = controlled_filter.description();
+                    if noun.starts_with("a ") || noun.starts_with("an ") {
+                        noun
+                    } else if noun.starts_with(['a', 'e', 'i', 'o', 'u']) {
+                        format!("an {noun}")
+                    } else {
+                        format!("a {noun}")
+                    }
+                }
             )
         }
         Value::PlayersWhoControlMoreThanYou { players, filter } => {

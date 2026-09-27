@@ -158,6 +158,8 @@ impl EffectExecutor for ProliferateEffect {
             let eligible_permanents: Vec<crate::ids::ObjectId> = game
                 .battlefield
                 .iter()
+                // CR 702.26b: phased-out permanents can't be chosen.
+                .filter(|&&perm_id| !game.is_phased_out(perm_id))
                 .filter_map(|&perm_id| {
                     game.object(perm_id).and_then(|obj| {
                         if obj.counters.is_empty() {

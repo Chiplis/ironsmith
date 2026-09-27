@@ -1731,8 +1731,38 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice { target, .. }) => {
                     maybe_tag_target(target, frame, id_gen, "become_color_choice")?;
                 }
-                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy { target, .. }) => {
+                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy { target, source, .. }) => {
+                    let source_is_explicit_target = {
+                        let refs = lowering_reference_frame(frame);
+                        let (spec, _) = resolve_target_spec_with_choices(source, &refs)?;
+                        spec.is_target() && choose_spec_targets_object(&spec)
+                    };
+                    let copies_onto_source = {
+                        let refs = lowering_reference_frame(frame);
+                        matches!(
+                            resolve_target_spec_with_choices(target, &refs)?.0.base(),
+                            ChooseSpec::Source
+                        )
+                    };
+                    // When later effects refer back to an object, lowering
+                    // tags an explicitly targeted copy source ("become a copy
+                    // of target creature") so they can name it; reserve the
+                    // same tag.
+                    let mut copy_source_tag = None;
+                    if source_is_explicit_target && frame.auto_tag_object_targets {
+                        maybe_tag_target(source, frame, id_gen, "copy_source")?;
+                        copy_source_tag = frame.last_object_tag.clone();
+                    }
+                    let previous_source_antecedent = frame.source_object_antecedent;
                     maybe_tag_target(target, frame, id_gen, "copied")?;
+                    // "~ becomes a copy of target creature. ... that creature
+                    // ..." (Gogo, Mysterious Mime): after a self-copy the
+                    // copied object stays the object antecedent; the source
+                    // keeps its own name.
+                    if copies_onto_source && copy_source_tag.is_some() {
+                        frame.last_object_tag = copy_source_tag;
+                        frame.source_object_antecedent = previous_source_antecedent;
+                    }
                 }
                 SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. })
                 | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })

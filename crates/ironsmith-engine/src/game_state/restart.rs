@@ -518,6 +518,17 @@ impl GameState {
     /// the cards it left in exile onto the battlefield now, as one event per
     /// deferred instruction. Resulting triggers wait for the first priority.
     pub fn apply_pending_restart_battlefield_entries(&mut self) {
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        self.apply_pending_restart_battlefield_entries_with(&mut dm);
+    }
+
+    /// Apply the deferred restart battlefield entries, asking `dm` for the
+    /// choices the entering cards make (ETB replacements, "as enters"
+    /// choices; CR 726.4).
+    pub fn apply_pending_restart_battlefield_entries_with(
+        &mut self,
+        dm: &mut dyn crate::decision::DecisionMaker,
+    ) {
         let entries = std::mem::take(&mut self.pending_restart_battlefield_entries);
         for entry in entries {
             let cards = entry
@@ -551,11 +562,10 @@ impl GameState {
                 crate::effects::BattlefieldController::Owner
             };
             effect.enters_tapped = entry.enters_tapped;
-            let mut dm = crate::decision::SelectFirstDecisionMaker;
             let mut ctx = crate::effects::ExecutionContext::new(
                 first,
                 entry.controller.unwrap_or(owner),
-                &mut dm,
+                &mut *dm,
             );
             ctx.tag_objects(tag, snapshots);
             if let Ok(outcome) =

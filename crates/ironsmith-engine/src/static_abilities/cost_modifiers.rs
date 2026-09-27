@@ -1933,6 +1933,9 @@ pub enum ActivatedAbilityCostCondition {
     /// one with a target matching `targeting`, evaluated relative to the cost
     /// modifier's source ("that target this creature").
     EquipAbility { targeting: Option<ObjectFilter> },
+    /// "This ability costs ... less": only the activated ability at
+    /// `ability_index` of the source (CR 602.2b); unbound applies to all.
+    ThisAbility { ability_index: Option<usize> },
 }
 
 fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCondition) -> String {
@@ -1982,6 +1985,7 @@ fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCon
         ActivatedAbilityCostCondition::EquipAbility {
             targeting: Some(filter),
         } => format!("if it's an equip ability that targets {}", filter.description()),
+        ActivatedAbilityCostCondition::ThisAbility { .. } => String::new(),
     }
 }
 
@@ -2002,6 +2006,14 @@ pub fn activated_ability_cost_condition_is_active_for_activation(
     };
     let controller = game.controller_of(source_obj);
     match condition {
+        ActivatedAbilityCostCondition::ThisAbility { ability_index } => {
+            // Without the priced ability's identity the reduction is assumed
+            // to apply, as with the ability-kind conditions.
+            match (ability_index, ability.and_then(|ability| ability.ability_index)) {
+                (Some(expected), Some(actual)) => expected == &actual,
+                _ => true,
+            }
+        }
         ActivatedAbilityCostCondition::EquipAbility { targeting } => {
             if ability.is_some_and(|ability| !ability.equip) {
                 return false;
@@ -2095,6 +2107,7 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
         if let Some(condition) = &self.condition
             && !(self.display.is_some()
                 && matches!(condition, ActivatedAbilityCostCondition::EquipAbility { .. }))
+            && !matches!(condition, ActivatedAbilityCostCondition::ThisAbility { .. })
         {
             line.push(' ');
             line.push_str(&describe_activated_ability_cost_condition(condition));

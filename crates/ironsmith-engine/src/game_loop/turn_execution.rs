@@ -62,6 +62,9 @@ pub fn execute_turn_with(
                     crate::decisions::context::DecisionContext::SelectOptions(ref options_ctx) => {
                         runner.respond_options(decision_maker.decide_options(game, options_ctx));
                     }
+                    crate::decisions::context::DecisionContext::Order(ref order_ctx) => {
+                        runner.respond_order(decision_maker.decide_order(game, order_ctx));
+                    }
                     crate::decisions::context::DecisionContext::Distribute(ref distribute_ctx) => {
                         // CR 510.1c-d combat-damage division.
                         runner.respond_distribute(
@@ -180,10 +183,10 @@ pub(super) fn generate_damage_triggers(
         // Delayed triggers ("whenever that creature deals combat damage to a
         // player this turn") watch these events too; the simultaneous path
         // only consults abilities on objects.
-        for event in &trigger_events {
-            for trigger in crate::triggers::check_delayed_triggers(game, event) {
-                trigger_queue.add(trigger);
-            }
+        for trigger in
+            crate::triggers::check_delayed_triggers_for_simultaneous_events(game, &trigger_events)
+        {
+            trigger_queue.add(trigger);
         }
         queue_triggers_for_simultaneous_events(game, trigger_queue, trigger_events);
         game.clear_combat_damage_player_batch_hits();
@@ -191,6 +194,8 @@ pub(super) fn generate_damage_triggers(
         return;
     }
 
+    // CR 510.2: every assignment below is one simultaneous damage event.
+    let previous_batch_start = game.turn_store.turn_history.begin_simultaneous_batch();
     let mut damage_batch_groups = std::collections::HashMap::new();
     for event in events {
         let (damage_event, life_loss_event) = combat_damage_trigger_events(game, event);
@@ -220,6 +225,9 @@ pub(super) fn generate_damage_triggers(
             game.record_combat_damage_object_batch_hit(event.source, object_id);
         }
     }
+    game.turn_store
+        .turn_history
+        .end_simultaneous_batch(previous_batch_start);
     game.clear_combat_damage_player_batch_hits();
     game.clear_combat_damage_object_batch_hits();
 }
@@ -266,19 +274,26 @@ fn queue_incremental_combat_damage_event(
         let key = (candidate.source_stable_id, candidate.trigger_identity, group);
 
         if let Some(existing_indices) = damage_batch_groups.get(&key) {
-            if let Some(amount) = candidate.event_value_amount {
-                for index in existing_indices {
-                    if let Some(existing) = trigger_queue.entries.get_mut(*index) {
-                        existing.event_value_amount = Some(match group {
-                            SimultaneousTriggerKey::DamageBatch => existing
-                                .event_value_amount
-                                .map_or(amount, |prior| prior.max(amount)),
-                            // "that much damage" is the total dealt to (or by)
-                            // this object in the event.
-                            _ => existing.event_value_amount.unwrap_or(0) + amount,
-                        });
-                    }
+            for index in existing_indices {
+                let Some(existing) = trigger_queue.entries.get_mut(*index) else {
+                    continue;
+                };
+                if let Some(amount) = candidate.event_value_amount {
+                    existing.event_value_amount = Some(match group {
+                        SimultaneousTriggerKey::DamageBatch => existing
+                            .event_value_amount
+                            .map_or(amount, |prior| prior.max(amount)),
+                        // "that much damage" is the total dealt to (or by)
+                        // this object in the event.
+                        _ => existing.event_value_amount.unwrap_or(0) + amount,
+                    });
                 }
+                // The grouped instance refers to every source of its event
+                // ("those creatures").
+                crate::triggers::merge_trigger_group_tags(
+                    &mut existing.tagged_objects,
+                    &candidate.tagged_objects,
+                );
             }
             continue;
         }
@@ -335,7 +350,8 @@ fn combat_damage_trigger_events(
         event.amount,
         true, // is_combat
         cause,
-    );
+    )
+    .with_excess_damage(event.result.excess_damage);
     if let Some(snapshot) = &event.target_snapshot {
         damage_event = damage_event.with_target_snapshot(snapshot.clone());
     } else if let DamageEventTarget::Object(object_id) = event.target

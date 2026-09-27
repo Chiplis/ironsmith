@@ -35,6 +35,31 @@ pub(crate) mod value_context;
 pub(crate) use layer_resolution::resolve_value_direct;
 use layer_resolution::*;
 
+
+/// Corrected end turn for an "until the end of your next turn" duration that
+/// was predicted as `expires`, evaluated as `turn_number` begins (every
+/// affected effect was created during an earlier turn). Returns `None` when
+/// the prediction stands. The controller taking this turn makes it their next
+/// turn (an extra turn of theirs included); a predicted turn that went to
+/// someone else waits for the controller's real next turn. Durations of a
+/// departed controller are left alone (CR 800.4m clamps them).
+pub(crate) fn next_turn_end_prediction_correction(
+    expires: u32,
+    controller: PlayerId,
+    turn_number: u32,
+    active_players: &[PlayerId],
+    players_in_game: &[PlayerId],
+) -> Option<u32> {
+    if !players_in_game.contains(&controller) || expires < turn_number {
+        return None;
+    }
+    if active_players.contains(&controller) {
+        (expires > turn_number).then_some(turn_number)
+    } else {
+        (expires == turn_number).then_some(u32::MAX)
+    }
+}
+
 #[cfg(test)]
 mod tests;
 
@@ -245,6 +270,35 @@ pub struct ContinuousEffectId(pub u64);
 impl ContinuousEffectId {
     pub fn new(id: u64) -> Self {
         Self(id)
+    }
+}
+
+/// CR 305.7: setting a land's subtype to a basic land type (Blood Moon,
+/// Spreading Seas) makes it lose the abilities from its rules text, its old
+/// land types and copy effects, but never abilities that other effects grant
+/// (Chromatic Lantern). That loss is the ability-layer half of the land-type
+/// static, so it applies before every other ability-layer effect and keyword
+/// counter, whatever their timestamps.
+pub(crate) fn is_land_type_rules_text_ability_loss(effect: &ContinuousEffect) -> bool {
+    matches!(effect.modification, Modification::RemoveAllAbilities)
+        && effect
+            .originating_static_ability
+            .as_ref()
+            .is_some_and(|ability| {
+                ability.id() == crate::static_abilities::StaticAbilityId::SetLandSubtypes
+            })
+}
+
+/// Order class of an effect within its layer, applied before timestamps and
+/// dependencies: characteristic-defining effects first (CR 613.3), then the
+/// CR 305.7 land-type ability loss, then everything else.
+pub(crate) fn effect_layer_precedence(effect: &ContinuousEffect) -> u8 {
+    if matches!(effect.source_type, EffectSourceType::CharacteristicDefining) {
+        0
+    } else if is_land_type_rules_text_ability_loss(effect) {
+        1
+    } else {
+        2
     }
 }
 
@@ -1079,6 +1133,47 @@ impl ContinuousEffectManager {
         self.revision += 1;
     }
 
+    /// CR 611.2a / 500.7: "until the end of your next turn" stores a predicted
+    /// turn number. Re-anchor it at each turn start: the controller's real next
+    /// turn may come earlier (their own extra turn) or later (an extra turn for
+    /// someone else was inserted). See [`correct_next_turn_end_prediction`].
+    pub fn correct_next_turn_end_predictions(
+        &mut self,
+        turn_number: u32,
+        active_players: &[PlayerId],
+        players_in_game: &[PlayerId],
+    ) {
+        let needs_change = |effect: &ContinuousEffect| {
+            matches!(effect.duration, Until::YourNextTurnEnd)
+                && next_turn_end_prediction_correction(
+                    effect.expires_end_of_turn,
+                    effect.controller,
+                    turn_number,
+                    active_players,
+                    players_in_game,
+                )
+                .is_some()
+        };
+        if !self.effects.iter().any(needs_change) {
+            return;
+        }
+        let effects = Arc::make_mut(&mut self.effects);
+        for effect in effects.iter_mut() {
+            if matches!(effect.duration, Until::YourNextTurnEnd)
+                && let Some(expires) = next_turn_end_prediction_correction(
+                    effect.expires_end_of_turn,
+                    effect.controller,
+                    turn_number,
+                    active_players,
+                    players_in_game,
+                )
+            {
+                effect.expires_end_of_turn = expires;
+            }
+        }
+        self.revision += 1;
+    }
+
     /// Remove all effects whose outer duration ends with the current turn.
     pub fn cleanup_end_of_turn(&mut self) {
         let effects = Arc::make_mut(&mut self.effects);
@@ -1146,11 +1241,11 @@ impl ContinuousEffectManager {
             }
 
             // CR 613.2: characteristic-defining effects apply before other
-            // effects in their layer.
-            let a_is_cda = matches!(a.source_type, EffectSourceType::CharacteristicDefining);
-            let b_is_cda = matches!(b.source_type, EffectSourceType::CharacteristicDefining);
-            if a_is_cda != b_is_cda {
-                return b_is_cda.cmp(&a_is_cda);
+            // effects in their layer (and the CR 305.7 land-type ability
+            // loss before the remaining ability-layer effects).
+            let precedence_cmp = effect_layer_precedence(a).cmp(&effect_layer_precedence(b));
+            if precedence_cmp != std::cmp::Ordering::Equal {
+                return precedence_cmp;
             }
 
             // Within same layer/sublayer, sort by timestamp
@@ -2316,13 +2411,15 @@ fn calculate_characteristics_layer_batch_with_effects(
                     ) else {
                         continue;
                     };
-                    apply_ability_counters_through(
-                        object,
-                        chars,
-                        counters,
-                        next_counter,
-                        Some(effect.timestamp),
-                    );
+                    if !is_land_type_rules_text_ability_loss(effect) {
+                        apply_ability_counters_through(
+                            object,
+                            chars,
+                            counters,
+                            next_counter,
+                            Some(effect.timestamp),
+                        );
+                    }
                     prune_ability_gain_prohibitions(chars);
                     guards[idx].update(chars);
                 }
@@ -3129,13 +3226,15 @@ fn calculate_with_layers_direct_internal(
         // Apply effects in dependency order
         for effect in sorted_effects {
             if layer == Layer::Ability {
-                apply_ability_counters_through(
-                    object,
-                    &mut chars,
-                    &ability_counters,
-                    &mut next_ability_counter,
-                    Some(effect.timestamp),
-                );
+                if !is_land_type_rules_text_ability_loss(effect) {
+                    apply_ability_counters_through(
+                        object,
+                        &mut chars,
+                        &ability_counters,
+                        &mut next_ability_counter,
+                        Some(effect.timestamp),
+                    );
+                }
                 prune_ability_gain_prohibitions(&mut chars);
                 calc_guard.update(&chars);
             }
@@ -4317,10 +4416,9 @@ fn filter_matches_layered_fast(
         return Some(false);
     }
     if let Some(mana_value_cmp) = &filter.mana_value {
-        let mana_value = object
-            .mana_cost
-            .as_ref()
-            .map_or(0, |mana_cost| mana_cost.mana_value() as i32);
+        // CR 712.8e/g: a transformed back face or melded permanent uses its
+        // front face(s)' mana value.
+        let mana_value = crate::filter::object_mana_value_for_filter(object);
         if !mana_value_cmp.satisfies_with_context(mana_value, game, filter_ctx, None) {
             return Some(false);
         }
@@ -4376,6 +4474,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.target_count.is_some()
         || filter.target_set_same_controller
         || filter.target_set_different_controllers
+        || filter.target_set_shared_creature_type
         || filter.target_set_aggregate_constraint.is_some()
         || filter.targets_only_player.is_some()
         || filter.targets_only_object.is_some()
@@ -4436,6 +4535,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.distinct_mana_values
         || filter.distinct_powers
         || filter.distinct_creature_types
+        || filter.shares_land_type
         || filter.one_per_card_type
         || !filter.any_of.is_empty()
         || filter.source_surface.is_some()

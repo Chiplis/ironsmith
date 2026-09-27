@@ -15,6 +15,11 @@ pub struct DealsCombatDamageToPlayerTrigger {
     pub filter: ObjectFilter,
     pub player: PlayerFilter,
     pub one_or_more: bool,
+    /// "One or more creatures deal combat damage to a player": one event for
+    /// each damaged player (CR 603.2c, 510.2), whose "that player" is that
+    /// player and whose "that much damage" is the total dealt to them.
+    /// Without it, "to one or more players" is one event for the whole step.
+    pub each_damaged_player: bool,
 }
 
 impl DealsCombatDamageToPlayerTrigger {
@@ -23,14 +28,29 @@ impl DealsCombatDamageToPlayerTrigger {
             filter,
             player,
             one_or_more: false,
+            each_damaged_player: false,
         }
     }
 
+    /// "Whenever one or more [filter] deal combat damage to one or more
+    /// players / of your opponents": once per combat damage step.
     pub fn one_or_more(filter: ObjectFilter, player: PlayerFilter) -> Self {
         Self {
             filter,
             player,
             one_or_more: true,
+            each_damaged_player: false,
+        }
+    }
+
+    /// "Whenever one or more [filter] deal combat damage to a player / an
+    /// opponent": once for each player dealt damage.
+    pub fn one_or_more_each_player(filter: ObjectFilter, player: PlayerFilter) -> Self {
+        Self {
+            filter,
+            player,
+            one_or_more: true,
+            each_damaged_player: true,
         }
     }
 
@@ -79,7 +99,10 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
         if !self.player.matches_player(damaged_player, &ctx.filter_ctx) {
             return false;
         }
-        if !self.one_or_more {
+        // Per damaged player, every matching assignment belongs to that
+        // player's event; the per-recipient grouping queues it once and sums
+        // the damage.
+        if !self.one_or_more || self.each_damaged_player {
             return true;
         }
         self.first_matching_hit_to_player_in_batch(damaged_player, ctx)
@@ -93,7 +116,10 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
         if !self.one_or_more {
             return None;
         }
-        event.downcast::<DamageEvent>()?;
+        let damage = event.downcast::<DamageEvent>()?;
+        if self.each_damaged_player {
+            return Some(SimultaneousTriggerKey::DamageTarget(damage.target));
+        }
         Some(SimultaneousTriggerKey::DamageBatch)
     }
 
@@ -122,10 +148,11 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
             // Rogue creatures you control".
             let subject = crate::static_abilities::pluralized_subject_text(&self.filter);
             let subject = subject.strip_prefix("All ").unwrap_or(&subject);
-            let player = if matches!(self.player, PlayerFilter::Opponent) {
-                "one or more of your opponents".to_string()
-            } else {
-                self.player.description()
+            let player = match (&self.player, self.each_damaged_player) {
+                (PlayerFilter::Opponent, false) => "one or more of your opponents".to_string(),
+                (PlayerFilter::Any, false) => "one or more players".to_string(),
+                (PlayerFilter::Opponent, true) => "an opponent".to_string(),
+                _ => self.player.description(),
             };
             return format!("Whenever one or more {subject} deal combat damage to {player}");
         }
@@ -146,6 +173,11 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
         let DamageTarget::Player(current_player) = damage.target else {
             return None;
         };
+        // "That much damage" / "the amount of damage those creatures dealt to
+        // that player": this assignment's share of the per-player total.
+        if self.each_damaged_player {
+            return i32::try_from(damage.amount).ok();
+        }
 
         let mut damaged_players = HashSet::new();
         damaged_players.insert(current_player);

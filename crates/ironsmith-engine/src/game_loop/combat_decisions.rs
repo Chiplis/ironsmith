@@ -1118,6 +1118,14 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
     }
 
     let total_attackers = surviving_declarations.len();
+    let declared_attackers: std::sync::Arc<[crate::combat_state::AttackerInfo]> =
+        surviving_declarations
+            .iter()
+            .map(|prepared_decl| crate::combat_state::AttackerInfo {
+                creature: prepared_decl.declaration.creature,
+                target: prepared_decl.declaration.target.clone(),
+            })
+            .collect();
     let mut attack_events = Vec::with_capacity(total_attackers);
     for prepared_decl in surviving_declarations {
         let decl = &prepared_decl.declaration;
@@ -1132,7 +1140,8 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
                 decl.creature,
                 event_target,
                 total_attackers,
-            ),
+            )
+            .with_declared_attackers(declared_attackers.clone()),
             event_provenance,
         );
         attack_events.push(event);

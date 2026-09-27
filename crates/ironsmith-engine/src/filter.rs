@@ -151,7 +151,24 @@ pub(crate) fn names_match(lhs: &str, rhs: &str) -> bool {
     if name_is_nameless(lhs) || name_is_nameless(rhs) {
         return false;
     }
-    lhs.eq_ignore_ascii_case(rhs) || normalize_name_for_match(lhs) == normalize_name_for_match(rhs)
+    if lhs.eq_ignore_ascii_case(rhs) || normalize_name_for_match(lhs) == normalize_name_for_match(rhs)
+    {
+        return true;
+    }
+    // A combined "A // B" name (a fused split spell, or a fully unlocked
+    // Room, CR 709.4d / 709.5) is both names, so it matches either half.
+    if lhs.contains(" // ") || rhs.contains(" // ") {
+        return lhs.split(" // ").any(|left| {
+            rhs.split(" // ").any(|right| {
+                let (left, right) = (left.trim(), right.trim());
+                !left.is_empty()
+                    && !right.is_empty()
+                    && (left.eq_ignore_ascii_case(right)
+                        || normalize_name_for_match(left) == normalize_name_for_match(right))
+            })
+        });
+    }
+    false
 }
 
 /// Whether two objects share a name, each given as its primary name plus the
@@ -4598,6 +4615,9 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if self.distinct_powers {
             parts.push("with different powers".to_string());
+        }
+        if self.shares_land_type {
+            parts.push("that share a land type".to_string());
         }
         if self.one_per_card_type {
             parts.push("with at most one card of each card type".to_string());

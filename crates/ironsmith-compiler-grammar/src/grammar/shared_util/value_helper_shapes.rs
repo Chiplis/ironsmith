@@ -125,8 +125,36 @@ pub fn parse_spells_cast_this_turn_value_words(words: &[&str]) -> Option<Value> 
     })
 }
 
+/// "each counter among players and permanents" (Lumbering Megasloth):
+/// players can have counters too (CR 122.1), and the object-filter parser
+/// would otherwise drop the player half of the scope.
+pub fn counters_among_players_and_permanents_value(scope_words: &[&str]) -> Option<Value> {
+    matches!(
+        scope_words,
+        ["players", "and", "permanents"] | ["permanents", "and", "players"]
+    )
+    .then(|| {
+        Value::Add(
+            Box::new(Value::CountersOn(
+                Box::new(ChooseSpec::EachPlayer(crate::target::PlayerFilter::Any)),
+                None,
+            )),
+            Box::new(Value::CountersOn(
+                Box::new(ChooseSpec::All(crate::ObjectFilter::permanent())),
+                None,
+            )),
+        )
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersAmong)
+    })
+}
+
 pub fn parse_aggregate_scope_value_words(words: &[&str]) -> Option<Value> {
     let surface = value_shapes::parse_aggregate_value_surface(words)?;
+    if surface.metric == AggregateValueMetric::Counters
+        && let Some(value) = counters_among_players_and_permanents_value(surface.scope_words)
+    {
+        return Some(value);
+    }
     let filter = crate::grammar::primitives::probe_shape(parse_object_filter_words(
         surface.scope_words,
         false,

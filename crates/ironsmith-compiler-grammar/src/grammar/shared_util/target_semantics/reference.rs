@@ -969,6 +969,26 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         )));
     }
 
+    // "two target creatures you control that share a creature type" (Secret
+    // Tunnel) constrains the chosen set, not each candidate.
+    let shared_creature_type_words = ["that", "share", "a", "creature", "type"];
+    let remaining_word_count = TokenWordView::new(remaining).len();
+    let (remaining, target_set_shared_creature_type) = if remaining_word_count
+        > shared_creature_type_words.len()
+        && crate::word_primitives::parse_sequence_suffix(
+            &TokenWordView::new(remaining).to_word_refs(),
+            &shared_creature_type_words,
+        ) {
+        let view = TokenWordView::new(remaining);
+        let cut = view
+            .token_start_indices()
+            .get(remaining_word_count - shared_creature_type_words.len())
+            .copied()
+            .unwrap_or(remaining.len());
+        (&remaining[..cut], true)
+    } else {
+        (remaining, false)
+    };
     let controller_set = parse_target_controller_set_suffix(remaining);
     let target_set_same_controller = matches!(
         controller_set.constraint,
@@ -1023,6 +1043,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     );
     filter.target_set_same_controller = target_set_same_controller;
     filter.target_set_different_controllers = target_set_different_controllers;
+    filter.target_set_shared_creature_type = target_set_shared_creature_type;
     filter.target_set_aggregate_constraint =
         lift_total_mana_value_choice_constraint(remaining, &mut filter).map(Box::new);
     if filter.with_counter.is_none()

@@ -284,6 +284,7 @@ mod tests {
 
         game.move_object_by_effect(source, Zone::Graveyard);
         crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+        game.process_pending_duration_end_returns(&mut crate::decision::SelectFirstDecisionMaker);
 
         assert!(trigger_queue.entries.is_empty());
         assert!(game.exile.is_empty());
@@ -315,6 +316,7 @@ mod tests {
         game.move_object_by_effect(source, Zone::Graveyard);
         game.move_object_by_effect(unrelated, Zone::Graveyard);
         crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+        game.process_pending_duration_end_returns(&mut crate::decision::SelectFirstDecisionMaker);
         assert!(game.exile.iter().any(|id| {
             game.object(*id)
                 .is_some_and(|object| object.name == "Exiled Creature")
@@ -322,6 +324,7 @@ mod tests {
 
         game.move_object_by_effect(watcher, Zone::Graveyard);
         crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+        game.process_pending_duration_end_returns(&mut crate::decision::SelectFirstDecisionMaker);
         assert!(game.exile.is_empty());
         assert!(game.battlefield.iter().any(|id| {
             game.object(*id)
@@ -378,6 +381,7 @@ mod tests {
             &mut game,
             &mut crate::triggers::TriggerQueue::new(),
         );
+        game.process_pending_duration_end_returns(&mut crate::decision::SelectFirstDecisionMaker);
 
         assert!(game.exile.is_empty());
         assert!(game.player(bob).expect("bob exists").hand.iter().any(|id| {
@@ -412,6 +416,7 @@ mod tests {
             &mut game,
             &mut crate::triggers::TriggerQueue::new(),
         );
+        game.process_pending_duration_end_returns(&mut crate::decision::SelectFirstDecisionMaker);
         assert!(
             game.exile.iter().any(|id| game
                 .object(*id)
@@ -428,6 +433,7 @@ mod tests {
         );
 
         game.set_monarch(Some(bob));
+        game.process_pending_duration_end_returns(&mut crate::decision::SelectFirstDecisionMaker);
         assert!(game.exile.is_empty());
         let returned = game
             .battlefield

@@ -918,6 +918,11 @@ pub fn resolve_condition_from_predicate(
                     resolve_non_target_player_filter(*player, &refs)?,
                 )
             }
+            TurnHistoryPredicateAst::PlayerActivatedLoyaltyAbilityThisTurn(player) => {
+                ironsmith_core::TurnHistoryCondition::PlayerActivatedLoyaltyAbilityThisTurn(
+                    resolve_non_target_player_filter(*player, &refs)?,
+                )
+            }
             TurnHistoryPredicateAst::TriggeringObjectDied => {
                 ironsmith_core::TurnHistoryCondition::TriggeringObjectDied
             }

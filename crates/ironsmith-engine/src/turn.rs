@@ -303,6 +303,9 @@ fn legacy_enter_phase(game: &mut GameState, phase: Phase) -> Result<(), TurnErro
     if matches!(phase, Phase::Combat) {
         game.mark_combat_phase_started();
     }
+    if matches!(phase, Phase::FirstMain | Phase::NextMain) {
+        game.mark_main_phase_started();
+    }
     if let Some(step) = game.turn.step
         && game.consume_step_skip(active, step)
     {
@@ -735,7 +738,18 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
         if should_untap.contains(&id) {
             // CR 502.3 untaps go through replacement effects, including the
             // stun-counter rule (CR 122.1d).
-            crate::events::processing::process_untap(game, id, &mut *decision_maker);
+            // CR 502.3 / 603.2: the permanent "becomes untapped" (Inspired).
+            // No player gets priority in the untap step, so the event waits
+            // for the upkeep trigger drain (CR 502.4).
+            if crate::events::processing::process_untap(game, id, &mut *decision_maker) {
+                game.queue_trigger_event(
+                    crate::provenance::ProvNodeId::default(),
+                    crate::triggers::TriggerEvent::new_with_provenance(
+                        crate::events::other::PermanentUntappedEvent::new(id),
+                        crate::provenance::ProvNodeId::default(),
+                    ),
+                );
+            }
         }
         if game
             .current_controller(id)
@@ -1123,6 +1137,8 @@ pub fn apply_cleanup_discard(
     // Cleanup discard is a GAME RULE discard, so Library of Leng can't apply
     let cause = EventCause::from_game_rule();
 
+    // CR 514.1 / 603.2c: the cleanup discard is one simultaneous event.
+    let opened_batch = game.open_simultaneous_action();
     for &card_id in cards_to_discard {
         let pre_discard_snapshot = game
             .object(card_id)
@@ -1155,6 +1171,7 @@ pub fn apply_cleanup_discard(
             madness_cards.push(new_id);
         }
     }
+    game.close_simultaneous_action(opened_batch);
 
     let batch_cards: Vec<_> = successful_discards
         .iter()

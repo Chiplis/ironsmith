@@ -555,9 +555,13 @@ fn block_cost_static_ability(
         cost_tokens = trim_edge_punctuation_tokens(strip_per_blocking_creature_tail(cost_tokens));
     }
     // The attack-only reading claims just explicit payments; any other
-    // "can't attack unless ..." wording keeps its own grammar.
+    // "can't attack unless ..." wording keeps its own grammar. That includes
+    // payments the attack-unless reader already types, such as the scaled
+    // per-counter tax of Phyrexian Marauder: two differing readings of one
+    // line would leave the cant-clause registry with no static ability.
     if attack_only
         && (direct_action_cost
+            || attack_unless_static_ability(tokens).is_some()
             || !matches!(parse_payment_clause_as_total_cost(cost_tokens), Ok(Some(_))))
     {
         return Ok(None);

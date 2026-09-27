@@ -727,6 +727,19 @@ fn execute_general_combat_damage_batch_path(
         crate::events::processing::process_simultaneous_damage_assignments_with_event_with_dm(
             game, &batch, dm,
         );
+    // CR 120.10: excess damage is judged against each permanent's state
+    // before this step's damage is dealt.
+    let excess_capacities = CombatExcessCapacities::before_damage(
+        game,
+        processed
+            .iter()
+            .filter(|processed| !processed.replacement_prevented)
+            .flat_map(|processed| processed.assignments.iter())
+            .filter_map(|assignment| match assignment.target {
+                EventDamageTarget::Object(object) => Some(object),
+                EventDamageTarget::Player(_) => None,
+            }),
+    );
 
     let mut events = Vec::with_capacity(planned.len());
     let mut lifelink_totals = CombatLifelinkTotals::default();
@@ -791,7 +804,79 @@ fn execute_general_combat_damage_batch_path(
         push_redirected_combat_damage_events(&mut events, &planned.result, planned.source, redirected);
     }
     lifelink_totals.apply(game, &mut events);
+    excess_capacities.assign_excess(&mut events);
     Ok(events)
+}
+
+/// Pre-damage lethal/loyalty/defense of each permanent dealt combat damage
+/// this step, used to compute excess damage (CR 120.10).
+struct CombatExcessCapacities {
+    /// (permanent, lethal damage remaining if a creature, loyalty if a
+    /// planeswalker, defense if a battle)
+    entries: Vec<(ObjectId, Option<u32>, Option<u32>, Option<u32>)>,
+}
+
+impl CombatExcessCapacities {
+    fn before_damage(game: &GameState, targets: impl IntoIterator<Item = ObjectId>) -> Self {
+        let mut entries: Vec<(ObjectId, Option<u32>, Option<u32>, Option<u32>)> = Vec::new();
+        for target in targets {
+            if entries.iter().any(|entry| entry.0 == target) {
+                continue;
+            }
+            let Some(object) = game.object(target) else {
+                continue;
+            };
+            let lethal = game
+                .current_has_card_type(target, crate::types::CardType::Creature)
+                .then(|| {
+                    game.calculated_toughness(target)
+                        .or_else(|| object.toughness())
+                        .map(|toughness| (toughness - game.damage_on(target) as i32).max(0) as u32)
+                })
+                .flatten();
+            let loyalty = game
+                .current_has_card_type(target, crate::types::CardType::Planeswalker)
+                .then(|| object.loyalty().unwrap_or(0));
+            let defense = game
+                .current_has_card_type(target, crate::types::CardType::Battle)
+                .then(|| {
+                    object
+                        .counters
+                        .get(&crate::object::CounterType::Defense)
+                        .copied()
+                        .unwrap_or(0)
+                });
+            entries.push((target, lethal, loyalty, defense));
+        }
+        Self { entries }
+    }
+
+    /// Spread each permanent's excess over the events that dealt it, in
+    /// event order, so the events' excess sums to the total excess of all
+    /// the sources together. Any deathtouch source among them makes 1 damage
+    /// lethal (CR 702.2c).
+    fn assign_excess(&self, events: &mut [CombatDamageEvent]) {
+        for &(target, lethal, loyalty, defense) in &self.entries {
+            let dealt_to_target = |event: &CombatDamageEvent| {
+                event.amount > 0 && event.target == DamageEventTarget::Object(target)
+            };
+            let deathtouch = events
+                .iter()
+                .any(|event| dealt_to_target(event) && event.result.has_deathtouch);
+            let lethal = lethal.map(|lethal| if deathtouch { lethal.min(1) } else { lethal });
+            // The greatest excess among the permanent's types is the excess
+            // over its smallest capacity.
+            let Some(capacity) = [lethal, loyalty, defense].into_iter().flatten().min() else {
+                continue;
+            };
+            let mut dealt = 0u32;
+            for event in events.iter_mut().filter(|event| dealt_to_target(event)) {
+                let before = dealt.max(capacity);
+                dealt = dealt.saturating_add(event.amount);
+                event.result.excess_damage = dealt.saturating_sub(before);
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -2052,6 +2137,11 @@ pub struct CombatDamageDivision {
     pub excess_target: Option<Target>,
     /// Whether the source has deathtouch (1 damage counts as lethal, 702.2c).
     pub deathtouch: bool,
+    /// "You may have this creature assign its combat damage as though it
+    /// weren't blocked": a blocked attacker may instead assign all its combat
+    /// damage to what it's attacking (CR 510.1c; never split between that and
+    /// its blockers).
+    pub unblocked_alternative: Option<Target>,
 }
 
 impl CombatDamageDivision {
@@ -2063,7 +2153,30 @@ impl CombatDamageDivision {
             .chain(self.planeswalker)
             .map(Target::Object)
             .chain(self.excess_target)
+            .chain(self.separate_unblocked_alternative())
             .collect()
+    }
+
+    /// The "as though it weren't blocked" recipient, when it isn't already a
+    /// recipient (a trampler's excess goes to the same place).
+    fn separate_unblocked_alternative(&self) -> Option<Target> {
+        self.unblocked_alternative.filter(|alternative| {
+            self.excess_target != Some(*alternative)
+                && !matches!(alternative, Target::Object(object)
+                    if self.planeswalker == Some(*object) || self.creatures.contains(object))
+        })
+    }
+
+    /// Whether `amounts` (in [`Self::targets`] order) puts every point of
+    /// damage on the "as though it weren't blocked" recipient.
+    fn is_all_unblocked_alternative(&self, targets: &[Target], amounts: &[u32]) -> bool {
+        let Some(alternative) = self.unblocked_alternative else {
+            return false;
+        };
+        targets
+            .iter()
+            .zip(amounts)
+            .all(|(target, amount)| *amount == 0 || *target == alternative)
     }
 
     /// The permanents among the legal recipients.
@@ -2141,6 +2254,8 @@ impl CombatDamageDivision {
     ) -> Vec<(Target, u32)> {
         let targets = self.targets();
         if !spread {
+            // The "as though it weren't blocked" option is only taken by
+            // choice; with no blockers left it is the only recipient.
             return targets
                 .first()
                 .map(|first| vec![(*first, total)])
@@ -2201,6 +2316,8 @@ impl CombatDamageDivision {
                 allocations.push((target, total - assigned));
             } else if let Some(planeswalker) = self.planeswalker {
                 allocations.push((Target::Object(planeswalker), total - assigned));
+            } else if let Some(target) = self.unblocked_alternative {
+                allocations.push((target, total - assigned));
             }
         }
         allocations
@@ -2232,6 +2349,21 @@ impl CombatDamageDivision {
             return Err((
                 CombatDamageAssignmentErrorKind::WrongTotal,
                 format!("exactly {total} combat damage must be assigned (got {assigned})"),
+            ));
+        }
+        // CR 510.1c: assigning as though it weren't blocked sends all of the
+        // damage to what it's attacking, ignoring its blockers.
+        if self.is_all_unblocked_alternative(&targets, &amounts) {
+            return Ok(targets.into_iter().zip(amounts).collect());
+        }
+        if let Some(alternative) = self.separate_unblocked_alternative()
+            && let Some(index) = targets.iter().position(|target| *target == alternative)
+            && amounts[index] > 0
+        {
+            return Err((
+                CombatDamageAssignmentErrorKind::IllegalRecipient,
+                "combat damage assigned as though it weren't blocked can't be split with its blockers"
+                    .to_string(),
             ));
         }
         let creature_count = self.creatures.len();
@@ -2300,14 +2432,25 @@ fn attacker_damage_division(
     } else {
         Vec::new()
     };
+    let unblocked_alternative = (blocked
+        && game.object_has_static_ability_id(
+            attacker_id,
+            StaticAbilityId::MayAssignDamageAsUnblocked,
+        ))
+    .then(|| trample_excess_target(game, &attacker_info.target))
+    .flatten();
     if blocked && !trample {
-        // CR 510.1c: a blocked creature assigns damage only to its blockers.
-        return (!creatures.is_empty()).then_some(CombatDamageDivision {
-            creatures,
-            planeswalker: None,
-            excess_target: None,
-            deathtouch,
-        });
+        // CR 510.1c: a blocked creature assigns damage only to its blockers,
+        // unless it may assign it as though it weren't blocked.
+        return (!creatures.is_empty() || unblocked_alternative.is_some()).then_some(
+            CombatDamageDivision {
+                creatures,
+                planeswalker: None,
+                excess_target: None,
+                deathtouch,
+                unblocked_alternative,
+            },
+        );
     }
     // Unblocked (CR 510.1b), or a trampler: past its blockers (all of them
     // assigned lethal damage, or none left, CR 702.19d) to what it's attacking.
@@ -2324,6 +2467,7 @@ fn attacker_damage_division(
         planeswalker,
         excess_target,
         deathtouch,
+        unblocked_alternative,
     })
 }
 
@@ -2456,6 +2600,7 @@ fn combat_damage_assigners(
                     blocker_id,
                     crate::static_abilities::StaticAbilityId::Deathtouch,
                 ),
+                unblocked_alternative: None,
             },
         });
     }

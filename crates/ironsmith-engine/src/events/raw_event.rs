@@ -186,6 +186,20 @@ impl RawEvent {
         self
     }
 
+    /// The same occurrence metadata (provenance, simultaneous batch, source
+    /// and look-back snapshots, player bindings) around a different payload.
+    #[must_use]
+    pub(crate) fn with_inner_event<E: GameEventType + 'static>(&self, event: E) -> Self {
+        Self {
+            inner: Arc::new(event),
+            provenance: self.provenance,
+            simultaneous_batch: self.simultaneous_batch,
+            source_snapshot: self.source_snapshot.clone(),
+            lookback_source_snapshots: self.lookback_source_snapshots.clone(),
+            player_tags: self.player_tags.clone(),
+        }
+    }
+
     pub(crate) fn ptr_eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.inner, &other.inner)
     }

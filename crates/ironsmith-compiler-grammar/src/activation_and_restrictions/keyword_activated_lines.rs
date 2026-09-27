@@ -253,14 +253,18 @@ fn craft_red_instant_or_sorcery_graveyard_filter() -> ObjectFilter {
 fn craft_creature_battlefield_or_graveyard_filter() -> ObjectFilter {
     let mut filter = ObjectFilter::default();
     filter.any_of = vec![
+        // CR 702.167a: the materials come from among *other* permanents you
+        // control (an animated craft artifact can't exile itself as one).
         ObjectFilter::default()
             .with_type(CardType::Creature)
             .in_zone(Zone::Battlefield)
-            .controlled_by(PlayerFilter::You),
+            .controlled_by(PlayerFilter::You)
+            .other(),
         ObjectFilter::default()
             .with_type(CardType::Creature)
             .in_zone(Zone::Graveyard)
-            .owned_by(PlayerFilter::You),
+            .owned_by(PlayerFilter::You)
+            .other(),
     ];
     filter
 }
@@ -435,7 +439,10 @@ fn build_equip_ability(
     total_cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
     target_filter: ObjectFilter,
 ) -> ParsedAbility {
-    let target = TargetAst::Object(target_filter, None, None);
+    // CR 702.6a: "Attach to target creature you control." The creature is a
+    // target (hexproof, protection, ward and "becomes the target" apply, and
+    // the ability fizzles if it becomes illegal, CR 608.2b).
+    let target = TargetAst::Object(target_filter, Some(crate::TextSpan::synthetic()), None);
     ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
@@ -479,7 +486,12 @@ pub fn parse_reconfigure_line_lexed(
         ));
     }
     let total_cost = parse_compiler_activation_cost(spec.cost_tokens)?;
-    let target = TargetAst::Object(ObjectFilter::creature().you_control(), None, None);
+    // CR 702.151a: "Attach to another target creature you control."
+    let target = TargetAst::Object(
+        ObjectFilter::creature().you_control().other(),
+        Some(crate::TextSpan::synthetic()),
+        None,
+    );
     Ok(Some(ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {

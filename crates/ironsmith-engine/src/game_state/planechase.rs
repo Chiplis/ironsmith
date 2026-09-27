@@ -248,6 +248,24 @@ impl GameState {
             .unwrap_or_default()
     }
 
+    /// The planar controller acting for `player`: the player themself, or in
+    /// Two-Headed Giant the planar controller on their team (CR 901.12c-d:
+    /// both members of the active team may roll the planar die, and the
+    /// planar zone stays with the one planar controller).
+    pub fn planar_controller_acting_for(&self, player: PlayerId) -> Option<PlayerId> {
+        let controller = self.planar_controller()?;
+        if controller == player {
+            return Some(controller);
+        }
+        (self.grand_melee().is_none()
+            && self.shared_team_turns_enabled()
+            && self.are_teammates(player, controller)
+            && self
+                .player(player)
+                .is_some_and(|candidate| candidate.is_in_game()))
+        .then_some(controller)
+    }
+
     pub fn planar_controller_of_face(&self, object: ObjectId) -> Option<PlayerId> {
         self.planechase
             .as_ref()?
@@ -278,8 +296,11 @@ impl GameState {
     }
 
     /// Transfer control of the planar zone before its current controller
-    /// leaves the game. Abilities of planar cards already pending or on the
-    /// stack remain in the game under the new planar controller (CR 901.10).
+    /// leaves the game. Only abilities from phenomena already pending or on
+    /// the stack remain in the game, under the new planar controller
+    /// (CR 901.10b); the departing player's other abilities, plane abilities
+    /// included, cease to exist with the rest of their stack objects
+    /// (CR 800.4a).
     pub(crate) fn prepare_planechase_player_departure(&mut self, player: PlayerId) {
         if self.grand_melee().is_some() {
             let marker_reducing = self.take_grand_melee_marker_reducing_departure(player);
@@ -316,7 +337,12 @@ impl GameState {
             .planechase
             .as_ref()
             .map(|state| {
-                let objects = state.card_kinds.keys().copied().collect::<HashSet<_>>();
+                let objects = state
+                    .card_kinds
+                    .iter()
+                    .filter(|(_, kind)| **kind == PlanarCardKind::Phenomenon)
+                    .map(|(object, _)| *object)
+                    .collect::<HashSet<_>>();
                 let stable_ids = objects
                     .iter()
                     .filter_map(|object| self.object(*object).map(|object| object.stable_id))
@@ -605,14 +631,17 @@ impl GameState {
 
     /// Perform the complete planeswalk keyword action and queue its observations.
     pub fn planeswalk(&mut self, player: PlayerId, source: ObjectId) -> Result<ObjectId, String> {
-        let is_planar_controller = if self.grand_melee().is_some() {
-            self.planar_controllers().contains(&player)
+        let player = if self.grand_melee().is_some() {
+            if !self.planar_controllers().contains(&player) {
+                return Err("only the planar controller may planeswalk".to_string());
+            }
+            player
         } else {
-            self.planar_controller() == Some(player)
+            // In Two-Headed Giant a teammate's planeswalking ability moves the
+            // team's planar controller (CR 901.12c).
+            self.planar_controller_acting_for(player)
+                .ok_or_else(|| "only the planar controller may planeswalk".to_string())?
         };
-        if !is_planar_controller {
-            return Err("only the planar controller may planeswalk".to_string());
-        }
         let old_faces = self
             .face_up_planar_objects()
             .iter()
@@ -629,6 +658,18 @@ impl GameState {
         for object in old_faces {
             self.turn_face_up_planar_card_down(object)?;
         }
+        self.planeswalk_to_top_planar_card(player, source, old_face_snapshots)
+    }
+
+    /// The second half of planeswalking: turn the top planar card face up and
+    /// queue the planeswalk (and phenomenon encounter) observations, looking
+    /// back at the faces planeswalked away from (CR 901.11, 901.11b).
+    fn planeswalk_to_top_planar_card(
+        &mut self,
+        player: PlayerId,
+        source: ObjectId,
+        old_face_snapshots: Vec<crate::snapshot::ObjectSnapshot>,
+    ) -> Result<ObjectId, String> {
         let destination = self.turn_up_top_planar_card(player)?;
         if let Some(state) = self.planechase.as_mut() {
             state.planeswalk_count = state.planeswalk_count.saturating_add(1);
@@ -713,11 +754,16 @@ impl GameState {
             _ => PlanarDieFace::Blank,
         };
 
+        let face_controller = if self.grand_melee().is_some() {
+            player
+        } else {
+            self.planar_controller_acting_for(player).unwrap_or(player)
+        };
         let source = self
             .face_up_planar_objects()
             .iter()
             .copied()
-            .find(|object| self.planar_controller_of_face(*object) == Some(player))
+            .find(|object| self.planar_controller_of_face(*object) == Some(face_controller))
             .unwrap_or(ObjectId::from_raw(0));
         let provenance = ProvNodeId::default();
         let die_event =
@@ -784,6 +830,7 @@ impl GameState {
         &mut self,
         player: PlayerId,
         removed_objects: &HashSet<ObjectId>,
+        departed_face_snapshots: Vec<crate::snapshot::ObjectSnapshot>,
     ) {
         let grand_melee = self.grand_melee().is_some();
         let next_planar_controller = self
@@ -833,10 +880,32 @@ impl GameState {
         }
         let next_controller = state.planar_controller;
         if lost_face && !grand_melee {
-            let _ = self.turn_up_top_planar_card(next_controller);
+            // CR 901.11a: turning the new card face up because the owner of a
+            // face-up plane or phenomenon left is a planeswalk, away from the
+            // departed faces (their last known information, CR 901.11b).
+            let source = departed_face_snapshots
+                .first()
+                .map(|snapshot| snapshot.object_id)
+                .unwrap_or(ObjectId::from_raw(0));
+            let _ =
+                self.planeswalk_to_top_planar_card(next_controller, source, departed_face_snapshots);
         }
         self.bump_mutation_revision();
         self.mark_continuous_state_dirty();
+    }
+
+    /// Last known information of the face-up planar cards `player` owns,
+    /// taken before CR 800.4a removes them when that player leaves.
+    pub(crate) fn departing_face_up_planar_snapshots(
+        &self,
+        player: PlayerId,
+    ) -> Vec<crate::snapshot::ObjectSnapshot> {
+        self.face_up_planar_objects()
+            .iter()
+            .filter_map(|object| self.object(*object))
+            .filter(|object| object.owner == player)
+            .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, self))
+            .collect()
     }
 
     pub fn planeswalk_count(&self) -> Option<u64> {

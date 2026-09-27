@@ -84,7 +84,10 @@ fn resolve_target(
         if spec.is_target() {
             return Ok((EffectTarget::AllPermanents, Some(Vec::new()), true));
         }
-        if !matches!(spec.base(), ChooseSpec::All(_)) {
+        // CR 608.2b / 611.2c: a non-target group ("creatures your opponents
+        // control ...") that matches nothing just affects nothing; it must not
+        // abort the rest of the instruction sequence.
+        if !matches!(spec.base(), ChooseSpec::All(_) | ChooseSpec::Object(_)) {
             return Err(ExecutionError::InvalidTarget);
         }
         return Ok((EffectTarget::AllPermanents, Some(Vec::new()), false));
@@ -168,11 +171,7 @@ fn resolve_continuous_filter_objects(
         .filter(|obj| filter.matches(obj, &filter_ctx, game))
         .map(|obj| obj.id)
         .collect();
-    if objects.is_empty() {
-        Err(ExecutionError::InvalidTarget)
-    } else {
-        Ok(objects)
-    }
+    Ok(objects)
 }
 
 fn lock_targets_for_filter(

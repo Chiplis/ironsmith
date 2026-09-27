@@ -1422,7 +1422,9 @@ pub(crate) fn activation_timing_allows(
     timing: &crate::ability::ActivationTiming,
 ) -> bool {
     match timing {
-        crate::ability::ActivationTiming::AnyTime => true,
+        crate::ability::ActivationTiming::AnyTime | crate::ability::ActivationTiming::AsInstant => {
+            true
+        }
         crate::ability::ActivationTiming::DuringCombat => matches!(game.turn.phase, Phase::Combat),
         crate::ability::ActivationTiming::SorcerySpeed => {
             if activated.is_loyalty_ability()
@@ -1921,6 +1923,15 @@ fn activation_precheck_with_view(
         return None;
     }
 
+    // CR 719.3c: a Case's "Solved — [activated ability]" can be activated
+    // only while the Case is solved.
+    if activation_requires_solved_case(activated) && !game.is_case_solved(source) {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
+    }
+
     if activated.is_exhaust_ability()
         && game.exhaust_ability_activated(source, ability_index)
         && !player_may_activate_exhaust_abilities_as_unactivated_this_turn(game, controller, view)
@@ -2117,6 +2128,15 @@ fn activation_precheck_with_view(
         perf_ctx.add_precheck_ms(started_at.elapsed_ms());
     }
     Some(eval_ctx.controller)
+}
+
+/// Whether an activated ability is labelled "Solved —" (a Case, CR 719.3c).
+fn activation_requires_solved_case(activated: &crate::ability::ActivatedAbility) -> bool {
+    activated.additional_restrictions.iter().any(|restriction| {
+        restriction
+            .strip_prefix("__ironsmith_activation_label:")
+            .is_some_and(|label| label.trim().eq_ignore_ascii_case("Solved"))
+    })
 }
 
 fn activation_card_cost_choice_cost(

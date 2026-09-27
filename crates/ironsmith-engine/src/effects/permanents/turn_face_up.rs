@@ -54,6 +54,21 @@ impl EffectExecutor for TurnFaceUpEffect {
             }
             turned += 1;
             if on_battlefield {
+                // CR 708.11: "As this is turned face up" abilities apply
+                // whatever turns the permanent face up, and a characteristic
+                // choice made "as it enters or is turned face up" (Aquamorph
+                // Entity) is made now, as in the special-action path.
+                let controller = game.current_controller(object_id).unwrap_or(ctx.controller);
+                let _ = game.execute_as_enters_effect_programs_for_turn_face_up(
+                    object_id,
+                    controller,
+                    &mut *ctx.decision_maker,
+                );
+                game.apply_power_toughness_choice_as_enters_or_turns_face_up(
+                    object_id,
+                    controller,
+                    &mut *ctx.decision_maker,
+                );
                 let event_provenance = game.alloc_child_event_provenance(
                     ctx.provenance,
                     crate::events::EventKind::TurnedFaceUp,

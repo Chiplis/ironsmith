@@ -582,6 +582,7 @@ pub(in super::super) fn parse_object_filter_inner(
     try_apply_distinct_powers_clause(&mut filter, &mut all_words);
     try_apply_distinct_mana_values_clause(&mut filter, &mut all_words);
     try_apply_distinct_creature_types_clause(&mut filter, &mut all_words);
+    try_apply_shares_land_type_clause(&mut filter, &mut all_words);
     try_apply_no_shared_creature_type_with_your_creatures_or_graveyard_clause(
         &mut filter,
         &mut all_words,

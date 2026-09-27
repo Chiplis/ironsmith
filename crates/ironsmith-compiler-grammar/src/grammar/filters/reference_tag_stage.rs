@@ -1144,6 +1144,19 @@ pub fn apply_supertype_or_mana_capability_union(
     }
 
     let words = parser_token_word_positions(tokens);
+    // "land your opponents control that could produce {C}" (Obsidian
+    // Charmaw): a terminal mana-capability clause narrows the whole domain.
+    if words.len() > 3
+        && filter.could_produce_mana.is_empty()
+        && let [that, could, produce, symbol] = &words[words.len() - 4..]
+        && that.1 == "that"
+        && could.1 == "could"
+        && produce.1 == "produce"
+        && let Ok(mana_symbol) = parse_mana_symbol(tokens[symbol.0].parser_text())
+    {
+        filter.could_produce_mana = vec![mana_symbol];
+        return;
+    }
     for word_idx in 0..words.len().saturating_sub(6) {
         let window = &words[word_idx..word_idx + 7];
         if window[0].1 != "that"
@@ -1257,7 +1270,7 @@ use reference_tag_stage_core_programs::{
     apply_basic_land_exception, positive_relative_characteristic_union,
     preserve_branch_scoped_comparison_union, preserve_relative_characteristic_list_surface,
     relation_clause_is_inside_aggregate_scope, try_apply_distinct_creature_types_clause,
-    try_apply_distinct_powers_clause,
+    try_apply_distinct_powers_clause, try_apply_shares_land_type_clause,
 };
 #[path = "reference_tag_stage/reference_tag_stage_resource.rs"]
 mod reference_tag_stage_resource_programs;

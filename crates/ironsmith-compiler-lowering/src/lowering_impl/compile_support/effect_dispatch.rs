@@ -2028,6 +2028,24 @@ fn compile_become_copy(
     for choice in source_choices {
         push_choice(&mut choices, choice);
     }
+    // When later effects refer back to it, an explicitly targeted copy source
+    // is declared once and tagged, so the copy and those references ("that
+    // creature", Gogo) share one object. Annotation reserves this tag.
+    let mut prelude = Vec::new();
+    let source_spec = if ctx.auto_tag_object_targets
+        && source_spec.is_target()
+        && choose_spec_targets_object(&source_spec)
+    {
+        let tag = reserved_or_next_object_tag(ctx, "copy_source");
+        prelude.push(
+            Effect::new(crate::effects::TargetOnlyEffect::new(source_spec.clone()))
+                .tag(tag.clone()),
+        );
+        ctx.last_object_tag = Some(tag.clone());
+        ChooseSpec::Tagged(tag.as_str().into())
+    } else {
+        source_spec
+    };
 
     let granted_modifications = lower_granted_ability_grant_modifications(granted_abilities)?;
     let mut apply = crate::effects::ApplyContinuousEffect::with_spec_runtime(
@@ -2091,7 +2109,8 @@ fn compile_become_copy(
     }
     let effect = Effect::new(apply);
     let effect = tag_object_target_effect(effect, &target_spec, ctx, "copied");
-    Ok((vec![effect], choices))
+    prelude.push(effect);
+    Ok((prelude, choices))
 }
 
 fn is_plain_fixed_token_creation(subject_verb: &SubjectVerbEffectAst) -> bool {
@@ -2453,7 +2472,8 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         | Value::DistinctPowers(filter) => {
             collect_object_filter_player_target_choices(filter, choices);
         }
-        Value::PlayersWhoControlMoreThanYou { players, filter }
+        Value::PlayersWhoControl { players, filter }
+        | Value::PlayersWhoControlMoreThanYou { players, filter }
         | Value::PlayersWhoControlAtLeastMoreThanYou {
             players, filter, ..
         } => {

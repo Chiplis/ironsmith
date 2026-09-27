@@ -42,11 +42,11 @@ impl EffectExecutor for ModifyPowerToughnessEffect {
         let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
 
         // Verify the target exists and is a creature
-        let target = game
-            .object(target_id)
-            .ok_or(ExecutionError::ObjectNotFound(target_id))?;
+        if game.object(target_id).is_none() {
+            return Err(ExecutionError::ObjectNotFound(target_id));
+        }
 
-        if !target.has_card_type(CardType::Creature) {
+        if !game.current_has_card_type(target_id, CardType::Creature) {
             return Ok(EffectOutcome::target_invalid());
         }
 

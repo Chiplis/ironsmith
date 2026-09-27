@@ -2,110 +2,18 @@
 
 use std::collections::HashSet;
 
-use crate::decisions::context::TargetRequirementContext;
-use crate::effect::{ChoiceCount, EffectOutcome};
+use crate::effect::EffectOutcome;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter};
 use crate::effects::stack::copy_spell::{create_stack_copy, stack_entry_for_copy_target};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::spells::{BecomesTargetedEvent, SpellCopiedEvent};
 use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
-use crate::game_state::{GameState, StackEntry, Target};
+use crate::effects::stack::retarget_stack_object::stack_entry_retarget_requirements;
+use crate::game_state::{GameState, Target};
 use crate::target::ChooseSpec;
-use crate::targeting::{assigned_target_ranges, compute_legal_targets_with_tagged_objects};
 use crate::triggers::TriggerEvent;
 
 pub type CopySpellForEachTargetEffect = ironsmith_core::CopySpellForEachTargetEffect;
-
-fn requires_target_selection(spec: &ChooseSpec) -> bool {
-    match spec {
-        ChooseSpec::Target(_) => true,
-        ChooseSpec::AnyTarget
-        | ChooseSpec::AnyOtherTarget
-        | ChooseSpec::Player(_)
-        | ChooseSpec::Object(_)
-        | ChooseSpec::PlayerOrPlaneswalker(_) => true,
-        ChooseSpec::SurfaceHinted { spec: inner, .. }
-        | ChooseSpec::WithCount(inner, _)
-        | ChooseSpec::WithCountValue(inner, _, _) => requires_target_selection(inner),
-        _ => false,
-    }
-}
-
-fn effects_for_stack_entry(game: &GameState, entry: &StackEntry) -> Vec<crate::effect::Effect> {
-    if let Some(ref effects) = entry.ability_effects {
-        return effects.to_vec();
-    }
-
-    game.object(entry.object_id)
-        .and_then(|object| object.spell_effect_owned())
-        .map(|effects| effects.to_vec())
-        .unwrap_or_default()
-}
-
-fn extract_requirements(
-    game: &GameState,
-    entry: &StackEntry,
-) -> Option<Vec<TargetRequirementContext>> {
-    let effects = effects_for_stack_entry(game, entry);
-    let mut requirements = Vec::new();
-
-    for effect in &effects {
-        let Some(spec) = effect.0.get_target_spec() else {
-            continue;
-        };
-        if !requires_target_selection(spec) {
-            continue;
-        }
-
-        let count: ChoiceCount = effect.0.get_target_count().unwrap_or_default();
-        let legal_targets = compute_legal_targets_with_tagged_objects(
-            game,
-            spec,
-            entry.controller,
-            Some(entry.object_id),
-            if entry.tagged_objects.is_empty() {
-                None
-            } else {
-                Some(&entry.tagged_objects)
-            },
-        );
-        let legal_target_sets =
-            crate::targeting::legal_target_sets_for_spec(game, spec, &legal_targets);
-        let aggregate_constraint = crate::targeting::resolved_target_aggregate_constraint(
-            game,
-            spec,
-            entry.controller,
-            Some(entry.object_id),
-            &legal_targets,
-        );
-        let has_enough = crate::targeting::has_enough_legal_targets_for_spec(
-            game,
-            spec,
-            &legal_targets,
-            count.min,
-        );
-        if !has_enough
-            || aggregate_constraint
-                .as_ref()
-                .is_some_and(|constraint| !constraint.supports_minimum(count.min))
-        {
-            return None;
-        }
-
-        requirements.push(TargetRequirementContext {
-            description: effect.0.target_description().to_string(),
-            legal_targets,
-            legal_target_sets,
-            aggregate_constraint,
-            min_targets: count.min,
-            max_targets: count.max,
-            distinct_player_group: None,
-            shared_player_group: None,
-        });
-    }
-
-    Some(requirements)
-}
 
 fn candidate_matches(
     effect: &CopySpellForEachTargetEffect,
@@ -131,18 +39,6 @@ fn candidate_matches(
     }
 }
 
-fn copy_targets_for_candidate(
-    original_targets: &[Target],
-    replace_idx: usize,
-    candidate: Target,
-) -> Vec<Target> {
-    let mut targets = original_targets.to_vec();
-    if let Some(target) = targets.get_mut(replace_idx) {
-        *target = candidate;
-    }
-    targets
-}
-
 impl crate::effects::EffectExecutor for CopySpellForEachTargetEffect {
     fn execute(
         &self,
@@ -161,16 +57,6 @@ impl crate::effects::EffectExecutor for CopySpellForEachTargetEffect {
         else {
             return Ok(EffectOutcome::target_invalid());
         };
-        let Some(requirements) = extract_requirements(game, &original_entry) else {
-            return Ok(EffectOutcome::resolved());
-        };
-        if requirements.is_empty() {
-            return Ok(EffectOutcome::resolved());
-        }
-        let Some(ranges) = assigned_target_ranges(&requirements, &original_entry.targets) else {
-            return Ok(EffectOutcome::resolved());
-        };
-
         // An ability named by its own stack id is copied from its source.
         let target_id = if game.object(target_id).is_none() && original_entry.is_ability {
             original_entry.object_id
@@ -178,53 +64,89 @@ impl crate::effects::EffectExecutor for CopySpellForEachTargetEffect {
             target_id
         };
         let copier = resolve_player_filter(game, &self.copier, ctx)?;
+
+        // CR 707.10d: the target slots come from the entry's announced
+        // assignments (the chosen modes' targets for a modal spell, CR 700.2g),
+        // and legality is judged for the copies' controller.
+        let mut probe_entry = original_entry.clone();
+        probe_entry.controller = copier;
+        let Some(slots) = stack_entry_retarget_requirements(game, &probe_entry, false) else {
+            return Ok(EffectOutcome::resolved());
+        };
+        let slots: Vec<_> = slots
+            .into_iter()
+            .filter(|slot| !slot.range.is_empty())
+            .collect();
+        if slots.is_empty() {
+            return Ok(EffectOutcome::resolved());
+        }
+        // One object can't be chosen twice for a single "target" (CR 115.3),
+        // nor for both a target and "another target", so a copy whose targets
+        // must all be one object can't exist then.
+        if slots.iter().any(|slot| slot.range.len() > 1)
+            || slots.iter().any(|slot| slot.excludes_prior_object_targets)
+        {
+            return Ok(EffectOutcome::resolved());
+        }
+
         let mut created_ids = Vec::new();
         let mut events = Vec::new();
         let mut seen = HashSet::new();
 
-        for (requirement, range) in requirements.iter().zip(ranges.iter()) {
-            let Some(replace_idx) = range.clone().next() else {
+        for candidate in slots
+            .iter()
+            .flat_map(|slot| slot.requirement.legal_targets.iter())
+        {
+            if !seen.insert(*candidate) {
                 continue;
-            };
+            }
+            if self.exclude_current_targets && original_entry.targets.contains(candidate) {
+                continue;
+            }
+            if !candidate_matches(self, *candidate, game, ctx) {
+                continue;
+            }
+            // CR 707.10d: every target of the copy is that player or object,
+            // so it must be legal for each instance of "target".
+            if !slots
+                .iter()
+                .all(|slot| slot.requirement.legal_targets.contains(candidate))
+            {
+                continue;
+            }
 
-            for candidate in &requirement.legal_targets {
-                if self.exclude_current_targets && original_entry.targets.contains(candidate) {
-                    continue;
+            let mut targets = original_entry.targets.clone();
+            for slot in &slots {
+                for index in slot.range.clone() {
+                    if let Some(target) = targets.get_mut(index) {
+                        *target = *candidate;
+                    }
                 }
-                if !candidate_matches(self, *candidate, game, ctx) {
-                    continue;
-                }
-                if !seen.insert(*candidate) {
-                    continue;
-                }
+            }
+            let copy_id = create_stack_copy(
+                game,
+                target_id,
+                &original_entry,
+                copier,
+                &self.removed_supertypes,
+                Some(targets),
+            )?;
+            created_ids.push(copy_id);
 
-                let targets =
-                    copy_targets_for_candidate(&original_entry.targets, replace_idx, *candidate);
-                let copy_id = create_stack_copy(
-                    game,
-                    target_id,
-                    &original_entry,
-                    copier,
-                    &self.removed_supertypes,
-                    Some(targets),
-                )?;
-                created_ids.push(copy_id);
-
+            events.push(TriggerEvent::new_with_provenance(
+                SpellCopiedEvent::new(copy_id, copier),
+                ctx.provenance,
+            ));
+            if let Target::Object(target_id) = candidate {
                 events.push(TriggerEvent::new_with_provenance(
-                    SpellCopiedEvent::new(copy_id, copier),
+                    BecomesTargetedEvent::new(
+                        *target_id,
+                        copy_id,
+                        copier,
+                        original_entry.is_ability,
+                    ),
                     ctx.provenance,
                 ));
-                if let Target::Object(target_id) = candidate {
-                    events.push(TriggerEvent::new_with_provenance(
-                        BecomesTargetedEvent::new(
-                            *target_id,
-                            copy_id,
-                            original_entry.controller,
-                            original_entry.is_ability,
-                        ),
-                        ctx.provenance,
-                    ));
-                }
             }
         }
 
@@ -246,6 +168,7 @@ mod tests {
     use crate::card::{CardBuilder, PowerToughness};
     use crate::effect::Effect;
     use crate::effects::EffectExecutor;
+    use crate::game_state::StackEntry;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::target::{ObjectFilter, PlayerFilter};
@@ -533,13 +456,13 @@ mod tests {
     }
 
     #[test]
-    fn retargets_matching_slot_and_preserves_other_target_slots() {
+    fn creates_no_copy_when_candidate_is_illegal_for_another_target_slot() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
 
         let original = create_creature(&mut game, "Original", alice, false);
-        let ally = create_creature(&mut game, "Ally", alice, false);
+        let _ally = create_creature(&mut game, "Ally", alice, false);
         let spell_id = stack_creature_and_player_spell(&mut game, alice, original, bob);
 
         let effect = CopySpellForEachTargetEffect::new(ChooseSpec::SpecificObject(spell_id))
@@ -552,16 +475,8 @@ mod tests {
             crate::effect::OutcomeValue::Objects(ids) => ids,
             other => panic!("expected copied object ids, got {other:?}"),
         };
-        assert_eq!(created.len(), 1);
-
-        let copy_entry = game
-            .stack
-            .iter()
-            .find(|entry| entry.object_id == created[0])
-            .expect("copy should have a stack entry");
-        assert_eq!(
-            copy_entry.targets,
-            vec![Target::Object(ally), Target::Player(bob)]
-        );
+        // CR 707.10d: every target of the copy must be the candidate, and a
+        // creature isn't a legal target for the "target player" slot.
+        assert!(created.is_empty());
     }
 }

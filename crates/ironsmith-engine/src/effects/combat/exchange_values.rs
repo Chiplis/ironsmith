@@ -98,7 +98,7 @@ impl ExchangeValuesEffect {
         let Some(object) = game.object(object_id) else {
             return Ok(None);
         };
-        if !object.has_card_type(CardType::Creature) {
+        if !game.current_has_card_type(object_id, CardType::Creature) {
             return Ok(None);
         }
         let value = match kind {

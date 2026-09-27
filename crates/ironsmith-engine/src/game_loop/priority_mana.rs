@@ -326,69 +326,77 @@ fn execute_planned_keyword_payments(
     payment: &crate::mana_payment::PendingManaPayment,
     _decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), GameLoopError> {
-    for allocation in &payment.plan.allocations {
-        if let crate::mana_payment::PlannedPipPayment::Delve(card_id) = allocation.payment {
-            if !game
-                .player(pending.caster)
-                .is_some_and(|player| player.graveyard.contains(&card_id))
-            {
-                return Err(GameLoopError::InvalidState(
-                    "planned delve card is no longer available".to_string(),
-                ));
-            }
-            pay_selected_cost(
-                game,
-                &crate::costs::Cost::exile_from_graveyard(1, None),
-                pending.spell_id,
-                pending.caster,
-                crate::costs::PaymentReason::CastSpell,
-                pending.provenance,
-                card_id,
-                None,
-                &mut pending.tagged_objects,
-                _decision_maker,
-            )?;
-            drain_pending_trigger_events(game, trigger_queue);
-            continue;
-        }
-        let (permanent_id, effect) = match allocation.payment {
-            crate::mana_payment::PlannedPipPayment::Convoke(permanent_id) => {
-                (permanent_id, AlternativePaymentEffect::Convoke)
-            }
-            crate::mana_payment::PlannedPipPayment::Improvise(permanent_id) => {
-                (permanent_id, AlternativePaymentEffect::Improvise)
-            }
-            _ => continue,
-        };
-        if game.object(permanent_id).is_none() || game.is_tapped(permanent_id) {
-            return Err(GameLoopError::InvalidState(format!(
-                "planned {effect:?} permanent {permanent_id:?} is no longer available"
-            )));
-        }
-        tap_permanent_with_trigger(game, trigger_queue, permanent_id);
-        let event_provenance = game
-            .provenance_graph_mut()
-            .alloc_root_event(crate::events::EventKind::KeywordAction);
-        queue_triggers_from_event(
-            game,
-            trigger_queue,
-            TriggerEvent::new_with_provenance(
-                KeywordActionEvent::new(
-                    keyword_action_from_alternative_effect(effect),
-                    pending.caster,
+    // CR 702.66a / 603.2c: the cards exiled with delve leave the graveyard
+    // together, as one event ("whenever one or more cards leave your
+    // graveyard").
+    let opened_batch = game.open_simultaneous_action();
+    let result = (|| -> Result<(), GameLoopError> {
+        for allocation in &payment.plan.allocations {
+            if let crate::mana_payment::PlannedPipPayment::Delve(card_id) = allocation.payment {
+                if !game
+                    .player(pending.caster)
+                    .is_some_and(|player| player.graveyard.contains(&card_id))
+                {
+                    return Err(GameLoopError::InvalidState(
+                        "planned delve card is no longer available".to_string(),
+                    ));
+                }
+                pay_selected_cost(
+                    game,
+                    &crate::costs::Cost::exile_from_graveyard(1, None),
                     pending.spell_id,
-                    1,
+                    pending.caster,
+                    crate::costs::PaymentReason::CastSpell,
+                    pending.provenance,
+                    card_id,
+                    None,
+                    &mut pending.tagged_objects,
+                    _decision_maker,
+                )?;
+                continue;
+            }
+            let (permanent_id, effect) = match allocation.payment {
+                crate::mana_payment::PlannedPipPayment::Convoke(permanent_id) => {
+                    (permanent_id, AlternativePaymentEffect::Convoke)
+                }
+                crate::mana_payment::PlannedPipPayment::Improvise(permanent_id) => {
+                    (permanent_id, AlternativePaymentEffect::Improvise)
+                }
+                _ => continue,
+            };
+            if game.object(permanent_id).is_none() || game.is_tapped(permanent_id) {
+                return Err(GameLoopError::InvalidState(format!(
+                    "planned {effect:?} permanent {permanent_id:?} is no longer available"
+                )));
+            }
+            tap_permanent_with_trigger(game, trigger_queue, permanent_id);
+            let event_provenance = game
+                .provenance_graph_mut()
+                .alloc_root_event(crate::events::EventKind::KeywordAction);
+            queue_triggers_from_event(
+                game,
+                trigger_queue,
+                TriggerEvent::new_with_provenance(
+                    KeywordActionEvent::new(
+                        keyword_action_from_alternative_effect(effect),
+                        pending.caster,
+                        pending.spell_id,
+                        1,
+                    ),
+                    event_provenance,
                 ),
-                event_provenance,
-            ),
-            true,
-        );
-        record_keyword_payment_contribution(
-            &mut pending.keyword_payment_contributions,
-            permanent_id,
-            effect,
-        );
-    }
+                true,
+            );
+            record_keyword_payment_contribution(
+                &mut pending.keyword_payment_contributions,
+                permanent_id,
+                effect,
+            );
+        }
+        Ok(())
+    })();
+    game.close_simultaneous_action(opened_batch);
+    result?;
     drain_pending_trigger_events(game, trigger_queue);
     Ok(())
 }
@@ -2319,7 +2327,15 @@ pub(super) fn apply_card_cost_choice_response(
                         ));
                     }
 
-                    pay_selected_cost(
+                    // CR 702.66a / 603.2c: the cards chosen one at a time for
+                    // delve are all exiled as part of paying the cost, one
+                    // event ("whenever one or more cards leave your
+                    // graveyard"). They share the cast's identity and are
+                    // matched together once the delve choices are over.
+                    let delve = selected_delve_reduction > 0;
+                    let opened_batch =
+                        delve && game.open_simultaneous_action_with_batch(pending.provenance);
+                    let paid = pay_selected_cost(
                         game,
                         &cost,
                         pending.spell_id,
@@ -2330,9 +2346,13 @@ pub(super) fn apply_card_cost_choice_response(
                         None,
                         &mut pending.tagged_objects,
                         decision_maker,
-                    )?;
+                    );
+                    game.close_simultaneous_action(opened_batch);
+                    paid?;
 
-                    drain_pending_trigger_events(game, trigger_queue);
+                    if !delve {
+                        drain_pending_trigger_events(game, trigger_queue);
+                    }
                 }
                 ActivationCardCostChoice::ExileChosenObject {
                     cost,

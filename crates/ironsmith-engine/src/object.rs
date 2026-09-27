@@ -1123,6 +1123,9 @@ impl Object {
                     .as_ref()
                     .map(SharedStr::to_owned_string),
                 linked_face_layout: self.linked_face_layout,
+                // The modal/transforming distinction is read from the linked
+                // face's registry definition, not carried on objects.
+                transforming_dfc: false,
                 is_token: matches!(self.kind, ObjectKind::Token),
             },
             canonical_text: self.compiled_card_text.to_string(),

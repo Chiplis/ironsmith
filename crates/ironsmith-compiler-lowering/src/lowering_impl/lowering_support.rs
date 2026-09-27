@@ -1763,11 +1763,11 @@ fn bind_block_pair_subject(effects: &mut [EffectAst], trigger: Option<&TriggerSp
                 .any(|constraint| constraint.tag.as_str() == tag.as_str())
         })
     });
-    // With an attached subject, "it" would default to that attachment, so
-    // the other half names the trigger's other participant explicitly.
-    let other_tag = attached_tag
-        .and(trigger)
-        .and_then(default_trigger_last_object_tag);
+    // The other half is the trigger's other participant. Name it explicitly:
+    // with an attached subject "it" would default to that attachment, and
+    // antecedent resolution may already have bound "it" to the subject
+    // placeholder (Alaborn Zealot, "destroy both creatures").
+    let other_tag = trigger.and_then(default_trigger_last_object_tag);
     fn destroy_target(effect: &mut EffectAst) -> Option<&mut TargetAst> {
         if let EffectAst::SubjectVerb(subject_verb) = effect
             && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. }) =
@@ -1785,22 +1785,25 @@ fn bind_block_pair_subject(effects: &mut [EffectAst], trigger: Option<&TriggerSp
         let mut rebind_next_it = false;
         for effect in effects.iter_mut() {
             if let Some(target) = destroy_target(effect) {
-                if matches!(target, TargetAst::Tagged(tag, _)
-                    if tag.as_str() == ironsmith_core::BLOCK_PAIR_SUBJECT_TAG)
+                let is_pair_subject = matches!(target, TargetAst::Tagged(tag, _)
+                    if tag.as_str() == ironsmith_core::BLOCK_PAIR_SUBJECT_TAG);
+                if rebind_next_it
+                    && let Some(other_tag) = other_tag
+                    && (is_pair_subject
+                        || matches!(target, TargetAst::Tagged(tag, _)
+                            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()))
                 {
+                    *target = TargetAst::Tagged(crate::tag::TagRef::of(other_tag.clone()), None);
+                    rebind_next_it = false;
+                    continue;
+                }
+                if is_pair_subject {
                     *target = match attached {
                         Some(tag) => TargetAst::Tagged(tag.bind(), None),
                         None => TargetAst::Source(None),
                     };
                     rebind_next_it = true;
                     continue;
-                }
-                if rebind_next_it
-                    && let Some(other_tag) = other_tag
-                    && matches!(target, TargetAst::Tagged(tag, _)
-                        if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
-                {
-                    *target = TargetAst::Tagged(crate::tag::TagRef::of(other_tag.clone()), None);
                 }
                 rebind_next_it = false;
                 continue;
@@ -1841,6 +1844,31 @@ fn has_prior_effect_before_it_reference(effects: &[EffectAst]) -> bool {
         if effect_references_it_tag(effect) {
             if saw_prior_effect {
                 return true;
+            }
+
+            // A coordinated clause ("reveal the top card of your library and
+            // put that card into your hand") is one ordered effect list: an
+            // earlier non-alternative member is the antecedent of a later
+            // member's "it" (CR 608.2c), exactly as with two sentences.
+            // Visiting each member list on its own would hide it.
+            if let EffectAst::Coordination(coordination) = effect {
+                for (index, member) in coordination.members.iter().enumerate() {
+                    if !member.effects.iter().any(effect_references_it_tag) {
+                        continue;
+                    }
+                    let ordered_after_prior_member = index > 0
+                        && coordination.boundaries.get(index - 1).is_some_and(|boundary| {
+                            boundary.ordering
+                                != crate::model::EffectOrderingAst::Alternative
+                        });
+                    if ordered_after_prior_member {
+                        return true;
+                    }
+                    if has_prior_effect_before_it_reference(&member.effects) {
+                        return true;
+                    }
+                }
+                return false;
             }
 
             let mut nested_has_prior_effect = false;

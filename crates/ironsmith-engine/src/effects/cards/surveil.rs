@@ -184,9 +184,24 @@ impl EffectExecutor for SurveilEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        // Put cards going to graveyard
+        // Put cards going to graveyard. CR 701.25a + 614.1: this is an
+        // ordinary zone change, so "would be put into a graveyard"
+        // replacements (Rest in Peace, Leyline of the Void, Dauthi
+        // Voidwalker) apply to it, exactly as they do for mill.
         for &card_id in &cards_to_graveyard {
-            game.move_object_by_effect(card_id, Zone::Graveyard);
+            let Some(from_zone) = game.object(card_id).map(|object| object.zone) else {
+                continue;
+            };
+            let additional_effects = ctx.additional_replacement_effects_snapshot();
+            let _ = crate::effects::zones::apply_zone_change_with_additional_effects(
+                game,
+                card_id,
+                from_zone,
+                Zone::Graveyard,
+                ctx.cause.clone(),
+                &mut *ctx.decision_maker,
+                &additional_effects,
+            );
         }
 
         // Put the rest back on top

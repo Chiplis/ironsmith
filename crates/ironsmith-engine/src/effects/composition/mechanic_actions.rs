@@ -1217,6 +1217,10 @@ impl EffectExecutor for BolsterEffect {
             .battlefield
             .iter()
             .copied()
+            // CR 702.26b: phased-out creatures are treated as though they
+            // don't exist (they neither count for "least toughness" nor get
+            // the counters).
+            .filter(|&id| !game.is_phased_out(id))
             .filter(|&id| {
                 game.object(id).is_some_and(|obj| {
                     game.controller_of(obj) == ctx.controller
@@ -1503,7 +1507,7 @@ impl EffectExecutor for DevourEffect {
             .battlefield
             .iter()
             .copied()
-            .filter(|&id| id != ctx.source)
+            .filter(|&id| id != ctx.source && !game.is_phased_out(id))
             .filter(|&id| {
                 game.object(id).is_some_and(|obj| {
                     game.controller_of(obj) == ctx.controller

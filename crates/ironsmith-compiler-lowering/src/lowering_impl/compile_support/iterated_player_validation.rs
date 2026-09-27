@@ -194,7 +194,8 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::DistinctNames(filter)
         | Value::DistinctManaValues(filter)
         | Value::DistinctPowers(filter) => object_filter_mentions_iterated_player(filter),
-        Value::PlayersWhoControlMoreThanYou { players, filter }
+        Value::PlayersWhoControl { players, filter }
+        | Value::PlayersWhoControlMoreThanYou { players, filter }
         | Value::PlayersWhoControlAtLeastMoreThanYou {
             players, filter, ..
         } => players.mentions_iterated_player() || object_filter_mentions_iterated_player(filter),
@@ -284,6 +285,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                 | TurnHistoryCount::PlayersDealtDamage(player)
                 | TurnHistoryCount::DiscardedOrCycled(player)
                 | TurnHistoryCount::Cycled(player)
+                | TurnHistoryCount::CardsDrawn(player)
                 | TurnHistoryCount::PlayersLostLife(player)
                 | TurnHistoryCount::UntappedLandsAtTurnStart(player)
                 | TurnHistoryCount::Descended(player)
@@ -294,6 +296,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                     owner.mentions_iterated_player()
                 }
                 TurnHistoryCount::Sacrificed { player, filter }
+                | TurnHistoryCount::SacrificedCardTypes { player, filter }
                 | TurnHistoryCount::CreaturesAttackedWith { player, filter } => {
                     player.mentions_iterated_player()
                         || object_filter_mentions_iterated_player(filter)
@@ -354,7 +357,8 @@ pub fn value_contains_pending_effect_metric(value: &Value) -> bool {
         | Value::DistinctNames(filter)
         | Value::DistinctManaValues(filter)
         | Value::DistinctPowers(filter) => object_filter_contains_pending_effect_metric(filter),
-        Value::PlayersWhoControlMoreThanYou { filter, .. }
+        Value::PlayersWhoControl { filter, .. }
+        | Value::PlayersWhoControlMoreThanYou { filter, .. }
         | Value::PlayersWhoControlAtLeastMoreThanYou { filter, .. } => {
             object_filter_contains_pending_effect_metric(filter)
         }

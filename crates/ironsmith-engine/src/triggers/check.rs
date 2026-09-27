@@ -1879,15 +1879,17 @@ fn tagged_objects_for_matched_trigger(
     );
     if let Some(attacks) = trigger.downcast_ref::<crate::triggers::AttacksTrigger>()
         && attacks.one_or_more
-        && trigger_event
-            .downcast::<crate::events::combat::CreatureAttackedEvent>()
-            .is_some()
+        && let Some(attacked) =
+            trigger_event.downcast::<crate::events::combat::CreatureAttackedEvent>()
     {
-        let attackers = game
-            .combat
-            .as_ref()
+        // CR 508.1: the group is the declared attackers, not creatures put
+        // onto the battlefield attacking (CR 508.4).
+        let attackers = attacked
+            .declared_attackers
+            .as_deref()
+            .or_else(|| game.combat.as_ref().map(|combat| combat.attackers.as_slice()))
             .into_iter()
-            .flat_map(|combat| combat.attackers.iter())
+            .flatten()
             .filter(|attacker| attacks.matches_attacker_info(attacker, ctx))
             .filter_map(|attacker| {
                 game.object(attacker.creature).map(|object| {
@@ -1914,19 +1916,46 @@ fn tagged_objects_for_matched_trigger(
             );
         }
     }
+    if let Some(graveyard_leave) =
+        trigger.downcast_ref::<crate::triggers::zone_changes::CardsLeaveYourGraveyardTrigger>()
+        && let Some(event) = trigger_event.downcast::<crate::events::zones::ZoneChangeEvent>()
+    {
+        let snapshots = graveyard_leave.matching_batch_snapshots(event, ctx);
+        if !snapshots.is_empty() {
+            tagged.insert(
+                crate::tag::TagKey::from(ironsmith_core::ZONE_CHANGE_GROUP_TAG),
+                snapshots,
+            );
+        }
+    }
     if let Some(damage) =
         trigger.downcast_ref::<crate::triggers::DealsCombatDamageToPlayerTrigger>()
         && damage.one_or_more
-        && trigger_event
+        && let Some(event) = trigger_event
             .downcast::<crate::events::DamageEvent>()
-            .is_some_and(|event| event.is_combat)
+            .filter(|event| event.is_combat)
     {
+        // "Those creatures": the matching sources of this event, including
+        // this assignment's, limited to the damaged player when the ability
+        // triggers for each player.
+        let current_player = match event.target {
+            crate::events::DamageTarget::Player(player) => Some(player),
+            _ => None,
+        };
         let mut seen = std::collections::HashSet::new();
         let sources = game
             .combat_damage_player_batch_hits()
             .iter()
-            .filter(|(_, player)| damage.player.matches_player(*player, &ctx.filter_ctx))
-            .filter_map(|(source, _)| game.object(*source))
+            .copied()
+            .chain(current_player.map(|player| (event.source, player)))
+            .filter(|(_, player)| {
+                if damage.each_damaged_player {
+                    Some(*player) == current_player
+                } else {
+                    damage.player.matches_player(*player, &ctx.filter_ctx)
+                }
+            })
+            .filter_map(|(source, _)| game.object(source))
             .filter(|source| damage.filter.matches(source, &ctx.filter_ctx, game))
             .filter(|source| seen.insert(source.stable_id))
             .map(|source| ObjectSnapshot::from_object_with_calculated_characteristics(source, game))
@@ -1988,11 +2017,12 @@ fn tagged_objects_for_trigger_event_impl(
             trigger_event.downcast::<crate::events::combat::CreatureAttackedEvent>()
         && attacked.total_attackers >= 2
     {
-        let other_attackers: Vec<_> = game
-            .combat
-            .as_ref()
+        let other_attackers: Vec<_> = attacked
+            .declared_attackers
+            .as_deref()
+            .or_else(|| game.combat.as_ref().map(|combat| combat.attackers.as_slice()))
             .into_iter()
-            .flat_map(|combat| combat.attackers.iter())
+            .flatten()
             .filter(|info| info.creature != attacked.attacker)
             .filter_map(|info| {
                 game.object(info.creature)
@@ -2161,65 +2191,94 @@ fn check_battlefield_trigger_subscriber(
         return;
     }
 
-    let trigger_count = trigger_ability
-        .trigger
-        .trigger_count_with_context(trigger_event, &ctx);
-    if trigger_count == 0 {
-        return;
-    }
-    if is_soulbond_pair_trigger(trigger_ability)
-        && !soulbond_trigger_had_eligible_pair(game, obj_id, controller)
-    {
-        return;
-    }
-    let event_value_amount = trigger_ability
-        .trigger
-        .event_value_amount(trigger_event, &ctx);
-    if !first_time_this_turn_event(game, trigger_ability, trigger_event, &ctx) {
-        return;
-    }
-    if let Some(ref condition) = trigger_ability.intervening_if
-        && !verify_intervening_if(
-            game,
-            condition,
-            controller,
-            trigger_event,
-            obj_id,
-            Some(trigger_identity),
-            None,
-        )
-    {
-        return;
-    }
+    for instance in trigger_instance_events(game, &trigger_ability.trigger, trigger_event, &ctx) {
+        let trigger_event = &instance;
+        let trigger_count = trigger_ability
+            .trigger
+            .trigger_count_with_context(trigger_event, &ctx);
+        if trigger_count == 0 {
+            continue;
+        }
+        if is_soulbond_pair_trigger(trigger_ability)
+            && !soulbond_trigger_had_eligible_pair(game, obj_id, controller)
+        {
+            continue;
+        }
+        let event_value_amount = trigger_ability
+            .trigger
+            .event_value_amount(trigger_event, &ctx);
+        if !first_time_this_turn_event(game, trigger_ability, trigger_event, &ctx) {
+            continue;
+        }
+        if let Some(ref condition) = trigger_ability.intervening_if
+            && !verify_intervening_if(
+                game,
+                condition,
+                controller,
+                trigger_event,
+                obj_id,
+                Some(trigger_identity),
+                None,
+            )
+        {
+            continue;
+        }
 
-    let entry = TriggeredAbilityEntry {
-        source: obj_id,
-        controller,
-        x_value: trigger_entry_x_value(trigger_event, obj.x_value),
-        event_value_amount,
-        ability: TriggeredAbility {
-            trigger: trigger_ability.trigger.clone(),
-            effects: trigger_ability.effects.clone(),
-            choices: trigger_ability.choices.clone(),
-            intervening_if: trigger_ability.intervening_if.clone(),
-            presentation_label: None,
-        },
-        triggering_event: trigger_event.clone(),
-        source_stable_id: obj.stable_id,
-        source_name: obj.name.to_string(),
-        source_snapshot: None,
-        tagged_objects: tagged_objects_for_matched_trigger(
-            game,
-            trigger_event,
-            &trigger_ability.trigger,
-            &ctx,
-        ),
-        source_kind: TriggeredAbilitySourceKind::Object,
-        trigger_identity,
-    };
-    for _ in 0..trigger_count {
-        triggered.push(entry.clone());
+        let entry = TriggeredAbilityEntry {
+            source: obj_id,
+            controller,
+            x_value: trigger_entry_x_value(trigger_event, obj.x_value),
+            event_value_amount,
+            ability: TriggeredAbility {
+                trigger: trigger_ability.trigger.clone(),
+                effects: trigger_ability.effects.clone(),
+                choices: trigger_ability.choices.clone(),
+                intervening_if: trigger_ability.intervening_if.clone(),
+                presentation_label: None,
+            },
+            triggering_event: trigger_event.clone(),
+            source_stable_id: obj.stable_id,
+            source_name: obj.name.to_string(),
+            source_snapshot: None,
+            tagged_objects: tagged_objects_for_matched_trigger(
+                game,
+                trigger_event,
+                &trigger_ability.trigger,
+                &ctx,
+            ),
+            source_kind: TriggeredAbilitySourceKind::Object,
+            trigger_identity,
+        };
+        for _ in 0..trigger_count {
+            triggered.push(entry.clone());
+        }
     }
+}
+
+/// The events one matched trigger fans out over.
+///
+/// CR 603.2c / 603.10a: a trigger that counts objects ("whenever a creature
+/// dies", "when this dies") sees a zone change that moved several objects at
+/// once as one event per object, so each instance refers to its own object
+/// ("return it", "its power"). A "one or more" trigger keeps the whole event.
+fn trigger_instance_events(
+    game: &GameState,
+    trigger: &Trigger,
+    trigger_event: &TriggerEvent,
+    ctx: &TriggerContext<'_>,
+) -> Vec<TriggerEvent> {
+    let per_object = trigger_event
+        .downcast::<crate::events::zones::ZoneChangeEvent>()
+        .filter(|_| trigger.simultaneous_trigger_key(trigger_event).is_none())
+        .and_then(|zone_change| zone_change.per_object_events(game));
+    let Some(per_object) = per_object else {
+        return vec![trigger_event.clone()];
+    };
+    per_object
+        .into_iter()
+        .map(|event| trigger_event.with_inner_event(event))
+        .filter(|instance| trigger.matches(instance, ctx))
+        .collect()
 }
 
 #[cfg(feature = "shadow-continuous")]
@@ -2438,61 +2497,66 @@ fn collect_lookback_source_triggers(
                 continue;
             }
 
-            let trigger_count = trigger_ability
-                .trigger
-                .trigger_count_with_context(trigger_event, &ctx);
-            if trigger_count == 0 {
-                continue;
-            }
-            let event_value_amount = trigger_ability
-                .trigger
-                .event_value_amount(trigger_event, &ctx);
-            if !first_time_this_turn_event(game, trigger_ability, trigger_event, &ctx) {
-                continue;
-            }
-            if let Some(ref condition) = trigger_ability.intervening_if
-                && !verify_intervening_if(
-                    game,
-                    condition,
-                    source_snapshot.controller,
-                    trigger_event,
-                    source_snapshot.object_id,
-                    Some(trigger_identity),
-                    None,
-                )
+            for instance in
+                trigger_instance_events(game, &trigger_ability.trigger, trigger_event, &ctx)
             {
-                continue;
-            }
+                let trigger_event = &instance;
+                let trigger_count = trigger_ability
+                    .trigger
+                    .trigger_count_with_context(trigger_event, &ctx);
+                if trigger_count == 0 {
+                    continue;
+                }
+                let event_value_amount = trigger_ability
+                    .trigger
+                    .event_value_amount(trigger_event, &ctx);
+                if !first_time_this_turn_event(game, trigger_ability, trigger_event, &ctx) {
+                    continue;
+                }
+                if let Some(ref condition) = trigger_ability.intervening_if
+                    && !verify_intervening_if(
+                        game,
+                        condition,
+                        source_snapshot.controller,
+                        trigger_event,
+                        source_snapshot.object_id,
+                        Some(trigger_identity),
+                        None,
+                    )
+                {
+                    continue;
+                }
 
-            let dynamic_soulshift_x = captured_dynamic_soulshift_x_value(
-                game,
-                trigger_event,
-                source_snapshot.controller,
-                source_snapshot.object_id,
-                trigger_ability,
-            );
-            let entry = TriggeredAbilityEntry {
-                source: source_snapshot.object_id,
-                controller: source_snapshot.controller,
-                x_value: dynamic_soulshift_x
-                    .or_else(|| trigger_entry_x_value(trigger_event, source_snapshot.x_value)),
-                event_value_amount,
-                ability: queued_triggered_ability(trigger_ability, dynamic_soulshift_x),
-                triggering_event: trigger_event.clone(),
-                source_stable_id: source_snapshot.stable_id,
-                source_name: source_snapshot.name.to_string(),
-                source_snapshot: Some(source_snapshot.clone()),
-                tagged_objects: tagged_objects_for_matched_trigger(
+                let dynamic_soulshift_x = captured_dynamic_soulshift_x_value(
                     game,
                     trigger_event,
-                    &trigger_ability.trigger,
-                    &ctx,
-                ),
-                source_kind: TriggeredAbilitySourceKind::Object,
-                trigger_identity,
-            };
-            for _ in 0..trigger_count {
-                triggered.push(entry.clone());
+                    source_snapshot.controller,
+                    source_snapshot.object_id,
+                    trigger_ability,
+                );
+                let entry = TriggeredAbilityEntry {
+                    source: source_snapshot.object_id,
+                    controller: source_snapshot.controller,
+                    x_value: dynamic_soulshift_x
+                        .or_else(|| trigger_entry_x_value(trigger_event, source_snapshot.x_value)),
+                    event_value_amount,
+                    ability: queued_triggered_ability(trigger_ability, dynamic_soulshift_x),
+                    triggering_event: trigger_event.clone(),
+                    source_stable_id: source_snapshot.stable_id,
+                    source_name: source_snapshot.name.to_string(),
+                    source_snapshot: Some(source_snapshot.clone()),
+                    tagged_objects: tagged_objects_for_matched_trigger(
+                        game,
+                        trigger_event,
+                        &trigger_ability.trigger,
+                        &ctx,
+                    ),
+                    source_kind: TriggeredAbilitySourceKind::Object,
+                    trigger_identity,
+                };
+                for _ in 0..trigger_count {
+                    triggered.push(entry.clone());
+                }
             }
         }
     }
@@ -3326,21 +3390,37 @@ pub fn check_delayed_triggers(
     game: &mut GameState,
     trigger_event: &TriggerEvent,
 ) -> Vec<TriggeredAbilityEntry> {
-    // The turn runner consumes these instructions directly before untapping.
-    // They are not triggered abilities and must never be queued on the stack.
-    if trigger_event.kind() == crate::events::EventKind::PermanentsUntapStep {
-        return Vec::new();
-    }
+    check_delayed_triggers_for_simultaneous_events(game, std::slice::from_ref(trigger_event))
+}
+
+/// Check delayed triggers against the events of one simultaneous action.
+///
+/// CR 603.7b: a delayed triggered ability without a stated duration triggers
+/// only once. When its trigger event occurs more than once simultaneously,
+/// its controller chooses which event causes it to trigger: the first match
+/// is queued and the others are remembered as alternatives, offered to the
+/// controller when the ability is put on the stack.
+pub fn check_delayed_triggers_for_simultaneous_events(
+    game: &mut GameState,
+    trigger_events: &[TriggerEvent],
+) -> Vec<TriggeredAbilityEntry> {
     if game.effect_store.delayed_triggers.is_empty() {
         return Vec::new();
     }
-
-    if suppresses_creature_etb_triggers(game, trigger_event) {
+    // The turn runner consumes untap-step instructions directly before
+    // untapping. They are not triggered abilities and must never be queued.
+    let events = trigger_events
+        .iter()
+        .filter(|event| event.kind() != crate::events::EventKind::PermanentsUntapStep)
+        .filter(|event| !suppresses_creature_etb_triggers(game, event))
+        .collect::<Vec<_>>();
+    if events.is_empty() {
         return Vec::new();
     }
 
     let mut triggered = Vec::new();
     let mut to_remove = Vec::new();
+    let mut alternatives = Vec::new();
 
     for (idx, delayed) in game.effect_store.delayed_triggers.iter().enumerate() {
         if delayed
@@ -3360,7 +3440,9 @@ pub fn check_delayed_triggers(
             continue;
         }
         if delayed.expires_at_end_of_combat
-            && trigger_event.kind() == crate::events::EventKind::EndOfCombat
+            && events
+                .iter()
+                .any(|event| event.kind() == crate::events::EventKind::EndOfCombat)
         {
             to_remove.push(idx);
             continue;
@@ -3376,9 +3458,13 @@ pub fn check_delayed_triggers(
             to_remove.push(idx);
             continue;
         }
+        // A trigger still bound to a queued extra-turn slot waits for that
+        // specific turn (CR 500.7, 603.7); a later-created extra turn taken
+        // first must not fire it.
         if delayed
             .not_before_turn
             .is_some_and(|min_turn| game.turn.turn_number < min_turn)
+            || delayed.bound_extra_turn_index.is_some()
         {
             continue;
         }
@@ -3398,133 +3484,148 @@ pub fn check_delayed_triggers(
         let trigger_identity = compute_delayed_trigger_identity(delayed);
 
         let mut fired = false;
-        for &source in candidate_sources {
-            let mut ctx = TriggerContext::for_delayed_source(
-                source,
-                delayed.controller,
-                game,
-                &delayed.tagged_objects,
-            )
-            .with_trigger_identity(trigger_identity);
-            ctx.filter_ctx.tagged_players = delayed.tagged_players.clone();
-            ctx.filter_ctx.target_players = delayed
-                .tagged_players
-                .get(crate::tag::DELAYED_TARGET_PLAYERS_TAG)
-                .cloned()
-                .unwrap_or_default();
-            let range_source = delayed.ability_source.unwrap_or(source);
-            if !trigger_event_is_in_range(
-                game,
-                trigger_event,
-                delayed.controller,
-                range_source,
-                None,
-            ) || !delayed.trigger.matches(trigger_event, &ctx)
-            {
-                continue;
-            }
+        let mut one_shot_matches = Vec::new();
+        for trigger_event in events.iter().copied() {
+            for &source in candidate_sources {
+                let mut ctx = TriggerContext::for_delayed_source(
+                    source,
+                    delayed.controller,
+                    game,
+                    &delayed.tagged_objects,
+                )
+                .with_trigger_identity(trigger_identity);
+                ctx.filter_ctx.tagged_players = delayed.tagged_players.clone();
+                ctx.filter_ctx.target_players = delayed
+                    .tagged_players
+                    .get(crate::tag::DELAYED_TARGET_PLAYERS_TAG)
+                    .cloned()
+                    .unwrap_or_default();
+                let range_source = delayed.ability_source.unwrap_or(source);
+                if !trigger_event_is_in_range(
+                    game,
+                    trigger_event,
+                    delayed.controller,
+                    range_source,
+                    None,
+                ) || !delayed.trigger.matches(trigger_event, &ctx)
+                {
+                    continue;
+                }
 
-            fired = true;
-            let ability_source = delayed.ability_source.unwrap_or(source);
-            let source_stable_id = delayed
-                .ability_source_stable_id
-                .or_else(|| game.object(ability_source).map(|o| o.stable_id))
-                .or_else(|| {
-                    delayed
+                // Each object of a multi-object zone change is its own event for
+                // a delayed trigger watching one object (CR 603.2c, 603.7c).
+                for instance in trigger_instance_events(game, &delayed.trigger, trigger_event, &ctx) {
+                    let trigger_event = &instance;
+                    fired = true;
+                    let ability_source = delayed.ability_source.unwrap_or(source);
+                    let source_stable_id = delayed
                         .ability_source_stable_id
-                        .and_then(|stable_id| game.find_object_by_stable_id(stable_id))
-                        .and_then(|id| game.object(id))
-                        .map(|o| o.stable_id)
-                })
-                .or_else(|| {
-                    game.find_object_by_stable_id(StableId::from(ability_source))
-                        .and_then(|id| game.object(id))
-                        .map(|o| o.stable_id)
-                })
-                .or_else(|| {
-                    if trigger_event.object_id() == Some(ability_source) {
-                        trigger_event.snapshot().map(|snapshot| snapshot.stable_id)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or_else(|| StableId::from(ability_source));
-            let source_name = delayed
-                .ability_source_name
-                .clone()
-                .or_else(|| game.object(ability_source).map(|o| o.name.to_string()))
-                .or_else(|| {
-                    game.find_object_by_stable_id(source_stable_id)
-                        .and_then(|id| game.object(id))
-                        .map(|o| o.name.to_string())
-                })
-                .or_else(|| {
-                    if trigger_event.object_id() == Some(ability_source) {
-                        trigger_event
-                            .snapshot()
-                            .map(|snapshot| snapshot.name.to_string())
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or_else(|| "Delayed Trigger".to_string());
+                        .or_else(|| game.object(ability_source).map(|o| o.stable_id))
+                        .or_else(|| {
+                            delayed
+                                .ability_source_stable_id
+                                .and_then(|stable_id| game.find_object_by_stable_id(stable_id))
+                                .and_then(|id| game.object(id))
+                                .map(|o| o.stable_id)
+                        })
+                        .or_else(|| {
+                            game.find_object_by_stable_id(StableId::from(ability_source))
+                                .and_then(|id| game.object(id))
+                                .map(|o| o.stable_id)
+                        })
+                        .or_else(|| {
+                            if trigger_event.object_id() == Some(ability_source) {
+                                trigger_event.snapshot().map(|snapshot| snapshot.stable_id)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or_else(|| StableId::from(ability_source));
+                    let source_name = delayed
+                        .ability_source_name
+                        .clone()
+                        .or_else(|| game.object(ability_source).map(|o| o.name.to_string()))
+                        .or_else(|| {
+                            game.find_object_by_stable_id(source_stable_id)
+                                .and_then(|id| game.object(id))
+                                .map(|o| o.name.to_string())
+                        })
+                        .or_else(|| {
+                            if trigger_event.object_id() == Some(ability_source) {
+                                trigger_event
+                                    .snapshot()
+                                    .map(|snapshot| snapshot.name.to_string())
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or_else(|| "Delayed Trigger".to_string());
 
-            let event_value_amount = delayed
-                .prevention_shield
-                .map(|shield_id| {
-                    game.effect_store
-                        .prevention_effects
-                        .prevented_by_shield(shield_id) as i32
-                })
-                .or_else(|| delayed.trigger.event_value_amount(trigger_event, &ctx));
-            triggered.push(TriggeredAbilityEntry {
-                source: ability_source,
-                controller: delayed.controller,
-                x_value: delayed.x_value,
-                event_value_amount,
-                ability: TriggeredAbility {
-                    trigger: delayed.trigger.clone(),
-                    effects: delayed.effects.clone(),
-                    choices: delayed.choices.clone(),
-                    intervening_if: None,
-                    presentation_label: None,
-                },
-                triggering_event: trigger_event
-                    .clone()
-                    .with_player_tags(delayed.tagged_players.clone()),
-                source_stable_id,
-                source_name,
-                source_snapshot: delayed.ability_source_snapshot.clone(),
-                tagged_objects: {
-                    let mut tagged = delayed.tagged_objects.clone();
-                    // CR 603.7c / 400.7: an object that left the zone it was
-                    // in when the delayed trigger was created and came back
-                    // is a new object the delayed trigger won't affect. A
-                    // trigger on that object's own zone change still finds
-                    // it through the triggering event.
-                    if trigger_event
-                        .downcast::<crate::events::ZoneChangeEvent>()
-                        .is_none()
-                    {
-                        for snapshots in tagged.values_mut() {
-                            snapshots.retain(|snapshot| {
-                                game.find_object_by_stable_id(snapshot.stable_id)
-                                    == Some(snapshot.object_id)
-                            });
-                        }
+                    let event_value_amount = delayed
+                        .prevention_shield
+                        .map(|shield_id| {
+                            game.effect_store
+                                .prevention_effects
+                                .prevented_by_shield(shield_id) as i32
+                        })
+                        .or_else(|| delayed.trigger.event_value_amount(trigger_event, &ctx));
+                    let entry = TriggeredAbilityEntry {
+                        source: ability_source,
+                        controller: delayed.controller,
+                        x_value: delayed.x_value,
+                        event_value_amount,
+                        ability: TriggeredAbility {
+                            trigger: delayed.trigger.clone(),
+                            effects: delayed.effects.clone(),
+                            choices: delayed.choices.clone(),
+                            intervening_if: None,
+                            presentation_label: None,
+                        },
+                        triggering_event: trigger_event
+                            .clone()
+                            .with_player_tags(delayed.tagged_players.clone()),
+                        source_stable_id,
+                        source_name,
+                        source_snapshot: delayed.ability_source_snapshot.clone(),
+                        tagged_objects: {
+                            let mut tagged = delayed.tagged_objects.clone();
+                            // CR 603.7c / 400.7: an object that left the zone it was
+                            // in when the delayed trigger was created and came back
+                            // is a new object the delayed trigger won't affect. A
+                            // trigger on that object's own zone change still finds
+                            // it through the triggering event.
+                            if trigger_event
+                                .downcast::<crate::events::ZoneChangeEvent>()
+                                .is_none()
+                            {
+                                for snapshots in tagged.values_mut() {
+                                    snapshots.retain(|snapshot| {
+                                        game.find_object_by_stable_id(snapshot.stable_id)
+                                            == Some(snapshot.object_id)
+                                    });
+                                }
+                            }
+                            for (tag, snapshots) in tagged_objects_for_trigger_event(game, trigger_event) {
+                                tagged.entry(tag).or_default().extend(snapshots);
+                            }
+                            tagged
+                        },
+                        source_kind: TriggeredAbilitySourceKind::Object,
+                        trigger_identity,
+                    };
+                    if delayed.one_shot {
+                        one_shot_matches.push(entry);
+                    } else {
+                        triggered.push(entry);
                     }
-                    for (tag, snapshots) in tagged_objects_for_trigger_event(game, trigger_event) {
-                        tagged.entry(tag).or_default().extend(snapshots);
-                    }
-                    tagged
-                },
-                source_kind: TriggeredAbilitySourceKind::Object,
-                trigger_identity,
-            });
-
-            if delayed.one_shot {
-                break;
+                }
             }
+        }
+        if let Some((first, others)) = one_shot_matches.split_first() {
+            if !others.is_empty() {
+                alternatives.push(one_shot_matches.clone());
+            }
+            triggered.push(first.clone());
         }
 
         if fired && delayed.one_shot {
@@ -3545,6 +3646,10 @@ pub fn check_delayed_triggers(
             idx += 1;
             !remove
         });
+    }
+
+    for group in alternatives {
+        game.record_delayed_trigger_alternatives(group);
     }
 
     let view = crate::derived_view::DerivedGameView::new(game);
@@ -3588,59 +3693,64 @@ fn check_triggers_in_zone(
         if trigger_event_is_in_range(game, trigger_event, game.controller_of(obj), obj_id, None)
             && trigger_ability.trigger.matches(trigger_event, &ctx)
         {
-            let trigger_count = trigger_ability
-                .trigger
-                .trigger_count_with_context(trigger_event, &ctx);
-            if trigger_count == 0 {
-                continue;
-            }
-            let event_value_amount = trigger_ability
-                .trigger
-                .event_value_amount(trigger_event, &ctx);
-            if !first_time_this_turn_event(game, trigger_ability, trigger_event, &ctx) {
-                continue;
-            }
-            if let Some(ref condition) = trigger_ability.intervening_if
-                && !verify_intervening_if(
-                    game,
-                    condition,
-                    game.controller_of(obj),
-                    trigger_event,
-                    obj_id,
-                    Some(trigger_identity),
-                    None,
-                )
+            for instance in
+                trigger_instance_events(game, &trigger_ability.trigger, trigger_event, &ctx)
             {
-                continue;
-            }
+                let trigger_event = &instance;
+                let trigger_count = trigger_ability
+                    .trigger
+                    .trigger_count_with_context(trigger_event, &ctx);
+                if trigger_count == 0 {
+                    continue;
+                }
+                let event_value_amount = trigger_ability
+                    .trigger
+                    .event_value_amount(trigger_event, &ctx);
+                if !first_time_this_turn_event(game, trigger_ability, trigger_event, &ctx) {
+                    continue;
+                }
+                if let Some(ref condition) = trigger_ability.intervening_if
+                    && !verify_intervening_if(
+                        game,
+                        condition,
+                        game.controller_of(obj),
+                        trigger_event,
+                        obj_id,
+                        Some(trigger_identity),
+                        None,
+                    )
+                {
+                    continue;
+                }
 
-            let entry = TriggeredAbilityEntry {
-                source: obj_id,
-                controller: game.controller_of(obj),
-                x_value: trigger_entry_x_value(trigger_event, obj.x_value),
-                event_value_amount,
-                ability: TriggeredAbility {
-                    trigger: trigger_ability.trigger.clone(),
-                    effects: trigger_ability.effects.clone(),
-                    choices: trigger_ability.choices.clone(),
-                    intervening_if: trigger_ability.intervening_if.clone(),
-                    presentation_label: None,
-                },
-                triggering_event: trigger_event.clone(),
-                source_stable_id: obj.stable_id,
-                source_name: obj.name.to_string(),
-                source_snapshot: None,
-                tagged_objects: tagged_objects_for_matched_trigger(
-                    game,
-                    trigger_event,
-                    &trigger_ability.trigger,
-                    &ctx,
-                ),
-                source_kind: TriggeredAbilitySourceKind::Object,
-                trigger_identity,
-            };
-            for _ in 0..trigger_count {
-                triggered.push(entry.clone());
+                let entry = TriggeredAbilityEntry {
+                    source: obj_id,
+                    controller: game.controller_of(obj),
+                    x_value: trigger_entry_x_value(trigger_event, obj.x_value),
+                    event_value_amount,
+                    ability: TriggeredAbility {
+                        trigger: trigger_ability.trigger.clone(),
+                        effects: trigger_ability.effects.clone(),
+                        choices: trigger_ability.choices.clone(),
+                        intervening_if: trigger_ability.intervening_if.clone(),
+                        presentation_label: None,
+                    },
+                    triggering_event: trigger_event.clone(),
+                    source_stable_id: obj.stable_id,
+                    source_name: obj.name.to_string(),
+                    source_snapshot: None,
+                    tagged_objects: tagged_objects_for_matched_trigger(
+                        game,
+                        trigger_event,
+                        &trigger_ability.trigger,
+                        &ctx,
+                    ),
+                    source_kind: TriggeredAbilitySourceKind::Object,
+                    trigger_identity,
+                };
+                for _ in 0..trigger_count {
+                    triggered.push(entry.clone());
+                }
             }
         }
     }
@@ -3829,7 +3939,10 @@ pub fn generate_step_trigger_events_for_active_players(game: &GameState) -> Vec<
         BeginningOfPrecombatMainPhaseEvent, BeginningOfUpkeepEvent, EndOfCombatEvent,
     };
 
-    let events = |make: fn(PlayerId) -> TriggerEvent| {
+    fn active_player_events(
+        game: &GameState,
+        make: impl Fn(PlayerId) -> TriggerEvent,
+    ) -> Vec<TriggerEvent> {
         let mut players = game.turn_players();
         if let Some(primary) = game.singular_active_player(None)
             && let Some(index) = players.iter().position(|player| *player == primary)
@@ -3837,7 +3950,8 @@ pub fn generate_step_trigger_events_for_active_players(game: &GameState) -> Vec<
             players.rotate_left(index);
         }
         players.into_iter().map(make).collect::<Vec<_>>()
-    };
+    }
+    let events = |make: fn(PlayerId) -> TriggerEvent| active_player_events(game, make);
     match (game.turn.phase, game.turn.step) {
         (Phase::Beginning, Some(Step::Upkeep)) => events(|active| {
             TriggerEvent::new_with_provenance(
@@ -3867,12 +3981,17 @@ pub fn generate_step_trigger_events_for_active_players(game: &GameState) -> Vec<
             EndOfCombatEvent::new(),
             crate::provenance::ProvNodeId::default(),
         )],
-        (Phase::NextMain, None) => events(|active| {
-            TriggerEvent::new_with_provenance(
-                BeginningOfPostcombatMainPhaseEvent::new(active),
-                crate::provenance::ProvNodeId::default(),
-            )
-        }),
+        (Phase::NextMain, None) => {
+            // CR 505.1b: carry which main phase of the turn this is.
+            let ordinal = game.turn_store.main_phases_started_this_turn;
+            active_player_events(game, |active| {
+                TriggerEvent::new_with_provenance(
+                    BeginningOfPostcombatMainPhaseEvent::new(active)
+                        .with_main_phase_ordinal(ordinal),
+                    crate::provenance::ProvNodeId::default(),
+                )
+            })
+        }
         (Phase::Ending, Some(Step::End)) => events(|active| {
             TriggerEvent::new_with_provenance(
                 BeginningOfEndStepEvent::new(active),
@@ -3938,6 +4057,14 @@ pub(crate) fn first_time_this_turn_event(
                 .flatten()
         })
         .unwrap_or(records.len());
+    // CR 603.2c / 510.2: earlier records of the same simultaneous action (the
+    // other assignments of one combat damage step) are this event, not an
+    // earlier one; their amounts merge into this trigger ("that much").
+    let end = game
+        .turn_store
+        .turn_history
+        .simultaneous_batch_start
+        .map_or(end, |start| end.min(start));
     !records[..end]
         .iter()
         .any(|record| trigger_ability.trigger.matches(&record.event, ctx))

@@ -240,7 +240,7 @@ fn read_activate_only_count_per_turn_condition(
 fn read_activate_only_instant_timing(input: &ActivationCondition<'_>) -> Option<PredicateAst> {
     let tokens = input.tokens;
     if matches_any_prefix_tokens(tokens, ACTIVATE_ONLY_INSTANT_PREFIXES) {
-        return Some(PredicateAst::ActivationTiming(ActivationTiming::AnyTime));
+        return Some(PredicateAst::ActivationTiming(ActivationTiming::AsInstant));
     }
     None
 }

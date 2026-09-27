@@ -191,8 +191,9 @@ pub(crate) fn resolve_tagged_object_id_unscoped(
 /// - it moved the object itself during this resolution (CR 400.7j);
 /// - it triggered on that very move and looks in the zone the object went
 ///   to (CR 400.7e, 603.6c, 603.10);
-/// - its cost moved the object (CR 400.7j), which only spells and activated
-///   abilities can observe here: their costs are paid before resolution.
+/// - its cost moved the object (CR 400.7j). Costs are paid before the spell
+///   or ability is put on the stack, and `push_to_stack` re-points its tags at
+///   the objects those payments created, so no following is needed later.
 ///
 /// Everything else — a delayed trigger's object (CR 603.7c), a triggered
 /// ability's object that moved again while it waited on the stack, an
@@ -208,9 +209,16 @@ pub(crate) fn tagged_object_follow_permitted(
     if current_id.0 >= floor.0 {
         return true;
     }
+    // A spell or activated ability: its cost moves were pinned when it was
+    // put on the stack, so a card that moved since is a new object.
     let Some(event) = ctx.triggering_event.as_ref() else {
-        return true;
+        return false;
     };
+    // An "enters" trigger names the permanent that entered; one that has
+    // left the battlefield since is a new object (CR 400.7).
+    if let Some(entered) = event.downcast::<crate::events::EnterBattlefieldEvent>() {
+        return current_id == entered.object;
+    }
     if let Some(zone_change) = event.downcast::<crate::events::ZoneChangeEvent>() {
         let names_moved_object = zone_change.objects.contains(&snapshot.object_id)
             || zone_change.result_objects.contains(&snapshot.object_id)
@@ -238,6 +246,41 @@ pub(crate) fn tagged_object_follow_permitted(
             .snapshots()
             .iter()
             .any(|named| named.stable_id == snapshot.stable_id)
+}
+
+/// An `IsTaggedObject` filter constraint matches the tagged card by stable id
+/// too. Under a resolution, a card the tag names only by stable id (it has
+/// moved since) matches only where `tagged_object_follow_permitted` allows the
+/// resolving instruction to follow it (CR 400.7).
+fn tagged_constraints_follow_permitted(
+    ctx: &ExecutionContext,
+    filter: &crate::filter::ObjectFilter,
+    id: ObjectId,
+    object: &crate::object::Object,
+) -> bool {
+    if ctx.resolution_object_id_floor.is_none() {
+        return true;
+    }
+    filter.tagged_constraints.iter().all(|constraint| {
+        if !matches!(
+            constraint.relation,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                | crate::filter::TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered
+        ) {
+            return true;
+        }
+        let Some(snapshots) = ctx.get_tagged_all(constraint.tag.as_str()) else {
+            return true;
+        };
+        snapshots.iter().any(|snapshot| snapshot.object_id == id)
+            || snapshots.iter().any(|snapshot| {
+                snapshot.stable_id == object.stable_id
+                    && tagged_object_follow_permitted(ctx, snapshot, id)
+            })
+            || !snapshots
+                .iter()
+                .any(|snapshot| snapshot.stable_id == object.stable_id)
+    })
 }
 
 /// Re-point tagged snapshots at the objects their cards are now, where the
@@ -1908,8 +1951,8 @@ pub fn validate_target(
             player_filter_matches_game(filter, *id, game, &filter_ctx)
         }
         (ResolvedTarget::Object(id), ChooseSpec::PlayerOrPlaneswalker(_)) => {
-            game.object(*id)
-                .is_some_and(|obj| obj.has_card_type(CardType::Planeswalker))
+            (game.object(*id).is_some()
+                && game.current_has_card_type(*id, CardType::Planeswalker))
                 || ctx
                     .target_snapshots
                     .get(id)
@@ -2824,6 +2867,7 @@ pub fn resolve_objects_from_spec(
                 .iter()
                 .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
                 .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))
+                .filter(|(id, obj)| tagged_constraints_follow_permitted(ctx, filter, *id, obj))
                 .map(|(id, _)| id)
                 .collect();
 

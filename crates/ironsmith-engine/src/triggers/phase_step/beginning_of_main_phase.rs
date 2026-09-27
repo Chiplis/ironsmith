@@ -112,6 +112,19 @@ impl TriggerMatcher for BeginningOfMainPhaseTrigger {
         if is_postcombat && self.phase_type == MainPhaseType::Precombat {
             return false;
         }
+        // CR 505.1b: "your second main phase" is only the turn's second main
+        // phase, not an additional one created by Relentless Assault.
+        if is_postcombat
+            && self.phase_type == MainPhaseType::Postcombat
+            && self.postcombat_surface
+                == ironsmith_core::trigger_model::PostcombatMainPhaseSurface::SecondMain
+            && event
+                .downcast::<crate::events::phase::BeginningOfPostcombatMainPhaseEvent>()
+                .and_then(|event| event.main_phase_ordinal)
+                .is_some_and(|ordinal| ordinal != 2)
+        {
+            return false;
+        }
 
         let Some(player) = event.player() else {
             return false;

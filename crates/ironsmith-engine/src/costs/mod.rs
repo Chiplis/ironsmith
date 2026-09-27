@@ -449,7 +449,13 @@ impl Cost {
         game: &mut crate::game_state::GameState,
         ctx: &mut CostContext,
     ) -> Result<CostPaymentResult, crate::cost::CostPaymentError> {
-        self.0.pay(game, ctx)
+        // CR 603.2c: the objects one cost moves (exile five cards from your
+        // graveyard, sacrifice two creatures) move as one simultaneous event.
+        // Mana abilities activated while paying mana are separate actions.
+        let opened_batch = !self.is_mana_cost() && game.open_simultaneous_action();
+        let result = self.0.pay(game, ctx);
+        game.close_simultaneous_action(opened_batch);
+        result
     }
 
     /// Get the display text for this cost.

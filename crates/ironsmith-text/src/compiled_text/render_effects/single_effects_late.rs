@@ -1070,6 +1070,7 @@ pub(super) fn describe_target_then_unattach_all_equipment(
 pub(crate) fn describe_activation_timing_clause(timing: &ActivationTiming) -> Option<&'static str> {
     match timing {
         ActivationTiming::AnyTime => None,
+        ActivationTiming::AsInstant => Some("Activate only as an instant"),
         ActivationTiming::SorcerySpeed => Some("Activate only as a sorcery"),
         ActivationTiming::DuringCombat => Some("Activate only during combat"),
         ActivationTiming::OncePerTurn => Some("Activate only once each turn"),
@@ -3129,6 +3130,15 @@ pub(in crate::compiled_text) fn structural_equip_target(
     if let Some(attach) = effect.downcast_ref::<crate::effects::AttachToEffect>() {
         return Some(attach.target.clone());
     }
+    // The equip lowering targets the creature directly (CR 702.6a).
+    if let Some(attach) = structural_unwrap_render_wrappers(effect)
+        .downcast_ref::<crate::effects::AttachObjectsEffect>()
+        && !attach.individual_targets
+        && equip_attachment_objects_are_source(&attach.objects)
+        && attach.target.is_target()
+    {
+        return Some(attach.target.clone());
+    }
 
     let sequence = effect.downcast_ref::<crate::effects::SequenceEffect>()?;
     if !matches!(
@@ -3264,7 +3274,10 @@ pub(in crate::compiled_text) fn describe_structural_equip_keyword(
 pub(super) fn describe_structural_reconfigure_keyword(
     activated: &crate::ability::ActivatedAbility,
 ) -> Option<String> {
-    if !matches!(activated.timing, ActivationTiming::SorcerySpeed) || !activated.choices.is_empty()
+    if !matches!(activated.timing, ActivationTiming::SorcerySpeed)
+        || !(activated.choices.is_empty()
+            || (activated.choices.len() == 1
+                && is_target_creature_you_control(&activated.choices[0])))
     {
         return None;
     }
@@ -4655,15 +4668,40 @@ pub(super) fn describe_structural_persist_or_undying_keyword(
         },
         _ => return None,
     };
-    let [tag, _choose, _move, counters] = triggered.effects.flattened_default_effects() else {
-        return None;
-    };
-    let tag = tag.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
     let expected_tag = match counter_type {
         CounterType::MinusOneMinusOne => "persist_trigger",
         CounterType::PlusOnePlusOne => "undying_trigger",
         _ => return None,
     };
+    let keyword = match counter_type {
+        CounterType::MinusOneMinusOne => "Persist",
+        _ => "Undying",
+    };
+    let effects = triggered.effects.flattened_default_effects();
+    // The keyword returns the card with an entry counter (CR 122.6).
+    if let [tag, _choose, move_effect] = effects {
+        let tag = tag.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
+        if tag.tag.as_str() != expected_tag {
+            return None;
+        }
+        let move_effect = move_effect
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .map(|tagged| tagged.effect.as_ref())
+            .unwrap_or(move_effect);
+        let move_effect = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        let [counter] = move_effect.enters_with_counters.as_slice() else {
+            return None;
+        };
+        return (counter.counter_type == counter_type
+            && counter.amount == Value::Fixed(1)
+            && counter.condition.is_none()
+            && counter.object_filter.is_none())
+        .then(|| keyword.to_string());
+    }
+    let [tag, _choose, _move, counters] = effects else {
+        return None;
+    };
+    let tag = tag.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
     if tag.tag.as_str() != expected_tag {
         return None;
     }
@@ -5346,6 +5384,10 @@ pub(super) fn equip_target_qualifier_text(spec: &ChooseSpec) -> Option<String> {
                 || !filter.card_types.contains(&CardType::Creature)
             {
                 return None;
+            }
+            // "Equip commander [cost]" (Commander's Plate, CR 702.6a).
+            if filter.is_commander && filter.subtypes.is_empty() {
+                return Some("commander".to_string());
             }
             if filter.subtypes.len() == 1 {
                 return Some(filter.subtypes[0].to_string());

@@ -495,6 +495,7 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
             | TurnHistoryCount::EnteredBattlefield(filter)
             | TurnHistoryCount::MovedZones { filter, .. }
             | TurnHistoryCount::Sacrificed { filter, .. }
+            | TurnHistoryCount::SacrificedCardTypes { filter, .. }
             | TurnHistoryCount::CountersPutOn { filter, .. }
             | TurnHistoryCount::CreaturesAttackedWith { filter, .. },
         ) => replace_it_tag_in_filter(filter, tag),
@@ -1463,6 +1464,12 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                     player: resolve_contextual_player_filter(player, refs)?,
                     filter: resolve_it_tag(filter, refs)?,
                 },
+                TurnHistoryCount::SacrificedCardTypes { player, filter } => {
+                    TurnHistoryCount::SacrificedCardTypes {
+                        player: resolve_contextual_player_filter(player, refs)?,
+                        filter: resolve_it_tag(filter, refs)?,
+                    }
+                }
                 TurnHistoryCount::CountersPutOn {
                     source_controller,
                     counter_type,
@@ -1506,6 +1513,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                 TurnHistoryCount::DiscardedOrCycled(player) => TurnHistoryCount::DiscardedOrCycled(
                     resolve_contextual_player_filter(player, refs)?,
                 ),
+                TurnHistoryCount::CardsDrawn(player) => {
+                    TurnHistoryCount::CardsDrawn(resolve_contextual_player_filter(player, refs)?)
+                }
                 TurnHistoryCount::Cycled(player) => {
                     TurnHistoryCount::Cycled(resolve_contextual_player_filter(player, refs)?)
                 }

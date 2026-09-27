@@ -83,6 +83,8 @@ struct PlayersWhoControlMoreValueShape<'a> {
     players: PlayersWhoControlDomainShape,
     filter_tokens: &'a [OwnedLexToken],
     minimum_difference_token: Option<&'a [OwnedLexToken]>,
+    /// "who control a <filter>": at least one, not more than you.
+    controls_any: bool,
 }
 const THAT_WORD: &str = "that";
 const MANA_VALUE_SUFFIX: &[&str] = &["mana", "value"];
@@ -100,6 +102,21 @@ fn parse_players_who_control_more_value_shape_lexed<'a>(
     ))
     .parse_next(input)?;
     primitives::phrase(&["who", "control"]).parse_next(input)?;
+    if opt(alt((primitives::kw("a"), primitives::kw("an"))))
+        .parse_next(input)?
+        .is_some()
+    {
+        let filter_tokens = repeat_till(1.., any.void(), eof)
+            .map(|((), _)| ())
+            .take()
+            .parse_next(input)?;
+        return Ok(PlayersWhoControlMoreValueShape {
+            players,
+            filter_tokens,
+            minimum_difference_token: None,
+            controls_any: true,
+        });
+    }
     let minimum_difference_token = if opt(primitives::phrase(&["at", "least"]))
         .parse_next(input)?
         .is_some()
@@ -119,6 +136,7 @@ fn parse_players_who_control_more_value_shape_lexed<'a>(
         players,
         filter_tokens,
         minimum_difference_token,
+        controls_any: false,
     })
 }
 
@@ -409,6 +427,9 @@ pub fn parse_players_who_control_more_than_you_value_lexed(
         false,
     ))?;
     let players = shape.players.player_filter();
+    if shape.controls_any {
+        return Some(Value::PlayersWhoControl { players, filter });
+    }
     let Some(minimum_difference_token) = shape.minimum_difference_token else {
         return Some(Value::PlayersWhoControlMoreThanYou { players, filter });
     };

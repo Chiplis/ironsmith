@@ -1624,7 +1624,28 @@ where
             &self.grantable
             && self.zone == Zone::Graveyard
         {
-            let filter_desc = castable_filter_description(&filter);
+            let mut filter_desc = castable_filter_description(&filter);
+            // "nonland permanent cards in your graveyard have retrace" (Six):
+            // every permanent type but land, not every spell type.
+            let nonland_permanent = filter.excluded_card_types.as_slice() == [CardType::Land]
+                && [
+                    CardType::Artifact,
+                    CardType::Creature,
+                    CardType::Enchantment,
+                    CardType::Planeswalker,
+                    CardType::Battle,
+                ]
+                .iter()
+                .all(|card_type| filter.card_types.contains(card_type))
+                && !filter.card_types.contains(&CardType::Instant)
+                && !filter.card_types.contains(&CardType::Sorcery);
+            if nonland_permanent
+                && let Some(rest) = filter_desc
+                    .strip_prefix("spell card")
+                    .map(str::to_string)
+            {
+                filter_desc = format!("nonland permanent card{rest}");
+            }
             return format!("Each {filter_desc} has retrace");
         }
         if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::BlitzFromCardManaCost) =

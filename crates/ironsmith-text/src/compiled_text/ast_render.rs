@@ -29854,7 +29854,10 @@ fn is_suspend_cast_when_last_counter_removed_trigger(
 ) -> bool {
     if !matches!(
         triggered.intervening_if,
-        Some(Condition::SourceHasNoCounter(CounterType::Time))
+        Some(
+            Condition::SourceHasNoCounter(CounterType::Time)
+                | Condition::SourceIsInZone(crate::zone::Zone::Exile)
+        )
     ) || !triggered.choices.is_empty()
         || triggered
             .trigger

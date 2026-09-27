@@ -2104,7 +2104,8 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
                 StateBasedAction::ObjectDies(obj_id)
                 | StateBasedAction::AuraFallsOff(obj_id)
                 | StateBasedAction::PlaneswalkerDies(obj_id)
-                | StateBasedAction::BattleDies(obj_id) => *obj_id,
+                | StateBasedAction::BattleDies(obj_id)
+                | StateBasedAction::SagaSacrifice(obj_id) => *obj_id,
                 _ => return None,
             };
             game.object(obj_id).map(|obj| {
@@ -2710,22 +2711,49 @@ fn apply_single_sba_with_snapshots(
         }
 
         StateBasedAction::SagaSacrifice(obj_id) => {
+            use crate::events::processing::{ZoneChangeOutcome, process_zone_change_with_snapshot};
             let Some(controller) = game
                 .object(obj_id)
                 .map(|object| game.current_controller(obj_id).unwrap_or(object.owner))
             else {
                 return;
             };
-            let mut ctx = crate::effects::ExecutionContext::new(obj_id, controller, decision_maker)
-                .with_cause(crate::events::cause::EventCause::from_sba());
-            if let Ok(outcome) = crate::effects::execute_effect(
+            let cause = crate::events::cause::EventCause::from_sba();
+            if !game.battlefield.contains(&obj_id)
+                || !game.can_be_sacrificed_with_cause(obj_id, &cause)
+            {
+                return;
+            }
+            // CR 704.8: LKI comes from before any SBA of this check.
+            let pre_snapshot = pre_captured_snapshots.get(&obj_id).cloned().or_else(|| {
+                game.object(obj_id).map(|object| {
+                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+                })
+            });
+            let outcome = process_zone_change_with_snapshot(
                 game,
-                &crate::effect::Effect::sacrifice_source(),
-                &mut ctx,
-            ) {
-                for event in outcome.events {
-                    game.queue_trigger_event(event.provenance(), event);
+                obj_id,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                cause,
+                decision_maker,
+                pre_snapshot.clone(),
+            );
+            let sacrificed = match outcome {
+                ZoneChangeOutcome::Proceed(final_zone) => {
+                    game.move_object_by_sba_with_snapshot(obj_id, final_zone, pre_snapshot.clone());
+                    true
                 }
+                ZoneChangeOutcome::Replaced => true,
+                _ => false,
+            };
+            if sacrificed {
+                let event = crate::triggers::TriggerEvent::new_with_provenance(
+                    crate::events::permanents::SacrificeEvent::new(obj_id, Some(obj_id))
+                        .with_snapshot(pre_snapshot, Some(controller)),
+                    crate::provenance::ProvNodeId::default(),
+                );
+                game.queue_trigger_event(event.provenance(), event);
             }
         }
 

@@ -5763,6 +5763,23 @@ pub(crate) fn describe_choose_then_sacrifice(
     choose: &crate::effects::ChooseObjectsEffect,
     sacrifice: SacrificeView<'_>,
 ) -> Option<String> {
+    let text = describe_choose_then_sacrifice_selection(choose, sacrifice)?;
+    // "sacrifice any number of creatures with total power 12 or greater"
+    // (Phyrexian Dreadnought): the aggregate bound is part of what's chosen.
+    if choose.aggregate_constraint.is_some() && !text.contains(" with total ") {
+        let suffix = super::player_and_zone_effects::describe_choice_aggregate_constraint_suffix(choose);
+        return Some(match text.strip_suffix('.') {
+            Some(body) => format!("{body}{suffix}."),
+            None => format!("{text}{suffix}"),
+        });
+    }
+    Some(text)
+}
+
+fn describe_choose_then_sacrifice_selection(
+    choose: &crate::effects::ChooseObjectsEffect,
+    sacrifice: SacrificeView<'_>,
+) -> Option<String> {
     let choose_is_any_number = choose.count.is_any_number();
     let choose_exact = if choose_is_any_number {
         None

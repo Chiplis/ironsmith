@@ -513,6 +513,9 @@ pub(crate) fn move_to_battlefield_batch_with_options(
         restore_reserved_zone_position(&mut working, reservation);
     }
 
+    // CR 603.2c: the entries are one simultaneous event, so "whenever one or
+    // more creatures enter" sees them together.
+    let opened_batch = working.open_simultaneous_action();
     let mut outcomes = vec![BattlefieldEntryOutcome::Prevented; requests.len()];
     for (index, (object, options)) in requests.iter().enumerate() {
         let Some((old_zone, prepared_entry)) = prepared_entries[index].take() else {
@@ -579,6 +582,7 @@ pub(crate) fn move_to_battlefield_batch_with_options(
         working.effect_store.continuous_effects.remove_effect(id);
     }
     working.refresh_continuous_state();
+    working.close_simultaneous_action(opened_batch);
     *game = working;
     outcomes
 }

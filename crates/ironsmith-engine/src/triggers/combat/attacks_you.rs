@@ -4,7 +4,6 @@ use crate::combat_state::AttackTarget;
 use crate::events::EventKind;
 use crate::events::combat::{AttackEventTarget, CreatureAttackedEvent};
 use crate::filter::ObjectFilterExt as _;
-use crate::ids::ObjectId;
 use crate::target::ObjectFilter;
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
@@ -62,18 +61,20 @@ impl AttacksYouTrigger {
 
     fn first_matching_attacker_for_player_this_combat(
         &self,
-        attacker: ObjectId,
+        event: &CreatureAttackedEvent,
         ctx: &TriggerContext,
     ) -> bool {
+        let attacker = event.attacker;
         let Some(attacker_obj) = ctx.game.object(attacker) else {
             return true;
         };
         let attacking_player = ctx.game.controller_of(attacker_obj);
-        let Some(combat) = ctx.game.combat.as_ref() else {
+        let Some(attackers) = crate::triggers::combat::attacks::attack_declaration(event, ctx)
+        else {
             return true;
         };
 
-        for info in &combat.attackers {
+        for info in attackers {
             let Some(obj) = ctx.game.object(info.creature) else {
                 continue;
             };
@@ -93,14 +94,12 @@ impl AttacksYouTrigger {
 
     fn matching_attacker_count_for_player_this_combat(
         &self,
-        attacker: ObjectId,
+        event: &CreatureAttackedEvent,
         ctx: &TriggerContext,
     ) -> Option<i32> {
-        let attacker_obj = ctx.game.object(attacker)?;
+        let attacker_obj = ctx.game.object(event.attacker)?;
         let attacking_player = ctx.game.controller_of(attacker_obj);
-        let combat = ctx.game.combat.as_ref()?;
-        let count = combat
-            .attackers
+        let count = crate::triggers::combat::attacks::attack_declaration(event, ctx)?
             .iter()
             .filter(|info| {
                 let Some(obj) = ctx.game.object(info.creature) else {
@@ -172,7 +171,7 @@ impl TriggerMatcher for AttacksYouTrigger {
             return false;
         }
         if self.one_or_more {
-            return self.first_matching_attacker_for_player_this_combat(e.attacker, ctx);
+            return self.first_matching_attacker_for_player_this_combat(e, ctx);
         }
         true
     }
@@ -208,7 +207,7 @@ impl TriggerMatcher for AttacksYouTrigger {
             return None;
         }
         let attacked = event.downcast::<CreatureAttackedEvent>()?;
-        self.matching_attacker_count_for_player_this_combat(attacked.attacker, ctx)
+        self.matching_attacker_count_for_player_this_combat(attacked, ctx)
     }
 }
 

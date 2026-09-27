@@ -106,7 +106,24 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
 
         let mut moved_ids = Vec::new();
         for card_id in top_cards {
-            if let Some(exiled_id) = game.move_object_by_effect(card_id, Zone::Exile) {
+            // CR 614.1: exiling from the library is an ordinary zone change,
+            // so replacement effects apply to it (as for mill and surveil).
+            let additional_effects = ctx.additional_replacement_effects_snapshot();
+            let exiled_id = match crate::effects::zones::apply_zone_change_with_additional_effects(
+                game,
+                card_id,
+                Zone::Library,
+                Zone::Exile,
+                ctx.cause.clone(),
+                &mut *ctx.decision_maker,
+                &additional_effects,
+            ) {
+                crate::events::processing::EventOutcome::Proceed(change) if change.final_zone == Zone::Exile => {
+                    change.new_object_id
+                }
+                _ => None,
+            };
+            if let Some(exiled_id) = exiled_id {
                 game.add_exiled_with_source_link(ctx.source, exiled_id);
                 if self.face_down {
                     game.set_face_down(exiled_id);

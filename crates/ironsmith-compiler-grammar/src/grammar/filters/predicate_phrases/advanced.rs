@@ -344,6 +344,21 @@ fn parse_turn_history_intervening_predicate(
             )),
         ))));
     }
+    // "you didn't activate a loyalty ability of a planeswalker this turn"
+    // (The Chain Veil).
+    for negation in [&["didnt"][..], &["did", "not"][..]] {
+        let mut shape = vec!["you"];
+        shape.extend_from_slice(negation);
+        shape.extend_from_slice(&["activate", "a", "loyalty", "ability"]);
+        let bare = [shape.as_slice(), &["this", "turn"][..]].concat();
+        let of_planeswalker =
+            [shape.as_slice(), &["of", "a", "planeswalker", "this", "turn"][..]].concat();
+        if surface::exact_words(&words, &bare) || surface::exact_words(&words, &of_planeswalker) {
+            return Ok(Some(PredicateAst::Not(Box::new(PredicateAst::TurnHistory(
+                TurnHistoryPredicateAst::PlayerActivatedLoyaltyAbilityThisTurn(PlayerAst::You),
+            )))));
+        }
+    }
     if surface::exact_words(&words, &["it", "didnt", "die"])
         || surface::exact_words(&words, &["it", "did", "not", "die"])
     {

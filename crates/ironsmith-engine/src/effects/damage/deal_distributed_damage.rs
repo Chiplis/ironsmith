@@ -14,7 +14,6 @@ use crate::game_state::{GameState, Target};
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
 use crate::target::PlayerFilter;
-use crate::types::CardType;
 
 pub use ironsmith_core::DamageDistributionMode;
 
@@ -108,12 +107,9 @@ impl DealDistributedDamageEffect {
         }
 
         for object_id in resolve_objects_from_spec(game, &self.target, ctx).unwrap_or_default() {
-            if game.object(object_id).is_some_and(|obj| {
-                // "Any target" includes battles (CR 115.4).
-                obj.has_card_type(CardType::Creature)
-                    || obj.has_card_type(CardType::Planeswalker)
-                    || obj.has_card_type(CardType::Battle)
-            }) {
+            // "Any target" includes battles (CR 115.4); current (layered)
+            // card types decide whether the object can be dealt damage.
+            if super::deal_damage::object_can_be_dealt_damage(game, object_id) {
                 available_targets.push(Target::Object(object_id));
             }
         }
@@ -187,7 +183,15 @@ impl DealDistributedDamageEffect {
         }
 
         if self.distribution == DamageDistributionMode::EvenRoundedDown && !allocations.is_empty() {
-            let share = total / allocations.len() as u32;
+            // CR 601.2d / 608.2b: the even division is fixed over the targets
+            // announced as the spell was cast. A target that became illegal
+            // loses its share; the others don't absorb it.
+            let announced = ctx
+                .announced_target_count(&self.target)
+                .filter(|count| *count > 0)
+                .unwrap_or(allocations.len())
+                .max(allocations.len());
+            let share = total / announced as u32;
             for (_, amount) in allocations.iter_mut() {
                 *amount = share;
             }

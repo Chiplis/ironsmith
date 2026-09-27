@@ -1117,9 +1117,30 @@ fn describe_repeated_each_union_arm(filter: &ObjectFilter) -> String {
     describe_for_each_count_filter(filter)
 }
 
+/// "counter among players and permanents" (Lumbering Megasloth): counters on
+/// every player plus counters on every permanent, rendered as printed.
+pub(crate) fn describe_counters_among_players_and_permanents(value: &Value) -> Option<String> {
+    let Value::Add(left, right) = value.unhinted() else {
+        return None;
+    };
+    let is_player_counters = |value: &Value| {
+        matches!(value.unhinted(), Value::CountersOn(spec, None)
+            if matches!(spec.unhinted(), ChooseSpec::EachPlayer(PlayerFilter::Any)))
+    };
+    let is_permanent_counters = |value: &Value| {
+        matches!(value.unhinted(), Value::CountersOn(spec, None)
+            if matches!(spec.unhinted(), ChooseSpec::All(filter) if *filter == ObjectFilter::permanent()))
+    };
+    (is_player_counters(left) && is_permanent_counters(right))
+        .then(|| "counter among players and permanents".to_string())
+}
+
 pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
     if value.has_surface_hint(ValueSurfaceHint::EqualTo) || value_prefers_where_x(value) {
         return None;
+    }
+    if let Some(counters) = describe_counters_among_players_and_permanents(value) {
+        return Some(counters);
     }
     if let Some(history) = describe_turn_history_for_each_basis(value) {
         return Some(history);

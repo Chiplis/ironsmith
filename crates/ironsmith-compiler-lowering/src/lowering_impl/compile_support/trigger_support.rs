@@ -1223,9 +1223,16 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::DealsCombatDamageToPlayer { source, player } => {
             Trigger::deals_combat_damage_to_player(source, player)
         }
-        TriggerSpec::DealsCombatDamageToPlayerOneOrMore { source, player } => {
-            Trigger::deals_combat_damage_to_player_one_or_more(source, player)
-        }
+        TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+            source,
+            player,
+            each_damaged_player: false,
+        } => Trigger::deals_combat_damage_to_player_one_or_more(source, player),
+        TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+            source,
+            player,
+            each_damaged_player: true,
+        } => Trigger::deals_combat_damage_to_each_player_one_or_more(source, player),
         TriggerSpec::YouCastThisSpell => Trigger::you_cast_this_spell(),
         TriggerSpec::KeywordAction {
             action,

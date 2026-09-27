@@ -439,6 +439,14 @@ pub enum TurnHistoryCount {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
+    /// Distinct card types among the permanents matching the filter which
+    /// matching players sacrificed this turn, read from each permanent's
+    /// last-known information ("card type among permanents you've sacrificed
+    /// this turn", Korvold, Gleeful Glutton).
+    SacrificedCardTypes {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    },
     /// Counters of the requested kind put on matching objects this turn.
     CountersPutOn {
         /// Restricts the player responsible for placing the counters.
@@ -472,6 +480,10 @@ pub enum TurnHistoryCount {
     DiscardedOrCycled(PlayerFilter),
     /// Cards cycled by matching players this turn.
     Cycled(PlayerFilter),
+    /// Cards drawn this turn, summed over every matching player ("for each
+    /// card your opponents have drawn this turn", Heliod, the Warped
+    /// Eclipse). The per-player maximum is `Value::MaxCardsDrawnThisTurn`.
+    CardsDrawn(PlayerFilter),
     /// Matching players who lost life this turn.
     PlayersLostLife(PlayerFilter),
     /// Lands which were untapped under a matching player's control at the
@@ -581,6 +593,13 @@ pub enum Value {
     /// Number of matching players whose current hand contains at least the
     /// authored number of cards.
     CountPlayersWithCardsInHandAtLeast(PlayerFilter, u32),
+    /// The number of matching players who control at least one object
+    /// matching `filter` ("the number of opponents who control a creature
+    /// with power 4 or greater").
+    PlayersWhoControl {
+        players: PlayerFilter,
+        filter: ObjectFilter,
+    },
     /// The number of matching players whose matching-object count exceeds
     /// yours.
     PlayersWhoControlMoreThanYou {
@@ -1475,6 +1494,9 @@ pub enum TurnHistoryCondition {
     TriggeringObjectWasCast,
     TriggeringObjectWasCastFromZone(Zone),
     PlayerPlayedLandThisTurn(PlayerFilter),
+    /// "<player> activated a loyalty ability (of a planeswalker) this turn"
+    /// (The Chain Veil).
+    PlayerActivatedLoyaltyAbilityThisTurn(PlayerFilter),
     TriggeringObjectDied,
     PlayerPlayedCardFromZoneThisTurn {
         player: PlayerFilter,

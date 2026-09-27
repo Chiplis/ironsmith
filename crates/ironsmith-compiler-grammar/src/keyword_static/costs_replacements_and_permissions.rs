@@ -20,6 +20,48 @@ fn is_exact_per_target_cost_modifier(words: &[&str]) -> bool {
     })
 }
 
+/// "for each creature it targets" (Battlefield Thaumaturge): the modifier is
+/// applied once per chosen target matching the description (CR 601.2f), not
+/// once per matching object on the battlefield.
+fn parse_per_matching_target_cost_modifier(
+    remaining_tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(remaining_tokens);
+    let words = TokenWordView::new(tokens);
+    let word_refs = words.to_word_refs();
+    let Some(each) = crate::word_primitives::parse_sequence_start(&word_refs, &["for", "each"])
+    else {
+        return Ok(None);
+    };
+    let Some(targets) = [&["it", "targets"][..], &["that", "spell", "targets"][..]]
+        .iter()
+        .find_map(|suffix| suffix_word_start(&word_refs, suffix))
+    else {
+        return Ok(None);
+    };
+    if targets <= each + 2 {
+        return Ok(None);
+    }
+    let Some(range) = words.token_span_for_words(each + 2, targets) else {
+        return Ok(None);
+    };
+    let Some(mut filter) = parse_complete_cost_count_filter(&tokens[range])? else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported per-target cost modifier (clause: '{}')",
+            word_refs.join(" ")
+        )));
+    };
+    if filter.zone.is_none() {
+        filter.zone = Some(Zone::Battlefield);
+    }
+    Ok(Some(filter))
+}
+
+fn suffix_word_start(words: &[&str], suffix: &[&str]) -> Option<usize> {
+    crate::word_primitives::parse_sequence_suffix(words, suffix)
+        .then(|| words.len() - suffix.len())
+}
+
 fn apply_anywhere_other_than_hand_origin(filter: &mut ObjectFilter) {
     filter.any_of = [
         (Zone::Hand, Some(PlayerFilter::NotYou)),
@@ -654,7 +696,18 @@ pub fn parse_spells_cost_modifier_line(
             display,
         )));
     }
-    let per_target = !is_life_cost_modifier && is_exact_per_target_cost_modifier(&remaining_words);
+    let per_matching_target = if is_life_cost_modifier || is_this_spell {
+        None
+    } else {
+        parse_per_matching_target_cost_modifier(remaining_tokens)?
+    };
+    let per_target = !is_life_cost_modifier
+        && (is_exact_per_target_cost_modifier(&remaining_words) || per_matching_target.is_some());
+    if let Some(target_filter) = per_matching_target {
+        // The spell must target a matching object for the modifier to apply;
+        // the engine counts the chosen targets that match it.
+        filter.targets_object = Some(Box::new(target_filter));
+    }
     let per_additional_target = cost_words_contain_phrase(
         &remaining_words,
         &["for", "each", "target", "beyond", "the", "first"],
@@ -667,6 +720,7 @@ pub fn parse_spells_cost_modifier_line(
 
     let compound_this_spell_reduction = if direction == CostModifierDirection::Less
         && is_this_spell
+        && condition_boundary.is_none()
         && !per_target
         && characteristic_intersection.is_none()
     {
@@ -685,14 +739,30 @@ pub fn parse_spells_cost_modifier_line(
         None
     };
 
+    // Whether the words after "less/more to cast" were read as part of the
+    // amount; otherwise they must be a condition (see below).
+    let mut tail_read_by_amount = per_target
+        || per_additional_target
+        || characteristic_intersection.is_some()
+        || static_mid_facts::parse_where_x_clause_tokens(remaining_tokens).is_some()
+        || parse_cost_reduction_cap(remaining_tokens).is_some();
     if let Some(compound) = compound_this_spell_reduction {
+        tail_read_by_amount = true;
         parsed_mana_cost = None;
         amount_value = compound;
     } else if !per_target
         && characteristic_intersection.is_none()
         && !crate::word_primitives::sequence_occurs(&remaining_words, &["as", "long", "as"])
+        // The amount's "for each ..." must come before any trailing condition:
+        // "if an opponent has drawn four or more cards this turn" (Even the
+        // Score) is a condition, not a per-card repetition.
+        && condition_boundary.is_none_or(|boundary| {
+            crate::word_primitives::parse_sequence_start(&remaining_words, &["for", "each"])
+                .is_some_and(|each| each < boundary)
+        })
         && let Some(dynamic_value) = parse_dynamic_cost_modifier_value(remaining_tokens)?
     {
+        tail_read_by_amount = true;
         if parsed_mana_cost.is_some() && is_this_spell {
             parsed_mana_cost_repetitions = Some(dynamic_value);
         } else {
@@ -780,6 +850,25 @@ pub fn parse_spells_cost_modifier_line(
                 }
             }
         } else {
+            // CR 601.2f: an unconditional self reduction reads exactly
+            // "costs {N} less/more to cast". Any other trailing words are an
+            // unrecognized condition, which must not be dropped into an
+            // always-on reduction.
+            let direction_idx = remaining_words
+                .iter()
+                .position(|word| matches!(*word, "less" | "more"));
+            let trailing = direction_idx
+                .map(|idx| &remaining_words[idx + 1..])
+                .unwrap_or_default();
+            if !tail_read_by_amount
+                && !trailing.is_empty()
+                && trailing != ["to", "cast"]
+            {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported this-spell cost condition (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
             crate::static_abilities::ThisSpellCostCondition::Always
         }
     } else {
@@ -932,6 +1021,64 @@ pub fn parse_spells_cost_reduction_and_cant_be_countered_line(
         format!("{} can't be countered", filter.description()),
     );
     Ok(Some(vec![reduction, restriction]))
+}
+
+/// "This spell costs {1} less to cast if you control an artifact and {1} less
+/// to cast if you control an enchantment." (Assassin's Ink): two independent
+/// conditional self reductions sharing one subject (CR 601.2f). Each half is
+/// read by the ordinary cost-modifier parser as its own this-spell reduction.
+pub fn parse_double_conditional_this_spell_cost_reduction_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if !crate::word_primitives::parse_sequence_prefix(&words, &["this", "spell", "costs"]) {
+        return Ok(None);
+    }
+    let Some(costs_idx) =
+        crate::slice_primitives::select_position(tokens, |token| token.is_word("costs"))
+    else {
+        return Ok(None);
+    };
+    let split = (costs_idx + 1..tokens.len()).find(|&idx| {
+        tokens[idx].is_word("and")
+            && tokens
+                .get(idx + 1)
+                .is_some_and(|token| token.mana_group_inner().is_some())
+            && crate::word_primitives::sequence_occurs(
+                &crate::lexer::parser_token_word_refs(&tokens[idx + 1..]),
+                &["to", "cast", "if"],
+            )
+    });
+    let Some(and_idx) = split else {
+        return Ok(None);
+    };
+    let left = trim_commas(&tokens[..and_idx]);
+    let mut right = tokens[..=costs_idx].to_vec();
+    right.extend_from_slice(&tokens[and_idx + 1..]);
+    let (Some(first), Some(second)) = (
+        parse_spells_cost_modifier_line(&left)?,
+        parse_spells_cost_modifier_line(&right)?,
+    ) else {
+        return Ok(None);
+    };
+    let is_conditional_self_reduction = |ability: &StaticAbility| {
+        matches!(
+            &ability.payload,
+            ironsmith_core::StaticAbilityPayload::ThisSpellCostReduction(reduction)
+                if reduction.condition != crate::static_abilities::ThisSpellCostCondition::Always
+        ) || matches!(
+            &ability.payload,
+            ironsmith_core::StaticAbilityPayload::ThisSpellCostReductionManaCost(reduction)
+                if reduction.condition != crate::static_abilities::ThisSpellCostCondition::Always
+        )
+    };
+    if !is_conditional_self_reduction(&first) || !is_conditional_self_reduction(&second) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported compound this-spell cost reduction (clause: '{}')",
+            words.join(" ")
+        )));
+    }
+    Ok(Some(vec![first, second]))
 }
 
 pub fn parse_spell_and_player_activated_ability_cost_modifier_line(
@@ -1486,6 +1633,52 @@ pub fn parse_cost_reduction_cap(tokens: &[OwnedLexToken]) -> Option<i32> {
     None
 }
 
+/// Parse the object description counted by a "for each <description>" cost
+/// modifier, refusing words the description parser cannot model.
+///
+/// CR 601.2f: the modifier counts exactly the objects matching the whole
+/// description. The object-filter parser is tolerant and skips words it
+/// doesn't understand ("sacrificed this turn", "it targets", "counter on"),
+/// which silently widens the count to every object of the head noun. When
+/// dropping a trailing part of the phrase (a postmodifier such as a history
+/// or relative clause) yields the very same filter, that part contributed
+/// nothing, so the phrase is rejected instead.
+///
+/// Returns `Ok(None)` when the phrase isn't an object description at all, so
+/// callers keep their other readings, and an error when it is one that loses
+/// words.
+pub(crate) fn parse_complete_cost_count_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let Ok(filter) = parse_object_filter(tokens, false) else {
+        return Ok(None);
+    };
+    let is_filler = |token: &OwnedLexToken| {
+        token.mana_group_inner().is_none()
+            && token
+                .as_word()
+                .is_none_or(|_| token.is_any_word(&["a", "an", "the"]))
+    };
+    let unmodeled = |part: &[OwnedLexToken]| {
+        Err(CardTextError::ParseError(format!(
+            "unsupported qualifier '{}' in cost-modifier count (clause: '{}')",
+            parser_token_word_refs(part).join(" "),
+            parser_token_word_refs(tokens).join(" ")
+        )))
+    };
+    for split in 1..tokens.len() {
+        let (head, tail) = tokens.split_at(split);
+        if !tail.iter().all(is_filler)
+            && parse_object_filter(crate::util::trim_edge_punctuation_tokens(head), false)
+                .is_ok_and(|shorter| shorter == filter)
+        {
+            return unmodeled(tail);
+        }
+    }
+    Ok(Some(filter))
+}
+
 pub fn parse_dynamic_cost_modifier_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
@@ -1511,7 +1704,23 @@ pub fn parse_dynamic_cost_modifier_value(
     // phrase and incorrectly turns the whole value into a sacrifice count.
     match parsed_shape {
         Some(DynamicCostValueShape::CardTypesAmong { scope_tokens }) => {
-            let Ok(filter) = parse_object_filter(scope_tokens, false) else {
+            // "card type among permanents you've sacrificed this turn"
+            // (Korvold, Gleeful Glutton) reads the sacrifice history, not the
+            // permanents on the battlefield.
+            if let Some(Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Sacrificed {
+                player,
+                filter,
+            })) =
+                crate::grammar::shared_util::value_semantics::parse_turn_history_count_value(
+                    scope_tokens,
+                )
+                .map(|value| value.unhinted().clone())
+            {
+                return Ok(Some(with_for_each_surface(Value::TurnHistoryCount(
+                    ironsmith_core::TurnHistoryCount::SacrificedCardTypes { player, filter },
+                ))));
+            }
+            let Some(filter) = parse_complete_cost_count_filter(scope_tokens)? else {
                 return Ok(None);
             };
             return Ok(Some(with_for_each_surface(Value::CardTypesAmong(filter))));
@@ -1538,9 +1747,16 @@ pub fn parse_dynamic_cost_modifier_value(
         DynamicPlayerKind::Any => PlayerFilter::Any,
     };
     let value = match shape {
-        DynamicCostValueShape::CardsDrawn(player) => {
-            with_for_each_surface(Value::MaxCardsDrawnThisTurn(player_filter(player)))
+        // Your own draws are one player's total; the opponents' draws are
+        // summed over every opponent (Heliod, the Warped Eclipse).
+        DynamicCostValueShape::CardsDrawn(DynamicPlayerKind::You) => {
+            with_for_each_surface(Value::MaxCardsDrawnThisTurn(PlayerFilter::You))
         }
+        DynamicCostValueShape::CardsDrawn(player) => with_for_each_surface(
+            Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::CardsDrawn(player_filter(
+                player,
+            ))),
+        ),
         DynamicCostValueShape::LifeGained(player) => {
             with_for_each_surface(Value::LifeGainedThisTurn(player_filter(player)))
         }
@@ -1753,13 +1969,44 @@ pub fn parse_dynamic_cost_modifier_value(
                 ),
                 CounterReferenceKind::Other => {
                     let words = parser_token_word_refs(reference.reference_tokens);
-                    let Some(surface) = source_reference_surface_for_words(&words) else {
-                        return Ok(None);
-                    };
-                    Value::CountersOn(
-                        Box::new(source_choose_spec_for_surface(surface)),
-                        counter_type,
-                    )
+                    if let Some(surface) = source_reference_surface_for_words(&words) {
+                        Value::CountersOn(
+                            Box::new(source_choose_spec_for_surface(surface)),
+                            counter_type,
+                        )
+                    } else if let Some(object_words) = words
+                        .strip_suffix(&["it", "targets"][..])
+                        .map(|object_words| {
+                            object_words.strip_prefix(&["the"][..]).unwrap_or(object_words)
+                        })
+                        .filter(|object_words| !object_words.is_empty())
+                    {
+                        // "each +1/+1 counter on the creature it targets"
+                        // (Warrior's Blades): counters on the chosen target.
+                        let object_tokens =
+                            crate::lexer::synthetic_word_tokens(object_words.iter().copied());
+                        let Some(filter) = parse_complete_cost_count_filter(&object_tokens)?
+                        else {
+                            return Ok(None);
+                        };
+                        Value::CountersOn(
+                            Box::new(ChooseSpec::target(ChooseSpec::Object(filter))),
+                            counter_type,
+                        )
+                    } else {
+                        // "each +1/+1 counter on creatures you control"
+                        // (Deepwood Denizen): counters summed over every
+                        // matching permanent.
+                        let Some(mut filter) =
+                            parse_complete_cost_count_filter(reference.reference_tokens)?
+                        else {
+                            return Ok(None);
+                        };
+                        if filter.zone.is_none() {
+                            filter.zone = Some(Zone::Battlefield);
+                        }
+                        Value::CountersOn(Box::new(ChooseSpec::All(filter)), counter_type)
+                    }
                 }
             };
             with_for_each_surface(value)
@@ -1787,7 +2034,7 @@ pub fn parse_dynamic_cost_modifier_value(
                     && used == count_words.len()
                 {
                     value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach)
-                } else if let Ok(filter) = parse_object_filter(filter_tokens, false) {
+                } else if let Some(filter) = parse_complete_cost_count_filter(filter_tokens)? {
                     with_for_each_surface(Value::Count(filter))
                 } else {
                     return Ok(None);

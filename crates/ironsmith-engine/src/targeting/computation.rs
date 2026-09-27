@@ -56,6 +56,46 @@ fn spec_requires_distinct_creature_types(spec: &ChooseSpec) -> bool {
     }
 }
 
+fn spec_requires_shared_creature_type(spec: &ChooseSpec) -> bool {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => spec_requires_shared_creature_type(spec),
+        ChooseSpec::Object(filter) => filter.target_set_shared_creature_type,
+        _ => false,
+    }
+}
+
+/// "... that share a creature type": one group per creature type among the
+/// legal targets (in first-seen order over the ordered legal targets, so
+/// identical on every peer); a legal set is any selection from one group.
+fn shared_creature_type_target_sets(game: &GameState, legal_targets: &[Target]) -> Vec<Vec<Target>> {
+    let mut by_type: Vec<(crate::types::Subtype, Vec<Target>)> = Vec::new();
+    for target in legal_targets {
+        let Target::Object(object_id) = target else {
+            continue;
+        };
+        for subtype in game.calculated_subtypes(*object_id) {
+            if !subtype.is_creature_type() {
+                continue;
+            }
+            let index = match by_type.iter().position(|(existing, _)| *existing == subtype) {
+                Some(index) => index,
+                None => {
+                    by_type.push((subtype, Vec::new()));
+                    by_type.len() - 1
+                }
+            };
+            let group = &mut by_type[index].1;
+            if !group.contains(target) {
+                group.push(*target);
+            }
+        }
+    }
+    by_type.into_iter().map(|(_, group)| group).collect()
+}
+
 fn target_count_for_spec(spec: &ChooseSpec) -> Option<usize> {
     match spec {
         ChooseSpec::SurfaceHinted { spec, .. } | ChooseSpec::Target(spec) => {
@@ -206,6 +246,9 @@ pub fn legal_target_sets_for_spec(
     legal_targets: &[Target],
 ) -> Vec<Vec<Target>> {
     let controller_constraint = spec_target_set_controller_constraint(spec);
+    if spec_requires_shared_creature_type(spec) {
+        return shared_creature_type_target_sets(game, legal_targets);
+    }
     if spec_requires_distinct_creature_types(spec) {
         let Some(count) = target_count_for_spec(spec) else {
             return Vec::new();
@@ -305,6 +348,7 @@ pub fn has_enough_legal_targets_for_spec(
     if legal_target_sets.is_empty() {
         if spec_target_set_controller_constraint(spec).is_some()
             || spec_requires_distinct_creature_types(spec)
+            || spec_requires_shared_creature_type(spec)
         {
             false
         } else {
@@ -510,8 +554,15 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
         // is targeting with one of its abilities. That ability isn't on the
         // stack while its targets are chosen (CR 602.2b, 603.3d) and has
         // left it by the resolution recheck (CR 608.2b), so a stack-kind
-        // quality can't be read from a stack entry.
-        let targeting_with_ability = !(source.is_live() && source.zone() == Zone::Stack);
+        // quality can't be read from a stack entry. A card whose castability
+        // is being checked before it moves to the stack is a spell too (the
+        // caller marks it on the view). A live spell on the stack is
+        // targeting with an ability when it's the source of one (a cast
+        // trigger, CR 603.3d, 608.2b): ability callers pass the ability's
+        // source snapshot, and a spell's own targeting never carries one.
+        let targeting_with_ability = !(source.is_live()
+            && (source.zone() == Zone::Stack || view.is_casting_spell(source.object_id())))
+            || source_snapshot.is_some();
         for ability in target_abilities.iter() {
             let Some(filter) = ability.hexproof_from_filter() else {
                 continue;
@@ -755,7 +806,7 @@ pub(crate) fn protection_from_subject_with_view(
     match protection_from {
         crate::ability::ProtectionFrom::ChosenPlayer => game
             .chosen_player(target_id)
-            .is_some_and(|chosen| source.protection_controller(game) == chosen),
+            .is_some_and(|chosen| source.is_from_player(game, chosen)),
         crate::ability::ProtectionFrom::ChosenColor => {
             game.chosen_color(target_id)
                 .is_some_and(|chosen| source.protection_colors(view).contains(chosen))
@@ -906,6 +957,20 @@ impl ObjectSubject<'_> {
         match self {
             Self::Live(object) => game.controller_of(object),
             Self::Snapshot(snapshot) => snapshot.controller,
+        }
+    }
+    /// CR 702.16k: an object is "from" a player for protection if that
+    /// player controls it, or owns it and no other player controls it (only
+    /// objects on the battlefield or the stack have a controller).
+    fn is_from_player(self, game: &GameState, player: PlayerId) -> bool {
+        let (zone, owner) = match self {
+            Self::Live(object) => (object.zone, object.owner),
+            Self::Snapshot(snapshot) => (snapshot.zone, snapshot.owner),
+        };
+        if matches!(zone, Zone::Battlefield | Zone::Stack) {
+            self.protection_controller(game) == player
+        } else {
+            owner == player
         }
     }
     fn protection_colors(

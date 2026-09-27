@@ -573,12 +573,13 @@ fn parse_granted_activated_or_triggered_ability_for_gain_remaining(
             }
         }
     } else {
-        let Some(parsed) = parse_activated_line(&semantic_tokens)? else {
+        let Some(mut parsed) = parse_activated_line(&semantic_tokens)? else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported granted activated/triggered ability clause (clause: '{}')",
                 clause_words.join(" ")
             )));
         };
+        apply_quoted_activation_restrictions(&mut parsed, &semantic_tokens);
         parsed
     };
 
@@ -595,6 +596,86 @@ fn parse_granted_activated_or_triggered_ability_for_gain_remaining(
         ability: Box::new(parsed_ability),
         display,
     }))
+}
+
+/// A printed activated ability has its "Activate only ..." sentences lowered
+/// from the line's pending restrictions; a quoted granted ability ("{0}:
+/// Untap this creature. Activate only once.", Touch of Vitae) has no such
+/// line, so its restriction sentences are read here into the same typed
+/// timing and conditions (CR 602.5b).
+fn apply_quoted_activation_restrictions(parsed: &mut ParsedAbility, tokens: &[OwnedLexToken]) {
+    let ironsmith_core::AbilityKind::Activated(activated) = &mut parsed.ability.kind else {
+        return;
+    };
+    fn contains_conjunct(condition: &PredicateAst, needle: &PredicateAst) -> bool {
+        match condition {
+            PredicateAst::And(left, right) => {
+                contains_conjunct(left, needle) || contains_conjunct(right, needle)
+            }
+            other => other == needle,
+        }
+    }
+    fn conjuncts(condition: PredicateAst, out: &mut Vec<PredicateAst>) {
+        match condition {
+            PredicateAst::And(left, right) => {
+                conjuncts(*left, out);
+                conjuncts(*right, out);
+            }
+            other => out.push(other),
+        }
+    }
+    let Some(colon) = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Colon)
+    else {
+        return;
+    };
+    for sentence in ironsmith_grammar_common::primitives::split_lexed_slices_on_period(&tokens[colon + 1..]) {
+        let Some(restriction) =
+            crate::grammar::restriction_facts::parse_activation_restriction_tokens(sentence)
+        else {
+            continue;
+        };
+        if let Some(timing) = restriction.timing
+            && timing != activated.timing
+        {
+            if activated.timing == crate::ability::ActivationTiming::AnyTime {
+                activated.timing = timing;
+            } else {
+                let timing_condition = PredicateAst::ActivationTiming(timing);
+                if !activated
+                    .activation_condition
+                    .as_ref()
+                    .is_some_and(|existing| contains_conjunct(existing, &timing_condition))
+                {
+                    activated.activation_condition =
+                        Some(match activated.activation_condition.take() {
+                            Some(existing) => {
+                                PredicateAst::And(Box::new(existing), Box::new(timing_condition))
+                            }
+                            None => timing_condition,
+                        });
+                }
+            }
+        }
+        let mut stated = Vec::new();
+        if let Some(condition) = restriction.condition {
+            conjuncts(condition, &mut stated);
+        }
+        for condition in stated {
+            if activated
+                .activation_condition
+                .as_ref()
+                .is_some_and(|existing| contains_conjunct(existing, &condition))
+            {
+                continue;
+            }
+            activated.activation_condition = Some(match activated.activation_condition.take() {
+                Some(existing) => PredicateAst::And(Box::new(existing), Box::new(condition)),
+                None => condition,
+            });
+        }
+    }
 }
 
 pub(super) fn normalize_named_granted_trigger_subject(

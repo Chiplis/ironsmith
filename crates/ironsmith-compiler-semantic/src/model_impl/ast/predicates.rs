@@ -219,6 +219,7 @@ pub enum TurnHistoryPredicateAst {
     TriggeringObjectWasCast,
     TriggeringObjectWasCastFromZone(Zone),
     PlayerPlayedLandThisTurn(PlayerAst),
+    PlayerActivatedLoyaltyAbilityThisTurn(PlayerAst),
     TriggeringObjectDied,
     PlayerPlayedCardFromZoneThisTurn {
         player: PlayerAst,

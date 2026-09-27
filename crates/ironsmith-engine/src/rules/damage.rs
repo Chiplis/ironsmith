@@ -37,7 +37,8 @@ pub struct DamageResult {
     /// -1/-1 counters to place on a creature (from wither/infect).
     pub minus_counters: u32,
 
-    /// Excess damage that can go to the defending player (for trample).
+    /// Excess damage (CR 120.10) this combat damage event dealt to a
+    /// permanent, carried onto its Damage trigger event.
     pub excess_damage: u32,
 
     /// Whether the damage source has deathtouch.

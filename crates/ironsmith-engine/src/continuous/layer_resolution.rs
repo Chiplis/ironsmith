@@ -177,13 +177,15 @@ pub(super) fn calculate_with_layers(
         // Apply effects in dependency order
         for effect in sorted_effects {
             if layer == Layer::Ability {
-                apply_ability_counters_through(
-                    object,
-                    &mut chars,
-                    &ability_counters,
-                    &mut next_ability_counter,
-                    Some(effect.timestamp),
-                );
+                if !crate::continuous::is_land_type_rules_text_ability_loss(effect) {
+                    apply_ability_counters_through(
+                        object,
+                        &mut chars,
+                        &ability_counters,
+                        &mut next_ability_counter,
+                        Some(effect.timestamp),
+                    );
+                }
                 prune_ability_gain_prohibitions(&mut chars);
                 calc_guard.update(&chars);
             }
@@ -1774,6 +1776,11 @@ pub(super) fn add_suspected_abilities(
     }
 }
 
+/// Exalted counters compile as a named counter kind (CR 122.1b).
+fn is_exalted_counter(counter_type: CounterType) -> bool {
+    matches!(counter_type, CounterType::Named(name) if name.eq_ignore_ascii_case("exalted"))
+}
+
 /// Add abilities from ability-granting counters (deathtouch counter, flying counter, etc.).
 ///
 /// Per MTG rules, counters like "deathtouch counter" grant the ability to the permanent.
@@ -1808,6 +1815,28 @@ fn add_ability_from_counter(
                     crate::target::PlayerFilter::You,
                 ),
             )]),
+        ));
+        return;
+    }
+
+    // CR 122.1b: an exalted counter gives the permanent exalted
+    // (CR 702.83a: "Whenever a creature you control attacks alone, that
+    // creature gets +1/+1 until end of turn").
+    if is_exalted_counter(counter_type) {
+        let attacker_tag = "exalted_attacker";
+        chars.abilities.push(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::attacks_alone(
+                crate::target::ObjectFilter::creature().you_control(),
+            ),
+            crate::resolution::ResolutionProgram::from_effects(vec![
+                crate::effect::Effect::tag_triggering_object(attacker_tag),
+                crate::effect::Effect::pump(
+                    1,
+                    1,
+                    crate::target::ChooseSpec::Tagged(attacker_tag.into()),
+                    crate::effect::Until::EndOfTurn,
+                ),
+            ]),
         ));
         return;
     }
@@ -1863,6 +1892,7 @@ pub(super) fn ability_counter_timestamps(
         .filter(|&(&counter_type, &count)| {
             count > 0
                 && (counter_type == CounterType::Decayed
+                    || is_exalted_counter(counter_type)
                     || counter_type.granted_ability().is_some())
         })
         .map(|(&counter_type, _)| {

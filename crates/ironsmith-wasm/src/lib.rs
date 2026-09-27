@@ -5001,6 +5001,10 @@ impl PregameState {
     }
 
     fn free_mulligan_count(&self) -> u32 {
+        // CR 103.5c / 800.6 / 903.12g: the first mulligan is free in a
+        // multiplayer game and in any Brawl game. A two-player Planechase or
+        // Conspiracy Draft game is an ordinary two-player game. Two-player
+        // Commander keeps the format's free mulligan (a product choice).
         u32::from(
             self.player_count > 2
                 || matches!(
@@ -5011,8 +5015,6 @@ impl PregameState {
                         | MatchFormatInput::SupervillainRumble
                         | MatchFormatInput::ArchenemyCommander
                         | MatchFormatInput::Brawl
-                        | MatchFormatInput::Planechase
-                        | MatchFormatInput::ConspiracyDraft
                 ),
         )
     }

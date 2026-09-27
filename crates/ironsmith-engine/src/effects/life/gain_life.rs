@@ -5,7 +5,6 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
 use crate::effects::{CostExecutableEffect, CostValidationError, ExecutionContext, ExecutionError};
 use crate::events::LifeGainEvent;
-use crate::events::processing::process_life_gain_with_event;
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
@@ -42,8 +41,14 @@ impl EffectExecutor for GainLifeEffect {
         let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
         let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
 
-        // Process through replacement effects and check "can't gain life"
-        let final_amount = process_life_gain_with_event(game, player_id, amount);
+        // Process through replacement effects and check "can't gain life".
+        // CR 616.1: the gaining player orders tied life-gain replacements.
+        let final_amount = crate::events::processing::process_life_gain_with_event_with_dm(
+            game,
+            player_id,
+            amount,
+            &mut *ctx.decision_maker,
+        );
 
         if final_amount > 0 {
             game.gain_life(player_id, final_amount);
@@ -114,7 +119,12 @@ impl crate::effects::SimultaneousEffectProposal for GainLifeProposal {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let final_amount = process_life_gain_with_event(game, self.player, self.amount);
+        let final_amount = crate::events::processing::process_life_gain_with_event_with_dm(
+            game,
+            self.player,
+            self.amount,
+            &mut *ctx.decision_maker,
+        );
         if final_amount > 0 {
             game.gain_life(self.player, final_amount);
             let mut event = TriggerEvent::new_with_provenance(

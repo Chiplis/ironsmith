@@ -477,6 +477,7 @@ impl EffectExecutor for RetargetStackObjectEffect {
                             continue;
                         }
                         game.stack[stack_idx] = updated_entry;
+                        game.refresh_cast_spell_lki_for_stack_index(stack_idx);
                         changed += 1;
                         let final_targets = game.stack[stack_idx].targets.clone();
                         game.drop_pending_stale_becomes_targeted_events(
@@ -599,6 +600,7 @@ impl EffectExecutor for RetargetStackObjectEffect {
                         updated_entry.targets[chosen_idx] = fixed_target;
                         if updated_entry.remap_target_distributions(&old_targets) {
                             game.stack[stack_idx] = updated_entry;
+                            game.refresh_cast_spell_lki_for_stack_index(stack_idx);
                             changed += 1;
                             let final_targets = game.stack[stack_idx].targets.clone();
                             game.drop_pending_stale_becomes_targeted_events(

@@ -6,7 +6,6 @@ use crate::effects::helpers::{resolve_single_object_for_effect, resolve_tagged_o
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::other::{ConvertedEvent, TransformedEvent};
 use crate::game_state::GameState;
-use crate::static_abilities::StaticAbilityId;
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
@@ -143,9 +142,10 @@ fn execute_transform_like_action(
     if target.zone != Zone::Battlefield {
         return Ok(EffectOutcome::resolved());
     }
+    // CR 702.145b/e: only a permanent that currently has daybound/nightbound
+    // (layer 6) is restricted to transforming via day/night.
     if matches!(action, TransformLikeAction::Transform)
-        && (target.has_static_ability_id(StaticAbilityId::Daybound)
-            || target.has_static_ability_id(StaticAbilityId::Nightbound))
+        && game.permanent_has_day_or_nightbound(target_id)
     {
         return Ok(EffectOutcome::resolved());
     }
