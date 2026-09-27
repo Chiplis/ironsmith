@@ -1,3 +1,4 @@
+import { ziffleInputDeckFields } from "../../lib/ziffle-private-epochs.js";
 import useUiText from "@/i18n/useUiText";
 import { cloneElement, isValidElement, useRef, useState } from "react";
 import {
@@ -156,10 +157,12 @@ export default function VerifyMatchSheet({
       keyContext: String(proof.keyContext || proof.context || ""),
       keys: proof.keys || [],
       steps: proof.steps || [],
+      ...ziffleInputDeckFields(proof),
     });
     if (String(verified.deckHash || "") !== String(proof.deckHash || "")) {
       throw new Error(`Ziffle shuffle proof mismatch for player ${Number(proof.owner) + 1}`);
     }
+    return verified;
   };
 
   const verifyExportedZiffleOpening = async ({ proof, ceremony }) => {
@@ -172,6 +175,7 @@ export default function VerifyMatchSheet({
       keyContext: String(ceremony.keyContext || ceremony.context || ""),
       keys: ceremony.keys || [],
       steps: ceremony.steps || [],
+      ...ziffleInputDeckFields(ceremony),
       cardPosition: Number(proof.position),
       tokens: proof.tokens || [],
     });

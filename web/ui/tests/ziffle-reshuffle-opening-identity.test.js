@@ -1,3 +1,4 @@
+import { isPrivateZiffleEpoch, ziffleInputDeckFields } from "../src/lib/ziffle-private-epochs.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -39,6 +40,7 @@ async function harness({ metadata = true, ordered = true } = {}) {
   const nestedCeremonies = new Map();
   const calls = [];
   const context = {
+    isPrivateZiffleEpoch, ziffleInputDeckFields,
     useCallback: fn => fn,
     normalizeShuffleOrder: order => Array.isArray(order) ? order.map(Number) : [],
     cloneMultiplayerPayload: structuredClone,

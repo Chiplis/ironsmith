@@ -1186,6 +1186,7 @@ fn crypto_audit_journal_records_library_shuffle() {
                 player,
                 before_order: recorded_before,
                 after_order: recorded_after,
+                input_commitments: _,
                 random_count_before,
                 random_count_after,
             } if *player == alice
@@ -2549,4 +2550,154 @@ fn clearing_goad_ends_prior_sources_but_allows_later_goad() {
         .continuous_effects
         .record_attachment(source);
     assert_eq!(game.active_goaders_for(target), [bob].into_iter().collect());
+}
+
+#[test]
+fn verified_library_epoch_forgets_old_identity_and_aliases() {
+    let mut game = GameState::new(vec!["Alice".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let old = (0..3).map(|slot| game.create_hidden_card_placeholder(
+        alice, Zone::Library, slot, format!("ziffle:old:{slot}"),
+    )).collect::<Vec<_>>();
+    let old_stable = old.iter().map(|id| game.object(*id).unwrap().stable_id).collect::<HashSet<_>>();
+    let definition = CardDefinitionBuilder::new(CardId::from_raw(120_001), "Previously Known")
+        .card_types(vec![CardType::Land]).build();
+    game.reveal_hidden_card_with_definition(old[0], &definition).unwrap();
+    game.queue_verified_hidden_library_epoch(alice, "fresh".into(), 3, 0,
+        Some((0..3).map(|slot| format!("ziffle:old:{slot}")).collect())).unwrap();
+    game.shuffle_player_library(alice);
+    assert!(game.verified_hidden_library_epoch_error().is_none());
+    for (position, id) in game.player(alice).unwrap().library.iter().enumerate() {
+        let info = game.hidden_card_info(*id).unwrap();
+        assert_eq!(info.origin_commitment.as_deref(), Some(format!("ziffle:fresh:{position}").as_str()));
+        assert!(!old.contains(id), "verified shuffle must retire old object IDs");
+        assert!(!old_stable.contains(&game.object(*id).unwrap().stable_id));
+        assert!(game.object(*id).unwrap().card.is_none());
+    }
+    for id in old {
+        assert!(game.object(id).is_none());
+        assert!(game.hidden_card_info(id).is_none());
+        assert!(game.current_object_id_after_zone_change(id).is_none());
+    }
+}
+
+#[test]
+fn verified_library_epoch_replays_shuffle_draw_and_repeated_insert_without_aliases() {
+    let mut game = GameState::new(vec!["Alice".into()], 20);
+    let alice = PlayerId::from_index(0);
+    for slot in 0..3 {
+        game.create_hidden_card_placeholder(alice, Zone::Library, slot, format!("ziffle:old:{slot}"));
+    }
+    game.queue_verified_hidden_library_epoch(alice, "first".into(), 3, 0, None).unwrap();
+    let mut replay = game.clone();
+    game.shuffle_player_library(alice);
+    replay.shuffle_player_library(alice);
+    let first_ids = game.player(alice).unwrap().library.to_vec();
+    assert_eq!(replay.player(alice).unwrap().library.to_vec(), first_ids);
+    let drawn = game.draw_cards(alice, 1)[0];
+    assert_eq!(replay.draw_cards(alice, 1), vec![drawn]);
+    assert_eq!(game.hidden_card_info(drawn).unwrap().public_commitment.as_deref(), Some("ziffle:first:2"));
+    assert_eq!(game.object(drawn).unwrap().stable_id, StableId::from(first_ids[2]));
+    let returned = game.move_object_by_game_rule(drawn, Zone::Library).unwrap();
+    game.queue_verified_hidden_library_epoch(alice, "second".into(), 3, 1,
+        Some((0..3).map(|slot| format!("ziffle:first:{slot}")).collect())).unwrap();
+    game.shuffle_player_library(alice);
+    assert!(game.verified_hidden_library_epoch_error().is_none());
+    for old in first_ids.into_iter().chain([drawn, returned]) {
+        assert!(game.current_object_id_after_zone_change(old).is_none());
+        assert!(game.hidden_card_info(old).is_none());
+    }
+    for info in game.hidden_card_entries().map(|(_, info)| info) {
+        assert!(info.commitment.starts_with("ziffle:second:"));
+        assert!(info.origin_commitment.as_ref().unwrap().starts_with("ziffle:second:"));
+    }
+}
+
+#[test]
+fn verified_library_epoch_keeps_tutor_exclusion_and_reinsertion() {
+    let mut game = GameState::new(vec!["Alice".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let old = (0..3).map(|slot| game.create_hidden_card_placeholder(
+        alice, Zone::Library, slot, format!("ziffle:old:{slot}"),
+    )).collect::<Vec<_>>();
+    let chosen = old[1];
+    game.queue_verified_hidden_library_epoch(alice, "tutor".into(), 2, 0,
+        Some(vec!["ziffle:old:0".into(), "ziffle:old:2".into()])).unwrap();
+    assert!(game.shuffle_library_except_then_insert_from_top(alice, &[chosen], 1, "tutor"));
+    assert!(game.verified_hidden_library_epoch_error().is_none());
+    assert_eq!(game.player(alice).unwrap().library.last(), Some(&chosen));
+    assert_eq!(game.hidden_card_info(chosen).unwrap().commitment, "ziffle:old:1");
+    for position in 0..2 {
+        let id = game.player(alice).unwrap().library[position];
+        assert!(!old.contains(&id));
+        assert_eq!(game.hidden_card_info(id).unwrap().commitment, format!("ziffle:tutor:{position}"));
+    }
+}
+
+#[test]
+fn verified_library_epoch_rejects_wrong_ciphertext_set_without_fallback() {
+    for (count, inputs) in [(2, None), (3, Some(vec!["ziffle:old:0".into(), "ziffle:old:1".into(), "ziffle:other:2".into()]))] {
+        let mut game = GameState::new(vec!["Alice".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let old = (0..3).map(|slot| game.create_hidden_card_placeholder(
+            alice, Zone::Library, slot, format!("ziffle:old:{slot}"),
+        )).collect::<Vec<_>>();
+        game.queue_verified_hidden_library_epoch(alice, "invalid".into(), count, 0, inputs).unwrap();
+        game.shuffle_player_library(alice);
+        assert!(game.verified_hidden_library_epoch_error().is_some());
+        assert_eq!(game.player(alice).unwrap().library.to_vec(), old);
+        assert_eq!(game.hidden_card_entries().count(), 3);
+    }
+}
+
+#[test]
+fn verified_library_epoch_singleton_rotates_identity_and_empty_epoch_is_valid() {
+    for count in 0..2 {
+        let mut game = GameState::new(vec!["Alice".into()], 20);
+        let alice = PlayerId::from_index(0);
+        for slot in 0..count {
+            game.create_hidden_card_placeholder(alice, Zone::Library, slot as u16, format!("ziffle:old:{slot}"));
+        }
+        let old = game.player(alice).unwrap().library.to_vec();
+        game.queue_verified_hidden_library_epoch(alice, "small".into(), count, 0, None).unwrap();
+        game.shuffle_player_library(alice);
+        assert!(game.verified_hidden_library_epoch_error().is_none());
+        assert_eq!(game.player(alice).unwrap().library.len(), count);
+        assert!(game.player(alice).unwrap().library.iter().all(|id| !old.contains(id)));
+    }
+}
+
+#[test]
+fn verified_library_epoch_private_replay_openings_wait_for_their_zone_or_view() {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let definition = CardDefinitionBuilder::new(CardId::from_raw(120_002), "Private land")
+        .card_types(vec![CardType::Land]).build();
+    for zone in [Zone::Hand, Zone::Library] {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        for slot in 0..3 {
+            game.create_hidden_card_placeholder(alice, Zone::Library, slot, format!("ziffle:old:{slot}"));
+        }
+        game.queue_verified_hidden_library_epoch(alice, "private".into(), 3, 0, None).unwrap();
+        let info = HiddenCardInfo {
+            owner: alice, zone, slot: 7, commitment: "manifest:7".into(),
+            origin_slot: Some(2), origin_commitment: Some("ziffle:private:2".into()),
+            public_slot: Some(2), public_commitment: Some("ziffle:private:2".into()),
+        };
+        assert!(game.queue_verified_hidden_library_replay_opening(&info, &definition, alice).unwrap());
+        game.shuffle_player_library(alice);
+        let top = *game.player(alice).unwrap().library.last().unwrap();
+        assert!(game.is_hidden_card_placeholder(top), "a private identity must not be installed at shuffle time");
+        if zone == Zone::Hand {
+            let drawn = game.draw_cards(alice, 1)[0];
+            assert_eq!(game.object(drawn).unwrap().name, "Private land");
+            assert_eq!(game.hidden_card_info(drawn).unwrap().origin_commitment.as_deref(), Some("ziffle:private:2"));
+        } else {
+            game.hydrate_verified_library_replay_view(&[top], &[bob], false);
+            assert!(game.is_hidden_card_placeholder(top), "an unrelated private view must not hydrate the card");
+            game.hydrate_verified_library_replay_view(&[top], &[alice], false);
+            assert_eq!(game.object(top).unwrap().name, "Private land");
+            assert!(game.player(alice).unwrap().library.iter().take(2).all(|id| game.is_hidden_card_placeholder(*id)));
+        }
+    }
 }

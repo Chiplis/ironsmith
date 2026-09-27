@@ -1,0 +1,24 @@
+[package]
+name        = "ziffle"
+version     = "0.1.0"
+edition     = "2024"
+authors     = ["Chris Ricketts <chris_ricketts@proton.me>"]
+description = "Mental poker library implementing Bayer-Groth 2012 shuffle proofs for multi-party card shuffling without a trusted dealer"
+repository  = "https://github.com/v26-solutions/ziffle"
+license     = "MIT OR Apache-2.0"
+categories  = ["cryptography", "game-development", "mathematics", "no-std", "no-std::no-alloc"]
+keywords    = ["mental-poker", "arkworks", "bayer-groth", "elgamal", "shuffle"]
+readme      = "README.md"
+include     = ["src/**/*", "LICENSE-*", "README.md"]
+
+[dependencies]
+ark-ec        = { version = "0.5.0", default-features = false }
+ark-ff        = { version = "0.5.0", default-features = false }
+ark-secp256k1 = { version = "0.5.0", default-features = false }
+ark-serialize = { version = "0.5.0", default-features = false }
+ark-std       = { version = "0.5.0", default-features = false }
+sha2          = { version = "0.10.9", default-features = false }
+zeroize       = { version = "1.8.2", default-features = false, features = ["derive"] }
+
+[dev-dependencies]
+rand = "0.8.0"

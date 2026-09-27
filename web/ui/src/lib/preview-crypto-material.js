@@ -5,6 +5,12 @@ export function previewCryptoRequirementsWithMaterial(game, command, material) {
   const handle = game.createRuntimeSavepoint();
   try {
     game.injectTranscriptRandomSeeds(material);
+    for (const epoch of material.libraryEpochs || []) {
+      game.queueVerifiedHiddenLibraryEpoch(epoch);
+    }
+    for (const opening of material.libraryEpochOpenings || []) {
+      game.queueVerifiedHiddenLibraryOpening(opening);
+    }
     return game.previewCryptoRequirements(command);
   } finally {
     try {

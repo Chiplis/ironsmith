@@ -1,3 +1,4 @@
+import { acceptedZiffleEpochs, assertZiffleEpochInputs, assertZiffleEpochVerification, isPrivateZiffleEpoch, ziffleEpochMaterial, ziffleInputDeckFields } from "../src/lib/ziffle-private-epochs.js";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { ziffleOriginAnchorFromOpening, ziffleOriginAnchorFromMetadata } from '../src/lib/multiplayer-audit.js';
@@ -35,7 +36,7 @@ export const shuffleProof = requirement => ({ owner: requirement.owner, zone: re
   afterOrder: requirement.afterOrder || requirement.after_order,
   steps: [{ deckHex: 'shuffled', proofHex: 'valid' }] });
 export function authorizationHarness({ requirements = [], stored = [], checkpoint = { objects: [] },
-  visible = [], lastSequence = 7, previewError = false, decisionPlayer = 0, pending = new Map(), materialRequirements = requirements, disclosureRequirements = [], disclosureDue = false } = {}) {
+  visible = [], lastSequence = 7, previewError = false, decisionPlayer = 0, pending = new Map(), materialRequirements = requirements, disclosureRequirements = [], disclosureDue = false, match = { protocolVersion: 14 }, history = [], overrides = {} } = {}) {
   const command = { type: 'priority_action', action_ref: { kind: 'pass_priority' } };
   const metadata = id => {
     const object = checkpoint.objects.find(value => Number(value.id) === Number(id));
@@ -43,6 +44,10 @@ export function authorizationHarness({ requirements = [], stored = [], checkpoin
   };
   const materialCalls = [];
   const context = {
+    isPrivateZiffleEpoch, ziffleInputDeckFields, assertZiffleEpochInputs, assertZiffleEpochVerification, ziffleEpochMaterial,
+    acceptedEpochsForProof: (owner, _seq, preceding) => acceptedZiffleEpochs(match, history, owner, preceding),
+    rememberLocalZiffleCeremonyForLookup: () => {},
+    matchStartPayloadRef: { current: match },
     ziffleOriginAnchorFromOpening, ziffleOriginAnchorFromMetadata,
     currentAuditMatchId: () => 'match',
     disclosureDueForPlayer: () => disclosureDue, stateRef: { current: {} },
@@ -56,7 +61,9 @@ export function authorizationHarness({ requirements = [], stored = [], checkpoin
       endOfMatchDisclosureRequirements: async () => disclosureRequirements,
       ziffleVerifyShuffle: async input => {
         if (input.steps?.[0]?.proofHex !== 'valid') throw new Error('Invalid shuffle proof');
-        return { deckHash: input.steps[0].deckHex };
+        return { deckHash: input.steps[0].deckHex, deckCount: input.deckCount,
+          ...(input.inputDeck ? { rootDeckHash: input.inputDeck.epochs[0].steps.at(-1).deckHex,
+            rootContext: input.inputDeck.epochs[0].context, universeCount: input.inputDeck.universeCount } : {}) };
       },
       previewCryptoRequirementsWithMaterial: async (command, material) => { materialCalls.push({ command, material }); return materialRequirements; },
       uiState: async () => ({ decision: { kind: 'priority', player: decisionPlayer } }) } },
@@ -79,6 +86,7 @@ export function authorizationHarness({ requirements = [], stored = [], checkpoin
     auditStateHashRef: { current: 'head' }, INITIAL_AUDIT_STATE_HASH: 'initial',
     previewRequirementsForCommand: async () => { if (previewError) throw new Error('Concealed card'); return requirements; },
     toErrorMessage: error => error.message,
+    ...overrides,
   };
   const api = new Function(...Object.keys(context), body)(...Object.values(context));
   const message = { actionAuthorization: { matchId: 'match', seq: 8, requesterIndex: 0, actorIndex: 0,

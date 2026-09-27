@@ -1113,27 +1113,6 @@ export function usePeerLobby({
         }
         updateLocalActionProgress({
           kind: "local_payload",
-          operation: "Building local shuffle proofs",
-          detail: `${cryptoRequirements.length} requirement${cryptoRequirements.length === 1 ? "" : "s"}`,
-        }, "payload_generation");
-        let shuffleProofs = await timePeerSyncPhase(
-          "submit_action:build_local_shuffle_proofs",
-          {
-            ...submitPerf,
-            requirements: summarizeCryptoRequirementsForPerf(cryptoRequirements),
-          },
-          () => buildLocalShuffleProofsForRequirements(
-            cryptoRequirements,
-            nextSequence
-          )
-        );
-        recordPeerSyncPerf("submit_action:build_local_shuffle_proofs:summary", {
-          ...submitPerf,
-          shuffle_proofs: Array.isArray(shuffleProofs) ? shuffleProofs.length : 0,
-          bytes: payloadSizeBytes(shuffleProofs),
-        });
-        updateLocalActionProgress({
-          kind: "local_payload",
           operation: "Building random reveals",
           detail: `${cryptoRequirements.length} requirement${cryptoRequirements.length === 1 ? "" : "s"}`,
         }, "payload_generation");
@@ -1160,6 +1139,39 @@ export function usePeerLobby({
           rng_reveals: Array.isArray(rngReveals) ? rngReveals.length : 0,
           bytes: payloadSizeBytes(rngReveals),
         });
+        // Agree on randomness before proving any shuffle reached through a
+        // random branch; the provisional preview may take a different branch.
+        if (rngReveals.length > 0) {
+          await injectCryptoMaterialForRequirements(
+            cryptoRequirements.filter(requirement => requirement.type === "fair_random"),
+            { rngReveals }, { randomnessOnly: true });
+          cryptoRequirements = filterCryptoRequirementsForCommand(command, preSubmitState,
+            freshCryptoRequirementsForSequence(nextSequence, await previewRequirementsForCommand(command)));
+          rememberActionCryptoRequirements(nextSequence, cryptoRequirements, { replace: true });
+          requestRemoteCryptoPreview = shouldRequestRemoteCryptoPreview(command, preSubmitState, cryptoRequirements);
+        }
+        updateLocalActionProgress({
+          kind: "local_payload",
+          operation: "Building local shuffle proofs",
+          detail: `${cryptoRequirements.length} requirement${cryptoRequirements.length === 1 ? "" : "s"}`,
+        }, "payload_generation");
+        let shuffleProofs = await timePeerSyncPhase(
+          "submit_action:build_local_shuffle_proofs",
+          {
+            ...submitPerf,
+            requirements: summarizeCryptoRequirementsForPerf(cryptoRequirements),
+          },
+          () => buildLocalShuffleProofsForRequirements(
+            cryptoRequirements,
+            nextSequence,
+            { command }
+          )
+        );
+        recordPeerSyncPerf("submit_action:build_local_shuffle_proofs:summary", {
+          ...submitPerf,
+          shuffle_proofs: Array.isArray(shuffleProofs) ? shuffleProofs.length : 0,
+          bytes: payloadSizeBytes(shuffleProofs),
+        });
         let actionCryptoOptions = {
           command,
           seq: nextSequence,
@@ -1170,6 +1182,7 @@ export function usePeerLobby({
           actionIntent: signedActionIntent,
           requirements: cryptoRequirements,
           shuffleProofs,
+          rngReveals,
           uiState: preSubmitState,
           updateState: false,
         };
@@ -1183,7 +1196,6 @@ export function usePeerLobby({
           },
           () => injectCryptoMaterialForRequirements(cryptoRequirements, {
             shuffleProofs,
-            rngReveals,
           }, { ...actionCryptoOptions, randomnessOnly: shuffleProofs.length > 0 })
         );
         if (shuffleProofs.length > 0) {
@@ -1233,6 +1245,8 @@ export function usePeerLobby({
               seq: nextSequence,
               actorIndex: session.localPlayerIndex,
               requestPreview: requestRemoteCryptoPreview,
+              shuffleProofs,
+              rngReveals,
               prevStateHash: preActionStateHash,
               publicCheckpointHash: preActionPublicCheckpointHash,
               actionIntent: signedActionIntent,
@@ -1260,7 +1274,7 @@ export function usePeerLobby({
             updateState: false,
           })
         );
-        const preOpenings = await timePeerSyncPhase(
+        let preOpenings = await timePeerSyncPhase(
           "submit_action:build_local_openings_pre",
           {
             ...submitPerf,
@@ -1294,6 +1308,43 @@ export function usePeerLobby({
           shuffleProofs,
           updateState: false,
         });
+        // Hydrating a future public card can expose another shuffle (for
+        // example a shuffle replacement during mill). Finish that protocol
+        // work before executing any part of the authoritative command.
+        for (let pass = 0; pass < 256; pass++) {
+          const refreshed = filterCryptoRequirementsForCommand(command, preSubmitState,
+            freshCryptoRequirementsForSequence(nextSequence, await previewRequirementsForCommand(command)));
+          const missing = missingShuffleRequirements(refreshed, shuffleProofs);
+          if (!missing.length) {
+            cryptoRequirements = refreshed;
+            break;
+          }
+          if (pass === 255) throw new Error("Action exceeded the private shuffle epoch limit");
+          const nextProofs = await buildLocalShuffleProofsForRequirements([missing[0]], nextSequence,
+            { command, precedingProofs: shuffleProofs });
+          shuffleProofs = mergeShuffleProofs(shuffleProofs, nextProofs);
+          await injectCryptoMaterialForRequirements([missing[0]], { shuffleProofs, rngReveals },
+            { ...actionCryptoOptions, randomnessOnly: true });
+          cryptoRequirements = filterCryptoRequirementsForCommand(command, preSubmitState,
+            freshCryptoRequirementsForSequence(nextSequence, await previewRequirementsForCommand(command)));
+          rememberActionCryptoRequirements(nextSequence, cryptoRequirements, { replace: true });
+          actionCryptoOptions = { ...actionCryptoOptions, requirements: cryptoRequirements, shuffleProofs,
+            openings: mergeAuditOpenings(preOpenings, remoteCryptoMaterial.openings || []) };
+          const additionalRemote = await collectRemoteCryptoMaterialForRequirements(cryptoRequirements, {
+            ...actionCryptoOptions, requestPreview: true,
+            publicCheckpointHash: preActionPublicCheckpointHash,
+          });
+          remoteCryptoMaterial = { ...remoteCryptoMaterial,
+            openings: mergeAuditOpenings(remoteCryptoMaterial.openings || [], additionalRemote.openings || []),
+            privateViewProofs: [...(remoteCryptoMaterial.privateViewProofs || []), ...(additionalRemote.privateViewProofs || [])] };
+          const additionalLocal = await buildLocalRequirementOpeningsForRequirements(
+            cryptoRequirements.filter(requirement => requirement.timing === "pre"),
+            { ...actionCryptoOptions, timing: "pre", onOpeningBuilt: previewBuiltLocalOpening });
+          preOpenings = mergeAuditOpenings(preOpenings, additionalLocal);
+          await revealAuditOpenings(mergeAuditOpenings(preOpenings, remoteCryptoMaterial.openings || []), {
+            ...actionCryptoOptions, timing: "pre", updateState: false,
+          });
+        }
         const publishAppliedStateImmediately = false;
         const expectedPreviousSequence = nextSequence - 1;
         const latestAppliedSequenceBeforeApply = Number(multiplayerRef.current.lastAppliedSequence || 0);
@@ -1395,6 +1446,9 @@ export function usePeerLobby({
           appliedRequirements,
           shuffleProofs
         );
+        if (postShuffleRequirements.length > 0 && Number(matchStartPayloadRef.current?.protocolVersion) >= 15) {
+          throw new Error("A private shuffle was not prepared before command execution");
+        }
         if (postShuffleRequirements.length > 0) {
           const postShuffleProofs = await timePeerSyncPhase(
             "submit_action:build_local_post_shuffle_proofs",
@@ -1477,6 +1531,7 @@ export function usePeerLobby({
             actionIntent: signedActionIntent,
             requirements: [...cryptoRequirements, ...appliedRequirements],
             shuffleProofs,
+            rngReveals,
             updateState: false,
           })
         );
@@ -1513,6 +1568,9 @@ export function usePeerLobby({
                 command,
                 seq: nextSequence,
                 actorIndex: session.localPlayerIndex,
+                shuffleProofs,
+                rngReveals,
+                openings: mergeAuditOpenings(preOpenings, remoteCryptoMaterial.openings || []),
                 prevStateHash: preActionStateHash,
                 publicCheckpointHash: await ensurePreActionPublicCheckpointHash(),
                 actionIntent: await ensureSignedActionIntent(),

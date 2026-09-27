@@ -234,6 +234,12 @@ impl GameState {
             .transcript_library_shuffle_orders
             .borrow()
             .clone();
+        *restarted.runtime_cache.verified_hidden_library_epochs.borrow_mut() =
+            self.runtime_cache.verified_hidden_library_epochs.borrow().clone();
+        *restarted.runtime_cache.verified_hidden_library_epoch_error.borrow_mut() =
+            self.runtime_cache.verified_hidden_library_epoch_error.borrow().clone();
+        *restarted.runtime_cache.verified_hidden_replay_openings.borrow_mut() =
+            self.runtime_cache.verified_hidden_replay_openings.borrow().clone();
         *restarted.runtime_cache.hidden_info_audit_log.borrow_mut() =
             self.runtime_cache.hidden_info_audit_log.borrow().clone();
 

@@ -1,3 +1,4 @@
+import { acceptedZiffleEpochs, assertZiffleEpochInputs, ziffleEpochMaterial } from "./ziffle-private-epochs.js";
 import {
   importAuditPublicKey,
   publicCheckpointHash,
@@ -14,6 +15,7 @@ import { captureEngineRestorePoint, restoreEngineRestorePoint } from "./engine-r
 import { findZiffleDisclosureOrigin, ziffleDisclosureDueForPlayer } from "./ziffle-disclosure-origin.js";
 
 const DEFAULT_OPENING_HAND_SIZE = 7;
+const privateReplayHistories = new WeakMap();
 
 function clonePayload(value) {
   if (value == null) return value;
@@ -158,7 +160,7 @@ function seedEntriesForRequirements(requirements = [], audit = {}) {
       const proof = shuffleProofs.find((entry) =>
         !usedProofs.has(entry) && shuffleProofMatchesRequirement(entry, requirement)
       );
-      if (proof?.deckHash) {
+      if (proof?.deckHash && !proof.inputDeck) {
         usedProofs.add(proof);
         seeds.push(String(proof.deckHash));
       }
@@ -178,7 +180,7 @@ function seedEntriesForRequirements(requirements = [], audit = {}) {
 function fallbackSeedEntries(audit = {}) {
   const seeds = [];
   for (const proof of audit.shuffleProofs || []) {
-    if (proof?.deckHash) seeds.push(String(proof.deckHash));
+    if (proof?.deckHash && !proof.inputDeck) seeds.push(String(proof.deckHash));
   }
   for (const reveal of audit.rngReveals || []) {
     if (reveal?.combinedSeedHex) seeds.push(String(reveal.combinedSeedHex));
@@ -321,7 +323,7 @@ async function revealAuditOpenings(game, openings = [], timing = null) {
 }
 
 function proofWithRequirementOrder(proof, requirement) {
-  if (!proof || !requirement) return proof;
+  if (!proof || !requirement || proof.inputDeck) return proof;
   const beforeOrder = normalizeShuffleOrder(requirement.beforeOrder ?? requirement.before_order);
   const afterOrder = normalizeShuffleOrder(requirement.afterOrder ?? requirement.after_order);
   if (beforeOrder.length === 0 && afterOrder.length === 0) return proof;
@@ -378,7 +380,7 @@ function alignShuffleProofsWithRequirements(shuffleProofs = [], requirements = [
 
 async function applyVerifiedShuffleProofs(game, shuffleProofs = [], requirements = []) {
   const proofs = alignShuffleProofsWithRequirements(shuffleProofs, requirements)
-    .filter((proof) => String(proof?.zone || "library") === "library");
+    .filter((proof) => !proof.inputDeck && String(proof?.zone || "library") === "library");
   if (proofs.length === 0) return;
   const applyShuffle = optionalGameMethod(game, "applyVerifiedHiddenLibraryShuffle");
   if (!applyShuffle) {
@@ -466,6 +468,7 @@ export async function startAuditTranscriptReplayWithGame({
   const match = transcript.match || {};
   const startMatch = requiredGameMethod(game, "startMatch");
   await startMatch(replayMatchConfig(match));
+  privateReplayHistories.set(game, { match, actions: [] });
   const setPerspective = optionalGameMethod(game, "setPerspective");
   if (setPerspective) {
     await setPerspective(normalizedPerspective(perspectiveIndex, match));
@@ -490,6 +493,67 @@ export async function startAuditTranscriptReplayWithGame({
   };
 }
 
+function futurePrivateOpeningProof(opening, proofs = []) {
+  const positionCommitment = String(opening?.positionCommitment || opening?.position_commitment || "");
+  return proofs.find(proof => proof.inputDeck && Number(proof.owner) === Number(opening.owner)
+    && positionCommitment === `ziffle:${proof.deckHash}:${Number(opening.position)}`);
+}
+
+async function queuePrivateReplayEpochs(game, command, initialRequirements, audit) {
+  const privateProofs = (audit.shuffleProofs || []).filter(proof => proof.inputDeck);
+  const history = privateReplayHistories.get(game);
+  const requiresPrivateProofs = Number(history?.match?.protocolVersion) >= 15;
+  if (privateProofs.length === 0) {
+    if (requiresPrivateProofs && initialRequirements.some(entry => requirementType(entry) === "verifiable_shuffle")) {
+      throw new Error("Private replay is missing a required shuffle proof");
+    }
+    return initialRequirements;
+  }
+  if (!history) throw new Error("Private replay is missing its signed initial deck history");
+  const queueEpoch = requiredGameMethod(game, "queueVerifiedHiddenLibraryEpoch");
+  const preceding = [];
+  let requirements = initialRequirements;
+  for (const proof of privateProofs) {
+    const requirement = requirements.find(entry => requirementType(entry) === "verifiable_shuffle"
+      && shuffleProofMatchesRequirement(proof, entry));
+    if (!requirement || Number(requirement.owner) !== Number(proof.owner)) {
+      throw new Error("Private replay shuffle is not required by the local engine");
+    }
+    const accepted = acceptedZiffleEpochs(history.match, history.actions, proof.owner, preceding);
+    const inputs = assertZiffleEpochInputs(proof, requirement, accepted);
+    await queueEpoch(ziffleEpochMaterial(proof, requirement, inputs));
+    requirements = await previewCryptoRequirements(game, command);
+    let queuedOpening = false;
+    for (const opening of audit.openings || []) {
+      if (String(opening?.timing || "pre") !== "pre" || futurePrivateOpeningProof(opening, [proof]) !== proof) continue;
+      const authorized = requirements.some(entry => requirementType(entry) === "public_open"
+        && Number(entry.owner) === Number(opening.owner)
+        && Number(entry.publicSlot ?? entry.public_slot ?? entry.slot) === Number(opening.position)
+        && String(entry.publicCommitment || entry.public_commitment || entry.commitment || "") === String(opening.positionCommitment));
+      if (!authorized) throw new Error("Future replay opening is not required for public disclosure");
+      const origin = ziffleOriginAnchorFromOpening(opening);
+      if (!origin || origin.originPosition !== Number(opening.position)
+        || origin.originPositionCommitment !== String(opening.positionCommitment)) {
+        throw new Error("Future replay opening is not bound to its new ciphertext position");
+      }
+      await requiredGameMethod(game, "queueVerifiedHiddenLibraryOpening")({
+        owner: Number(opening.owner), deckHash: String(proof.deckHash),
+        position: Number(opening.position), cardName: String(opening.card),
+        originalSlot: Number(opening.slot), commitment: String(opening.commitment || ""),
+      });
+      queuedOpening = true;
+    }
+    preceding.push(proof);
+    if (queuedOpening) requirements = await previewCryptoRequirements(game, command);
+  }
+  if (requirements.some(entry => requirementType(entry) === "verifiable_shuffle"
+    && !preceding.some(proof => Number(proof.owner) === Number(entry.owner)
+      && shuffleProofMatchesRequirement(proof, entry)))) {
+    throw new Error("Private replay is missing a shuffle proof discovered after opening its source cards");
+  }
+  return requirements;
+}
+
 export async function applyAuditReplayActionWithGame({
   game,
   action,
@@ -501,19 +565,22 @@ export async function applyAuditReplayActionWithGame({
   let command = resolveSyncedCommand(action?.command || audit.command);
   // Public replay starts with concealed hands. Reveal authenticated pre-action
   // cards before asking the engine whether a land or spell can be played.
-  await revealAuditOpenings(game, audit.openings || [], "pre");
+  await revealAuditOpenings(game, (audit.openings || []).filter(opening =>
+    !futurePrivateOpeningProof(opening, audit.shuffleProofs || [])), "pre");
   command = await localReplayCommand(game, command);
   let requirements = await previewCryptoRequirements(game, command);
   await injectTranscriptSeeds(game, requirements, audit);
-  if (audit.shuffleProofs?.length || audit.rngReveals?.length) {
+  if ((audit.shuffleProofs || []).some(proof => !proof.inputDeck) || audit.rngReveals?.length) {
     requirements = await previewCryptoRequirements(game, command);
   }
+  requirements = await queuePrivateReplayEpochs(game, command, requirements, audit);
   await dispatchReplayCommand(game, command);
   // Same order as the live actor and peers: reseal verified shuffles first, then
   // reveal post openings against the post-shuffle ceremony.
   await applyVerifiedShuffleProofs(game, audit.shuffleProofs || [], requirements);
   await revealAuditOpenings(game, audit.openings || [], "post");
   const checkpointHash = await currentPublicCheckpointHash(game, cryptoImpl);
+  privateReplayHistories.get(game)?.actions.push(action);
   const uiState = optionalGameMethod(game, "uiState");
   return {
     seq,
@@ -704,6 +771,7 @@ export async function replayAuditTranscriptWithGame({
   // Restore the caller's game losslessly: a sync checkpoint alone would drop
   // continuous effects, delayed triggers and the rest of the rules state.
   const restorePoint = await captureEngineRestorePoint(game);
+  const previousPrivateHistory = privateReplayHistories.get(game);
   let replayError = null;
   let restoreError = null;
   let report = null;
@@ -762,6 +830,8 @@ export async function replayAuditTranscriptWithGame({
     } catch (restoreErr) {
       restoreError = restoreErr;
     }
+    if (previousPrivateHistory) privateReplayHistories.set(game, previousPrivateHistory);
+    else privateReplayHistories.delete(game);
   }
 
   if (replayError) throw replayError;

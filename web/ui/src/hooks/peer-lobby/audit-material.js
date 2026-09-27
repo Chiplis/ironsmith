@@ -1,3 +1,4 @@
+import { isPrivateZiffleEpoch, ziffleInputDeckFields } from "../../lib/ziffle-private-epochs.js";
 import { findZiffleDisclosureOrigin, ziffleDisclosureDueForPlayer } from '../../lib/ziffle-disclosure-origin.js';
 import {
   INITIAL_AUDIT_STATE_HASH,
@@ -87,7 +88,6 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
   const updateMultiplayer = useCallback((...args) => servicesRef.current.updateMultiplayer(...args), [servicesRef]);
   const verifyRngCommitmentEntry = useCallback((...args) => servicesRef.current.verifyRngCommitmentEntry(...args), [servicesRef]);
   const verifyRngRevealEntry = useCallback((...args) => servicesRef.current.verifyRngRevealEntry(...args), [servicesRef]);
-  const verifyZiffleOpeningProofForOpening = useCallback((...args) => servicesRef.current.verifyZiffleOpeningProofForOpening(...args), [servicesRef]);
   const verifyZiffleOpeningCryptographicProof = useCallback((...args) => servicesRef.current.verifyZiffleOpeningCryptographicProof(...args), [servicesRef]);
   const ziffleCeremonyCandidatesForOwner = useCallback((...args) => servicesRef.current.ziffleCeremonyCandidatesForOwner(...args), [servicesRef]);
   const ziffleCeremonyForOwner = useCallback((...args) => servicesRef.current.ziffleCeremonyForOwner(...args), [servicesRef]);
@@ -256,6 +256,13 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
     }
     if (matches.length > 1) throw new Error("Ziffle position has ambiguous immutable origin metadata");
     if (matches[0]) return matches[0];
+    if (options.timing === "pre" && typeof currentGame.pendingVerifiedHiddenLibraryPosition === "function") {
+      const metadata = await currentGame.pendingVerifiedHiddenLibraryPosition({
+        owner, deckHash: ziffleDeckHashFromCommitment(commitment), position,
+      });
+      const anchor = ziffleOriginAnchorFromMetadata(metadata);
+      if (anchor) return { ...anchor, objectId: null, metadata };
+    }
     if (options.endOfMatchDisclosure === true
       && typeof currentGame.uiState === "function"
       && typeof currentGame.endOfMatchDisclosureRequirements === "function") {
@@ -500,6 +507,12 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
       };
     };
     const ceremonyHasObjectOrder = beforeOrder.length > 0 || afterOrder.length > 0;
+    if (isPrivateZiffleEpoch(ceremony) && shuffleOriginalSlotIsVerified && normalizedShuffleOriginalSlot != null) {
+      if (normalizedShuffleOriginalSlot >= Number(ceremony.inputDeck.universeCount)) {
+        throw new Error("Encrypted card revealed a slot outside its original manifest");
+      }
+      return fromSlot(normalizedShuffleOriginalSlot, "verified_ciphertext_epoch", { positionLinked: true });
+    }
     const trustedOrigin = await currentZiffleOriginForOpening({
       owner: normalizedOwner,
       position: normalizedPosition,
@@ -520,6 +533,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
         keyContext: ziffleKeyContextForCeremony(originCeremony),
         keys: cloneMultiplayerPayload(originCeremony.keys || []),
         steps: cloneMultiplayerPayload(originCeremony.steps || []),
+        ...ziffleInputDeckFields(originCeremony),
         cardPosition: trustedOrigin.originPosition,
         tokens,
       });
@@ -577,8 +591,8 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
       return true;
     };
     const verifiedRevealSlot = (() => {
-      // Only the initial shuffle indexes the original manifest. Later shuffles
-      // index their remaining objects and must resolve the object's commitment.
+      // Canonical and authenticated ciphertext epochs reveal original manifest slots.
+      // Legacy object-order ceremonies still need their separate object linkage.
       if (ceremonyHasObjectOrder || !shuffleOriginalSlotIsVerified || normalizedShuffleOriginalSlot == null) {
         return null;
       }
@@ -677,6 +691,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
         keyContext: ziffleKeyContextForCeremony(nestedCeremony),
         keys: cloneMultiplayerPayload(nestedCeremony.keys || []),
         steps: cloneMultiplayerPayload(nestedCeremony.steps || []),
+        ...ziffleInputDeckFields(nestedCeremony),
         cardPosition: nestedPosition,
         tokens,
       });
@@ -954,6 +969,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
         keyContext: ziffleKeyContextForCeremony(ceremony),
         keys: cloneMultiplayerPayload(ceremony.keys || []),
         steps: cloneMultiplayerPayload(ceremony.steps || []),
+        ...ziffleInputDeckFields(ceremony),
         cardPosition: normalizedPosition,
         tokens,
       });
@@ -1280,6 +1296,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
                 keyContext: ziffleKeyContextForCeremony(ceremony),
                 keys: cloneMultiplayerPayload(ceremony.keys || []),
                 steps: cloneMultiplayerPayload(ceremony.steps || []),
+                ...ziffleInputDeckFields(ceremony),
                 cardPosition: Number(zifflePosition),
                 tokens,
               });
@@ -1568,6 +1585,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 	              keyContext: ziffleKeyContextForCeremony(ceremony),
 	              keys: cloneMultiplayerPayload(ceremony.keys || []),
 	              steps: cloneMultiplayerPayload(ceremony.steps || []),
+	              ...ziffleInputDeckFields(ceremony),
 	              cardPosition: position,
 	              tokens,
 		            });
@@ -2046,6 +2064,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 		          keyContext: ziffleKeyContextForCeremony(ceremony),
 		          keys: cloneMultiplayerPayload(ceremony.keys || []),
 		          steps: cloneMultiplayerPayload(ceremony.steps || []),
+		          ...ziffleInputDeckFields(ceremony),
 		          cardPosition: position,
 		          tokens,
 		        });
@@ -2240,6 +2259,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 	                  keyContext: ziffleKeyContextForCeremony(ceremony),
 	                  keys: cloneMultiplayerPayload(ceremony.keys || []),
 	                  steps: cloneMultiplayerPayload(ceremony.steps || []),
+	                  ...ziffleInputDeckFields(ceremony),
 	                  cardPosition: candidatePosition,
 	                  tokens,
 	                });
@@ -2929,6 +2949,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 	            keyContext: ziffleKeyContextForCeremony(ceremony),
 	            keys: cloneMultiplayerPayload(ceremony.keys || []),
 	            steps: cloneMultiplayerPayload(ceremony.steps || []),
+	            ...ziffleInputDeckFields(ceremony),
 	            cardPositions: chunkPositions,
 	            tokens,
 	          });
@@ -2965,6 +2986,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 	            keyContext: ziffleKeyContextForCeremony(ceremony),
 	            keys: cloneMultiplayerPayload(ceremony.keys || []),
 	            steps: cloneMultiplayerPayload(ceremony.steps || []),
+	            ...ziffleInputDeckFields(ceremony),
 	            cardPosition: position,
 	            tokens,
 	          });
@@ -2987,6 +3009,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
         keyContext: ziffleKeyContextForCeremony(ceremony),
         keys: cloneMultiplayerPayload(ceremony.keys || []),
         steps: cloneMultiplayerPayload(ceremony.steps || []),
+        ...ziffleInputDeckFields(ceremony),
         cardPositions: positions,
         tokens,
       });
@@ -3326,7 +3349,19 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
         ) {
           throw new Error("Encrypted private opening targets the wrong viewer key");
         }
-        if (
+        const requiredPositionCommitment = String(requirement.publicCommitment
+          || requirement.public_commitment || requirement.positionCommitment
+          || (ziffleDeckHashFromCommitment(requirement.commitment) ? requirement.commitment : ""));
+        if (Number(matchStartPayloadRef.current?.protocolVersion) >= 15
+          && ziffleDeckHashFromCommitment(requiredPositionCommitment)) {
+          if (String(proof.positionCommitment || "") !== requiredPositionCommitment
+            || Number(proof.position) !== zifflePositionFromCommitment(requiredPositionCommitment)) {
+            throw new Error("Encrypted private opening does not match the required ciphertext position");
+          }
+          if (["slot", "commitment", "requirementId", "card"].some(key => Object.hasOwn(proof, key))) {
+            throw new Error("Encrypted private opening exposes private manifest metadata");
+          }
+        } else if (
           requirement.commitment
           && (proof.positionCommitment || proof.commitment)
           && ![proof.positionCommitment, proof.commitment]
@@ -3593,6 +3628,23 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 	      let openingObjectHiddenLocally = false;
 	      try {
 	        await verifyAuditOpeningsAgainstManifests([opening], options);
+        if (timing === "pre" && typeof currentGame.pendingVerifiedHiddenLibraryPosition === "function") {
+          const commitment = String(opening.positionCommitment || "");
+          const deckHash = ziffleDeckHashFromCommitment(commitment);
+          const position = zifflePositionFromCommitment(commitment);
+          const pending = deckHash && position != null
+            ? await currentGame.pendingVerifiedHiddenLibraryPosition({ owner: Number(opening.owner), deckHash, position })
+            : null;
+          if (pending) {
+            await currentGame.queueVerifiedHiddenLibraryOpening({
+              owner: Number(opening.owner), deckHash, position,
+              originalSlot: Number(opening.slot), cardName: String(opening.card),
+              commitment: String(opening.commitment || ""),
+            });
+            rememberLocalRevealedOpening(opening, { position, positionCommitment: commitment });
+            continue;
+          }
+        }
 	        const openingObjectId = opening.objectId == null ? null : Number(opening.objectId);
 	        let localRevealObjectId =
 	          Number.isSafeInteger(openingObjectId) && openingObjectId > 0

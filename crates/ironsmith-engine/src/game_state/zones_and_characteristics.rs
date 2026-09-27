@@ -1005,6 +1005,7 @@ impl GameState {
             self.auxiliary_tracking_mut()
                 .hidden_cards
                 .insert(new_id, info);
+            self.hydrate_verified_library_replay_zone(new_id, new_zone);
             self.push_hidden_info_operation(HiddenInfoOperation::HiddenMove {
                 owner: audit_info.owner,
                 old_object_id: old_id,

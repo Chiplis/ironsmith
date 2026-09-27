@@ -2394,6 +2394,7 @@ version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5ca0ecfa931c29007047d1bc58e623ab12e5590e8c7cc53200d5202b69266d8a"
 dependencies = [
+ "libc",
  "rand_chacha 0.3.1",
  "rand_core 0.6.4",
 ]
@@ -2454,6 +2455,9 @@ name = "rand_core"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
+dependencies = [
+ "getrandom 0.2.17",
+]
 
 [[package]]
 name = "rand_core"
@@ -3962,14 +3966,13 @@ dependencies = [
 [[package]]
 name = "ziffle"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba79285194a16b02512566a9a64d885567646045b144bb0efeef662001cd83a5"
 dependencies = [
  "ark-ec",
  "ark-ff",
  "ark-secp256k1",
  "ark-serialize",
  "ark-std",
+ "rand 0.8.6",
  "sha2 0.10.9",
  "zeroize",
 ]

@@ -42,7 +42,7 @@ pub(crate) mod value_eval;
 /// Emit card-view events for hidden-zone objects before their identities are
 /// exposed through a decision prompt or temporary inspection window.
 pub(crate) fn view_hidden_candidate_objects(
-    game: &GameState,
+    game: &mut GameState,
     ctx: &mut ExecutionContext,
     viewer: PlayerId,
     candidates: &[ObjectId],
@@ -50,6 +50,8 @@ pub(crate) fn view_hidden_candidate_objects(
     public: bool,
 ) {
     let description = description.into();
+    let entitled_viewers = game.private_information_viewers_for(viewer, Zone::Library);
+    game.hydrate_verified_library_replay_view(candidates, &entitled_viewers, public);
     let already_publicly_revealed = if public {
         ctx.get_tagged_all(crate::effects::PUBLIC_REVEALED_TAG)
             .map(|snapshots| {

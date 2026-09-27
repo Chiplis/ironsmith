@@ -45,6 +45,8 @@ const isMutation = (method) => !isGameRead(method);
 // audit-replay path's job, not this one.
 const ARGS_NEVER_CAPTURED = new Set([
   "applyVerifiedHiddenLibraryShuffle",
+  "queueVerifiedHiddenLibraryEpoch",
+  "queueVerifiedHiddenLibraryOpening",
   "importSyncCheckpoint",
   "injectTranscriptRandomSeeds",
   "replayTrustedActions",

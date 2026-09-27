@@ -49,6 +49,7 @@ mod grand_melee;
 mod hidden_hand_choices;
 mod mana_and_permissions;
 mod object_state_and_events;
+mod opaque_library_epochs;
 mod planechase;
 mod range_of_influence;
 mod restart;
@@ -353,6 +354,8 @@ pub enum HiddenInfoOperation {
     },
     LibraryShuffle {
         player: PlayerId,
+        /// Canonical ciphertext references present at the exact shuffle boundary.
+        input_commitments: Vec<String>,
         before_order: Vec<ObjectId>,
         after_order: Vec<ObjectId>,
         random_count_before: u64,
@@ -1096,6 +1099,9 @@ struct RuntimeCacheState {
     forced_die_rolls: RefCell<VecDeque<u32>>,
     transcript_random_seeds: RefCell<VecDeque<u64>>,
     transcript_library_shuffle_orders: RefCell<VecDeque<TranscriptLibraryShuffleOrder>>,
+    verified_hidden_library_epochs: RefCell<BTreeMap<u64, opaque_library_epochs::VerifiedHiddenLibraryEpoch>>,
+    verified_hidden_library_epoch_error: RefCell<Option<String>>,
+    verified_hidden_replay_openings: RefCell<BTreeMap<(PlayerId, String), opaque_library_epochs::VerifiedHiddenReplayOpening>>,
     hidden_info_audit_log: RefCell<im::Vector<HiddenInfoOperation>>,
     continuous_state_dirty: Cell<bool>,
     continuous_state_revision: Cell<u64>,
@@ -1138,6 +1144,9 @@ impl Clone for RuntimeCacheState {
             transcript_library_shuffle_orders: RefCell::new(
                 self.transcript_library_shuffle_orders.borrow().clone(),
             ),
+            verified_hidden_library_epochs: RefCell::new(self.verified_hidden_library_epochs.borrow().clone()),
+            verified_hidden_library_epoch_error: RefCell::new(self.verified_hidden_library_epoch_error.borrow().clone()),
+            verified_hidden_replay_openings: RefCell::new(self.verified_hidden_replay_openings.borrow().clone()),
             hidden_info_audit_log: RefCell::new(self.hidden_info_audit_log.borrow().clone()),
             continuous_state_dirty: Cell::new(self.continuous_state_dirty.get()),
             continuous_state_revision: Cell::new(self.continuous_state_revision.get()),
@@ -1175,6 +1184,9 @@ impl RuntimeCacheState {
             forced_die_rolls: RefCell::new(VecDeque::new()),
             transcript_random_seeds: RefCell::new(VecDeque::new()),
             transcript_library_shuffle_orders: RefCell::new(VecDeque::new()),
+            verified_hidden_library_epochs: RefCell::new(BTreeMap::new()),
+            verified_hidden_library_epoch_error: RefCell::new(None),
+            verified_hidden_replay_openings: RefCell::new(BTreeMap::new()),
             hidden_info_audit_log: RefCell::new(im::Vector::new()),
             continuous_state_dirty: Cell::new(true),
             continuous_state_revision: Cell::new(0),
@@ -5242,7 +5254,14 @@ impl GameState {
             return;
         };
         let before_order = self.players[index].library.to_vec();
-        if let Some(transcript_order) = self.take_transcript_library_shuffle_order(player_id) {
+        let input_commitments = before_order.iter().filter_map(|id| {
+            self.hidden_card_info(*id).map(|info| info.public_commitment.clone()
+                .unwrap_or_else(|| info.commitment.clone()))
+        }).collect();
+        if self.apply_verified_hidden_library_epoch(player_id, random_count_before) {
+            // A verified epoch creates anonymous slots directly. There is no
+            // public permutation and no correspondence to retired objects.
+        } else if let Some(transcript_order) = self.take_transcript_library_shuffle_order(player_id) {
             let mut id_map = HashMap::with_capacity(before_order.len());
             if transcript_order.before_order.len() == before_order.len()
                 && transcript_order.after_order.len() == before_order.len()
@@ -5292,6 +5311,7 @@ impl GameState {
         }
         self.push_hidden_info_operation(HiddenInfoOperation::LibraryShuffle {
             player: player_id,
+            input_commitments,
             before_order,
             after_order,
             random_count_before,

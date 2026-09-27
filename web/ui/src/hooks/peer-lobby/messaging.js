@@ -1,3 +1,4 @@
+import { ziffleInputDeckFields } from "../../lib/ziffle-private-epochs.js";
 import { RUNTIME_VERSION, assertRuntimeVersion } from "../../lib/runtime-version.js";
 import { withActionPrefixes, EMPTY_ACTION_PREFIX, actionPrefixHash } from '../../lib/accepted-actions.js';
 import { needsFullStateResync, matchingActionPrefix } from '../../lib/relay/resync.js';
@@ -615,10 +616,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           keyContext: String(proof.keyContext || proof.context || ""),
           keys: cloneMultiplayerPayload(proof.keys || []),
           steps: cloneMultiplayerPayload(proof.steps || []),
+          ...ziffleInputDeckFields(proof),
         });
         if (String(verified.deckHash || "") !== String(proof.deckHash || "")) {
           throw new Error(`Ziffle shuffle proof mismatch for player ${Number(proof.owner) + 1}`);
         }
+        return verified;
       };
       const verifyTranscriptZiffleOpening = async ({ proof, ceremony }) => {
         if (!currentGame || typeof currentGame.ziffleRevealCard !== "function") {
@@ -630,6 +633,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           keyContext: String(ceremony.keyContext || ceremony.context || ""),
           keys: cloneMultiplayerPayload(ceremony.keys || []),
           steps: cloneMultiplayerPayload(ceremony.steps || []),
+          ...ziffleInputDeckFields(ceremony),
           cardPosition: Number(proof.position),
           tokens: ziffleTokensForPosition(proof.tokens || [], proof.position),
         });

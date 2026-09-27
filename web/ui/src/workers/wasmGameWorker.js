@@ -376,6 +376,7 @@ function collectNamesForMethod(method, args) {
     case "revealHiddenObject":
     case "revealHiddenSlot":
     case "revealHiddenPosition":
+    case "queueVerifiedHiddenLibraryOpening":
       names.push(args?.[0]?.cardName || args?.[0]?.card_name);
       break;
     case "revealHiddenPositions": {
@@ -388,6 +389,9 @@ function collectNamesForMethod(method, args) {
       }
       break;
     }
+    case "previewCryptoRequirementsWithMaterial":
+      for (const opening of args?.[1]?.libraryEpochOpenings || []) names.push(opening.cardName);
+      break;
     case "cardLoadDiagnostics":
     case "getCardSemanticScore":
     case "isKnownCardName":
