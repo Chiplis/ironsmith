@@ -63,6 +63,8 @@ struct CompileInput<'a> {
     other_face_id: Option<u32>,
     other_face_name: Option<&'a str>,
     layout: LinkedFaceLayout,
+    /// A transforming (non-modal) DFC (CR 712.1).
+    transforming_dfc: bool,
 }
 
 fn artifact_compiler_version() -> &'static str {
@@ -91,6 +93,7 @@ fn compile_artifact(input: CompileInput<'_>) -> Result<CompiledCardArtifact, Str
     compiled.definition.card.other_face = input.other_face_id.map(CardId::from_raw);
     compiled.definition.card.other_face_name = input.other_face_name.map(str::to_string);
     compiled.definition.card.linked_face_layout = input.layout;
+    compiled.definition.card.transforming_dfc = input.transforming_dfc;
     let definition = wire_definition_from_serializable(&compiled.definition)
         .map_err(|error| format!("failed to encode {}: {error}", input.name))?;
     let runtime_definition =
@@ -137,6 +140,7 @@ fn compile_source(source: &CardSourceFile) -> Result<Vec<CompiledCardArtifact>, 
                 other_face_id: None,
                 other_face_name: None,
                 layout: LinkedFaceLayout::None,
+                transforming_dfc: false,
             })?])
         }
         CardSourceGroup::Dungeon { name, block } => Ok(vec![compile_artifact(CompileInput {
@@ -147,6 +151,7 @@ fn compile_source(source: &CardSourceFile) -> Result<Vec<CompiledCardArtifact>, 
             other_face_id: None,
             other_face_name: None,
             layout: LinkedFaceLayout::None,
+            transforming_dfc: false,
         })?]),
         CardSourceGroup::Linked { layout, faces } => {
             if faces.len() != 2 {
@@ -161,6 +166,7 @@ fn compile_source(source: &CardSourceFile) -> Result<Vec<CompiledCardArtifact>, 
                     face.name
                 ));
             }
+            let transforming_dfc = layout == "transform";
             let layout = match layout.as_str() {
                 "split" => LinkedFaceLayout::Split,
                 "prepare" => LinkedFaceLayout::Prepare,
@@ -180,6 +186,7 @@ fn compile_source(source: &CardSourceFile) -> Result<Vec<CompiledCardArtifact>, 
                         other_face_id: Some(other_index as u32 + 1),
                         other_face_name: Some(&faces[other_index].name),
                         layout,
+                        transforming_dfc,
                     })
                 })
                 .collect()

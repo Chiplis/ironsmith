@@ -2410,22 +2410,19 @@ impl CardDefinitionBuilder {
                 Zone::Battlefield,
                 true,
             )
-            .under_owner_control(),
-        )
-        .tag(returned_tag);
-        let counters = Effect::for_each_tagged(
-            returned_tag,
-            vec![Effect::put_counters(
+            .under_owner_control()
+            // CR 122.6: "with a counter on it" is an entry counter.
+            .with_entry_counter(ironsmith_core::BattlefieldEntryCounterSpec::new(
                 CounterType::PlusOnePlusOne,
                 1,
-                ChooseSpec::Iterated,
-            )],
-        );
+                ironsmith_core::BattlefieldEntryCounterSurface::Inline,
+            )),
+        )
+        .tag(returned_tag);
         let effects = vec![
             Effect::tag_triggering_object(trigger_tag),
             tag_return,
             move_to_battlefield,
-            counters,
         ];
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
@@ -2470,22 +2467,19 @@ impl CardDefinitionBuilder {
                 Zone::Battlefield,
                 true,
             )
-            .under_owner_control(),
-        )
-        .tag(returned_tag);
-        let counters = Effect::for_each_tagged(
-            returned_tag,
-            vec![Effect::put_counters(
+            .under_owner_control()
+            // CR 122.6: "with a counter on it" is an entry counter.
+            .with_entry_counter(ironsmith_core::BattlefieldEntryCounterSpec::new(
                 CounterType::MinusOneMinusOne,
                 1,
-                ChooseSpec::Iterated,
-            )],
-        );
+                ironsmith_core::BattlefieldEntryCounterSurface::Inline,
+            )),
+        )
+        .tag(returned_tag);
         let effects = vec![
             Effect::tag_triggering_object(trigger_tag),
             tag_return,
             move_to_battlefield,
-            counters,
         ];
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
@@ -4403,6 +4397,8 @@ impl CardDefinitionBuilder {
             })
             .with_ability(Ability {
                 kind: AbilityKind::Triggered(TriggeredAbility {
+                    // CR 702.62a: "When the last time counter is removed
+                    // from this card, if it's exiled, you may play it ..."
                     trigger: Trigger::new(
                         crate::triggers::CounterRemovedFromTrigger::new(ObjectFilter::source())
                             .counter_type(CounterType::Time)

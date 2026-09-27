@@ -3126,6 +3126,9 @@ fn decorate_definition_from_payload(definition: &mut CardDefinition, payload: &C
     }
 
     definition.card.linked_face_layout = layout;
+    // Tooling links only Scryfall `transform` cards as TransformLike
+    // (`linked_face_layout_from_card`), i.e. transforming DFCs.
+    definition.card.transforming_dfc = layout == LinkedFaceLayout::TransformLike;
     if let Some(other_face_name) = payload.other_face_name.as_ref() {
         definition.card.other_face_name = Some(other_face_name.clone());
         if definition.card.other_face.is_none() {

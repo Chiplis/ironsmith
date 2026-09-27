@@ -1460,6 +1460,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_flashback_cost_modifier_line),
         multi_static_ability_ast_rule!(parse_spell_and_player_activated_ability_cost_modifier_line),
         multi_static_ability_ast_rule!(parse_spells_cost_reduction_and_cant_be_countered_line),
+        multi_static_ability_ast_rule!(parse_double_conditional_this_spell_cost_reduction_line),
         single_static_ability_ast_rule!(parse_spells_cost_modifier_line),
         single_static_ability_ast_passthrough_rule!(parse_trigger_duplication_line_ast),
         single_static_ability_ast_rule!(
@@ -6004,6 +6005,28 @@ pub fn parse_trailing_this_spell_cost_condition(
                 condition: crate::ConditionExpr::SourceControllersEndStep,
                 display: "during your end step".to_string(),
             },
+        ));
+    }
+    // "This spell costs {1} less to cast during your turn" (Mental
+    // Modulation): the trailing form of the leading "During your turn, ..."
+    // condition.
+    if crate::word_primitives::parse_sequence_suffix(&remaining_words, &["during", "your", "turn"])
+    {
+        return Ok(Some(
+            crate::static_abilities::ThisSpellCostCondition::YourTurn,
+        ));
+    }
+    if [
+        &["during", "an", "opponent's", "turn"][..],
+        &["during", "an", "opponents", "turn"][..],
+        &["during", "each", "opponent's", "turn"][..],
+        &["during", "each", "opponents", "turn"][..],
+    ]
+    .iter()
+    .any(|suffix| crate::word_primitives::parse_sequence_suffix(&remaining_words, suffix))
+    {
+        return Ok(Some(
+            crate::static_abilities::ThisSpellCostCondition::NotYourTurn,
         ));
     }
     let Some(if_idx) =

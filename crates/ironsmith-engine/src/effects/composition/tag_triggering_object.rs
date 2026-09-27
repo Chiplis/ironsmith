@@ -27,6 +27,22 @@ impl EffectExecutor for TagTriggeringObjectEffect {
         })?;
 
         if let Some(zone_change) = event.downcast::<crate::events::zones::ZoneChangeEvent>() {
+            // CR 603.2c: a "one or more" trigger's "them" / "those cards" is
+            // every object of the simultaneous event that matched it, not the
+            // first event's objects (nor every object of a batch).
+            if let Some(group) = ctx
+                .get_tagged_all(ironsmith_core::ZONE_CHANGE_GROUP_TAG)
+                .filter(|group| !group.is_empty())
+                .cloned()
+            {
+                let tagged = group
+                    .into_iter()
+                    .filter_map(|snapshot| group_member_tag(game, zone_change, snapshot))
+                    .collect::<Vec<_>>();
+                let count = tagged.len() as i32;
+                set_triggering_object_tags(ctx, self.tag.as_str(), tagged);
+                return Ok(EffectOutcome::count(count));
+            }
             if !zone_change.result_objects.is_empty() {
                 let tagged = explicit_destination_snapshots(game, zone_change);
                 if !tagged.is_empty() {
@@ -167,6 +183,28 @@ impl EffectExecutor for TagTriggeringObjectEffect {
 
         Ok(EffectOutcome::count(0))
     }
+}
+
+/// The object a "one or more" zone-change trigger's group member names now:
+/// the object it became in the destination zone, keeping a departed
+/// permanent's last-known characteristics (CR 603.10a, 400.7).
+fn group_member_tag(
+    game: &GameState,
+    zone_change: &crate::events::zones::ZoneChangeEvent,
+    snapshot: ObjectSnapshot,
+) -> Option<ObjectSnapshot> {
+    let destination = game
+        .find_object_by_stable_id(snapshot.stable_id)
+        .and_then(|id| game.object(id))
+        .filter(|object| object.zone == zone_change.to);
+    if zone_change.from == crate::zone::Zone::Battlefield {
+        let mut tagged = snapshot;
+        if let Some(object) = destination {
+            tagged.object_id = object.id;
+        }
+        return Some(tagged);
+    }
+    destination.map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
 }
 
 fn latest_zone_lki_snapshot(

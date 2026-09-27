@@ -188,7 +188,13 @@ pub(super) fn parse_controller_player(input: &mut WordInput<'_>) -> WResult<Play
                 word_phrase(&["target", "player"]).value(PlayerFilter::target_player()),
                 word_phrase(&["the", "chosen", "player"]).value(PlayerFilter::ChosenPlayer),
                 word_phrase(&["chosen", "player"]).value(PlayerFilter::ChosenPlayer),
-                word_phrase(&["that", "player"]).value(PlayerFilter::IteratedPlayer),
+                // "tapped creatures that opponent controls" (Mjölnir): the
+                // referenced opponent, bound like "that player".
+                alt((
+                    word_phrase(&["that", "player"]),
+                    word_phrase(&["that", "opponent"]),
+                ))
+                .value(PlayerFilter::IteratedPlayer),
                 word_phrase(&["your", "team"]).map(|()| PlayerFilter::your_team()),
                 primitives::word_slice_exact("opponents").value(PlayerFilter::Opponent),
                 primitives::word_slice_exact("opponent").value(PlayerFilter::Opponent),

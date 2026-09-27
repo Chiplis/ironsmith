@@ -478,10 +478,16 @@ fn target_count_without_a_target_predicate_can_match_zero_targets() {
 
 #[test]
 fn mana_symbol_cost_modifiers_scale_by_target_count() {
-    assert_eq!(cost_modifier_target_repetitions(false, 0), 1);
-    assert_eq!(cost_modifier_target_repetitions(false, 3), 1);
-    assert_eq!(cost_modifier_target_repetitions(true, 0), 0);
-    assert_eq!(cost_modifier_target_repetitions(true, 3), 3);
+    let game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let filter = ObjectFilter::default();
+    let ctx = crate::filter::FilterContext::new(PlayerId::from_index(0));
+    let repetitions = |per_target, count| {
+        cost_modifier_target_repetitions(&game, &filter, &ctx, per_target, count, &[])
+    };
+    assert_eq!(repetitions(false, 0), 1);
+    assert_eq!(repetitions(false, 3), 1);
+    assert_eq!(repetitions(true, 0), 0);
+    assert_eq!(repetitions(true, 3), 3);
 }
 
 #[test]

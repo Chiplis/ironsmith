@@ -208,6 +208,12 @@ pub fn parse_aggregate_scope_value_lexed(tokens: &[OwnedLexToken]) -> Option<Val
     let scope_start = words.len().checked_sub(surface.scope_words.len())?;
     let scope_token_range = word_view.token_span_for_words(scope_start, words.len())?;
     let scope_tokens = trim_edge_punctuation_tokens(&tokens[scope_token_range]);
+    if surface.metric == AggregateValueMetric::Counters
+        && let Some(value) =
+            value_helper_shapes::counters_among_players_and_permanents_value(surface.scope_words)
+    {
+        return Some(value);
+    }
     let filter =
         crate::grammar::primitives::probe_shape(parse_object_filter_lexed(scope_tokens, false))?;
 
@@ -429,6 +435,24 @@ fn parse_spell_cast_history_count(
         (
             &["that", "player", "has", "cast", "this", "turn"],
             PlayerFilter::IteratedPlayer,
+            false,
+        ),
+        // "for each spell your opponents have cast this turn" (Delightful
+        // Discovery) counts only the opponents' spells, so these must be
+        // matched before the unqualified "cast this turn" suffix.
+        (
+            &["your", "opponents", "have", "cast", "this", "turn"],
+            PlayerFilter::Opponent,
+            false,
+        ),
+        (
+            &["opponents", "have", "cast", "this", "turn"],
+            PlayerFilter::Opponent,
+            false,
+        ),
+        (
+            &["an", "opponent", "has", "cast", "this", "turn"],
+            PlayerFilter::Opponent,
             false,
         ),
         (&["cast", "this", "turn"], PlayerFilter::Any, false),

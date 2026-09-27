@@ -281,7 +281,17 @@ fn parse_starting_life_bonus_lexed<'a>(input: &mut LexStream<'a>) -> WResult<u32
 
 fn parse_buyback_cost_reduction_lexed<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
     primitives::phrase(&["buyback", "costs", "cost"]).parse_next(input)?;
-    let amount = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    // Oracle prints the reduction as a generic mana symbol ("{2}", Memory
+    // Crystal); a bare number is accepted too.
+    let amount = winnow::combinator::alt((
+        leaf::parse_leaf_number_prefix_lexed,
+        winnow::token::any.verify_map(|token: &OwnedLexToken| {
+            token
+                .mana_group_inner()
+                .and_then(|inner| inner.parse::<u32>().ok())
+        }),
+    ))
+    .parse_next(input)?;
     primitives::kw("less").parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(amount)

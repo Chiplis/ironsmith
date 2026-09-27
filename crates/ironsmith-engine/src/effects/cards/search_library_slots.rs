@@ -198,7 +198,21 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                             .first()
                             .copied()
                     } else {
-                        game.move_object_by_effect(card_id, self.destination)
+                        // CR 614.1: a found card put into a hand or graveyard
+                        // goes through the normal replacement-aware zone change.
+                        let additional_effects = ctx.additional_replacement_effects_snapshot();
+                        match crate::effects::zones::apply_zone_change_with_additional_effects(
+                            game,
+                            card_id,
+                            Zone::Library,
+                            self.destination,
+                            ctx.cause.clone(),
+                            &mut *ctx.decision_maker,
+                            &additional_effects,
+                        ) {
+                            crate::events::processing::EventOutcome::Proceed(change) => change.new_object_id,
+                            _ => None,
+                        }
                     };
 
                     if let Some(new_id) = new_id {

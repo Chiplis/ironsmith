@@ -1902,6 +1902,10 @@ pub struct ObjectFilter {
     pub target_count: Option<ChoiceCount>,
     pub target_set_same_controller: bool,
     pub target_set_different_controllers: bool,
+    /// "two target creatures ... that share a creature type": every selected
+    /// target shares at least one creature type with the others.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub target_set_shared_creature_type: bool,
     /// Constraint on the selected target set rather than on each candidate.
     ///
     /// This is boxed because an aggregate maximum may itself contain a
@@ -2122,6 +2126,11 @@ pub struct ObjectFilter {
     pub distinct_mana_values: bool,
     pub distinct_powers: bool,
     pub distinct_creature_types: bool,
+    /// Selection-set constraint: all chosen objects must share at least one
+    /// land type ("two basic land cards that share a land type", Myriad
+    /// Landscape). This does not change whether an individual object matches.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub shares_land_type: bool,
     /// Selection-set constraint: chosen cards must be assignable to distinct
     /// card-type slots. A multitype card may satisfy any one of its types, but
     /// the same type cannot be assigned to two chosen cards.
@@ -2791,6 +2800,7 @@ impl ObjectFilter {
             || self.excluded_name.is_some()
             || self.name_originally_printed_in_set.is_some()
             || self.distinct_mana_values
+            || self.shares_land_type
             || self.one_per_card_type
             || self.alternative_cast.is_some()
             || !self.static_abilities.is_empty()
@@ -5041,6 +5051,9 @@ impl ObjectFilter {
         }
         if self.distinct_creature_types {
             parts.push("that share no creature types".to_string());
+        }
+        if self.shares_land_type {
+            parts.push("that share a land type".to_string());
         }
         if self.one_per_card_type {
             parts.push("with at most one card of each card type".to_string());

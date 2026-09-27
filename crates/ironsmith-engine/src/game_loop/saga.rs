@@ -167,16 +167,21 @@ pub(crate) fn add_entry_lore_counters(
     }
 }
 
-/// The entry lore counter (CR 714.3a) is placed like other counters a
-/// permanent enters with, attributed to the Saga and its controller.
+/// The entry lore counter (CR 714.3a) is put on by a game rule, not by an
+/// effect or an intrinsic ability (contrast planeswalker loyalty, CR 306.5b,
+/// and battle defense, CR 310.4b). So "if an effect would put counters"
+/// doublers (Doubling Season) don't apply, while "if you would put counters"
+/// ones (Vorinclex, Innkeeper's Talent) do: the Saga's controller puts it.
 fn saga_entry_lore_cause(game: &GameState, saga_id: ObjectId) -> crate::events::cause::EventCause {
-    match game
+    let mut cause = crate::events::cause::EventCause::from_game_rule();
+    if let Some(controller) = game
         .object(saga_id)
         .map(|object| game.controller_of(object))
     {
-        Some(controller) => crate::events::cause::EventCause::from_effect(saga_id, controller),
-        None => crate::events::cause::EventCause::effect(),
+        cause.source = Some(saga_id);
+        cause.source_controller = Some(controller);
     }
+    cause
 }
 
 /// Legacy entry hook for callers that put a Saga onto the battlefield

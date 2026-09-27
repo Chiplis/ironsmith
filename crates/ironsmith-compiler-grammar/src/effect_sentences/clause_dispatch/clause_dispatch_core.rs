@@ -90,7 +90,16 @@ pub(super) fn parse_effect_clause_unstacked(
             render_lower_words(tokens)
         ))
     })?;
-    let subject_tokens_storage = trim_commas(verb_shape.subject_tokens);
+    let mut subject_tokens_storage = trim_commas(verb_shape.subject_tokens);
+    // "It also gets +1/+0 ..." (Might of the Meek): the adverb sits between
+    // the subject and its verb and is not part of the subject phrase.
+    while subject_tokens_storage.len() > 1
+        && subject_tokens_storage
+            .last()
+            .is_some_and(|token| token.is_word("also"))
+    {
+        subject_tokens_storage.pop();
+    }
     let subject_tokens = subject_tokens_storage.as_slice();
     let rest = verb_shape.action_tokens;
     parser_trace_stack("parse_effect_clause:verb-found", tokens);
@@ -102,6 +111,18 @@ pub(super) fn parse_effect_clause_unstacked(
             "explicit"
         }
     ));
+    // "Gogo and that creature each get +2/+0 ... and attack this turn if
+    // able": one predicate for two independent recipients.
+    if matches!(verb, Verb::Get | Verb::Gain)
+        && let Some(sentences) =
+            super::super::gain_ability::split_anaphor_pair_subject_sentences(tokens)
+    {
+        let mut effects = Vec::new();
+        for sentence in sentences {
+            effects.push(parse_effect_clause_unstacked(&sentence)?);
+        }
+        return Ok(EffectAst::Sequence { effects });
+    }
     // The verb names the clause family; each family's typed shape reads before
     // the general verb dispatch below.
     match verb {
@@ -292,6 +313,15 @@ pub(super) fn parse_effect_clause_unstacked(
     }
     if matches!(verb, Verb::Deal)
         && let Some(effect) = parse_explicit_target_object_damage_source(subject_tokens, rest)?
+    {
+        return Ok(effect);
+    }
+    // "it deals 1 damage to each opponent": the per-player fan-out keeps the
+    // anaphoric damage source (CR 120.3); the generic route below would drop
+    // the subject and make the ability's source deal the damage.
+    if matches!(verb, Verb::Deal)
+        && let Some(effect @ EffectAst::ForEach(_)) =
+            crate::effect_sentences::parse_anaphoric_object_deals_damage_clause(tokens)?
     {
         return Ok(effect);
     }

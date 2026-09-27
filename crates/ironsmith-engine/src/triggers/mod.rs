@@ -63,6 +63,7 @@ pub(crate) use check::check_triggers_batch;
 pub use check::{
     ActiveStateTriggerKey, DelayedTrigger, PendingDelayedTriggerPayment, TriggerIdentity,
     TriggerQueue, TriggeredAbilityEntry, TriggeredAbilitySourceKind, check_delayed_triggers,
+    check_delayed_triggers_for_simultaneous_events,
     check_state_triggers, check_triggers, compute_delayed_trigger_identity,
     compute_trigger_identity, generate_step_trigger_events,
     generate_step_trigger_events_for_active_players, player_filter_matches_with_context,
@@ -92,6 +93,28 @@ use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 use std::sync::Arc;
+
+/// Fold the tagged objects of a match that joins an already queued grouped
+/// instance (one "one or more" event) into that instance: its group tags
+/// ("them", "those creatures") name every object of the event.
+pub(crate) fn merge_trigger_group_tags(
+    into: &mut std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+    from: &std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+) {
+    let mut tags = from.keys().collect::<Vec<_>>();
+    tags.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+    for tag in tags {
+        let combined = into.entry(tag.clone()).or_default();
+        for snapshot in &from[tag] {
+            if !combined
+                .iter()
+                .any(|old| old.object_id == snapshot.object_id)
+            {
+                combined.push(snapshot.clone());
+            }
+        }
+    }
+}
 
 pub(crate) fn describe_player_filter_subject(filter: &PlayerFilter) -> String {
     match filter {
@@ -896,6 +919,17 @@ impl Trigger {
         player: PlayerFilter,
     ) -> Self {
         Self::new(DealsCombatDamageToPlayerTrigger::one_or_more(
+            filter, player,
+        ))
+    }
+
+    /// Create a "whenever one or more [filter] deal combat damage to a
+    /// player" trigger: once for each damaged player.
+    pub fn deals_combat_damage_to_each_player_one_or_more(
+        filter: ObjectFilter,
+        player: PlayerFilter,
+    ) -> Self {
+        Self::new(DealsCombatDamageToPlayerTrigger::one_or_more_each_player(
             filter, player,
         ))
     }

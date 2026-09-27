@@ -158,7 +158,7 @@ fn sacrifice_cost_precheck(
         .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
         .filter(|(id, obj)| {
             game.controller_of(obj) == ctx.payer
-                && (!lands_only || obj.has_card_type(crate::types::CardType::Land))
+                && (!lands_only || game.current_has_card_type(*id, crate::types::CardType::Land))
                 && filter.matches(obj, &filter_ctx, game)
                 && game.can_be_sacrificed_with_cause(*id, &ctx.event_cause())
         })

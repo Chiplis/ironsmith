@@ -47,6 +47,25 @@ pub struct PlayerAttacksOneOrMoreTrigger {
     pub group_by_target: bool,
 }
 
+/// The attack declaration a creature-attacked event belongs to (CR 508.1):
+/// the declared attackers carried on the event, falling back to the live
+/// combat's attackers for events built without one. Creatures put onto the
+/// battlefield attacking (CR 508.4) never attacked, and a replayed earlier
+/// event (the "first time each turn" gate) must be judged against its own
+/// declaration, not the current combat.
+pub(crate) fn attack_declaration<'a>(
+    event: &'a CreatureAttackedEvent,
+    ctx: &'a TriggerContext,
+) -> Option<&'a [crate::combat_state::AttackerInfo]> {
+    if let Some(declared) = event.declared_attackers.as_deref() {
+        return Some(declared);
+    }
+    ctx.game
+        .combat
+        .as_ref()
+        .map(|combat| combat.attackers.as_slice())
+}
+
 impl PlayerAttacksOneOrMoreTrigger {
     pub fn new(attacker: PlayerFilter, target: ironsmith_core::AttackTargetRestriction) -> Self {
         Self {
@@ -114,18 +133,19 @@ impl PlayerAttacksOneOrMoreTrigger {
 
     fn is_first_matching_attacker_this_combat(
         &self,
-        attacker: ObjectId,
+        event: &CreatureAttackedEvent,
         attack_target: &crate::combat_state::AttackTarget,
         ctx: &TriggerContext,
     ) -> bool {
+        let attacker = event.attacker;
         let Some(current_attacker) = ctx.game.object(attacker) else {
             return false;
         };
         let current_player = ctx.game.controller_of(current_attacker);
-        let Some(combat) = ctx.game.combat.as_ref() else {
+        let Some(attackers) = attack_declaration(event, ctx) else {
             return true;
         };
-        for info in &combat.attackers {
+        for info in attackers {
             let Some(candidate) = ctx.game.object(info.creature) else {
                 continue;
             };
@@ -159,17 +179,18 @@ impl PlayersAttackedTrigger {
 
     fn is_first_matching_attacker_this_combat(
         &self,
-        attacker: ObjectId,
+        event: &CreatureAttackedEvent,
         attack_target: &crate::combat_state::AttackTarget,
         ctx: &TriggerContext,
     ) -> bool {
-        let Some(combat) = ctx.game.combat.as_ref() else {
+        let attacker = event.attacker;
+        let Some(attackers) = attack_declaration(event, ctx) else {
             return true;
         };
         if !self.target_matches(attack_target, ctx) {
             return false;
         }
-        for info in &combat.attackers {
+        for info in attackers {
             if self.target_matches(&info.target, ctx) {
                 return info.creature == attacker;
             }
@@ -335,11 +356,12 @@ impl AttacksTrigger {
 
     fn is_first_matching_attacker_this_combat(
         &self,
-        attacker: ObjectId,
+        event: &CreatureAttackedEvent,
         attack_target: &crate::combat_state::AttackTarget,
         ctx: &TriggerContext,
     ) -> bool {
-        let Some(combat) = ctx.game.combat.as_ref() else {
+        let attacker = event.attacker;
+        let Some(attackers) = attack_declaration(event, ctx) else {
             return true;
         };
         let match_per_defending_player = self
@@ -349,7 +371,7 @@ impl AttacksTrigger {
         let current_defending_player = match_per_defending_player
             .then(|| defending_player_for_attack_target(attack_target, ctx.game))
             .flatten();
-        for info in &combat.attackers {
+        for info in attackers {
             if match_per_defending_player
                 && defending_player_for_attack_target(&info.target, ctx.game)
                     != current_defending_player
@@ -363,10 +385,12 @@ impl AttacksTrigger {
         true
     }
 
-    fn matching_attacker_count_this_combat(&self, ctx: &TriggerContext) -> Option<i32> {
-        let combat = ctx.game.combat.as_ref()?;
-        let count = combat
-            .attackers
+    fn matching_attacker_count_this_combat(
+        &self,
+        event: &CreatureAttackedEvent,
+        ctx: &TriggerContext,
+    ) -> Option<i32> {
+        let count = attack_declaration(event, ctx)?
             .iter()
             .filter(|info| self.matches_attacker_info(info, ctx))
             .count();
@@ -376,11 +400,10 @@ impl AttacksTrigger {
     fn matching_attacker_aggregate_this_combat(
         &self,
         metric: ChoiceAggregateMetric,
+        event: &CreatureAttackedEvent,
         ctx: &TriggerContext,
     ) -> Option<i32> {
-        let combat = ctx.game.combat.as_ref()?;
-        let values = combat
-            .attackers
+        let values = attack_declaration(event, ctx)?
             .iter()
             .filter(|info| self.matches_attacker_info(info, ctx))
             .map(|info| crate::targeting::aggregate_object_value(ctx.game, info.creature, metric));
@@ -503,7 +526,7 @@ impl TriggerMatcher for AttacksTrigger {
             return false;
         }
         let matching_attackers = self
-            .matching_attacker_count_this_combat(ctx)
+            .matching_attacker_count_this_combat(e, ctx)
             .map(|count| count.max(0) as usize)
             .unwrap_or(e.total_attackers);
         if matching_attackers < self.min_total_attackers {
@@ -515,7 +538,7 @@ impl TriggerMatcher for AttacksTrigger {
             return false;
         }
         if let Some((metric, comparison)) = &self.aggregate_constraint {
-            let Some(total) = self.matching_attacker_aggregate_this_combat(*metric, ctx) else {
+            let Some(total) = self.matching_attacker_aggregate_this_combat(*metric, e, ctx) else {
                 return false;
             };
             if !comparison.satisfies(total) {
@@ -523,7 +546,7 @@ impl TriggerMatcher for AttacksTrigger {
             }
         }
         if self.one_or_more {
-            return self.is_first_matching_attacker_this_combat(e.attacker, &attack_target, ctx);
+            return self.is_first_matching_attacker_this_combat(e, &attack_target, ctx);
         }
         true
     }
@@ -778,7 +801,8 @@ impl TriggerMatcher for AttacksTrigger {
         if !self.one_or_more || !self.matches(event, ctx) {
             return None;
         }
-        self.matching_attacker_count_this_combat(ctx)
+        let attacked = event.downcast::<CreatureAttackedEvent>()?;
+        self.matching_attacker_count_this_combat(attacked, ctx)
     }
 }
 
@@ -791,7 +815,7 @@ impl TriggerMatcher for PlayersAttackedTrigger {
             return false;
         };
         let attack_target = crate::combat_state::AttackTarget::from(e.target);
-        self.is_first_matching_attacker_this_combat(e.attacker, &attack_target, ctx)
+        self.is_first_matching_attacker_this_combat(e, &attack_target, ctx)
     }
 
     fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
@@ -823,7 +847,7 @@ impl TriggerMatcher for PlayerAttacksOneOrMoreTrigger {
         }
         let target = crate::combat_state::AttackTarget::from(event.target);
         self.target_matches(&target, ctx)
-            && self.is_first_matching_attacker_this_combat(event.attacker, &target, ctx)
+            && self.is_first_matching_attacker_this_combat(event, &target, ctx)
     }
 
     fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {

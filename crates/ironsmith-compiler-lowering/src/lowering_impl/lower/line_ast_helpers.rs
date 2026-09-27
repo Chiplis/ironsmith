@@ -27,6 +27,38 @@ pub struct PendingBackup {
     pub amount: u32,
 }
 
+/// "This ability costs {N} less to activate" follows the activated ability
+/// it modifies on the same printed line (CR 602.2b). Bind each new unbound
+/// this-ability reduction to that preceding activated ability's index.
+fn bind_this_ability_cost_reductions(
+    builder: &mut CardDefinitionBuilder,
+    abilities_before: usize,
+    last_restrictable_ability: Option<usize>,
+) {
+    let Some(activated_index) = last_restrictable_ability.filter(|index| {
+        builder.abilities.get(*index).is_some_and(|ability| {
+            matches!(ability.kind, crate::ability::AbilityKind::Activated(_))
+        })
+    }) else {
+        return;
+    };
+    for ability in builder.abilities.iter_mut().skip(abilities_before) {
+        let crate::ability::AbilityKind::Static(static_ability) = &mut ability.kind else {
+            continue;
+        };
+        if let ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostReduction {
+            condition:
+                Some(ironsmith_core::ActivatedAbilityCostCondition::ThisAbility {
+                    ability_index: ability_index @ None,
+                }),
+            ..
+        } = &mut static_ability.payload
+        {
+            *ability_index = Some(activated_index);
+        }
+    }
+}
+
 pub fn update_last_restrictable_ability(
     builder: &CardDefinitionBuilder,
     abilities_before: usize,
@@ -429,6 +461,7 @@ pub fn lower_line_ast(
             annotations,
         )?;
         let abilities_after = builder.abilities.len();
+        bind_this_ability_cost_reductions(builder, abilities_before, *last_restrictable_ability);
 
         for ability_idx in abilities_before..abilities_after {
             if is_restrictable_ability(&builder.abilities[ability_idx]) {

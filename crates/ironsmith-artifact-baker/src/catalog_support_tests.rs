@@ -20,6 +20,7 @@ fn catalog_strict_parser_regressions() {
             other_face_id: None,
             other_face_name: None,
             layout: LinkedFaceLayout::None,
+            transforming_dfc: false,
         }) {
             Ok(_) => {}
             Err(error) => failures.push(format!("{}: {error}", fixture.name)),
@@ -118,6 +119,7 @@ fn fixture(name: &str) -> CardDefinition {
         other_face_id: None,
         other_face_name: None,
         layout: LinkedFaceLayout::None,
+        transforming_dfc: false,
     });
     let artifact = artifact.unwrap();
     {
@@ -1962,6 +1964,7 @@ fn catalog_full_current_sources_strict_audit() {
                 other_face_id: None,
                 other_face_name: None,
                 layout: LinkedFaceLayout::None,
+                transforming_dfc: false,
             }) {
                 errors.push(format!("{face_name}: {error}"));
             }

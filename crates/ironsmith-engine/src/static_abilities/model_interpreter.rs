@@ -592,6 +592,11 @@ impl StaticAbilityModelInterpreter {
                                 targeting: targeting.clone(),
                             }
                         }
+                        ironsmith_core::ActivatedAbilityCostCondition::ThisAbility {
+                            ability_index,
+                        } => super::ActivatedAbilityCostCondition::ThisAbility {
+                            ability_index: *ability_index,
+                        },
                     });
                 }
                 Some(converted)
@@ -1503,6 +1508,9 @@ impl StaticAbilityModelInterpreter {
             }
             ironsmith_core::StaticAbilityPayload::MinimumSpellTotalMana(amount) => {
                 StaticAbility::minimum_spell_total_mana(*amount)
+            }
+            ironsmith_core::StaticAbilityPayload::BuybackCostReduction(amount) => {
+                StaticAbility::buyback_cost_reduction(*amount)
             }
             ironsmith_core::StaticAbilityPayload::ChooseColorAsEnters { excluded, display } => {
                 StaticAbility::choose_color_as_enters(*excluded, display.clone())
@@ -2897,6 +2905,13 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         }
     }
 
+    fn buyback_cost_reduction_amount(&self) -> Option<u32> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::BuybackCostReduction(amount) => Some(*amount),
+            _ => None,
+        }
+    }
+
     fn color_choice_as_enters(&self) -> Option<super::ChooseColorAsEntersSpec> {
         let ironsmith_core::StaticAbilityPayload::ChooseColorAsEnters { excluded, .. } =
             self.payload()
@@ -3150,6 +3165,7 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             || self.cost_increase_per_additional_target().is_some()
             || self.additional_life_cost_per_target().is_some()
             || self.minimum_total_spell_mana().is_some()
+            || self.buyback_cost_reduction_amount().is_some()
     }
 
     fn this_spell_cost_reduction(&self) -> Option<&super::ThisSpellCostReduction> {

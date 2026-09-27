@@ -834,6 +834,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         life_per_previous_cast: u32,
     },
     MinimumSpellTotalMana(u32),
+    /// "Buyback costs cost {N} less" (Memory Crystal): reduces the generic
+    /// mana of a paid buyback cost, never below zero (CR 601.2f, 702.27).
+    BuybackCostReduction(u32),
     PlayersSkipUpkeep {
         player: PlayerFilter,
     },
@@ -2223,6 +2226,9 @@ where
             },
             StaticAbilityPayload::MinimumSpellTotalMana(amount) => {
                 StaticAbilityPayload::MinimumSpellTotalMana(amount)
+            }
+            StaticAbilityPayload::BuybackCostReduction(amount) => {
+                StaticAbilityPayload::BuybackCostReduction(amount)
             }
             StaticAbilityPayload::ActivatedAbilityCostReduction {
                 filter,
@@ -5604,11 +5610,12 @@ impl<
     pub fn starting_life_bonus(_amount: i32) -> Self {
         Self::identified(StaticAbilityId::StartingLifeBonus, "starting life bonus")
     }
-    pub fn buyback_cost_reduction(_amount: impl Into<Value>) -> Self {
-        Self::identified(
-            StaticAbilityId::BuybackCostReduction,
-            "buyback cost reduction",
-        )
+    pub fn buyback_cost_reduction(amount: u32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::BuybackCostReduction),
+            label: "buyback cost reduction".to_string(),
+            payload: StaticAbilityPayload::BuybackCostReduction(amount),
+        }
     }
     pub fn cost_increase_per_target_beyond_first(cost: u32) -> Self {
         Self {

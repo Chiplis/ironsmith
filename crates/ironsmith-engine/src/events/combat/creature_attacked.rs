@@ -22,6 +22,13 @@ pub struct CreatureAttackedEvent {
     /// This enables "attacks alone" semantics without depending on combat-state
     /// mutation timing at trigger-check time.
     pub total_attackers: usize,
+    /// Every creature declared as an attacker in the same declaration
+    /// (CR 508.1), in declaration order. "One or more … attack" and
+    /// aggregate ("attack with creatures with total power …") matchers read
+    /// the declaration from here rather than from the live combat, which also
+    /// holds creatures put onto the battlefield attacking (CR 508.4) and, when
+    /// this event is replayed from turn history, a later combat's attackers.
+    pub declared_attackers: Option<std::sync::Arc<[crate::combat_state::AttackerInfo]>>,
 }
 
 impl CreatureAttackedEvent {
@@ -31,6 +38,7 @@ impl CreatureAttackedEvent {
             attacker,
             target,
             total_attackers: 1,
+            declared_attackers: None,
         }
     }
 
@@ -44,7 +52,17 @@ impl CreatureAttackedEvent {
             attacker,
             target,
             total_attackers,
+            declared_attackers: None,
         }
+    }
+
+    /// Attach the full attack declaration this event belongs to.
+    pub fn with_declared_attackers(
+        mut self,
+        declared_attackers: std::sync::Arc<[crate::combat_state::AttackerInfo]>,
+    ) -> Self {
+        self.declared_attackers = Some(declared_attackers);
+        self
     }
 }
 

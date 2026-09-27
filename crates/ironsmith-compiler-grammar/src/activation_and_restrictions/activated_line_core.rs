@@ -1165,6 +1165,37 @@ pub fn parse_enters_tapped_line(
 pub fn parse_cost_reduction_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    let this_ability = matches!(
+        activated_line_grammar::parse_cost_reduction_line_head_tokens(tokens),
+        Some(CostReductionLineHead::ThisAbility { .. })
+    );
+    let parsed = parse_cost_reduction_line_inner(tokens)?;
+    // CR 602.2b: "This ability costs ... less" applies only to the activated
+    // ability printed with it, not to every activated ability of the source.
+    // Lowering binds the ability index of the preceding activated ability.
+    Ok(parsed.map(|ability| {
+        let unconditional = matches!(
+            &ability.payload,
+            ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostReduction {
+                condition: None,
+                ..
+            }
+        );
+        if this_ability && unconditional {
+            ability.with_activated_ability_cost_condition(
+                crate::static_abilities::ActivatedAbilityCostCondition::ThisAbility {
+                    ability_index: None,
+                },
+            )
+        } else {
+            ability
+        }
+    }))
+}
+
+fn parse_cost_reduction_line_inner(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
     let line_words = crate::lexer::token_word_refs(tokens);
     let Some(head) = activated_line_grammar::parse_cost_reduction_line_head_tokens(tokens) else {
         return Ok(None);
@@ -1339,9 +1370,12 @@ pub fn parse_cost_reduction_line(
                         }
                         return Ok(Some(ability));
                     }
-                    if let Some(Value::BasicLandTypesAmong(lands_filter)) =
-                        parse_dynamic_cost_modifier_value(&tail_tokens)?
-                    {
+                    // The tail is a count, read by the same grammar as the
+                    // spell-side "for each" modifiers (CR 602.2b, 601.2f):
+                    // counters on an object, counters on a player, party
+                    // size and turn history are values, not object filters.
+                    let dynamic = parse_dynamic_cost_modifier_value(&tail_tokens)?;
+                    if let Some(Value::BasicLandTypesAmong(lands_filter)) = dynamic {
                         return Ok(Some(
                             StaticAbility::reduce_activated_ability_costs_for_each_basic_land_type(
                                 ObjectFilter::source(),
@@ -1351,13 +1385,35 @@ pub fn parse_cost_reduction_line(
                             ),
                         ));
                     }
-                    let mut per_filter =
-                        parse_object_filter(filter_tokens, false).map_err(|_| {
-                            CardTextError::ParseError(format!(
-                                "unsupported activated-ability cost reduction tail (clause: '{}')",
-                                line_words.join(" ")
-                            ))
-                        })?;
+                    if let Some(value) = dynamic
+                        && !matches!(value.unhinted(), Value::Count(_))
+                    {
+                        let mut ability =
+                            StaticAbility::reduce_activated_ability_costs_with_display(
+                                ObjectFilter::source(),
+                                reduction,
+                                None,
+                                format!(
+                                    "This ability costs {{{reduction}}} less to activate for each {}",
+                                    render_token_slice(filter_tokens)
+                                        .trim()
+                                        .trim_end_matches('.')
+                                ),
+                            );
+                        if let ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostReduction { multiplier, .. } = &mut ability.payload {
+                            *multiplier = Some(value);
+                        }
+                        return Ok(Some(ability));
+                    }
+                    let mut per_filter = crate::keyword_static::parse_complete_cost_count_filter(
+                        filter_tokens,
+                    )?
+                    .ok_or_else(|| {
+                        CardTextError::ParseError(format!(
+                            "unsupported activated-ability cost reduction tail (clause: '{}')",
+                            line_words.join(" ")
+                        ))
+                    })?;
                     if per_filter.zone.is_none() {
                         per_filter.zone = Some(Zone::Battlefield);
                     }

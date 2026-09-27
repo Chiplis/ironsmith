@@ -358,6 +358,10 @@ pub enum TriggerKind {
         source: ObjectFilter,
         player: PlayerFilter,
         one_or_more: bool,
+        /// With `one_or_more`: "... to a player" triggers once for each
+        /// damaged player, "... to one or more players" once per event.
+        #[cfg_attr(feature = "serde", serde(default))]
+        each_damaged_player: bool,
     },
     PlayerPlaysLand {
         player: PlayerFilter,
@@ -1341,6 +1345,7 @@ impl Trigger {
                 source,
                 player,
                 one_or_more: false,
+                each_damaged_player: false,
             },
         )
     }
@@ -1354,6 +1359,23 @@ impl Trigger {
                 source,
                 player,
                 one_or_more: true,
+                each_damaged_player: false,
+            },
+        )
+    }
+    /// "Whenever one or more [source] deal combat damage to a player": once
+    /// for each damaged player (CR 603.2c).
+    pub fn deals_combat_damage_to_each_player_one_or_more(
+        source: ObjectFilter,
+        player: PlayerFilter,
+    ) -> Self {
+        Self::typed(
+            "deals_combat_damage_to_player_one_or_more",
+            TriggerKind::DealsCombatDamageToPlayer {
+                source,
+                player,
+                one_or_more: true,
+                each_damaged_player: true,
             },
         )
     }

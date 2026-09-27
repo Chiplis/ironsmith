@@ -621,6 +621,14 @@ fn describe_turn_history_value_comparison(
                 ))
             }
         }
+        ironsmith_core::TurnHistoryCount::SacrificedCardTypes { player, filter } => {
+            let player = describe_history_player_subject(player);
+            let subject = describe_history_filter_subject(filter, "permanent");
+            let plural = pluralize_relative_object_phrase(&subject);
+            Some(format!(
+                "{count_text} or more card types are among {plural} {player} sacrificed this turn"
+            ))
+        }
         ironsmith_core::TurnHistoryCount::CountersPutOn {
             source_controller,
             counter_type,
@@ -760,6 +768,18 @@ fn describe_turn_history_value_comparison(
             } else {
                 Some(format!(
                     "{player} cycled {count_text} or more cards this turn"
+                ))
+            }
+        }
+        ironsmith_core::TurnHistoryCount::CardsDrawn(player) => {
+            let player = describe_history_player_subject(player);
+            if is_present {
+                Some(format!("{player} drew a card this turn"))
+            } else if is_absent {
+                Some(format!("{player} didn't draw a card this turn"))
+            } else {
+                Some(format!(
+                    "{player} drew {count_text} or more cards this turn"
                 ))
             }
         }
@@ -970,6 +990,10 @@ fn describe_turn_history_condition(condition: &ironsmith_core::TurnHistoryCondit
         TurnHistoryCondition::PlayerPlayedLandThisTurn(player) => {
             format!("{} played a land this turn", describe_player_filter(player))
         }
+        TurnHistoryCondition::PlayerActivatedLoyaltyAbilityThisTurn(player) => format!(
+            "{} activated a loyalty ability of a planeswalker this turn",
+            describe_player_filter(player)
+        ),
         TurnHistoryCondition::TriggeringObjectDied => "it died".to_string(),
         TurnHistoryCondition::PlayerPlayedCardFromZoneThisTurn { player, zone } => format!(
             "{} played a card from {} this turn",
@@ -3380,6 +3404,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::ActivationTiming(timing) => {
             let label = match timing {
                 crate::ability::ActivationTiming::AnyTime => "any time",
+                crate::ability::ActivationTiming::AsInstant => "as an instant",
                 crate::ability::ActivationTiming::SorcerySpeed => "sorcery speed",
                 crate::ability::ActivationTiming::DuringCombat => "during combat",
                 crate::ability::ActivationTiming::OncePerTurn => "once per turn",
@@ -4189,6 +4214,13 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             ) = inner.as_ref()
             {
                 "you didn't play a land this turn".to_string()
+            } else if let Condition::TurnHistory(
+                ironsmith_core::TurnHistoryCondition::PlayerActivatedLoyaltyAbilityThisTurn(
+                    PlayerFilter::You,
+                ),
+            ) = inner.as_ref()
+            {
+                "you didn't activate a loyalty ability of a planeswalker this turn".to_string()
             } else if let Condition::TurnHistory(
                 ironsmith_core::TurnHistoryCondition::TriggeringObjectDied,
             ) = inner.as_ref()

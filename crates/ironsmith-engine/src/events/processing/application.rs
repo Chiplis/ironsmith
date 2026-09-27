@@ -374,9 +374,16 @@ pub(super) fn apply_trait_replacement(
                 prospective.as_ref().unwrap_or(game),
                 value_source,
             );
+            let counter_type = sunburst_entry_counter_type(
+                game,
+                &event,
+                condition_source,
+                *counter_type,
+                selected_count,
+            );
             let modified = apply_trait_enter_with_counters(
                 &event,
-                *counter_type,
+                counter_type,
                 resolved_count,
                 added_subtypes,
                 added_abilities,
@@ -1201,18 +1208,32 @@ fn apply_trait_modification(
                     token_groups_covered(game, effect, create_tokens),
                     |count| count.saturating_mul(*factor),
                 ),
-                EventModification::Add(delta) => {
-                    create_tokens.with_count((create_tokens.count as i32 + delta).max(0) as u32)
-                }
-                EventModification::Subtract(delta) => {
-                    create_tokens.with_count(create_tokens.count.saturating_sub(*delta))
-                }
-                EventModification::SetTo(value) => create_tokens.with_count(*value),
+                // The other modifications change the combined count of the
+                // covered groups, which include tokens an earlier replacement
+                // added (CR 616.1).
+                EventModification::Add(delta) => create_tokens.adjusted_covered_total(
+                    token_groups_covered(game, effect, create_tokens),
+                    |total| (total as i64 + i64::from(*delta)).clamp(0, i64::from(u32::MAX)) as u32,
+                ),
+                EventModification::Subtract(delta) => create_tokens.adjusted_covered_total(
+                    token_groups_covered(game, effect, create_tokens),
+                    |total| total.saturating_sub(*delta),
+                ),
+                EventModification::SetTo(value) => create_tokens.adjusted_covered_total(
+                    token_groups_covered(game, effect, create_tokens),
+                    |_| *value,
+                ),
                 EventModification::SetToAtLeast(value) => {
                     let floor = resolve_value_for_replacement(value, game, effect.source);
-                    create_tokens.with_count(create_tokens.count.max(floor))
+                    create_tokens.adjusted_covered_total(
+                        token_groups_covered(game, effect, create_tokens),
+                        |total| total.max(floor),
+                    )
                 }
-                EventModification::ReduceToZero => create_tokens.with_count(0),
+                EventModification::ReduceToZero => create_tokens.adjusted_covered_total(
+                    token_groups_covered(game, effect, create_tokens),
+                    |_| 0,
+                ),
             };
             Some(event.rewrap(modified))
         }
@@ -1412,7 +1433,7 @@ fn apply_trait_set_player_counters_and_lock_for_turn(
     Some(event.rewrap(put_counters.with_count_limit(amount, amount)))
 }
 
-fn apply_trait_change_destination(event: &Event, new_zone: Zone) -> Option<Event> {
+pub(super) fn apply_trait_change_destination(event: &Event, new_zone: Zone) -> Option<Event> {
     use crate::events::{DiscardEvent, EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
 
     match event.kind() {
@@ -1802,5 +1823,58 @@ pub(super) fn etb_value_uses_revealed_choice(value: &crate::effect::Value) -> bo
         | Value::DividedRoundedDown(inner, _)
         | Value::HalfRoundedDown(inner) => etb_value_uses_revealed_choice(inner),
         _ => false,
+    }
+}
+
+/// CR 702.44a: sunburst's counter kind is decided as the permanent enters:
+/// +1/+1 counters if it enters as a creature, charge counters otherwise
+/// (Engineered Explosives under March of the Machines enters as a creature).
+/// Printed sunburst is compiled with the kind its printed types imply, so
+/// re-derive it here from the entering object's prospective characteristics.
+fn sunburst_entry_counter_type(
+    game: &GameState,
+    event: &Event,
+    entering_object: crate::ids::ObjectId,
+    counter_type: CounterType,
+    count: &crate::effect::Value,
+) -> CounterType {
+    if !matches!(
+        counter_type,
+        CounterType::PlusOnePlusOne | CounterType::Charge
+    ) || !matches!(
+        count.unhinted(),
+        crate::effect::Value::ColorsOfManaSpentToCastThisSpell
+    ) {
+        return counter_type;
+    }
+    let is_sunburst_marker = |ability: &crate::ability::Ability| {
+        matches!(&ability.kind, crate::ability::AbilityKind::Static(static_ability)
+            if static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
+                && static_ability.display().trim().eq_ignore_ascii_case("sunburst"))
+    };
+    if !game
+        .object(entering_object)
+        .is_some_and(|object| object.abilities.iter().any(is_sunburst_marker))
+    {
+        return counter_type;
+    }
+    let prospective = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(
+        event.inner(),
+    )
+    .filter(|etb| etb.object == entering_object)
+    .and_then(|etb| etb.prospective_game_state(game));
+    let enters_as_creature = match prospective.as_ref() {
+        Some(prospective) => prospective
+            .calculated_characteristics(entering_object)
+            .map(|chars| chars.card_types.contains(&crate::types::CardType::Creature))
+            .unwrap_or_else(|| {
+                prospective.current_has_card_type(entering_object, crate::types::CardType::Creature)
+            }),
+        None => game.current_has_card_type(entering_object, crate::types::CardType::Creature),
+    };
+    if enters_as_creature {
+        CounterType::PlusOnePlusOne
+    } else {
+        CounterType::Charge
     }
 }

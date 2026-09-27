@@ -4551,7 +4551,7 @@ pub(super) fn get_legal_sacrifice_targets(
                     && game.can_be_sacrificed(id)
                     && (!reason.is_cast_or_ability_payment()
                         || !game.player_cant_sacrifice_nonland_to_cast_or_activate(player)
-                        || obj.has_card_type(crate::types::CardType::Land))
+                        || game.current_has_card_type(id, crate::types::CardType::Land))
             })
         })
         .collect()

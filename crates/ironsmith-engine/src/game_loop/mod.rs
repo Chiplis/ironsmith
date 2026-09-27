@@ -146,7 +146,8 @@ pub(crate) use self::targeting::{
     spell_program_uses_chosen_creature_type_target,
 };
 pub use self::targeting::{
-    drain_pending_trigger_events, extract_target_requirements_from_program_with_modes,
+    drain_pending_trigger_events, drain_pending_trigger_events_with_dm,
+    extract_target_requirements_from_program_with_modes,
 };
 
 #[cfg(test)]

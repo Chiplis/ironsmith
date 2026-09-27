@@ -73,6 +73,10 @@ pub(crate) struct DerivedGameView<'a> {
         RefCell<FxMap<PlayerId, Rc<Vec<crate::decision::AvailableManaSource>>>>,
     simple_battlefield_mana_analysis: RefCell<FxMap<PlayerId, Rc<SimpleBattlefieldManaAnalysis>>>,
     spell_target_legality: RefCell<FxMap<SpellTargetLegalityKey, bool>>,
+    /// The card whose castability is being checked before it is put on the
+    /// stack (CR 601.2c). A targeting source that is this card is a spell, not
+    /// an ability, even though it isn't on the stack yet.
+    casting_spell_source: std::cell::Cell<Option<ObjectId>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -82,6 +86,7 @@ struct SpellTargetLegalityKey {
     effects_ptr: usize,
     effects_len: usize,
     chosen_modes: Vec<usize>,
+    as_spell_cast: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -337,6 +342,7 @@ fn static_ability_has_spell_cost_modifier(
         || static_ability.cost_increase_life().is_some()
         || static_ability.cost_reduction_mana_cost().is_some()
         || static_ability.cost_increase_mana_cost().is_some()
+        || static_ability.buyback_cost_reduction_amount().is_some()
 }
 
 fn static_ability_has_activated_ability_cost_modifier(
@@ -400,6 +406,7 @@ impl<'a> DerivedGameView<'a> {
             available_payment_sources: RefCell::new(FxMap::default()),
             simple_battlefield_mana_analysis: RefCell::new(FxMap::default()),
             spell_target_legality: RefCell::new(FxMap::default()),
+            casting_spell_source: std::cell::Cell::new(None),
         }
     }
 
@@ -438,6 +445,7 @@ impl<'a> DerivedGameView<'a> {
             available_payment_sources: RefCell::new(FxMap::default()),
             simple_battlefield_mana_analysis: RefCell::new(FxMap::default()),
             spell_target_legality: RefCell::new(FxMap::default()),
+            casting_spell_source: std::cell::Cell::new(None),
         }
     }
 
@@ -1083,6 +1091,17 @@ impl<'a> DerivedGameView<'a> {
         player: PlayerId,
     ) -> Vec<GrantedAlternativeCast> {
         let ctx = self.game.filter_context_for(player, None);
+        // CR 715.4 / 720.4: outside the stack an Adventure or Omen card has
+        // only its normal characteristics, so a grant *to cards* in the
+        // graveyard ("each instant and sorcery card in your graveyard has
+        // flashback", Return the Past) is matched against the card, not the
+        // face being cast. Spell permissions elsewhere (hand alternative
+        // costs keyed on the spell) still see the face (CR 715.3a).
+        let filter_card = if zone == Zone::Graveyard {
+            self.game.object(card_id).unwrap_or(card)
+        } else {
+            card
+        };
         self.active_grants()
             .iter()
             .filter(|grant| {
@@ -1090,7 +1109,9 @@ impl<'a> DerivedGameView<'a> {
                     && grant.zone == crate::grant_registry::alternative_cast_grant_zone(zone)
             })
             .filter(|grant| {
-                grant_applies_to_card_non_recursive(grant, card_id, card, &ctx, self.game)
+                grant_applies_to_card_non_recursive(
+                    grant, card_id, card, filter_card, &ctx, self.game,
+                )
             })
             .filter_map(|grant| match &grant.grantable {
                 Grantable::AlternativeCast(method) => Some(GrantedAlternativeCast {
@@ -1126,7 +1147,7 @@ impl<'a> DerivedGameView<'a> {
             .iter()
             .filter(|grant| grant.player == player && grant.zone == zone)
             .filter(|grant| {
-                grant_applies_to_card_non_recursive(grant, card_id, card, &ctx, self.game)
+                grant_applies_to_card_non_recursive(grant, card_id, card, card, &ctx, self.game)
             })
             .filter_map(|grant| match &grant.grantable {
                 Grantable::PlayFrom => Some(GrantedPlayFrom {
@@ -1186,7 +1207,7 @@ impl<'a> DerivedGameView<'a> {
         self.active_grants().iter().any(|grant| {
             grant.player == player
                 && grant.zone == zone
-                && grant_applies_to_card_non_recursive(grant, card_id, card, &ctx, self.game)
+                && grant_applies_to_card_non_recursive(grant, card_id, card, card, &ctx, self.game)
                 && matches!(
                     &grant.grantable,
                     Grantable::Ability(ability) if ability.id() == ability_id
@@ -1374,6 +1395,20 @@ impl<'a> DerivedGameView<'a> {
         result
     }
 
+    /// Run `f` with `spell_id` marked as a spell being cast, so targeting
+    /// checks treat it as a spell rather than as one of its abilities.
+    pub(crate) fn with_casting_spell<R>(&self, spell_id: ObjectId, f: impl FnOnce() -> R) -> R {
+        let previous = self.casting_spell_source.replace(Some(spell_id));
+        let result = f();
+        self.casting_spell_source.set(previous);
+        result
+    }
+
+    /// Whether `source_id` is the spell whose castability is being checked.
+    pub(crate) fn is_casting_spell(&self, source_id: ObjectId) -> bool {
+        self.casting_spell_source.get() == Some(source_id)
+    }
+
     pub(crate) fn spell_has_legal_targets(
         &self,
         effects: &[crate::effect::Effect],
@@ -1387,6 +1422,7 @@ impl<'a> DerivedGameView<'a> {
             effects_ptr: effects.as_ptr() as usize,
             effects_len: effects.len(),
             chosen_modes: chosen_modes.map_or_else(Vec::new, |modes| modes.to_vec()),
+            as_spell_cast: source_id.is_some() && self.casting_spell_source.get() == source_id,
         };
         if let Some(cached) = self.spell_target_legality.borrow().get(&key) {
             return *cached;
@@ -1786,9 +1822,12 @@ fn grant_applies_to_card_non_recursive(
     grant: &Grant,
     card_id: ObjectId,
     card: &crate::object::Object,
+    filter_card: &crate::object::Object,
     ctx: &crate::filter::FilterContext,
     game: &GameState,
 ) -> bool {
+    // A self-grant can require a particular cast face even when the grant's
+    // card filter must use that card's characteristics in its current zone.
     if grant
         .required_face_name
         .as_ref()
@@ -1804,12 +1843,16 @@ fn grant_applies_to_card_non_recursive(
                 .is_some_and(|target| target == card.stable_id);
         return identity_matches
             && grant.filter.as_ref().is_none_or(|filter| {
-                filter.matches_non_recursive(card, &grant_filter_context(ctx, grant, game), game)
+                filter.matches_non_recursive(
+                    filter_card,
+                    &grant_filter_context(ctx, grant, game),
+                    game,
+                )
             });
     }
 
     grant.filter.as_ref().is_some_and(|filter| {
-        filter.matches_non_recursive(card, &grant_filter_context(ctx, grant, game), game)
+        filter.matches_non_recursive(filter_card, &grant_filter_context(ctx, grant, game), game)
     })
 }
 

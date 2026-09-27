@@ -879,6 +879,11 @@ pub enum ActivatedAbilityCostCondition {
     /// modifier's source ("equip abilities you activate that target this
     /// creature").
     EquipAbility { targeting: Option<ObjectFilter> },
+    /// "This ability costs {N} less to activate": only the activated ability
+    /// printed with it (CR 602.2b), by its index among the source's
+    /// abilities. `None` until lowering binds the preceding activated ability;
+    /// an unbound condition applies to every activated ability of the source.
+    ThisAbility { ability_index: Option<usize> },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

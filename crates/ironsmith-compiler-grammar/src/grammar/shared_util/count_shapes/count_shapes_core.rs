@@ -649,11 +649,24 @@ pub fn parse_cards_drawn_count_words(count_words: &[&str]) -> Option<Value> {
         &[
             &["card", "an", "opponent", "has", "drawn", "this", "turn"],
             &["cards", "an", "opponent", "has", "drawn", "this", "turn"],
-            &["card", "opponents", "have", "drawn", "this", "turn"],
-            &["cards", "opponents", "have", "drawn", "this", "turn"],
         ],
     ) {
         return Some(Value::MaxCardsDrawnThisTurn(PlayerFilter::Opponent));
+    }
+    // "each card your opponents have drawn this turn" counts every
+    // opponent's draws together (Heliod, the Warped Eclipse).
+    if exact_one_of(
+        count_words,
+        &[
+            &["card", "opponents", "have", "drawn", "this", "turn"],
+            &["cards", "opponents", "have", "drawn", "this", "turn"],
+            &["card", "your", "opponents", "have", "drawn", "this", "turn"],
+            &["cards", "your", "opponents", "have", "drawn", "this", "turn"],
+        ],
+    ) {
+        return Some(Value::TurnHistoryCount(
+            ironsmith_core::TurnHistoryCount::CardsDrawn(PlayerFilter::Opponent),
+        ));
     }
     None
 }

@@ -45,6 +45,7 @@ fn terminal_progress_or_resume_subgame(
             .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
         Ok(GameProgress::StackResolved)
     } else {
+        game.reveal_face_down_objects_at_game_end();
         Ok(GameProgress::GameOver(result))
     }
 }
@@ -170,6 +171,20 @@ pub fn advance_priority_with_dm(
         }
         return Err(error);
     }
+    // CR 610.3c: an exile-until duration that ended where no player could be
+    // asked (a cost payment, the monarch changing, a default-chooser drain)
+    // returns its cards now, before anyone receives priority, with the
+    // players answering the entry choices. The returns can cause further
+    // state-based actions and triggers.
+    while game.has_pending_duration_end_returns() && !decision_maker.awaiting_choice() {
+        game.process_pending_duration_end_returns(decision_maker);
+        if decision_maker.awaiting_choice() {
+            break;
+        }
+        drain_pending_trigger_events_with_dm(game, trigger_queue, decision_maker);
+        check_and_apply_sbas_with(game, trigger_queue, decision_maker)?;
+        put_triggers_on_stack_with_dm(game, trigger_queue, decision_maker)?;
+    }
     perf.put_triggers_ms = triggers_started_at.elapsed_ms();
 
     // Check if game is over
@@ -220,6 +235,7 @@ pub fn advance_priority_with_dm(
             player.has_won = true;
         }
         game.finalize_ante_ownership(winner);
+        game.reveal_face_down_objects_at_game_end();
         return Ok(GameProgress::GameOver(GameResult::Winner(winner)));
     }
     perf.game_over_check_ms = game_over_started_at.elapsed_ms();

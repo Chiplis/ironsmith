@@ -81,11 +81,18 @@ impl DestroyEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
         object_id: crate::ids::ObjectId,
+        can_be_regenerated: bool,
     ) -> Result<Option<OutcomeStatus>, ExecutionError> {
         let pre_snapshot = game
             .object(object_id)
             .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
-        let result = process_destroy(game, object_id, Some(ctx.source), &mut *ctx.decision_maker);
+        let result = process_destroy_with_regeneration(
+            game,
+            object_id,
+            Some(ctx.source),
+            &mut *ctx.decision_maker,
+            can_be_regenerated,
+        );
         if let Some(snapshot) = pre_snapshot
             && !game
                 .object(object_id)
@@ -106,6 +113,221 @@ impl DestroyEffect {
     }
 }
 
+/// Destroy one permanent, honoring "can't be regenerated" (CR 701.19c).
+///
+/// The permanent's regeneration shields can't replace this destruction, but
+/// they aren't used up by it: when the permanent survives (indestructible, a
+/// shield counter, "can't be destroyed"), its shields are still there.
+pub(crate) fn process_destroy_with_regeneration(
+    game: &mut GameState,
+    object_id: crate::ids::ObjectId,
+    source: Option<crate::ids::ObjectId>,
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
+    can_be_regenerated: bool,
+) -> EventOutcome<Zone> {
+    if can_be_regenerated {
+        return process_destroy(game, object_id, source, decision_maker);
+    }
+    let suspended = game
+        .effect_store
+        .replacement_effects
+        .suspend_regeneration_shields_from_source(object_id);
+    let shield_count = game.regeneration_shield_count(object_id);
+    game.clear_regeneration_shields(object_id);
+    let result = process_destroy(game, object_id, source, decision_maker);
+    if game
+        .object(object_id)
+        .is_some_and(|object| object.zone == Zone::Battlefield)
+    {
+        game.effect_store
+            .replacement_effects
+            .restore_suspended_effects(suspended);
+        game.add_regeneration_shield(object_id, shield_count);
+    }
+    result
+}
+
+/// "Destroy target permanent" (optionally "It can't be regenerated").
+///
+/// A follow-up that asks what was "destroyed this way" (Noxious Gearhulk,
+/// Dire-Strain Rampage) reads the destroyed permanent's last-known
+/// information, so it is kept when the destruction happened (CR 608.2c).
+pub(crate) fn execute_single_target_destroy(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    spec: &ChooseSpec,
+    can_be_regenerated: bool,
+) -> Result<EffectOutcome, ExecutionError> {
+    let mut destroyed_memory = None;
+    let outcome = apply_single_target_object_from_spec(game, ctx, spec, |game, ctx, object_id| {
+        let pre_memory = OutcomeObjectMemory::from_object_id(game, object_id);
+        let status = DestroyEffect::destroy_object(game, ctx, object_id, can_be_regenerated)?;
+        if status.is_none() {
+            destroyed_memory = pre_memory;
+        }
+        Ok(status)
+    })?;
+    Ok(match destroyed_memory {
+        Some(memory) => outcome.with_affected_object_memory(vec![memory]),
+        None => outcome,
+    })
+}
+
+/// Destroy every selected permanent as one simultaneous event (CR 701.8a,
+/// 603.2c, 603.10a): the destruction is staged together, the owners order
+/// the cards going to their graveyards, every departure looks back at the
+/// same trigger sources, and the deaths form one batch.
+pub(crate) fn execute_simultaneous_destroy(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    spec: &ChooseSpec,
+    can_be_regenerated: bool,
+) -> Result<EffectOutcome, ExecutionError> {
+    let selected_objects = match resolve_objects_for_effect(game, ctx, spec) {
+        Ok(objects) => objects,
+        Err(_) => return Ok(EffectOutcome::target_invalid()),
+    };
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(EffectOutcome::count(0));
+    }
+
+    // Stage the entire simultaneous destruction transaction on a clone.
+    // Owner order choices see `decision_view`, the immutable pre-event
+    // state, and the clone is committed only after every choice succeeds.
+    let decision_view = game.clone();
+    let mut staged_game = decision_view.clone();
+    let pinned_lookback =
+        crate::effects::helpers::begin_simultaneous_zone_change_lookback(&mut staged_game);
+    let opened_batch = staged_game.open_simultaneous_action();
+    let batch = staged_game
+        .simultaneous_action_batch()
+        .unwrap_or(ctx.provenance);
+    let pending_start = staged_game.effect_store.pending_trigger_events.len();
+    let mut destroyed_objects = Vec::new();
+    let mut destroyed_memory = Vec::new();
+    let mut graveyard_zone_changes = Vec::new();
+    let mut departed_snapshots = Vec::new();
+    let mut applied_count = 0usize;
+    for object_id in selected_objects {
+        let pre_snapshot = decision_view.object(object_id).map(|object| {
+            ObjectSnapshot::from_object_with_calculated_characteristics(object, &decision_view)
+        });
+        let result = process_destroy_with_regeneration(
+            &mut staged_game,
+            object_id,
+            Some(ctx.source),
+            &mut *ctx.decision_maker,
+            can_be_regenerated,
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        if let Some(snapshot) = pre_snapshot.as_ref()
+            && !staged_game
+                .object(object_id)
+                .is_some_and(|object| object.zone == Zone::Battlefield)
+        {
+            departed_snapshots.push(snapshot.clone());
+        }
+        if matches!(result, EventOutcome::Proceed(Zone::Graveyard)) {
+            applied_count += 1;
+            if let Some(snapshot) = pre_snapshot.as_ref() {
+                destroyed_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
+            }
+            let result_objects = staged_game.take_zone_change_results(object_id);
+            if let Some(snapshot) = pre_snapshot {
+                graveyard_zone_changes.push((object_id, result_objects.clone(), snapshot));
+            }
+            destroyed_objects.extend(result_objects);
+        }
+    }
+
+    if !super::order_simultaneous_graveyard_batch(
+        &decision_view,
+        &mut staged_game,
+        &mut *ctx.decision_maker,
+        Some(ctx.source),
+        &destroyed_objects,
+    ) {
+        return Ok(EffectOutcome::count(0));
+    }
+    staged_game.close_simultaneous_action(opened_batch);
+    crate::effects::helpers::end_simultaneous_zone_change_lookback(&mut staged_game, pinned_lookback);
+
+    if graveyard_zone_changes.len() > 1 {
+        let event_objects = graveyard_zone_changes
+            .iter()
+            .map(|(id, _, _)| *id)
+            .collect::<Vec<_>>();
+        let result_objects = graveyard_zone_changes
+            .iter()
+            .flat_map(|(_, result_ids, _)| result_ids.iter().copied())
+            .collect::<Vec<_>>();
+        let snapshots = graveyard_zone_changes
+            .iter()
+            .map(|(_, _, snapshot)| snapshot.clone())
+            .collect::<Vec<_>>();
+
+        let removed =
+            staged_game.remove_pending_trigger_events_matching_from(pending_start, |event| {
+                let Some(zone_change) = event.downcast::<ZoneChangeEvent>() else {
+                    return false;
+                };
+                zone_change.from == Zone::Battlefield
+                    && zone_change.to == Zone::Graveyard
+                    && zone_change.objects.len() == 1
+                    && event_objects.contains(&zone_change.objects[0])
+            });
+
+        if !removed.is_empty() {
+            let mut lookback_source_snapshots = Vec::new();
+            for snapshot in removed
+                .iter()
+                .flat_map(|event| event.lookback_source_snapshots())
+            {
+                if !lookback_source_snapshots
+                    .iter()
+                    .any(|existing: &ObjectSnapshot| existing.stable_id == snapshot.stable_id)
+                {
+                    lookback_source_snapshots.push(snapshot.clone());
+                }
+            }
+            let mut event = ZoneChangeEvent::batch_with_snapshots(
+                event_objects,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                ctx.cause.clone(),
+                snapshots,
+            );
+            event.result_objects = result_objects;
+            // The destruction's other zone changes (a replacement's "exile
+            // it instead") belong to the same simultaneous event.
+            staged_game.queue_trigger_event(
+                ctx.provenance,
+                TriggerEvent::new_with_provenance(event, ctx.provenance)
+                    .with_simultaneous_batch(batch)
+                    .with_lookback_source_snapshots(lookback_source_snapshots),
+            );
+        }
+    }
+
+    *game = staged_game;
+    for snapshot in departed_snapshots {
+        ctx.refresh_target_snapshot(snapshot.clone());
+        if snapshot.object_id == ctx.source {
+            ctx.refresh_source_snapshot(snapshot);
+        }
+    }
+
+    let mut outcome = EffectOutcome::count(applied_count as i32);
+    if !destroyed_objects.is_empty() {
+        outcome = outcome.with_execution_fact(ExecutionFact::AffectedObjects(destroyed_objects));
+        outcome = outcome.with_affected_object_memory(destroyed_memory);
+    }
+
+    Ok(outcome)
+}
+
 impl EffectExecutor for DestroyEffect {
     fn execute(
         &self,
@@ -114,147 +336,9 @@ impl EffectExecutor for DestroyEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         // Handle targeted effects with special single-target behavior
         if self.spec.is_target() && self.spec.is_single() {
-            return apply_single_target_object_from_spec(
-                game,
-                ctx,
-                &self.spec,
-                Self::destroy_object,
-            );
+            return execute_single_target_destroy(game, ctx, &self.spec, true);
         }
-
-        let selected_objects = match resolve_objects_for_effect(game, ctx, &self.spec) {
-            Ok(objects) => objects,
-            Err(_) => return Ok(EffectOutcome::target_invalid()),
-        };
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-
-        // Stage the entire simultaneous destruction transaction on a clone.
-        // Owner order choices see `decision_view`, the immutable pre-event
-        // state, and the clone is committed only after every choice succeeds.
-        let decision_view = game.clone();
-        let mut staged_game = decision_view.clone();
-        let pending_start = staged_game.effect_store.pending_trigger_events.len();
-        let mut destroyed_objects = Vec::new();
-        let mut destroyed_memory = Vec::new();
-        let mut graveyard_zone_changes = Vec::new();
-        let mut departed_snapshots = Vec::new();
-        let mut applied_count = 0usize;
-        for object_id in selected_objects {
-            let pre_snapshot = decision_view.object(object_id).map(|object| {
-                ObjectSnapshot::from_object_with_calculated_characteristics(object, &decision_view)
-            });
-            let result = process_destroy(
-                &mut staged_game,
-                object_id,
-                Some(ctx.source),
-                &mut *ctx.decision_maker,
-            );
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            if let Some(snapshot) = pre_snapshot.as_ref()
-                && !staged_game
-                    .object(object_id)
-                    .is_some_and(|object| object.zone == Zone::Battlefield)
-            {
-                departed_snapshots.push(snapshot.clone());
-            }
-            if matches!(result, EventOutcome::Proceed(Zone::Graveyard)) {
-                applied_count += 1;
-                if let Some(snapshot) = pre_snapshot.as_ref() {
-                    destroyed_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
-                }
-                let result_objects = staged_game.take_zone_change_results(object_id);
-                if let Some(snapshot) = pre_snapshot {
-                    graveyard_zone_changes.push((object_id, result_objects.clone(), snapshot));
-                }
-                destroyed_objects.extend(result_objects);
-            }
-        }
-
-        if !super::order_simultaneous_graveyard_batch(
-            &decision_view,
-            &mut staged_game,
-            &mut *ctx.decision_maker,
-            Some(ctx.source),
-            &destroyed_objects,
-        ) {
-            return Ok(EffectOutcome::count(0));
-        }
-
-        if graveyard_zone_changes.len() > 1 {
-            let event_objects = graveyard_zone_changes
-                .iter()
-                .map(|(id, _, _)| *id)
-                .collect::<Vec<_>>();
-            let result_objects = graveyard_zone_changes
-                .iter()
-                .flat_map(|(_, result_ids, _)| result_ids.iter().copied())
-                .collect::<Vec<_>>();
-            let snapshots = graveyard_zone_changes
-                .iter()
-                .map(|(_, _, snapshot)| snapshot.clone())
-                .collect::<Vec<_>>();
-
-            let removed =
-                staged_game.remove_pending_trigger_events_matching_from(pending_start, |event| {
-                    let Some(zone_change) = event.downcast::<ZoneChangeEvent>() else {
-                        return false;
-                    };
-                    zone_change.from == Zone::Battlefield
-                        && zone_change.to == Zone::Graveyard
-                        && zone_change.objects.len() == 1
-                        && event_objects.contains(&zone_change.objects[0])
-                });
-
-            if !removed.is_empty() {
-                let mut lookback_source_snapshots = Vec::new();
-                for snapshot in removed
-                    .iter()
-                    .flat_map(|event| event.lookback_source_snapshots())
-                {
-                    if !lookback_source_snapshots
-                        .iter()
-                        .any(|existing: &ObjectSnapshot| existing.stable_id == snapshot.stable_id)
-                    {
-                        lookback_source_snapshots.push(snapshot.clone());
-                    }
-                }
-                let mut event = ZoneChangeEvent::batch_with_snapshots(
-                    event_objects,
-                    Zone::Battlefield,
-                    Zone::Graveyard,
-                    ctx.cause.clone(),
-                    snapshots,
-                );
-                event.result_objects = result_objects;
-                staged_game.queue_trigger_event(
-                    ctx.provenance,
-                    TriggerEvent::new_with_provenance(event, ctx.provenance)
-                        .with_simultaneous_batch(ctx.provenance)
-                        .with_lookback_source_snapshots(lookback_source_snapshots),
-                );
-            }
-        }
-
-        *game = staged_game;
-        for snapshot in departed_snapshots {
-            ctx.refresh_target_snapshot(snapshot.clone());
-            if snapshot.object_id == ctx.source {
-                ctx.refresh_source_snapshot(snapshot);
-            }
-        }
-
-        let mut outcome = EffectOutcome::count(applied_count as i32);
-        if !destroyed_objects.is_empty() {
-            outcome =
-                outcome.with_execution_fact(ExecutionFact::AffectedObjects(destroyed_objects));
-            outcome = outcome.with_affected_object_memory(destroyed_memory);
-        }
-
-        Ok(outcome)
+        execute_simultaneous_destroy(game, ctx, &self.spec, true)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -852,6 +936,8 @@ mod tests {
         );
         assert_eq!(change.cause.source, Some(source));
         assert!(game.provenance_graph().node(raw.provenance()).is_some());
-        assert_eq!(raw.simultaneous_batch(), Some(provenance));
+        // The destruction is its own simultaneous action, not the whole
+        // resolution's (a later instruction is a separate event).
+        assert!(raw.simultaneous_batch().is_some());
     }
 }

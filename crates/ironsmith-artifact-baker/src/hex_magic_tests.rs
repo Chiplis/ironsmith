@@ -11,6 +11,7 @@ fn compile(text: &str) -> engine::CardDefinition {
         other_face_id: None,
         other_face_name: None,
         layout: LinkedFaceLayout::None,
+        transforming_dfc: false,
     })
     .expect("strict artifact compilation");
     engine::artifact_materializer::materialize_artifact(&artifact).unwrap()

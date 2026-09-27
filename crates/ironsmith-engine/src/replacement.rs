@@ -513,6 +513,18 @@ impl ZoneReplacementSpec {
     }
 }
 
+/// A replacement effect temporarily taken out of a [`ReplacementEffectManager`].
+#[derive(Debug, Clone)]
+pub struct SuspendedReplacementEffect {
+    index: usize,
+    effect: ReplacementEffect,
+    source: Option<ReplacementEffectSource>,
+    one_shot: bool,
+    batch_one_shot: bool,
+    pending_batch_one_shot: bool,
+    until_end_of_turn: bool,
+}
+
 /// Manages all replacement effects in the game.
 #[derive(Debug, Clone, Default)]
 pub struct ReplacementEffectManager {
@@ -619,6 +631,68 @@ impl ReplacementEffectManager {
     /// Remove all effects from a specific source.
     pub fn remove_effects_from_source(&mut self, source: ObjectId) {
         self.effects.retain(|e| e.source != source);
+    }
+
+    /// Take the regeneration shields protecting `source` out of play for one
+    /// destruction that can't be regenerated (CR 701.19c). Pass the result to
+    /// [`Self::restore_suspended_effects`] if the permanent survives: the
+    /// shields weren't used up.
+    pub fn suspend_regeneration_shields_from_source(
+        &mut self,
+        source: ObjectId,
+    ) -> Vec<SuspendedReplacementEffect> {
+        let mut suspended = Vec::new();
+        let mut index = 0;
+        while index < self.effects.len() {
+            let effect = &self.effects[index];
+            let id = effect.id;
+            let is_shield = effect.source == source
+                && effect
+                    .matcher
+                    .as_ref()
+                    .is_some_and(|matcher| matcher.is_regeneration_shield())
+                && (self.one_shot_effects.contains(&id) || self.batch_one_shot_effects.contains(&id));
+            if !is_shield {
+                index += 1;
+                continue;
+            }
+            let effect = self.effects.remove(index);
+            suspended.push(SuspendedReplacementEffect {
+                index: index + suspended.len(),
+                effect,
+                source: self.effect_sources.remove(&id.0),
+                one_shot: self.one_shot_effects.remove(&id),
+                batch_one_shot: self.batch_one_shot_effects.remove(&id),
+                pending_batch_one_shot: self.pending_batch_one_shot_effects.remove(&id),
+                until_end_of_turn: self.until_end_of_turn_effects.remove(&id),
+            });
+        }
+        suspended
+    }
+
+    /// Put effects taken out by [`Self::suspend_regeneration_shields_from_source`]
+    /// back in their original order and with their original identities.
+    pub fn restore_suspended_effects(&mut self, suspended: Vec<SuspendedReplacementEffect>) {
+        for entry in suspended {
+            let id = entry.effect.id;
+            let index = entry.index.min(self.effects.len());
+            self.effects.insert(index, entry.effect);
+            if let Some(source) = entry.source {
+                self.effect_sources.insert(id.0, source);
+            }
+            if entry.one_shot {
+                self.one_shot_effects.insert(id);
+            }
+            if entry.batch_one_shot {
+                self.batch_one_shot_effects.insert(id);
+            }
+            if entry.pending_batch_one_shot {
+                self.pending_batch_one_shot_effects.insert(id);
+            }
+            if entry.until_end_of_turn {
+                self.until_end_of_turn_effects.insert(id);
+            }
+        }
     }
 
     /// Remove all one-shot effects from a specific source.

@@ -65,7 +65,8 @@ use crate::registry::{HeadDiscriminator, RegistryRuleMetadata};
 use crate::util::span_from_tokens;
 
 use crate::cards::builders::{
-    CardTextError, ConditionalEffectAst, DelayedEffectAst, EffectAst, LifeResourceActionAst,
+    CardTextError, ConditionalEffectAst, DelayedEffectAst, EffectAst, GrantActionAst,
+    LifeResourceActionAst,
     ManaActionAst, ObjectChoiceEffectAst, PermanentStateActionAst, PlayerAst, PredicateAst,
     ReturnControllerAst, SourcePredicateAst, StatChangeActionAst, SubjectVerbActionAst,
     SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan,
@@ -1430,6 +1431,15 @@ fn parse_effect_chain_inner_lexed_unstacked(
     segments = expand_segments_with_comma_action_clauses_lexed(segments);
     segments = expand_segments_with_multi_create_clauses_lexed(segments);
     segments = merge_for_each_counter_group_segments_lexed(segments);
+    // "loses first strike or swampwalk" is a choice between two removals
+    // (Urborg); only an "and" list removes both at once.
+    let disjunctive_chain = coordination_plan.as_ref().is_some_and(|plan| {
+        plan.kind == crate::model::CoordinationKindAst::Disjunction
+            || plan
+                .boundaries
+                .iter()
+                .any(|boundary| boundary.operator == crate::model::CoordinationOperatorAst::Or)
+    });
     let mut carried_context: Option<CarryContext> = None;
     let mut carried_duration: Option<Until> = leading_duration.clone();
     let mut carried_leading_duration = leading_duration.is_some();
@@ -1920,9 +1930,20 @@ fn parse_effect_chain_inner_lexed_unstacked(
                 if let Some(duration) = &carried_duration {
                     apply_carried_effect_duration(&mut effect, duration);
                 }
+                // "Target creature loses first strike or swampwalk" (Urborg):
+                // the alternatives are one choice over the same announced
+                // target (CR 700.2), so the bare arm acts on the preceding
+                // arm's subject instead of an unbound synthetic "it".
+                if disjunctive_chain
+                    && let Some(previous) = effects.last()
+                    && let Some(subject) = shared_ability_modifier_target(previous)
+                {
+                    set_ability_modifier_target(&mut effect, subject);
+                }
                 // "<subject> lose A and B until end of turn": the bare arm
                 // shares the preceding subject and its trailing duration.
                 if losing
+                    && !disjunctive_chain
                     && effects.last_mut().is_some_and(|previous| {
                         chain_carry_ability_programs::merge_shared_subject_lose_followup(
                             previous, &effect,
@@ -2963,5 +2984,41 @@ pub(super) fn bind_it_metric_to_declared_target(value: Value, target: &TargetAst
     match spec {
         Some(spec) => bind_it_metric_to_explicit_target(value, &spec),
         None => value,
+    }
+}
+
+/// The object subject of a single-target ability grant or removal.
+fn shared_ability_modifier_target(effect: &EffectAst) -> Option<TargetAst> {
+    let EffectAst::SubjectVerb(subject_verb) = effect else {
+        return None;
+    };
+    match &subject_verb.action {
+        SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
+            target,
+            ..
+        })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget {
+            target,
+            ..
+        }) => Some(target.clone()),
+        _ => None,
+    }
+}
+
+fn set_ability_modifier_target(effect: &mut EffectAst, subject: TargetAst) {
+    let EffectAst::SubjectVerb(subject_verb) = effect else {
+        return;
+    };
+    if let SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
+        target,
+        ..
+    })
+    | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. })
+    | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget {
+        target, ..
+    }) = &mut subject_verb.action
+    {
+        *target = subject;
     }
 }

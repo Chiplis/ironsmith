@@ -2054,6 +2054,13 @@ pub(super) fn describe_sacrifice_choice_selection(
     if choose.filter.card_types.len() > 1 {
         selection = selection.replace(", or ", ", and/or ");
     }
+    // "sacrifice any number of creatures with total power 12 or greater"
+    // (Phyrexian Dreadnought): the aggregate bound is part of the choice.
+    if choose.aggregate_constraint.is_some() && !selection.contains(" with total ") {
+        selection.push_str(
+            &super::player_and_zone_effects::describe_choice_aggregate_constraint_suffix(choose),
+        );
+    }
     selection
 }
 

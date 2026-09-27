@@ -365,10 +365,28 @@ impl EffectLoweringContext {
 
     pub fn take_reserved_object_result_tag(&mut self, prefix: &str) -> Option<TagKey> {
         let prefix = format!("{prefix}_");
-        self.reserved_object_result_tag
+        let tag = self
+            .reserved_object_result_tag
             .as_ref()
             .is_some_and(|tag| tag.as_str().starts_with(&prefix))
             .then(|| self.reserved_object_result_tag.take())
-            .flatten()
+            .flatten()?;
+        // Annotation already spent this ordinal on the reserved tag. Keep the
+        // lowering counter past it, so a nested re-annotation (a "may" body)
+        // allocates the same later tags the outer annotation predicted
+        // (Chain of Vapor's "they" names the sacrifice's result tag).
+        let digits = tag
+            .as_str()
+            .rsplit(|ch: char| !ch.is_ascii_digit())
+            .next()
+            .unwrap_or("");
+        if let Ok(ordinal) = digits.parse::<u32>() {
+            let mut id_gen = self.ids.id_gen_context();
+            if id_gen.next_tag_id <= ordinal {
+                id_gen.next_tag_id = ordinal + 1;
+                self.ids.apply_id_gen_context(id_gen);
+            }
+        }
+        Some(tag)
     }
 }

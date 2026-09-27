@@ -904,9 +904,24 @@ fn declare_blockers_internal(
 
     propagate_banding_blocks(combat, &mut blockers_by_attacker);
 
-    let blocking_creature_count = blocker_counts.len();
+    // CR 802.4b: a defending player's blocks are judged ignoring blocking
+    // creatures controlled by other players (the declaration being validated
+    // also carries earlier defenders' blocks so the combat state stays whole).
+    // So "can't block alone" (CR 506.5) and "no more than N creatures can
+    // block" count only this defending player's blockers.
+    let own_blockers = blocker_counts
+        .keys()
+        .copied()
+        .filter(|blocker| {
+            requirement_player.is_none_or(|player| {
+                game.object(*blocker)
+                    .is_some_and(|object| game.controller_of(object) == player)
+            })
+        })
+        .collect::<Vec<_>>();
+    let blocking_creature_count = own_blockers.len();
     if blocking_creature_count == 1
-        && let Some(&blocker) = blocker_counts.keys().next()
+        && let Some(&blocker) = own_blockers.first()
         && !game.can_block_alone(blocker)
     {
         let attacker = attackers_by_blocker
@@ -1237,6 +1252,42 @@ fn block_edge_can_obey_requirement(
     }
 }
 
+/// Static abilities on the battlefield that impose a blocking cost
+/// (CR 509.1d), with their source and controller.
+fn block_cost_abilities(
+    game: &GameState,
+    effects: &[crate::continuous::ContinuousEffect],
+) -> Vec<(ObjectId, PlayerId, StaticAbility)> {
+    let mut abilities = Vec::new();
+    for &source in &game.battlefield {
+        let Some(object) = game.object(source) else {
+            continue;
+        };
+        let controller = game.controller_of(object);
+        let statics = match game.calculated_characteristics_with_effects(source, effects) {
+            Some(calc) => calc.static_abilities.to_vec(),
+            None => object
+                .abilities
+                .iter()
+                .filter_map(|ability| match &ability.kind {
+                    crate::ability::AbilityKind::Static(ability) => Some(ability.clone()),
+                    _ => None,
+                })
+                .collect(),
+        };
+        abilities.extend(
+            statics
+                .into_iter()
+                .filter(|ability| {
+                    ability.id() == crate::static_abilities::StaticAbilityId::BlockCost
+                        || ability.block_cost_model().is_some()
+                })
+                .map(|ability| (source, controller, ability)),
+        );
+    }
+    abilities
+}
+
 fn block_declaration_obeying_more_requirements_exists(
     game: &GameState,
     combat: &CombatState,
@@ -1276,6 +1327,23 @@ fn block_declaration_obeying_more_requirements_exists(
                 .any(|&relevant| attackers_share_band(combat, attacker, relevant))
         })
         .collect::<Vec<_>>();
+    // CR 509.1c: a player is never required to pay a cost to block, so an
+    // edge that would impose a blocking cost (CR 509.1d) can't be used to
+    // show that more requirements could have been obeyed.
+    if !candidates.is_empty() {
+        let cost_abilities = block_cost_abilities(game, effects);
+        if !cost_abilities.is_empty() {
+            candidates.retain(|&(blocker, attacker)| {
+                !cost_abilities.iter().any(|(source, controller, ability)| {
+                    ability
+                        .block_cost_for_declaration(game, *source, *controller, blocker, attacker)
+                        .is_some_and(|cost| {
+                            crate::static_abilities::combat_cost_requires_payment(&cost)
+                        })
+                })
+            });
+        }
+    }
     candidates.sort_by_key(|&(blocker, attacker)| {
         let covered = requirements
             .iter()

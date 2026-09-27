@@ -407,8 +407,13 @@ pub(crate) fn interpret_trigger_model(
             source,
             player,
             one_or_more,
+            each_damaged_player,
         } => {
-            if one_or_more {
+            if one_or_more && each_damaged_player {
+                crate::triggers::Trigger::deals_combat_damage_to_each_player_one_or_more(
+                    source, player,
+                )
+            } else if one_or_more {
                 crate::triggers::Trigger::deals_combat_damage_to_player_one_or_more(source, player)
             } else {
                 crate::triggers::Trigger::deals_combat_damage_to_player(source, player)
@@ -965,7 +970,13 @@ impl super::Trigger {
             ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayerOneOrMore {
                 source,
                 player,
+                each_damaged_player: false,
             } => Self::deals_combat_damage_to_player_one_or_more(source, player),
+            ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+                source,
+                player,
+                each_damaged_player: true,
+            } => Self::deals_combat_damage_to_each_player_one_or_more(source, player),
             ironsmith_core::DelayedTriggerSpec::IsDealtDamage(target) => {
                 Self::is_dealt_damage(target)
             }

@@ -486,8 +486,9 @@ fn u061_controller_rotation_departure_and_communal_ownership_are_preserved() {
     assert!(game.leave_game(alice));
     assert_eq!(game.planar_controller(), Some(bob));
     assert_eq!(game.face_up_planar_objects(), &[bob_plane]);
-    assert_eq!(game.stack.len(), 1, "a planar-card ability should survive");
-    assert_eq!(game.stack[0].controller, bob);
+    // CR 901.10b: only abilities from phenomena survive their owner leaving;
+    // a departed player's plane ability ceases to exist (CR 800.4a).
+    assert!(game.stack.is_empty(), "a departed plane's ability should cease to exist");
 
     let mut communal = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let cards = (0..20)

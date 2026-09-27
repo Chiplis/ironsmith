@@ -2093,6 +2093,16 @@ fn has_specialized_document_line_shape(ctx: &LineDispatchContext<'_>) -> bool {
             .is_some_and(|next| should_try_combined_static_tokens(tokens, &next.tokens))
 }
 
+/// "This spell costs ..." lines belong to the static cost-modifier family
+/// (CR 601.2f); no statement reading may claim them, even after the static
+/// parse fails.
+fn is_this_spell_cost_modifier_line(ctx: &LineDispatchContext<'_>) -> bool {
+    crate::word_primitives::parse_sequence_prefix(
+        &crate::lexer::parser_token_word_refs(&ctx.line.tokens),
+        &["this", "spell", "costs"],
+    )
+}
+
 pub(super) fn run_statement_probe_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
@@ -2114,6 +2124,15 @@ pub(super) fn run_statement_probe_line_family(
         return ParseOutcome::NoMatch;
     }
     if has_specialized_document_line_shape(ctx) {
+        return ParseOutcome::NoMatch;
+    }
+    // "This spell costs ... if <condition>" is a static ability that works
+    // while the spell is being cast (CR 601.2f). The statement grammar can
+    // read it as "if <condition>, it gains ...", a resolution effect that
+    // never changes the cost, so the static cost-modifier family owns the
+    // line and reports its own error when it can't read it.
+    if is_this_spell_cost_modifier_line(ctx) {
+        crate::parse_trace::event("statement-probe: declined for this-spell cost modifier");
         return ParseOutcome::NoMatch;
     }
     // A direct alternative-cast-cost sentence is a keyword line.  The broad
@@ -2389,6 +2408,7 @@ pub(super) fn run_static_line_family(
         Ok(None) => ParseOutcome::NoMatch,
         Err(err)
             if looks_like_statement_line_lexed(ctx.line)
+                && !is_this_spell_cost_modifier_line(ctx)
                 && !super::super::grammar::anthem_grants::parse_anthem_modifier_head(
                     &ctx.line.tokens,
                 )
@@ -2407,6 +2427,9 @@ pub(super) fn run_statement_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
     let rule = RuleId::new("statement-line");
+    if is_this_spell_cost_modifier_line(ctx) {
+        return ParseOutcome::NoMatch;
+    }
     if line_family_claimed!(rule, run_keyword_line_family(ctx))
         || line_family_claimed!(rule, run_start_your_engines_line_family(ctx))
     {

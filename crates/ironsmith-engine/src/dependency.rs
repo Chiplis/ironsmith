@@ -145,9 +145,6 @@ fn effect_applies_to_any_object(
     })
 }
 
-fn is_characteristic_defining_effect(effect: &ContinuousEffect) -> bool {
-    matches!(effect.source_type, EffectSourceType::CharacteristicDefining)
-}
 
 fn effect_group_has_started(
     effect: &ContinuousEffect,
@@ -1067,11 +1064,7 @@ fn object_matches_filter_with_chars(
     }
 
     if let Some(mv_cmp) = &filter.mana_value {
-        let mv = object
-            .mana_cost
-            .as_ref()
-            .map(|mc| mc.mana_value() as i32)
-            .unwrap_or(0);
+        let mv = crate::filter::object_mana_value_for_filter(object);
         if !mv_cmp.satisfies(mv) {
             return false;
         }
@@ -1577,6 +1570,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::PlayersBeingAttacked
         | Value::CountPlayers(_)
         | Value::CountPlayersWithCardsInHandAtLeast(_, _)
+        | Value::PlayersWhoControl { .. }
         | Value::PlayersWhoControlMoreThanYou { .. }
         | Value::PlayersWhoControlAtLeastMoreThanYou { .. }
         | Value::PartySize(_)
@@ -1658,7 +1652,12 @@ fn value_references_pt(value: &Value) -> bool {
 /// keep the caller's order, which is deterministic.
 pub fn sort_with_dependencies<'a>(effects: &[&'a ContinuousEffect]) -> Vec<&'a ContinuousEffect> {
     let mut sorted = effects.to_vec();
-    sorted.sort_by_key(|effect| (!is_characteristic_defining_effect(effect), effect.timestamp));
+    sorted.sort_by_key(|effect| {
+        (
+            crate::continuous::effect_layer_precedence(effect),
+            effect.timestamp,
+        )
+    });
     sorted
 }
 
@@ -2353,6 +2352,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::DamageDealtThisTurnByTaggedSpellCast(_)
         | Value::CardTypesInGraveyard(_)
         | Value::CommanderColorIdentityColors(_)
+        | Value::PlayersWhoControl { .. }
         | Value::PlayersWhoControlMoreThanYou { .. }
         | Value::PlayersWhoControlAtLeastMoreThanYou { .. } => {
             modification_can_change_abilities_or_matching_characteristics(modification)
@@ -2928,21 +2928,18 @@ fn sort_with_dependencies_with_baseline_and_started_groups<'a>(
 
     while !remaining.is_empty() {
         let representatives = chars_class_representatives(&current_baseline, objects, game);
-        let cda_pending = remaining.iter().any(|&index| {
-            matches!(
-                effects[index].source_type,
-                EffectSourceType::CharacteristicDefining
-            )
-        });
+        // CDAs (CR 613.3) and then the CR 305.7 land-type ability loss go
+        // first; dependencies order effects within the earliest class.
+        let first_precedence = remaining
+            .iter()
+            .map(|&index| crate::continuous::effect_layer_precedence(effects[index]))
+            .min()
+            .unwrap_or(u8::MAX);
         let eligible: Vec<usize> = remaining
             .iter()
             .copied()
             .filter(|&index| {
-                !cda_pending
-                    || matches!(
-                        effects[index].source_type,
-                        EffectSourceType::CharacteristicDefining
-                    )
+                crate::continuous::effect_layer_precedence(effects[index]) == first_precedence
             })
             .collect();
 

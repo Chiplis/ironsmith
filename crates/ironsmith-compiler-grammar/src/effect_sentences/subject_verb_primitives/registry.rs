@@ -897,8 +897,12 @@ pub fn parse_source_and_tagged_object_each_actions_sentence(
         }
         parse_effect_chain_lexed(&sentence)
     };
-    let mut effects = parse_for_subject(shape.source_tokens)?;
-    effects.extend(parse_for_subject(shape.tagged_tokens)?);
+    // Lower the demonstrative conjunct first: "that creature" names the
+    // object an earlier sentence referred to (Gogo's copied creature). After
+    // the source conjunct's effects, the nearest object antecedent is the
+    // source itself and "that creature" would collapse onto it.
+    let mut effects = parse_for_subject(shape.tagged_tokens)?;
+    effects.extend(parse_for_subject(shape.source_tokens)?);
     Ok(Some(vec![EffectAst::Coordinated {
         effects,
         leading_duration: false,

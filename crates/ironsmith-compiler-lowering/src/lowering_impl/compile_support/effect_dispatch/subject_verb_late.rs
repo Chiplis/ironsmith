@@ -2590,7 +2590,12 @@ pub(super) fn compile_subject_verb_late(
             if *one_of_referenced_set {
                 resolved_filter.set_one_of_tagged_set_surface(true);
             }
-            let tag = ctx.next_tag("sacrificed");
+            // Use the result tag reference annotation predicted for this
+            // sacrifice, so a later "they"/"that player" (bound to that tag)
+            // names the tag the choice actually binds (Chain of Vapor).
+            let tag = ctx
+                .take_reserved_object_result_tag("sacrificed")
+                .unwrap_or_else(|| ctx.next_tag("sacrificed"));
             ctx.last_object_tag = Some(tag.clone());
             let choose = Effect::choose_objects(
                 resolved_filter,

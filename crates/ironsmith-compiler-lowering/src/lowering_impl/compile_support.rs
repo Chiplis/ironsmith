@@ -795,6 +795,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
                 | TurnHistoryCount::PlayersDealtDamage(player)
                 | TurnHistoryCount::DiscardedOrCycled(player)
                 | TurnHistoryCount::Cycled(player)
+                | TurnHistoryCount::CardsDrawn(player)
                 | TurnHistoryCount::PlayersLostLife(player)
                 | TurnHistoryCount::UntappedLandsAtTurnStart(player)
                 | TurnHistoryCount::Descended(player)
@@ -821,6 +822,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
                 }
                 TurnHistoryCount::Sacrificed { player, filter }
+                | TurnHistoryCount::SacrificedCardTypes { player, filter }
                 | TurnHistoryCount::CreaturesAttackedWith { player, filter } => {
                     bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
@@ -873,7 +875,8 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::HalfStartingLifeTotalRoundedDown(player) => {
             bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
         }
-        Value::PlayersWhoControlMoreThanYou { players, filter }
+        Value::PlayersWhoControl { players, filter }
+        | Value::PlayersWhoControlMoreThanYou { players, filter }
         | Value::PlayersWhoControlAtLeastMoreThanYou {
             players, filter, ..
         }

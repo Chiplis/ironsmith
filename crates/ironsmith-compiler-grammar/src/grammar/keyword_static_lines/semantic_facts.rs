@@ -75,6 +75,9 @@ pub fn parse_cards_drawn_this_turn_player_tokens(
             0..,
             any.void(),
             alt((
+                // "your opponents" names the opponents, not you; the
+                // possessive must not be read as the "you" reference.
+                parse_possessive_opponent_reference.value(DynamicPlayerKind::Opponent),
                 parse_you_reference.value(DynamicPlayerKind::You),
                 parse_opponent_reference.value(DynamicPlayerKind::Opponent),
             )),
@@ -94,7 +97,9 @@ pub fn parse_spell_cast_this_turn_player_tokens(
     })?;
     find_semantic(tokens, || alt((semantic_kw("cast"), semantic_kw("casts"))))?;
     find_semantic(tokens, || semantic_phrase(&["this", "turn"]))?;
-    if find_semantic(tokens, || parse_you_reference).is_some() {
+    if find_semantic(tokens, || parse_possessive_opponent_reference).is_some() {
+        Some(DynamicPlayerKind::Opponent)
+    } else if find_semantic(tokens, || parse_you_reference).is_some() {
         Some(DynamicPlayerKind::You)
     } else if find_semantic(tokens, || parse_opponent_reference).is_some() {
         Some(DynamicPlayerKind::Opponent)
@@ -294,6 +299,15 @@ fn parse_you_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     ))
     .void()
     .parse_next(input)
+}
+
+fn parse_possessive_opponent_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    (
+        semantic_kw("your"),
+        alt((semantic_kw("opponent"), semantic_kw("opponents"))),
+    )
+        .void()
+        .parse_next(input)
 }
 
 fn parse_opponent_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> {

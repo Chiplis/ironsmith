@@ -154,9 +154,19 @@ impl GameState {
     /// cast, so those two moves are not departures from the battlefield.
     pub(crate) fn token_cannot_change_zones(&self, object_id: ObjectId, new_zone: Zone) -> bool {
         self.object(object_id).is_some_and(|object| {
-            object.kind == crate::object::ObjectKind::Token
-                && !matches!(object.zone, Zone::Battlefield | Zone::Command | Zone::Stack)
-                && new_zone != Zone::Stack
+            if object.kind != crate::object::ObjectKind::Token || new_zone == Zone::Stack {
+                return false;
+            }
+            match object.zone {
+                Zone::Battlefield | Zone::Stack => false,
+                // A token staged in the command zone during creation may still
+                // enter; one that got there by leaving the battlefield may not.
+                Zone::Command => self
+                    .auxiliary_tracking
+                    .departed_command_zone_tokens
+                    .contains(&object_id),
+                _ => true,
+            }
         })
     }
 
@@ -830,6 +840,19 @@ impl GameState {
         let mut new_object = old_object;
         new_object.id = new_id;
         new_object.zone = new_zone;
+        if old_zone == Zone::Command {
+            self.auxiliary_tracking_mut()
+                .departed_command_zone_tokens
+                .remove(&old_id);
+        }
+        if new_object.kind == crate::object::ObjectKind::Token
+            && old_zone == Zone::Battlefield
+            && new_zone == Zone::Command
+        {
+            self.auxiliary_tracking_mut()
+                .departed_command_zone_tokens
+                .insert(new_id);
+        }
         if old_zone == Zone::Stack && new_zone != Zone::Stack {
             new_object.end_splice_cast_overlay();
         }
@@ -1027,6 +1050,18 @@ impl GameState {
 
         if old_zone != new_zone {
             self.record_ui_zone_transition(old_id, new_id, old_zone, new_zone);
+        }
+        // CR 708.9: a face-down permanent or spell that moves to another zone
+        // is revealed by its owner (it isn't when it stays face down, e.g. a
+        // face-down spell resolving). An identity this peer can't open yet is
+        // disclosed by the hidden-card protocol instead.
+        if was_face_down
+            && matches!(old_zone, Zone::Battlefield | Zone::Stack)
+            && old_zone != new_zone
+            && !self.is_face_down(new_id)
+            && !self.is_hidden_card_placeholder(new_id)
+        {
+            self.record_face_down_reveal(new_id, owner);
         }
 
         // Record entry timestamp per Rule 613.7d when entering the battlefield
@@ -2698,7 +2733,10 @@ impl GameState {
             })
             .map(|object| self.controller_of(object))
         {
+            // A permanent entering as a copy of a Room (Clone) wasn't cast as
+            // either half, so it enters with neither door unlocked.
             let cast_as_spell = old_zone == Zone::Stack
+                && result.enters_as_copy_of.is_none()
                 && self
                     .object(new_id)
                     .is_some_and(|object| object.kind == crate::object::ObjectKind::Card);

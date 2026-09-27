@@ -23,7 +23,7 @@ use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
     CardTextError, ConditionalEffectAst, DamageActionAst, DelayedEffectAst, EffectAst,
     GrantedAbilityAst, LifeResourceActionAst, LineAst, OwnedLexToken, PlayerAst, RetargetModeAst,
-    SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst,
+    SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::effect::Value;
 use crate::grammar::effects::typed_clause_heads::classify_typed_clause_head;
@@ -1359,6 +1359,43 @@ pub fn parse_anaphoric_object_deals_damage_clause(
             source.clone()
         };
     let parsed = super::verb_handlers::parse_deal_damage(body_tokens)?;
+    // "it deals N damage to each opponent": the per-player fan-out keeps the
+    // authored damage source (CR 120.3, 609.7) for each iterated player.
+    if let EffectAst::ForEach(
+        ForEachEffectAst::ForEachOpponent { effects }
+        | ForEachEffectAst::ForEachPlayer { effects }
+        | ForEachEffectAst::ForEachPlayersFiltered { effects, .. },
+    ) = &parsed
+        && let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
+                        target: TargetAst::Player(PlayerFilter::IteratedPlayer, _),
+                        unpreventable: false,
+                        ..
+                    }),
+                ..
+            }),
+        ] = effects.as_slice()
+    {
+        let mut parsed = parsed;
+        if let EffectAst::ForEach(
+            ForEachEffectAst::ForEachOpponent { effects }
+            | ForEachEffectAst::ForEachPlayer { effects }
+            | ForEachEffectAst::ForEachPlayersFiltered { effects, .. },
+        ) = &mut parsed
+            && let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, target, .. }),
+                ..
+            })) = effects.pop()
+        {
+            effects.push(EffectAst::subject_verb_damage_with_source(
+                source, amount, target,
+            ));
+        }
+        return Ok(Some(parsed));
+    }
     let EffectAst::SubjectVerb(effect) = parsed else {
         return Ok(None);
     };

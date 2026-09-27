@@ -258,7 +258,11 @@ impl StaticAbility {
                 Self::permanents_you_control_cant_be_sacrificed()
             }
             Some(StaticAbilityId::StartingLifeBonus) => Self::starting_life_bonus(0),
-            Some(StaticAbilityId::BuybackCostReduction) => Self::buyback_cost_reduction(0),
+            Some(StaticAbilityId::BuybackCostReduction) => {
+                return Err(StaticAbilityModelConversionError {
+                    detail: "buyback cost reduction needs its amount payload".to_string(),
+                });
+            }
             Some(StaticAbilityId::LegendRuleDoesntApply) => Self::legend_rule_doesnt_apply(),
             Some(StaticAbilityId::LegendRuleDoesntApplyToController) => {
                 Self::legend_rule_doesnt_apply_to_controller()

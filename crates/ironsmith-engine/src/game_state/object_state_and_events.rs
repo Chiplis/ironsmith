@@ -714,6 +714,76 @@ impl GameState {
             .cant_turn_face_up
             .contains(&id)
             && !self.merged_permanent_blocks_turn_face_up(id)
+            && !self.manifested_spell_card_blocks_turn_face_up(id)
+    }
+
+    /// CR 701.40g, 701.58g: a manifested or cloaked permanent represented by
+    /// an instant or sorcery card can't be turned face up. Only a face-down
+    /// battlefield permanent can be one (morph and disguise need a permanent
+    /// card), so the printed card types under the face-down overlay decide.
+    /// An identity the local engine doesn't know yet (a hidden placeholder)
+    /// is not blocked here.
+    fn manifested_spell_card_blocks_turn_face_up(&self, id: ObjectId) -> bool {
+        let Some(object) = self.object(id) else {
+            return false;
+        };
+        if object.zone != Zone::Battlefield || !self.is_face_down(id) {
+            return false;
+        }
+        let card_types = object
+            .face_down_cast_state
+            .as_deref()
+            .map(|state| &state.card_types)
+            .unwrap_or(&object.card_types);
+        object.kind == crate::object::ObjectKind::Card
+            && (card_types.contains(&CardType::Instant) || card_types.contains(&CardType::Sorcery))
+    }
+
+    /// Record the public reveal of a face-down object's real identity
+    /// (CR 708.9 / 708.10) for the owner.
+    pub(crate) fn record_face_down_reveal(&mut self, id: ObjectId, owner: PlayerId) {
+        let Some((stable_id, name)) = self
+            .object(id)
+            .map(|object| (object.stable_id, object.identity_name().to_string()))
+        else {
+            return;
+        };
+        self.record_ui_effect_event("reveal", Some(owner), None, vec![stable_id], None, Some(name));
+    }
+
+    /// CR 708.10: at the end of the game, every face-down permanent and spell
+    /// is revealed. Iterates in object-id order so every peer records the same
+    /// events. Identities this peer can't open are left to the hidden-card
+    /// end-of-match disclosure.
+    pub(crate) fn reveal_face_down_objects_at_game_end(&mut self) {
+        let mut face_down: Vec<ObjectId> = self
+            .battlefield_flags
+            .face_down
+            .iter()
+            .copied()
+            .filter(|id| {
+                self.object(*id).is_some_and(|object| {
+                    matches!(object.zone, Zone::Battlefield | Zone::Stack)
+                }) && !self.is_hidden_card_placeholder(*id)
+            })
+            .collect();
+        face_down.sort_unstable();
+        for id in face_down {
+            let Some(owner) = self.object(id).map(|object| object.owner) else {
+                continue;
+            };
+            self.record_face_down_reveal(id, owner);
+        }
+    }
+
+    fn reveal_face_down_permanent_for_failed_turn_face_up(&mut self, id: ObjectId) {
+        let Some((stable_id, name)) = self.object(id).map(|object| {
+            (object.stable_id, object.identity_name().to_string())
+        }) else {
+            return;
+        };
+        let controller = self.current_controller(id);
+        self.record_ui_effect_event("reveal", controller, None, vec![stable_id], None, Some(name));
     }
 
     fn merged_permanent_blocks_turn_face_up(&self, id: ObjectId) -> bool {
@@ -776,6 +846,12 @@ impl GameState {
             // CR 730.2g requires the failed action to reveal the permanent,
             // leave it face down, and emit no turned-face-up event.
             self.reveal_merged_permanent_for_failed_turn_face_up(id);
+            return false;
+        }
+        if self.manifested_spell_card_blocks_turn_face_up(id) {
+            // CR 701.40g / 701.58g: reveal it and leave it face down; no
+            // "turned face up" event (callers emit none on `false`).
+            self.reveal_face_down_permanent_for_failed_turn_face_up(id);
             return false;
         }
         let merged_stable_id = self.object(id).and_then(|object| {
@@ -952,6 +1028,15 @@ impl GameState {
                 .object(id)
                 .is_some_and(|object| object.zone == Zone::Battlefield)
             && self.current_has_static_ability_id(id, ability_id)
+    }
+
+    /// Whether a permanent currently has daybound or nightbound, which carry
+    /// the "can't transform except due to its daybound/nightbound ability"
+    /// restriction (CR 702.145b/e).
+    pub(crate) fn permanent_has_day_or_nightbound(&self, id: ObjectId) -> bool {
+        use crate::static_abilities::StaticAbilityId::{Daybound, Nightbound};
+        self.permanent_has_day_night_keyword(id, Daybound)
+            || self.permanent_has_day_night_keyword(id, Nightbound)
     }
 
     fn permanent_has_transforming_component(&self, id: ObjectId) -> bool {
@@ -2402,6 +2487,9 @@ impl GameState {
             .insert(source_id);
     }
 
+    /// End an "exile ... until this leaves the battlefield" duration. The
+    /// return is queued for a caller with a player decision channel (see
+    /// `process_pending_duration_end_returns`).
     pub fn return_exiled_for_source_leave(&mut self, source_id: ObjectId) {
         let (linked, return_zones) = {
             let tracking = self.exile_tracking_mut();
@@ -2432,7 +2520,7 @@ impl GameState {
                 (object_id, return_zone)
             })
             .collect::<Vec<_>>();
-        self.return_exiled_cards_at_duration_end(source_id, returns);
+        self.return_exiled_cards_at_duration_end(source_id, returns, None);
     }
 
     /// CR 610.3 / 610.3c: when an "exile ... until" duration ends, the cards
@@ -2443,24 +2531,33 @@ impl GameState {
     /// CR 303.4f Aura attachment. Other return zones use the zone-change
     /// replacement pipeline.
     ///
-    /// Duration ends aren't resolving effects and have no player decision
-    /// maker, so any entry choice is made by the default chooser.
+    /// Duration ends aren't resolving effects. Entry choices are asked of the
+    /// players through `decision_maker`. A caller without a player decision
+    /// channel queues the return instead; the next trigger drain that has one
+    /// (and at the latest the priority advance) performs it, before any
+    /// player receives priority.
     fn return_exiled_cards_at_duration_end(
         &mut self,
         source_id: ObjectId,
         returns: Vec<(ObjectId, Zone)>,
+        decision_maker: Option<&mut dyn crate::decision::DecisionMaker>,
     ) {
         if returns.is_empty() {
             return;
         }
+        let Some(decision_maker) = decision_maker else {
+            self.auxiliary_tracking_mut()
+                .pending_duration_end_returns
+                .push((source_id, returns));
+            return;
+        };
         let Some(controller) = returns
             .iter()
             .find_map(|(object_id, _)| self.object(*object_id).map(|object| object.owner))
         else {
             return;
         };
-        let mut dm = crate::decision::SelectFirstDecisionMaker;
-        let mut ctx = crate::effects::ExecutionContext::new(source_id, controller, &mut dm);
+        let mut ctx = crate::effects::ExecutionContext::new(source_id, controller, decision_maker);
         let mut battlefield_requests = Vec::new();
         for (object_id, return_zone) in returns {
             if return_zone == Zone::Battlefield {
@@ -2484,6 +2581,47 @@ impl GameState {
             &mut ctx,
             battlefield_requests,
         );
+    }
+
+    pub(crate) fn has_pending_duration_end_returns(&self) -> bool {
+        !self
+            .auxiliary_tracking
+            .pending_duration_end_returns
+            .is_empty()
+    }
+
+    /// Perform queued exile-until returns (in the order their durations
+    /// ended), asking entry choices through `decision_maker`. Cards that left
+    /// exile meanwhile are new objects and stay where they are (CR 400.7).
+    pub(crate) fn process_pending_duration_end_returns(
+        &mut self,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) {
+        let pending =
+            std::mem::take(&mut self.auxiliary_tracking_mut().pending_duration_end_returns);
+        let mut pending = pending.into_iter();
+        while let Some((source_id, returns)) = pending.next() {
+            let returns = returns
+                .into_iter()
+                .filter(|(object_id, _)| {
+                    self.object(*object_id)
+                        .is_some_and(|object| object.zone == Zone::Exile)
+                })
+                .collect::<Vec<_>>();
+            self.return_exiled_cards_at_duration_end(
+                source_id,
+                returns,
+                Some(&mut *decision_maker),
+            );
+            if decision_maker.awaiting_choice() {
+                // Keep the rest queued behind the choice being surfaced.
+                let rest = pending.collect::<Vec<_>>();
+                self.auxiliary_tracking_mut()
+                    .pending_duration_end_returns
+                    .splice(0..0, rest);
+                return;
+            }
+        }
     }
 
     /// Track a one-shot exile duration that ends the next time one of the
@@ -2540,7 +2678,7 @@ impl GameState {
             let Some(source_id) = returns.first().map(|(object_id, _)| *object_id) else {
                 continue;
             };
-            self.return_exiled_cards_at_duration_end(source_id, returns);
+            self.return_exiled_cards_at_duration_end(source_id, returns, None);
         }
     }
 
@@ -3271,6 +3409,14 @@ impl GameState {
             .provenance_graph_mut()
             .alloc_child(event.provenance(), ProvenanceNodeKind::TriggerQueued);
         event.set_provenance(queued);
+        // CR 603.2c: zone changes performed together (one instruction's
+        // objects, one state-based-action check) are one simultaneous event.
+        if event.simultaneous_batch().is_none()
+            && event.kind() == crate::events::EventKind::ZoneChange
+            && let Some(batch) = self.simultaneous_action_batch()
+        {
+            event = event.with_simultaneous_batch(batch);
+        }
         self.turn_store
             .turn_history
             .remove_staged_event(initial_provenance);
@@ -3319,7 +3465,7 @@ impl GameState {
     ) {
         use crate::events::zones::ZoneChangeEvent;
 
-        let Some((index, mut zone_change, provenance, source_snapshot, lookback_source_snapshots)) =
+        let Some((index, mut zone_change)) =
             self.effect_store
                 .pending_trigger_events
                 .iter()
@@ -3333,27 +3479,14 @@ impl GameState {
                             event_snapshot.object_id == event_object
                                 || event_snapshot.stable_id == snapshot.stable_id
                         });
-                    matches_object.then(|| {
-                        (
-                            index,
-                            zone_change.clone(),
-                            event.provenance(),
-                            event.source_snapshot().cloned(),
-                            event.lookback_source_snapshots().to_vec(),
-                        )
-                    })
+                    matches_object.then(|| (index, zone_change.clone()))
                 })
         else {
             return;
         };
 
         zone_change = zone_change.with_object_tag(tag, snapshot);
-        let mut replacement =
-            crate::triggers::TriggerEvent::new_with_provenance(zone_change, provenance);
-        if let Some(source_snapshot) = source_snapshot {
-            replacement = replacement.with_source_snapshot(source_snapshot);
-        }
-        replacement = replacement.with_lookback_source_snapshots(lookback_source_snapshots);
+        let replacement = self.effect_store.pending_trigger_events[index].with_inner_event(zone_change);
         self.effect_store.pending_trigger_events[index] = replacement;
     }
 

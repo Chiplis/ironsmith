@@ -541,6 +541,94 @@ fn aftermath_half_permission_stays_specific_but_other_grants_can_allow_both_halv
 }
 
 #[test]
+fn graveyard_flashback_grants_filter_the_adventure_card_before_selecting_its_spell_face() {
+    use ironsmith::alternative_cast::CastingMethod;
+    use ironsmith::card::LinkedFaceLayout;
+    use ironsmith::decision::{LegalAction, compute_legal_actions};
+    use ironsmith::grant::Grantable;
+    use ironsmith::grant_registry::GrantSource;
+    use ironsmith::target::ObjectFilter;
+    use ironsmith::types::Subtype;
+
+    let mut game = game();
+    game.turn.active_player = A;
+    game.turn.priority_player = Some(A);
+    game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+    let front_id = CardId::new();
+    let adventure_id = CardId::new();
+    let front = B::new(front_id, "Adventure creature")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::new())
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .other_face(adventure_id)
+        .other_face_name("Adventure sorcery")
+        .linked_face_layout(LinkedFaceLayout::TransformLike)
+        .build();
+    let adventure = B::new(adventure_id, "Adventure sorcery")
+        .card_types(vec![CardType::Sorcery])
+        .subtypes(vec![Subtype::Adventure])
+        .mana_cost(ManaCost::new())
+        .other_face(front_id)
+        .other_face_name("Adventure creature")
+        .linked_face_layout(LinkedFaceLayout::TransformLike)
+        .build();
+    game.register_linked_face_definition(&front);
+    game.register_linked_face_definition(&adventure);
+    let card = game.create_object_from_definition(&front, A, Zone::Graveyard);
+    let ordinary_sorcery = game.create_object_from_definition(
+        &B::new(CardId::new(), "Ordinary sorcery")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::new())
+            .build(),
+        A,
+        Zone::Graveyard,
+    );
+    let source = game.create_object_from_definition(&creature(), A, Zone::Battlefield);
+    let grant_source = GrantSource::Effect {
+        source_id: source,
+        expires_end_of_turn: u32::MAX,
+    };
+    game.effect_store.grant_registry.grant_to_filter(
+        ObjectFilter::default().with_type(CardType::Sorcery),
+        Zone::Graveyard,
+        A,
+        Grantable::flashback_from_cards_mana_cost(),
+        grant_source.clone(),
+    );
+    let actions = compute_legal_actions(&game, A);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action, LegalAction::CastSpell { spell_id, .. } if *spell_id == ordinary_sorcery
+        )),
+        "the grant authorizes an ordinary sorcery card"
+    );
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action, LegalAction::CastSpell { spell_id, .. } if *spell_id == card
+        )),
+        "the Adventure's sorcery face does not make its graveyard card a sorcery"
+    );
+
+    game.effect_store.grant_registry.grant_to_filter(
+        ObjectFilter::default().with_type(CardType::Creature),
+        Zone::Graveyard,
+        A,
+        Grantable::flashback_from_cards_mana_cost(),
+        grant_source,
+    );
+    assert!(
+        compute_legal_actions(&game, A)
+            .iter()
+            .any(|action| matches!(
+                action, LegalAction::CastSpell {
+                    spell_id, casting_method: CastingMethod::SplitOtherHalfPlayFrom { .. }, ..
+                } if *spell_id == card
+            )),
+        "a grant matching the creature card permits casting its Adventure face"
+    );
+}
+
+#[test]
 fn corrected_suspend_and_soulshift_keep_their_keyword_surfaces() {
     for compiler in [false, true] {
         let suspend = ironsmith::compiled_text::compiled_text_lines(&suspend_def(compiler));

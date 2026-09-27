@@ -255,6 +255,9 @@ fn maximum_emerge_reduction(
 pub struct ActivationCostAbility {
     pub mana_ability: bool,
     pub equip: bool,
+    /// Index of the ability among its source's abilities, for "This ability
+    /// costs ... less" (CR 602.2b), when known.
+    pub ability_index: Option<usize>,
 }
 
 impl ActivationCostAbility {
@@ -268,9 +271,10 @@ impl ActivationCostAbility {
     ) -> Option<Self> {
         let ability = game.current_ability(source, ability_index)?;
         match &ability.kind {
-            crate::ability::AbilityKind::Activated(activated) => {
-                Some(Self::of(game, activator, source, activated))
-            }
+            crate::ability::AbilityKind::Activated(activated) => Some(Self {
+                ability_index: Some(ability_index),
+                ..Self::of(game, activator, source, activated)
+            }),
             _ => None,
         }
     }
@@ -282,9 +286,16 @@ impl ActivationCostAbility {
         activated: &crate::ability::ActivatedAbility,
     ) -> Self {
         use crate::ability::ActivatedAbilityRuntimeExt as _;
+        let ability_index = game.object(source).and_then(|object| {
+            object.abilities.iter().position(|ability| {
+                matches!(&ability.kind, crate::ability::AbilityKind::Activated(candidate)
+                    if candidate == activated)
+            })
+        });
         Self {
             mana_ability: activated.is_runtime_mana_ability(game, source, activator),
             equip: super::legal_actions::is_equip_ability(game, source, activated),
+            ability_index,
         }
     }
 }
@@ -1768,9 +1779,12 @@ fn legendary_spell_cast_restriction_allows(
     {
         return true;
     }
+    // CR 702.26b: a phased-out legend is treated as though it doesn't exist.
     game.battlefield.iter().any(|&id| {
-        game.object(id)
-            .is_some_and(|object| game.controller_of(object) == player)
+        !game.is_phased_out(id)
+            && game
+                .object(id)
+                .is_some_and(|object| game.controller_of(object) == player)
             && game.current_characteristics(id).is_some_and(|chars| {
                 chars.supertypes.contains(&Supertype::Legendary)
                     && (chars.card_types.contains(&CardType::Creature)
@@ -1916,23 +1930,50 @@ fn casting_method_grants_flash_timing(
     matches!(
         method,
         Some(crate::alternative_cast::AlternativeCastingMethod::FlashWithAdditionalCost { .. })
-    ) || flash_timing_optional_cost_grants_timing(spell)
+    ) || flash_timing_optional_cost_grants_timing(game, player, spell, casting_method)
 }
 
 /// "Cast this spell as though it had flash if you pay {N} more" (an optional
 /// additional cost, CR 601.2f). Before the cast is proposed the permission is
-/// available (the cost is chosen later, with whatever casting method); once
-/// the spell is on the stack, it holds only if that cost was announced. As
-/// with Offering, the completed-proposal check (CR 601.2e) cancels a cast
-/// that relied on flash timing without paying it.
-fn flash_timing_optional_cost_grants_timing(spell: &crate::object::Object) -> bool {
-    spell.optional_costs.iter().any(|optional| {
-        optional.kind == ironsmith_core::OptionalCostKind::FlashTiming
-            && (spell.zone != Zone::Stack
-                || spell
-                    .optional_costs_paid
-                    .was_paid_label(optional.cost_ref()))
-    })
+/// available only when some complete proposal that announces that cost is
+/// payable (CR 601.2f-h: the extra {N} is added to the total cost with every
+/// other modifier); once the spell is on the stack, it holds only if that
+/// cost was announced. As with Offering, the completed-proposal check (CR
+/// 601.2e) cancels a cast that relied on flash timing without paying it.
+fn flash_timing_optional_cost_grants_timing(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> bool {
+    let mut flash_costs = spell
+        .optional_costs
+        .iter()
+        .filter(|optional| optional.kind == ironsmith_core::OptionalCostKind::FlashTiming)
+        .peekable();
+    if flash_costs.peek().is_none() {
+        return false;
+    }
+    if spell.zone == Zone::Stack {
+        return flash_costs.any(|optional| spell.optional_costs_paid.was_paid_label(optional.cost_ref()));
+    }
+    let flash_labels = flash_costs
+        .map(|optional| optional.cost_ref())
+        .collect::<Vec<_>>();
+    let base_mana_cost =
+        spell_mana_cost_for_cast(game, player, spell, casting_method, spell.zone);
+    any_payable_optional_cost_proposal(
+        game,
+        player,
+        spell,
+        base_mana_cost.as_ref(),
+        casting_method,
+        |_hypothetical, proposal, _effective_cost, _hypothetical_view| {
+            flash_labels
+                .iter()
+                .any(|label| proposal.optional_costs_paid.was_paid_label(label.clone()))
+        },
+    )
 }
 
 fn casting_method_grants_library_search_timing(
@@ -2451,6 +2492,28 @@ pub(crate) fn spell_has_legal_targets_for_cast_with_view(
     player: PlayerId,
     view: &DerivedGameView<'_>,
 ) -> bool {
+    view.with_casting_spell(spell_id, || {
+        spell_has_legal_targets_for_cast_with_view_inner(
+            game,
+            spell,
+            spell_id,
+            program_override,
+            effects_override,
+            player,
+            view,
+        )
+    })
+}
+
+fn spell_has_legal_targets_for_cast_with_view_inner(
+    game: &GameState,
+    spell: &crate::object::Object,
+    spell_id: ObjectId,
+    program_override: Option<&crate::resolution::ResolutionProgram>,
+    effects_override: Option<&[crate::effect::Effect]>,
+    player: PlayerId,
+    view: &DerivedGameView<'_>,
+) -> bool {
     if let Some(effects) = effects_override {
         return effects.is_empty()
             || view.spell_has_legal_targets(effects, player, Some(spell_id), None);
@@ -2537,18 +2600,20 @@ fn has_payable_legal_spree_selection_with_view(
     };
 
     for modes in spree_mode_selections(modal.mode_descriptions.len(), min, max) {
-        let targets_are_legal = if let Some(effects) = effects_override {
-            view.spell_has_legal_targets(effects, player, Some(spell_id), Some(&modes))
-        } else {
-            crate::game_loop::spell_program_has_legal_targets_with_modes_and_view(
-                game,
-                program,
-                player,
-                Some(spell_id),
-                Some(&modes),
-                view,
-            )
-        };
+        let targets_are_legal = view.with_casting_spell(spell_id, || {
+            if let Some(effects) = effects_override {
+                view.spell_has_legal_targets(effects, player, Some(spell_id), Some(&modes))
+            } else {
+                crate::game_loop::spell_program_has_legal_targets_with_modes_and_view(
+                    game,
+                    program,
+                    player,
+                    Some(spell_id),
+                    Some(&modes),
+                    view,
+                )
+            }
+        });
         if !targets_are_legal {
             continue;
         }
@@ -2621,12 +2686,14 @@ fn spell_has_legal_targets_for_cast_or_payable_optional_cost_hypothesis_with_vie
                 let requirement = crate::effect::Effect::new(
                     crate::effects::TargetOnlyEffect::new(mutate_target),
                 );
-                if !hypothetical_view.spell_has_legal_targets(
-                    &[requirement],
-                    player,
-                    Some(spell_id),
-                    None,
-                ) {
+                if !hypothetical_view.with_casting_spell(spell_id, || {
+                    hypothetical_view.spell_has_legal_targets(
+                        &[requirement],
+                        player,
+                        Some(spell_id),
+                        None,
+                    )
+                }) {
                     return false;
                 }
             }
@@ -3636,8 +3703,12 @@ pub fn linked_other_face_land_definition(
         return None;
     }
 
-    linked_face_definition(game, spell)
-        .filter(|def| def.card.card_types.contains(&crate::types::CardType::Land))
+    linked_face_definition(game, spell).filter(|def| {
+        // CR 712.12 vs 712.8a: only a modal DFC can be played using its
+        // back face; a transforming DFC is played front face up.
+        !def.card.transforming_dfc
+            && def.card.card_types.contains(&crate::types::CardType::Land)
+    })
 }
 
 /// CR 712.12: a player playing a modal double-faced card as a land chooses
@@ -3658,8 +3729,12 @@ pub fn linked_back_face_land_definition(
         return None;
     }
 
-    linked_face_definition(game, card)
-        .filter(|def| def.card.card_types.contains(&crate::types::CardType::Land))
+    linked_face_definition(game, card).filter(|def| {
+        // A transforming DFC (Havengul Laboratory) is played front face up
+        // (CR 712.8a); only a modal DFC chooses its land face.
+        !def.card.transforming_dfc
+            && def.card.card_types.contains(&crate::types::CardType::Land)
+    })
 }
 
 /// The face a land play puts onto the battlefield, if it isn't the card's
@@ -3710,8 +3785,10 @@ pub(crate) fn spell_has_castable_linked_other_half(
         return true;
     }
 
+    // CR 712.11: only a modal DFC is cast using its back face.
     spell.linked_face_layout == crate::card::LinkedFaceLayout::TransformLike
-        && linked_face_definition(game, spell).is_some_and(|def| def.card.mana_cost.is_some())
+        && linked_face_definition(game, spell)
+            .is_some_and(|def| !def.card.transforming_dfc && def.card.mana_cost.is_some())
 }
 
 pub(crate) fn spell_view_for_split_other_half_cast(
@@ -4717,8 +4794,40 @@ fn chosen_targets_match_cost_filter(
     true
 }
 
-fn cost_modifier_target_repetitions(per_target: bool, chosen_target_count: usize) -> usize {
-    if per_target { chosen_target_count } else { 1 }
+/// How many times a per-target cost modifier applies (CR 601.2f). "For each
+/// target" counts every chosen target; "for each creature it targets"
+/// (Battlefield Thaumaturge) carries the described kind in the modifier's
+/// `targets_object` and counts the distinct chosen objects matching it.
+fn cost_modifier_target_repetitions(
+    game: &GameState,
+    filter: &crate::target::ObjectFilter,
+    ctx: &crate::filter::FilterContext,
+    per_target: bool,
+    chosen_target_count: usize,
+    chosen_targets: &[Target],
+) -> usize {
+    if !per_target {
+        return 1;
+    }
+    let Some(object_filter) = filter
+        .targets_object
+        .as_deref()
+        .filter(|_| filter.targets_player.is_none() && !filter.targets_any_of)
+    else {
+        return chosen_target_count;
+    };
+    let mut matched = Vec::new();
+    for target in chosen_targets {
+        if let Target::Object(object_id) = target
+            && !matched.contains(object_id)
+            && game
+                .object(*object_id)
+                .is_some_and(|object| object_filter.matches(object, ctx, game))
+        {
+            matched.push(*object_id);
+        }
+    }
+    matched.len()
 }
 
 /// Cost increases and reductions gathered from every source before any of
@@ -5003,11 +5112,15 @@ pub(crate) fn collect_spell_cost_modifiers(
                 chosen_targets,
             )
         {
-            let multiplier = if reduction.per_target {
-                i32::try_from(chosen_target_count).unwrap_or(i32::MAX)
-            } else {
-                1
-            };
+            let multiplier = i32::try_from(cost_modifier_target_repetitions(
+                game,
+                &reduction.filter,
+                &ctx,
+                reduction.per_target,
+                chosen_target_count,
+                chosen_targets,
+            ))
+            .unwrap_or(i32::MAX);
             let amount = resolve_cost_reduction_amount(game, spell, spell.id, player, reduction)
                 .saturating_mul(multiplier);
             if amount > 0 {
@@ -5026,11 +5139,15 @@ pub(crate) fn collect_spell_cost_modifiers(
                 chosen_targets,
             )
         {
-            let multiplier = if increase.per_target {
-                i32::try_from(chosen_target_count).unwrap_or(i32::MAX)
-            } else {
-                1
-            };
+            let multiplier = i32::try_from(cost_modifier_target_repetitions(
+                game,
+                &increase.filter,
+                &ctx,
+                increase.per_target,
+                chosen_target_count,
+                chosen_targets,
+            ))
+            .unwrap_or(i32::MAX);
             let amount = resolve_cost_modifier_value(game, player, spell, &increase.increase)
                 .saturating_mul(multiplier);
             if amount > 0 {
@@ -5049,7 +5166,14 @@ pub(crate) fn collect_spell_cost_modifiers(
                 chosen_targets,
             )
         {
-            for _ in 0..cost_modifier_target_repetitions(increase.per_target, chosen_target_count) {
+            for _ in 0..cost_modifier_target_repetitions(
+                game,
+                &increase.filter,
+                &ctx,
+                increase.per_target,
+                chosen_target_count,
+                chosen_targets,
+            ) {
                 increase_pips.extend(increase.increase.pips().iter().cloned());
             }
         }
@@ -5066,7 +5190,14 @@ pub(crate) fn collect_spell_cost_modifiers(
             )
             && optional_life_reduction_was_paid(spell, reduction, spell.id)
         {
-            for _ in 0..cost_modifier_target_repetitions(reduction.per_target, chosen_target_count)
+            for _ in 0..cost_modifier_target_repetitions(
+                game,
+                &reduction.filter,
+                &ctx,
+                reduction.per_target,
+                chosen_target_count,
+                chosen_targets,
+            )
             {
                 if reduction.colored_only {
                     reduction_pips.extend(reduction.reduction.pips().iter().cloned());
@@ -5131,6 +5262,34 @@ pub(crate) fn collect_spell_cost_modifiers(
         reduction_pips,
         spilling_reduction_pips,
     }
+}
+
+/// The generic reduction "Buyback costs cost {N} less" gives `spell`: at most
+/// the generic mana of its buyback costs that were announced as paid.
+fn paid_buyback_cost_reduction(spell: &crate::object::Object, amount: u32) -> i32 {
+    if amount == 0 {
+        return 0;
+    }
+    let paid_buyback_generic: u32 = spell
+        .optional_costs
+        .iter()
+        .filter(|optional| {
+            optional.kind == ironsmith_core::OptionalCostKind::Buyback
+                && spell.optional_costs_paid.was_paid_label(optional.cost_ref())
+        })
+        .filter_map(|optional| optional.cost.mana_cost())
+        .flat_map(|cost| cost.pips().iter())
+        .map(|pip| {
+            pip.iter()
+                .find_map(|symbol| match symbol {
+                    crate::mana::ManaSymbol::Generic(amount) => Some(u32::from(*amount)),
+                    _ => None,
+                })
+                .filter(|_| pip.len() == 1)
+                .unwrap_or(0)
+        })
+        .sum();
+    i32::try_from(amount.min(paid_buyback_generic)).unwrap_or(i32::MAX)
 }
 
 /// Total life surcharge from battlefield permanents whose "cost an additional
@@ -5313,6 +5472,7 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
     let mut increase_pips: Vec<Vec<ManaSymbol>> = Vec::new();
     let mut reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
     let mut spilling_reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
+    let mut buyback_reduction: u32 = 0;
 
     for perm_id in view.battlefield_spell_cost_modifier_sources() {
         let Some(perm) = game.object(perm_id) else {
@@ -5345,11 +5505,15 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                         chosen_targets,
                     )
                 {
-                    let multiplier = if reduction.per_target {
-                        i32::try_from(chosen_target_count).unwrap_or(i32::MAX)
-                    } else {
-                        1
-                    };
+                    let multiplier = i32::try_from(cost_modifier_target_repetitions(
+                game,
+                &reduction.filter,
+                &ctx,
+                reduction.per_target,
+                chosen_target_count,
+                chosen_targets,
+            ))
+            .unwrap_or(i32::MAX);
                     let amount =
                         resolve_cost_reduction_amount_for_caster(game, spell, perm_id, controller, caster, reduction)
                             .saturating_mul(multiplier);
@@ -5369,11 +5533,15 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                         chosen_targets,
                     )
                 {
-                    let multiplier = if increase.per_target {
-                        i32::try_from(chosen_target_count).unwrap_or(i32::MAX)
-                    } else {
-                        1
-                    };
+                    let multiplier = i32::try_from(cost_modifier_target_repetitions(
+                game,
+                &increase.filter,
+                &ctx,
+                increase.per_target,
+                chosen_target_count,
+                chosen_targets,
+            ))
+            .unwrap_or(i32::MAX);
                     let amount = resolve_cost_modifier_value_for_cast(
                         game,
                         perm_id,
@@ -5399,9 +5567,13 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                     )
                 {
                     for _ in 0..cost_modifier_target_repetitions(
-                        increase.per_target,
-                        chosen_target_count,
-                    ) {
+                game,
+                &increase.filter,
+                &ctx,
+                increase.per_target,
+                chosen_target_count,
+                chosen_targets,
+            ) {
                         increase_pips.extend(increase.increase.pips().iter().cloned());
                     }
                 }
@@ -5419,9 +5591,13 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                     && optional_life_reduction_was_paid(spell, reduction, perm_id)
                 {
                     for _ in 0..cost_modifier_target_repetitions(
-                        reduction.per_target,
-                        chosen_target_count,
-                    ) {
+                game,
+                &reduction.filter,
+                &ctx,
+                reduction.per_target,
+                chosen_target_count,
+                chosen_targets,
+            ) {
                         if reduction.colored_only {
                             reduction_pips.extend(reduction.reduction.pips().iter().cloned());
                         } else {
@@ -5429,6 +5605,9 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                                 .extend(reduction.reduction.pips().iter().cloned());
                         }
                     }
+                }
+                if let Some(amount) = static_ability.buyback_cost_reduction_amount() {
+                    buyback_reduction = buyback_reduction.saturating_add(amount);
                 }
                 if let Some(per_target_amount) =
                     static_ability.cost_increase_per_additional_target()
@@ -5473,11 +5652,15 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                         chosen_targets,
                     )
                 {
-                    let multiplier = if reduction.per_target {
-                        i32::try_from(chosen_target_count).unwrap_or(i32::MAX)
-                    } else {
-                        1
-                    };
+                    let multiplier = i32::try_from(cost_modifier_target_repetitions(
+                game,
+                &reduction.filter,
+                &ctx,
+                reduction.per_target,
+                chosen_target_count,
+                chosen_targets,
+            ))
+            .unwrap_or(i32::MAX);
                     let amount =
                         resolve_cost_reduction_amount_for_caster(game, spell, perm_id, controller, caster, reduction)
                             .saturating_mul(multiplier);
@@ -5497,11 +5680,15 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                         chosen_targets,
                     )
                 {
-                    let multiplier = if increase.per_target {
-                        i32::try_from(chosen_target_count).unwrap_or(i32::MAX)
-                    } else {
-                        1
-                    };
+                    let multiplier = i32::try_from(cost_modifier_target_repetitions(
+                game,
+                &increase.filter,
+                &ctx,
+                increase.per_target,
+                chosen_target_count,
+                chosen_targets,
+            ))
+            .unwrap_or(i32::MAX);
                     let amount = resolve_cost_modifier_value_for_cast(
                         game,
                         perm_id,
@@ -5527,9 +5714,13 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                     )
                 {
                     for _ in 0..cost_modifier_target_repetitions(
-                        increase.per_target,
-                        chosen_target_count,
-                    ) {
+                game,
+                &increase.filter,
+                &ctx,
+                increase.per_target,
+                chosen_target_count,
+                chosen_targets,
+            ) {
                         increase_pips.extend(increase.increase.pips().iter().cloned());
                     }
                 }
@@ -5547,9 +5738,13 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                     && optional_life_reduction_was_paid(spell, reduction, perm_id)
                 {
                     for _ in 0..cost_modifier_target_repetitions(
-                        reduction.per_target,
-                        chosen_target_count,
-                    ) {
+                game,
+                &reduction.filter,
+                &ctx,
+                reduction.per_target,
+                chosen_target_count,
+                chosen_targets,
+            ) {
                         if reduction.colored_only {
                             reduction_pips.extend(reduction.reduction.pips().iter().cloned());
                         } else {
@@ -5557,6 +5752,9 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                                 .extend(reduction.reduction.pips().iter().cloned());
                         }
                     }
+                }
+                if let Some(amount) = static_ability.buyback_cost_reduction_amount() {
+                    buyback_reduction = buyback_reduction.saturating_add(amount);
                 }
                 if let Some(per_target_amount) =
                     static_ability.cost_increase_per_additional_target()
@@ -5579,6 +5777,13 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
             }
         }
     }
+
+    // CR 702.27a: buyback is an additional cost; "Buyback costs cost {N}
+    // less" reduces only the generic mana of a buyback cost that was paid.
+    total_reduction = total_reduction.saturating_add(paid_buyback_cost_reduction(
+        spell,
+        buyback_reduction,
+    ));
 
     SpellCostModifierTotals {
         total_increase,

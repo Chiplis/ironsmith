@@ -115,6 +115,13 @@ pub struct Card {
     pub other_face_name: Option<String>,
     /// Layout semantics for linked-face cards.
     pub linked_face_layout: LinkedFaceLayout,
+    /// A `TransformLike` card that is a transforming double-faced card
+    /// (CR 712.1, Scryfall layout `transform`), not a modal DFC. Only a modal
+    /// DFC played as a land may use either land face (CR 712.12); a
+    /// transforming DFC is always played front face up (CR 712.8a). Card data
+    /// predating this flag leaves it false.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub transforming_dfc: bool,
     /// True if this is a token (not a real card)
     pub is_token: bool,
 }
@@ -313,6 +320,7 @@ pub struct CardBuilder {
     other_face: Option<CardId>,
     other_face_name: Option<String>,
     linked_face_layout: LinkedFaceLayout,
+    transforming_dfc: bool,
     is_token: bool,
 }
 
@@ -443,6 +451,12 @@ impl CardBuilder {
         self
     }
 
+    /// Mark a linked-face card as a transforming (non-modal) DFC.
+    pub fn transforming_dfc(mut self, transforming: bool) -> Self {
+        self.transforming_dfc = transforming;
+        self
+    }
+
     /// Mark this as a token (not a real card).
     pub fn token(mut self) -> Self {
         self.is_token = true;
@@ -469,6 +483,7 @@ impl CardBuilder {
             other_face: self.other_face,
             other_face_name: self.other_face_name,
             linked_face_layout: self.linked_face_layout,
+            transforming_dfc: self.transforming_dfc,
             is_token: self.is_token,
         }
     }

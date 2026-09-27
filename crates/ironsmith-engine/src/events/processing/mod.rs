@@ -29,7 +29,8 @@ use crate::replacement::{
 use crate::types::CardType;
 use crate::zone::Zone;
 use application::{
-    apply_trait_enter_tapped, apply_trait_enter_with_counters, apply_trait_replacement,
+    apply_trait_change_destination, apply_trait_enter_tapped, apply_trait_enter_with_counters,
+    apply_trait_replacement,
     find_matching_cards_in_hand, find_matching_sacrificable_permanents,
 };
 
@@ -751,6 +752,8 @@ fn process_event_direct(
                     _ => None,
                 },
                 destinations,
+                applied_effects: state.applied_effects.clone(),
+                applied_effect_keys: state.applied_effect_keys.clone(),
             },
         };
     }
@@ -831,6 +834,8 @@ fn process_event_direct(
             sacrifice_count,
             life_cost,
             destinations,
+            applied_effects: state.applied_effects.clone(),
+            applied_effect_keys: state.applied_effect_keys.clone(),
         },
     }
 }
@@ -1320,6 +1325,10 @@ pub fn execute_discard(
 
     // Process through the trait-based replacement effect system
     let result = process_with_dm(game, event, decision_maker);
+    // CR 616.1f: an interactive destination choice (Library of Leng) applies
+    // that replacement, then the remaining applicable ones (madness, Rest in
+    // Peace) still get their chance at the rewritten event.
+    let result = continue_after_destination_choices(game, result, decision_maker, &[]);
 
     match result {
         TraitEventResult::Proceed(final_event) | TraitEventResult::Modified(final_event) => {
@@ -1783,6 +1792,10 @@ pub enum TraitEventResult {
         life_cost: Option<u32>,
         /// Destination options for InteractiveChooseDestination.
         destinations: Option<Vec<Zone>>,
+        /// Effects already applied to `event` (including this one), so a
+        /// caller that continues processing after the choice keeps CR 614.5.
+        applied_effects: std::collections::HashSet<crate::replacement::ReplacementEffectId>,
+        applied_effect_keys: std::collections::HashSet<crate::replacement::ReplacementEffectKey>,
     },
 }
 
@@ -2494,6 +2507,54 @@ fn merged_card_only_change_destinations(
         .collect()
 }
 
+/// Resolve interactive "you may put it into [zone] instead" destination
+/// choices (Library of Leng, optional zone replacements) by applying the
+/// chosen destination and continuing replacement processing, with the chosen
+/// effect and every earlier one marked applied (CR 614.5, 616.1f).
+fn continue_after_destination_choices(
+    game: &mut GameState,
+    mut result: TraitEventResult,
+    dm: &mut (impl DecisionMaker + ?Sized),
+    additional_effects: &[ReplacementEffect],
+) -> TraitEventResult {
+    loop {
+        let TraitEventResult::NeedsInteraction {
+            decision_ctx: crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            redirect_zone,
+            destinations: Some(destinations),
+            event,
+            applied_effects,
+            applied_effect_keys,
+            ..
+        } = &result
+        else {
+            return result;
+        };
+        let chosen_zone = dm
+            .decide_options(game, ctx)
+            .first()
+            .and_then(|idx| destinations.get(*idx))
+            .copied()
+            .unwrap_or(*redirect_zone);
+        if dm.awaiting_choice() {
+            return result;
+        }
+        let rewritten = apply_trait_change_destination(event, chosen_zone)
+            .unwrap_or_else(|| (**event).clone());
+        let applied_effects = applied_effects.clone();
+        let applied_effect_keys = applied_effect_keys.clone();
+        result = process_with_dm_and_additional_effects_and_applied(
+            game,
+            rewritten,
+            dm,
+            additional_effects,
+            &applied_effects,
+            &applied_effect_keys,
+            None,
+        );
+    }
+}
+
 fn process_zone_change_inner(
     game: &mut GameState,
     object: crate::ids::ObjectId,
@@ -2528,6 +2589,9 @@ fn process_zone_change_inner(
     assign_ephemeral_effect_ids(&mut additional_effects, (u64::MAX / 2).saturating_add(1024));
     let result =
         process_with_dm_and_additional_effects(game, event.clone(), dm, &additional_effects);
+    // CR 616.1f: an interactive destination choice is one applied
+    // replacement; the rest still apply to the rewritten event.
+    let result = continue_after_destination_choices(game, result, dm, &additional_effects);
 
     match result {
         TraitEventResult::Prevented => EventOutcome::Prevented,
@@ -2545,6 +2609,17 @@ fn process_zone_change_inner(
                 Zone::Battlefield
             } else {
                 requested_to
+            };
+            // CR 903.9b / 616.2: a replacement that newly sends a commander to
+            // its owner's hand or library (Progenitus, Remand) creates an
+            // event the command-zone option applies to, even if the owner
+            // declined it for the originally requested destination.
+            let final_zone = if final_zone != requested_to
+                && matches!(final_zone, Zone::Hand | Zone::Library)
+            {
+                game.resolve_commander_move_destination(object, final_zone, dm)
+            } else {
+                final_zone
             };
             if merged_card_only_destinations.contains(&final_zone) {
                 game.prepare_merged_token_card_component_destinations(object, to, final_zone);
@@ -3134,6 +3209,8 @@ fn process_with_dm_and_additional_effects_and_applied(
                                 _ => None,
                             },
                             destinations,
+                            applied_effects: state.applied_effects.clone(),
+                            applied_effect_keys: state.applied_effect_keys.clone(),
                         };
                     }
                 }
@@ -4286,7 +4363,7 @@ pub fn process_life_gain_with_event_with_dm(
     game: &mut GameState,
     player: PlayerId,
     amount: u32,
-    dm: &mut (impl DecisionMaker + ?Sized),
+    dm: &mut dyn DecisionMaker,
 ) -> u32 {
     use crate::events::{LifeGainEvent, downcast_event};
 
@@ -4306,7 +4383,42 @@ pub fn process_life_gain_with_event_with_dm(
         }
         // A replacement-order choice is still pending; nothing is gained yet.
         TraitEventResult::NeedsChoice { .. } => 0,
-        _ => amount,
+        // "If you would gain life, [do something else] instead": the gain
+        // doesn't happen (CR 614.1a); perform the replacement's effects with
+        // it suppressed for any nested life gain (CR 614.5).
+        TraitEventResult::Replaced {
+            effects,
+            effect_id,
+            source,
+            controller,
+            ..
+        } => {
+            game.effect_store
+                .replacement_effects
+                .mark_effect_used(effect_id);
+            let mut ctx = crate::effects::ExecutionContext::new(source, controller, dm);
+            ctx.iteration.iterated_player = Some(player);
+            ctx.replacement
+                .suppressed_replacement_effects
+                .insert(effect_id);
+            if let Some(key) = game
+                .effect_store
+                .replacement_effects
+                .get_effect(effect_id)
+                .map(|effect| effect.application_key())
+            {
+                ctx.replacement.suppressed_replacement_effect_keys.insert(key);
+            }
+            for effect in effects {
+                if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut ctx) {
+                    for event in outcome.events {
+                        game.queue_trigger_event(event.provenance(), event);
+                    }
+                }
+            }
+            0
+        }
+        TraitEventResult::NeedsInteraction { .. } => amount,
     }
 }
 
@@ -5359,6 +5471,7 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                 sacrifice_count,
                 life_cost,
                 destinations,
+                ..
             } => {
                 let controller = game
                     .object(object_id)
@@ -5732,6 +5845,8 @@ pub fn process_event_with_chosen_replacement_trait_and_applied_effects(
                 _ => None,
             },
             destinations,
+            applied_effects: state.applied_effects.clone(),
+            applied_effect_keys: state.applied_effect_keys.clone(),
         },
     }
 }

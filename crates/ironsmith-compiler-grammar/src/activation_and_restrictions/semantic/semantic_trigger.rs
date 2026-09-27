@@ -95,11 +95,45 @@ fn parse_combat_damage_trigger_lexed(
     }
     let target_word_view = ActivationRestrictionCompatWords::new(&target_tokens);
     let target_words = target_word_view.to_word_refs();
-    if let Some(player) = parse_trigger_subject_player_filter(&target_words) {
+    // "... to a player" triggers once for each damaged player; "... to one
+    // or more players / of your opponents" once for the whole event.
+    let each_damaged_player = !has_leading_one_or_more(&target_tokens);
+    // "deals combat damage to a player who controls more lands than you"
+    // (Cartographer's Hawk): a damaged-player condition, not an object noun.
+    let controls_more_player = match target_words.as_slice() {
+        [
+            "a" | "an",
+            "player" | "opponent",
+            "who",
+            "controls",
+            "more",
+            noun,
+            "than",
+            "you",
+        ] => [
+            ("lands", crate::types::CardType::Land),
+            ("creatures", crate::types::CardType::Creature),
+            ("artifacts", crate::types::CardType::Artifact),
+            ("enchantments", crate::types::CardType::Enchantment),
+            ("planeswalkers", crate::types::CardType::Planeswalker),
+        ]
+        .into_iter()
+        .find(|(word, _)| word == noun)
+        .map(|(_, card_type)| PlayerFilter::OpponentWithMoreControlledObjectsThan {
+            player: Box::new(PlayerFilter::You),
+            filter: Box::new(ObjectFilter::default().with_type(card_type)),
+        }),
+        _ => None,
+    };
+    if let Some(player) =
+        controls_more_player.or_else(|| parse_trigger_subject_player_filter(&target_words))
+    {
         return Ok(match source_filter {
-            Some(source) if one_or_more => {
-                TriggerSpec::DealsCombatDamageToPlayerOneOrMore { source, player }
-            }
+            Some(source) if one_or_more => TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+                source,
+                player,
+                each_damaged_player,
+            },
             Some(source) => TriggerSpec::DealsCombatDamageToPlayer { source, player },
             None => TriggerSpec::ThisDealsCombatDamageToPlayer {
                 player,
@@ -112,9 +146,11 @@ fn parse_combat_damage_trigger_lexed(
         parse_player_or_object_damage_recipient(&target_tokens)
     {
         let player_trigger = match source_filter.clone() {
-            Some(source) if one_or_more => {
-                TriggerSpec::DealsCombatDamageToPlayerOneOrMore { source, player }
-            }
+            Some(source) if one_or_more => TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+                source,
+                player,
+                each_damaged_player,
+            },
             Some(source) => TriggerSpec::DealsCombatDamageToPlayer { source, player },
             None if player == PlayerFilter::Any => TriggerSpec::ThisDealsCombatDamageToPlayer {
                 player,
@@ -1630,6 +1666,22 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             } else {
                 None
             };
+            if let Some((from, owner)) = enters_origin.clone() {
+                return Ok(TriggerSpec::Either(
+                    Box::new(TriggerSpec::ThisEntersBattlefieldFromZone {
+                        subject_filter: ObjectFilter::default(),
+                        from,
+                        owner: owner.clone(),
+                    }),
+                    Box::new(TriggerSpec::EntersBattlefieldFromZone {
+                        filter: other_filter,
+                        from,
+                        owner,
+                        one_or_more: true,
+                        cause_filter,
+                    }),
+                ));
+            }
             return Ok(TriggerSpec::Either(
                 Box::new(this_enters_battlefield_trigger_spec(
                     source_filter.source_surface,
@@ -1690,6 +1742,25 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                             } else {
                                 None
                             };
+                        // CR 603.6a: "this or another permanent enters from a
+                        // graveyard" (River Kelpie, Flayer of the Hatebound)
+                        // restricts both halves to entries from that zone.
+                        if let Some((from, owner)) = enters_origin.clone() {
+                            return Ok(TriggerSpec::Either(
+                                Box::new(TriggerSpec::ThisEntersBattlefieldFromZone {
+                                    subject_filter: ObjectFilter::default(),
+                                    from,
+                                    owner: owner.clone(),
+                                }),
+                                Box::new(TriggerSpec::EntersBattlefieldFromZone {
+                                    filter,
+                                    from,
+                                    owner,
+                                    one_or_more: false,
+                                    cause_filter,
+                                }),
+                            ));
+                        }
                         let right_trigger =
                             if trigger_pattern_accepts(&words, UNTAPPED_WORD_PATTERN) {
                                 TriggerSpec::EntersBattlefieldUntapped {

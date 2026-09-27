@@ -33,6 +33,13 @@ pub trait DecisionMaker {
         false
     }
 
+    /// False for the default choosers (auto-pass, select-first) that stand in
+    /// when no player is being asked. Engine procedures that may wait for a
+    /// real decision channel (exile-until returns, CR 610.3c) check it.
+    fn answers_player_choices(&self) -> bool {
+        true
+    }
+
     // ========================================================================
     // Primitive-specific methods
     // ========================================================================
@@ -823,6 +830,10 @@ fn auto_select_option_indices(
 }
 
 impl DecisionMaker for AutoPassDecisionMaker {
+    fn answers_player_choices(&self) -> bool {
+        false
+    }
+
     fn decide_boolean(
         &mut self,
         _game: &GameState,
@@ -984,6 +995,10 @@ impl DecisionMaker for AutoPassDecisionMaker {
 pub struct SelectFirstDecisionMaker;
 
 impl DecisionMaker for SelectFirstDecisionMaker {
+    fn answers_player_choices(&self) -> bool {
+        false
+    }
+
     fn decide_boolean(
         &mut self,
         _game: &GameState,

@@ -737,6 +737,7 @@ impl GameState {
         // Planechase transfers the planar controller, communal ownership, and
         // control of planar-card abilities before CR 800.4a removes objects.
         self.prepare_planechase_player_departure(player);
+        let departed_planar_faces = self.departing_face_up_planar_snapshots(player);
 
         // Hidden cards the player must still disclose at the end of the match
         // (hand, face-down spells and permanents) are snapshotted first.
@@ -810,7 +811,7 @@ impl GameState {
                     .with_lookback_source_snapshots(departing_lookback.clone()),
             );
         }
-        self.handle_planechase_player_departure(player, &removed_ids);
+        self.handle_planechase_player_departure(player, &removed_ids, departed_planar_faces);
         self.handle_vanguard_player_departure(player);
         self.handle_attraction_player_departure(player);
         self.prune_grand_melee_stacks_for_departure(player, &removed_ids);
@@ -1368,6 +1369,7 @@ impl GameState {
         self.turn_store.tracked_draw_step_player = None;
         self.turn_store.cards_drawn_this_draw_step = 0;
         self.turn_store.combat_phases_started_this_turn = 0;
+        self.turn_store.main_phases_started_this_turn = 0;
         self.turn_store.additional_phases.clear();
         self.turn_store.additional_phase_orders.clear();
         self.turn_store.additional_phase_only_steps.clear();
@@ -1465,6 +1467,7 @@ impl GameState {
             &completed_turn_players_for_durations,
             &active_players,
         );
+        self.correct_next_turn_end_predictions(&active_players);
 
         // Begin the shared turn independently for each active player.
         for player in self.turn_players() {
@@ -1509,6 +1512,80 @@ impl GameState {
                 *counts.entry(controller).or_insert(0) += 1;
                 counts
             });
+    }
+
+    /// Re-anchor predicted "until the end of your next turn" durations as a
+    /// turn begins, so an extra turn inserted after the effect was created
+    /// doesn't end it early (CR 611.2a, 500.7).
+    fn correct_next_turn_end_predictions(&mut self, active_players: &[PlayerId]) {
+        use crate::continuous::next_turn_end_prediction_correction as correction;
+        use crate::effect::Until;
+
+        let turn = self.turn.turn_number;
+        let in_game: Vec<PlayerId> = self
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .map(|player| player.id)
+            .collect();
+        self.effect_store
+            .continuous_effects
+            .correct_next_turn_end_predictions(turn, active_players, &in_game);
+        for effect in self
+            .effect_store
+            .restriction_effects
+            .iter_mut()
+            .filter(|effect| matches!(effect.duration, Until::YourNextTurnEnd) && !effect.is_pending())
+        {
+            if let Some(expires) = correction(
+                effect.expires_end_of_turn,
+                effect.controller,
+                turn,
+                active_players,
+                &in_game,
+            ) {
+                effect.expires_end_of_turn = expires;
+            }
+        }
+        for effect in self
+            .effect_store
+            .goad_effects
+            .iter_mut()
+            .filter(|effect| matches!(effect.duration, Until::YourNextTurnEnd))
+        {
+            if let Some(expires) = correction(
+                effect.expires_end_of_turn,
+                effect.goaded_by,
+                turn,
+                active_players,
+                &in_game,
+            ) {
+                effect.expires_end_of_turn = expires;
+            }
+        }
+        for effect in self
+            .effect_store
+            .temporary_spell_cost_reductions
+            .iter_mut()
+            .filter(|effect| matches!(effect.duration, Until::YourNextTurnEnd))
+        {
+            if let Some(expires) = correction(
+                effect.expires_end_of_turn,
+                effect.duration_controller,
+                turn,
+                active_players,
+                &in_game,
+            ) {
+                effect.expires_end_of_turn = expires;
+            }
+        }
+    }
+
+    pub fn mark_main_phase_started(&mut self) {
+        self.turn_store.main_phases_started_this_turn = self
+            .turn_store
+            .main_phases_started_this_turn
+            .saturating_add(1);
     }
 
     pub fn mark_combat_phase_started(&mut self) {
@@ -2596,6 +2673,25 @@ impl GameState {
         if entry.is_ability && entry.ability_id.is_none() {
             entry.ability_id = Some(self.allocate_stack_ability_id());
         }
+        // CR 400.7j: a spell's or ability's effects can find an object its
+        // cost moved to a public zone. Costs are paid by now, so re-point the
+        // tags they recorded at the objects the cards became; any later move
+        // makes a new object the resolution can't follow (CR 400.7).
+        if entry.triggering_event.is_none() {
+            for snapshots in entry.tagged_objects.values_mut() {
+                for snapshot in snapshots.iter_mut() {
+                    if let Some(current) = self.find_object_by_stable_id(snapshot.stable_id)
+                        && current != snapshot.object_id
+                        && self.object(snapshot.object_id).is_none()
+                        && let Some(object) = self.object(current)
+                        && object.zone.is_public()
+                    {
+                        snapshot.object_id = current;
+                        snapshot.zone = object.zone;
+                    }
+                }
+            }
+        }
         // "Choose one that hasn't been chosen [this turn]": modes are chosen
         // as the ability is activated or put on the stack (CR 602.2b,
         // 603.3c), so that is when they become "chosen". Copies are made
@@ -2682,6 +2778,25 @@ impl GameState {
         self.stack
             .iter()
             .position(|entry| entry.object_id == id && !entry.is_ability)
+    }
+
+    /// Re-snapshot a cast spell's last-known information after its stack entry
+    /// changed (new targets), so an effect that later copies the spell after it
+    /// left the stack uses the spell as it last existed there (CR 608.2h).
+    pub fn refresh_cast_spell_lki_for_stack_index(&mut self, stack_idx: usize) {
+        let Some(entry) = self.stack.get(stack_idx) else {
+            return;
+        };
+        if entry.is_ability || !self.turn_store.cast_spell_lki.contains_key(&entry.object_id) {
+            return;
+        }
+        let Some(object) = self.object(entry.object_id).cloned() else {
+            return;
+        };
+        let entry = entry.clone();
+        self.turn_store
+            .cast_spell_lki
+            .insert(entry.object_id, std::sync::Arc::new((object, entry)));
     }
 
     /// Pops and returns the top item from the stack.

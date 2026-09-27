@@ -515,6 +515,9 @@ struct SyncRulesState {
     normal_turn_anchor: Option<u8>,
     #[serde(default)]
     combat_phases_started_this_turn: u32,
+    /// CR 505.1b main-phase ordinal of the current turn.
+    #[serde(default)]
+    main_phases_started_this_turn: u32,
     /// Permanents that came under their controller's control since that
     /// player's last upkeep began (echo, CR 702.30a), sorted.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -2580,6 +2583,7 @@ impl WasmGame {
                 .normal_turn_anchor
                 .map(|player| player.0),
             combat_phases_started_this_turn: self.game.turn_store.combat_phases_started_this_turn,
+            main_phases_started_this_turn: self.game.turn_store.main_phases_started_this_turn,
             came_under_control_since_last_upkeep: {
                 let mut ids: Vec<u64> = self
                     .game
@@ -2897,6 +2901,7 @@ impl WasmGame {
             rules.normal_turn_anchor.map(PlayerId::from_index);
         self.game.turn_store.combat_phases_started_this_turn =
             rules.combat_phases_started_this_turn;
+        self.game.turn_store.main_phases_started_this_turn = rules.main_phases_started_this_turn;
         self.game.turn_store.came_under_control_since_last_upkeep = rules
             .came_under_control_since_last_upkeep
             .iter()

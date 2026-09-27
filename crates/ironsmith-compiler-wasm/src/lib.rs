@@ -54,6 +54,8 @@ fn compile_artifact(input: CompileCardInput) -> Result<CompiledCardArtifact, Str
         }
         _ => LinkedFaceLayout::None,
     };
+    // Scryfall `transform` is a transforming DFC (CR 712.1), not a modal one.
+    compiled.definition.card.transforming_dfc = input.linked_face_layout.as_deref() == Some("transform");
     let wire_definition = wire_definition_from_serializable(&compiled.definition)
         .map_err(|error| format!("failed to encode compiled definition: {error}"))?;
     let runtime_definition =

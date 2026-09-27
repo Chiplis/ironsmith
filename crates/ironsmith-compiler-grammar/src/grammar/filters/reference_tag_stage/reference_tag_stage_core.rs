@@ -305,6 +305,30 @@ pub(super) fn try_apply_distinct_powers_clause(
     false
 }
 
+/// "two basic land cards that share a land type" (Myriad Landscape): a
+/// selection-set constraint, not a per-object characteristic.
+pub(super) fn try_apply_shares_land_type_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) -> bool {
+    for phrase in [
+        // Filter words are article-stripped; keep the article forms too.
+        ["that", "share", "a", "basic", "land", "type"].as_slice(),
+        ["that", "share", "a", "land", "type"].as_slice(),
+        ["that", "share", "basic", "land", "type"].as_slice(),
+        ["that", "share", "land", "type"].as_slice(),
+    ] {
+        let Some(fact) = parse_phrase_anywhere(all_words, phrase) else {
+            continue;
+        };
+        let idx = fact.span.start;
+        filter.shares_land_type = true;
+        all_words.drain(idx..idx + phrase.len());
+        return true;
+    }
+    false
+}
+
 pub(super) fn try_apply_distinct_creature_types_clause(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,

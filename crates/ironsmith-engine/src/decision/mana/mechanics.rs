@@ -115,9 +115,7 @@ pub fn get_improvise_artifacts(game: &GameState, player: PlayerId) -> Vec<crate:
             // Must be an artifact controlled by player
             if game.controller_of(obj) != player
                 || game.is_phased_out(id)
-                || !game
-                    .calculated_characteristics(id)
-                    .is_some_and(|c| c.card_types.contains(&crate::types::CardType::Artifact))
+                || !game.current_has_card_type(id, crate::types::CardType::Artifact)
             {
                 return None;
             }

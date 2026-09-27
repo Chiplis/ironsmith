@@ -47,14 +47,17 @@ pub(super) fn classify_target(
         let unsupported_qualifier = marker_anywhere(rest, primitives::kw("dealt"))
             || (marker_anywhere(rest, primitives::kw("without"))
                 && marker_anywhere(rest, primitives::kw("counter")));
+        // `split_suffix` takes the first matching alternative, so a longer
+        // phrase must come before any phrase that is its suffix ("that were
+        // not chosen this way" before "not chosen this way").
         let chosen_this_way = [
-            (&["not", "chosen", "this", "way"][..], true),
+            (&["that", "were", "not", "chosen", "this", "way"][..], true),
             (&["that", "weren't", "chosen", "this", "way"][..], true),
             (&["that", "werent", "chosen", "this", "way"][..], true),
-            (&["that", "were", "not", "chosen", "this", "way"][..], true),
-            (&["chosen", "this", "way"][..], false),
+            (&["not", "chosen", "this", "way"][..], true),
             (&["that", "were", "chosen", "this", "way"][..], false),
             (&["that", "was", "chosen", "this", "way"][..], false),
+            (&["chosen", "this", "way"][..], false),
         ];
         let (without_chosen, chosen_this_way_excluded) = split_suffix(rest, &chosen_this_way)
             .map(|(head, excluded)| (head.to_vec(), Some(excluded)))
@@ -75,15 +78,17 @@ pub(super) fn classify_target(
                 break;
             }
         }
+        // Longest first: "of the chosen type" is a suffix of "that aren't of
+        // the chosen type", and matching it first dropped the negation.
         let chosen_type = [
-            (&["of", "the", "chosen", "type"][..], false),
-            (&["that", "are", "of", "the", "chosen", "type"][..], false),
-            (&["that", "arent", "of", "the", "chosen", "type"][..], true),
-            (&["that", "aren't", "of", "the", "chosen", "type"][..], true),
             (
                 &["that", "are", "not", "of", "the", "chosen", "type"][..],
                 true,
             ),
+            (&["that", "arent", "of", "the", "chosen", "type"][..], true),
+            (&["that", "aren't", "of", "the", "chosen", "type"][..], true),
+            (&["that", "are", "of", "the", "chosen", "type"][..], false),
+            (&["of", "the", "chosen", "type"][..], false),
         ];
         if chosen_type_flag.is_none()
             && let Some((head, excluded)) = split_suffix(&without_type, &chosen_type)

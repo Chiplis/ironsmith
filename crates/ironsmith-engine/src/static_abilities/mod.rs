@@ -1014,6 +1014,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// "Buyback costs cost {N} less": the generic mana a paid buyback cost
+    /// is reduced by (CR 702.27).
+    fn buyback_cost_reduction_amount(&self) -> Option<u32> {
+        None
+    }
+
     /// Returns true if this ability stops a player from paying life to cast spells
     /// or activate abilities.
     fn forbids_paying_life_for_cast_or_activate(&self) -> bool {
@@ -2218,6 +2224,10 @@ impl StaticAbility {
 
     pub fn minimum_total_spell_mana(&self) -> Option<u32> {
         self.0.minimum_total_spell_mana()
+    }
+
+    pub fn buyback_cost_reduction_amount(&self) -> Option<u32> {
+        self.0.buyback_cost_reduction_amount()
     }
 
     pub fn forbids_paying_life_for_cast_or_activate(&self) -> bool {

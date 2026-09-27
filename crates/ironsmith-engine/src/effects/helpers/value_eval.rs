@@ -32,6 +32,11 @@ pub(crate) fn resolve(
         }
         Value::Min(left, right) => Ok(resolve(left, context)?.min(resolve(right, context)?)),
         Value::Count(filter) => Ok(context.count_objects(filter, true)),
+        Value::PlayersWhoControl { players, filter } => Ok(context
+            .matching_player_ids(players)
+            .into_iter()
+            .filter(|player| context.controlled_object_count(filter, *player) > 0)
+            .count() as i32),
         Value::PlayersWhoControlMoreThanYou { players, filter } => {
             let yours = context.controlled_object_count(filter, context.controller);
             Ok(context
@@ -1004,6 +1009,23 @@ pub(crate) fn resolve(
             }
         }
         Value::CountersOn(spec, counter_type) => {
+            // Counters on players ("each counter among players and
+            // permanents", Lumbering Megasloth, CR 122.1).
+            if let ChooseSpec::EachPlayer(player_filter) = spec.base() {
+                let player_ids = context.counter_player_ids(value, player_filter)?;
+                return Ok(player_ids
+                    .into_iter()
+                    .filter_map(|player_id| game.player(player_id))
+                    .map(|player| match counter_type {
+                        Some(counter_type) => player.counter_count(*counter_type) as i32,
+                        None => player
+                            .counter_types_with_counters()
+                            .into_iter()
+                            .map(|counter_type| player.counter_count(counter_type) as i32)
+                            .sum(),
+                    })
+                    .sum());
+            }
             if let Some(ctx) = context.execution() {
                 {
                     if let Some(snapshots) = tagged_snapshots_for_choose_spec(ctx, spec) {

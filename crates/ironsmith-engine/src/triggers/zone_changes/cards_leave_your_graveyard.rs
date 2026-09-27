@@ -74,6 +74,28 @@ impl CardsLeaveYourGraveyardTrigger {
         count
     }
 
+    /// Last-known information for the cards of `zc` that satisfied this
+    /// trigger: the group a "one or more" instance refers to ("them").
+    pub(crate) fn matching_batch_snapshots(
+        &self,
+        zc: &ZoneChangeEvent,
+        ctx: &TriggerContext,
+    ) -> Vec<crate::snapshot::ObjectSnapshot> {
+        if !self.one_or_more || self.matching_count(zc, ctx) == 0 {
+            return Vec::new();
+        }
+        zc.snapshots()
+            .iter()
+            .filter(|snapshot| {
+                snapshot.owner == ctx.controller
+                    && self
+                        .filter
+                        .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+            })
+            .cloned()
+            .collect()
+    }
+
     fn describe_subject(&self, plural: bool) -> String {
         let noun = if plural { "cards" } else { "card" };
 
@@ -136,6 +158,26 @@ impl TriggerMatcher for CardsLeaveYourGraveyardTrigger {
             .downcast::<ZoneChangeEvent>()
             .map(|zc| zc.count() as u32)
             .unwrap_or(1)
+    }
+
+    fn trigger_count_with_context(&self, event: &TriggerEvent, ctx: &TriggerContext) -> u32 {
+        if self.one_or_more {
+            return 1;
+        }
+        event
+            .downcast::<ZoneChangeEvent>()
+            .map(|zc| self.matching_count(zc, ctx))
+            .unwrap_or(1)
+    }
+
+    fn simultaneous_trigger_key(
+        &self,
+        event: &TriggerEvent,
+    ) -> Option<crate::triggers::matcher_trait::SimultaneousTriggerKey> {
+        // CR 603.2c: cards leaving together (delve, escape, "exile your
+        // graveyard") are one event for "one or more cards leave".
+        (self.one_or_more && event.downcast::<ZoneChangeEvent>().is_some())
+            .then_some(crate::triggers::matcher_trait::SimultaneousTriggerKey::ZoneChangeBatch)
     }
 
     fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {

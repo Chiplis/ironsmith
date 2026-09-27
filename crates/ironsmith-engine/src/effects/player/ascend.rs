@@ -17,7 +17,12 @@ impl EffectExecutor for AscendEffect {
             .battlefield
             .iter()
             .copied()
-            .filter(|&object_id| game.controller_of_id(object_id) == Some(controller))
+            // CR 702.26b: phased-out permanents are treated as though they
+            // don't exist.
+            .filter(|&object_id| {
+                !game.is_phased_out(object_id)
+                    && game.controller_of_id(object_id) == Some(controller)
+            })
             .count();
 
         if permanent_count >= 10 {

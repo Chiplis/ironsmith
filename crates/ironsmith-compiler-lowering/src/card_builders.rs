@@ -1273,6 +1273,8 @@ impl CardDefinitionBuilder {
         })
         .with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                // CR 702.62a: "When the last time counter is removed from
+                // this card, if it's exiled, you may play it ..."
                 trigger: crate::triggers::Trigger::new(
                     crate::triggers::CounterRemovedFromTrigger::new(
                         crate::target::ObjectFilter::source(),
@@ -2324,6 +2326,7 @@ impl CardDefinitionBuilder {
                     crate::effect::Effect::new(crate::effects::TagMatchingObjectsEffect::new(
                         filter, return_tag,
                     )),
+                    // CR 122.6: the counter is an entry counter.
                     crate::effect::Effect::new(
                         crate::effects::MoveToZoneEffect::new(
                             crate::target::ChooseSpec::Tagged(
@@ -2332,17 +2335,14 @@ impl CardDefinitionBuilder {
                             crate::zone::Zone::Battlefield,
                             true,
                         )
-                        .under_owner_control(),
-                    )
-                    .tag(ironsmith_compiler_semantic::tag::declared_key(returned_tag)),
-                    crate::effect::Effect::for_each_tagged(
-                        ironsmith_compiler_semantic::tag::declared_key(returned_tag),
-                        vec![crate::effect::Effect::put_counters(
+                        .under_owner_control()
+                        .with_entry_counter(ironsmith_core::BattlefieldEntryCounterSpec::new(
                             crate::object::CounterType::PlusOnePlusOne,
                             1,
-                            crate::target::ChooseSpec::Iterated,
-                        )],
-                    ),
+                            ironsmith_core::BattlefieldEntryCounterSurface::Inline,
+                        )),
+                    )
+                    .tag(ironsmith_compiler_semantic::tag::declared_key(returned_tag)),
                 ]
                 .into(),
                 choices: vec![],
@@ -2375,6 +2375,7 @@ impl CardDefinitionBuilder {
                     crate::effect::Effect::new(crate::effects::TagMatchingObjectsEffect::new(
                         filter, return_tag,
                     )),
+                    // CR 122.6: the counter is an entry counter.
                     crate::effect::Effect::new(
                         crate::effects::MoveToZoneEffect::new(
                             crate::target::ChooseSpec::Tagged(
@@ -2383,17 +2384,14 @@ impl CardDefinitionBuilder {
                             crate::zone::Zone::Battlefield,
                             true,
                         )
-                        .under_owner_control(),
-                    )
-                    .tag(ironsmith_compiler_semantic::tag::declared_key(returned_tag)),
-                    crate::effect::Effect::for_each_tagged(
-                        ironsmith_compiler_semantic::tag::declared_key(returned_tag),
-                        vec![crate::effect::Effect::put_counters(
+                        .under_owner_control()
+                        .with_entry_counter(ironsmith_core::BattlefieldEntryCounterSpec::new(
                             crate::object::CounterType::MinusOneMinusOne,
                             1,
-                            crate::target::ChooseSpec::Iterated,
-                        )],
-                    ),
+                            ironsmith_core::BattlefieldEntryCounterSurface::Inline,
+                        )),
+                    )
+                    .tag(ironsmith_compiler_semantic::tag::declared_key(returned_tag)),
                 ]
                 .into(),
                 choices: vec![],

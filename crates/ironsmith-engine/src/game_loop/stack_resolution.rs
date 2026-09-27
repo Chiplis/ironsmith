@@ -140,11 +140,12 @@ fn attack_target_still_valid(game: &GameState, target: &AttackTarget) -> bool {
     match target {
         AttackTarget::Player(player) => game.player(*player).is_some(),
         AttackTarget::Planeswalker(planeswalker) => game.object(*planeswalker).is_some_and(|obj| {
-            obj.zone == Zone::Battlefield && obj.has_card_type(CardType::Planeswalker)
+            obj.zone == Zone::Battlefield
+                && game.current_has_card_type(*planeswalker, CardType::Planeswalker)
         }),
         AttackTarget::Battle(battle) => game.object(*battle).is_some_and(|obj| {
             obj.zone == Zone::Battlefield
-                && obj.has_card_type(CardType::Battle)
+                && game.current_has_card_type(*battle, CardType::Battle)
                 && game.battle_protector(*battle).is_some_and(|protector| {
                     game.player(protector)
                         .is_some_and(|player| player.is_in_game())
@@ -1197,6 +1198,7 @@ pub(super) fn resolve_stack_entry_full(
     ctx = ctx
         .with_targets(valid_targets)
         .with_target_assignments(valid_target_assignments.clone())
+        .with_announced_target_assignments(entry.target_assignments.clone())
         .with_target_distributions(entry.target_distributions.clone());
 
     // Snapshot target objects for "last known information" before effects execute
@@ -1253,7 +1255,7 @@ pub(super) fn resolve_stack_entry_full(
 
     // Process pending primitive trigger events emitted by effects and zone changes.
     if let Some(ref mut tq) = trigger_queue {
-        drain_pending_trigger_events(game, tq);
+        drain_pending_trigger_events_with_dm(game, tq, &mut *ctx.decision_maker);
     }
 
     // CR 702.122d: "whenever this Vehicle becomes crewed" triggers when a crew
@@ -1895,10 +1897,29 @@ pub(super) fn resolve_stack_entry_full(
             // CR 720.3d: as an Omen spell resolves, its controller shuffles it
             // into its owner's library instead of putting it into the
             // graveyard. The move still goes through replacement processing.
+            // A permission whose alternative cost exiles the spell (granted
+            // flashback, CR 702.34a: "exile it instead of putting it anywhere
+            // else") overrides the Omen shuffle.
+            let omen_alternative_exiles = match &entry.casting_method {
+                CastingMethod::SplitOtherHalfPlayFrom {
+                    zone,
+                    use_alternative,
+                    ..
+                } => crate::decision::resolve_play_from_alternative_method(
+                    game,
+                    entry.controller,
+                    obj,
+                    *zone,
+                    *use_alternative,
+                )
+                .is_some_and(|method| method.exiles_after_resolution()),
+                _ => false,
+            };
             let resolving_as_omen = matches!(
                 entry.casting_method,
                 CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { .. }
-            ) && obj.subtypes.contains(&crate::types::Subtype::Omen);
+            ) && !omen_alternative_exiles
+                && obj.subtypes.contains(&crate::types::Subtype::Omen);
 
             if resolving_as_omen {
                 if let crate::events::processing::EventOutcome::Proceed(result) =

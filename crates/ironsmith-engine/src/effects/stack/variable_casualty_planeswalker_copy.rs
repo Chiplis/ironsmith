@@ -79,6 +79,13 @@ impl EffectExecutor for VariableCasualtyPlaneswalkerCopyEffect {
             },
             None,
         )?;
+        game.queue_trigger_event(
+            ctx.provenance,
+            crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::spells::SpellCopiedEvent::new(copy_id, ctx.controller),
+                ctx.provenance,
+            ),
+        );
 
         Ok(EffectOutcome::with_objects(vec![copy_id]))
     }

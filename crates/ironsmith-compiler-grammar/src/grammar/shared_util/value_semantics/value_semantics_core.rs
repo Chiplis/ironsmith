@@ -326,15 +326,25 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
         ));
     }
 
-    for suffix in [
-        &["youve", "sacrificed", "this", "turn"][..],
-        &["you've", "sacrificed", "this", "turn"][..],
-        &["you", "have", "sacrificed", "this", "turn"][..],
+    // The unqualified passive ("permanent sacrificed this turn", The Balrog,
+    // Durin's Bane) counts sacrifices by every player.
+    for (suffix, player) in [
+        (&["youve", "sacrificed", "this", "turn"][..], PlayerFilter::You),
+        (&["you've", "sacrificed", "this", "turn"][..], PlayerFilter::You),
+        (&["you", "have", "sacrificed", "this", "turn"][..], PlayerFilter::You),
+        (
+            &["your", "opponents", "have", "sacrificed", "this", "turn"][..],
+            PlayerFilter::Opponent,
+        ),
+        (&["sacrificed", "this", "turn"][..], PlayerFilter::Any),
     ] {
         if let Some(end) = suffix_start(&words, suffix) {
+            if end == 0 {
+                continue;
+            }
             let filter = history_filter_from_word_prefix(&tokens, &word_view, end)?;
             return Some(Value::TurnHistoryCount(TurnHistoryCount::Sacrificed {
-                player: PlayerFilter::You,
+                player,
                 filter,
             }));
         }

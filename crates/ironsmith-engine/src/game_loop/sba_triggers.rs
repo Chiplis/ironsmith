@@ -37,6 +37,12 @@ pub fn check_and_apply_sbas_with(
         legend_rule_specs_from_actions,
     };
 
+    // CR 603.2, 603.10: events that already happened trigger against the game
+    // as it was when they happened. Match them before any state-based action
+    // (or the rule-driven changes below) changes it: a permanent that is about
+    // to be put into a graveyard still sees them (Chandra, Fire Artisan dealt
+    // lethal combat damage still triggers on her removed loyalty counters).
+    drain_pending_trigger_events(game, trigger_queue);
     // Refresh continuous state (static ability effects and "can't" effect tracking)
     // before checking SBAs. This ensures the layer system is up to date.
     game.refresh_continuous_state();
@@ -56,6 +62,10 @@ pub fn check_and_apply_sbas_with(
         }
         // CR 704.5t: remove dungeons whose last room ability has left the stack.
         crate::effects::player::complete_finished_dungeons(game, trigger_queue);
+        // Events since the previous check (the transforms above, sector
+        // choices, dungeon completion) are matched before this check's
+        // actions are performed (CR 603.2).
+        drain_pending_trigger_events(game, trigger_queue);
         game.refresh_continuous_state();
         let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
         let context = StateBasedActionContext::from_trigger_queue(trigger_queue);
@@ -176,7 +186,10 @@ pub fn check_and_apply_sbas_with(
         }
         game.clear_deathtouch_damage_since_sba();
         // SBA moves queue primitive ZoneChangeEvent via move_object; consume them now.
-        drain_pending_trigger_events(game, trigger_queue);
+        drain_pending_trigger_events_with_dm(game, trigger_queue, decision_maker);
+        if decision_maker.awaiting_choice() {
+            return Ok(());
+        }
         if !applied && !had_legend_decisions {
             break;
         }
@@ -274,7 +287,10 @@ pub fn put_triggers_on_stack_with_dm(
     >::new();
 
     loop {
-        drain_pending_trigger_events(game, trigger_queue);
+        drain_pending_trigger_events_with_dm(game, trigger_queue, decision_maker);
+        if decision_maker.awaiting_choice() {
+            return Ok(());
+        }
         // Hidden-information matches: the owner of a hidden card just drawn
         // answers its draw reveal window before triggers are put on the stack
         // (CR 702.94a: a miracle card triggers only if revealed as drawn).
@@ -313,6 +329,8 @@ pub fn put_triggers_on_stack_with_dm(
         }
 
         if ordinary.is_empty() && triggered_by_ability.is_empty() {
+            // Nothing is waiting to be stacked: no CR 603.7b choice is open.
+            game.clear_delayed_trigger_alternatives(None);
             return Ok(());
         }
 
@@ -514,6 +532,11 @@ fn stack_trigger_pass(
     if triggers.is_empty() {
         return false;
     }
+
+    let Some(triggers) = choose_delayed_trigger_events(game, decision_maker, triggers, trigger_queue)
+    else {
+        return true;
+    };
 
     // Group triggers by controller, then let each controller order their own
     // simultaneous triggers before applying APNAP stack placement.
@@ -826,6 +849,68 @@ fn uniquify_trigger_labels(labels: &mut [String]) {
     }
 }
 
+/// CR 603.7b: a one-shot delayed triggered ability whose trigger event
+/// occurred more than once simultaneously triggers once; its controller
+/// chooses which event caused it. Returns `None` (with every trigger
+/// requeued) while that choice is still unanswered.
+fn choose_delayed_trigger_events(
+    game: &mut GameState,
+    decision_maker: &mut dyn DecisionMaker,
+    triggers: Vec<TriggeredAbilityEntry>,
+    trigger_queue: &mut TriggerQueue,
+) -> Option<Vec<TriggeredAbilityEntry>> {
+    let mut chosen = Vec::with_capacity(triggers.len());
+    let mut remaining = triggers.into_iter();
+    while let Some(trigger) = remaining.next() {
+        let Some(alternatives) = game
+            .delayed_trigger_alternatives(&trigger)
+            .filter(|alternatives| alternatives.len() > 1)
+            .map(<[TriggeredAbilityEntry]>::to_vec)
+        else {
+            chosen.push(trigger);
+            continue;
+        };
+        let options = alternatives
+            .iter()
+            .enumerate()
+            .map(|(index, alternative)| {
+                let event = &alternative.triggering_event;
+                let label = event
+                    .snapshot()
+                    .map(|snapshot| format!("{}: {}", snapshot.name, event.display()))
+                    .unwrap_or_else(|| event.display());
+                crate::decisions::DisplayOption::new(index, label)
+            })
+            .collect::<Vec<_>>();
+        let source = game
+            .object(trigger.source)
+            .map(|_| trigger.source)
+            .or_else(|| game.find_object_by_stable_id(trigger.source_stable_id))
+            .unwrap_or(trigger.source);
+        let spec = crate::decisions::ChoiceSpec::new(source, options, 1, 1);
+        let response: Vec<usize> =
+            crate::decisions::make_decision(game, decision_maker, trigger.controller, Some(source), spec);
+        if decision_maker.awaiting_choice() {
+            for trigger in chosen
+                .into_iter()
+                .chain(std::iter::once(trigger))
+                .chain(remaining)
+            {
+                trigger_queue.requeue(trigger);
+            }
+            return None;
+        }
+        game.clear_delayed_trigger_alternatives(Some(&trigger));
+        let index = response
+            .first()
+            .copied()
+            .filter(|index| *index < alternatives.len())
+            .unwrap_or(0);
+        chosen.push(alternatives[index].clone());
+    }
+    Some(chosen)
+}
+
 fn order_triggers_for_controller(
     game: &GameState,
     decision_maker: &mut dyn DecisionMaker,
@@ -1010,7 +1095,8 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
 
     ctx = ctx
         .with_targets(valid_targets)
-        .with_target_assignments(valid_target_assignments.clone());
+        .with_target_assignments(valid_target_assignments.clone())
+        .with_announced_target_assignments(entry.target_assignments.clone());
     ctx.snapshot_targets(game);
 
     let effects = if let Some(ref ability_effects) = entry.ability_effects {
@@ -1999,6 +2085,17 @@ pub(super) fn triggered_to_stack_entry_with_effects(
                 .downcast::<ZoneChangeEvent>()
                 .and_then(|zc| zc.snapshot.clone())
                 .filter(|snapshot| snapshot.object_id == trigger.source)
+        })
+        .or_else(|| {
+            // The ability triggered while its source was still there (CR
+            // 603.2) and the source left before the ability was put on the
+            // stack (a planeswalker that loses its last loyalty counters to
+            // damage, a watcher a later instruction destroyed): use its last
+            // known information from the zone change that moved it.
+            game.turn_store
+                .turn_history
+                .departed_object_snapshot(trigger.source)
+                .cloned()
         });
 
     // Create an ability stack entry with the effects from the triggered ability

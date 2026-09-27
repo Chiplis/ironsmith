@@ -1124,7 +1124,10 @@ fn planar_die_cost(amount: u32) -> crate::mana::ManaCost {
 
 fn can_roll_planar_die(game: &GameState, player: PlayerId) -> Result<(), ActionError> {
     has_sorcery_speed_special_action_timing(game, player)?;
-    if game.planar_controller() != Some(player) || game.face_up_planar_objects().is_empty() {
+    // CR 901.12d: in Two-Headed Giant each member of the active team may roll.
+    if game.planar_controller_acting_for(player).is_none()
+        || game.face_up_planar_objects().is_empty()
+    {
         return Err(ActionError::InvalidTiming);
     }
     game.planar_die_roll_cost(player)
@@ -1847,12 +1850,30 @@ fn cost_error_to_action_error(err: CostPaymentError) -> ActionError {
 pub(crate) fn activation_restricted_to_instant_timing(
     activated: &crate::ability::ActivatedAbility,
 ) -> bool {
-    activated.additional_restrictions.iter().any(|restriction| {
-        restriction
-            .trim()
-            .trim_end_matches('.')
-            .eq_ignore_ascii_case("activate only as an instant")
-    })
+    fn condition_requires_instant_timing(condition: &crate::ConditionExpr) -> bool {
+        match condition {
+            // An explicit any-time timing condition is only ever authored by
+            // "Activate only as an instant"; definitions compiled before the
+            // typed `AsInstant` timing existed carry it in this form.
+            crate::ConditionExpr::ActivationTiming(
+                crate::ability::ActivationTiming::AsInstant
+                | crate::ability::ActivationTiming::AnyTime,
+            ) => true,
+            crate::ConditionExpr::And(left, right) => {
+                condition_requires_instant_timing(left) || condition_requires_instant_timing(right)
+            }
+            _ => false,
+        }
+    }
+    activated.timing == crate::ability::ActivationTiming::AsInstant
+        || activated
+            .activation_condition
+            .as_ref()
+            .is_some_and(condition_requires_instant_timing)
+        || activated
+            .activation_restrictions
+            .iter()
+            .any(condition_requires_instant_timing)
 }
 
 fn can_activate_mana_ability_with_cost_checks(
@@ -2555,10 +2576,16 @@ pub(crate) fn pay_cost_component_with_choice(
         ));
     }
     game.validate_cost_for_payment_reason(ctx.payer, ctx.source, cost, ctx.reason)?;
-    match cost.pay(game, ctx)? {
-        CostPaymentResult::Paid => Ok(()),
-        CostPaymentResult::NeedsChoice(_) => resolve_cost_choice(game, cost, ctx),
-    }
+    // One cost component is one simultaneous event, including the objects it
+    // moves once its choice is made (CR 603.2c).
+    let opened_batch = !cost.is_mana_cost() && game.open_simultaneous_action();
+    let result = match cost.pay(game, ctx) {
+        Ok(CostPaymentResult::Paid) => Ok(()),
+        Ok(CostPaymentResult::NeedsChoice(_)) => resolve_cost_choice(game, cost, ctx),
+        Err(error) => Err(error),
+    };
+    game.close_simultaneous_action(opened_batch);
+    result
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -2819,7 +2846,7 @@ fn preflight_tagged_sacrifice_choice_in_context(
                         crate::events::cause::EventCause::from_cost(source, payer)
                     }
                 })
-                && (!lands_only || object.has_card_type(crate::types::CardType::Land))
+                && (!lands_only || game.current_has_card_type(*id, crate::types::CardType::Land))
         })
         .take(required)
         .map(|(_, object)| ObjectSnapshot::from_object(object, game))
@@ -4028,7 +4055,7 @@ fn legal_sacrifice_targets(
                     && game.can_be_sacrificed_with_cause(id, cause)
                     && (!reason.is_cast_or_ability_payment()
                         || !game.player_cant_sacrifice_nonland_to_cast_or_activate(payer)
-                        || obj.has_card_type(crate::types::CardType::Land))
+                        || game.current_has_card_type(id, crate::types::CardType::Land))
             })
         })
         .collect()

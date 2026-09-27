@@ -66,6 +66,19 @@ pub fn parse_search_library_disjunction_filter(
     if segments.len() < 2 {
         return None;
     }
+    // "a red or white instant card" (Sunforger) is one noun phrase with a
+    // color disjunction, not two alternatives: the leading branch has no
+    // noun of its own, and splitting it would search for any red card. The
+    // ordinary filter parser reads the shared noun with both colors.
+    if segments[..segments.len() - 1].iter().any(|segment| {
+        let words = token_word_refs(segment);
+        !words.is_empty()
+            && words.iter().all(|word| {
+                matches!(*word, "a" | "an") || crate::util::parse_color(word).is_some()
+            })
+    }) {
+        return None;
+    }
 
     let mut branches = Vec::new();
     for segment in segments {

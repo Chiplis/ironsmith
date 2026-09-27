@@ -30,7 +30,7 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::rules::combat::deals_first_strike_damage_with_game;
 use crate::rules::state_based::check_state_based_actions;
 use crate::triggers::TriggerQueue;
-use crate::turn::{execute_cleanup_step, execute_untap_step, execute_untap_step_with};
+use crate::turn::{execute_cleanup_step, execute_untap_step_with};
 
 /// What the caller should do next after calling [`TurnRunner::advance`].
 #[derive(Debug)]
@@ -347,10 +347,14 @@ fn next_blocker_mana_window_context(
     None
 }
 
+/// Untap-step choices (CR 502.3): "you may choose not to untap" prompts and
+/// the Winter Orb family's choice of which permanents untap. The step runs on
+/// a clone with the answers so far; a new prompt pauses the runner.
 #[derive(Debug, Clone)]
 struct PendingUntapChoices {
-    prompts: Vec<BooleanContext>,
-    answers: Vec<bool>,
+    answers: Vec<AttackCostAnswer>,
+    prompt: Option<DecisionContext>,
+    response: Option<AttackCostAnswer>,
 }
 
 enum RunnerProgress<T> {
@@ -359,16 +363,11 @@ enum RunnerProgress<T> {
 }
 
 #[derive(Debug, Clone)]
-struct QueuedBooleanDecisionMaker {
-    answers: Vec<bool>,
-    next: usize,
-}
-
-#[derive(Debug, Clone)]
 enum AttackCostAnswer {
     Boolean(bool),
     Objects(Vec<ObjectId>),
     Options(Vec<usize>),
+    Order(Vec<ObjectId>),
 }
 
 #[derive(Debug, Clone)]
@@ -376,36 +375,6 @@ struct QueuedAttackCostDecisionMaker {
     answers: Vec<AttackCostAnswer>,
     next: usize,
     pending_prompt: Option<DecisionContext>,
-}
-
-#[derive(Default)]
-struct BooleanPromptCollector {
-    prompts: Vec<BooleanContext>,
-}
-
-impl DecisionMaker for BooleanPromptCollector {
-    fn decide_boolean(&mut self, _game: &GameState, ctx: &BooleanContext) -> bool {
-        self.prompts.push(ctx.clone());
-        false
-    }
-}
-
-impl QueuedBooleanDecisionMaker {
-    fn new(answers: Vec<bool>) -> Self {
-        Self { answers, next: 0 }
-    }
-}
-
-impl DecisionMaker for QueuedBooleanDecisionMaker {
-    fn decide_boolean(
-        &mut self,
-        _game: &GameState,
-        _ctx: &crate::decisions::context::BooleanContext,
-    ) -> bool {
-        let answer = self.answers.get(self.next).copied().unwrap_or(false);
-        self.next += 1;
-        answer
-    }
 }
 
 impl QueuedAttackCostDecisionMaker {
@@ -465,6 +434,36 @@ impl DecisionMaker for QueuedAttackCostDecisionMaker {
             }
         }
     }
+    fn decide_order(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::OrderContext,
+    ) -> Vec<ObjectId> {
+        // "In any order" (Abundance's bottom-of-library cards): the chooser
+        // orders them (CR 401.4 / 608.2d); a trivial order needs no prompt.
+        let default_order = || ctx.items.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+        if ctx.items.len() < 2 {
+            return default_order();
+        }
+        match self.next_answer() {
+            Some(AttackCostAnswer::Order(order)) => {
+                let mut remaining = default_order();
+                let mut ordered = Vec::with_capacity(remaining.len());
+                for id in order {
+                    if let Some(index) = remaining.iter().position(|item| *item == id) {
+                        ordered.push(remaining.remove(index));
+                    }
+                }
+                ordered.extend(remaining);
+                ordered
+            }
+            _ => {
+                self.pending_prompt
+                    .get_or_insert_with(|| DecisionContext::Order(ctx.clone()));
+                default_order()
+            }
+        }
+    }
 }
 
 fn validate_declared_attacking_bands(
@@ -515,6 +514,8 @@ pub struct TurnRunner {
     pending_attacking_bands: Option<Vec<Vec<ObjectId>>>,
     /// Mandatory choices for permanents that may remain tapped this untap step.
     pending_untap_choices: Option<PendingUntapChoices>,
+    /// Choices made while a restart's deferred cards enter (CR 726.4).
+    pending_restart_entry_choices: Option<PendingUntapChoices>,
     /// Pending attacker-cost prompts and their collected answers.
     pending_attacker_optional_costs: Option<PendingAttackerOptionalCosts>,
     /// Attack declaration paused after CR 508.1f tapping and before costs.
@@ -574,6 +575,7 @@ impl TurnRunner {
             pending_attackers: None,
             pending_attacking_bands: None,
             pending_untap_choices: None,
+            pending_restart_entry_choices: None,
             pending_attacker_optional_costs: None,
             pending_attacker_mana_window: None,
             pending_attacker_payment_choices: None,
@@ -711,8 +713,10 @@ impl TurnRunner {
                 // CR 726.4: a restarting effect's deferred battlefield entries
                 // happen just before the new game's first untap step (hosts
                 // that run the rule 103 procedure apply them when it ends).
-                if !game.pending_restart_battlefield_entries().is_empty() {
-                    game.apply_pending_restart_battlefield_entries();
+                if !game.pending_restart_battlefield_entries().is_empty()
+                    && let Some(prompt) = self.apply_restart_battlefield_entries_with_choices(game)
+                {
+                    return Ok(TurnAction::Decision(prompt));
                 }
                 game.record_turn_start_hand_sizes();
                 for player in game.turn_players() {
@@ -732,20 +736,12 @@ impl TurnRunner {
                     return Ok(TurnAction::Continue);
                 }
 
-                let mut hypothetical = game.clone();
-                let mut collector = BooleanPromptCollector::default();
-                execute_untap_step_with(&mut hypothetical, &mut collector);
-                if let Some(first_prompt) = collector.prompts.first().cloned() {
-                    self.pending_untap_choices = Some(PendingUntapChoices {
-                        prompts: collector.prompts,
-                        answers: Vec::new(),
-                    });
-                    self.pending_boolean = None;
+                self.pending_untap_choices = None;
+                self.pending_boolean = None;
+                if let Some(prompt) = self.run_untap_step_with_choices(game, Vec::new()) {
                     self.state = TurnState::Untap;
-                    return Ok(TurnAction::Decision(DecisionContext::Boolean(first_prompt)));
+                    return Ok(TurnAction::Decision(prompt));
                 }
-
-                execute_untap_step(game);
 
                 self.state = finish_step(
                     game,
@@ -756,34 +752,23 @@ impl TurnRunner {
             }
 
             TurnState::Untap => {
-                if self.pending_untap_choices.is_none() {
-                    let mut hypothetical = game.clone();
-                    let mut collector = BooleanPromptCollector::default();
-                    execute_untap_step_with(&mut hypothetical, &mut collector);
-                    self.pending_untap_choices = Some(PendingUntapChoices {
-                        prompts: collector.prompts,
-                        answers: Vec::new(),
-                    });
-                }
-                let pending = self
-                    .pending_untap_choices
-                    .as_mut()
-                    .expect("untap choices initialized");
-                if let Some(answer) = self.pending_boolean.take() {
-                    pending.answers.push(answer);
-                }
-                if pending.answers.len() < pending.prompts.len() {
-                    return Ok(TurnAction::Decision(DecisionContext::Boolean(
-                        pending.prompts[pending.answers.len()].clone(),
-                    )));
-                }
-
-                let pending = self
+                let mut pending = self
                     .pending_untap_choices
                     .take()
-                    .expect("untap choices remain initialized");
-                let mut dm = QueuedBooleanDecisionMaker::new(pending.answers);
-                execute_untap_step_with(game, &mut dm);
+                    .unwrap_or_else(|| PendingUntapChoices {
+                        answers: Vec::new(),
+                        prompt: None,
+                        response: self.pending_boolean.take().map(AttackCostAnswer::Boolean),
+                    });
+                if let Some(answer) = pending.response.take() {
+                    pending.answers.push(answer);
+                } else if let Some(prompt) = pending.prompt.clone() {
+                    self.pending_untap_choices = Some(pending);
+                    return Ok(TurnAction::Decision(prompt));
+                }
+                if let Some(prompt) = self.run_untap_step_with_choices(game, pending.answers) {
+                    return Ok(TurnAction::Decision(prompt));
+                }
                 self.state = finish_step(
                     game,
                     Step::Untap,
@@ -835,6 +820,30 @@ impl TurnRunner {
                 game.clear_forecast_revealed_hand_cards();
                 game.turn.step = Some(Step::Draw);
                 game.refresh_continuous_state();
+                // CR 614.10 / 500.11: "Skip your draw step" (Necropotence)
+                // proceeds past the whole step as though it didn't exist: no
+                // turn-based draw, no "beginning of draw step" triggers and no
+                // priority window. Anything waiting for the draw step waits
+                // for the next one that actually happens (CR 614.10a).
+                if self.remaining_draw_players.is_empty()
+                    && self.pending_draw_replacement.is_none()
+                    && self.pending_draw_replacement_effects.is_none()
+                    && self.pending_draw_reveal.is_none()
+                    && self.pending_commander_choice.is_none()
+                    && game
+                        .turn_players()
+                        .iter()
+                        .any(|player| game.player_skips_draw_step(*player))
+                {
+                    game.reset_priority_for_new_window();
+                    self.state = finish_step_and_phase(
+                        game,
+                        Step::Draw,
+                        Phase::Beginning,
+                        TurnScheduleDestination::Phase(Phase::FirstMain),
+                    );
+                    return Ok(TurnAction::Continue);
+                }
                 let draw_events = match self.execute_draw_step_with_choices(game) {
                     RunnerProgress::Complete(draw_events) => draw_events,
                     RunnerProgress::NeedsDecision(ctx) => return Ok(TurnAction::Decision(ctx)),
@@ -884,6 +893,7 @@ impl TurnRunner {
                 }
                 game.turn.phase = Phase::FirstMain;
                 game.turn.step = None;
+                game.mark_main_phase_started();
                 game.reset_priority_for_new_window();
                 generate_and_queue_step_triggers(game, tq);
                 // CR 505.3: an archenemy sets the top scheme in motion as a
@@ -1576,6 +1586,7 @@ impl TurnRunner {
                 }
                 game.turn.phase = Phase::NextMain;
                 game.turn.step = None;
+                game.mark_main_phase_started();
                 game.reset_priority_for_new_window();
                 generate_and_queue_step_triggers(game, tq);
 
@@ -1672,6 +1683,10 @@ impl TurnRunner {
             }
 
             TurnState::CleanupApply => {
+                // CR 603.2: the cleanup discard triggers against the game
+                // before damage is removed and "until end of turn" effects
+                // end (CR 514.2).
+                drain_pending_trigger_events(game, tq);
                 execute_cleanup_step(game);
                 self.state = TurnState::CleanupRecursiveCheck;
                 Ok(TurnAction::Continue)
@@ -1753,6 +1768,14 @@ impl TurnRunner {
             pending.response = Some(AttackCostAnswer::Objects(cards));
             return;
         }
+        if let Some(pending) = self.pending_untap_choices.as_mut() {
+            pending.response = Some(AttackCostAnswer::Objects(cards));
+            return;
+        }
+        if let Some(pending) = self.pending_restart_entry_choices.as_mut() {
+            pending.response = Some(AttackCostAnswer::Objects(cards));
+            return;
+        }
         if let Some(pending) = self.pending_draw_replacement_effects.as_mut() {
             pending.response = Some(AttackCostAnswer::Objects(cards));
             return;
@@ -1767,6 +1790,14 @@ impl TurnRunner {
     /// Provide a boolean response in response to a `Decision(Boolean(...))`.
     pub fn respond_boolean(&mut self, answer: bool) {
         if let Some(pending) = self.pending_sba_choices.as_mut() {
+            pending.response = Some(AttackCostAnswer::Boolean(answer));
+            return;
+        }
+        if let Some(pending) = self.pending_untap_choices.as_mut() {
+            pending.response = Some(AttackCostAnswer::Boolean(answer));
+            return;
+        }
+        if let Some(pending) = self.pending_restart_entry_choices.as_mut() {
             pending.response = Some(AttackCostAnswer::Boolean(answer));
             return;
         }
@@ -1787,6 +1818,14 @@ impl TurnRunner {
             pending.response = Some(AttackCostAnswer::Options(option_indices));
             return;
         }
+        if let Some(pending) = self.pending_untap_choices.as_mut() {
+            pending.response = Some(AttackCostAnswer::Options(option_indices));
+            return;
+        }
+        if let Some(pending) = self.pending_restart_entry_choices.as_mut() {
+            pending.response = Some(AttackCostAnswer::Options(option_indices));
+            return;
+        }
         if let Some(pending) = self.pending_draw_replacement_effects.as_mut() {
             pending.response = Some(AttackCostAnswer::Options(option_indices));
             return;
@@ -1796,6 +1835,30 @@ impl TurnRunner {
             return;
         }
         self.pending_option = option_indices.first().copied();
+    }
+
+    /// Provide an ordering in response to a runner-driven `Decision(Order(...))`
+    /// raised by a replayed effect (for example a draw-step replacement).
+    pub fn respond_order(&mut self, order: Vec<ObjectId>) {
+        if let Some(pending) = self.pending_sba_choices.as_mut() {
+            pending.response = Some(AttackCostAnswer::Order(order));
+            return;
+        }
+        if let Some(pending) = self.pending_untap_choices.as_mut() {
+            pending.response = Some(AttackCostAnswer::Order(order));
+            return;
+        }
+        if let Some(pending) = self.pending_restart_entry_choices.as_mut() {
+            pending.response = Some(AttackCostAnswer::Order(order));
+            return;
+        }
+        if let Some(pending) = self.pending_draw_replacement_effects.as_mut() {
+            pending.response = Some(AttackCostAnswer::Order(order));
+            return;
+        }
+        if let Some(pending) = self.pending_attacker_payment_choices.as_mut() {
+            pending.response = Some(AttackCostAnswer::Order(order));
+        }
     }
 
     /// Provide a combat-damage division in response to a
@@ -2275,6 +2338,62 @@ impl TurnRunner {
         RunnerProgress::Complete(Vec::new())
     }
 
+    /// Apply a restart's deferred battlefield entries (CR 726.4) on a clone
+    /// with the answers collected so far, so the entering cards' choices are
+    /// asked of the right players. A new prompt pauses before the untap step.
+    fn apply_restart_battlefield_entries_with_choices(
+        &mut self,
+        game: &mut GameState,
+    ) -> Option<DecisionContext> {
+        let mut pending =
+            self.pending_restart_entry_choices
+                .take()
+                .unwrap_or_else(|| PendingUntapChoices {
+                    answers: Vec::new(),
+                    prompt: None,
+                    response: None,
+                });
+        if let Some(answer) = pending.response.take() {
+            pending.answers.push(answer);
+        } else if let Some(prompt) = pending.prompt.clone() {
+            self.pending_restart_entry_choices = Some(pending);
+            return Some(prompt);
+        }
+        let mut hypothetical = game.clone();
+        let mut dm = QueuedAttackCostDecisionMaker::new(pending.answers.clone());
+        hypothetical.apply_pending_restart_battlefield_entries_with(&mut dm);
+        if let Some(prompt) = dm.pending_prompt.take() {
+            pending.prompt = Some(prompt.clone());
+            self.pending_restart_entry_choices = Some(pending);
+            return Some(prompt);
+        }
+        *game = hypothetical;
+        None
+    }
+
+    /// Run the untap step on a clone with the answers collected so far. A new
+    /// prompt pauses the step without publishing anything; otherwise the
+    /// untapped state is committed.
+    fn run_untap_step_with_choices(
+        &mut self,
+        game: &mut GameState,
+        answers: Vec<AttackCostAnswer>,
+    ) -> Option<DecisionContext> {
+        let mut hypothetical = game.clone();
+        let mut dm = QueuedAttackCostDecisionMaker::new(answers.clone());
+        execute_untap_step_with(&mut hypothetical, &mut dm);
+        if let Some(prompt) = dm.pending_prompt.take() {
+            self.pending_untap_choices = Some(PendingUntapChoices {
+                answers,
+                prompt: Some(prompt.clone()),
+                response: None,
+            });
+            return Some(prompt);
+        }
+        *game = hypothetical;
+        None
+    }
+
     /// Run a draw-step draw's replacement effects with the answers collected
     /// so far. A new prompt pauses the draw step without publishing anything;
     /// otherwise the result (including its events, with CR 614.5 suppression
@@ -2411,6 +2530,11 @@ impl TurnRunner {
         };
 
         loop {
+            // CR 603.2, 603.10: events that already happened (combat damage
+            // removing loyalty counters, the previous check's actions) trigger
+            // against the game as it was then. Match them before this check's
+            // actions put anything into a graveyard.
+            crate::game_loop::drain_pending_trigger_events(game, tq);
             // Every applied SBA can change which static effects exist. Refresh
             // at the fixed-point boundary; this is a no-op while state is clean.
             game.refresh_continuous_state();

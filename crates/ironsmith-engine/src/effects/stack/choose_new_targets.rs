@@ -123,6 +123,7 @@ impl EffectExecutor for ChooseNewTargetsEffect {
                     return Ok(EffectOutcome::target_invalid());
                 }
                 game.stack[stack_idx] = updated_entry;
+                game.refresh_cast_spell_lki_for_stack_index(stack_idx);
                 changed += 1;
                 let final_targets = game.stack[stack_idx].targets.clone();
                 game.drop_pending_stale_becomes_targeted_events(

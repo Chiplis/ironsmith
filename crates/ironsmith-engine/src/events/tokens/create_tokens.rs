@@ -84,6 +84,64 @@ impl CreateTokensEvent {
         next
     }
 
+    /// Rewrite the combined count of the token groups `matches` accepts
+    /// ("those tokens plus an additional one", "that many minus one"). Tokens
+    /// an earlier replacement added are part of the modified event (CR 616.1),
+    /// so they count toward the total. Added tokens go to the first covered
+    /// group; removed tokens come off the covered groups in order.
+    pub fn adjusted_covered_total(
+        &self,
+        matches: impl Fn(Option<AdditionalTokenKind>) -> bool,
+        adjust: impl Fn(u32) -> u32,
+    ) -> Self {
+        let mut next = self.clone();
+        let covered_added = next
+            .additional_tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, (kind, _))| matches(Some(*kind)))
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        // The replacement applied to this event, so when no group can be
+        // matched (the original token's characteristics are unknown), it
+        // modifies the original group.
+        let covers_original = matches(None) || covered_added.is_empty();
+        let total = covered_added
+            .iter()
+            .fold(
+                if covers_original { next.count } else { 0 },
+                |total, index| total.saturating_add(next.additional_tokens[*index].1),
+            );
+        let target = adjust(total);
+        if target > total {
+            let extra = target - total;
+            if covers_original {
+                next.count = next.count.saturating_add(extra);
+            } else {
+                let count = &mut next.additional_tokens[covered_added[0]].1;
+                *count = count.saturating_add(extra);
+            }
+        } else {
+            let mut remove = total - target;
+            if covers_original {
+                let taken = remove.min(next.count);
+                next.count -= taken;
+                remove -= taken;
+            }
+            for index in covered_added {
+                if remove == 0 {
+                    break;
+                }
+                let count = &mut next.additional_tokens[index].1;
+                let taken = remove.min(*count);
+                *count -= taken;
+                remove -= taken;
+            }
+        }
+        next.additional_tokens.retain(|(_, count)| *count > 0);
+        next
+    }
+
     pub fn with_count(&self, count: u32) -> Self {
         Self {
             count,

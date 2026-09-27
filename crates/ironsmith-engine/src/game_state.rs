@@ -617,6 +617,13 @@ struct AuxiliaryTrackingState {
     /// Hidden cards snapshotted as their owner left the game (CR 800.4a),
     /// for the end-of-match disclosure.
     departed_hidden_cards: Vec<hidden_hand_choices::DepartedHiddenCard>,
+    /// Tokens that left the battlefield into the command zone (CR 111.8):
+    /// unlike tokens staged there during creation, they can't move again.
+    /// The CR 704.5d state-based action removes them shortly after.
+    departed_command_zone_tokens: BTreeSet<ObjectId>,
+    /// Exile-until returns whose duration ended where no player decision
+    /// channel was available (CR 610.3c), as (duration source, returns).
+    pending_duration_end_returns: Vec<(ObjectId, Vec<(ObjectId, crate::zone::Zone)>)>,
     /// Hidden cards that are the subject of a pending public claim (chosen
     /// for a filter, withheld from a forced reveal, cast face down), marked
     /// identically on every peer. Such a card entering a library is anchored
@@ -649,6 +656,35 @@ struct AuxiliaryTrackingState {
     /// Trigger-source look-back shared by every event of one simultaneous
     /// state-based-action batch (CR 704.3, 603.10a).
     simultaneous_event_lookback: Option<Vec<ObjectSnapshot>>,
+    /// An open simultaneous action (a pinned look-back, a batch entry onto
+    /// the battlefield, several sources dealing damage at once): every
+    /// zone-change or damage event produced while it is open is part of one
+    /// simultaneous event (CR 603.2c), and "one or more" triggers group on
+    /// its identity.
+    simultaneous_action_scope: Option<SimultaneousActionScope>,
+    /// CR 603.7b: the simultaneous matches of a queued one-shot delayed
+    /// trigger, first match first. Its controller chooses which of them
+    /// causes it to trigger when it is put on the stack.
+    delayed_trigger_alternatives: Vec<Vec<crate::triggers::TriggeredAbilityEntry>>,
+}
+
+fn delayed_alternative_key(
+    entry: &crate::triggers::TriggeredAbilityEntry,
+) -> (StableId, crate::triggers::TriggerIdentity, crate::provenance::ProvNodeId) {
+    (
+        entry.source_stable_id,
+        entry.trigger_identity,
+        entry.triggering_event.provenance(),
+    )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SimultaneousActionScope {
+    /// Allocated when the first event of the action is queued.
+    batch: Option<crate::provenance::ProvNodeId>,
+    /// Whether pinning the look-back opened this scope (so releasing the
+    /// pin closes it).
+    opened_by_lookback: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -775,6 +811,9 @@ pub struct TurnStore {
     pub phase_schedule_continuation: Option<TurnScheduleDestination>,
     /// Number of combat phases that have started during the current turn.
     pub combat_phases_started_this_turn: u32,
+    /// Number of main phases that have started during the current turn
+    /// (CR 505.1b: "second main phase" counts main phases of this turn).
+    pub main_phases_started_this_turn: u32,
     /// Normal phase to resume after inserted additional phases finish.
     pub additional_phase_continuation: Option<Phase>,
     /// Players who will skip their next turn.
@@ -3806,7 +3845,137 @@ impl GameState {
         {
             return;
         }
-        self.auxiliary_tracking_mut().simultaneous_event_lookback = lookback;
+        // Pinning a look-back opens one simultaneous action; the events it
+        // queues share one batch identity until the pin is released.
+        let pinning = lookback.is_some();
+        let tracking = self.auxiliary_tracking_mut();
+        tracking.simultaneous_event_lookback = lookback;
+        match (pinning, tracking.simultaneous_action_scope) {
+            (true, None) => {
+                tracking.simultaneous_action_scope = Some(SimultaneousActionScope {
+                    batch: None,
+                    opened_by_lookback: true,
+                });
+            }
+            (false, Some(scope)) if scope.opened_by_lookback => {
+                tracking.simultaneous_action_scope = None;
+            }
+            _ => {}
+        }
+    }
+
+    /// Remember the simultaneous matches of a one-shot delayed trigger; the
+    /// first is the entry that was queued (CR 603.7b).
+    pub(crate) fn record_delayed_trigger_alternatives(
+        &mut self,
+        alternatives: Vec<crate::triggers::TriggeredAbilityEntry>,
+    ) {
+        let Some(first) = alternatives.first() else {
+            return;
+        };
+        let key = delayed_alternative_key(first);
+        let tracking = self.auxiliary_tracking_mut();
+        tracking
+            .delayed_trigger_alternatives
+            .retain(|group| group.first().map(delayed_alternative_key) != Some(key));
+        tracking.delayed_trigger_alternatives.push(alternatives);
+    }
+
+    /// The alternatives recorded for a queued one-shot delayed trigger entry.
+    pub(crate) fn delayed_trigger_alternatives(
+        &self,
+        entry: &crate::triggers::TriggeredAbilityEntry,
+    ) -> Option<&[crate::triggers::TriggeredAbilityEntry]> {
+        let key = delayed_alternative_key(entry);
+        self.auxiliary_tracking
+            .delayed_trigger_alternatives
+            .iter()
+            .find(|group| group.first().map(delayed_alternative_key) == Some(key))
+            .map(Vec::as_slice)
+    }
+
+    /// Forget the alternatives of `entry` (its choice was made), or all of
+    /// them when `entry` is `None` (nothing is waiting to be stacked).
+    pub(crate) fn clear_delayed_trigger_alternatives(
+        &mut self,
+        entry: Option<&crate::triggers::TriggeredAbilityEntry>,
+    ) {
+        if self.auxiliary_tracking.delayed_trigger_alternatives.is_empty() {
+            return;
+        }
+        let key = entry.map(delayed_alternative_key);
+        self.auxiliary_tracking_mut()
+            .delayed_trigger_alternatives
+            .retain(|group| key.is_some() && group.first().map(delayed_alternative_key) != key);
+    }
+
+    /// Open one simultaneous action for the zone changes (and damage)
+    /// performed until [`Self::close_simultaneous_action`] (CR 603.2c).
+    /// Returns whether this call opened it; an enclosing action is reused.
+    pub(crate) fn open_simultaneous_action(&mut self) -> bool {
+        if self
+            .auxiliary_tracking
+            .simultaneous_action_scope
+            .is_some()
+        {
+            return false;
+        }
+        self.auxiliary_tracking_mut().simultaneous_action_scope =
+            Some(SimultaneousActionScope {
+                batch: None,
+                opened_by_lookback: false,
+            });
+        true
+    }
+
+    /// Open one simultaneous action with a caller-chosen identity, so events
+    /// produced across several separate steps (delve's one-card-at-a-time
+    /// choices) still form one event. Returns whether this call opened it.
+    pub(crate) fn open_simultaneous_action_with_batch(
+        &mut self,
+        batch: crate::provenance::ProvNodeId,
+    ) -> bool {
+        if self
+            .auxiliary_tracking
+            .simultaneous_action_scope
+            .is_some()
+        {
+            return false;
+        }
+        self.auxiliary_tracking_mut().simultaneous_action_scope =
+            Some(SimultaneousActionScope {
+                batch: Some(batch),
+                opened_by_lookback: false,
+            });
+        true
+    }
+
+    pub(crate) fn close_simultaneous_action(&mut self, opened: bool) {
+        if opened {
+            self.auxiliary_tracking_mut().simultaneous_action_scope = None;
+        }
+    }
+
+    /// Identity of the open simultaneous action whose events are being
+    /// produced, allocated on first use.
+    pub(crate) fn simultaneous_action_batch(
+        &mut self,
+    ) -> Option<crate::provenance::ProvNodeId> {
+        let scope = self.auxiliary_tracking.simultaneous_action_scope?;
+        if let Some(batch) = scope.batch {
+            return Some(batch);
+        }
+        let batch = self
+            .provenance_graph_mut()
+            .alloc_root_event(crate::events::EventKind::ZoneChange);
+        if let Some(scope) = self
+            .auxiliary_tracking_mut()
+            .simultaneous_action_scope
+            .as_mut()
+        {
+            scope.batch = Some(batch);
+        }
+        Some(batch)
     }
 
     pub(crate) fn simultaneous_event_lookback(&self) -> Option<&[ObjectSnapshot]> {
@@ -4732,7 +4901,8 @@ impl GameState {
             | crate::effect::Value::StaticAbilitiesAmong { filter, .. } => {
                 Self::object_filter_is_turn_context_sensitive(filter)
             }
-            crate::effect::Value::PlayersWhoControlMoreThanYou { players, filter }
+            crate::effect::Value::PlayersWhoControl { players, filter }
+            | crate::effect::Value::PlayersWhoControlMoreThanYou { players, filter }
             | crate::effect::Value::PlayersWhoControlAtLeastMoreThanYou {
                 players, filter, ..
             } => {

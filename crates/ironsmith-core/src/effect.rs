@@ -603,6 +603,10 @@ pub enum DelayedTriggerSpec {
     DealsCombatDamageToPlayerOneOrMore {
         source: ObjectFilter,
         player: PlayerFilter,
+        /// "... to a player" (once for each damaged player) rather than
+        /// "... to one or more players" (once for the whole event).
+        #[cfg_attr(feature = "serde", serde(default))]
+        each_damaged_player: bool,
     },
     IsDealtDamage(ChooseSpec),
     PutIntoGraveyard(ObjectFilter),

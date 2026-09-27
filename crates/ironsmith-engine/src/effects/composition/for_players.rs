@@ -566,6 +566,12 @@ impl EffectExecutor for ForPlayersEffect {
                 }
 
                 let game_checkpoint = game.clone();
+                // CR 101.4 / 603.2c / 603.10a: the players' prepared actions
+                // happen at the same time, as one event that looks back at
+                // the same trigger sources.
+                let pinned_lookback =
+                    crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
+                let opened_batch = game.open_simultaneous_action();
                 let mut batch_outcomes = Vec::with_capacity(prepared.len());
                 let mut accumulated_unit_tags = pre_unit_tagged_objects.clone();
                 let mut active_commit_player = None;
@@ -600,6 +606,11 @@ impl EffectExecutor for ForPlayersEffect {
                         }
                     }
                 }
+                game.close_simultaneous_action(opened_batch);
+                crate::effects::helpers::end_simultaneous_zone_change_lookback(
+                    game,
+                    pinned_lookback,
+                );
                 merge_tagged_object_sets(&mut accumulated_unit_tags, &ctx.tagged_objects);
                 ctx.tagged_objects = accumulated_unit_tags;
                 for (player_index, outcome) in batch_outcomes {

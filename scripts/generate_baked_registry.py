@@ -452,7 +452,8 @@ def write_generated_source(
     lines.append("    back_block: String,")
     lines.append("    back_score: f32,")
     lines.append("    combined_name: String,")
-    lines.append("    is_flip: bool,")
+    lines.append("    // 0 = modal DFC / adventure, 1 = flip card, 2 = transforming DFC.")
+    lines.append("    layout_kind: u32,")
     lines.append("}")
     lines.append("")
     lines.append("#[derive(Clone)]")
@@ -533,7 +534,7 @@ def write_generated_source(
     lines.append(
         '        let combined_name = read_string(bytes, &mut cursor).expect("missing flip combined name");'
     )
-    lines.append('        let is_flip = read_u32(bytes, &mut cursor).expect("missing flip layout flag") != 0;')
+    lines.append('        let layout_kind = read_u32(bytes, &mut cursor).expect("missing flip layout flag");')
     lines.append("        flips.push(FlipCardText {")
     lines.append("            front_name,")
     lines.append("            front_block,")
@@ -542,7 +543,7 @@ def write_generated_source(
     lines.append("            back_block,")
     lines.append("            back_score,")
     lines.append("            combined_name,")
-    lines.append("            is_flip,")
+    lines.append("            layout_kind,")
     lines.append("        });")
     lines.append("    }")
     lines.append("")
@@ -763,9 +764,9 @@ def write_generated_source(
     lines.append("    front_block: &str,")
     lines.append("    back_name: &str,")
     lines.append("    back_block: &str,")
-    lines.append("    is_flip: bool,")
+    lines.append("    layout_kind: u32,")
     lines.append(") {")
-    lines.append("    if let Ok(mut parsed) = parse_generated_flip_card_result(front_name, front_block, back_name, back_block, is_flip) {")
+    lines.append("    if let Ok(mut parsed) = parse_generated_flip_card_result(front_name, front_block, back_name, back_block, layout_kind) {")
     lines.append("        cards.append(&mut parsed);")
     lines.append("    }")
     lines.append("}")
@@ -775,8 +776,9 @@ def write_generated_source(
     lines.append("    front_block: &str,")
     lines.append("    back_name: &str,")
     lines.append("    back_block: &str,")
-    lines.append("    is_flip: bool,")
+    lines.append("    layout_kind: u32,")
     lines.append(") -> Result<Vec<CardDefinition>, String> {")
+    lines.append("    let is_flip = layout_kind == 1;")
     lines.append("    let front_id = CardId::new();")
     lines.append("    let back_id = CardId::new();")
     lines.append("    let front_builder = CardDefinitionBuilder::new(front_id, front_name);")
@@ -799,6 +801,10 @@ def write_generated_source(
     lines.append("    };")
     lines.append("    front.card.linked_face_layout = layout;")
     lines.append("    back.card.linked_face_layout = layout;")
+    lines.append("    // CR 712.1: only a transforming DFC transforms; a modal DFC played as")
+    lines.append("    // a land may be put onto the battlefield with either land face (712.12).")
+    lines.append("    front.card.transforming_dfc = layout_kind == 2;")
+    lines.append("    back.card.transforming_dfc = layout_kind == 2;")
     lines.append("    if let Some(detail) = super::generated_definition_unsupported_mechanics_message(&front) {")
     lines.append("        return Err(detail);")
     lines.append("    }")
@@ -877,7 +883,7 @@ def write_generated_source(
     lines.append("                entry.front_block.as_str(),")
     lines.append("                entry.back_name.as_str(),")
     lines.append("                entry.back_block.as_str(),")
-    lines.append("                entry.is_flip,")
+    lines.append("                entry.layout_kind,")
     lines.append("            );")
     lines.append("        }")
     lines.append("    }")
@@ -929,7 +935,7 @@ def write_generated_source(
     lines.append("        }")
     lines.append("        for entry in &texts.flips {")
     lines.append(
-        "            parse_generated_flip_card(&mut cards, entry.front_name.as_str(), entry.front_block.as_str(), entry.back_name.as_str(), entry.back_block.as_str(), entry.is_flip);"
+        "            parse_generated_flip_card(&mut cards, entry.front_name.as_str(), entry.front_block.as_str(), entry.back_name.as_str(), entry.back_block.as_str(), entry.layout_kind);"
     )
     lines.append("        }")
     lines.append("        for entry in &texts.splits {")
@@ -1186,7 +1192,13 @@ def write_generated_payload(
         append_string(payload, back_block)
         append_f32(payload, back_score)
         append_string(payload, combined_name)
-        append_u32(payload, 1 if metadata.get("layout") == "flip" else 0)
+        # Layout kind: 1 = flip card, 2 = transforming DFC (Scryfall
+        # `transform`), 0 = modal DFC / other linked layouts.
+        linked_layout = metadata.get("layout")
+        append_u32(
+            payload,
+            1 if linked_layout == "flip" else 2 if linked_layout == "transform" else 0,
+        )
 
     append_u32(payload, len(splits_ordered))
     for (
@@ -1504,7 +1516,13 @@ def write_frontend_card_assets(
             metadata,
         ) = entry
         payload = frontend_asset_payload_for_linked(
-            layout="flip" if metadata.get("layout") == "flip" else "transform_like",
+            layout=(
+                "flip"
+                if metadata.get("layout") == "flip"
+                else "transform"
+                if metadata.get("layout") == "transform"
+                else "transform_like"
+            ),
             front_name=front_name,
             front_block=front_block,
             front_score=front_score,

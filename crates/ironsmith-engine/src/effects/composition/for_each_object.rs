@@ -255,31 +255,61 @@ impl EffectExecutor for ForEachObject {
             return Ok(EffectOutcome::aggregate_summing_counts(outcomes));
         }
 
-        for (object_id, snapshot) in &matching {
-            let original_it = ctx.tagged_objects.remove(&it_tag);
-            ctx.tag_object(it_tag.clone(), snapshot.clone());
+        // CR 120.3 / 603.2c: "each creature you control deals damage ..."
+        // is several sources dealing damage at the same time, one event for
+        // "whenever one or more ..." and "that much damage" triggers.
+        let opened_action =
+            self.effects.iter().all(effect_only_deals_damage) && game.open_simultaneous_action();
+        let result = (|| {
+            for (object_id, snapshot) in &matching {
+                let original_it = ctx.tagged_objects.remove(&it_tag);
+                ctx.tag_object(it_tag.clone(), snapshot.clone());
 
-            ctx.with_temp_iterated_object(Some(*object_id), |ctx| {
-                ctx.with_temp_iterated_player(Some(snapshot.controller), |ctx| {
-                    for effect in &self.effects {
-                        outcomes.push(execute_effect(game, effect, ctx)?);
+                ctx.with_temp_iterated_object(Some(*object_id), |ctx| {
+                    ctx.with_temp_iterated_player(Some(snapshot.controller), |ctx| {
+                        for effect in &self.effects {
+                            outcomes.push(execute_effect(game, effect, ctx)?);
+                        }
+                        Ok::<(), ExecutionError>(())
+                    })
+                })?;
+
+                match original_it {
+                    Some(value) => {
+                        ctx.tagged_objects.insert(it_tag.clone(), value);
                     }
-                    Ok::<(), ExecutionError>(())
-                })
-            })?;
-
-            match original_it {
-                Some(value) => {
-                    ctx.tagged_objects.insert(it_tag.clone(), value);
-                }
-                None => {
-                    ctx.tagged_objects.remove(&it_tag);
+                    None => {
+                        ctx.tagged_objects.remove(&it_tag);
+                    }
                 }
             }
-        }
+            Ok::<(), ExecutionError>(())
+        })();
+        game.close_simultaneous_action(opened_action);
+        result?;
 
         Ok(EffectOutcome::aggregate_summing_counts(outcomes))
     }
+}
+
+/// Whether `effect` only has an object deal damage (through tagging and
+/// source-rebinding wrappers).
+fn effect_only_deals_damage(effect: &Effect) -> bool {
+    if effect
+        .downcast_ref::<crate::effects::DealDamageEffect>()
+        .is_some()
+    {
+        return true;
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return effect_only_deals_damage(&tagged.effect);
+    }
+    if let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() {
+        return effect_only_deals_damage(&with_source.effect);
+    }
+    effect
+        .transparent_child_effect()
+        .is_some_and(effect_only_deals_damage)
 }
 
 #[cfg(test)]

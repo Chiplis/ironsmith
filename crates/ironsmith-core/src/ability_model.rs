@@ -11,6 +11,11 @@ use crate::{
 pub enum ActivationTiming {
     #[default]
     AnyTime,
+    /// "Activate only as an instant": any time its controller has priority,
+    /// but never in the middle of casting a spell or activating an ability,
+    /// so a mana ability with this restriction can't pay a cost (Lion's Eye
+    /// Diamond, CR 602.5, 605.3a).
+    AsInstant,
     SorcerySpeed,
     DuringCombat,
     OncePerTurn,

@@ -338,6 +338,11 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                         .then_some(game.turn.turn_number),
                 )
                 .with_expires_at_end_of_combat(self.until_end_of_combat)
+                .with_bound_extra_turn_index(
+                    self.start_next_turn
+                        .then_some(ctx.created_extra_turn_index)
+                        .flatten(),
+                )
                 .while_any_tagged_object_in_zone_opt(self.while_any_tagged_object_in_zone.clone())
                 .with_tagged_objects(delayed_tagged_objects)
                 .with_tagged_players(tagged_players.clone())

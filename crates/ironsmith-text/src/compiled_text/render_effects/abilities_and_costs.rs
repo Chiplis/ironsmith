@@ -2613,7 +2613,9 @@ pub(crate) fn describe_mana_activation_condition(condition: &crate::ConditionExp
             }
         }
         crate::ConditionExpr::ActivationTiming(timing) => match timing {
-            ActivationTiming::AnyTime => "Activate only as an instant".to_string(),
+            ActivationTiming::AnyTime | ActivationTiming::AsInstant => {
+                "Activate only as an instant".to_string()
+            }
             ActivationTiming::SorcerySpeed => "Activate only as a sorcery".to_string(),
             ActivationTiming::DuringCombat => "Activate only during combat".to_string(),
             ActivationTiming::OncePerTurn => "Activate only once each turn".to_string(),

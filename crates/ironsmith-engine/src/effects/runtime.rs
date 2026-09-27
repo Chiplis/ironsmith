@@ -73,9 +73,10 @@ pub fn validate_target(
             game.can_target_player_from_source(*id, ctx.source)
                 && filter.matches_player(*id, &filter_ctx)
         }
-        (ResolvedTarget::Object(id), ChooseSpec::PlayerOrPlaneswalker(_)) => game
-            .object(*id)
-            .is_some_and(|obj| obj.has_card_type(crate::types::CardType::Planeswalker)),
+        (ResolvedTarget::Object(id), ChooseSpec::PlayerOrPlaneswalker(_)) => {
+            game.object(*id).is_some()
+                && game.current_has_card_type(*id, crate::types::CardType::Planeswalker)
+        }
         (ResolvedTarget::Object(id), ChooseSpec::AnyTarget) => game.object(*id).is_some(),
         (ResolvedTarget::Player(id), ChooseSpec::AnyTarget) => {
             game.player(*id).is_some_and(|p| p.is_in_game())

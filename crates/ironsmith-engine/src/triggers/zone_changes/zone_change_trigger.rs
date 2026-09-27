@@ -1256,8 +1256,32 @@ impl ZoneChangeTrigger {
         event: &ZoneChangeEvent,
         ctx: &TriggerContext<'_>,
     ) -> Vec<crate::snapshot::ObjectSnapshot> {
-        if self.count_mode != CountMode::OneOrMore || !self.uses_snapshot() {
+        if self.count_mode != CountMode::OneOrMore {
             return Vec::new();
+        }
+        let player_matches = |controller: crate::ids::PlayerId| match &self.player {
+            PlayerRelation::Any => true,
+            PlayerRelation::You => controller == ctx.controller,
+            PlayerRelation::Opponent => controller != ctx.controller,
+        };
+        if !self.uses_snapshot() {
+            // Entry-style triggers see the objects as they now exist in the
+            // destination zone ("whenever one or more creatures enter, put a
+            // +1/+1 counter on each of them").
+            return event
+                .destination_objects()
+                .iter()
+                .filter_map(|&id| ctx.game.object(id))
+                .filter(|object| object.zone == event.to)
+                .filter(|object| !self.this_object || object.id == ctx.source_id)
+                .filter(|object| player_matches(ctx.game.controller_of(object)))
+                .filter(|object| self.object_filter.matches(object, &ctx.filter_ctx, ctx.game))
+                .map(|object| {
+                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                        object, ctx.game,
+                    )
+                })
+                .collect();
         }
         matching_snapshots(event, &self.object_filter, ctx)
             .into_iter()

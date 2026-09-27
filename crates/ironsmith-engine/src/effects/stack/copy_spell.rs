@@ -287,6 +287,39 @@ pub(crate) fn create_stack_copy(
     )
 }
 
+/// A copy that targets an object makes that object become the target of the
+/// copy (ward, "becomes the target" triggers). Each distinct target becomes a
+/// target once (CR 115.3).
+fn queue_copy_becomes_targeted_events(
+    game: &mut GameState,
+    ctx: &ExecutionContext,
+    original_entry: &StackEntry,
+    copy_id: crate::ids::ObjectId,
+    copier: crate::ids::PlayerId,
+) {
+    let mut targeted_seen: Vec<crate::ids::ObjectId> = Vec::new();
+    for target in &original_entry.targets {
+        if let Target::Object(targeted) = target {
+            if targeted_seen.contains(targeted) {
+                continue;
+            }
+            targeted_seen.push(*targeted);
+            game.queue_trigger_event(
+                ctx.provenance,
+                TriggerEvent::new_with_provenance(
+                    crate::events::spells::BecomesTargetedEvent::new(
+                        *targeted,
+                        copy_id,
+                        copier,
+                        original_entry.is_ability,
+                    ),
+                    ctx.provenance,
+                ),
+            );
+        }
+    }
+}
+
 trait CopyCharacteristicModifiers {
     fn apply_copy_characteristic_modifiers(&self, copy: &mut Object);
 }
@@ -378,6 +411,13 @@ impl EffectExecutor for CopySpellEffect {
                         None,
                     )?;
                     created_ids.push(copy_id);
+                    queue_copy_becomes_targeted_events(
+                        game,
+                        ctx,
+                        &original_entry,
+                        copy_id,
+                        copier,
+                    );
                     game.queue_trigger_event(
                         ctx.provenance,
                         TriggerEvent::new_with_provenance(
@@ -435,30 +475,7 @@ impl EffectExecutor for CopySpellEffect {
                 )?;
                 created_ids.push(copy_id);
 
-                // A copy that targets an object makes that object become the
-                // target of the copy (ward, "becomes the target" triggers).
-                // Each distinct target becomes a target once (CR 115.3).
-                let mut targeted_seen: Vec<crate::ids::ObjectId> = Vec::new();
-                for target in &original_entry.targets {
-                    if let Target::Object(targeted) = target {
-                        if targeted_seen.contains(targeted) {
-                            continue;
-                        }
-                        targeted_seen.push(*targeted);
-                        game.queue_trigger_event(
-                            ctx.provenance,
-                            TriggerEvent::new_with_provenance(
-                                crate::events::spells::BecomesTargetedEvent::new(
-                                    *targeted,
-                                    copy_id,
-                                    copier,
-                                    original_entry.is_ability,
-                                ),
-                                ctx.provenance,
-                            ),
-                        );
-                    }
-                }
+                queue_copy_becomes_targeted_events(game, ctx, &original_entry, copy_id, copier);
 
                 // Only copying a spell emits the spell-copied event. The same
                 // effect type also represents activated/triggered ability

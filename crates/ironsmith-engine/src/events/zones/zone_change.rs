@@ -133,6 +133,82 @@ impl ZoneChangeEvent {
         }
     }
 
+    /// The per-object views of a zone change that moved several objects at
+    /// once ("destroy all", a batch of tokens), or `None` for a single-object
+    /// event (including one object that split into several results, meld).
+    ///
+    /// CR 603.2c / 603.10a: an ability that triggers on "a creature dies"
+    /// triggers once for each object, and each instance refers to its own
+    /// object, not to the whole batch.
+    pub fn per_object_events(&self, game: &GameState) -> Option<Vec<ZoneChangeEvent>> {
+        let snapshots = self.snapshots();
+        let object_count = self.objects.len().max(snapshots.len());
+        if object_count < 2 {
+            return None;
+        }
+        let stable_id_of = |id: ObjectId| game.object(id).map(|object| object.stable_id);
+        let mut events = Vec::with_capacity(object_count);
+        for index in 0..object_count {
+            let object = self
+                .objects
+                .get(index)
+                .copied()
+                .or_else(|| snapshots.get(index).map(|snapshot| snapshot.object_id));
+            let Some(object) = object else {
+                continue;
+            };
+            // Leave-the-battlefield events keep the old id; other events name
+            // the destination object, whose snapshot is the pre-move object.
+            let snapshot = snapshots
+                .iter()
+                .find(|snapshot| snapshot.object_id == object)
+                .or_else(|| {
+                    let stable_id = stable_id_of(object)?;
+                    snapshots
+                        .iter()
+                        .find(|snapshot| snapshot.stable_id == stable_id)
+                })
+                .or_else(|| {
+                    (snapshots.len() == self.objects.len())
+                        .then(|| snapshots.get(index))
+                        .flatten()
+                })
+                .cloned();
+            let result_objects = if self.result_objects.is_empty() {
+                Vec::new()
+            } else {
+                let by_identity = snapshot
+                    .as_ref()
+                    .map(|snapshot| {
+                        self.result_objects
+                            .iter()
+                            .copied()
+                            .filter(|&id| stable_id_of(id) == Some(snapshot.stable_id))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                if !by_identity.is_empty() {
+                    by_identity
+                } else if self.result_objects.len() == self.objects.len() {
+                    vec![self.result_objects[index]]
+                } else {
+                    Vec::new()
+                }
+            };
+            events.push(ZoneChangeEvent {
+                objects: vec![object],
+                result_objects,
+                from: self.from,
+                to: self.to,
+                cause: self.cause.clone(),
+                snapshots: snapshot.iter().cloned().collect(),
+                snapshot,
+                object_tags: self.object_tags.clone(),
+            });
+        }
+        Some(events)
+    }
+
     /// Get the number of objects in this zone change.
     pub fn count(&self) -> usize {
         self.objects.len()

@@ -105,7 +105,28 @@ impl EffectExecutor for ImprintFromHandEffect {
 
         if let Some(card_id) = chosen_card {
             // Exile the card (move_object returns the new ID in exile)
-            let exiled_id = game.move_object_by_effect(card_id, Zone::Exile);
+            // CR 614.1: the exile is an ordinary zone change, so replacement
+            // effects apply to it.
+            let from_zone = game.object(card_id).map(|object| object.zone);
+            let additional_effects = ctx.additional_replacement_effects_snapshot();
+            let exiled_id = from_zone.and_then(|from_zone| {
+                match crate::effects::zones::apply_zone_change_with_additional_effects(
+                    game,
+                    card_id,
+                    from_zone,
+                    Zone::Exile,
+                    ctx.cause.clone(),
+                    &mut *ctx.decision_maker,
+                    &additional_effects,
+                ) {
+                    crate::events::processing::EventOutcome::Proceed(change)
+                        if change.final_zone == Zone::Exile =>
+                    {
+                        change.new_object_id
+                    }
+                    _ => None,
+                }
+            });
 
             if let Some(exiled_id) = exiled_id {
                 // Imprint it on the source permanent

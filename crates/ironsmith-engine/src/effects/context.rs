@@ -264,6 +264,10 @@ pub struct ExecutionContext<'a> {
     pub target_assignments: Vec<TargetAssignment>,
     /// Announced divisions not yet consumed by their resolving effects.
     pub target_distributions: Vec<TargetDistribution>,
+    /// Target requirement assignments as announced (CR 601.2c), before
+    /// illegal targets were dropped at resolution (CR 608.2b). Used where the
+    /// announced target count fixes a result, e.g. "divided evenly" (601.2d).
+    pub announced_target_assignments: Vec<TargetAssignment>,
     /// X value (for spells with X in cost).
     pub x_value: Option<u32>,
     /// False when some announced target became illegal before resolution
@@ -431,6 +435,7 @@ impl<'a> ExecutionContext<'a> {
             targets_are_cost_choices: false,
             target_assignments: Vec::new(),
             target_distributions: Vec::new(),
+            announced_target_assignments: Vec::new(),
             x_value: None,
             all_targets_legal: true,
             effect_outcomes: HashMap::new(),
@@ -487,6 +492,7 @@ impl<'a> ExecutionContext<'a> {
             targets_are_cost_choices: false,
             target_assignments: Vec::new(),
             target_distributions: Vec::new(),
+            announced_target_assignments: Vec::new(),
             x_value: None,
             all_targets_legal: true,
             effect_outcomes: HashMap::new(),
@@ -533,6 +539,7 @@ impl<'a> ExecutionContext<'a> {
             targets_are_cost_choices: self.targets_are_cost_choices,
             target_assignments: self.target_assignments,
             target_distributions: self.target_distributions,
+            announced_target_assignments: self.announced_target_assignments,
             x_value: self.x_value,
             all_targets_legal: self.all_targets_legal,
             effect_outcomes: self.effect_outcomes,
@@ -782,6 +789,23 @@ impl<'a> ExecutionContext<'a> {
     ) -> Self {
         self.target_distributions = target_distributions;
         self
+    }
+
+    /// Record the target assignments as they were announced.
+    pub fn with_announced_target_assignments(
+        mut self,
+        announced_target_assignments: Vec<TargetAssignment>,
+    ) -> Self {
+        self.announced_target_assignments = announced_target_assignments;
+        self
+    }
+
+    /// Number of targets announced for the given target requirement, if known.
+    pub fn announced_target_count(&self, spec: &ChooseSpec) -> Option<usize> {
+        self.announced_target_assignments
+            .iter()
+            .find(|assignment| assignment.spec == *spec)
+            .map(|assignment| assignment.range.len())
     }
 
     /// Consume the next announced division for the specified target requirement.

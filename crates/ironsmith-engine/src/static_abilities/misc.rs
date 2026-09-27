@@ -4456,7 +4456,7 @@ impl StaticAbilityKind for StartingLifeBonus {
     }
 }
 
-/// Buyback costs cost less (placeholder ability).
+/// "Buyback costs cost {N} less" (Memory Crystal, CR 702.27).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuybackCostReduction {
     pub amount: u32,
@@ -4475,6 +4475,14 @@ impl StaticAbilityKind for BuybackCostReduction {
 
     fn display(&self) -> String {
         format!("Buyback costs cost {{{}}} less", self.amount)
+    }
+
+    fn modifies_costs(&self) -> bool {
+        true
+    }
+
+    fn buyback_cost_reduction_amount(&self) -> Option<u32> {
+        Some(self.amount)
     }
 }
 

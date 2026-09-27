@@ -870,6 +870,67 @@ fn normalize_chosen_distinct_powers(
     normalized
 }
 
+/// Selection-set constraint "that share a land type" (Myriad Landscape): keep
+/// chosen objects while the land types common to the whole selection stay
+/// non-empty. Illegal responses are trimmed rather than rejected, like the
+/// other set-level normalizers.
+fn normalize_chosen_shared_land_type(
+    game: &GameState,
+    chosen: Vec<ObjectId>,
+    candidates: &[ObjectId],
+    min: usize,
+    max: usize,
+    fill_to_min: bool,
+) -> Vec<ObjectId> {
+    let land_types = |id: ObjectId| -> Vec<crate::types::Subtype> {
+        game.object(id)
+            .map(|object| {
+                object
+                    .subtypes
+                    .iter()
+                    .copied()
+                    .filter(|subtype| subtype.is_land_subtype())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let mut shared: Option<Vec<crate::types::Subtype>> = None;
+    let mut normalized = Vec::new();
+    let consider = |id: ObjectId,
+                        shared: &mut Option<Vec<crate::types::Subtype>>,
+                        normalized: &mut Vec<ObjectId>| {
+        if normalized.len() >= max || normalized.contains(&id) {
+            return;
+        }
+        let types = land_types(id);
+        let next: Vec<_> = match shared {
+            Some(current) => current
+                .iter()
+                .copied()
+                .filter(|subtype| types.contains(subtype))
+                .collect(),
+            None => types,
+        };
+        if next.is_empty() {
+            return;
+        }
+        *shared = Some(next);
+        normalized.push(id);
+    };
+    for id in chosen {
+        consider(id, &mut shared, &mut normalized);
+    }
+    if fill_to_min && normalized.len() < min {
+        for id in candidates {
+            if normalized.len() >= min {
+                break;
+            }
+            consider(*id, &mut shared, &mut normalized);
+        }
+    }
+    normalized
+}
+
 fn normalize_chosen_distinct_creature_types(
     game: &GameState,
     chosen: Vec<ObjectId>,
@@ -1636,6 +1697,18 @@ pub(crate) fn run_choose_objects(
         };
         let chosen = if effect.filter.distinct_creature_types && !chose_placeholder {
             normalize_chosen_distinct_creature_types(
+                game,
+                chosen,
+                &candidates,
+                min,
+                max,
+                !allow_hidden_partial,
+            )
+        } else {
+            chosen
+        };
+        let chosen = if effect.filter.shares_land_type && !chose_placeholder {
+            normalize_chosen_shared_land_type(
                 game,
                 chosen,
                 &candidates,

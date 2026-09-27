@@ -2170,9 +2170,14 @@ impl StaticAbilityKind for DrawExtraCardsReplacement {
                 per_instruction: self.per_instruction,
                 display: self.display.clone(),
             },
-            ReplacementAction::Modify(crate::replacement::EventModification::Add(
-                i32::try_from(self.extra).unwrap_or(i32::MAX),
-            )),
+            // CR 121.2 / 616.2: "draw N cards instead" replaces the draw with
+            // N separate draws. Each is a new event that every other
+            // replacement or restriction can apply to (Dredge, Jace, Narset,
+            // a second doubler), while CR 614.5 keeps this one from
+            // reapplying to them (the Replaced arm suppresses it).
+            ReplacementAction::Instead(vec![crate::effect::Effect::draw(
+                self.extra.saturating_add(1),
+            )]),
         ))
     }
 }

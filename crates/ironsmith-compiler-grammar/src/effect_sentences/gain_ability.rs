@@ -2119,11 +2119,87 @@ fn parse_gain_ability_sentence_inner(
         )]));
     }
 
+    if let Some(effects) = parse_split_reference_pair_gain_sentence(tokens)? {
+        return Ok(Some(effects));
+    }
+
     Ok(
         parse_gain_ability_sentence_with_subject(tokens, None)?.map(|effects| {
             with_inline_creature_type_choice(tokens, coordinated_gain_surface(tokens, effects))
         }),
     )
+}
+
+/// "it and Zombies you control gain deathtouch" (Wand of Orcus), "Gogo and
+/// that creature each get +2/+0 and gain haste" (Gogo, Mysterious Mime): a
+/// subject pairing an anaphoric reference with another object phrase names
+/// two independent recipients. Each conjunct takes the whole predicate.
+fn parse_split_reference_pair_gain_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(sentences) = split_anaphor_pair_subject_sentences(tokens) else {
+        return Ok(None);
+    };
+    let mut effects = Vec::new();
+    for sentence in sentences {
+        let Some(parsed) = parse_gain_ability_sentence_inner(&sentence)? else {
+            return Ok(None);
+        };
+        effects.extend(parsed);
+    }
+    Ok(Some(effects))
+}
+
+/// Split "<A> and <B> [each] gain(s)/get(s) <predicate>", where one of A/B is
+/// an anaphor ("it", "that creature", "that permanent"), into one sentence
+/// per conjunct, each with the whole predicate.
+pub(crate) fn split_anaphor_pair_subject_sentences(
+    tokens: &[OwnedLexToken],
+) -> Option<[Vec<OwnedLexToken>; 2]> {
+    const VERBS: &[&str] = &["gain", "gains", "get", "gets"];
+    let verb_idx = tokens
+        .iter()
+        .position(|token| token.as_word().is_some_and(|word| VERBS.contains(&word)))?;
+    let mut subject_end = verb_idx;
+    if subject_end > 0 && tokens[subject_end - 1].is_word("each") {
+        subject_end -= 1;
+    }
+    let subject = &tokens[..subject_end];
+    if subject.iter().any(|token| {
+        token.is_comma() || token.is_any_word(&["target", "if", "or", "may", "unless"])
+    }) {
+        return None;
+    }
+    let and_positions = subject
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_word("and"))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let [and_idx] = and_positions.as_slice() else {
+        return None;
+    };
+    let left = &subject[..*and_idx];
+    let right = &subject[*and_idx + 1..];
+    if left.is_empty() || right.is_empty() {
+        return None;
+    }
+    let is_anaphor = |conjunct: &[OwnedLexToken]| {
+        crate::word_primitives::parse_any_sequence_complete(
+            &crate::lexer::token_word_refs(conjunct),
+            &[&["it"], &["that", "creature"], &["that", "permanent"]],
+        )
+    };
+    if !is_anaphor(left) && !is_anaphor(right) {
+        return None;
+    }
+    let predicate = &tokens[verb_idx..];
+    let sentence = |conjunct: &[OwnedLexToken]| {
+        let mut sentence = conjunct.to_vec();
+        sentence.extend(predicate.iter().cloned());
+        sentence
+    };
+    Some([sentence(left), sentence(right)])
 }
 
 pub fn parse_gain_ability_sentence_with_typed_subject(
