@@ -105,6 +105,9 @@ enum MaterializationCost {
     Crew {
         amount: u32,
     },
+    Teamwork {
+        amount: u32,
+    },
     Sneak,
     Effect(Box<crate::model::ast::EffectAst>),
     ValidatedEffect(Box<crate::model::ast::EffectAst>),
@@ -375,6 +378,7 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
                 amount: *amount,
             }
         }
+        CompilerCost::Teamwork { amount } => MaterializationCost::Teamwork { amount: *amount },
         CompilerCost::Crew { amount } => MaterializationCost::Crew {
             amount: amount.clone(),
         },
@@ -591,20 +595,15 @@ fn lower_materialization_costs(
             }
             MaterializationCost::Blight { count } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
-                    "blight_cost_{tap_tag_id}"
-                ));
+                // Keep activation-cost antecedent indices aligned with the grammar.
                 tap_tag_id += 1;
-                costs.push(Cost::validated_effect(Effect::choose_objects(
-                    ObjectFilter::creature().you_control(),
-                    ChoiceCount::exactly(1),
-                    PlayerFilter::You,
-                    tag.clone(),
-                )));
-                costs.push(Cost::validated_effect(Effect::put_counters(
-                    CounterType::MinusOneMinusOne,
-                    *count as i32,
-                    crate::target::ChooseSpec::tagged(tag),
+                costs.push(Cost::validated_effect(Effect::new(
+                    crate::effects::PutCountersEffect::new(
+                        CounterType::MinusOneMinusOne,
+                        *count as i32,
+                        crate::target::ChooseSpec::Object(ObjectFilter::creature().you_control()),
+                    )
+                    .with_completion_action(crate::events::KeywordActionKind::Blight),
                 )));
             }
             MaterializationCost::SacrificeSelf { surface } => {
@@ -956,6 +955,12 @@ fn lower_materialization_costs(
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::validated_effect(Effect::emit_keyword_action(
                     *kind, *amount,
+                )));
+            }
+            MaterializationCost::Teamwork { amount } => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                costs.push(Cost::validated_effect(Effect::new(
+                    crate::effects::CrewCostEffect::teamwork(*amount),
                 )));
             }
             MaterializationCost::Crew { amount } => {

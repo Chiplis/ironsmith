@@ -73,6 +73,8 @@ pub enum CostPaymentResult {
 pub struct CostContext<'dm> {
     /// The source object (permanent or spell whose cost is being paid).
     pub source: ObjectId,
+    /// Last known characteristics of a departed source for resolution costs.
+    pub source_snapshot: Option<ObjectSnapshot>,
     /// The player paying the cost.
     pub payer: PlayerId,
     /// X value for variable costs.
@@ -133,6 +135,7 @@ impl<'dm> CostContext<'dm> {
         Self {
             source,
             payer,
+            source_snapshot: None,
             x_value: None,
             reason: PaymentReason::Other,
             requesting_effect_cause: None,
@@ -238,6 +241,7 @@ impl CostCheckContext {
     ) -> CostContext<'a> {
         CostContext {
             source: self.source,
+            source_snapshot: None,
             payer: self.payer,
             x_value: self.x_value,
             reason: self.reason,

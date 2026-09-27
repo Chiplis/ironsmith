@@ -522,6 +522,8 @@ struct HiddenAuditCard {
     zone: Zone,
     slot: u16,
     commitment: String,
+    origin_slot: Option<u16>,
+    origin_commitment: Option<String>,
     public_slot: Option<u16>,
     public_commitment: Option<String>,
     card: Option<String>,
@@ -545,6 +547,10 @@ pub(crate) struct CryptoRequirementView {
     object_id: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     commitment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    origin_slot: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    origin_commitment: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     public_slot: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -595,6 +601,8 @@ impl CryptoRequirementView {
             slot: Some(card.slot),
             object_id: Some(card.object_id.0),
             commitment: (!card.commitment.is_empty()).then(|| card.commitment.clone()),
+            origin_slot: card.origin_slot,
+            origin_commitment: card.origin_commitment.clone(),
             public_slot: card.public_slot,
             public_commitment: card.public_commitment.clone(),
             card: card.card.clone(),
@@ -1374,6 +1382,8 @@ fn push_hidden_move_requirements(
         slot: Some(before_card.slot),
         object_id: Some(after_card.object_id.0),
         commitment: (!after_card.commitment.is_empty()).then(|| after_card.commitment.clone()),
+        origin_slot: after_card.origin_slot,
+        origin_commitment: after_card.origin_commitment.clone(),
         public_slot: after_card.public_slot,
         public_commitment: after_card.public_commitment.clone(),
         card: after_card.card.clone(),
@@ -1489,6 +1499,8 @@ fn push_hidden_order_update_requirement(
             slot: None,
             object_id: None,
             commitment: None,
+            origin_slot: None,
+            origin_commitment: None,
             public_slot: None,
             public_commitment: None,
             card: None,
@@ -1684,6 +1696,8 @@ impl WasmGame {
                 zone: object.zone,
                 slot: info.slot,
                 commitment: info.commitment.clone(),
+                origin_slot: info.origin_slot,
+                origin_commitment: info.origin_commitment.clone(),
                 public_slot: info.public_slot,
                 public_commitment: info.public_commitment.clone(),
                 card: object.card.as_ref().map(|_| object.name.to_string()),
@@ -1802,6 +1816,8 @@ impl WasmGame {
                             slot: None,
                             object_id: None,
                             commitment: None,
+                            origin_slot: None,
+                            origin_commitment: None,
                             public_slot: None,
                             public_commitment: None,
                             card: None,
@@ -1866,6 +1882,8 @@ impl WasmGame {
                             slot: None,
                             object_id: None,
                             commitment: None,
+                            origin_slot: None,
+                            origin_commitment: None,
                             public_slot: None,
                             public_commitment: None,
                             card: None,
@@ -1957,6 +1975,8 @@ impl WasmGame {
                 slot: None,
                 object_id: None,
                 commitment: None,
+                origin_slot: None,
+                origin_commitment: None,
                 public_slot: None,
                 public_commitment: None,
                 card: None,
@@ -2031,6 +2051,8 @@ impl WasmGame {
                     slot: None,
                     object_id: None,
                     commitment: None,
+                    origin_slot: None,
+                    origin_commitment: None,
                     public_slot: None,
                     public_commitment: None,
                     card: None,
@@ -2069,6 +2091,8 @@ impl WasmGame {
                     slot: None,
                     object_id: None,
                     commitment: None,
+                    origin_slot: None,
+                    origin_commitment: None,
                     public_slot: None,
                     public_commitment: None,
                     card: None,
@@ -2612,7 +2636,16 @@ fn object_choice_view(
     ObjectChoiceView {
         id: if visible { id.0 } else { redacted_id },
         name: if visible {
-            name.to_string()
+            // Private openings can hydrate an object after its decision was
+            // captured. Refresh only the placeholder label, and only after
+            // the normal perspective visibility check has succeeded.
+            if name.eq_ignore_ascii_case("hidden card") {
+                object
+                    .map(|object| object.name.to_string())
+                    .unwrap_or_else(|| name.to_string())
+            } else {
+                name.to_string()
+            }
         } else {
             hidden_object_label()
         },
@@ -4824,6 +4857,10 @@ struct HiddenCardOpeningExport {
     slot: u16,
     card: String,
     commitment: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    origin_slot: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    origin_commitment: Option<String>,
     public_slot: Option<u16>,
     public_commitment: Option<String>,
 }
@@ -5226,6 +5263,79 @@ mod native_tests {
     }
 
     #[test]
+    fn select_object_view_refreshes_hydrated_private_card_placeholder_for_its_owner() {
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let hidden = wasm.game.create_hidden_card_placeholder(
+            alice,
+            Zone::Hand,
+            7,
+            "alice-hand-slot-7".to_string(),
+        );
+        let decision = DecisionContext::SelectObjects(
+            ironsmith::decisions::context::SelectObjectsContext::new(
+                alice,
+                None,
+                "Choose a card to put on the bottom of your library",
+                vec![ironsmith::decisions::context::SelectableObject::new(
+                    hidden,
+                    "Hidden Card",
+                )],
+                1,
+                Some(1),
+            ),
+        );
+        let choices = |game: &GameState, perspective| {
+            match DecisionView::from_context(game, &decision, perspective, None, None) {
+                DecisionView::SelectObjects { candidates, .. } => candidates,
+                other => panic!("expected select_objects, got {other:?}"),
+            }
+        };
+        assert!(choices(&wasm.game, alice)[0].name.eq_ignore_ascii_case("hidden card"));
+
+        wasm.game
+            .reveal_hidden_card_with_definition(
+                hidden,
+                &ironsmith_registry_test::cards::definitions::basic_forest(),
+            )
+            .expect("owner privately opens the hand card");
+
+        let own = choices(&wasm.game, alice);
+        assert_eq!(own[0].name, "Forest");
+        assert_eq!(own[0].id, hidden.0);
+        assert_eq!(own[0].selection_identity, "hidden_reference");
+        assert_eq!(own[0].hidden_ref.as_ref().unwrap().slot, Some(7));
+        let opponent = choices(&wasm.game, bob);
+        assert!(opponent[0].name.eq_ignore_ascii_case("hidden card"));
+        assert_ne!(opponent[0].id, hidden.0);
+        assert_eq!(opponent[0].selection_identity, "hidden_reference");
+    }
+
+    #[test]
+    fn select_object_view_preserves_custom_visible_choice_labels() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+        let object = wasm.game.create_object_from_definition(
+            &ironsmith_registry_test::cards::definitions::basic_forest(),
+            alice,
+            Zone::Battlefield,
+        );
+        let choice = object_choice_view(
+            &wasm.game,
+            object,
+            "Forest (already selected)",
+            true,
+            true,
+            SelectionIdentity::ObjectId,
+            SelectionRevealPolicy::None,
+            0,
+        );
+        assert_eq!(choice.name, "Forest (already selected)");
+    }
+
+    #[test]
     fn select_object_command_normalizes_stable_and_hidden_refs_to_legal_candidates() {
         let mut wasm = WasmGame::new();
         let alice = PlayerId::from_index(0);
@@ -5293,6 +5403,8 @@ mod native_tests {
                 zone: Zone::Hand,
                 slot: 4,
                 commitment: "alice-private-slot-4".to_string(),
+                origin_slot: None,
+                origin_commitment: None,
                 public_slot: Some(8),
                 public_commitment: Some("alice-public-position-8".to_string()),
             },

@@ -204,6 +204,7 @@ export function usePeerLobbyEndOfMatchDisclosure(base, servicesRef) {
         requirements: list,
         timing: "post",
         forceZiffleOpeningProof: true,
+        endOfMatchDisclosure: true,
       };
       const openings = list.length === 0
         ? []
@@ -261,7 +262,7 @@ export function usePeerLobbyEndOfMatchDisclosure(base, servicesRef) {
         throw new Error("End-of-match disclosure signature is invalid");
       }
       // Deck-manifest commitments and ziffle position proofs.
-      await svc.verifyAuditOpeningsAgainstManifests(payload.openings, {});
+      await svc.verifyAuditOpeningsAgainstManifests(payload.openings, { endOfMatchDisclosure: true });
       // Bind each opening to the hidden card it must open and check that
       // card's pending claims (face-down cast kinds, withheld cards).
       const result = await currentGame.verifyEndOfMatchDisclosure(player, payload.openings);

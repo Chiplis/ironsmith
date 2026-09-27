@@ -2099,6 +2099,14 @@ pub(super) fn append_activation_clause(line: &mut String, clause: &str) {
 }
 
 pub(super) fn describe_ward_blight_keyword(cost: &crate::cost::TotalCost) -> Option<String> {
+    if let [single] = cost.as_all()?
+        && let Some(put) = single
+            .effect_ref()?
+            .downcast_ref::<crate::effects::PutCountersEffect>()
+        && put.completion_action == Some(crate::events::KeywordActionKind::Blight)
+    {
+        return Some(format!("Ward—Blight {}", describe_value(&put.amount)));
+    }
     let [choose_cost, put_cost] = cost.as_all()? else {
         return None;
     };
@@ -4291,9 +4299,7 @@ fn provoke_tagged_must_block_shape(effects: &[Effect]) -> bool {
     };
     untap_effect
         .downcast_ref::<crate::effects::UntapEffect>()
-        .is_some_and(|untap| {
-            matches!(&untap.target, ChooseSpec::Tagged(tag) if *tag == tagged.tag)
-        })
+        .is_some_and(|untap| matches!(&untap.target, ChooseSpec::Tagged(tag) if *tag == tagged.tag))
 }
 
 pub(super) fn describe_structural_provoke_keyword(
@@ -4380,6 +4386,17 @@ pub(super) fn describe_structural_soulshift_keyword(
     let [effect] = segment.default_effects.as_slice() else {
         return None;
     };
+    let may = effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may
+        .decider
+        .as_ref()
+        .is_some_and(|player| *player != PlayerFilter::You)
+    {
+        return None;
+    }
+    let [effect] = may.effects.as_slice() else {
+        return None;
+    };
     let return_effect = effect.downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>()?;
     if return_effect.random {
         return None;
@@ -4393,16 +4410,17 @@ pub(super) fn describe_structural_soulshift_keyword(
 }
 
 pub(super) fn soulshift_target_amount_text(spec: &ChooseSpec) -> Option<String> {
-    let ChooseSpec::WithCount(inner, count) = spec else {
-        return None;
-    };
-    if count.min != 0 || count.max != Some(1) || count.dynamic_x || count.up_to_x || count.random {
+    let count = spec.count();
+    if !spec.is_target()
+        || count.min != 1
+        || count.max != Some(1)
+        || count.dynamic_x
+        || count.up_to_x
+        || count.random
+    {
         return None;
     }
-    let ChooseSpec::Target(target) = inner.as_ref() else {
-        return None;
-    };
-    let ChooseSpec::Object(filter) = target.as_ref() else {
+    let ChooseSpec::Object(filter) = spec.base() else {
         return None;
     };
     if filter.zone != Some(Zone::Graveyard)

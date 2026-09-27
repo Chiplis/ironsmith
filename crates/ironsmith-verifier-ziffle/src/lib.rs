@@ -4,6 +4,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, Validate
 use ark_std::rand::{SeedableRng as ArkSeedableRng, rngs::StdRng as ArkStdRng};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
+use std::{any::Any, cell::RefCell, collections::VecDeque, rc::Rc};
 use ziffle::{
     AggregatePublicKey, AggregateRevealToken, MaskedDeck, OwnershipProof, PublicKey, RevealToken,
     RevealTokenProof, SecretKey, Shuffle, ShuffleProof, Verified,
@@ -411,12 +412,59 @@ fn ziffle_key_context<'a>(key_context: &'a str, context: &'a str) -> &'a str {
     }
 }
 
+// Every cache entry is derived exclusively from validated public material. A
+// shared bound covers all deck sizes in this worker; evicting an entry only
+// causes its next use to perform ordinary proof verification again.
+const VERIFIED_CEREMONY_CACHE_CAPACITY: usize = 16;
+type CeremonyCache = VecDeque<([u8; 32], Rc<dyn Any>)>;
+thread_local! {
+    static VERIFIED_CEREMONIES: RefCell<CeremonyCache> = RefCell::new(VecDeque::new());
+}
+
+struct VerifiedCeremony<const N: usize> {
+    keys: VerifiedPublicKeys,
+    aggregate: AggregatePublicKey,
+    deck: Option<Verified<MaskedDeck<N>>>,
+    shuffle: Shuffle<N>,
+}
+
+fn ceremony_cache_key<const N: usize>(
+    context: &[u8],
+    key_context: &[u8],
+    keys: &[ZifflePublicKeyInput],
+    steps: &[ZiffleShuffleStepInput],
+) -> Result<[u8; 32], VerifierError> {
+    // The tuple's JSON encoding frames strings, lists, and their lengths. Bind
+    // every field, including proofs and shuffler order, rather than accepting
+    // a caller-supplied deck hash as evidence of verification.
+    let encoded = encode(&(
+        "ironsmith-verified-ziffle-ceremony-v1",
+        N,
+        context,
+        key_context,
+        keys,
+        steps,
+    ))?;
+    Ok(Sha256::digest(encoded).into())
+}
+
 fn verify_ziffle_steps<const N: usize>(
     context: &[u8],
     key_context: &[u8],
     keys: &[ZifflePublicKeyInput],
     steps: &[ZiffleShuffleStepInput],
-) -> Result<Option<Verified<MaskedDeck<N>>>, VerifierError> {
+) -> Result<Rc<VerifiedCeremony<N>>, VerifierError> {
+    let cache_key = ceremony_cache_key::<N>(context, key_context, keys, steps)?;
+    if let Some(cached) = VERIFIED_CEREMONIES.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        let index = cache.iter().position(|(key, _)| *key == cache_key)?;
+        let entry = cache.remove(index)?;
+        let verified = Rc::clone(&entry.1).downcast::<VerifiedCeremony<N>>().ok();
+        cache.push_back(entry);
+        verified
+    }) {
+        return Ok(cached);
+    }
     let shuffle = Shuffle::<N>::default();
     let (verified_keys, aggregate) = aggregate_public_key(keys, key_context)?;
     let mut verified_deck = None;
@@ -446,7 +494,20 @@ fn verify_ziffle_steps<const N: usize>(
                 .ok_or_else(|| VerifierError::new(format!("ziffle shuffle proof {index} failed")))?
         });
     }
-    Ok(verified_deck)
+    let verified = Rc::new(VerifiedCeremony {
+        keys: verified_keys,
+        aggregate,
+        deck: verified_deck,
+        shuffle,
+    });
+    VERIFIED_CEREMONIES.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.len() == VERIFIED_CEREMONY_CACHE_CAPACITY {
+            cache.pop_front();
+        }
+        cache.push_back((cache_key, Rc::clone(&verified) as Rc<dyn Any>));
+    });
+    Ok(verified)
 }
 
 fn build_ziffle_shuffle_step<const N: usize>(
@@ -454,9 +515,9 @@ fn build_ziffle_shuffle_step<const N: usize>(
 ) -> Result<ZiffleShuffleStepOutput, VerifierError> {
     let context = input.context.as_bytes();
     let key_context = ziffle_key_context(&input.key_context, &input.context).as_bytes();
-    let shuffle = Shuffle::<N>::default();
-    let (verified_keys, aggregate) = aggregate_public_key(&input.keys, key_context)?;
-    let expected_shuffler = verified_keys
+    let ceremony = verify_ziffle_steps::<N>(context, key_context, &input.keys, &input.steps)?;
+    let expected_shuffler = ceremony
+        .keys
         .get(input.steps.len())
         .map(|(player, _, _)| *player)
         .ok_or_else(|| {
@@ -467,12 +528,15 @@ fn build_ziffle_shuffle_step<const N: usize>(
             "ziffle shuffle step must be built by player {expected_shuffler}"
         )));
     }
-    let previous = verify_ziffle_steps::<N>(context, key_context, &input.keys, &input.steps)?;
     let mut rng = rng_from_entropy_hex(&input.entropy_hex)?;
-    let (deck, proof) = if let Some(previous) = previous.as_ref() {
-        shuffle.shuffle_deck(&mut rng, aggregate, previous, context)
+    let (deck, proof) = if let Some(previous) = ceremony.deck.as_ref() {
+        ceremony
+            .shuffle
+            .shuffle_deck(&mut rng, ceremony.aggregate, previous, context)
     } else {
-        shuffle.shuffle_initial_deck(&mut rng, aggregate, context)
+        ceremony
+            .shuffle
+            .shuffle_initial_deck(&mut rng, ceremony.aggregate, context)
     };
     let deck_hex = ziffle_to_hex(&deck)?;
     Ok(ZiffleShuffleStepOutput {
@@ -494,6 +558,7 @@ fn verify_ziffle_shuffle<const N: usize>(
         ));
     }
     verify_ziffle_steps::<N>(context, key_context, &input.keys, &input.steps)?
+        .deck
         .ok_or_else(|| VerifierError::new("ziffle ceremony has no shuffle steps"))?;
     let deck_hex = input
         .steps
@@ -512,7 +577,10 @@ fn build_ziffle_reveal_token<const N: usize>(
 ) -> Result<ZiffleRevealTokenOutput, VerifierError> {
     let context = input.context.as_bytes();
     let key_context = ziffle_key_context(&input.key_context, &input.context).as_bytes();
-    let verified_deck = verify_ziffle_steps::<N>(context, key_context, &input.keys, &input.steps)?
+    let ceremony = verify_ziffle_steps::<N>(context, key_context, &input.keys, &input.steps)?;
+    let verified_deck = ceremony
+        .deck
+        .as_ref()
         .ok_or_else(|| VerifierError::new("ziffle ceremony has no shuffle steps"))?;
     let card = verified_deck
         .get(input.card_position)
@@ -539,7 +607,10 @@ fn build_ziffle_reveal_tokens<const N: usize>(
 ) -> Result<Vec<ZiffleRevealTokenBatchOutput>, VerifierError> {
     let context = input.context.as_bytes();
     let key_context = ziffle_key_context(&input.key_context, &input.context).as_bytes();
-    let verified_deck = verify_ziffle_steps::<N>(context, key_context, &input.keys, &input.steps)?
+    let ceremony = verify_ziffle_steps::<N>(context, key_context, &input.keys, &input.steps)?;
+    let verified_deck = ceremony
+        .deck
+        .as_ref()
         .ok_or_else(|| VerifierError::new("ziffle ceremony has no shuffle steps"))?;
     let secret_key: SecretKey = ziffle_from_hex(&input.secret_key_hex, "ziffle secret key")?;
     let public_key: PublicKey = ziffle_from_hex(&input.public_key_hex, "ziffle public key")?;
@@ -572,18 +643,20 @@ fn reveal_ziffle_card<const N: usize>(
 ) -> Result<ZiffleRevealCardOutput, VerifierError> {
     let context = input.context.as_bytes();
     let key_context = ziffle_key_context(&input.key_context, &input.context).as_bytes();
-    let (keys, _) = aggregate_public_key(&input.keys, key_context)?;
-    let verified_deck = verify_ziffle_steps::<N>(context, key_context, &input.keys, &input.steps)?
+    let ceremony = verify_ziffle_steps::<N>(context, key_context, &input.keys, &input.steps)?;
+    let verified_deck = ceremony
+        .deck
+        .as_ref()
         .ok_or_else(|| VerifierError::new("ziffle ceremony has no shuffle steps"))?;
     let card = verified_deck
         .get(input.card_position)
         .ok_or_else(|| VerifierError::new("ziffle card position is out of range"))?;
-    let mut verified_tokens = Vec::with_capacity(keys.len());
-    for (player, _, verified_public_key) in keys {
+    let mut verified_tokens = Vec::with_capacity(ceremony.keys.len());
+    for (player, _, verified_public_key) in &ceremony.keys {
         let token_input = input
             .tokens
             .iter()
-            .find(|token| token.player == player)
+            .find(|token| token.player == *player)
             .ok_or_else(|| {
                 VerifierError::new(format!("missing ziffle reveal token for player {player}"))
             })?;
@@ -592,7 +665,7 @@ fn reveal_ziffle_card<const N: usize>(
             ziffle_from_hex(&token_input.proof_hex, "ziffle reveal-token proof")?;
         verified_tokens.push(
             proof
-                .verify(verified_public_key, token, card, context)
+                .verify(*verified_public_key, token, card, context)
                 .ok_or_else(|| {
                     VerifierError::new(format!(
                         "ziffle reveal-token proof failed for player {player}"
@@ -601,8 +674,8 @@ fn reveal_ziffle_card<const N: usize>(
         );
     }
     let aggregate = AggregateRevealToken::new(&verified_tokens);
-    let shuffle = Shuffle::<N>::default();
-    let original_slot = shuffle
+    let original_slot = ceremony
+        .shuffle
         .reveal_card(aggregate, card)
         .ok_or_else(|| VerifierError::new("ziffle aggregate reveal failed"))?;
     Ok(ZiffleRevealCardOutput {
@@ -616,17 +689,18 @@ fn reveal_ziffle_cards<const N: usize>(
 ) -> Result<Vec<ZiffleRevealCardOutput>, VerifierError> {
     let context = input.context.as_bytes();
     let key_context = ziffle_key_context(&input.key_context, &input.context).as_bytes();
-    let (keys, _) = aggregate_public_key(&input.keys, key_context)?;
-    let verified_deck = verify_ziffle_steps::<N>(context, key_context, &input.keys, &input.steps)?
+    let ceremony = verify_ziffle_steps::<N>(context, key_context, &input.keys, &input.steps)?;
+    let verified_deck = ceremony
+        .deck
+        .as_ref()
         .ok_or_else(|| VerifierError::new("ziffle ceremony has no shuffle steps"))?;
-    let shuffle = Shuffle::<N>::default();
     let mut out = Vec::with_capacity(input.card_positions.len());
     for card_position in input.card_positions {
         let card = verified_deck
             .get(card_position)
             .ok_or_else(|| VerifierError::new("ziffle card position is out of range"))?;
-        let mut verified_tokens = Vec::with_capacity(keys.len());
-        for (player, _, verified_public_key) in &keys {
+        let mut verified_tokens = Vec::with_capacity(ceremony.keys.len());
+        for (player, _, verified_public_key) in &ceremony.keys {
             let token_input = input
                 .tokens
                 .iter()
@@ -651,7 +725,8 @@ fn reveal_ziffle_cards<const N: usize>(
             );
         }
         let aggregate = AggregateRevealToken::new(&verified_tokens);
-        let original_slot = shuffle
+        let original_slot = ceremony
+            .shuffle
             .reveal_card(aggregate, card)
             .ok_or_else(|| VerifierError::new("ziffle aggregate reveal failed"))?;
         out.push(ZiffleRevealCardOutput {
@@ -804,3 +879,6 @@ mod ziffle_backend_tests {
         assert!(!verified.deck_hash.is_empty());
     }
 }
+
+#[cfg(test)]
+mod cache_tests;

@@ -3,6 +3,7 @@ import { WITNESS_DISPUTE_TYPE, WITNESS_FORFEIT_REASON, verifyForfeitCertificate,
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+const END_OF_MATCH_DISCLOSURE_DOMAIN = "ironsmith-end-of-match-disclosure-v1";
 const INITIAL_MATCH_CLOCK_HASH = "0".repeat(64);
 const MATCH_CLOCK_AUDIT_DOMAIN = "ironsmith-match-clock-audit-v1";
 const ACTION_QUORUM_CERTIFICATE_TYPE = "ironsmith-action-quorum-v1";
@@ -2045,6 +2046,7 @@ async function verifyOpenDecklistForGenesisPlayer(player, manifest, cryptoImpl) 
   const openings = Array.isArray(player?.deckSlotOpenings)
     ? player.deckSlotOpenings
     : [];
+  const committedCards = [...deck, ...sideboard];
 
   if (deck.length !== Number(manifest?.deckCount || 0)) {
     throw new Error(`Open decklist for player ${seat + 1} does not match committed deck count`);
@@ -2055,7 +2057,7 @@ async function verifyOpenDecklistForGenesisPlayer(player, manifest, cryptoImpl) 
   if (commanders.length !== Number(manifest?.commanderCount || 0)) {
     throw new Error(`Open decklist for player ${seat + 1} does not match committed commander count`);
   }
-  if (openings.length !== deck.length) {
+  if (openings.length !== committedCards.length) {
     throw new Error(`Open decklist for player ${seat + 1} is missing committed slot openings`);
   }
 
@@ -2066,14 +2068,14 @@ async function verifyOpenDecklistForGenesisPlayer(player, manifest, cryptoImpl) 
   const seen = new Set();
   for (const opening of openings) {
     const slot = Number(opening?.slot);
-    if (!Number.isSafeInteger(slot) || slot < 0 || slot >= deck.length) {
+    if (!Number.isSafeInteger(slot) || slot < 0 || slot >= committedCards.length) {
       throw new Error(`Open decklist for player ${seat + 1} contains an invalid slot`);
     }
     if (seen.has(slot)) {
       throw new Error(`Open decklist for player ${seat + 1} contains a duplicate slot`);
     }
     seen.add(slot);
-    const expectedCard = deck[slot];
+    const expectedCard = committedCards[slot];
     if (String(opening?.card || "").trim() !== expectedCard) {
       throw new Error(`Open decklist slot ${slot} for player ${seat + 1} does not match the declared card`);
     }
@@ -2564,8 +2566,11 @@ export async function buildPrivateDeckManifest({
   }), cryptoImpl);
   const slots = [];
   const slotSecrets = [];
-  for (let slot = 0; slot < normalizedDeck.length; slot += 1) {
-    const card = normalizedDeck[slot];
+  // Sideboard slots follow the library slots and retain these commitments
+  // when the library receives its independently shuffled Ziffle positions.
+  const committedCards = [...normalizedDeck, ...normalizedSideboard];
+  for (let slot = 0; slot < committedCards.length; slot += 1) {
+    const card = committedCards[slot];
     const salt = saltForSlot
       ? String(await saltForSlot(slot, card))
       : randomHex(cryptoImpl, 32);
@@ -2847,13 +2852,48 @@ function ziffleCeremonyFromOpeningProof(proof, fallbackCeremony = {}, seq = 0) {
   };
 }
 
+export function ziffleOriginAnchorFromOpening(opening) {
+  const rawPosition = opening?.originPosition ?? opening?.origin_position;
+  const commitment = String(opening?.originPositionCommitment ?? opening?.origin_position_commitment ?? "");
+  if (rawPosition == null && !commitment) return null;
+  const position = rawPosition == null ? null : Number(rawPosition);
+  if (!Number.isSafeInteger(position) || position < 0
+    || !ziffleDeckHashFromCommitment(commitment)
+    || zifflePositionFromCommitment(commitment) !== position) {
+    throw new Error("Ziffle opening has an invalid origin anchor");
+  }
+  return { originPosition: position, originPositionCommitment: commitment };
+}
+
+export function ziffleOriginAnchorFromMetadata(metadata) {
+  const commitment = String(metadata?.originCommitment ?? metadata?.origin_commitment ?? "");
+  // Sideboard and other unshuffled commitments do not have a Ziffle anchor.
+  if (!commitment.startsWith("ziffle:")) return null;
+  return ziffleOriginAnchorFromOpening({
+    originPosition: metadata?.originSlot ?? metadata?.origin_slot,
+    originPositionCommitment: commitment,
+  });
+}
+
+export function assertZiffleOpeningOriginMatchesMetadata(opening, metadata) {
+  const claimed = ziffleOriginAnchorFromOpening(opening);
+  const trusted = ziffleOriginAnchorFromMetadata(metadata);
+  if (!claimed || !trusted || metadata?.owner == null || opening?.owner == null
+    || Number(metadata.owner) !== Number(opening.owner)
+    || claimed.originPosition !== trusted.originPosition
+    || claimed.originPositionCommitment !== trusted.originPositionCommitment) {
+    throw new Error("Ziffle opening origin does not match the current card's trusted identity");
+  }
+  return trusted;
+}
+
 export function buildZiffleOpeningProof({
   opening,
   ceremony,
-  position = opening?.position,
+  position = opening?.originPosition ?? opening?.origin_position ?? opening?.position,
   originalSlot = opening?.slot,
   shuffleOriginalSlot = originalSlot,
-  positionCommitment = opening?.positionCommitment,
+  positionCommitment = opening?.originPositionCommitment ?? opening?.origin_position_commitment ?? opening?.positionCommitment,
   tokens = [],
   compact = false,
 }) {
@@ -2900,66 +2940,6 @@ export function buildZiffleOpeningProof({
     proof.shuffleOriginalSlot = Number(shuffleOriginalSlot);
   }
   return proof;
-}
-
-function ziffleObjectOrderLinksOpening(ceremony, shuffleOriginalSlot, position, opening) {
-  const proof = opening?.ziffleReveal || opening?.ziffleProof || opening?.positionOpeningProof || {};
-  const beforeOrder = normalizeShuffleOrder(ceremony?.beforeOrder ?? ceremony?.before_order);
-  const afterOrder = normalizeShuffleOrder(ceremony?.afterOrder ?? ceremony?.after_order);
-  if (beforeOrder.length === 0 && afterOrder.length === 0) return false;
-  const beforeObjectId = Number(beforeOrder[Number(shuffleOriginalSlot)]);
-  const afterObjectId = Number(afterOrder[Number(position)]);
-  if (
-    Number.isSafeInteger(beforeObjectId)
-    && beforeObjectId >= 0
-    && Number.isSafeInteger(afterObjectId)
-    && afterObjectId >= 0
-    && beforeObjectId === afterObjectId
-  ) {
-    return true;
-  }
-  const normalizedId = (value) => {
-    const id = Number(value);
-    return Number.isSafeInteger(id) && id >= 0 ? id : null;
-  };
-  const shuffleObjectId = normalizedId(
-    proof?.shuffleObjectId
-    ?? proof?.shuffle_object_id
-    ?? opening?.shuffleObjectId
-    ?? opening?.shuffle_object_id
-  );
-  const objectId = normalizedId(
-    proof?.objectId
-    ?? proof?.object_id
-    ?? opening?.objectId
-    ?? opening?.object_id
-  );
-  const beforeExpectedObjectId = shuffleObjectId ?? objectId;
-  const afterExpectedObjectId = objectId ?? shuffleObjectId;
-  if (beforeExpectedObjectId == null || afterExpectedObjectId == null) return false;
-  const beforeMatches =
-    beforeOrder.length === 0
-    || beforeObjectId === beforeExpectedObjectId;
-  const afterMatches =
-    afterOrder.length === 0
-    || afterObjectId === afterExpectedObjectId;
-  return beforeMatches && afterMatches;
-}
-
-function ziffleRevealMatchesOpening(ceremony, revealOriginalSlot, position, opening) {
-  if (Number(revealOriginalSlot) === Number(opening?.slot)) {
-    return true;
-  }
-  const beforeOrder = normalizeShuffleOrder(ceremony?.beforeOrder ?? ceremony?.before_order);
-  const afterOrder = normalizeShuffleOrder(ceremony?.afterOrder ?? ceremony?.after_order);
-  if (
-    beforeOrder.length === 0
-    && afterOrder.length === 0
-    && Number(revealOriginalSlot) === Number(opening?.slot)
-  ) {
-    return true;
-  }
-  return ziffleObjectOrderLinksOpening(ceremony, revealOriginalSlot, position, opening);
 }
 
 function transcriptDeckManifestMap(transcript) {
@@ -3134,10 +3114,15 @@ async function verifyZifflePositionOpening({
   players = new Map(),
   seq = 0,
 }) {
+  const origin = ziffleOriginAnchorFromOpening(opening);
   const explicitPosition = opening?.position == null ? null : Number(opening.position);
   const commitmentPosition = zifflePositionFromCommitment(opening?.positionCommitment);
-  const position = explicitPosition ?? commitmentPosition;
-  const positionCommitment = String(opening?.positionCommitment || "");
+  if (origin && (commitmentPosition == null
+    || (explicitPosition != null && explicitPosition !== commitmentPosition))) {
+    throw new Error(`Ziffle opening at sequence ${seq} has an invalid current position`);
+  }
+  const position = origin?.originPosition ?? explicitPosition ?? commitmentPosition;
+  const positionCommitment = String(origin?.originPositionCommitment || opening?.positionCommitment || "");
   const usesZifflePosition =
     position != null
     || Boolean(positionCommitment && ziffleDeckHashFromCommitment(positionCommitment))
@@ -3148,7 +3133,7 @@ async function verifyZifflePositionOpening({
   }
   const proof = opening?.ziffleReveal || opening?.ziffleProof || opening?.positionOpeningProof;
   const commitmentDeckHash = ziffleDeckHashFromCommitment(positionCommitment);
-  const openingContext = ziffleContextFromOpening(opening);
+  const openingContext = origin ? String(proof?.context || "") : ziffleContextFromOpening(opening);
   const matchingCeremonies = (Array.isArray(ziffleCeremonies) ? ziffleCeremonies : []).filter((entry) =>
     Number(entry?.owner) === Number(opening.owner)
     && String(entry?.deckHash || "") === String(commitmentDeckHash || "")
@@ -3162,52 +3147,11 @@ async function verifyZifflePositionOpening({
   const orderedCeremony =
     matchingCeremonies.find((entry) => entry?.authenticatedOrder === true)
     || matchingCeremonies[0];
-  if (orderedCeremony?.authenticatedOrder === true) {
-    const beforeOrder = normalizeShuffleOrder(
-      orderedCeremony.beforeOrder ?? orderedCeremony.before_order
-    );
-    const afterOrder = normalizeShuffleOrder(
-      orderedCeremony.afterOrder ?? orderedCeremony.after_order
-    );
-    if (!proof && ziffleObjectOrderLinksOpening(orderedCeremony, opening.slot, position, opening)) {
-      return;
-    }
-    const objectId = Number(
-      opening.shuffleObjectId
-      ?? opening.shuffle_object_id
-      ?? opening.objectId
-      ?? opening.object_id
-    );
-    const positionObjectId = Number(afterOrder[Number(position)]);
-    if (
-      !proof
-      && beforeOrder.length === 0
-      &&
-      Number.isSafeInteger(objectId)
-      && objectId >= 0
-      && Number.isSafeInteger(positionObjectId)
-      && positionObjectId >= 0
-      && objectId === positionObjectId
-    ) {
-      return;
-    }
-    const shuffleOriginalSlot = beforeOrder.findIndex((entry) => Number(entry) === objectId);
-    if (!proof) {
-      throw new Error(
-        `Ziffle opening at sequence ${seq} object order does not match opening`
-        + ` (${JSON.stringify({
-          owner: opening?.owner,
-          slot: opening?.slot,
-          objectId: opening?.objectId ?? opening?.object_id ?? null,
-          shuffleObjectId: opening?.shuffleObjectId ?? opening?.shuffle_object_id ?? null,
-          card: opening?.card,
-          position,
-          positionCommitment,
-          afterAtPosition: afterOrder[Number(position)] ?? null,
-          derivedShuffleSlot: shuffleOriginalSlot,
-        })})`
-      );
-    }
+  const hasObjectOrder = (ceremony) =>
+    normalizeShuffleOrder(ceremony?.beforeOrder ?? ceremony?.before_order).length > 0
+    || normalizeShuffleOrder(ceremony?.afterOrder ?? ceremony?.after_order).length > 0;
+  if (hasObjectOrder(orderedCeremony)) {
+    throw new Error(`Ziffle opening at sequence ${seq} must prove its immutable genesis origin`);
   }
   if (!proof || typeof proof !== "object") {
     const beforeOrder = normalizeShuffleOrder(
@@ -3277,6 +3221,9 @@ async function verifyZifflePositionOpening({
   if (proofKeyContext !== matchId) {
     throw new Error(`Ziffle opening at sequence ${seq} uses a mismatched ziffle key context`);
   }
+  if (proofContext !== matchId) {
+    throw new Error(`Ziffle opening at sequence ${seq} must prove its immutable genesis origin`);
+  }
   const ceremony = (Array.isArray(ziffleCeremonies) ? ziffleCeremonies : []).find((entry) =>
     Number(entry?.owner) === owner
     && String(entry?.context || "") === proofContext
@@ -3322,6 +3269,9 @@ async function verifyZifflePositionOpening({
     throw new Error(`Ziffle opening at sequence ${seq} reveals a different committed slot`);
   }
   const proofCeremony = ziffleCeremonyFromOpeningProof(proof, ceremonyForProof, seq);
+  if (hasObjectOrder(proofCeremony)) {
+    throw new Error(`Ziffle opening at sequence ${seq} genesis proof cannot contain an object order`);
+  }
   const expectedPositionCommitment = ziffleRuntimeCommitment(proofCeremony.deckHash, position);
   if (positionCommitment && positionCommitment !== expectedPositionCommitment) {
     throw new Error(`Ziffle opening at sequence ${seq} position commitment mismatch`);
@@ -3366,7 +3316,7 @@ async function verifyZifflePositionOpening({
   if (verifiedOriginalSlot !== proofShuffleOriginalSlot) {
     throw new Error(`Ziffle opening at sequence ${seq} reveals a different shuffle slot`);
   }
-  if (!ziffleRevealMatchesOpening(proofCeremony, verifiedOriginalSlot, position, opening)) {
+  if (verifiedOriginalSlot !== Number(opening.slot)) {
     throw new Error(`Ziffle opening at sequence ${seq} reveals a different committed slot`);
   }
 }
@@ -3635,6 +3585,63 @@ async function verifyShuffleProofList({
     verifiedCeremonies.push(ceremony);
   }
   return verifiedCeremonies;
+}
+
+async function verifyTranscriptEndOfMatchDisclosures({
+  entries, players, manifests, ziffleCeremonies, expectedZiffleKeys,
+  expectedMatchId, verifyZiffleOpening, seq,
+}, cryptoImpl) {
+  if (!Array.isArray(entries)) {
+    throw new Error("Live audit transcript has invalid end-of-match disclosures");
+  }
+  const disclosedPlayers = new Set();
+  for (const entry of entries) {
+    const disclosure = entry?.disclosure;
+    if (!disclosure || typeof disclosure !== "object") {
+      throw new Error("End-of-match disclosure is missing its signed payload");
+    }
+    const player = Number(disclosure.player);
+    if (disclosure.player == null || !Number.isInteger(player) || !players.has(player)) {
+      throw new Error("End-of-match disclosure references an unknown player");
+    }
+    if (entry.player != null && Number(entry.player) !== player) {
+      throw new Error("End-of-match disclosure player does not match its transcript entry");
+    }
+    if (disclosedPlayers.has(player)) {
+      throw new Error("End-of-match disclosure contains a duplicate player");
+    }
+    disclosedPlayers.add(player);
+    if (String(disclosure.domain || "") !== END_OF_MATCH_DISCLOSURE_DOMAIN) {
+      throw new Error("End-of-match disclosure has the wrong domain");
+    }
+    if (String(disclosure.matchId || "") !== expectedMatchId
+      || (entry.matchId != null && String(entry.matchId) !== expectedMatchId)) {
+      throw new Error("End-of-match disclosure belongs to a different match");
+    }
+    if (!Array.isArray(disclosure.openings)) {
+      throw new Error("End-of-match disclosure is missing its openings");
+    }
+    for (const opening of disclosure.openings) {
+      if (opening?.owner == null || Number(opening.owner) !== player) {
+        throw new Error("End-of-match disclosure opens a card owned by a different player");
+      }
+    }
+    const payload = {
+      domain: END_OF_MATCH_DISCLOSURE_DOMAIN,
+      matchId: expectedMatchId,
+      player,
+      openings: disclosure.openings,
+    };
+    const publicKey = await importAuditPublicKey(players.get(player).auditPublicKey, cryptoImpl);
+    if (!await verifyAuditPayload(publicKey, payload, disclosure.signature || "", cryptoImpl)) {
+      throw new Error("End-of-match disclosure signature is invalid");
+    }
+    await verifyAuditOpenings({
+      openings: disclosure.openings, manifests, ziffleCeremonies,
+      verifyZiffleOpening, expectedZiffleKeys, expectedMatchId, players, seq,
+    }, cryptoImpl);
+  }
+  return disclosedPlayers;
 }
 
 export async function verifyLiveAuditTranscript(
@@ -3968,6 +3975,13 @@ export async function verifyLiveAuditTranscript(
   ) {
     throw new Error("Live audit transcript declared final public checkpoint hash does not match verified actions");
   }
+  const disclosedPlayers = await verifyTranscriptEndOfMatchDisclosures({
+    entries: transcript.endOfMatchDisclosures ?? [],
+    players, manifests, ziffleCeremonies: verifiedZiffleCeremonies,
+    expectedZiffleKeys, expectedMatchId,
+    verifyZiffleOpening: options.verifyZiffleOpening,
+    seq: expectedSeq - 1,
+  }, cryptoImpl);
   const replayTranscript = typeof options.replayTranscript === "function"
     ? options.replayTranscript
     : null;
@@ -4038,6 +4052,36 @@ export async function verifyLiveAuditTranscript(
     ) {
       throw new Error("Engine replay final public checkpoint hash does not match verified transcript");
     }
+    const disclosureReports = normalizedReplayReport.endOfMatchDisclosures;
+    const disclosuresVerified = normalizedReplayReport.endOfMatchDisclosuresVerified;
+    const requireDisclosureReplay = requireEngineReplay
+      && (disclosedPlayers.size > 0 || checkpointOutcome != null);
+    if (disclosuresVerified === false) {
+      throw new Error("Engine replay did not verify end-of-match disclosures");
+    }
+    if (disclosureReports != null && !Array.isArray(disclosureReports)) {
+      throw new Error("Engine replay returned invalid end-of-match disclosure reports");
+    }
+    if (requireDisclosureReplay
+      && (!Array.isArray(disclosureReports) || disclosuresVerified !== true)) {
+      throw new Error("Engine replay must report verification of end-of-match disclosures");
+    }
+    const reportedPlayers = new Set();
+    for (const report of disclosureReports || []) {
+      const player = Number(report?.player);
+      if (report?.player == null || !players.has(player) || reportedPlayers.has(player)) {
+        throw new Error("Engine replay returned invalid end-of-match disclosure player coverage");
+      }
+      reportedPlayers.add(player);
+      if (report?.replayVerdict?.status !== "verified") {
+        throw new Error(`Engine replay end-of-match disclosure failed for player ${player + 1}: `
+          + String(report?.replayVerdict?.reason || report?.replayVerdict?.status || "missing verdict"));
+      }
+    }
+    if ((requireDisclosureReplay || disclosureReports != null)
+      && [...disclosedPlayers].some(player => !reportedPlayers.has(player))) {
+      throw new Error("Engine replay end-of-match disclosure coverage does not match the transcript");
+    }
     engineReplay = {
       verified: true,
       replayedActions: Number(
@@ -4045,6 +4089,8 @@ export async function verifyLiveAuditTranscript(
           ?? (replayedActions.length > 0 ? replayedActions.length : actions.length)
       ),
       finalPublicCheckpointHash: replayFinalPublicCheckpointHash || finalPublicCheckpointHash,
+      ...(disclosureReports != null ? { endOfMatchDisclosures: disclosureReports } : {}),
+      ...(disclosuresVerified != null ? { endOfMatchDisclosuresVerified: disclosuresVerified } : {}),
     };
   }
   const disputeReports = await verifyTranscriptDisputes(

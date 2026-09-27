@@ -77,14 +77,18 @@ import {
   zifflePositionFromCommitment,
   ziffleRevealTokenTimeoutMs,
   ziffleRuntimeCommitment,
+  ziffleOriginAnchorFromOpening,
+  assertZiffleOpeningOriginMatchesMetadata,
 } from "./shared.js";
 import { recordPeerRtt } from "../../lib/action-diagnostics.js";
+import { buildZiffleRuntimeManifest } from "../../lib/ziffle-runtime-manifest.js";
 
 export function usePeerLobbyConnections(base, servicesRef) {
   const { actionIntentOpeningPreviewKeysRef, actionQuorumVoteWaitersRef, actionSubmissionStartedAtMsRef, auditEncryptionKeyPairRef, auditEncryptionPublicKeyRef, auditKeyPairRef, auditPublicKeyRef, auditVerifyKeyCacheRef, connectionHeartbeatsRef, cryptoMaterialWaitersRef, ensureDirectPeerConnectionsRef, gameRef, ignoredActionIntentKeysRef, liveZiffleCeremoniesRef, localRevealedOpeningsRef, localZiffleCeremonyLookupRef, matchClockConfigRef, matchStartPayloadRef, multiplayerRef, peerHeartbeatConfigRef, pendingActionIntentTimeoutsRef, pendingActionIntentsRef, privateDeckManifestsRef, privateViewDisclosuresRef, rngCommitWaitersRef, rngRevealWaitersRef, setMultiplayer, setStatus, stateRef, submissionIdleWaitersRef, timeoutVoteWaitersRef, ziffleHandRevealKeyRef, ziffleHandRevealQuickKeyRef, ziffleKeyPairsRef, ziffleOpeningPositionsRef, ziffleRevealTokenCacheRef, ziffleRevealWaitersRef, ziffleShuffleWaitersRef } = base;
   const actionHistoryEntryForSequence = useCallback((...args) => servicesRef.current.actionHistoryEntryForSequence(...args), [servicesRef]);
   const applySequencedActionMessage = useCallback((...args) => servicesRef.current.applySequencedActionMessage(...args), [servicesRef]);
   const collectZiffleRevealTokens = useCallback((...args) => servicesRef.current.collectZiffleRevealTokens(...args), [servicesRef]);
+  const currentZiffleOriginForOpening = useCallback((...args) => servicesRef.current.currentZiffleOriginForOpening(...args), [servicesRef]);
   const playerForProtocolResponseTimeout = useCallback((...args) => servicesRef.current.playerForProtocolResponseTimeout(...args), [servicesRef]);
   const previewAuditOpeningInInspector = useCallback((...args) => servicesRef.current.previewAuditOpeningInInspector(...args), [servicesRef]);
   const resolveCommittedZiffleRevealSlot = useCallback((...args) => servicesRef.current.resolveCommittedZiffleRevealSlot(...args), [servicesRef]);
@@ -539,19 +543,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
     });
   }, []);
 
-  const runtimeManifestForZiffleCeremony = useCallback((manifest, ceremony) => {
-    const deckCount = Number(ceremony?.deckCount || manifest?.deckCount || 0);
-    const baseManifest = publicDeckManifest(manifest) || {};
-    return {
-      ...baseManifest,
-      deckCount,
-      commitmentRoot: `ziffle:${String(ceremony?.deckHash || "")}`,
-      slotCommitments: Array.from({ length: deckCount }, (_, position) => ({
-        slot: position,
-        commitment: ziffleRuntimeCommitment(ceremony.deckHash, position),
-      })),
-    };
-  }, []);
+  const runtimeManifestForZiffleCeremony = useCallback(buildZiffleRuntimeManifest, []);
 
   const makeZiffleRequestId = useCallback((prefix) => (
     `${prefix}:${Date.now().toString(36)}:${randomAuditHex(8)}`
@@ -1056,6 +1048,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
 	        && Number(sharedManifest.owner) === normalizedOwner
 	        && slotSecrets.length > 0
 	        && slotSecrets.length === Number(sharedManifest.deckCount || 0)
+	          + Number(sharedManifest.sideboardCount || 0)
 	      ) {
 	        const shared = { ...sharedManifest, slotSecrets };
 	        privateDeckManifestsRef.current.set(key, shared);
@@ -1784,6 +1777,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
 
 	  function openingNeedsZiffleProof(opening) {
 	    if (!opening) return false;
+      if (ziffleOriginAnchorFromOpening(opening)) return true;
 	    const proof = opening.ziffleReveal || opening.ziffleProof || opening.positionOpeningProof;
 	    const positionCommitment = String(opening.positionCommitment || proof?.positionCommitment || "");
 	    if (!ziffleDeckHashFromCommitment(positionCommitment)) return false;
@@ -1915,6 +1909,41 @@ export function usePeerLobbyConnections(base, servicesRef) {
   }
 
   async function verifyZiffleOpeningProofForOpening(opening, options = {}) {
+    const origin = ziffleOriginAnchorFromOpening(opening);
+    const trustedOrigin = await currentZiffleOriginForOpening(opening, options);
+    if (!origin && trustedOrigin) {
+      throw new Error("Ziffle opening is missing its immutable origin anchor");
+    }
+    if (origin) {
+      assertZiffleOpeningOriginMatchesMetadata(opening, trustedOrigin?.metadata);
+    }
+    return verifyZiffleOpeningCryptographicProof(opening, options);
+  }
+
+  // Envelope checks may run before an action creates its post-action objects.
+  // Hydration separately requires the state's current-card origin binding above.
+  async function verifyZiffleOpeningCryptographicProof(opening, options = {}) {
+    const origin = ziffleOriginAnchorFromOpening(opening);
+    if (origin) {
+      const originCeremony = ziffleCeremonyForOwner(opening.owner, {
+        commitment: origin.originPositionCommitment,
+        payload: options.payload || matchStartPayloadRef.current,
+      });
+      if (!originCeremony || ziffleCeremonyHasObjectOrder(originCeremony)
+        || String(originCeremony.context || "") !== currentAuditMatchId()) {
+        throw new Error("Ziffle immutable origin does not reference the initial ceremony");
+      }
+      const initialOpening = { ...opening,
+        position: origin.originPosition,
+        positionCommitment: origin.originPositionCommitment,
+        ziffleContext: String(originCeremony.context || ""),
+      };
+      delete initialOpening.originPosition;
+      delete initialOpening.originPositionCommitment;
+      delete initialOpening.origin_position;
+      delete initialOpening.origin_position_commitment;
+      return verifyZiffleOpeningCryptographicProof(initialOpening, options);
+    }
     if (!openingNeedsZiffleProof(opening)) return;
     const proof = opening.ziffleReveal || opening.ziffleProof || opening.positionOpeningProof;
     if (!proof || typeof proof !== "object") {
@@ -2055,6 +2084,64 @@ export function usePeerLobbyConnections(base, servicesRef) {
 	      && Number.isSafeInteger(openingPosition)
 	      && openingPosition >= 0
 	    );
+    const claimedOrigin = ziffleOriginAnchorFromOpening(opening);
+    const trustedOrigin = openingHasZiffleIdentity
+      ? await currentZiffleOriginForOpening(opening, options)
+      : null;
+    if (claimedOrigin) {
+      assertZiffleOpeningOriginMatchesMetadata(opening, trustedOrigin?.metadata);
+    }
+    if (trustedOrigin) {
+      const originCeremony = ziffleCeremonyForOwner(opening.owner, {
+        commitment: trustedOrigin.originPositionCommitment,
+      });
+      if (!originCeremony || ziffleCeremonyHasObjectOrder(originCeremony)
+        || String(originCeremony.context || "") !== currentAuditMatchId()) {
+        throw new Error("Ziffle immutable origin does not reference the initial ceremony");
+      }
+      const anchoredOpening = {
+        ...opening,
+        objectId: trustedOrigin.objectId,
+        originPosition: trustedOrigin.originPosition,
+        originPositionCommitment: trustedOrigin.originPositionCommitment,
+      };
+      const oldProof = opening.ziffleReveal || opening.ziffleProof || opening.positionOpeningProof;
+      if (oldProof && String(oldProof.positionCommitment || "") === trustedOrigin.originPositionCommitment) {
+        await verifyZiffleOpeningProofForOpening(anchoredOpening, options);
+        return anchoredOpening;
+      }
+      const currentGame = gameRef.current;
+      if (typeof currentGame?.ziffleRevealCard !== "function") {
+        throw new Error("Ziffle opening reveal backend is not available");
+      }
+      const tokens = await collectZiffleRevealTokens(originCeremony, trustedOrigin.originPosition, options);
+      const reveal = await currentGame.ziffleRevealCard({
+        deckCount: Number(originCeremony.deckCount),
+        context: String(originCeremony.context || ""),
+        keyContext: ziffleKeyContextForCeremony(originCeremony),
+        keys: cloneMultiplayerPayload(originCeremony.keys || []),
+        steps: cloneMultiplayerPayload(originCeremony.steps || []),
+        cardPosition: trustedOrigin.originPosition,
+        tokens,
+      });
+      const originalSlot = Number(reveal.originalSlot);
+      if (originalSlot !== Number(opening.slot)) {
+        throw new Error("Ziffle immutable origin reveals a different committed slot");
+      }
+      delete anchoredOpening.ziffleProof;
+      delete anchoredOpening.positionOpeningProof;
+      anchoredOpening.ziffleReveal = buildZiffleOpeningProof({
+        opening: anchoredOpening,
+        ceremony: originCeremony,
+        position: trustedOrigin.originPosition,
+        positionCommitment: trustedOrigin.originPositionCommitment,
+        originalSlot,
+        shuffleOriginalSlot: originalSlot,
+        tokens,
+        compact: true,
+      });
+      return anchoredOpening;
+    }
 	    if (!options.forceZiffleOpeningProof && !openingNeedsZiffleProof(opening)) return opening;
 	    if (options.forceZiffleOpeningProof && !openingHasZiffleIdentity) return opening;
 	    const currentGame = gameRef.current;
@@ -2120,10 +2207,9 @@ export function usePeerLobbyConnections(base, servicesRef) {
 	    let proofOpening = opening;
 	    let proofOriginalSlot = Number(opening.slot);
 	    const manifest = privateDeckManifestForOwner(opening.owner);
-	    if (
-	      Number(opening.slot) !== Number(revealOriginalSlot)
-	      || !ziffleRevealMatchesOpening(ceremony, revealOriginalSlot, position, opening)
-	    ) {
+	    // An in-game shuffle index can differ from the original committed slot.
+	    // Keep the opening when its object is already linked by that shuffle.
+	    if (!ziffleRevealMatchesOpening(ceremony, revealOriginalSlot, position, opening)) {
 	      const beforeOrder = normalizeShuffleOrder(ceremony.beforeOrder ?? ceremony.before_order);
 	      const afterOrder = normalizeShuffleOrder(ceremony.afterOrder ?? ceremony.after_order);
 	      const shuffleObjectId = Number(beforeOrder[revealOriginalSlot]);
@@ -3221,5 +3307,5 @@ export function usePeerLobbyConnections(base, servicesRef) {
   }
 
 
-  return { IGNORED_ACTION_INTENT_TTL_MS, MAX_IGNORED_ACTION_INTENTS, actionBroadcastResponseTimeoutMs, actionIntentKeyFromProtocolClaim, actionIntentKeyFromProtocolPayload, actionIntentProgressExtraFromMessage, actionIntentProgressOperation, auditEncryptionPublicKeyForPlayer, beginPeerWait, broadcastActionIntentCancel, broadcastActionIntentProgress, cachedZiffleRevealTokens, clearAllConnectionHeartbeats, clearAllPendingActionIntents, clearConnectionHeartbeat, clearOwnerZiffleOpeningCache, clearPeerWait, clearPeerWaitForActionIntent, clearPendingActionIntent, currentAuditMatchId, emitZiffleDiagnosticNotice, ensureAuditIdentity, ensureDirectPeerConnections, ensureZiffleIdentity, ensureZiffleOpeningProof, extendZiffleRevealTokenWaitersForActionIntent, handleActionIntentCancelMessage, handleActionIntentProgressMessage, handleConnectionHeartbeatMessage, handlePendingActionIntentTimeout, hydrateZiffleCeremonyForLookup, ignoreAndClearAllPendingActionIntents, ignoredActionIntentReason, importCachedAuditPublicKey, isDirectProtocolMessage, localRevealedOpeningForExport, localRevealedOpeningForRequirement, localRevealedOpeningForZiffleReveal, localZiffleDiagnostics, makeProtocolResponseTimeoutError, makeZiffleRequestId, markConnectionAlive, matchPayloadCeremoniesForLookup, matchingAppliedActionForIntent, normalizeZiffleRevealToken, observedMatchClockElapsedForIntent, openingNeedsZiffleProof, pendingActionIntentDueAtMs, pendingActionIntentEvidenceDueAtMs, pendingActionIntentEvidenceRequestedAtMs, pendingActionIntentEvidenceTimeoutMs, pendingActionIntentFirstObservedAtMs, pendingActionIntentHardDueAtMs, pendingActionIntentHardTimeoutEvidence, pendingActionIntentHeldForProtocolWork, pendingActionIntentRecordForSequence, pendingActionIntentSuppressesHeartbeatStale, previewActionIntentOpeningInInspector, privateDeckManifestForOwner, protocolActionIntentInactiveReason, pruneIgnoredActionIntents, publicDeckManifestForOwner, publicKeyForAuditSigner, publicZiffleKey, refreshPendingActionIntentEvidenceForAction, rememberIgnoredActionIntentKey, rememberLocalRevealedOpening, rememberLocalZiffleCeremonyForLookup, rememberPendingActionIntent, rememberPrivateDeckManifest, rememberPrivateViewDisclosure, rememberZiffleOpeningPosition, rememberZiffleRevealTokens, resolveActionQuorumVote, resolveCryptoMaterial, resolveLocalCryptoPlayerIndex, resolveRngCommit, resolveRngReveal, resolveSubmissionIdleWaiters, resolveTimeoutVote, resolveZiffleRevealToken, resolveZiffleShuffleStep, runtimeManifestForZiffleCeremony, schedulePendingActionIntentTimeout, shouldReplacePendingActionIntentEvidence, shouldSuppressProtocolMessageError, showActionIntentProgressWait, signActionIntentForCommand, signPlayerGenesis, signReconnectProofForChallenge, signedZiffleKeysForPayload, startActionIntentProgressBroadcast, startConnectionHeartbeat, updateMultiplayer, updatePeerWait, updatePeerWaitForActionIntent, verifyActionMatchesPendingIntent, verifyReconnectProofForChallenge, verifySignedActionIntent, verifyZiffleOpeningProofForOpening, waitForActionQuorumVote, waitForCryptoMaterial, waitForPendingActionIntentBeforeLocalSubmit, waitForProtocolResponse, waitForRngCommit, waitForRngReveal, waitForSubmissionIdle, waitForTimeoutVote, waitForZiffleRevealToken, waitForZiffleShuffleStep, ziffleCeremonyCandidatesForOwner, ziffleCeremonyForOwner, ziffleCeremonyHasObjectOrder, ziffleObjectOrderLinksOpening, ziffleOpeningPositionForSlot, ziffleOpeningProofHasAuthenticatedObjectOrder, zifflePositionForObjectId, zifflePositionForOriginalSlot, zifflePublicKeysForPlayers, ziffleRevealMatchesOpening, ziffleRevealTokenCacheKey, ziffleShuffleObjectIdForPosition, ziffleShuffleOriginalSlotForPosition, ziffleTokensForPosition };
+  return { IGNORED_ACTION_INTENT_TTL_MS, MAX_IGNORED_ACTION_INTENTS, actionBroadcastResponseTimeoutMs, actionIntentKeyFromProtocolClaim, actionIntentKeyFromProtocolPayload, actionIntentProgressExtraFromMessage, actionIntentProgressOperation, auditEncryptionPublicKeyForPlayer, beginPeerWait, broadcastActionIntentCancel, broadcastActionIntentProgress, cachedZiffleRevealTokens, clearAllConnectionHeartbeats, clearAllPendingActionIntents, clearConnectionHeartbeat, clearOwnerZiffleOpeningCache, clearPeerWait, clearPeerWaitForActionIntent, clearPendingActionIntent, currentAuditMatchId, emitZiffleDiagnosticNotice, ensureAuditIdentity, ensureDirectPeerConnections, ensureZiffleIdentity, ensureZiffleOpeningProof, extendZiffleRevealTokenWaitersForActionIntent, handleActionIntentCancelMessage, handleActionIntentProgressMessage, handleConnectionHeartbeatMessage, handlePendingActionIntentTimeout, hydrateZiffleCeremonyForLookup, ignoreAndClearAllPendingActionIntents, ignoredActionIntentReason, importCachedAuditPublicKey, isDirectProtocolMessage, localRevealedOpeningForExport, localRevealedOpeningForRequirement, localRevealedOpeningForZiffleReveal, localZiffleDiagnostics, makeProtocolResponseTimeoutError, makeZiffleRequestId, markConnectionAlive, matchPayloadCeremoniesForLookup, matchingAppliedActionForIntent, normalizeZiffleRevealToken, observedMatchClockElapsedForIntent, openingNeedsZiffleProof, pendingActionIntentDueAtMs, pendingActionIntentEvidenceDueAtMs, pendingActionIntentEvidenceRequestedAtMs, pendingActionIntentEvidenceTimeoutMs, pendingActionIntentFirstObservedAtMs, pendingActionIntentHardDueAtMs, pendingActionIntentHardTimeoutEvidence, pendingActionIntentHeldForProtocolWork, pendingActionIntentRecordForSequence, pendingActionIntentSuppressesHeartbeatStale, previewActionIntentOpeningInInspector, privateDeckManifestForOwner, protocolActionIntentInactiveReason, pruneIgnoredActionIntents, publicDeckManifestForOwner, publicKeyForAuditSigner, publicZiffleKey, refreshPendingActionIntentEvidenceForAction, rememberIgnoredActionIntentKey, rememberLocalRevealedOpening, rememberLocalZiffleCeremonyForLookup, rememberPendingActionIntent, rememberPrivateDeckManifest, rememberPrivateViewDisclosure, rememberZiffleOpeningPosition, rememberZiffleRevealTokens, resolveActionQuorumVote, resolveCryptoMaterial, resolveLocalCryptoPlayerIndex, resolveRngCommit, resolveRngReveal, resolveSubmissionIdleWaiters, resolveTimeoutVote, resolveZiffleRevealToken, resolveZiffleShuffleStep, runtimeManifestForZiffleCeremony, schedulePendingActionIntentTimeout, shouldReplacePendingActionIntentEvidence, shouldSuppressProtocolMessageError, showActionIntentProgressWait, signActionIntentForCommand, signPlayerGenesis, signReconnectProofForChallenge, signedZiffleKeysForPayload, startActionIntentProgressBroadcast, startConnectionHeartbeat, updateMultiplayer, updatePeerWait, updatePeerWaitForActionIntent, verifyActionMatchesPendingIntent, verifyReconnectProofForChallenge, verifySignedActionIntent, verifyZiffleOpeningCryptographicProof, verifyZiffleOpeningProofForOpening, waitForActionQuorumVote, waitForCryptoMaterial, waitForPendingActionIntentBeforeLocalSubmit, waitForProtocolResponse, waitForRngCommit, waitForRngReveal, waitForSubmissionIdle, waitForTimeoutVote, waitForZiffleRevealToken, waitForZiffleShuffleStep, ziffleCeremonyCandidatesForOwner, ziffleCeremonyForOwner, ziffleCeremonyHasObjectOrder, ziffleObjectOrderLinksOpening, ziffleOpeningPositionForSlot, ziffleOpeningProofHasAuthenticatedObjectOrder, zifflePositionForObjectId, zifflePositionForOriginalSlot, zifflePublicKeysForPlayers, ziffleRevealMatchesOpening, ziffleRevealTokenCacheKey, ziffleShuffleObjectIdForPosition, ziffleShuffleOriginalSlotForPosition, ziffleTokensForPosition };
 }

@@ -1147,6 +1147,12 @@ pub(super) fn resolve_stack_entry_full(
         return Ok(());
     }
 
+    // Mark provenance only after the illegal-target exit above. Abilities
+    // and countering effects must not look like the affected spell resolving.
+    if !entry.is_ability {
+        ctx.cause = EventCause::from_spell_resolution(entry.object_id, entry.controller);
+    }
+
     if let Some(trigger_identity) = entry.trigger_identity {
         game.record_triggered_ability_resolved(execution_source, trigger_identity);
     }
@@ -1253,8 +1259,7 @@ pub(super) fn resolve_stack_entry_full(
     // CR 702.122d: "whenever this Vehicle becomes crewed" triggers when a crew
     // ability of it resolves, not when its crew cost is paid.
     if let Some(ref mut tq) = trigger_queue
-        && let Some(event) =
-            crate::effects::permanents::crew_ability_resolved_event(game, &entry)
+        && let Some(event) = crate::effects::permanents::crew_ability_resolved_event(game, &entry)
     {
         queue_triggers_from_event(game, tq, event, false);
     }
@@ -1902,7 +1907,7 @@ pub(super) fn resolve_stack_entry_full(
                         entry.object_id,
                         Zone::Stack,
                         Zone::Library,
-                        crate::events::cause::EventCause::from_effect(
+                        crate::events::cause::EventCause::from_spell_resolution(
                             entry.object_id,
                             entry.controller,
                         ),
@@ -1917,7 +1922,7 @@ pub(super) fn resolve_stack_entry_full(
                     let event = TriggerEvent::new_with_provenance(
                         crate::events::ShuffleLibraryEvent::new(
                             obj.owner,
-                            crate::events::cause::EventCause::from_effect(
+                            crate::events::cause::EventCause::from_spell_resolution(
                                 entry.object_id,
                                 entry.controller,
                             ),
@@ -1935,7 +1940,7 @@ pub(super) fn resolve_stack_entry_full(
                         entry.object_id,
                         Zone::Stack,
                         Zone::Exile,
-                        crate::events::cause::EventCause::from_effect(
+                        crate::events::cause::EventCause::from_spell_resolution(
                             entry.object_id,
                             entry.controller,
                         ),
@@ -1986,7 +1991,7 @@ pub(super) fn resolve_stack_entry_full(
                         entry.object_id,
                         Zone::Stack,
                         Zone::Exile,
-                        crate::events::cause::EventCause::from_effect(
+                        crate::events::cause::EventCause::from_spell_resolution(
                             entry.object_id,
                             entry.controller,
                         ),
@@ -2006,7 +2011,7 @@ pub(super) fn resolve_stack_entry_full(
                     entry.object_id,
                     Zone::Stack,
                     Zone::Hand,
-                    crate::events::cause::EventCause::from_effect(
+                    crate::events::cause::EventCause::from_spell_resolution(
                         entry.object_id,
                         entry.controller,
                     ),
@@ -2020,7 +2025,7 @@ pub(super) fn resolve_stack_entry_full(
                     entry.object_id,
                     Zone::Stack,
                     Zone::Graveyard,
-                    crate::events::cause::EventCause::from_effect(
+                    crate::events::cause::EventCause::from_spell_resolution(
                         entry.object_id,
                         entry.controller,
                     ),

@@ -3,7 +3,6 @@
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::EffectOutcome;
-use crate::effects::permanents::attach_battlefield_object_to_target;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -23,8 +22,8 @@ impl EffectExecutor for AuraSwapEffect {
             return Ok(EffectOutcome::resolved());
         };
         if source.zone != Zone::Battlefield
+            || game.is_phased_out(ctx.source)
             || source.owner != ctx.controller
-            || game.controller_of(source) != ctx.controller
         {
             return Ok(EffectOutcome::resolved());
         }
@@ -62,15 +61,86 @@ impl EffectExecutor for AuraSwapEffect {
             return Ok(EffectOutcome::resolved());
         }
 
-        let Some(returned_source) = game.move_object_by_effect(ctx.source, Zone::Hand) else {
+        // CR 701.12a / 702.65b: stage the exchange and publish it only if
+        // both movements and the required attachment can be completed. This
+        // also keeps replacement/as-enters decisions from exposing a partial
+        // exchange when the decision maker needs to suspend for input.
+        let mut exchange = game.clone();
+        // Both replacement proposals see the pre-exchange battlefield.
+        let crate::events::processing::EventOutcome::Proceed(return_zone) =
+            crate::events::processing::process_zone_change(
+                &mut exchange,
+                ctx.source,
+                Zone::Battlefield,
+                Zone::Hand,
+                ctx.cause.clone(),
+                ctx.decision_maker,
+            )
+        else {
             return Ok(EffectOutcome::prevented());
         };
-        let Some(new_aura) = game.move_object_by_effect(hand_aura, Zone::Battlefield) else {
-            return Ok(EffectOutcome::prevented());
-        };
-        if !attach_battlefield_object_to_target(game, new_aura, attached_to) {
-            return Ok(EffectOutcome::impossible());
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
         }
+        let entry_proposal = crate::events::processing::process_etb_with_event_and_dm_with_initial_counters_and_controller(
+            &mut exchange, hand_aura, Zone::Hand, ctx.decision_maker,
+            Vec::new(), Some(ctx.controller),
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        if entry_proposal.prevented && entry_proposal.new_destination.is_none() {
+            return Ok(EffectOutcome::prevented());
+        }
+        let Some(prepared) = exchange.prepare_etb_entry_with_controller_and_dm(
+            hand_aura,
+            entry_proposal,
+            Some(ctx.controller),
+            ctx.decision_maker,
+        ) else {
+            return Ok(EffectOutcome::prevented());
+        };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        let Some(returned_source) =
+            exchange.move_object(ctx.source, return_zone, ctx.cause.clone())
+        else {
+            return Ok(EffectOutcome::prevented());
+        };
+        let Some(entry) = exchange.commit_prepared_exchange_etb_with_dm(
+            hand_aura,
+            prepared,
+            ctx.controller,
+            ctx.cause.clone(),
+            ctx.decision_maker,
+        ) else {
+            return Ok(EffectOutcome::prevented());
+        };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        let new_aura = entry.new_id;
+        // Exchange legality was checked with the old Aura still present
+        // (CR 701.12e). Its departure may remove a type/quality needed by the
+        // new Aura. That doesn't undo the exchange; the subsequent SBA will
+        // deal with an Aura that is no longer legally enchanting its object.
+        // A destination replacement modifies this otherwise legal exchange
+        // (CR 614.6). A redirected card does not become attached.
+        if exchange
+            .object(new_aura)
+            .is_some_and(|aura| aura.zone == Zone::Battlefield)
+        {
+            if !exchange.attach_object_to_target(new_aura, attached_to) {
+                return Ok(EffectOutcome::impossible());
+            }
+            exchange
+                .effect_store
+                .continuous_effects
+                .record_attachment(new_aura);
+        }
+
+        *game = exchange;
 
         Ok(EffectOutcome::with_objects(vec![returned_source, new_aura]))
     }
@@ -101,8 +171,26 @@ fn aura_card_can_attach_to_target(
     let Some(aura) = game.object(aura_id) else {
         return false;
     };
-    if aura.zone != Zone::Hand || !aura.subtypes.contains(&Subtype::Aura) {
+    if aura.zone != Zone::Hand
+        || !aura.subtypes.contains(&Subtype::Aura)
+        || game.card_cannot_enter_battlefield(aura_id)
+        || !game.attachment_target_is_within_range(controller, target, Some(aura_id))
+    {
         return false;
+    }
+    match target {
+        AttachmentTarget::Object(target_id) => {
+            if game.is_phased_out(target_id)
+                || crate::targeting::has_protection_from_source(game, target_id, aura_id)
+            {
+                return false;
+            }
+        }
+        AttachmentTarget::Player(player) => {
+            if crate::effects::permanents::player_has_protection_from_object(game, player, aura) {
+                return false;
+            }
+        }
     }
     let Some(filter) = aura.aura_attach_filter_owned() else {
         return false;

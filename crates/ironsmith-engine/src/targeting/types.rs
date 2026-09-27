@@ -184,6 +184,7 @@ pub enum TargetingInvalidReason {
 /// A ward cost that needs to be paid when targeting a permanent.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PendingWardCost {
+    pub source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
     /// The permanent with ward being targeted.
     pub target: ObjectId,
     /// The controller of the permanent with ward.

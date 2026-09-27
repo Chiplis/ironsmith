@@ -287,7 +287,7 @@ impl CostExecutableEffect for SaddleCostEffect {
         let candidates = Self::saddle_candidates(game, controller, source);
         let total: i32 = candidates
             .iter()
-            .map(|id| Self::saddle_value(game, *id))
+            .map(|id| Self::saddle_value(game, *id).max(0))
             .sum();
         if total >= self.required_power as i32 {
             Ok(())

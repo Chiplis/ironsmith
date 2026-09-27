@@ -1799,11 +1799,22 @@ pub(crate) fn describe_ability(
             if let Some(x_definition) = trailing_x_definition {
                 append_sentence_clause(&mut line, &x_definition);
             }
-            let restriction_clauses = collect_activation_restriction_clauses(
+            let mut restriction_clauses = collect_activation_restriction_clauses(
                 &activated.timing,
                 &activated.additional_restrictions,
                 &activated.activation_restrictions,
             );
+            if let Some(condition @ crate::ConditionExpr::AttachedToSourceMatches(_)) =
+                activation_condition_without_presentation_label(activated)
+                && !restriction_clauses
+                    .iter()
+                    .any(|clause| clause.to_ascii_lowercase().starts_with("activate only if "))
+            {
+                push_activation_restriction_clause(
+                    &mut restriction_clauses,
+                    describe_mana_activation_condition(&condition),
+                );
+            }
             if !restriction_clauses.is_empty() {
                 append_activation_clause(
                     &mut line,
@@ -2492,6 +2503,10 @@ pub(crate) fn describe_mana_activation_condition(condition: &crate::ConditionExp
     }
 
     match condition {
+        crate::ConditionExpr::AttachedToSourceMatches(filter) => format!(
+            "Activate only if this permanent is attached to {}",
+            with_indefinite_article(strip_indefinite_article(&filter.description()))
+        ),
         crate::ConditionExpr::And(_, _) => {
             let mut conditions = Vec::new();
             flatten(condition, &mut conditions);
@@ -2746,6 +2761,15 @@ pub(crate) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String 
         })
     {
         return "you may choose a creature type and behold two creatures of that type".to_string();
+    }
+
+    if let [single] = costs
+        && let Some(put) = single
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::PutCountersEffect>())
+        && put.completion_action == Some(crate::events::KeywordActionKind::Blight)
+    {
+        return describe_blight_cost(&describe_value(&put.amount));
     }
 
     if costs.len() == 1

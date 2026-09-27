@@ -222,9 +222,11 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
         KeywordAction::ProtectionFromChosenColor => Some(CompilerStaticAbility::protection(
             crate::ability::ProtectionFrom::ChosenColor,
         )),
-        KeywordAction::ProtectionFromColorsOutsideCommanderIdentity => Some(CompilerStaticAbility::protection(
-            crate::ability::ProtectionFrom::ColorsOutsideCommanderIdentity,
-        )),
+        KeywordAction::ProtectionFromColorsOutsideCommanderIdentity => {
+            Some(CompilerStaticAbility::protection(
+                crate::ability::ProtectionFrom::ColorsOutsideCommanderIdentity,
+            ))
+        }
         KeywordAction::ProtectionFromFilter(filter) => Some(CompilerStaticAbility::protection(
             crate::ability::ProtectionFrom::Permanents(filter),
         )),
@@ -438,9 +440,11 @@ pub fn suspend_exile_triggered_abilities() -> Vec<Ability> {
         },
         Ability {
             kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
-                trigger: Trigger::new(crate::triggers::CounterRemovedFromTrigger::new(
-                    ObjectFilter::source(),
-                )),
+                trigger: Trigger::new(
+                    crate::triggers::CounterRemovedFromTrigger::new(ObjectFilter::source())
+                        .counter_type(crate::object::CounterType::Time)
+                        .last(),
+                ),
                 effects: ResolutionProgram::from_effects(vec![Effect::may(vec![Effect::new(
                     crate::effects::CastSourceEffect::new()
                         .without_paying_mana_cost()
@@ -448,8 +452,8 @@ pub fn suspend_exile_triggered_abilities() -> Vec<Ability> {
                         .cast_as_suspend(),
                 )])]),
                 choices: vec![],
-                intervening_if: Some(crate::ConditionExpr::SourceHasNoCounter(
-                    crate::object::CounterType::Time,
+                intervening_if: Some(crate::ConditionExpr::SourceIsInZone(
+                    crate::zone::Zone::Exile,
                 )),
                 presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Suspend)),
             }),

@@ -128,6 +128,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
   const applySequencedActionMessage = useCallback((...args) => servicesRef.current.applySequencedActionMessage(...args), [servicesRef]);
   const auditEncryptionPublicKeyForPlayer = useCallback((...args) => servicesRef.current.auditEncryptionPublicKeyForPlayer(...args), [servicesRef]);
   const buildLocalOpeningFromRequirement = useCallback((...args) => servicesRef.current.buildLocalOpeningFromRequirement(...args), [servicesRef]);
+  const currentZiffleOriginForOpening = useCallback((...args) => servicesRef.current.currentZiffleOriginForOpening(...args), [servicesRef]);
   const buildLocalOpeningsForCommand = useCallback((...args) => servicesRef.current.buildLocalOpeningsForCommand(...args), [servicesRef]);
   const buildLocalRequirementOpeningsForRequirements = useCallback((...args) => servicesRef.current.buildLocalRequirementOpeningsForRequirements(...args), [servicesRef]);
   const buildOpeningFromResolvedCommittedSlot = useCallback((...args) => servicesRef.current.buildOpeningFromResolvedCommittedSlot(...args), [servicesRef]);
@@ -699,6 +700,26 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 	    const seen = new Set();
 	    for (const { ceremony, entries } of groups.values()) {
 	      if (ziffleCeremonyHasObjectOrder(ceremony)) {
+	        // Re-open an authorized library window in one exchange per signer.
+	        // Individual slot resolution below still verifies each card's proof.
+        const revealGroups = new Map();
+        for (const entry of entries) {
+          const origin = await currentZiffleOriginForOpening({
+            owner: localSeat,
+            position: entry.position,
+            positionCommitment: entry.positionCommitment,
+          }, options);
+          const revealCeremony = origin
+            ? ziffleCeremonyForOwner(localSeat, { commitment: origin.originPositionCommitment })
+            : ceremony;
+          if (!revealCeremony) throw new Error("Missing Ziffle immutable origin ceremony");
+          const key = `${revealCeremony.context}:${revealCeremony.deckHash}`;
+          if (!revealGroups.has(key)) revealGroups.set(key, { ceremony: revealCeremony, positions: new Set() });
+          revealGroups.get(key).positions.add(origin ? origin.originPosition : entry.position);
+        }
+        for (const group of revealGroups.values()) {
+          await collectZiffleRevealTokensBatch(group.ceremony, [...group.positions], { ...options, requirements });
+        }
 	        for (const entry of entries) {
 	          const objectId = Number(entry.requirement.objectId ?? entry.requirement.object_id);
 	          const { resolvedRevealSlot } = await resolveCommittedSlotForZifflePosition({
@@ -1044,6 +1065,8 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       }
     }
     if (
+      !options.skipRandomness
+      &&
       (seeds.length > 0 || libraryShuffles.length > 0)
       && typeof currentGame.injectTranscriptRandomSeeds === "function"
     ) {
@@ -1052,6 +1075,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
         libraryShuffles,
       });
     }
+    if (options.randomnessOnly) return;
     const privateOpenings = await privateOpeningsForLocalViewer(requirements, audit, options);
     if (privateOpenings.length > 0) {
       await revealPrivateOpeningsForInjection(privateOpenings, options);
@@ -3838,12 +3862,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     ) || null;
   }
 
-  function rememberActionCryptoRequirements(seq, requirements = []) {
+  function rememberActionCryptoRequirements(seq, requirements = [], { replace = false } = {}) {
     const sequence = Number(seq);
     if (!Number.isSafeInteger(sequence) || sequence <= 0) return;
     const merged = new Map();
     for (const requirement of [
-      ...(actionCryptoRequirementsRef.current.get(sequence) || []),
+      ...(replace ? [] : actionCryptoRequirementsRef.current.get(sequence) || []),
       ...(requirements || []),
     ]) {
       if (!requirement || typeof requirement !== "object") continue;

@@ -8734,11 +8734,22 @@ pub(crate) fn describe_inline_ability_with_self_subject(
             if let Some(x_definition) = trailing_x_definition {
                 append_sentence_clause(&mut line, &x_definition);
             }
-            let restriction_clauses = collect_activation_restriction_clauses(
+            let mut restriction_clauses = collect_activation_restriction_clauses(
                 &activated.timing,
                 &activated.additional_restrictions,
                 &activated.activation_restrictions,
             );
+            if let Some(condition @ crate::ConditionExpr::AttachedToSourceMatches(_)) =
+                activation_condition_without_presentation_label(activated)
+                && !restriction_clauses
+                    .iter()
+                    .any(|clause| clause.to_ascii_lowercase().starts_with("activate only if "))
+            {
+                push_activation_restriction_clause(
+                    &mut restriction_clauses,
+                    describe_mana_activation_condition(&condition),
+                );
+            }
             if !restriction_clauses.is_empty() {
                 append_activation_clause(
                     &mut line,

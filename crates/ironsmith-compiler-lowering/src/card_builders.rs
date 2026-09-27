@@ -1129,14 +1129,15 @@ impl CardDefinitionBuilder {
             .owned_by(crate::target::PlayerFilter::You)
             .in_zone(crate::zone::Zone::Graveyard)
             .with_mana_value(mana_value);
-        let target = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(filter))
-            .with_count(ChoiceCount::up_to(1));
+        let target = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(filter));
 
         crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: crate::triggers::Trigger::this_dies(),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    crate::effect::Effect::return_from_graveyard_to_hand(target.clone()),
+                    crate::effect::Effect::may(vec![
+                        crate::effect::Effect::return_from_graveyard_to_hand(target.clone()),
+                    ]),
                 ]),
                 choices: vec![target],
                 intervening_if: None,
@@ -1275,7 +1276,9 @@ impl CardDefinitionBuilder {
                 trigger: crate::triggers::Trigger::new(
                     crate::triggers::CounterRemovedFromTrigger::new(
                         crate::target::ObjectFilter::source(),
-                    ),
+                    )
+                    .counter_type(crate::object::CounterType::Time)
+                    .last(),
                 ),
                 effects: vec![crate::effect::Effect::may(vec![
                     crate::effect::Effect::new(
@@ -1287,8 +1290,8 @@ impl CardDefinitionBuilder {
                 ])]
                 .into(),
                 choices: vec![],
-                intervening_if: Some(crate::ConditionExpr::SourceHasNoCounter(
-                    crate::object::CounterType::Time,
+                intervening_if: Some(crate::ConditionExpr::SourceIsInZone(
+                    crate::zone::Zone::Exile,
                 )),
                 presentation_label: None,
             }),
@@ -1444,10 +1447,16 @@ impl CardDefinitionBuilder {
         let mut creature_filter = crate::target::ObjectFilter::creature().you_control();
         creature_filter.power = Some(crate::filter::Comparison::GreaterThanOrEqual(power as i32));
 
-        self.optional_costs.push(OptionalCost::custom(
+        let cost_ref = ironsmith_core::OptionalCostRef::with_discriminator(
+            ironsmith_core::OptionalCostKind::Casualty,
+            format!("printed-{}", self.optional_costs.len()),
+        );
+        let mut optional_cost = OptionalCost::custom(
             "Casualty",
             TotalCost::from_cost(crate::costs::Cost::sacrifice(creature_filter)),
-        ));
+        );
+        optional_cost.reference = cost_ref.clone();
+        self.optional_costs.push(optional_cost);
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: crate::triggers::Trigger::you_cast_this_spell(),
@@ -1464,7 +1473,7 @@ impl CardDefinitionBuilder {
                     ),
                 ]),
                 choices: vec![],
-                intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel("Casualty".into())),
+                intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel(cost_ref)),
                 presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Stack],
@@ -1475,12 +1484,18 @@ impl CardDefinitionBuilder {
     /// sacrifice is an optional cost paid while casting (CR 702.153a), and the
     /// copy's starting loyalty is the sacrificed creature's power.
     pub fn variable_casualty_planeswalker_copy(mut self) -> Self {
-        self.optional_costs.push(OptionalCost::custom(
+        let cost_ref = ironsmith_core::OptionalCostRef::with_discriminator(
+            ironsmith_core::OptionalCostKind::Casualty,
+            format!("printed-{}", self.optional_costs.len()),
+        );
+        let mut optional_cost = OptionalCost::custom(
             "Casualty",
             TotalCost::from_cost(crate::costs::Cost::sacrifice(
                 crate::target::ObjectFilter::creature().you_control(),
             )),
-        ));
+        );
+        optional_cost.reference = cost_ref.clone();
+        self.optional_costs.push(optional_cost);
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: crate::triggers::Trigger::you_cast_this_spell(),
@@ -1490,7 +1505,7 @@ impl CardDefinitionBuilder {
                     ),
                 ]),
                 choices: vec![],
-                intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel("Casualty".into())),
+                intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel(cost_ref)),
                 presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Stack],
@@ -1655,6 +1670,7 @@ impl CardDefinitionBuilder {
                 crate::triggers::ZoneChangeTrigger::new()
                     .from(crate::zone::Zone::Stack)
                     .to(crate::zone::Zone::Graveyard)
+                    .during_own_resolution()
                     .this(),
             )
         };

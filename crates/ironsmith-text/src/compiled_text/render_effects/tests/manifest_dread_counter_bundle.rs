@@ -88,6 +88,7 @@ fn manifest_dread_counter_bundle_requires_a_shared_recipient() {
         outcome_only: false,
     });
     let second = crate::effects::PutCountersEffect {
+        completion_action: None,
         counter_type: CounterType::Trample,
         amount: Value::Fixed(1),
         target: ChooseSpec::tagged("counter_recipient"),

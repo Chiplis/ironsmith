@@ -1855,9 +1855,13 @@ pub fn waterbend_optional_total_cost(generic: u32) -> TotalCost {
     let mut branches = Vec::new();
     for taps in 0..=generic {
         if taps == 0 {
-            branches.push(TotalCost::mana(
-                generic_mana_cost(generic).unwrap_or_default(),
-            ));
+            branches.push(TotalCost::from_costs(vec![
+                crate::costs::Cost::mana(generic_mana_cost(generic).unwrap_or_default()),
+                crate::costs::Cost::validated_effect(Effect::emit_keyword_action(
+                    crate::events::KeywordActionKind::Waterbend,
+                    generic,
+                )),
+            ]));
             continue;
         }
         let mana_remaining = generic - taps;
@@ -1893,6 +1897,9 @@ pub fn waterbend_optional_total_cost(generic: u32) -> TotalCost {
         costs.push(crate::costs::Cost::effect(Effect::new(
             crate::effects::TapEffect::with_spec(ChooseSpec::Tagged(tag.clone().into())),
         )));
+        costs.push(crate::costs::Cost::validated_effect(
+            Effect::emit_keyword_action(crate::events::KeywordActionKind::Waterbend, generic),
+        ));
         branches.push(TotalCost::from_costs(costs));
     }
     TotalCost::one_of(branches)

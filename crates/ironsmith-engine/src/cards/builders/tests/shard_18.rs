@@ -2427,7 +2427,7 @@ pub(super) fn cloudspire_coordinator_pilot_token_power_bonus_applies_to_saddle_a
         .power_toughness(PowerToughness::fixed(1, 1))
         .build();
 
-    let crew_cost = crate::effects::CrewCostEffect { required_power: 3 };
+    let crew_cost = crate::effects::CrewCostEffect::new(3);
     let mut crew_game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
     crew_game.create_object_from_definition(&pilot, alice, Zone::Battlefield);
     let crew_vehicle = crew_game.create_object_from_definition(&vehicle, alice, Zone::Battlefield);
@@ -2571,7 +2571,7 @@ pub(super) fn wild_roads_pilot_token_power_bonus_applies_to_saddle_and_crew_cost
         .power_toughness(PowerToughness::fixed(3, 3))
         .build();
 
-    let crew_cost = crate::effects::CrewCostEffect { required_power: 3 };
+    let crew_cost = crate::effects::CrewCostEffect::new(3);
     crate::effects::CostExecutableEffect::can_execute_as_cost(&crew_cost, &game, vehicle_id, alice)
         .expect("Wild Roads Pilot token should crew as though its power were 2 greater");
 
@@ -2671,7 +2671,7 @@ pub(super) fn deathless_pilot_power_bonus_applies_to_saddle_and_crew_costs() {
         .power_toughness(PowerToughness::fixed(4, 4))
         .build();
     let vehicle_id = game.create_object_from_definition(&vehicle, alice, Zone::Battlefield);
-    let crew_cost = crate::effects::CrewCostEffect { required_power: 4 };
+    let crew_cost = crate::effects::CrewCostEffect::new(4);
     crate::effects::CostExecutableEffect::can_execute_as_cost(&crew_cost, &game, vehicle_id, alice)
         .expect("Deathless Pilot should crew 4 as though its power were 2 greater");
 
@@ -2834,7 +2834,7 @@ pub(super) fn interface_ace_uses_toughness_for_saddle_and_crew_costs() {
         .power_toughness(PowerToughness::fixed(4, 4))
         .build();
     let vehicle_id = game.create_object_from_definition(&vehicle, alice, Zone::Battlefield);
-    let crew_cost = crate::effects::CrewCostEffect { required_power: 4 };
+    let crew_cost = crate::effects::CrewCostEffect::new(4);
     crate::effects::CostExecutableEffect::can_execute_as_cost(&crew_cost, &game, vehicle_id, alice)
         .expect("Interface Ace should crew 4 using its toughness rather than 0 power");
 

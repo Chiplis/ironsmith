@@ -28,13 +28,24 @@ impl MayCastForMadnessCostEffect {
     }
 }
 
-fn put_madness_card_into_graveyard(game: &mut GameState, card_id: crate::ids::ObjectId) {
-    game.clear_madness_exiled(card_id);
-    game.move_object(
+fn put_madness_card_into_graveyard(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    card_id: crate::ids::ObjectId,
+) {
+    // This is a zone change caused by the resolving madness ability and
+    // must see the same replacements as any other graveyard movement.
+    crate::effects::zones::apply_zone_change(
+        game,
         card_id,
+        Zone::Exile,
         Zone::Graveyard,
-        crate::events::cause::EventCause::from_game_rule(),
+        ctx.cause.clone(),
+        ctx.decision_maker,
     );
+    if !ctx.decision_maker.awaiting_choice() {
+        game.clear_madness_exiled(card_id);
+    }
 }
 
 impl EffectExecutor for MayCastForMadnessCostEffect {
@@ -63,7 +74,7 @@ impl EffectExecutor for MayCastForMadnessCostEffect {
                 _ => None,
             })
         else {
-            put_madness_card_into_graveyard(game, card_id);
+            put_madness_card_into_graveyard(game, ctx, card_id);
             return Ok(EffectOutcome::resolved());
         };
 
@@ -78,7 +89,7 @@ impl EffectExecutor for MayCastForMadnessCostEffect {
             return Ok(EffectOutcome::count(0));
         }
         if !wants_to_cast {
-            put_madness_card_into_graveyard(game, card_id);
+            put_madness_card_into_graveyard(game, ctx, card_id);
             return Ok(EffectOutcome::resolved());
         }
 
@@ -116,7 +127,7 @@ impl EffectExecutor for MayCastForMadnessCostEffect {
             .object(card_id)
             .is_some_and(|object| object.zone == Zone::Exile)
         {
-            put_madness_card_into_graveyard(game, card_id);
+            put_madness_card_into_graveyard(game, ctx, card_id);
         }
         Ok(EffectOutcome::resolved())
     }

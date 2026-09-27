@@ -79,7 +79,13 @@ fn choose_fateseal_opponent(
 ) -> Option<PlayerId> {
     let opponents: Vec<PlayerId> = players_in_turn_order(game)
         .into_iter()
-        .filter(|player_id| *player_id != fatesealer)
+        .filter(|player_id| {
+            game.are_opponents(fatesealer, *player_id)
+                && game.player_is_within_range(fatesealer, *player_id)
+                && game
+                    .player(*player_id)
+                    .is_some_and(|player| player.is_in_game())
+        })
         .collect();
     match opponents.len() {
         0 => None,

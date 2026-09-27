@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
-import { replayAuditTranscriptWithGame } from "../src/lib/audit-replay.js";
-import { publicCheckpointHash } from "../src/lib/multiplayer-audit.js";
+import { replayAuditTranscriptWithGame, startAuditTranscriptReplayWithGame } from "../src/lib/audit-replay.js";
+import { buildPrivateDeckManifest, publicCheckpointHash } from "../src/lib/multiplayer-audit.js";
+import { buildZiffleRuntimeManifest } from "../src/lib/ziffle-runtime-manifest.js";
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -290,4 +291,20 @@ test("restores the live checkpoint after replay rejects an initial hash mismatch
     perspective: 1,
   });
   assert.equal(game.restoredPerspective, 1);
+});
+
+test("replay preserves complete sideboard slots in runtime manifests and the fallback", async () => {
+  const manifest = await buildPrivateDeckManifest({
+    matchId: "replay-sideboard", owner: 0, deck: ["Island", "Forest"], sideboard: ["Mountain"],
+  }, webcrypto);
+  const runtime = buildZiffleRuntimeManifest(manifest, { deckCount: 2, deckHash: "replay-deck" });
+  for (const field of ["runtimeHiddenDeckManifests", "hiddenDeckManifests"]) {
+    const game = new FakeReplayGame();
+    const match = replayMatch();
+    delete match.runtimeHiddenDeckManifests;
+    match[field] = [runtime];
+    await startAuditTranscriptReplayWithGame({ game, transcript: { match }, cryptoImpl: webcrypto });
+    assert.deepEqual(game.config.hiddenDeckManifests, [runtime]);
+    assert.equal(game.config.hiddenDeckManifests[0].slotCommitments[2].commitment, manifest.slotCommitments[2].commitment);
+  }
 });

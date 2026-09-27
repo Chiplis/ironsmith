@@ -166,7 +166,7 @@ pub(crate) fn attachment_can_attach_to_target(
     // creature (e.g. animated by March of the Machines) can't be attached.
     let attachment_is_creature = game.object_has_card_type(attachment_id, CardType::Creature);
     if subtypes.contains(&Subtype::Equipment) {
-        if attachment_is_creature && !attachment_has_reconfigure_ability(attachment) {
+        if attachment_is_creature && !attachment_has_reconfigure_ability(game, attachment_id) {
             return false;
         }
         if let Some(crate::object::AuraAttachmentFilter::Object(filter)) = game
@@ -192,10 +192,16 @@ pub(crate) fn attachment_can_attach_to_target(
     false
 }
 
-fn attachment_has_reconfigure_ability(attachment: &crate::object::Object) -> bool {
-    attachment.abilities.iter().any(|ability| {
-        crate::runtime_display::ability_surface_text(ability).starts_with("Reconfigure ")
-    })
+fn attachment_has_reconfigure_ability(game: &GameState, attachment_id: ObjectId) -> bool {
+    game.calculated_characteristics(attachment_id)
+        .is_some_and(|chars| {
+            chars.abilities.iter().any(|ability| {
+                matches!(&ability.kind, crate::ability::AbilityKind::Activated(activated)
+                if activated.effects.iter().any(|effect| {
+                    effect.downcast_ref::<ReconfigureEffect>().is_some()
+                }))
+            })
+        })
 }
 
 pub(crate) fn attach_battlefield_object_to_target(

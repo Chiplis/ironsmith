@@ -96,6 +96,46 @@ function verifyEnvelopeOnlyTranscript(transcript, options = {}) {
   });
 }
 
+async function finalDisclosureFixture({ initialPublicCheckpointHash } = {}) {
+  const matchId = "m-final-origin-disclosure";
+  const keyPair = await createAuditSessionKey(webcrypto);
+  const deck = Array(61).fill("Mountain");
+  deck[2] = deck[4] = "Barbarian Ring";
+  const manifest = await buildPrivateDeckManifest({ matchId, owner: 1, deck }, webcrypto);
+  const transcript = await buildCurrentProtocolTranscript({
+    matchId, players: [{ index: 1, keyPair, deckAuditManifest: manifest }], actions: [],
+    initialPublicCheckpointHash,
+  });
+  const ceremony = transcript.match.ziffleCeremonies.find(entry => entry.owner === 1);
+  const opening = {
+    ...await buildDeckSlotOpening({ manifest, slot: 4 }, webcrypto),
+    position: 51, positionCommitment: "ziffle:later-fetch:51",
+    originPosition: 23, originPositionCommitment: `ziffle:${ceremony.deckHash}:23`,
+  };
+  const tokens = ceremony.keys.map(key => ({ ...key, tokenHex: "token", proofHex: "valid" }));
+  opening.ziffleReveal = buildZiffleOpeningProof({ opening, ceremony, tokens, compact: true });
+  const signedEntry = async (openings = [opening], fields = {}) => {
+    const payload = { domain: "ironsmith-end-of-match-disclosure-v1", matchId, player: 1, openings, ...fields };
+    return { player: 1, matchId, disclosure: { ...payload, signature: await signAuditPayload(keyPair, payload, webcrypto) } };
+  };
+  transcript.endOfMatchDisclosures = [await signedEntry()];
+  const disclosureReports = [{ player: 1, replayVerdict: { status: "verified", reason: "" } }];
+  const proofCalls = [];
+  const options = {
+    verifyZiffleOpening: async input => {
+      proofCalls.push(input);
+      if (input.proof.tokens.some(token => token.proofHex !== "valid")) throw new Error("Invalid reveal token proof");
+      return { originalSlot: 4 };
+    },
+    replayTranscript: async ({ finalPublicCheckpointHash }) => ({
+      finalPublicCheckpointHash,
+      endOfMatchDisclosures: disclosureReports,
+      endOfMatchDisclosuresVerified: true,
+    }),
+  };
+  return { transcript, manifest, ceremony, tokens, opening, signedEntry, options, proofCalls, disclosureReports };
+}
+
 async function buildCurrentProtocolTranscript({
   matchId,
   players,
@@ -1361,6 +1401,98 @@ test("live audit transcript verifier can require engine replayed checkpoint hash
   );
 });
 
+test("final disclosures verify genesis proofs separately from current positions and retain engine verdicts", async () => {
+  const h = await finalDisclosureFixture();
+  const report = await verifyLiveAuditTranscript(h.transcript, webcrypto, h.options);
+  assert.equal(report.valid, true);
+  assert.equal(h.proofCalls.length, 1);
+  assert.equal(h.proofCalls[0].proof.position, 23);
+  assert.equal(h.proofCalls[0].opening.position, 51);
+  assert.equal(h.proofCalls[0].ceremony.deckCount, 61);
+  assert.deepEqual(report.engineReplay.endOfMatchDisclosures, h.disclosureReports);
+  assert.equal(report.engineReplay.endOfMatchDisclosuresVerified, true);
+});
+
+test("final disclosures reject wrong signatures, match, player, domain and ownership", async () => {
+  const h = await finalDisclosureFixture();
+  for (const [entry, message] of [
+    [null, /missing its signed payload/],
+    [await h.signedEntry([h.opening], { domain: "other-domain" }), /wrong domain/],
+    [await h.signedEntry([h.opening], { matchId: "other-match" }), /different match/],
+    [await h.signedEntry([h.opening], { player: 7 }), /unknown player/],
+    [{ ...await h.signedEntry(), player: 0 }, /player does not match/],
+    [await h.signedEntry([{ ...h.opening, owner: 0 }]), /different player/],
+    [await h.signedEntry([{ ...h.opening, owner: undefined }]), /different player/],
+    [await h.signedEntry(null), /missing its openings/],
+  ]) {
+    await assert.rejects(verifyLiveAuditTranscript({ ...h.transcript, endOfMatchDisclosures: [entry] }, webcrypto, h.options), message);
+  }
+  const tampered = structuredClone(h.transcript);
+  tampered.endOfMatchDisclosures[0].disclosure.openings[0].position = 50;
+  await assert.rejects(verifyLiveAuditTranscript(tampered, webcrypto, h.options), /signature is invalid/);
+  await assert.rejects(verifyLiveAuditTranscript({ ...h.transcript,
+    endOfMatchDisclosures: [...h.transcript.endOfMatchDisclosures, ...h.transcript.endOfMatchDisclosures],
+  }, webcrypto, h.options), /duplicate player/);
+});
+
+test("signed final disclosures cannot swap duplicate cards, alter origins or omit genesis proofs", async () => {
+  const h = await finalDisclosureFixture();
+  const wrongCopy = { ...h.opening, ...await buildDeckSlotOpening({ manifest: h.manifest, slot: 2 }, webcrypto) };
+  wrongCopy.ziffleReveal = buildZiffleOpeningProof({ opening: wrongCopy, ceremony: h.ceremony,
+    shuffleOriginalSlot: 4, tokens: h.tokens, compact: true });
+  const missingProof = structuredClone(h.opening); delete missingProof.ziffleReveal;
+  const wrongOrigin = { ...h.opening, originPosition: 22, originPositionCommitment: `ziffle:${h.ceremony.deckHash}:22` };
+  const badToken = structuredClone(h.opening); badToken.ziffleReveal.tokens[0].proofHex = "forged";
+  for (const [opening, message] of [
+    [{ ...h.opening, salt: "forged" }, /does not match committed deck slot/],
+    [wrongCopy, /different committed slot/],
+    [missingProof, /missing its position reveal proof/],
+    [wrongOrigin, /proof position mismatch/],
+    [badToken, /Invalid reveal token proof/],
+  ]) {
+    await assert.rejects(verifyLiveAuditTranscript({ ...h.transcript,
+      endOfMatchDisclosures: [await h.signedEntry([opening])],
+    }, webcrypto, h.options), message);
+  }
+});
+
+test("final disclosure engine failures and incomplete report coverage cannot become verified", async () => {
+  const h = await finalDisclosureFixture();
+  for (const [fields, message] of [
+    [{ endOfMatchDisclosuresVerified: false }, /did not verify end-of-match/],
+    [{ endOfMatchDisclosures: [{ player: 1, replayVerdict: { status: "cheat_detected", reason: "wrong trusted origin" } }], endOfMatchDisclosuresVerified: true }, /wrong trusted origin/],
+    [{ endOfMatchDisclosures: [{ player: 1, replayVerdict: { status: "missing", reason: "required disclosure missing" } }], endOfMatchDisclosuresVerified: true }, /required disclosure missing/],
+    [{}, /must report verification/],
+    [{ endOfMatchDisclosures: [], endOfMatchDisclosuresVerified: true }, /coverage does not match/],
+    [{ endOfMatchDisclosures: h.disclosureReports }, /must report verification/],
+    [{ endOfMatchDisclosures: {}, endOfMatchDisclosuresVerified: true }, /invalid end-of-match disclosure reports/],
+    [{ endOfMatchDisclosures: [...h.disclosureReports, ...h.disclosureReports], endOfMatchDisclosuresVerified: true }, /player coverage/],
+    [{ endOfMatchDisclosures: [{ player: 99, replayVerdict: { status: "verified" } }], endOfMatchDisclosuresVerified: true }, /player coverage/],
+  ]) {
+    await assert.rejects(verifyLiveAuditTranscript(h.transcript, webcrypto, {
+      ...h.options, replayTranscript: async ({ finalPublicCheckpointHash }) => ({ finalPublicCheckpointHash, ...fields }),
+    }), message);
+  }
+  // Missing required entries discovered by the engine remain fatal even when
+  // the exporter omits the entire disclosure collection.
+  const noDisclosures = { ...h.transcript, endOfMatchDisclosures: [] };
+  await assert.rejects(verifyLiveAuditTranscript(noDisclosures, webcrypto, {
+    ...h.options, replayTranscript: async () => ({ endOfMatchDisclosuresVerified: false,
+      endOfMatchDisclosures: [{ player: 1, replayVerdict: { status: "missing" } }] }),
+  }), /did not verify end-of-match/);
+});
+
+test("a terminal checkpoint requires engine disclosure checks even without exported records", async () => {
+  const checkpoint = { players: [{ id: 0, hasWon: true }, { id: 1, hasLost: true }], hiddenZones: [] };
+  const hash = await publicCheckpointHash(checkpoint, webcrypto);
+  const h = await finalDisclosureFixture({ initialPublicCheckpointHash: hash });
+  const transcript = { ...h.transcript, endOfMatchDisclosures: [],
+    finalPublicCheckpoint: checkpoint };
+  await assert.rejects(verifyLiveAuditTranscript(transcript, webcrypto, {
+    ...h.options, replayTranscript: async () => ({ finalPublicCheckpointHash: hash }),
+  }), /must report verification of end-of-match disclosures/);
+});
+
 test("live audit transcript verifier checks signed match clock chain", async () => {
   const actorKey = await createAuditSessionKey(webcrypto);
   const actorPublicKey = await exportAuditPublicKey(actorKey, webcrypto);
@@ -1435,10 +1567,13 @@ test("private deck manifests commit slots without exposing card names publicly",
 
   assert.equal(publicManifest.deckCount, 2);
   assert.equal(publicManifest.sideboardCount, 1);
+  assert.deepEqual(publicManifest.slotCommitments.map(({ slot }) => slot), [0, 1, 2]);
+  assert.equal(manifest.slotSecrets[2].card, "Duress");
   assert.equal(publicManifest.decklistHash, undefined);
   assert.ok(publicManifest.decklistCommitment);
   assert.notEqual(publicManifest.decklistCommitment, manifest.decklistHash);
   assert.equal(JSON.stringify(publicManifest).includes("Lightning Bolt"), false);
+  assert.equal(JSON.stringify(publicManifest).includes("Duress"), false);
   assert.equal(JSON.stringify(publicManifest).includes("salt-1"), false);
   assert.equal(JSON.stringify(publicManifest).includes(manifest.decklistHash), false);
   assert.deepEqual(
@@ -1473,6 +1608,12 @@ test("private deck manifests commit slots without exposing card names publicly",
     }, webcrypto),
     false,
   );
+  const sideboardOpening = await buildDeckSlotOpening({ manifest, slot: 2, card: "Duress" }, webcrypto);
+  assert.equal(sideboardOpening.salt, "salt-2");
+  assert.equal(await verifyCardOpeningAgainstManifest({ manifest: publicManifest, ...sideboardOpening }, webcrypto), true);
+  assert.equal(await verifyCardOpeningAgainstManifest({
+    manifest: publicManifest, ...sideboardOpening, card: "Counterspell",
+  }, webcrypto), false);
 });
 
 test("public deck manifests use salted decklist commitments", async () => {
@@ -1682,12 +1823,22 @@ test("ziffle public openings must prove shuffled position to committed slot", as
     }),
   };
   const remappedTranscript = await buildTranscript([remappedOpening], [remapShuffleProof]);
-  assert.equal((await verifyEnvelopeOnlyTranscript(remappedTranscript, {
+  await assert.rejects(verifyEnvelopeOnlyTranscript(remappedTranscript, {
     verifyShuffleProof: async () => {},
-    verifyZiffleOpening: async ({ proof }) => ({
-      originalSlot: Number(proof.shuffleOriginalSlot ?? proof.originalSlot),
-    }),
-  })).valid, true);
+    verifyZiffleOpening: async () => ({ originalSlot: 0 }),
+  }), /immutable genesis origin/);
+
+  const anchoredOpening = { ...remappedOpeningBase,
+    originPosition: 0, originPositionCommitment: baseOpening.positionCommitment };
+  anchoredOpening.ziffleReveal = buildZiffleOpeningProof({
+    opening: anchoredOpening, ceremony, tokens, compact: true,
+  });
+  assert.equal((await verifyEnvelopeOnlyTranscript(
+    await buildTranscript([anchoredOpening], [remapShuffleProof]), {
+      verifyShuffleProof: async () => {},
+      verifyZiffleOpening: async () => ({ originalSlot: 1 }),
+    }
+  )).valid, true);
 
   await assert.rejects(
     async () => verifyEnvelopeOnlyTranscript(
@@ -1702,7 +1853,7 @@ test("ziffle public openings must prove shuffled position to committed slot", as
         }),
       },
     ),
-    /reveals a different committed slot/,
+    /immutable genesis origin/,
   );
 });
 
@@ -2550,7 +2701,7 @@ test("match genesis and resync envelopes bind roster and checkpoints", async () 
   );
 });
 
-test("open decklist match genesis verifies committed slot openings", async () => {
+test("open decklist match genesis verifies main-deck and sideboard slot openings", async () => {
   const matchId = "open-decklists";
   const playerKeys = [
     await createAuditSessionKey(webcrypto),
@@ -2570,17 +2721,19 @@ test("open decklist match genesis verifies committed slot openings", async () =>
     ["Island", "Mountain"],
     ["Forest", "Forest"],
   ];
+  const sideboards = [["Duress"], ["Swamp", "Plains"]];
   const manifests = await Promise.all(decks.map((deck, index) =>
     buildPrivateDeckManifest({
       matchId,
       owner: index,
       deck,
+      sideboard: sideboards[index],
       saltForSlot: (slot) => `open-decklist-salt-${index}-${slot}`,
     }, webcrypto)
   ));
   const buildPlayers = async (slotOpeningOverrides = {}) => Promise.all(
     playerKeys.map(async (keyPair, index) => {
-      const openings = await Promise.all(decks[index].map((card, slot) =>
+      const openings = await Promise.all([...decks[index], ...sideboards[index]].map((card, slot) =>
         buildDeckSlotOpening({ manifest: manifests[index], slot, card }, webcrypto)
       ));
       const player = {
@@ -2596,11 +2749,11 @@ test("open decklist match genesis verifies committed slot openings", async () =>
           ownershipProofHex: `open-ziffle-proof-${index}`,
         },
         deck: decks[index],
-        sideboard: [],
+        sideboard: sideboards[index],
         commanders: [],
         deckSlotOpenings: slotOpeningOverrides[index] || openings,
         deckCount: decks[index].length,
-        sideboardCount: 0,
+        sideboardCount: sideboards[index].length,
         commanderCount: 0,
       };
       player.playerGenesisSignature = await buildSignedPlayerGenesis({
@@ -2667,11 +2820,23 @@ test("open decklist match genesis verifies committed slot openings", async () =>
   const tamperedMatch = await buildMatch(await buildPlayers({ 0: [
     badOpening,
     await buildDeckSlotOpening({ manifest: manifests[0], slot: 1, card: "Mountain" }, webcrypto),
+    await buildDeckSlotOpening({ manifest: manifests[0], slot: 2, card: "Duress" }, webcrypto),
   ] }));
   await assert.rejects(
     () => verifySignedMatchGenesis(tamperedMatch, webcrypto),
     /does not match the declared card|does not match its commitment/,
   );
+
+  const validOpenings = (await buildPlayers())[0].deckSlotOpenings;
+  for (const [openings, error] of [
+    [validOpenings.slice(0, 2), /missing committed slot openings/],
+    [[...validOpenings.slice(0, 2), { ...validOpenings[2], card: "Counterspell" }], /does not match the declared card/],
+    [[...validOpenings.slice(0, 2), { ...validOpenings[2], salt: "wrong-sideboard-salt" }], /does not match its commitment/],
+    [[...validOpenings.slice(0, 2), validOpenings[1]], /duplicate slot/],
+  ]) {
+    const invalid = await buildMatch(await buildPlayers({ 0: openings }));
+    await assert.rejects(() => verifySignedMatchGenesis(invalid, webcrypto), error);
+  }
 });
 
 test("live audit transcript verifier rejects cross-match replayed actions", async () => {

@@ -57,6 +57,7 @@ const WORKER_METHODS = [
   "previewCustomCard",
   "previewCastTargets",
   "previewCryptoRequirements",
+  "previewCryptoRequirementsWithMaterial",
   "registrySize",
   "reset",
   "resetEmpty",

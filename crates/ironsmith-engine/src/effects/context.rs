@@ -281,6 +281,9 @@ pub struct ExecutionContext<'a> {
     pub decision_maker: &'a mut dyn DecisionMaker,
     /// Which optional costs were paid (kicker, buyback, etc.).
     pub optional_costs_paid: OptionalCostsPaid,
+    /// An accepted optional instruction is executing. Actions such as blight
+    /// must choose objects on which that optional action can be performed.
+    pub(crate) optional_action: bool,
     /// How the source spell was cast.
     pub casting_method: crate::alternative_cast::CastingMethod,
     /// Combat-linked player selections and context.
@@ -436,6 +439,7 @@ impl<'a> ExecutionContext<'a> {
             iteration: IterationContext::default(),
             decision_maker,
             optional_costs_paid: OptionalCostsPaid::default(),
+            optional_action: false,
             casting_method: crate::alternative_cast::CastingMethod::Normal,
             combat: CombatExecutionContext::default(),
             target_snapshots: HashMap::new(),
@@ -491,6 +495,7 @@ impl<'a> ExecutionContext<'a> {
             iteration: IterationContext::default(),
             decision_maker: dm,
             optional_costs_paid: OptionalCostsPaid::default(),
+            optional_action: false,
             casting_method: crate::alternative_cast::CastingMethod::Normal,
             combat: CombatExecutionContext::default(),
             target_snapshots: HashMap::new(),
@@ -536,6 +541,7 @@ impl<'a> ExecutionContext<'a> {
             iteration: self.iteration,
             decision_maker: dm,
             optional_costs_paid: self.optional_costs_paid,
+            optional_action: self.optional_action,
             casting_method: self.casting_method,
             combat: self.combat,
             target_snapshots: self.target_snapshots,

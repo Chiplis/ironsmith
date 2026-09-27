@@ -1,3 +1,5 @@
+import { actionRefObjectId, actionRefWithObjectId, hiddenObjectIdForHiddenRefFromCheckpoint } from "../../lib/sync-object-identity.js";
+export { actionRefObjectId, actionRefWithObjectId, hiddenObjectIdForHiddenRefFromCheckpoint };
 import { WebSocketPeer } from '../../lib/relay/websocket-peer.js';
 import { PUBLIC_FORMATS, isRelayId, relayBaseUrl } from '../../lib/relay/formats.js';
 import { readRelayOnlyPreference } from '../../lib/relay/session.js';
@@ -10,6 +12,9 @@ import Peer from "peerjs";
 import { NativeLanPeer } from "../../lib/lan/native-peer.js";
 import {
   auditStateHash,
+  ziffleOriginAnchorFromOpening,
+  ziffleOriginAnchorFromMetadata,
+  assertZiffleOpeningOriginMatchesMetadata,
   actionQuorumThreshold,
   assertResyncActionsExtendLocalTranscript,
   authorizeCryptoMaterialRequestRequirements,
@@ -108,7 +113,7 @@ import {
   normalizeMultiplayerSecurityMode,
 } from "@/lib/multiplayer-security";
 
-export { CURRENT_AUDIT_MAX_PLAYERS, CURRENT_AUDIT_MIN_PLAYERS, CURRENT_AUDIT_PROTOCOL_VERSION, DISCONNECT_AUTO_FORFEIT_MS, DISCONNECT_FORFEIT_REASON, MATCH_FORMAT_COMMANDER, MATCH_FORMAT_NORMAL, MATCH_FORMAT_PLANECHASE, MULTIPLAYER_SECURITY_TRUSTED, MULTIPLAYER_SECURITY_VERIFIED, PROTOCOL_RESPONSE_TIMEOUT_MS, PROTOCOL_RESPONSE_TIMEOUT_REASON, Peer, ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD, actionQuorumThreshold, assertResyncActionsExtendLocalTranscript, auditStateHash, authorizeCryptoMaterialRequestRequirements, buildActionForkDisputeEvidence, buildDeckSlotOpening, buildPrivateDeckManifest, buildSignedActionEnvelope, buildSignedActionQuorumVote, buildSignedDisconnectForfeitVote, buildSignedMatchGenesis, buildSignedPlayerGenesis, buildSignedProtocolResponseTimeoutVote, buildSignedResyncEnvelope, buildZiffleOpeningProof, canonicalJson, createAuditEncryptionKey, createAuditSessionKey, cryptoMaterialResponsibleSeat, decklistHashForCards, decryptPrivateAuditPayload, emitSyncFailureNotice, encryptPrivateAuditPayload, evaluateLobbyDeckSubmission, exportAuditEncryptionKeyPair, exportAuditEncryptionPublicKey, exportAuditKeyPair, exportAuditPublicKey, fairRandomCombinedSeedHex, importAuditEncryptionKeyPair, importAuditKeyPair, importAuditPublicKey, isCurrentAuditPlayerCount, isDecisionCommandCompatible, isDisadvantageousActivePlayerClockAdvance, isDisconnectForfeitReason, isProtocolResponseTimeoutForfeitReason, isSupportedZiffleDeckCount, isTrustedMultiplayerSecurityMode, isVerifiedMultiplayerSecurityMode, normalizeMatchFormat, normalizeMultiplayerSecurityMode, normalizeSelectObjectHiddenRef, normalizeZiffleCardPositions, parseCommanderList, parseDeckList, parseDeckPrintPreferences, parseSideboardList, pendingActionIntentHardTimeoutMs, preloadCardArt, protocolResponseTimeoutVoteThreshold, publicCheckpointHash, publicDeckManifest, randomAuditHex, rngCommitmentPayload, rngRevealPayload, saveDefaultLobbyDeck, selectObjectCandidateForId, selectObjectCandidateRevealPolicy, selectObjectSyncMetadataForCommand, setPreferredCardPrints, sha256Hex, signAuditPayload, useCallback, useEffect, useRef, useState, verifyActionQuorumCertificate, verifyActionQuorumVote, verifyAuditPayload, verifyCardOpeningAgainstManifest, verifyDisconnectForfeitCertificate, verifyDisconnectForfeitVote, verifyLiveAuditTranscript, verifyProtocolResponseTimeoutCertificate, verifyProtocolResponseTimeoutVote, verifySignedMatchGenesis, verifySignedResyncEnvelope, ziffleRevealTokenTimeoutMs };
+export { ziffleOriginAnchorFromOpening, ziffleOriginAnchorFromMetadata, assertZiffleOpeningOriginMatchesMetadata, CURRENT_AUDIT_MAX_PLAYERS, CURRENT_AUDIT_MIN_PLAYERS, CURRENT_AUDIT_PROTOCOL_VERSION, DISCONNECT_AUTO_FORFEIT_MS, DISCONNECT_FORFEIT_REASON, MATCH_FORMAT_COMMANDER, MATCH_FORMAT_NORMAL, MATCH_FORMAT_PLANECHASE, MULTIPLAYER_SECURITY_TRUSTED, MULTIPLAYER_SECURITY_VERIFIED, PROTOCOL_RESPONSE_TIMEOUT_MS, PROTOCOL_RESPONSE_TIMEOUT_REASON, Peer, ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD, actionQuorumThreshold, assertResyncActionsExtendLocalTranscript, auditStateHash, authorizeCryptoMaterialRequestRequirements, buildActionForkDisputeEvidence, buildDeckSlotOpening, buildPrivateDeckManifest, buildSignedActionEnvelope, buildSignedActionQuorumVote, buildSignedDisconnectForfeitVote, buildSignedMatchGenesis, buildSignedPlayerGenesis, buildSignedProtocolResponseTimeoutVote, buildSignedResyncEnvelope, buildZiffleOpeningProof, canonicalJson, createAuditEncryptionKey, createAuditSessionKey, cryptoMaterialResponsibleSeat, decklistHashForCards, decryptPrivateAuditPayload, emitSyncFailureNotice, encryptPrivateAuditPayload, evaluateLobbyDeckSubmission, exportAuditEncryptionKeyPair, exportAuditEncryptionPublicKey, exportAuditKeyPair, exportAuditPublicKey, fairRandomCombinedSeedHex, importAuditEncryptionKeyPair, importAuditKeyPair, importAuditPublicKey, isCurrentAuditPlayerCount, isDecisionCommandCompatible, isDisadvantageousActivePlayerClockAdvance, isDisconnectForfeitReason, isProtocolResponseTimeoutForfeitReason, isSupportedZiffleDeckCount, isTrustedMultiplayerSecurityMode, isVerifiedMultiplayerSecurityMode, normalizeMatchFormat, normalizeMultiplayerSecurityMode, normalizeSelectObjectHiddenRef, normalizeZiffleCardPositions, parseCommanderList, parseDeckList, parseDeckPrintPreferences, parseSideboardList, pendingActionIntentHardTimeoutMs, preloadCardArt, protocolResponseTimeoutVoteThreshold, publicCheckpointHash, publicDeckManifest, randomAuditHex, rngCommitmentPayload, rngRevealPayload, saveDefaultLobbyDeck, selectObjectCandidateForId, selectObjectCandidateRevealPolicy, selectObjectSyncMetadataForCommand, setPreferredCardPrints, sha256Hex, signAuditPayload, useCallback, useEffect, useRef, useState, verifyActionQuorumCertificate, verifyActionQuorumVote, verifyAuditPayload, verifyCardOpeningAgainstManifest, verifyDisconnectForfeitCertificate, verifyDisconnectForfeitVote, verifyLiveAuditTranscript, verifyProtocolResponseTimeoutCertificate, verifyProtocolResponseTimeoutVote, verifySignedMatchGenesis, verifySignedResyncEnvelope, ziffleRevealTokenTimeoutMs };
 
 
 export const PROTOCOL_VERSION = CURRENT_AUDIT_PROTOCOL_VERSION;
@@ -1703,61 +1708,7 @@ export function isFaceDownCastCommand(command) {
   return String(method?.kind || "") === "face_down";
 }
 
-export function actionRefObjectId(actionRef) {
-  if (!actionRef || typeof actionRef !== "object") return null;
-  switch (String(actionRef.kind || "")) {
-    case "play_land":
-      return actionRef.land_id;
-    case "cast_spell":
-      return actionRef.spell_id;
-    case "use_pregame_action":
-      return actionRef.card_id;
-    case "activate_ability":
-    case "activate_mana_ability":
-      return actionRef.source;
-    case "turn_face_up":
-      return actionRef.creature_id;
-    case "special_action": {
-      const action = actionRef.action || {};
-      return action.card_id ?? action.permanent_id ?? action.room_id;
-    }
-    default:
-      return null;
-  }
-}
 
-export function actionRefWithObjectId(actionRef, objectId) {
-  if (!actionRef || typeof actionRef !== "object") return actionRef;
-  const next = cloneMultiplayerPayload(actionRef);
-  switch (String(next.kind || "")) {
-    case "play_land":
-      next.land_id = Number(objectId);
-      break;
-    case "cast_spell":
-      next.spell_id = Number(objectId);
-      break;
-    case "use_pregame_action":
-      next.card_id = Number(objectId);
-      break;
-    case "activate_ability":
-    case "activate_mana_ability":
-      next.source = Number(objectId);
-      break;
-    case "turn_face_up":
-      next.creature_id = Number(objectId);
-      break;
-    case "special_action":
-      if (next.action?.card_id != null) {
-        next.action.card_id = Number(objectId);
-      } else if (next.action?.permanent_id != null) {
-        next.action.permanent_id = Number(objectId);
-      } else if (next.action?.room_id != null) {
-        next.action.room_id = Number(objectId);
-      }
-      break;
-  }
-  return next;
-}
 
 export function hiddenOpeningMatchesExport(opening, exported) {
   if (!opening || !exported) return false;
@@ -1797,6 +1748,8 @@ export function hiddenCardMetadataForObjectFromCheckpoint(checkpoint, objectId) 
     commitment: String(hidden.commitment || ""),
     publicSlot: hidden.publicSlot ?? hidden.public_slot ?? null,
     publicCommitment: String(hidden.publicCommitment || hidden.public_commitment || ""),
+    originSlot: hidden.originSlot ?? hidden.origin_slot ?? null,
+    originCommitment: String(hidden.originCommitment || hidden.origin_commitment || ""),
   };
 }
 
@@ -1917,40 +1870,6 @@ export function hiddenObjectIdForOpeningFromCheckpoint(checkpoint, opening) {
   return null;
 }
 
-export function hiddenObjectIdForHiddenRefFromCheckpoint(checkpoint, hiddenRef) {
-  const ref = normalizeSelectObjectHiddenRef(hiddenRef);
-  if (!ref) return null;
-  const matches = [];
-  for (const object of checkpoint?.objects || []) {
-    const hidden = object?.hiddenCard || object?.hidden_card || null;
-    const owner = hidden?.owner ?? object?.owner;
-    if (ref.owner != null && Number(owner) !== Number(ref.owner)) continue;
-    if (ref.zone && String(object?.zone || "") !== String(ref.zone)) continue;
-    const hiddenSlot = hidden?.slot == null ? null : Number(hidden.slot);
-    const hiddenCommitment = String(hidden?.commitment || "");
-    const publicSlot = hidden?.publicSlot ?? hidden?.public_slot ?? null;
-    const publicCommitment = String(hidden?.publicCommitment || hidden?.public_commitment || "");
-    if (ref.slot != null && hiddenSlot !== Number(ref.slot)) continue;
-    if (ref.public_slot != null && Number(publicSlot) !== Number(ref.public_slot)) continue;
-    if (
-      ref.commitment
-      && hiddenCommitment !== String(ref.commitment)
-      && publicCommitment !== String(ref.commitment)
-    ) {
-      continue;
-    }
-    if (
-      ref.public_commitment
-      && hiddenCommitment !== String(ref.public_commitment)
-      && publicCommitment !== String(ref.public_commitment)
-    ) {
-      continue;
-    }
-    const objectId = Number(object?.id);
-    if (Number.isSafeInteger(objectId) && objectId > 0) matches.push(objectId);
-  }
-  return matches.length === 1 ? matches[0] : null;
-}
 
 export function checkpointObjectForId(checkpoint, objectId) {
   const normalized = Number(objectId);
@@ -3229,7 +3148,7 @@ export function playerCryptoSeatBindingReady(player) {
     && deck.length === Number(manifest.deckCount || 0)
     && sideboard.length === Number(manifest.sideboardCount || 0)
     && commanders.length === Number(manifest.commanderCount || 0)
-    && deckSlotOpenings.length === deck.length
+    && deckSlotOpenings.length === deck.length + sideboard.length
     && zifflePlayer === index
     && signer === index
     && Boolean(player.auditPublicKey)

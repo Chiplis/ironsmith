@@ -1757,6 +1757,14 @@ fn grant_applies_to_card(
     ctx: &crate::filter::FilterContext,
     game: &GameState,
 ) -> bool {
+    if grant
+        .required_face_name
+        .as_ref()
+        .is_some_and(|face| card.name.as_str() != face)
+    {
+        return false;
+    }
+
     if let Some(target_id) = grant.target_id {
         let identity_matches = target_id == card_id
             || grant
@@ -1781,6 +1789,14 @@ fn grant_applies_to_card_non_recursive(
     ctx: &crate::filter::FilterContext,
     game: &GameState,
 ) -> bool {
+    if grant
+        .required_face_name
+        .as_ref()
+        .is_some_and(|face| card.name.as_str() != face)
+    {
+        return false;
+    }
+
     if let Some(target_id) = grant.target_id {
         let identity_matches = target_id == card_id
             || grant

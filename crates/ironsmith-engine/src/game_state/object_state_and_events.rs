@@ -705,7 +705,7 @@ impl GameState {
     /// CR 730.2g prohibits turning up a face-down merged permanent that
     /// contains an instant or sorcery card.
     pub fn can_turn_face_up_permanent(&self, id: ObjectId) -> bool {
-        if !self.is_face_down(id) {
+        if !self.is_face_down(id) || self.is_phased_out(id) {
             return false;
         }
         !self
@@ -769,7 +769,7 @@ impl GameState {
         {
             return false;
         }
-        if !self.is_face_down(id) {
+        if !self.is_face_down(id) || self.is_phased_out(id) {
             return false;
         }
         if self.merged_permanent_blocks_turn_face_up(id) {
@@ -860,7 +860,8 @@ impl GameState {
     }
 
     fn transform_permanent_with_current_restrictions(&mut self, id: ObjectId) -> bool {
-        if !self.can_transform(id) {
+        // CR 712.15a / 702.26b apply equally to transform and convert.
+        if self.is_face_down(id) || self.is_phased_out(id) || !self.can_transform(id) {
             return false;
         }
         let merged_stable_id = self.object(id).and_then(|object| {
@@ -940,16 +941,17 @@ impl GameState {
         true
     }
 
-    fn object_has_daybound_keyword(object: &Object) -> bool {
-        object.has_static_ability_id(crate::static_abilities::StaticAbilityId::Daybound)
-    }
-
-    fn object_has_nightbound_keyword(object: &Object) -> bool {
-        object.has_static_ability_id(crate::static_abilities::StaticAbilityId::Nightbound)
-    }
-
-    fn object_has_day_or_nightbound_keyword(object: &Object) -> bool {
-        Self::object_has_daybound_keyword(object) || Self::object_has_nightbound_keyword(object)
+    fn permanent_has_day_night_keyword(
+        &self,
+        id: ObjectId,
+        ability_id: crate::static_abilities::StaticAbilityId,
+    ) -> bool {
+        !self.is_phased_out(id)
+            && !self.is_face_down(id)
+            && self
+                .object(id)
+                .is_some_and(|object| object.zone == Zone::Battlefield)
+            && self.current_has_static_ability_id(id, ability_id)
     }
 
     fn permanent_has_transforming_component(&self, id: ObjectId) -> bool {
@@ -975,9 +977,6 @@ impl GameState {
 
     /// Apply day/nightbound transformations for the current day/night designation.
     pub fn apply_day_nightbound_transformations(&mut self) {
-        if !self.has_day_night {
-            return;
-        }
         self.refresh_continuous_state();
         self.apply_day_nightbound_transformations_with_current_restrictions();
     }
@@ -985,17 +984,30 @@ impl GameState {
     pub(super) fn apply_day_nightbound_transformations_with_current_restrictions(
         &mut self,
     ) -> bool {
-        if !self.has_day_night {
-            return false;
-        }
+        use crate::static_abilities::StaticAbilityId::{Daybound, Nightbound};
         let ids = self.battlefield.clone();
+        let mut designation_changed = false;
+        if !self.has_day_night {
+            // CR 702.145d/g apply immediately, including when an ability is
+            // gained or a permanent phases in, not only upon entry.
+            let daybound = ids
+                .iter()
+                .any(|&id| self.permanent_has_day_night_keyword(id, Daybound));
+            let nightbound = ids
+                .iter()
+                .any(|&id| self.permanent_has_day_night_keyword(id, Nightbound));
+            if !daybound && !nightbound {
+                return false;
+            }
+            designation_changed = self.set_day_night_designation(daybound);
+        }
         let mut transformed = false;
         for id in ids {
             let should_transform = self.object(id).is_some_and(|object| {
                 object.zone == Zone::Battlefield
                     && self.permanent_has_transforming_component(id)
-                    && ((self.is_night && Self::object_has_daybound_keyword(object))
-                        || (!self.is_night && Self::object_has_nightbound_keyword(object)))
+                    && ((self.is_night && self.permanent_has_day_night_keyword(id, Daybound))
+                        || (!self.is_night && self.permanent_has_day_night_keyword(id, Nightbound)))
             });
             if should_transform && self.transform_permanent_with_current_restrictions(id) {
                 transformed = true;
@@ -1014,7 +1026,7 @@ impl GameState {
                 self.turn_store.pending_day_night_as_transforms.push(id);
             }
         }
-        transformed
+        transformed || designation_changed
     }
 
     /// Run "As this transforms" programs (CR 712.20) for permanents that
@@ -1050,8 +1062,14 @@ impl GameState {
             (object.zone == Zone::Battlefield).then(|| {
                 (
                     Self::object_starts_daytime_if_unset_as_enters(object),
-                    Self::object_has_daybound_keyword(object),
-                    Self::object_has_nightbound_keyword(object),
+                    self.permanent_has_day_night_keyword(
+                        id,
+                        crate::static_abilities::StaticAbilityId::Daybound,
+                    ),
+                    self.permanent_has_day_night_keyword(
+                        id,
+                        crate::static_abilities::StaticAbilityId::Nightbound,
+                    ),
                 )
             })
         }) else {
@@ -1067,8 +1085,10 @@ impl GameState {
                 // CR 702.145g: a nightbound permanent makes it night, unless
                 // a daybound permanent is on the battlefield (702.145d).
                 let daybound_on_battlefield = self.battlefield.iter().any(|&other| {
-                    self.object(other)
-                        .is_some_and(|object| Self::object_has_daybound_keyword(object))
+                    self.permanent_has_day_night_keyword(
+                        other,
+                        crate::static_abilities::StaticAbilityId::Daybound,
+                    )
                 });
                 self.set_daytime(daybound_on_battlefield);
             }
@@ -1092,7 +1112,10 @@ impl GameState {
         };
         if target.zone != Zone::Battlefield
             || target.linked_face_layout != LinkedFaceLayout::TransformLike
-            || !Self::object_has_daybound_keyword(target)
+            || !self.permanent_has_day_night_keyword(
+                id,
+                crate::static_abilities::StaticAbilityId::Daybound,
+            )
             || self
                 .commander_tracking
                 .merged_permanents
@@ -1122,17 +1145,22 @@ impl GameState {
         true
     }
 
-    /// Set the global day/night designation and transform daybound/nightbound permanents.
-    pub fn set_daytime(&mut self, daytime: bool) {
+    /// Change the designation without recursively refreshing characteristics.
+    fn set_day_night_designation(&mut self, daytime: bool) -> bool {
         let night = !daytime;
         let had_day_night = self.has_day_night;
         let changed = self.is_night != night;
+        if had_day_night && !changed {
+            return false;
+        }
         self.has_day_night = true;
         self.is_night = night;
-        if !had_day_night || changed {
-            self.apply_day_nightbound_transformations();
-        }
-        if had_day_night && changed {
+        // Day/night can affect continuous characteristics even when no
+        // daybound permanent needs to transform.
+        self.mark_continuous_state_dirty();
+        // CR 731.1a: starting a designation is not "day becomes night" or
+        // "night becomes day", the transition represented by this event.
+        if had_day_night {
             self.record_ui_effect_event(
                 "day_night",
                 None,
@@ -1149,6 +1177,14 @@ impl GameState {
                 provenance,
             );
             self.queue_trigger_event(provenance, event);
+        }
+        true
+    }
+
+    /// Set the global day/night designation and transform daybound/nightbound permanents.
+    pub fn set_daytime(&mut self, daytime: bool) {
+        if self.set_day_night_designation(daytime) {
+            self.apply_day_nightbound_transformations();
         }
     }
 

@@ -2304,6 +2304,12 @@ pub(super) fn waterbend_generic_from_branches(branches: &[crate::cost::TotalCost
         };
         costs.iter().find_map(|cost| {
             let effect = &cost.downcast_ref::<crate::costs::CostEffect>()?.effect;
+            if let Some(completion) =
+                effect.downcast_ref::<crate::effects::EmitKeywordActionEffect>()
+                && completion.action == crate::events::KeywordActionKind::Waterbend
+            {
+                return Some(completion.amount);
+            }
             let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
             choose
                 .tag

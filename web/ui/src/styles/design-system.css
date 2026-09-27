@@ -4122,6 +4122,97 @@ button:disabled,
   box-shadow: none !important;
 }
 
+/* Named pregame abilities use the same decision surface in blue. */
+.action-strip-command-region--pregame {
+  --decision-main-accent: #71b7ef;
+  --decision-main-rgb: 113, 183, 239;
+  --decision-edge-text: #d4eaff;
+  --decision-edge-text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.9),
+    0 0 8px rgba(113, 183, 239, 0.22);
+}
+
+:is(.topbar-main-decision-host, .priority-inline-panel)
+.action-strip-command-region--pregame:has(.decision-main-button:not(:disabled):not([aria-disabled="true"])) {
+  border: 1px solid rgba(113, 183, 239, 0.55) !important;
+  background:
+    linear-gradient(180deg, rgba(19, 30, 40, 0.995), rgba(7, 11, 14, 0.995)) !important;
+  box-shadow:
+    inset 3px 0 0 rgba(113, 183, 239, 0.9),
+    inset 0 1px 0 rgba(232, 245, 255, 0.07),
+    0 2px 7px rgba(0, 0, 0, 0.42) !important;
+}
+
+:is(.topbar-main-decision-host, .priority-inline-panel)
+.action-strip-command-region--pregame:has(.decision-main-button:not(:disabled):not([aria-disabled="true"]):hover) {
+  border-color: rgba(140, 201, 255, 0.8) !important;
+  background:
+    linear-gradient(180deg, rgba(23, 41, 56, 0.995), rgba(8, 14, 20, 0.995)) !important;
+  box-shadow:
+    inset 3px 0 0 rgba(140, 201, 255, 1),
+    inset 0 1px 0 rgba(236, 247, 255, 0.1),
+    0 3px 9px rgba(0, 0, 0, 0.5) !important;
+}
+
+.action-strip-command-region--pregame .decision-main-button:not(:disabled):not([aria-disabled="true"]),
+.action-strip-command-region--pregame .decision-main-button:not(:disabled):not([aria-disabled="true"]):hover {
+  background: transparent !important;
+}
+
+.action-strip-command-region--pregame .action-strip-main-title-text,
+.topbar-main-decision-host .action-strip-command-region--pregame .action-strip-main-title-text {
+  color: #abd8ff !important;
+  -webkit-text-fill-color: #abd8ff !important;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.9),
+    0 0 8px rgba(113, 183, 239, 0.28) !important;
+}
+
+:is(.topbar-main-decision-host, .priority-inline-panel)
+.action-strip-command-region--pregame
+.action-strip-main-region:has(.decision-main-button:not(:disabled):not([aria-disabled="true"]):hover)
+.action-strip-main-title-text {
+  color: #ddf0ff !important;
+  -webkit-text-fill-color: #ddf0ff !important;
+  text-shadow:
+    0 0 4px #90caff,
+    0 0 12px rgba(113, 183, 239, 0.85),
+    0 0 26px rgba(113, 183, 239, 0.6) !important;
+}
+
+/* Standalone (floating strip) variant of the same control. */
+.action-strip-pregame-button:not(:disabled):not([aria-disabled="true"]),
+.action-strip-pregame-button:not(:disabled):not([aria-disabled="true"]):hover {
+  border: 1px solid rgba(113, 183, 239, 0.55) !important;
+  color: #abd8ff !important;
+  -webkit-text-fill-color: #abd8ff !important;
+  background:
+    linear-gradient(180deg, rgba(19, 30, 40, 0.995), rgba(7, 11, 14, 0.995)) !important;
+  box-shadow: inset 3px 0 0 rgba(113, 183, 239, 0.9) !important;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9) !important;
+}
+
+.action-strip-pregame-button:not(:disabled):not([aria-disabled="true"]):hover {
+  border-color: rgba(140, 201, 255, 0.8) !important;
+  color: #ddf0ff !important;
+  -webkit-text-fill-color: #ddf0ff !important;
+}
+
+.action-strip-command-region--pregame .action-strip-pregame-button:not(:disabled):not([aria-disabled="true"]) {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.mobile-pregame-actions {
+  display: flex;
+  gap: 8px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.mobile-pregame-actions .action-strip-pregame-button {
+  flex-shrink: 0;
+}
+
 /* A main-region label with no control stack beside it sits dead centre. */
 .action-strip-main-region .action-strip-main-text-stack--centered,
 .topbar-main-decision-host .action-strip-main-region .action-strip-main-text-stack--centered {

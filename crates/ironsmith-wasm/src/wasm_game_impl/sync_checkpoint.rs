@@ -220,6 +220,10 @@ struct SyncHiddenCard {
     slot: u16,
     commitment: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    origin_slot: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    origin_commitment: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     public_slot: Option<u16>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     public_commitment: Option<String>,
@@ -686,6 +690,10 @@ struct SyncHiddenLibraryAnchor {
     slot: u16,
     commitment: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    origin_slot: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    origin_commitment: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     public_slot: Option<u16>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     public_commitment: Option<String>,
@@ -729,6 +737,8 @@ fn sync_hidden_card(info: &HiddenCardInfo) -> SyncHiddenCard {
         owner: info.owner.0,
         slot: info.slot,
         commitment: info.commitment.clone(),
+        origin_slot: info.origin_slot,
+        origin_commitment: info.origin_commitment.clone(),
         public_slot: info.public_slot,
         public_commitment: info.public_commitment.clone(),
     }
@@ -2103,6 +2113,8 @@ impl WasmGame {
                 "owner": info.owner.0,
                 "slot": public_slot,
                 "commitment": public_commitment,
+                "originSlot": info.origin_slot,
+                "originCommitment": info.origin_commitment,
             });
         }
 
@@ -2188,6 +2200,11 @@ impl WasmGame {
         ids.extend(self.game.command_zone.iter().copied());
         ids.extend(self.game.ante.iter().copied());
         ids.extend(self.game.stack.iter().map(|entry| entry.object_id));
+        // Proposed spells have changed zones but join game.stack only once
+        // costs are paid. Keep their trusted identity available while casting.
+        if let Some(pending) = &self.priority_state.pending_cast {
+            ids.push(pending.stack_id);
+        }
         ids.sort_unstable();
         ids.dedup();
         ids
@@ -2297,6 +2314,8 @@ impl WasmGame {
                         owner: info.owner.0,
                         slot: info.slot,
                         commitment: info.commitment.clone(),
+                        origin_slot: info.origin_slot,
+                        origin_commitment: info.origin_commitment.clone(),
                         public_slot: info.public_slot,
                         public_commitment: info.public_commitment.clone(),
                     }),
@@ -2657,6 +2676,8 @@ impl WasmGame {
                     object_id: anchor.object_id.0,
                     slot: anchor.slot,
                     commitment: anchor.commitment.clone(),
+                    origin_slot: anchor.origin_slot,
+                    origin_commitment: anchor.origin_commitment.clone(),
                     public_slot: anchor.public_slot,
                     public_commitment: anchor.public_commitment.clone(),
                     known_name: anchor.known_name.clone(),
@@ -2763,6 +2784,8 @@ impl WasmGame {
                     object_id: ObjectId::from_raw(anchor.object_id),
                     slot: anchor.slot,
                     commitment: anchor.commitment.clone(),
+                    origin_slot: anchor.origin_slot,
+                    origin_commitment: anchor.origin_commitment.clone(),
                     public_slot: anchor.public_slot,
                     public_commitment: anchor.public_commitment.clone(),
                     known_name: anchor.known_name.clone(),
@@ -2827,6 +2850,8 @@ impl WasmGame {
                 zone,
                 slot: departed.hidden.slot,
                 commitment: departed.hidden.commitment.clone(),
+                origin_slot: departed.hidden.origin_slot,
+                origin_commitment: departed.hidden.origin_commitment.clone(),
                 public_slot: departed.hidden.public_slot,
                 public_commitment: departed.hidden.public_commitment.clone(),
             },
@@ -3337,6 +3362,8 @@ impl WasmGame {
             owner: info.owner.0,
             slot: info.slot,
             commitment: info.commitment.clone(),
+            origin_slot: info.origin_slot,
+            origin_commitment: info.origin_commitment.clone(),
             public_slot: info.public_slot,
             public_commitment: info.public_commitment.clone(),
         });
@@ -3545,6 +3572,8 @@ impl WasmGame {
                         zone: restored_zone,
                         slot: hidden.slot,
                         commitment: hidden.commitment.clone(),
+                        origin_slot: hidden.origin_slot,
+                        origin_commitment: hidden.origin_commitment.clone(),
                         public_slot: hidden.public_slot,
                         public_commitment: hidden.public_commitment.clone(),
                     },
@@ -4330,6 +4359,8 @@ mod sync_checkpoint_tests {
                 zone: Zone::Hand,
                 slot: 42,
                 commitment: "deck-slot-42".to_string(),
+                origin_slot: None,
+                origin_commitment: None,
                 public_slot: Some(3),
                 public_commitment: Some("ziffle:deck-hash:3".to_string()),
             },
@@ -4404,6 +4435,105 @@ mod sync_checkpoint_tests {
             renamed, original,
             "root should commit to known object identity when no hidden metadata is present"
         );
+    }
+
+    #[test]
+    fn sync_checkpoint_includes_proposed_spell_origin_before_cast_costs_are_paid() {
+        use ironsmith::alternative_cast::CastingMethod;
+        use ironsmith::cost::OptionalCostsPaid;
+        use ironsmith::game_loop::PendingCast;
+        use ironsmith::provenance::ProvNodeId;
+
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = WasmGame::new();
+        game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        let owner = PlayerId::from_index(0);
+        let hand_id = game.game.create_hidden_card_placeholder(
+            owner, Zone::Hand, 50, "ziffle:initial:50".to_string(),
+        );
+        let mut info = game.game.hidden_card_info(hand_id).unwrap().clone();
+        info.slot = 22;
+        info.commitment = "private-original-slot-22".to_string();
+        info.public_slot = Some(60);
+        info.public_commitment = Some("ziffle:mulligan:60".to_string());
+        game.game.set_hidden_card_info(hand_id, info);
+        game.ensure_card_definitions_loaded(["Goblin Guide"]);
+        let definition = game.find_card_definition("Goblin Guide").unwrap().clone();
+        game.game.reveal_hidden_card_with_definition(hand_id, &definition).unwrap();
+        let stack_id = game.game.move_object_by_game_rule(hand_id, Zone::Stack).unwrap();
+        assert!(game.game.stack.is_empty(), "a proposed spell is not yet a completed stack entry");
+        game.priority_state.pending_cast = Some(PendingCast::new(
+            hand_id, Zone::Hand, owner, ProvNodeId::default(), CastStage::PayingMana,
+            None, Vec::new(), CastingMethod::Normal, OptionalCostsPaid::new(0), None, stack_id,
+        ));
+
+        let checkpoint = game.build_sync_checkpoint();
+        let proposed = checkpoint.objects.iter().find(|object| object.id == stack_id.0)
+            .expect("pending cast must remain in the checkpoint");
+        assert_eq!(proposed.name, "Goblin Guide");
+        let hidden = proposed.hidden_card.as_ref().unwrap();
+        assert_eq!(hidden.origin_slot, Some(50));
+        assert_eq!(hidden.origin_commitment.as_deref(), Some("ziffle:initial:50"));
+        assert_eq!(hidden.public_slot, Some(60));
+        assert!(!checkpoint.objects.iter().any(|object| object.id == hand_id.0));
+        assert_eq!(game.sync_checkpoint_object_ids().iter().filter(|id| **id == stack_id).count(), 1);
+    }
+
+    #[test]
+    fn hidden_card_origin_survives_hydration_zone_changes_reseal_and_checkpoint() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = WasmGame::new();
+        game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        let owner = PlayerId::from_index(1);
+        let library_id = game.game.create_hidden_card_placeholder(
+            owner, Zone::Library, 51, "ziffle:initial:51".to_string(),
+        );
+        let stable_id = game.game.object(library_id).unwrap().stable_id;
+        let mut hydrated = game.game.hidden_card_info(library_id).unwrap().clone();
+        hydrated.slot = 4;
+        hydrated.commitment = "private-original-slot-4".to_string();
+        hydrated.public_slot = Some(2);
+        hydrated.public_commitment = Some("ziffle:later:2".to_string());
+        hydrated.origin_slot = Some(999);
+        hydrated.origin_commitment = Some("attempted-overwrite".to_string());
+        game.game.set_hidden_card_info(library_id, hydrated);
+        game.ensure_card_definitions_loaded(["Mountain"]);
+        let definition = game.find_card_definition("Mountain").unwrap().clone();
+        game.game.reveal_hidden_card_with_definition(library_id, &definition).unwrap();
+        let hand_id = game.game.draw_cards(owner, 1)[0];
+        let field_id = game.game.move_object_by_game_rule(hand_id, Zone::Battlefield).unwrap();
+        assert_ne!(field_id, hand_id);
+        assert!(game.game.object(hand_id).is_none());
+        assert_eq!(game.game.object(field_id).unwrap().stable_id, stable_id);
+        let exported = game.hidden_card_opening_export(field_id).unwrap();
+        assert_eq!(exported.slot, 4);
+        assert_eq!(exported.origin_slot, Some(51));
+        assert_eq!(exported.origin_commitment.as_deref(), Some("ziffle:initial:51"));
+        let library_id = game.game.move_object_by_game_rule(field_id, Zone::Library).unwrap();
+        game.reseal_verified_hidden_library_shuffle(ApplyHiddenLibraryShuffleInput {
+            owner: 1, deck_hash: "newest".to_string(), after_order: vec![library_id.0], enforce_library_order: None,
+        }).unwrap();
+        let redacted = game.build_redacted_sync_checkpoint(PlayerId::from_index(0)).unwrap();
+        let hidden = redacted.objects.iter().find(|object| object.id == library_id.0).unwrap().hidden_card.as_ref().unwrap();
+        assert_eq!(hidden.public_slot, Some(0));
+        assert_eq!(hidden.origin_slot, Some(51));
+        assert_eq!(hidden.origin_commitment.as_deref(), Some("ziffle:initial:51"));
+        let checkpoint = game.build_sync_checkpoint();
+        let mut restored = WasmGame::new();
+        restored.apply_sync_checkpoint(checkpoint).unwrap();
+        let info = restored.game.hidden_card_info(library_id).unwrap();
+        assert_eq!(info.origin_slot, Some(51));
+        assert_eq!(info.origin_commitment.as_deref(), Some("ziffle:initial:51"));
+        assert_eq!(info.public_commitment.as_deref(), Some("ziffle:newest:0"));
+        let requirement = CryptoRequirementView::hidden_open("public_open", &HiddenAuditCard {
+            object_id: library_id, owner, zone: Zone::Library, slot: info.slot, commitment: info.commitment.clone(),
+            origin_slot: info.origin_slot, origin_commitment: info.origin_commitment.clone(),
+            public_slot: info.public_slot, public_commitment: info.public_commitment.clone(),
+            card: None, face_down: false, foretold: false,
+        }, None, "public", "origin regression");
+        let value = serde_json::to_value(requirement).unwrap();
+        assert_eq!(value["originSlot"], 51);
+        assert_eq!(value["originCommitment"], "ziffle:initial:51");
     }
 
     #[test]
@@ -5127,6 +5257,8 @@ mod sync_checkpoint_tests {
                 zone: Zone::Hand,
                 slot: 0,
                 commitment: "bob-hand-0".to_string(),
+                origin_slot: None,
+                origin_commitment: None,
                 public_slot: None,
                 public_commitment: None,
             },

@@ -4,9 +4,14 @@ import {
   publicDeckManifest,
   verifyAuditPayload,
   verifyCardOpeningAgainstManifest,
+  ziffleOriginAnchorFromOpening,
+  ziffleOriginAnchorFromMetadata,
+  assertZiffleOpeningOriginMatchesMetadata,
 } from "./multiplayer-audit.js";
 import { resolveSyncedCommand } from "./sync-commands.js";
+import { actionRefObjectId, actionRefWithObjectId, hiddenObjectIdForHiddenRefFromCheckpoint } from "./sync-object-identity.js";
 import { captureEngineRestorePoint, restoreEngineRestorePoint } from "./engine-restore-point.js";
+import { findZiffleDisclosureOrigin, ziffleDisclosureDueForPlayer } from "./ziffle-disclosure-origin.js";
 
 const DEFAULT_OPENING_HAND_SIZE = 7;
 
@@ -207,6 +212,37 @@ async function revealOpeningWithGame(game, opening) {
   const commitment = opening.commitment ? String(opening.commitment) : undefined;
   const position = opening.position ?? opening.publicPosition;
   const positionCommitment = opening.positionCommitment || opening.position_commitment;
+  const exportCheckpoint = optionalGameMethod(game, "exportSyncCheckpoint");
+  const checkpoint = exportCheckpoint ? await exportCheckpoint() : null;
+  const ownerMetadata = (checkpoint?.objects || [])
+    .map(object => object.hiddenCard || object.hidden_card)
+    .filter(hidden => hidden && Number(hidden.owner) === owner);
+  if (ownerMetadata.some(hidden => ziffleOriginAnchorFromMetadata(hidden))
+    && !positionCommitment?.startsWith("ziffle:")) {
+    // A sender cannot opt out of identity verification by omitting its
+    // position fields. Only an exact unshuffled commitment (e.g. sideboard)
+    // may use the ordinary slot-opening path in a Ziffle deck.
+    const unshuffled = ownerMetadata.filter(hidden => !ziffleOriginAnchorFromMetadata(hidden)
+      && commitment && hidden.commitment === commitment && Number(hidden.slot) === slot);
+    if (unshuffled.length !== 1) throw new Error("Replay Ziffle opening is missing its current position and origin");
+  }
+
+  // The proof establishes the original committed identity. Independently bind
+  // it to the replay engine's current position before revealing any card.
+  if (positionCommitment?.startsWith("ziffle:") || ziffleOriginAnchorFromOpening(opening)) {
+    if (!checkpoint) throw new Error("Game engine cannot bind replay opening identity");
+    const matches = (checkpoint?.objects || []).filter(object => {
+      const hidden = object.hiddenCard || object.hidden_card;
+      return hidden && Number(hidden.owner) === owner
+        && Number(hidden.publicSlot ?? hidden.public_slot ?? hidden.slot) === Number(position)
+        && String(hidden.publicCommitment || hidden.public_commitment || hidden.commitment || "") === String(positionCommitment);
+    });
+    if (matches.length !== 1) throw new Error("Replay opening does not identify one current committed card");
+    const hidden = matches[0].hiddenCard || matches[0].hidden_card;
+    if (ziffleOriginAnchorFromMetadata(hidden) || ziffleOriginAnchorFromOpening(opening)) {
+      assertZiffleOpeningOriginMatchesMetadata(opening, hidden);
+    }
+  }
 
   const revealPosition = optionalGameMethod(game, "revealHiddenPosition");
   if (position != null && revealPosition) {
@@ -374,6 +410,36 @@ async function dispatchReplayCommand(game, command) {
   return dispatch(command);
 }
 
+async function localReplayCommand(game, command) {
+  const hasPriorityIdentity = command?.type === "priority_action"
+    && actionRefObjectId(command.action_ref) != null
+    && (command.object_stable_id != null || command.object_hidden_ref);
+  const hasSelectionIdentity = command?.type === "select_objects"
+    && (command.object_stable_ids?.some(value => value != null) || command.object_hidden_refs?.some(Boolean));
+  if (!hasPriorityIdentity && !hasSelectionIdentity) return command;
+  const checkpoint = await requiredGameMethod(game, "exportSyncCheckpoint")();
+  const resolve = (originalId, stableId, hiddenRef) => {
+    if (stableId != null) {
+      const matches = (checkpoint?.objects || []).filter(object =>
+        Number(object.stableId ?? object.stable_id) === Number(stableId));
+      if (matches.length !== 1) throw new Error("Replay command has no unique current stable card identity");
+      return Number(matches[0].id);
+    }
+    if (hiddenRef) {
+      const id = hiddenObjectIdForHiddenRefFromCheckpoint(checkpoint, hiddenRef);
+      if (id == null) throw new Error("Replay command has no unique current hidden card identity");
+      return id;
+    }
+    return originalId;
+  };
+  if (hasPriorityIdentity) {
+    const id = resolve(actionRefObjectId(command.action_ref), command.object_stable_id, command.object_hidden_ref);
+    return { ...command, object_id: id, action_ref: actionRefWithObjectId(command.action_ref, id) };
+  }
+  return { ...command, object_ids: command.object_ids.map((id, index) =>
+    resolve(id, command.object_stable_ids?.[index], command.object_hidden_refs?.[index])) };
+}
+
 async function currentPublicCheckpointHash(game, cryptoImpl) {
   const exportPublicAuditCheckpoint = requiredGameMethod(game, "exportPublicAuditCheckpoint");
   return publicCheckpointHash(await exportPublicAuditCheckpoint(), cryptoImpl);
@@ -423,10 +489,16 @@ export async function applyAuditReplayActionWithGame({
 } = {}) {
   const seq = actionSeq(action, Number(actionIndex) + 1);
   const audit = action?.audit || {};
-  const command = resolveSyncedCommand(action?.command || audit.command);
-  const requirements = await previewCryptoRequirements(game, command);
-  await injectTranscriptSeeds(game, requirements, audit);
+  let command = resolveSyncedCommand(action?.command || audit.command);
+  // Public replay starts with concealed hands. Reveal authenticated pre-action
+  // cards before asking the engine whether a land or spell can be played.
   await revealAuditOpenings(game, audit.openings || [], "pre");
+  command = await localReplayCommand(game, command);
+  let requirements = await previewCryptoRequirements(game, command);
+  await injectTranscriptSeeds(game, requirements, audit);
+  if (audit.shuffleProofs?.length || audit.rngReveals?.length) {
+    requirements = await previewCryptoRequirements(game, command);
+  }
   await dispatchReplayCommand(game, command);
   // Same order as the live actor and peers: reseal verified shuffles first, then
   // reveal post openings against the post-shuffle ceremony.
@@ -491,9 +563,9 @@ async function replayVerdictForDisclosure(game, match, entry, cryptoImpl, transc
   if (!validSignature) {
     return { status: "cheat_detected", reason: "End-of-match disclosure signature is invalid" };
   }
-  // Deck-manifest commitments. Ziffle position proofs are not re-verified
-  // here (the replay reveals every opening by its position, as it does for
-  // the openings of replayed actions).
+  // The transcript verifier checks cryptographic opening proofs. Replay also
+  // binds their claimed genesis origins to its independently derived final
+  // obligations, including cards removed when a player leaves the game.
   const manifest = transcriptDeckManifestForSeat(match, player);
   if (manifest) {
     for (const opening of payload.openings) {
@@ -510,6 +582,28 @@ async function replayVerdictForDisclosure(game, match, entry, cryptoImpl, transc
           reason: `Card opening for player ${player + 1}, slot ${Number(opening.slot)} `
             + "does not match its deck commitment",
         };
+      }
+    }
+  }
+  const requirementsForPlayer = optionalGameMethod(game, "endOfMatchDisclosureRequirements");
+  const state = await optionalGameMethod(game, "uiState")?.();
+  const requirements = requirementsForPlayer ? await requirementsForPlayer(player) : [];
+  const hasZiffleRequirements = requirements.some(requirement =>
+    ziffleOriginAnchorFromMetadata(requirement));
+  for (const opening of payload.openings) {
+    if (Number(opening?.owner) !== player) {
+      return { status: "cheat_detected", reason: "Disclosure opening belongs to another player" };
+    }
+    const hasZifflePosition = String(opening.positionCommitment || "").startsWith("ziffle:");
+    if (hasZifflePosition || ziffleOriginAnchorFromOpening(opening)) {
+      const origin = findZiffleDisclosureOrigin({ opening, state, requirements });
+      assertZiffleOpeningOriginMatchesMetadata(opening, origin?.metadata);
+    } else if (hasZiffleRequirements) {
+      const unshuffled = requirements.filter(requirement => !ziffleOriginAnchorFromMetadata(requirement)
+        && Number(requirement.owner) === player && Number(requirement.slot) === Number(opening.slot)
+        && opening.commitment && requirement.commitment === opening.commitment);
+      if (unshuffled.length !== 1) {
+        return { status: "cheat_detected", reason: "Disclosure opening omits its Ziffle origin" };
       }
     }
   }
@@ -568,6 +662,18 @@ export async function verifyEndOfMatchDisclosuresWithGame({
       recordedVerdict: entry?.verdict ? clonePayload(entry.verdict) : null,
       replayVerdict,
     });
+  }
+  const requirementsForPlayer = optionalGameMethod(game, "endOfMatchDisclosureRequirements");
+  const state = await optionalGameMethod(game, "uiState")?.();
+  if (requirementsForPlayer && state) {
+    for (let player = 0; player < replayPlayerNames(match).length; player++) {
+      if (!ziffleDisclosureDueForPlayer(state, player)) continue;
+      const requirements = await requirementsForPlayer(player);
+      if (requirements.length === 0 || reports.some(report => report.player === player)) continue;
+      reports.push({ player, recordedVerdict: null, replayVerdict: {
+        status: "missing", reason: "Transcript omits a required end-of-match disclosure",
+      } });
+    }
   }
   return reports;
 }

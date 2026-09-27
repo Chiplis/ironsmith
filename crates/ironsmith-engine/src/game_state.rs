@@ -333,6 +333,9 @@ pub struct HiddenCardInfo {
     pub zone: Zone,
     pub slot: u16,
     pub commitment: String,
+    /// Immutable first commitment assigned to this physical card.
+    pub origin_slot: Option<u16>,
+    pub origin_commitment: Option<String>,
     pub public_slot: Option<u16>,
     pub public_commitment: Option<String>,
 }
@@ -7004,6 +7007,8 @@ impl GameState {
                 owner,
                 zone,
                 slot,
+                origin_slot: Some(slot),
+                origin_commitment: Some(commitment.clone()),
                 commitment,
                 public_slot: None,
                 public_commitment: None,
@@ -7020,7 +7025,17 @@ impl GameState {
         self.auxiliary_tracking.hidden_cards.iter()
     }
 
-    pub fn set_hidden_card_info(&mut self, id: ObjectId, info: HiddenCardInfo) {
+    pub fn set_hidden_card_info(&mut self, id: ObjectId, mut info: HiddenCardInfo) {
+        // Hydration and later shuffles update the current identity, never the
+        // first commitment that independently authenticates this physical card.
+        if let Some(existing) = self.hidden_card_info(id) {
+            info.origin_slot = existing.origin_slot.or(Some(existing.slot));
+            info.origin_commitment = existing.origin_commitment.clone()
+                .or_else(|| Some(existing.commitment.clone()));
+        } else {
+            info.origin_slot.get_or_insert(info.slot);
+            info.origin_commitment.get_or_insert_with(|| info.commitment.clone());
+        }
         self.auxiliary_tracking_mut().hidden_cards.insert(id, info);
     }
 

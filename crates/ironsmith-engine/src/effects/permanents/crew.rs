@@ -300,6 +300,14 @@ pub(crate) fn crew_ability_resolved_event(
     ))
 }
 
+fn contributor_value(effect: &CrewCostEffect, game: &GameState, id: ObjectId) -> i32 {
+    if effect.teamwork {
+        object_power(game, id)
+    } else {
+        crew_value(game, id)
+    }
+}
+
 impl EffectExecutor for CrewCostEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
@@ -313,7 +321,7 @@ impl EffectExecutor for CrewCostEffect {
         let controller = ctx.controller;
         let mut candidates = crew_candidates(game, ctx.source, controller);
         if candidates.is_empty() && self.required_power > 0 {
-            if can_pay_loyalty_crew_alternative(game, ctx.source, controller) {
+            if !self.teamwork && can_pay_loyalty_crew_alternative(game, ctx.source, controller) {
                 let event = pay_loyalty_crew_alternative(game, ctx.source, controller)?;
                 stash_pending_crew_activation(game, ctx, &[]);
                 return Ok(EffectOutcome::resolved().with_events(vec![event]));
@@ -327,10 +335,14 @@ impl EffectExecutor for CrewCostEffect {
         let max = Some(candidates.len());
         let chosen = {
             // Prefer higher-power candidates in fallback selection.
-            candidates.sort_by_key(|id| -crew_value(game, *id));
+            candidates.sort_by_key(|id| -contributor_value(self, game, *id));
             let spec = ChooseObjectsSpec::new(
                 ctx.source,
-                "Choose creatures to crew",
+                if self.teamwork {
+                    "Choose creatures for teamwork"
+                } else {
+                    "Choose creatures to crew"
+                },
                 candidates.clone(),
                 min,
                 max,
@@ -348,25 +360,28 @@ impl EffectExecutor for CrewCostEffect {
         // If the decision maker picked a set that doesn't meet the requirement,
         // greedily add remaining candidates until it does (or we exhaust options).
         let required = self.required_power as i32;
-        let mut total_power: i32 = chosen.iter().map(|id| crew_value(game, *id)).sum();
+        let mut total_power: i32 = chosen
+            .iter()
+            .map(|id| contributor_value(self, game, *id))
+            .sum();
         if total_power < required {
             let mut remaining: Vec<ObjectId> = candidates
                 .iter()
                 .copied()
                 .filter(|id| !chosen.contains(id))
                 .collect();
-            remaining.sort_by_key(|id| -crew_value(game, *id));
+            remaining.sort_by_key(|id| -contributor_value(self, game, *id));
             for id in remaining {
                 if total_power >= required {
                     break;
                 }
                 chosen.push(id);
-                total_power += crew_value(game, id);
+                total_power += contributor_value(self, game, id);
             }
         }
 
         if total_power < required {
-            if can_pay_loyalty_crew_alternative(game, ctx.source, controller) {
+            if !self.teamwork && can_pay_loyalty_crew_alternative(game, ctx.source, controller) {
                 let event = pay_loyalty_crew_alternative(game, ctx.source, controller)?;
                 stash_pending_crew_activation(game, ctx, &[]);
                 return Ok(EffectOutcome::resolved().with_events(vec![event]));
@@ -386,6 +401,9 @@ impl EffectExecutor for CrewCostEffect {
                     ctx.provenance,
                 ));
             }
+        }
+        if self.teamwork {
+            return Ok(EffectOutcome::resolved().with_events(events));
         }
         // CR 702.122d: "becomes crewed" means "a crew ability of this Vehicle
         // resolves", so the Vehicle-level event is deferred to resolution.
@@ -438,9 +456,12 @@ impl CostExecutableEffect for CrewCostEffect {
             return Ok(());
         }
         let candidates = crew_candidates(game, source, controller);
-        let total: i32 = candidates.iter().map(|id| crew_value(game, *id)).sum();
+        let total: i32 = candidates
+            .iter()
+            .map(|id| contributor_value(self, game, *id).max(0))
+            .sum();
         if total >= self.required_power as i32
-            || can_pay_loyalty_crew_alternative(game, source, controller)
+            || (!self.teamwork && can_pay_loyalty_crew_alternative(game, source, controller))
         {
             Ok(())
         } else {

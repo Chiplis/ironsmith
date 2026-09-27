@@ -2331,6 +2331,9 @@ pub struct ZoneChangeTrigger {
     pub this_subject_number: TriggerSubjectNumber,
     pub count: CountMode,
     pub cause_filter: Option<CauseFilter>,
+    /// Match only a spell changing zones during its own successful resolution.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub during_own_resolution: bool,
     pub during_turn: Option<PlayerFilter>,
     /// Optional phase restriction on when the zone change event occurs.
     pub timing: Option<TriggerTimingRestriction>,
@@ -2352,11 +2355,17 @@ impl ZoneChangeTrigger {
             this_subject_number: TriggerSubjectNumber::Singular,
             count: CountMode::One,
             cause_filter: None,
+            during_own_resolution: false,
             during_turn: None,
             timing: None,
             origin_condition: None,
             graveyard_surface: None,
         }
+    }
+
+    pub fn during_own_resolution(mut self) -> Self {
+        self.during_own_resolution = true;
+        self
     }
 
     pub fn count(mut self, mode: CountMode) -> Self {

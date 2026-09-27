@@ -155,6 +155,7 @@ export function usePeerLobby({
   const ziffleShuffleWaitersRef = useRef(new Map());
   const ziffleRevealWaitersRef = useRef(new Map());
   const ziffleRevealTokenCacheRef = useRef(new Map());
+  const ziffleActionRevealLocksRef = useRef(new Map());
   const verifiedAuditOpeningsRef = useRef(new Set());
   const rngCommitWaitersRef = useRef(new Map());
   const rngRevealWaitersRef = useRef(new Map());
@@ -250,7 +251,7 @@ export function usePeerLobby({
     auditKeyPairRef, auditEncryptionKeyPairRef, auditPublicKeyRef, auditEncryptionPublicKeyRef,
     auditStateHashRef, initialPublicCheckpointHashRef, auditVerifyKeyCacheRef, liveAuditTranscriptRef,
     privateDeckManifestsRef, localRevealedOpeningsRef, ziffleKeyPairsRef, ziffleShuffleWaitersRef,
-    ziffleRevealWaitersRef, ziffleRevealTokenCacheRef, verifiedAuditOpeningsRef, rngCommitWaitersRef,
+    ziffleRevealWaitersRef, ziffleRevealTokenCacheRef, ziffleActionRevealLocksRef, verifiedAuditOpeningsRef, rngCommitWaitersRef,
     rngRevealWaitersRef, rngCommitNoncesRef, signedRngCommitmentsRef, rngRevealCommitSetLocksRef,
     timeoutVoteWaitersRef, actionQuorumVoteWaitersRef, signedActionQuorumVotesRef,
     cryptoMaterialWaitersRef, outboundCryptoMaterialRequestsRef, pendingActionIntentsRef,
@@ -1168,6 +1169,7 @@ export function usePeerLobby({
           preActionPublicCheckpointHash,
           actionIntent: signedActionIntent,
           requirements: cryptoRequirements,
+          shuffleProofs,
           uiState: preSubmitState,
           updateState: false,
         };
@@ -1182,7 +1184,7 @@ export function usePeerLobby({
           () => injectCryptoMaterialForRequirements(cryptoRequirements, {
             shuffleProofs,
             rngReveals,
-          }, actionCryptoOptions)
+          }, { ...actionCryptoOptions, randomnessOnly: shuffleProofs.length > 0 })
         );
         if (shuffleProofs.length > 0) {
           cryptoRequirements = await timePeerSyncPhase(
@@ -1201,7 +1203,7 @@ export function usePeerLobby({
             ...submitPerf,
             requirements: summarizeCryptoRequirementsForPerf(cryptoRequirements),
           });
-          rememberActionCryptoRequirements(nextSequence, cryptoRequirements);
+          rememberActionCryptoRequirements(nextSequence, cryptoRequirements, { replace: true });
           shuffleProofs = alignShuffleProofsWithRequirements(shuffleProofs, cryptoRequirements);
           requestRemoteCryptoPreview = shouldRequestRemoteCryptoPreview(
             command,
@@ -1211,7 +1213,11 @@ export function usePeerLobby({
           actionCryptoOptions = {
             ...actionCryptoOptions,
             requirements: cryptoRequirements,
+            shuffleProofs,
           };
+          await injectCryptoMaterialForRequirements(cryptoRequirements, {
+            shuffleProofs, rngReveals,
+          }, { ...actionCryptoOptions, skipRandomness: true });
         }
         let remoteCryptoMaterial = await timePeerSyncPhase(
           "submit_action:collect_remote_crypto_material_pre",
@@ -1394,7 +1400,8 @@ export function usePeerLobby({
           },
           () => verifyShuffleProofsForRequirements(
             [...cryptoRequirements, ...appliedRequirements],
-            shuffleProofs
+            shuffleProofs,
+            { seq: nextSequence }
           )
         );
         const shuffleApplicationRequirements = [
@@ -1451,6 +1458,7 @@ export function usePeerLobby({
             actorIndex: session.localPlayerIndex,
             actionIntent: signedActionIntent,
             requirements: [...cryptoRequirements, ...appliedRequirements],
+            shuffleProofs,
             updateState: false,
           })
         );

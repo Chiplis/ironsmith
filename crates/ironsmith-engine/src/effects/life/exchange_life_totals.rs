@@ -108,7 +108,9 @@ impl EffectExecutor for ExchangeLifeTotalsEffect {
         let life1 = game.player(player1_id).map(|p| p.life).unwrap_or(0);
         let life2 = game.player(player2_id).map(|p| p.life).unwrap_or(0);
 
-        if game.are_teammates(player1_id, player2_id) {
+        // CR 810.9e applies to shared Two-Headed Giant life totals, not
+        // ordinary team formats with independent life totals.
+        if game.two_headed_giant().is_some() && game.are_teammates(player1_id, player2_id) {
             return Ok(EffectOutcome::prevented());
         }
 

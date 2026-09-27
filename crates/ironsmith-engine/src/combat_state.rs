@@ -1568,6 +1568,28 @@ fn group_shares_bands_with_other_quality(game: &GameState, members: &[ObjectId])
     })
 }
 
+// CR 702.22j-k requires a matching pair, not a matching entire group.
+// Extra blockers/attackers of other qualities do not undo that permission.
+fn group_contains_bands_with_other_pair(game: &GameState, members: &[ObjectId]) -> bool {
+    let all_effects = game.all_continuous_effects();
+    members.iter().any(|source| {
+        static_abilities_for_object(game, *source, &all_effects)
+            .iter()
+            .filter_map(StaticAbility::bands_with_other_filter)
+            .any(|filter| {
+                members.iter().any(|other| {
+                    other != source
+                        && bands_with_other_filter_matches_group(
+                            game,
+                            *source,
+                            filter,
+                            &[*source, *other],
+                        )
+                })
+            })
+    })
+}
+
 /// Return the player who chooses a combat-damage division for `source`.
 ///
 /// Rules 702.22j-k reverse the normal chooser when the recipients include a
@@ -1582,7 +1604,7 @@ pub fn combat_damage_assignment_player(
         if blockers
             .iter()
             .any(|blocker| creature_has_banding(game, *blocker))
-            || group_shares_bands_with_other_quality(game, &blockers)
+            || group_contains_bands_with_other_pair(game, &blockers)
         {
             return defending_player_for_attacker(game, combat, source);
         }
@@ -1600,7 +1622,7 @@ pub fn combat_damage_assignment_player(
     if attackers
         .iter()
         .any(|attacker| creature_has_banding(game, *attacker))
-        || group_shares_bands_with_other_quality(game, &attackers)
+        || group_contains_bands_with_other_pair(game, &attackers)
     {
         return Some(game.turn.active_player);
     }

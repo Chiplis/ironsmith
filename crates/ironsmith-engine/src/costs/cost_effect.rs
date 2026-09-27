@@ -333,6 +333,24 @@ fn simple_exile_from_graveyard_filter(
 
 impl CostPayer for CostEffect {
     fn can_pay(&self, game: &GameState, ctx: &CostContext) -> Result<(), CostPaymentError> {
+        if let Some(life) =
+            transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::PayLifeEffect>()
+        {
+            let mut exec = ExecutionContext::new_default(ctx.source, ctx.payer)
+                .with_tagged_objects(ctx.tagged_objects.clone());
+            exec.source_snapshot = ctx.source_snapshot.clone();
+            exec.x_value = ctx.x_value;
+            let payer =
+                crate::effects::helpers::resolve_player_from_spec(game, &life.player, &exec)
+                    .map_err(|e| CostPaymentError::Other(format!("{e:?}")))?;
+            let amount = crate::effects::helpers::resolve_value(game, &life.amount, &exec)
+                .map_err(|e| CostPaymentError::Other(format!("{e:?}")))?
+                .max(0) as u32;
+            return game
+                .can_pay_life_with_reason(payer, amount, ctx.reason)
+                .then_some(())
+                .ok_or(CostPaymentError::InsufficientLife);
+        }
         if let Some(result) = sacrifice_cost_precheck(&self.effect, game, ctx) {
             return result;
         }
@@ -411,6 +429,7 @@ impl CostPayer for CostEffect {
             .with_tagged_objects(existing_tags)
             .with_cost_choice_targets(chosen_targets)
             .with_provenance(ctx.provenance);
+        exec_ctx.source_snapshot = ctx.source_snapshot.clone();
         exec_ctx.effect_outcomes = ctx.effect_outcomes.clone();
         exec_ctx.announced_targets = Some(
             ctx.announced_targets

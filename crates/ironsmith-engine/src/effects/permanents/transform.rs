@@ -143,9 +143,8 @@ fn execute_transform_like_action(
     if target.zone != Zone::Battlefield {
         return Ok(EffectOutcome::resolved());
     }
-    if matches!(action, TransformLikeAction::Transform)
-        && (target.has_static_ability_id(StaticAbilityId::Daybound)
-            || target.has_static_ability_id(StaticAbilityId::Nightbound))
+    if game.current_has_static_ability_id(target_id, StaticAbilityId::Daybound)
+        || game.current_has_static_ability_id(target_id, StaticAbilityId::Nightbound)
     {
         return Ok(EffectOutcome::resolved());
     }

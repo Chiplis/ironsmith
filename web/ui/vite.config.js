@@ -3,14 +3,26 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import process from 'node:process'
 import { lanLobbyPlugin } from './scripts/lan/service.mjs'
 
 export default defineConfig(({ mode }) => {
   const runtimeHash = createHash('sha256');
-  for (const file of ['engine.js', 'engine_bg.wasm', 'compiler.js', 'compiler_bg.wasm', 'ironsmith.js']) {
+  for (const file of ['engine.js', 'engine_bg.wasm', 'compiler.js', 'compiler_bg.wasm', 'verifier.js', 'verifier_bg.wasm', 'ironsmith.js']) {
     runtimeHash.update(file).update(readFileSync(path.resolve(__dirname, '../wasm_demo/pkg', file)));
+  }
+  // Peers must agree on proof rules and worker behavior as well as engine code.
+  const protocolFiles = [
+    'src/workers/wasmGameWorker.js', 'src/hooks/usePeerLobby.js',
+    ...readdirSync(path.resolve(__dirname, 'src/hooks/peer-lobby')).filter(file => file.endsWith('.js'))
+      .sort().map(file => `src/hooks/peer-lobby/${file}`),
+    ...['preview-crypto-material', 'multiplayer-audit', 'audit-replay', 'sync-commands',
+      'sync-object-identity', 'ziffle-runtime-manifest', 'ziffle-reveal-token-collection',
+      'ziffle-disclosure-origin'].map(file => `src/lib/${file}.js`),
+  ];
+  for (const file of protocolFiles) {
+    runtimeHash.update(file).update(readFileSync(path.resolve(__dirname, file)));
   }
   runtimeHash.update(readFileSync(path.resolve(__dirname, 'public/cards/.ironsmith_frontend_cards_checksum')));
   const runtimeVersion = runtimeHash.digest('hex');

@@ -34,7 +34,7 @@ import {
   buildBattlefieldFamilies,
   buildPriorityActionGroups,
 } from "@/lib/priority-action-groups";
-import { findOpeningHandMulliganAction } from "@/lib/opening-hand-actions";
+import { findOpeningHandMulliganAction, findPregameActions } from "@/lib/opening-hand-actions";
 import {
   buildObjectControllerById,
   buildObjectNameById,
@@ -1331,6 +1331,8 @@ function MobileDecisionDock({
   secondaryLabel = "",
   secondaryDisabled = false,
   onSecondary,
+  pregameActions = [],
+  onPregameAction,
   inline = false,
   orientation = "horizontal",
 }) {
@@ -1374,6 +1376,23 @@ function MobileDecisionDock({
             {ui(secondaryLabel)}
           </Button>
         ) : null}
+        {pregameActions.length > 0 && (
+          <div className="mobile-pregame-actions">
+            {pregameActions.map((action) => (
+              <Button
+                key={action.index}
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mobile-decision-secondary-button action-strip-pregame-button"
+                disabled={primaryDisabled || peerWaitLocked}
+                onClick={() => onPregameAction?.(action)}
+              >
+                {ui(action.label)}
+              </Button>
+            ))}
+          </div>
+        )}
         <PeerWaitPopover peerWait={peerWait}>
           <Button
             type="button"
@@ -1669,6 +1688,7 @@ function MobileBattleDecisionLayer({
     () => findOpeningHandMulliganAction(decisionActions, passAction),
     [decisionActions, passAction]
   );
+  const pregameActions = useMemo(() => findPregameActions(decisionActions), [decisionActions]);
   const openingHandMulliganLabel = openingHandMulliganAction?.label || "Mulligan";
   const otherActions = useMemo(
     () => decisionActions.filter((action) => action.kind !== "pass_priority"),
@@ -2019,6 +2039,8 @@ function MobileBattleDecisionLayer({
             secondaryLabel={secondaryAction?.label || ""}
             secondaryDisabled={secondaryAction?.disabled || false}
             onSecondary={secondaryAction?.onClick}
+            pregameActions={pregameActions}
+            onPregameAction={triggerPriorityAction}
             inline={dockInline}
             orientation={dockOrientation}
           />,
@@ -2455,6 +2477,7 @@ function PriorityBar({
     () => findOpeningHandMulliganAction(decisionActions, passAction),
     [decisionActions, passAction]
   );
+  const pregameActions = useMemo(() => findPregameActions(decisionActions), [decisionActions]);
   const openingHandMulliganLabel = openingHandMulliganAction?.label || "Mulligan";
   const otherActions = useMemo(
     () => decisionActions.filter((action) => action.kind !== "pass_priority"),
@@ -3091,6 +3114,33 @@ function PriorityBar({
                     </div>
                   </div>
                 )}
+                {pregameActions.map((action) => (
+                  <div key={action.index} className="action-strip-command-region action-strip-command-region--pregame shrink-0 self-stretch">
+                    <div className="action-strip-main-region relative h-full w-[200px] shrink-0 self-stretch">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="pass-priority-btn decision-main-button action-strip-pregame-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
+                        data-local-action={localDecisionButton ? "true" : "false"}
+                        disabled={!canAct}
+                        aria-disabled={peerWaitLocked || !canAct}
+                        aria-label={ui(action.label)}
+                        onClick={() => {
+                          if (peerWaitLocked) return;
+                          triggerPriorityAction(action);
+                        }}
+                      >
+                        <span className="sr-only">{ui(action.label)}</span>
+                      </Button>
+                      <div className="action-strip-main-text-stack action-strip-main-text-stack--centered absolute left-2 top-2 z-20">
+                        <div className="action-strip-main-title-row">
+                          <ActionStripMainTitleText>{ui(action.label)}</ActionStripMainTitleText>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )
           ) : (
@@ -3369,6 +3419,21 @@ function PriorityBar({
                       {ui(openingHandMulliganLabel)}
                     </Button>
                   )}
+                  {pregameActions.map((action) => (
+                    <Button
+                      key={action.index}
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="pass-priority-btn decision-main-button action-strip-pregame-button h-full min-w-[132px] rounded-none px-3 text-[14px] font-bold uppercase"
+                      data-local-action={localDecisionButton ? "true" : "false"}
+                      disabled={!canAct || peerWaitLocked}
+                      aria-label={ui(action.label)}
+                      onClick={() => triggerPriorityAction(action)}
+                    >
+                      {ui(action.label)}
+                    </Button>
+                  ))}
               </>
             )
           ) : (

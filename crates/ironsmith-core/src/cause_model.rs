@@ -26,6 +26,9 @@ pub struct EventCause {
     pub cause_type: CauseType,
     pub source: Option<ObjectId>,
     pub source_controller: Option<PlayerId>,
+    /// The spell currently resolving, distinct from an effect or ability source.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub resolving_spell: Option<ObjectId>,
 }
 
 impl EventCause {
@@ -34,6 +37,7 @@ impl EventCause {
             cause_type: CauseType::Effect,
             source: None,
             source_controller: None,
+            resolving_spell: None,
         }
     }
 
@@ -42,6 +46,7 @@ impl EventCause {
             cause_type: CauseType::Cost,
             source: Some(source),
             source_controller: Some(controller),
+            resolving_spell: None,
         }
     }
 
@@ -50,6 +55,15 @@ impl EventCause {
             cause_type: CauseType::Effect,
             source: Some(source),
             source_controller: Some(controller),
+            resolving_spell: None,
+        }
+    }
+
+    /// A cause occurring during a spell's successful resolution (CR 608.2).
+    pub fn from_spell_resolution(spell: ObjectId, controller: PlayerId) -> Self {
+        Self {
+            resolving_spell: Some(spell),
+            ..Self::from_effect(spell, controller)
         }
     }
 
@@ -58,6 +72,7 @@ impl EventCause {
             cause_type: CauseType::StateBasedAction,
             source: None,
             source_controller: None,
+            resolving_spell: None,
         }
     }
 
@@ -66,6 +81,7 @@ impl EventCause {
             cause_type: CauseType::GameRule,
             source: None,
             source_controller: None,
+            resolving_spell: None,
         }
     }
 
@@ -74,6 +90,7 @@ impl EventCause {
             cause_type: CauseType::CombatDamage,
             source: Some(source),
             source_controller: Some(controller),
+            resolving_spell: None,
         }
     }
 
@@ -82,6 +99,7 @@ impl EventCause {
             cause_type: CauseType::CombatDamage,
             source: Some(source),
             source_controller: None,
+            resolving_spell: None,
         }
     }
 
@@ -90,6 +108,7 @@ impl EventCause {
             cause_type: CauseType::SpecialAction,
             source,
             source_controller: Some(controller),
+            resolving_spell: None,
         }
     }
 
@@ -98,6 +117,7 @@ impl EventCause {
             cause_type: CauseType::LegendRule,
             source: None,
             source_controller: Some(controller),
+            resolving_spell: None,
         }
     }
 }

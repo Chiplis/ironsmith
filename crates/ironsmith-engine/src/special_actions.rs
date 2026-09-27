@@ -4,7 +4,7 @@
 //! suspending/foretelling cards, and activating mana abilities.
 
 mod payment;
-pub(crate) use payment::pay_resolution_cost_with_mana_abilities;
+pub(crate) use payment::pay_resolution_cost_with_snapshot;
 use payment::{SpecialActionPayment, check_special_action_payment, pay_special_action_payment};
 
 use crate::ability::ActivatedAbilityRuntimeExt as _;
@@ -59,10 +59,15 @@ impl TurnFaceUpMethod {
 
 fn turn_face_up_specs(game: &GameState, object: &crate::object::Object) -> Vec<TurnFaceUpSpec> {
     let mut specs = Vec::new();
-    append_turn_face_up_specs_from_abilities(&mut specs, &object.abilities);
-
-    if let Some(restore) = object.face_down_cast_state.as_ref() {
-        append_turn_face_up_specs_from_abilities(&mut specs, &restore.abilities);
+    // CR 702.37e asks what the morph cost would be if this permanent were
+    // face up. Apply all layers to that hypothetical object, including
+    // ability removal/grants and copy effects, rather than reading printed
+    // abilities from the face-down restore record.
+    let mut face_up = game.clone();
+    if face_up.set_face_up(object.id)
+        && let Some(characteristics) = face_up.calculated_characteristics(object.id)
+    {
+        append_turn_face_up_specs_from_abilities(&mut specs, &characteristics.abilities);
     }
 
     if game.is_manifested(object.id)
@@ -656,9 +661,7 @@ pub fn can_perform_check(
 ) -> Result<(), ActionError> {
     match action {
         SpecialAction::PlayLand { card_id } => can_play_land(game, player, *card_id, false),
-        SpecialAction::PlayLandBackFace { card_id } => {
-            can_play_land(game, player, *card_id, true)
-        }
+        SpecialAction::PlayLandBackFace { card_id } => can_play_land(game, player, *card_id, true),
         SpecialAction::TurnFaceUp {
             permanent_id,
             method,
@@ -1186,8 +1189,7 @@ fn can_play_land(
     let proposed_land = land_face.as_ref().unwrap_or(object);
     let permission_view = crate::derived_view::DerivedGameView::new(game);
     let can_play_from_zone = object.zone == Zone::Hand
-        || (object.zone == Zone::Exile
-            && game.adventure_exiled_player(card_id) == Some(player))
+        || (object.zone == Zone::Exile && game.adventure_exiled_player(card_id) == Some(player))
         || !permission_view
             .granted_play_from_for_card_view(card_id, proposed_land, object.zone, player)
             .is_empty();
@@ -1217,8 +1219,7 @@ pub(crate) fn shared_usage_to_consume_for_land_play(
 ) -> Option<crate::grant_registry::SharedGrantUsageId> {
     let object = game.object(card_id)?;
     if object.zone == Zone::Hand
-        || (object.zone == Zone::Exile
-            && game.adventure_exiled_player(card_id) == Some(player))
+        || (object.zone == Zone::Exile && game.adventure_exiled_player(card_id) == Some(player))
     {
         return None;
     }
@@ -1326,6 +1327,10 @@ fn validate_turn_face_up_common(
             expected: Zone::Battlefield,
             actual: object.zone,
         });
+    }
+
+    if game.is_phased_out(permanent_id) {
+        return Err(ActionError::InvalidTarget);
     }
 
     // Check the permanent is face-down
@@ -2654,6 +2659,7 @@ pub(crate) fn can_pay_total_cost_with_reason_in_context(
                     crate::costs::CostContext::new(source, payer, execution_ctx.decision_maker)
                         .with_reason(reason)
                         .with_provenance(execution_ctx.provenance);
+                cost_ctx.source_snapshot = execution_ctx.source_snapshot.clone();
                 cost_ctx.requesting_effect_cause = Some(execution_ctx.cause.clone());
                 cost_ctx.x_value = execution_ctx.x_value;
                 cost_ctx.tagged_objects = speculative_tagged_objects.clone();
@@ -3003,14 +3009,16 @@ fn pay_total_cost_branch_without_execution_context(
                     (if cost_ctx.interactive_mana_exclusions.is_some()
                         && cost_ctx.reason != crate::costs::PaymentReason::ActivateManaAbility
                     {
-                        check_special_action_payment(
-                            game,
+                        payment::pay_special_action_payment_with_snapshot(
+                            &mut game.clone(),
                             cost_ctx.payer,
                             &SpecialActionPayment {
                                 source: cost_ctx.source,
                                 cost: branch.clone(),
                                 reason: cost_ctx.reason,
                             },
+                            cost_ctx.source_snapshot.clone(),
+                            &mut crate::decision::SelectFirstDecisionMaker,
                         )
                         .is_ok()
                     } else {
@@ -3323,6 +3331,7 @@ fn pay_selected_cost_without_execution_context(
             .with_reason(reason)
             .with_pre_chosen_cards(vec![chosen_id])
             .with_provenance(provenance);
+        selected_ctx.source_snapshot = cost_ctx.source_snapshot.clone();
         selected_ctx.requesting_effect_cause = requesting_effect_cause;
         selected_ctx.x_value = x_value;
         selected_ctx.tagged_objects = tagged_objects;
@@ -3482,37 +3491,16 @@ fn pay_component_without_execution_context(
         );
     }
     if let Some(dynamic_mana) = component.dynamic_mana_cost_ref() {
-        if let Some(static_base) = dynamic_mana.resolved_static_base() {
-            let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
-                cost_ctx.payer,
-                Some(cost_ctx.source),
-                &static_base,
-                cost_ctx.reason,
-            );
-            if let Some(exclusions) = cost_ctx.interactive_mana_exclusions.clone() {
-                return crate::mana_payment::pay_mana_interactively(
-                    game,
-                    cost_ctx.payer,
-                    cost_ctx.source,
-                    adjusted_cost,
-                    cost_ctx.reason,
-                    exclusions,
-                    cost_ctx.decision_maker,
-                );
-            }
-            return crate::costs::pay_mana_cost_with_choices(
-                game,
-                cost_ctx.payer,
-                Some(cost_ctx.source),
-                &adjusted_cost,
-                0,
-                cost_ctx.reason,
-                cost_ctx.decision_maker,
-            );
-        }
-        return Err(CostPaymentError::Other(
-            "dynamic mana cost requires an execution context".to_string(),
-        ));
+        let mut execution = ExecutionContext::new_default(cost_ctx.source, cost_ctx.payer)
+            .with_tagged_objects(cost_ctx.tagged_objects.clone());
+        execution.source_snapshot = cost_ctx.source_snapshot.clone();
+        execution.x_value = cost_ctx.x_value;
+        let resolved = resolve_dynamic_mana_cost(game, dynamic_mana, &mut execution)?;
+        return pay_component_without_execution_context(
+            game,
+            &crate::costs::Cost::mana(resolved),
+            cost_ctx,
+        );
     }
     pay_cost_component_with_choice(game, component, cost_ctx)
 }
@@ -3543,6 +3531,7 @@ fn pay_component_in_context(
     let mut cost_ctx = CostContext::new(source, payer, execution_ctx.decision_maker)
         .with_reason(reason)
         .with_provenance(provenance);
+    cost_ctx.source_snapshot = execution_ctx.source_snapshot.clone();
     cost_ctx.requesting_effect_cause = Some(execution_ctx.cause.clone());
     cost_ctx.x_value = execution_ctx.x_value;
     cost_ctx.tagged_objects = execution_ctx.tagged_objects.clone();

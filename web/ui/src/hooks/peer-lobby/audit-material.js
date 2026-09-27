@@ -1,3 +1,4 @@
+import { findZiffleDisclosureOrigin, ziffleDisclosureDueForPlayer } from '../../lib/ziffle-disclosure-origin.js';
 import {
   INITIAL_AUDIT_STATE_HASH,
   ZIFFLE_OPENING_PREVIEW_BATCH_SIZE,
@@ -52,6 +53,9 @@ import {
   zifflePositionFromCommitment,
   zifflePublicPositionFromSources,
   ziffleRuntimeCommitment,
+  ziffleOriginAnchorFromMetadata,
+  ziffleOriginAnchorFromOpening,
+  assertZiffleOpeningOriginMatchesMetadata,
 } from "./shared.js";
 
 export function usePeerLobbyAuditMaterial(base, servicesRef) {
@@ -83,6 +87,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
   const verifyRngCommitmentEntry = useCallback((...args) => servicesRef.current.verifyRngCommitmentEntry(...args), [servicesRef]);
   const verifyRngRevealEntry = useCallback((...args) => servicesRef.current.verifyRngRevealEntry(...args), [servicesRef]);
   const verifyZiffleOpeningProofForOpening = useCallback((...args) => servicesRef.current.verifyZiffleOpeningProofForOpening(...args), [servicesRef]);
+  const verifyZiffleOpeningCryptographicProof = useCallback((...args) => servicesRef.current.verifyZiffleOpeningCryptographicProof(...args), [servicesRef]);
   const ziffleCeremonyCandidatesForOwner = useCallback((...args) => servicesRef.current.ziffleCeremonyCandidatesForOwner(...args), [servicesRef]);
   const ziffleCeremonyForOwner = useCallback((...args) => servicesRef.current.ziffleCeremonyForOwner(...args), [servicesRef]);
   const ziffleCeremonyHasObjectOrder = useCallback((...args) => servicesRef.current.ziffleCeremonyHasObjectOrder(...args), [servicesRef]);
@@ -103,6 +108,17 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
   const verifyAuditOpeningsAgainstManifests = useCallback(async (openings = [], options = {}) => {
     for (const opening of openings || []) {
       if (!opening || opening.owner == null || opening.slot == null) continue;
+      const trustedOrigin = await currentZiffleOriginForOpening(opening, options);
+      if (ziffleOriginAnchorFromOpening(opening) || trustedOrigin) {
+        assertZiffleOpeningOriginMatchesMetadata(opening, trustedOrigin?.metadata);
+      }
+    }
+    await verifyAuditOpeningCryptography(openings, options);
+  }, [currentAuditMatchId, publicDeckManifestForOwner]);
+
+  async function verifyAuditOpeningCryptography(openings = [], options = {}) {
+    for (const opening of openings || []) {
+      if (!opening || opening.owner == null || opening.slot == null) continue;
       const verificationKey = verifiedAuditOpeningKey(opening);
       if (verifiedAuditOpeningsRef.current.has(verificationKey)) continue;
       const manifest = publicDeckManifestForOwner(opening.owner);
@@ -120,10 +136,10 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
           `Card opening for player ${Number(opening.owner) + 1}, slot ${Number(opening.slot)} does not match its deck commitment`
         );
       }
-      await verifyZiffleOpeningProofForOpening(opening, options);
+      await verifyZiffleOpeningCryptographicProof(opening, options);
       verifiedAuditOpeningsRef.current.add(verificationKey);
     }
-  }, [currentAuditMatchId, publicDeckManifestForOwner]);
+  }
 
   const buildDeckSlotOpeningForExport = useCallback(async ({
     manifest,
@@ -201,7 +217,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
     );
   }, []);
 
-	  const currentHiddenCardMetadataForObject = useCallback(async (objectId) => {
+  const currentHiddenCardMetadataForObject = useCallback(async (objectId) => {
 	    const normalized = Number(objectId);
 	    if (!Number.isSafeInteger(normalized) || normalized < 0) return null;
 	    const currentGame = gameRef.current;
@@ -216,6 +232,40 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 	    }
 	    return hiddenCardMetadataForObjectFromCheckpoint(checkpoint, normalized);
 	  }, []);
+
+  // Resolve the card by its current public position, never by a claimed origin.
+  // Runtime object IDs may already have changed when a post-action opening is built.
+  const currentZiffleOriginForOpening = useCallback(async (opening, options = {}) => {
+    const owner = Number(opening?.owner);
+    const commitment = String(opening?.positionCommitment || opening?.position_commitment || "");
+    const position = zifflePositionFromCommitment(commitment);
+    if (!Number.isSafeInteger(owner) || owner < 0 || position == null) return null;
+    const currentGame = gameRef.current;
+    if (typeof currentGame?.exportSyncCheckpoint !== "function") return null;
+    const checkpoint = await currentGame.exportSyncCheckpoint();
+    const matches = [];
+    for (const object of checkpoint?.objects || []) {
+      const metadata = hiddenCardMetadataForObjectFromCheckpoint(checkpoint, object.id);
+      if (!metadata || Number(metadata.owner) !== owner) continue;
+      const currentCommitment = String(metadata.publicCommitment || metadata.commitment || "");
+      const currentPosition = metadata.publicSlot ?? metadata.slot;
+      if (currentCommitment !== commitment || Number(currentPosition) !== position) continue;
+      const anchor = ziffleOriginAnchorFromMetadata(metadata);
+      if (anchor) matches.push({ ...anchor, objectId: Number(object.id), metadata });
+    }
+    if (matches.length > 1) throw new Error("Ziffle position has ambiguous immutable origin metadata");
+    if (matches[0]) return matches[0];
+    if (options.endOfMatchDisclosure === true
+      && typeof currentGame.uiState === "function"
+      && typeof currentGame.endOfMatchDisclosureRequirements === "function") {
+      const state = await currentGame.uiState();
+      if (ziffleDisclosureDueForPlayer(state, owner)) {
+        return findZiffleDisclosureOrigin({ opening, state,
+          requirements: await currentGame.endOfMatchDisclosureRequirements(owner) });
+      }
+    }
+    return null;
+  }, []);
 
 		  const sanitizeObjectBoundOpening = useCallback(async (opening) => {
 		    if (!opening || typeof opening !== "object") return opening;
@@ -449,6 +499,39 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
       };
     };
     const ceremonyHasObjectOrder = beforeOrder.length > 0 || afterOrder.length > 0;
+    const trustedOrigin = await currentZiffleOriginForOpening({
+      owner: normalizedOwner,
+      position: normalizedPosition,
+      positionCommitment: expectedPositionCommitment,
+    }, options);
+    if (trustedOrigin) {
+      const originCeremony = ziffleCeremonyForOwner(normalizedOwner, {
+        commitment: trustedOrigin.originPositionCommitment,
+        payload,
+      });
+      if (!originCeremony || ziffleCeremonyHasObjectOrder(originCeremony)) {
+        throw new Error("Ziffle immutable origin does not reference the initial ceremony");
+      }
+      const tokens = await collectZiffleRevealTokens(originCeremony, trustedOrigin.originPosition, options);
+      const reveal = await gameRef.current.ziffleRevealCard({
+        deckCount: Number(originCeremony.deckCount),
+        context: String(originCeremony.context || ""),
+        keyContext: ziffleKeyContextForCeremony(originCeremony),
+        keys: cloneMultiplayerPayload(originCeremony.keys || []),
+        steps: cloneMultiplayerPayload(originCeremony.steps || []),
+        cardPosition: trustedOrigin.originPosition,
+        tokens,
+      });
+      const resolved = fromSlot(reveal.originalSlot, "immutable_origin", {
+        objectId: trustedOrigin.objectId,
+        positionLinked: true,
+      });
+      return resolved ? {
+        ...resolved,
+        originPosition: trustedOrigin.originPosition,
+        originPositionCommitment: trustedOrigin.originPositionCommitment,
+      } : null;
+    }
     const revealLinksSlot = (candidate) =>
       Boolean(candidate)
       && (
@@ -493,7 +576,9 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
       return true;
     };
     const verifiedRevealSlot = (() => {
-      if (!shuffleOriginalSlotIsVerified || normalizedShuffleOriginalSlot == null) {
+      // Only the initial shuffle indexes the original manifest. Later shuffles
+      // index their remaining objects and must resolve the object's commitment.
+      if (ceremonyHasObjectOrder || !shuffleOriginalSlotIsVerified || normalizedShuffleOriginalSlot == null) {
         return null;
       }
       const strict = fromSlot(normalizedShuffleOriginalSlot, "verified_ziffle_reveal_slot", {
@@ -597,21 +682,6 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 	      const nestedShuffleOriginalSlot = Number(nestedReveal.originalSlot);
 	      if (!Number.isSafeInteger(nestedShuffleOriginalSlot) || nestedShuffleOriginalSlot < 0) {
 	        return null;
-	      }
-	      const directNested = fromSlot(nestedShuffleOriginalSlot, `${source}:nested_ziffle`, {
-	        objectId: Number.isSafeInteger(metadataObjectId) && metadataObjectId >= 0
-	          ? metadataObjectId
-	          : null,
-	        shuffleObjectId: Number.isSafeInteger(metadataShuffleObjectId) && metadataShuffleObjectId >= 0
-	          ? metadataShuffleObjectId
-	          : null,
-          positionLinked,
-	      });
-	      if (directNested && revealLinksSlot(directNested)) {
-	        return {
-	          ...directNested,
-	          hiddenMetadata: metadata,
-	        };
 	      }
 	      const nestedBeforeOrder = normalizeShuffleOrder(
 	        nestedCeremony.beforeOrder ?? nestedCeremony.before_order
@@ -863,6 +933,9 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
       resolvedShuffleOriginalSlot,
       false,
     );
+    if (objectOrderResolvedRevealSlot?.originPositionCommitment) {
+      return { resolvedRevealSlot: objectOrderResolvedRevealSlot, shuffleOriginalSlot: null };
+    }
     let cryptographicShuffleOriginalSlot = null;
     let cryptographicResolvedRevealSlot = null;
     const currentGame = gameRef.current;
@@ -953,6 +1026,10 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
     );
     const openingWithPosition = {
       ...opening,
+      ...(resolvedRevealSlot?.originPositionCommitment ? {
+        originPosition: resolvedRevealSlot.originPosition,
+        originPositionCommitment: resolvedRevealSlot.originPositionCommitment,
+      } : {}),
       ...(openingObjectId != null ? { objectId: openingObjectId } : {}),
       ...(Number.isSafeInteger(resolvedShuffleObjectId) && resolvedShuffleObjectId >= 0
         ? { shuffleObjectId: resolvedShuffleObjectId }
@@ -3005,7 +3082,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
         && Number(existing.sideboardCount || 0) === normalizedSideboard.length
         && Number(existing.commanderCount || 0) === normalizedCommanders.length
         && Array.isArray(existing.slotSecrets)
-        && existing.slotSecrets.length === normalizedDeck.length
+        && existing.slotSecrets.length === normalizedDeck.length + normalizedSideboard.length
       ) {
         if (persist) rememberPrivateDeckManifest(existing);
         return existing;
@@ -3122,7 +3199,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
       if (computedHash !== String(audit.nextStateHash || "")) {
         throw new Error("Sequenced audit next state hash is invalid");
       }
-      await verifyAuditOpeningsAgainstManifests(audit.openings || [], {
+      await verifyAuditOpeningCryptography(audit.openings || [], {
         payload: matchStartPayloadRef.current,
         shuffleProofs: audit.shuffleProofs || [],
       });
@@ -3207,6 +3284,17 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
                 })),
             })
           );
+        }
+        if (ziffleOriginAnchorFromMetadata(requirement)) {
+          assertZiffleOpeningOriginMatchesMetadata(match, requirement);
+          const requiredPositionCommitment = String(
+            requirement.publicCommitment || requirement.public_commitment
+            || requirement.positionCommitment || requirement.position_commitment
+            || (ziffleDeckHashFromCommitment(requirement.commitment) ? requirement.commitment : "")
+          );
+          if (requiredPositionCommitment && String(match.positionCommitment || "") !== requiredPositionCommitment) {
+            throw new Error("Ziffle opening does not match the required current public position");
+          }
         }
         continue;
       }
@@ -3486,15 +3574,15 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 	      if (!opening || opening.owner == null || opening.slot == null || !opening.card) {
 	        continue;
 	      }
-	      if (Number(opening.owner) === Number(resolveLocalCryptoPlayerIndex())) {
-	        opening = await ensureZiffleOpeningProof(opening, options);
-	        opening = await sanitizeObjectBoundOpening(opening);
-	      }
       const opensCommandObject =
         opening.objectId != null && commandObjectIds.has(Number(opening.objectId));
       const recomputeDecision = Boolean(timing === "pre" && opensCommandObject);
       if (timing && String(opening.timing || "pre") !== timing && !opensCommandObject) {
         continue;
+      }
+      if (Number(opening.owner) === Number(resolveLocalCryptoPlayerIndex())) {
+        opening = await ensureZiffleOpeningProof(opening, options);
+        opening = await sanitizeObjectBoundOpening(opening);
       }
 	      let localHiddenMetadata = null;
 	      let debugOpeningEntry = null;
@@ -3948,5 +4036,5 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
   }
 
 
-  return { addResolvedSelectObjectCommandIds, batchedOwnerPublicZiffleOpeningsForRequirements, buildDeckSlotOpeningForExport, buildLocalDeckAuditManifest, buildLocalOpeningFromRequirement, buildLocalOpeningsForCommand, buildLocalRequirementOpeningsForRequirements, buildOpeningFromResolvedCommittedSlot, buildSequencedActionAudit, currentHiddenCardMetadataForObject, currentHiddenObjectIdForOpening, currentKnownPublicAuditCheckpointHash, currentPublicAuditCheckpointHash, localizeSelectObjectOpeningIds, prefetchZiffleRevealTokensForPublicOpenRequirements, previewAuditOpeningInInspector, previewRequirementsForCommand, resolveCommittedSlotForZifflePosition, resolveCommittedZiffleRevealSlot, revealAuditOpenings, sanitizeObjectBoundOpening, verifiedAuditOpeningKey, verifyAuditOpeningsAgainstManifests, verifyAuditSatisfiesCryptoRequirements, verifyCurrentPublicCheckpointHash, verifySequencedActionAudit };
+  return { addResolvedSelectObjectCommandIds, batchedOwnerPublicZiffleOpeningsForRequirements, buildDeckSlotOpeningForExport, buildLocalDeckAuditManifest, buildLocalOpeningFromRequirement, buildLocalOpeningsForCommand, buildLocalRequirementOpeningsForRequirements, buildOpeningFromResolvedCommittedSlot, buildSequencedActionAudit, currentHiddenCardMetadataForObject, currentHiddenObjectIdForOpening, currentKnownPublicAuditCheckpointHash, currentPublicAuditCheckpointHash, currentZiffleOriginForOpening, localizeSelectObjectOpeningIds, prefetchZiffleRevealTokensForPublicOpenRequirements, previewAuditOpeningInInspector, previewRequirementsForCommand, resolveCommittedSlotForZifflePosition, resolveCommittedZiffleRevealSlot, revealAuditOpenings, sanitizeObjectBoundOpening, verifiedAuditOpeningKey, verifyAuditOpeningsAgainstManifests, verifyAuditSatisfiesCryptoRequirements, verifyCurrentPublicCheckpointHash, verifySequencedActionAudit };
 }

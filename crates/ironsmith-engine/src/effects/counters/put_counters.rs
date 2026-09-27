@@ -62,18 +62,71 @@ impl EffectExecutor for PutCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let zero_amount = matches!(self.amount, Value::Fixed(0));
         // Handle Source target specially (for abilities like level-up that target themselves).
         let target_ids = match self.target.base() {
+            ChooseSpec::Object(filter)
+                if ctx.cause.cause_type == crate::events::cause::CauseType::Cost
+                    || (ctx.optional_action
+                        && self.completion_action
+                            == Some(crate::events::KeywordActionKind::Blight)) =>
+            {
+                let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+                let candidates: Vec<_> = game
+                    .battlefield
+                    .iter()
+                    .copied()
+                    .filter(|id| {
+                        !game.is_phased_out(*id)
+                            && (zero_amount
+                                || game.can_have_counter_type_placed(*id, self.counter_type))
+                            && game
+                                .object(*id)
+                                .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+                    })
+                    .collect();
+                if candidates.is_empty() {
+                    return Err(ExecutionError::Impossible(
+                        "no valid object for counter cost".into(),
+                    ));
+                }
+                let spec = crate::decisions::specs::ChooseObjectsSpec::new(
+                    ctx.source,
+                    "Choose a creature to receive counters",
+                    candidates,
+                    1,
+                    Some(1),
+                );
+                crate::decisions::make_decision(
+                    game,
+                    ctx.decision_maker,
+                    ctx.controller,
+                    Some(ctx.source),
+                    spec,
+                )
+            }
             ChooseSpec::Source => vec![ctx.source],
             _ => match resolve_objects_for_effect(game, ctx, &self.target) {
                 Ok(objects) if !objects.is_empty() => objects,
                 _ => {
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::count(0));
+                    }
                     // No target chosen (valid for "up to" effects).
-                    return Ok(EffectOutcome::resolved());
+                    let count = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
+                    return Ok(counter_action_completed(
+                        self,
+                        ctx,
+                        EffectOutcome::resolved(),
+                        count,
+                    ));
                 }
             },
         };
 
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         let max_count = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
         let amount_is_up_to = self
             .amount
@@ -100,7 +153,7 @@ impl EffectExecutor for PutCountersEffect {
             max_count
         };
         if count == 0 {
-            let outcome = EffectOutcome::count(0);
+            let outcome = counter_action_completed(self, ctx, EffectOutcome::count(0), 0);
             return Ok(if amount_is_up_to {
                 outcome.with_execution_fact(ExecutionFact::ChosenNumber(0))
             } else {
@@ -125,13 +178,12 @@ impl EffectExecutor for PutCountersEffect {
             } else if target_ids.len() == 1 {
                 vec![(Target::Object(target_ids[0]), count)]
             } else {
-                let min_per_target = if self.target.is_target()
-                    && count as usize >= target_ids.len()
-                {
-                    1
-                } else {
-                    0
-                };
+                let min_per_target =
+                    if self.target.is_target() && count as usize >= target_ids.len() {
+                        1
+                    } else {
+                        0
+                    };
                 let spec = DistributeSpec::new(
                     ctx.source,
                     count,
@@ -240,7 +292,7 @@ impl EffectExecutor for PutCountersEffect {
         if !affected_objects.is_empty() {
             outcome = outcome.with_affected_objects_from_game(game, affected_objects);
         }
-        Ok(outcome)
+        Ok(counter_action_completed(self, ctx, outcome, count))
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -262,6 +314,11 @@ impl EffectExecutor for PutCountersEffect {
     }
 
     fn cost_description(&self) -> Option<String> {
+        if self.completion_action == Some(crate::events::KeywordActionKind::Blight)
+            && let Value::Fixed(count) = self.amount
+        {
+            return Some(format!("Blight {count}"));
+        }
         if matches!(self.target.base(), ChooseSpec::Source)
             && let Value::Fixed(count) = self.amount
         {
@@ -282,6 +339,22 @@ impl EffectExecutor for PutCountersEffect {
     }
 }
 
+fn counter_action_completed(
+    effect: &PutCountersEffect,
+    ctx: &ExecutionContext,
+    outcome: EffectOutcome,
+    amount: u32,
+) -> EffectOutcome {
+    if let Some(action) = effect.completion_action {
+        outcome.with_event(crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::KeywordActionEvent::new(action, ctx.controller, ctx.source, amount),
+            ctx.provenance,
+        ))
+    } else {
+        outcome
+    }
+}
+
 impl CostExecutableEffect for PutCountersEffect {
     fn can_execute_as_cost(
         &self,
@@ -294,11 +367,14 @@ impl CostExecutableEffect for PutCountersEffect {
                 "a cost object must be chosen, not targeted".to_string(),
             ));
         }
+        let zero_amount = matches!(self.amount, Value::Fixed(0));
         match self.target.base() {
             ChooseSpec::Source => {
                 if game
                     .object(source)
                     .is_some_and(|obj| obj.zone == crate::zone::Zone::Battlefield)
+                    && !game.is_phased_out(source)
+                    && (zero_amount || game.can_have_counter_type_placed(source, self.counter_type))
                 {
                     Ok(())
                 } else {
@@ -310,8 +386,12 @@ impl CostExecutableEffect for PutCountersEffect {
             ChooseSpec::Object(filter) => {
                 let filter_ctx = FilterContext::new(controller).with_source(source);
                 if game.battlefield.iter().copied().any(|object_id| {
-                    game.object(object_id)
-                        .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+                    !game.is_phased_out(object_id)
+                        && (zero_amount
+                            || game.can_have_counter_type_placed(object_id, self.counter_type))
+                        && game
+                            .object(object_id)
+                            .is_some_and(|object| filter.matches(object, &filter_ctx, game))
                 }) {
                     Ok(())
                 } else {

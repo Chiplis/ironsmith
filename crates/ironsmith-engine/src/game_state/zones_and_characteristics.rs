@@ -444,6 +444,23 @@ impl GameState {
         cause: crate::events::cause::EventCause,
         lki_snapshot: Option<crate::snapshot::ObjectSnapshot>,
     ) -> Option<ObjectId> {
+        self.move_object_with_snapshot_and_entry_prevalidation(
+            old_id,
+            new_zone,
+            cause,
+            lki_snapshot,
+            false,
+        )
+    }
+
+    fn move_object_with_snapshot_and_entry_prevalidation(
+        &mut self,
+        old_id: ObjectId,
+        new_zone: Zone,
+        cause: crate::events::cause::EventCause,
+        lki_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+        entry_prevalidated: bool,
+    ) -> Option<ObjectId> {
         let pre_event_lookback_source_snapshots = if self
             .may_have_triggered_abilities_for_event_kind(crate::events::EventKind::ZoneChange)
         {
@@ -451,12 +468,13 @@ impl GameState {
         } else {
             Vec::new()
         };
-        self.move_object_with_snapshot_and_pre_event_lookback(
+        self.move_object_with_snapshot_and_pre_event_lookback_internal(
             old_id,
             new_zone,
             cause,
             lki_snapshot,
             &pre_event_lookback_source_snapshots,
+            entry_prevalidated,
         )
     }
 
@@ -467,6 +485,25 @@ impl GameState {
         cause: crate::events::cause::EventCause,
         lki_snapshot: Option<crate::snapshot::ObjectSnapshot>,
         pre_event_lookback_source_snapshots: &[crate::snapshot::ObjectSnapshot],
+    ) -> Option<ObjectId> {
+        self.move_object_with_snapshot_and_pre_event_lookback_internal(
+            old_id,
+            new_zone,
+            cause,
+            lki_snapshot,
+            pre_event_lookback_source_snapshots,
+            false,
+        )
+    }
+
+    fn move_object_with_snapshot_and_pre_event_lookback_internal(
+        &mut self,
+        old_id: ObjectId,
+        new_zone: Zone,
+        cause: crate::events::cause::EventCause,
+        lki_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+        pre_event_lookback_source_snapshots: &[crate::snapshot::ObjectSnapshot],
+        entry_prevalidated: bool,
     ) -> Option<ObjectId> {
         // CR 311.2/312.2: planar cards remain in the command zone even if an
         // effect attempts to move them. Turning them face down is handled by
@@ -501,7 +538,13 @@ impl GameState {
         {
             return Some(old_id);
         }
-        if new_zone == Zone::Battlefield && self.card_cannot_enter_battlefield(old_id) {
+        // A simultaneous exchange checks entry legality before either member
+        // leaves its original zone. Its prepared commit must preserve that
+        // answer instead of evaluating dynamic filters against a partial move.
+        if new_zone == Zone::Battlefield
+            && !entry_prevalidated
+            && self.card_cannot_enter_battlefield(old_id)
+        {
             return None;
         }
         if self.token_cannot_change_zones(old_id, new_zone) {
@@ -1883,6 +1926,32 @@ impl GameState {
         )
     }
 
+    /// Commit a prevalidated exchange entrant with a fixed attachment target.
+    /// Its caller stages the entire exchange and supplies the attachment; do
+    /// not choose a different target or recheck entry prohibitions after the
+    /// other member of the simultaneous exchange has already departed.
+    pub(crate) fn commit_prepared_exchange_etb_with_dm(
+        &mut self,
+        old_id: ObjectId,
+        prepared_entry: PreparedEtbEntry,
+        entering_controller: PlayerId,
+        cause: crate::events::cause::EventCause,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Option<EntersResult> {
+        self.move_object_with_etb_processing_with_dm_and_cause_body(
+            old_id,
+            Zone::Battlefield,
+            cause,
+            decision_maker,
+            false,
+            Vec::new(),
+            Some(entering_controller),
+            false,
+            Some(prepared_entry),
+            true,
+        )
+    }
+
     fn move_object_with_etb_processing_with_dm_and_cause_internal(
         &mut self,
         old_id: ObjectId,
@@ -1910,6 +1979,7 @@ impl GameState {
                 entering_controller,
                 force_enters_tapped,
                 prepared_entry,
+                false,
             );
             if decision_maker.awaiting_choice() {
                 return None;
@@ -1928,6 +1998,7 @@ impl GameState {
             entering_controller,
             force_enters_tapped,
             prepared_entry,
+            false,
         )
     }
 
@@ -1942,6 +2013,7 @@ impl GameState {
         entering_controller: Option<PlayerId>,
         force_enters_tapped: bool,
         prepared_entry: Option<PreparedEtbEntry>,
+        entry_prevalidated: bool,
     ) -> Option<EntersResult> {
         let old_zone = self.object(old_id)?.zone;
 
@@ -1982,7 +2054,13 @@ impl GameState {
         if result.prevented {
             if let Some(dest) = result.new_destination {
                 // Move to the alternate destination
-                let new_id = self.move_object(old_id, dest, cause.clone())?;
+                let new_id = self.move_object_with_snapshot_and_entry_prevalidation(
+                    old_id,
+                    dest,
+                    cause.clone(),
+                    None,
+                    entry_prevalidated,
+                )?;
                 return Some(EntersResult {
                     new_id,
                     enters_tapped: false,
@@ -2063,8 +2141,15 @@ impl GameState {
             }
         }
 
-        // Proceed with normal battlefield entry
-        let new_id = self.move_object(old_id, Zone::Battlefield, cause.clone())?;
+        // Preserve a simultaneous exchange's entry-legality result through
+        // the final zone mutation, not just the outer ETB preparation layer.
+        let new_id = self.move_object_with_snapshot_and_entry_prevalidation(
+            old_id,
+            Zone::Battlefield,
+            cause.clone(),
+            None,
+            entry_prevalidated,
+        )?;
         if let Some(object) = self.object_mut(new_id) {
             merge_retained_tagged_objects(
                 &mut object.cast_tagged_objects,
@@ -2395,9 +2480,7 @@ impl GameState {
         }
         if !entry_counters.is_empty() {
             self.mark_continuous_state_dirty();
-            let entering_controller = self
-                .object(new_id)
-                .map(|object| self.controller_of(object));
+            let entering_controller = self.object(new_id).map(|object| self.controller_of(object));
             for (counter_type, count) in entry_counters {
                 self.effect_store
                     .continuous_effects

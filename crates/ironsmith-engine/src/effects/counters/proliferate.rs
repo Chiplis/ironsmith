@@ -160,7 +160,7 @@ impl EffectExecutor for ProliferateEffect {
                 .iter()
                 .filter_map(|&perm_id| {
                     game.object(perm_id).and_then(|obj| {
-                        if obj.counters.is_empty() {
+                        if obj.counters.is_empty() || game.is_phased_out(perm_id) {
                             None
                         } else {
                             Some(perm_id)
@@ -174,7 +174,7 @@ impl EffectExecutor for ProliferateEffect {
                 .iter()
                 .filter_map(|p| {
                     let has_counters = !p.counter_types_with_counters().is_empty();
-                    has_counters.then_some(p.id)
+                    (p.is_in_game() && has_counters).then_some(p.id)
                 })
                 .collect();
 
@@ -194,16 +194,62 @@ impl EffectExecutor for ProliferateEffect {
                 return Ok(EffectOutcome::count(0));
             }
 
-            let chosen_permanents: Vec<_> = selections
+            let mut chosen_permanents: Vec<_> = selections
                 .permanents
                 .into_iter()
                 .filter(|perm_id| eligible_permanents.contains(perm_id))
                 .collect();
-            let chosen_players: Vec<_> = selections
+            let mut chosen_players: Vec<_> = selections
                 .players
                 .into_iter()
                 .filter(|player_id| eligible_players.contains(player_id))
                 .collect();
+            chosen_permanents.sort_unstable();
+            chosen_permanents.dedup();
+            chosen_players.sort_unstable();
+            chosen_players.dedup();
+
+            // CR 701.34b: one selected player per shared-poison team receives
+            // poison. Other kinds of counters still go to every selected
+            // player. Choose the recipient before committing any counters.
+            let mut poison_recipients = Vec::new();
+            let mut handled_team_members = Vec::new();
+            for &player in &chosen_players {
+                if handled_team_members.contains(&player) {
+                    continue;
+                }
+                let members = game
+                    .two_headed_giant_team_members(player)
+                    .unwrap_or_else(|| vec![player]);
+                handled_team_members.extend(members.iter().copied());
+                let selected: Vec<_> = chosen_players
+                    .iter()
+                    .copied()
+                    .filter(|id| members.contains(id))
+                    .filter(|id| game.player(*id).is_some_and(|p| p.poison_counters > 0))
+                    .collect();
+                let recipient = if selected.len() > 1 {
+                    let options: Vec<_> = selected
+                        .iter()
+                        .map(|id| (game.player(*id).unwrap().name.to_string(), *id))
+                        .collect();
+                    crate::decisions::ask_choose_one(
+                        game,
+                        &mut ctx.decision_maker,
+                        ctx.controller,
+                        ctx.source,
+                        &options,
+                    )
+                } else {
+                    selected.first().copied()
+                };
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
+                if let Some(recipient) = recipient {
+                    poison_recipients.push(recipient);
+                }
+            }
 
             // One proliferate is one simultaneous counter-placing event
             // (CR 603.2c).
@@ -219,8 +265,14 @@ impl EffectExecutor for ProliferateEffect {
 
                 let mut received_counter = false;
                 for ct in counter_types {
-                    let final_count =
-                        process_put_counters_with_event_with_dm(game, perm_id, ct, 1, ctx.cause.clone(), &mut *ctx.decision_maker);
+                    let final_count = process_put_counters_with_event_with_dm(
+                        game,
+                        perm_id,
+                        ct,
+                        1,
+                        ctx.cause.clone(),
+                        &mut *ctx.decision_maker,
+                    );
                     if final_count == 0 {
                         continue;
                     }
@@ -233,14 +285,14 @@ impl EffectExecutor for ProliferateEffect {
                             Some(ctx.controller),
                         )
                         .map(|event| {
-                    let batch = *counter_batch.get_or_insert_with(|| {
-                        game.alloc_child_event_provenance(
-                            ctx.provenance,
-                            crate::events::EventKind::MarkersChanged,
-                        )
-                    });
-                    event.with_simultaneous_batch(batch)
-                })
+                            let batch = *counter_batch.get_or_insert_with(|| {
+                                game.alloc_child_event_provenance(
+                                    ctx.provenance,
+                                    crate::events::EventKind::MarkersChanged,
+                                )
+                            });
+                            event.with_simultaneous_batch(batch)
+                        })
                     {
                         received_counter = true;
                         outcome = outcome.with_event(event);
@@ -265,6 +317,11 @@ impl EffectExecutor for ProliferateEffect {
 
                 let mut received_counter = false;
                 for counter_type in counters {
+                    if counter_type == CounterType::Poison
+                        && !poison_recipients.contains(&player_id)
+                    {
+                        continue;
+                    }
                     // Player-counter placement already runs through the
                     // replacement/prevention pipeline inside this centralized
                     // helper. Do not pre-process it here or replacements such

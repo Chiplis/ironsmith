@@ -15,17 +15,21 @@ impl EffectExecutor for ReconfigureEffect {
         game: &mut crate::game_state::GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let snapshot_source = ctx
-            .source_snapshot
-            .as_ref()
-            .and_then(|snapshot| game.find_object_by_stable_id(snapshot.stable_id))
-            .filter(|id| {
-                game.object(*id)
-                    .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
-            });
-        let attachment_id = snapshot_source.unwrap_or(ctx.source);
+        // CR 400.7: an old ability must not follow the stable card identity
+        // when its source leaves and returns as a new object.
+        let attachment_id = ctx.source;
+        if game.is_phased_out(attachment_id)
+            || !game
+                .object(attachment_id)
+                .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+        {
+            return Ok(EffectOutcome::resolved());
+        }
 
-        if ctx.targets.is_empty() {
+        // The two reconfigure activations are distinct (CR 702.151a).
+        // Source denotes the targetless unattach branch; attach always
+        // requires another target creature.
+        if matches!(self.target.base(), ChooseSpec::Source) {
             game.detach_object_from_current_target(attachment_id);
             return Ok(EffectOutcome::resolved());
         }
@@ -51,15 +55,16 @@ impl EffectExecutor for ReconfigureEffect {
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        Some(&self.target)
+        (!matches!(self.target.base(), ChooseSpec::Source)).then_some(&self.target)
     }
 
     fn target_selection_profile(&self) -> Option<TargetSelectionProfile<'_>> {
+        self.get_target_spec()?;
         Some(TargetSelectionProfile {
             spec: &self.target,
             chooser: None,
             description: "target creature to attach to",
-            min_targets: 0,
+            min_targets: 1,
             max_targets: Some(1),
             count_value: None,
             distribution_value: None,
@@ -69,8 +74,9 @@ impl EffectExecutor for ReconfigureEffect {
     }
 
     fn get_target_count(&self) -> Option<ChoiceCount> {
+        self.get_target_spec()?;
         Some(ChoiceCount {
-            min: 0,
+            min: 1,
             max: Some(1),
             dynamic_x: false,
             up_to_x: false,

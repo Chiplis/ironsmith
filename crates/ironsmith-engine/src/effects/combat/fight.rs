@@ -170,7 +170,12 @@ impl FightEffect {
         ctx.source_snapshot = damage_source_snapshot;
 
         let result = ctx.with_temp_targets(vec![ResolvedTarget::Object(target)], |ctx| {
-            let effect = Effect::deal_damage(amount as i32, ChooseSpec::AnyTarget);
+            // Damage values use the engine's signed numeric domain. Doubling
+            // self-fight power must saturate instead of wrapping below zero.
+            let effect = Effect::deal_damage(
+                i32::try_from(amount).unwrap_or(i32::MAX),
+                ChooseSpec::AnyTarget,
+            );
             execute_effect(game, &effect, ctx)
         });
 
@@ -247,6 +252,24 @@ impl EffectExecutor for FightEffect {
                 (creature2_id, creature2_snapshot.clone()),
             ],
         );
+
+        // CR 701.14c: self-fight is one damage event for twice the power,
+        // so a replacement/prevention applies once to that combined amount.
+        if creature1_id == creature2_id {
+            let outcome = if power1 == 0 {
+                EffectOutcome::count(0)
+            } else {
+                Self::execute_fight_damage(
+                    game,
+                    ctx,
+                    creature1_id,
+                    creature1_snapshot,
+                    creature1_id,
+                    power1.saturating_mul(2),
+                )?
+            };
+            return Ok(outcome.with_events(fight_events));
+        }
 
         // Each creature deals damage equal to its power to the other.
         // Decompose into two DealDamage effects and aggregate outcomes.

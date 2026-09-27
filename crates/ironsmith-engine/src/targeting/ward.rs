@@ -17,7 +17,7 @@ use crate::decisions::{WardSpec, make_decision};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
-use crate::special_actions::pay_resolution_cost_with_mana_abilities;
+use crate::special_actions::pay_resolution_cost_with_snapshot;
 use crate::static_abilities::StaticAbility;
 
 use super::types::{PendingWardCost, WardPaymentResult};
@@ -87,6 +87,11 @@ pub fn get_ward_costs(
         .iter()
         .filter_map(|ability| ability.ward_cost())
         .map(|cost| PendingWardCost {
+            source_snapshot: Some(
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    target, game,
+                ),
+            ),
             target: target_id,
             ward_controller,
             cost: cost.clone(),
@@ -181,7 +186,14 @@ pub fn handle_ward_payment(
         // the cost ("life equal to its power") are to the ward permanent,
         // not the targeting object (CR 702.21a); the payer stays the
         // targeting object's controller.
-        if pay_ward_cost(game, caster, ward_cost.target, &ward_cost.cost, decision_maker) {
+        if pay_ward_cost(
+            game,
+            caster,
+            ward_cost.target,
+            &ward_cost.cost,
+            ward_cost.source_snapshot.clone(),
+            decision_maker,
+        ) {
             WardPaymentResult::Paid
         } else {
             // Couldn't actually pay the cost
@@ -255,6 +267,7 @@ impl crate::effects::EffectExecutor for WardCounterEffect {
         };
         let payer = game.stack[index].controller;
         let pending = PendingWardCost {
+            source_snapshot: ctx.source_snapshot.clone(),
             target: self.ward_target,
             ward_controller: ctx.controller,
             cost: self.cost.clone(),
@@ -311,14 +324,16 @@ fn pay_ward_cost(
     payer: PlayerId,
     source: ObjectId,
     cost: &TotalCost,
+    snapshot: Option<crate::snapshot::ObjectSnapshot>,
     decision_maker: &mut dyn DecisionMaker,
 ) -> bool {
-    pay_resolution_cost_with_mana_abilities(
+    pay_resolution_cost_with_snapshot(
         game,
         payer,
         source,
         cost,
         crate::costs::PaymentReason::Effect,
+        snapshot,
         decision_maker,
     )
 }

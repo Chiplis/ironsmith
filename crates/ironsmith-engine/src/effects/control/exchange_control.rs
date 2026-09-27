@@ -106,10 +106,10 @@ impl EffectExecutor for ExchangeControlEffect {
         };
 
         if let Some(constraint) = self.shared_type {
-            let Some(obj1) = game.object(perm1_id) else {
+            let Some(current_types1) = game.current_card_types(perm1_id) else {
                 return Ok(EffectOutcome::target_invalid());
             };
-            let Some(obj2) = game.object(perm2_id) else {
+            let Some(current_types2) = game.current_card_types(perm2_id) else {
                 return Ok(EffectOutcome::target_invalid());
             };
 
@@ -128,14 +128,12 @@ impl EffectExecutor for ExchangeControlEffect {
                 }
             };
 
-            let types1: HashSet<CardType> = obj1
-                .card_types
+            let types1: HashSet<CardType> = current_types1
                 .iter()
                 .copied()
                 .filter(|ty| relevant(*ty))
                 .collect();
-            let shares_type = obj2
-                .card_types
+            let shares_type = current_types2
                 .iter()
                 .copied()
                 .filter(|ty| relevant(*ty))

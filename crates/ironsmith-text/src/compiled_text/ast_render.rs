@@ -29854,12 +29854,16 @@ fn is_suspend_cast_when_last_counter_removed_trigger(
 ) -> bool {
     if !matches!(
         triggered.intervening_if,
-        Some(Condition::SourceHasNoCounter(CounterType::Time))
+        Some(Condition::SourceIsInZone(Zone::Exile))
     ) || !triggered.choices.is_empty()
         || triggered
             .trigger
             .downcast_ref::<crate::triggers::CounterRemovedFromTrigger>()
-            .is_none_or(|trigger| !trigger.filter.source)
+            .is_none_or(|trigger| {
+                !trigger.filter.source
+                    || trigger.counter_type != Some(CounterType::Time)
+                    || !trigger.last
+            })
     {
         return false;
     }

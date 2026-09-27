@@ -146,6 +146,7 @@ impl ironsmith_core::CostComponent for CompilerCost {
                 format!("emit {kind:?} keyword action ({amount})")
             }
             Self::Crew { amount } => format!("crew {amount:?}"),
+            Self::Teamwork { amount } => format!("teamwork {amount:?}"),
             Self::Sneak => "sneak".to_string(),
             Self::Effect(effect) | Self::ValidatedEffect(effect) => {
                 format!("compiler effect cost: {effect:?}")
@@ -318,6 +319,9 @@ pub enum CompilerCost {
         amount: u32,
     },
     Crew {
+        amount: u32,
+    },
+    Teamwork {
         amount: u32,
     },
     Sneak,

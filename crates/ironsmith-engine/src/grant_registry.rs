@@ -523,6 +523,9 @@ pub struct Grant {
     pub target_id: Option<ObjectId>,
     /// Stable card identity for targeted grants that track "that card" across zone changes.
     pub target_stable_id: Option<StableId>,
+    /// A self-grant belonging to one split-card half authorizes only that
+    /// face (CR 702.127a, 709.3), even though the off-stack card has both names.
+    pub required_face_name: Option<String>,
     /// Filter for cards that receive this grant (for blanket grants like Underworld Breach).
     /// When target_id is present, both identity and filter must match.
     pub filter: Option<ObjectFilter>,
@@ -600,6 +603,7 @@ impl GrantRegistry {
         shared_usage_id: SharedGrantUsageId,
     ) {
         self.grants.push(Grant {
+            required_face_name: None,
             target_id: Some(target_id),
             target_stable_id,
             filter: None,
@@ -725,6 +729,7 @@ impl GrantRegistry {
         source: GrantSource,
     ) {
         self.grants.push(Grant {
+            required_face_name: None,
             target_id: Some(target_id),
             target_stable_id: None,
             filter: None,
@@ -753,6 +758,7 @@ impl GrantRegistry {
         source: GrantSource,
     ) {
         self.grants.push(Grant {
+            required_face_name: None,
             target_id: Some(target_id),
             target_stable_id: None,
             filter: None,
@@ -781,6 +787,7 @@ impl GrantRegistry {
         source: GrantSource,
     ) {
         self.grants.push(Grant {
+            required_face_name: None,
             target_id: Some(target_id),
             target_stable_id: Some(target_stable_id),
             filter: None,
@@ -810,6 +817,7 @@ impl GrantRegistry {
         source: GrantSource,
     ) {
         self.grants.push(Grant {
+            required_face_name: None,
             target_id: Some(target_id),
             target_stable_id: Some(target_stable_id),
             filter: None,
@@ -841,6 +849,7 @@ impl GrantRegistry {
         source: GrantSource,
     ) {
         self.grants.push(Grant {
+            required_face_name: None,
             target_id: Some(target_id),
             target_stable_id: None,
             filter: None,
@@ -869,6 +878,7 @@ impl GrantRegistry {
     ) {
         let filter = normalize_grant_filter(filter);
         self.grants.push(Grant {
+            required_face_name: None,
             target_id: None,
             target_stable_id: None,
             filter: Some(filter),
@@ -1056,6 +1066,14 @@ impl GrantRegistry {
                 continue;
             }
 
+            if grant
+                .required_face_name
+                .as_ref()
+                .is_some_and(|face| card.is_none_or(|card| card.name.as_str() != face))
+            {
+                continue;
+            }
+
             // Check if this grant applies to this card
             let matches = if let Some(target_id) = grant.target_id {
                 // Targeted grant - match the current object id, or the stable card
@@ -1093,6 +1111,13 @@ impl GrantRegistry {
             None => return result,
         };
         for grant in self.static_grants(game) {
+            if grant
+                .required_face_name
+                .as_ref()
+                .is_some_and(|face| card.name.as_str() != face)
+            {
+                continue;
+            }
             if grant.player != player || grant.zone != card_zone {
                 continue;
             }
@@ -1466,7 +1491,8 @@ impl GrantRegistry {
             // A split card outside the battlefield and stack also carries the
             // other half's self-grants, such as aftermath's "you may cast this
             // half from your graveyard" (CR 702.127a, 709.3). Those grants are
-            // restricted to that half by name.
+            // restricted to that face explicitly, not by the combined
+            // off-stack card's names.
             let linked_half = (!source_is_battlefield
                 && source.zone != Zone::Stack
                 && source.linked_face_layout == crate::card::LinkedFaceLayout::Split)
@@ -1528,16 +1554,16 @@ impl GrantRegistry {
                     grants.push(Grant {
                         target_id: is_source_self_grant.then_some(source_id),
                         target_stable_id: None,
-                        filter: match &half_name {
-                            Some(name) => Some(ObjectFilter::default().named(name.clone())),
-                            None => (spec.filter != ObjectFilter::source())
-                                .then(|| normalize_grant_filter(spec.filter.clone())),
-                        },
+                        filter: (spec.filter != ObjectFilter::source())
+                            .then(|| normalize_grant_filter(spec.filter.clone())),
                         zone: spec.zone,
                         player: player.id,
                         grantable: spec.grantable.clone(),
                         usage_limit: spec.usage_limit,
                         available_starting_turn: None,
+                        required_face_name: (is_source_self_grant
+                            && source.linked_face_layout == crate::card::LinkedFaceLayout::Split)
+                            .then(|| half_name.clone().unwrap_or_else(|| source.name.to_string())),
                         play_from_constraints: PlayFromConstraints::default(),
                         cast_this_way_grants: Vec::new(),
                         cast_this_way_filter: None,

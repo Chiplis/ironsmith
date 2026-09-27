@@ -440,7 +440,17 @@ ability_parser!(parse_cycling, parse_cycling_line_lexed);
 ability_parser!(parse_craft, parse_craft_line_lexed);
 ability_parser!(parse_reinforce, parse_reinforce_line_lexed);
 ability_parser!(parse_equip, parse_equip_line_lexed);
-ability_parser!(parse_reconfigure, parse_reconfigure_line_lexed);
+pub(super) fn parse_reconfigure(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+    _full_tokens: &[OwnedLexToken],
+) -> KeywordParseResult {
+    Ok(parse_reconfigure_line_lexed(tokens)?.map(|abilities| {
+        KeywordLinePayload::ast(LineAst::Multiple(
+            abilities.into_iter().map(LineAst::Ability).collect(),
+        ))
+    }))
+}
 ability_parser!(parse_morph, parse_morph_keyword_line_lexed);
 ability_parser!(parse_transmute, parse_transmute_line_lexed);
 ability_parser!(parse_transfigure, parse_transfigure_line_lexed);
@@ -496,8 +506,9 @@ pub(super) fn parse_teamwork(
     let Some(amount) = crate::util::parse_number_word_u32(amount) else {
         return Ok(None);
     };
-    let cost =
-        ironsmith_core::TotalCost::from_costs(vec![crate::model::CompilerCost::Crew { amount }]);
+    let cost = ironsmith_core::TotalCost::from_costs(vec![crate::model::CompilerCost::Teamwork {
+        amount,
+    }]);
     Ok(ast(LineAst::OptionalCost(
         crate::model::CompilerOptionalCost::teamwork(cost),
     )))

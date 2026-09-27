@@ -467,6 +467,8 @@ impl WasmGame {
                                 zone: ironsmith::zone::Zone::Library,
                                 slot: slot.slot,
                                 commitment: slot.commitment.clone(),
+                                origin_slot: None,
+                                origin_commitment: None,
                                 public_slot: None,
                                 public_commitment: None,
                             },
@@ -501,12 +503,6 @@ impl WasmGame {
     ) {
         let player_ids: Vec<PlayerId> = self.game.players.iter().map(|player| player.id).collect();
         for (player_index, &player_id) in player_ids.iter().enumerate() {
-            if sideboards
-                .get(player_index)
-                .is_some_and(|sideboard| !sideboard.is_empty())
-            {
-                continue;
-            }
             let Some(manifest) = hidden_manifests
                 .iter()
                 .find(|manifest| usize::from(manifest.owner) == player_index)
@@ -515,6 +511,35 @@ impl WasmGame {
             };
             let mut slots = manifest.slot_commitments.clone();
             slots.sort_by_key(|slot| slot.slot);
+            if sideboards
+                .get(player_index)
+                .is_some_and(|sideboard| !sideboard.is_empty())
+            {
+                // Explicit sideboards still belong to the committed deck. Keep
+                // their slot metadata so peer resync can redact their identities.
+                let objects = self.game.players[player_index].sideboard.clone();
+                for (object_id, slot) in objects.iter().copied().zip(
+                    slots
+                        .into_iter()
+                        .skip(manifest.deck_count)
+                        .take(manifest.sideboard_count),
+                ) {
+                    self.game.set_hidden_card_info(
+                        object_id,
+                        ironsmith::game_state::HiddenCardInfo {
+                            owner: player_id,
+                            zone: ironsmith::zone::Zone::OutsideGame,
+                            slot: slot.slot,
+                            commitment: slot.commitment,
+                            origin_slot: None,
+                            origin_commitment: None,
+                            public_slot: None,
+                            public_commitment: None,
+                        },
+                    );
+                }
+                continue;
+            }
             for slot in slots
                 .into_iter()
                 .skip(manifest.deck_count)

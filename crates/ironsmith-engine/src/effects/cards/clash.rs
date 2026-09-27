@@ -27,7 +27,11 @@ pub type ClashEffect = ironsmith_core::ClashEffect;
 fn in_game_opponents(game: &GameState, controller: PlayerId) -> Vec<PlayerId> {
     game.players
         .iter()
-        .filter(|player| player.id != controller && player.is_in_game())
+        .filter(|player| {
+            player.is_in_game()
+                && game.are_opponents(controller, player.id)
+                && game.player_is_within_range(controller, player.id)
+        })
         .map(|player| player.id)
         .collect()
 }

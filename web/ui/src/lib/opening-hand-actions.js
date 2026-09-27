@@ -29,3 +29,11 @@ export function findOpeningHandMulliganAction(actions = [], passAction = null) {
   if (!isOpeningHandDecision(actions, passAction)) return null;
   return (actions || []).find(isTakeMulliganAction) || null;
 }
+
+// Pregame abilities can be offered both during mulligans and after keeping.
+export function findPregameActions(actions = []) {
+  return (actions || []).filter((action) =>
+    action.kind === "use_pregame_action"
+    || action?.action_ref?.kind === "use_pregame_action"
+  );
+}

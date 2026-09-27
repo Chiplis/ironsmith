@@ -137,6 +137,8 @@ mod dispatch_tests {
             zone: ironsmith::zone::Zone::Hand,
             slot: 10,
             commitment: "ziffle:initial-deck:10".to_string(),
+            origin_slot: None,
+            origin_commitment: None,
             public_slot: Some(51),
             public_commitment: Some("ziffle:shuffle-deck:51".to_string()),
         };
@@ -155,6 +157,8 @@ mod dispatch_tests {
             zone: ironsmith::zone::Zone::Hand,
             slot: 10,
             commitment: "ziffle:initial-deck:10".to_string(),
+            origin_slot: None,
+            origin_commitment: None,
             public_slot: None,
             public_commitment: None,
         };
@@ -179,6 +183,8 @@ mod dispatch_tests {
                     zone: ironsmith::zone::Zone::Hand,
                     slot: 13,
                     commitment: "slot-13-private".to_string(),
+                    origin_slot: None,
+                    origin_commitment: None,
                     public_slot: None,
                     public_commitment: None,
                 },
@@ -190,6 +196,8 @@ mod dispatch_tests {
                     zone: ironsmith::zone::Zone::Library,
                     slot: 6,
                     commitment: "slot-6-private".to_string(),
+                    origin_slot: None,
+                    origin_commitment: None,
                     public_slot: Some(24),
                     public_commitment: Some("ziffle:deck:24".to_string()),
                 },
@@ -1675,6 +1683,8 @@ impl WasmGame {
             zone,
             slot: input.original_slot,
             commitment: input.commitment.clone().unwrap_or_default(),
+            origin_slot: info.origin_slot,
+            origin_commitment: info.origin_commitment.clone(),
             public_slot,
             public_commitment,
         };
@@ -1780,6 +1790,8 @@ impl WasmGame {
                     zone: card.zone,
                     slot: card.info.slot,
                     commitment: card.info.commitment.clone(),
+                    origin_slot: card.info.origin_slot,
+                    origin_commitment: card.info.origin_commitment.clone(),
                     public_slot: card.info.public_slot,
                     public_commitment: card.info.public_commitment.clone(),
                     card: card.known_name,
@@ -2140,6 +2152,8 @@ impl WasmGame {
                             zone,
                             slot: position as u16,
                             commitment: format!("ziffle:{}:{}", input.deck_hash, position),
+                            origin_slot: None,
+                            origin_commitment: None,
                             public_slot: Some(position as u16),
                             public_commitment: Some(format!(
                                 "ziffle:{}:{}",
@@ -2177,6 +2191,8 @@ impl WasmGame {
                 ironsmith::game_state::HiddenCardInfo {
                     owner,
                     zone,
+                    origin_slot: None,
+                    origin_commitment: None,
                     public_slot: Some(position as u16),
                     public_commitment: Some(format!("ziffle:{}:{}", input.deck_hash, position)),
                     ..info
@@ -2222,6 +2238,8 @@ impl WasmGame {
             // A face-down object's printed name, not the face-down overlay's.
             card: object.identity_name().to_string(),
             commitment: info.commitment.clone(),
+            origin_slot: info.origin_slot,
+            origin_commitment: info.origin_commitment.clone(),
             public_slot: info.public_slot,
             public_commitment: info.public_commitment.clone(),
         })

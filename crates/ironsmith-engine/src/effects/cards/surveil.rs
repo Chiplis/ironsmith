@@ -186,7 +186,17 @@ impl EffectExecutor for SurveilEffect {
 
         // Put cards going to graveyard
         for &card_id in &cards_to_graveyard {
-            game.move_object_by_effect(card_id, Zone::Graveyard);
+            crate::effects::zones::apply_zone_change(
+                game,
+                card_id,
+                Zone::Library,
+                Zone::Graveyard,
+                ctx.cause.clone(),
+                ctx.decision_maker,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
         }
 
         // Put the rest back on top
@@ -197,7 +207,11 @@ impl EffectExecutor for SurveilEffect {
                 .copied()
                 .filter(|id| !ordered_top_cards.contains(id))
                 .collect();
-            for id in ordered_top_cards.iter().rev() {
+            for id in ordered_top_cards
+                .iter()
+                .rev()
+                .filter(|id| p.library.contains(id))
+            {
                 after_order.push(*id);
             }
             game.set_player_library_order_with_audit(

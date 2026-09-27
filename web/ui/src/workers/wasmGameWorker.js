@@ -1,6 +1,7 @@
 import { createAsyncLimiter } from "../lib/bounded-async.js";
 import { CARD_ASSET_MISSING, fetchCardAssetJson, versionedCardAssetUrl } from "../lib/card-asset-cache.js";
 import { createSnapshotEncoder } from "../lib/snapshot-channel.js";
+import { previewCryptoRequirementsWithMaterial } from "../lib/preview-crypto-material.js";
 import { replayTrustedMatch, replayTrustedActions } from "../lib/relay/replay-trusted-match.js";
 import { compileWasmWithProgress } from "../lib/wasm-loading.js";
 import { createAdaptiveWorkBudget } from "../lib/adaptive-work-budget.js";
@@ -85,6 +86,7 @@ const DISPATCH_TRACE_METHODS = new Set([
 const RUNTIME_EVALUATION_METHODS = new Set([
   "dispatch",
   "previewCryptoRequirements",
+  "previewCryptoRequirementsWithMaterial",
   "previewCastTargets",
   "snapshot",
   "uiState",
@@ -314,6 +316,10 @@ function collectDeckNames(payload, out = []) {
   collectDeckNames(payload.decks, out);
   collectDeckNames(payload.sideboards, out);
   collectDeckNames(payload.commanders, out);
+  // Verified matches have empty decks; their public lists still determine
+  // which draws need a Miracle reveal window. Load them before setup so
+  // eligibility does not depend on which player's cards this worker cached.
+  collectDeckNames(payload.publicDecklists, out);
   return out;
 }
 
@@ -893,6 +899,7 @@ function handleCall(msg) {
     const replayOptions = { yieldControl: () => new Promise(resolve => setTimeout(resolve, 0)) };
     const fn = method === "replayTrustedMatch" ? (config, actions, perspective) => replayTrustedMatch(game, config, actions, perspective, replayOptions)
       : method === "replayTrustedActions" ? (actions, sequence) => replayTrustedActions(game, actions, sequence, replayOptions)
+      : method === "previewCryptoRequirementsWithMaterial" ? (command, material) => previewCryptoRequirementsWithMaterial(game, command, material)
       : game[method];
     if (typeof fn !== "function") {
       throw new Error(`Unknown game method: ${method}`);

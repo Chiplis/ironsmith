@@ -67,11 +67,12 @@ impl EffectExecutor for UnearthEffect {
         };
         let events = move_outcome.events;
 
-        // Grant haste until end of turn to the returned permanent.
+        // CR 702.84a gives the returned permanent haste without a duration.
+        // It remains if the delayed exile trigger is countered.
         let haste_effect = ApplyContinuousEffect::new(
             EffectTarget::Specific(new_id),
             Modification::AddAbility(StaticAbility::haste()),
-            Until::EndOfTurn,
+            Until::Forever,
         )
         .with_source_type(EffectSourceType::Resolution {
             locked_targets: vec![new_id],

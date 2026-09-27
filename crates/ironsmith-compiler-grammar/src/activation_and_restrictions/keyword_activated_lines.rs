@@ -469,7 +469,7 @@ pub fn parse_equip_line_lexed(
 
 pub fn parse_reconfigure_line_lexed(
     tokens: &[OwnedLexToken],
-) -> Result<Option<ParsedAbility>, CardTextError> {
+) -> Result<Option<Vec<ParsedAbility>>, CardTextError> {
     let Some(spec) = keyword_activated_grammar::parse_reconfigure_line_spec_tokens(tokens) else {
         return Ok(None);
     };
@@ -479,34 +479,47 @@ pub fn parse_reconfigure_line_lexed(
         ));
     }
     let total_cost = parse_compiler_activation_cost(spec.cost_tokens)?;
-    let target = TargetAst::Object(ObjectFilter::creature().you_control(), None, None);
-    Ok(Some(ParsedAbility {
-        ability: Ability {
-            kind: AbilityKind::Activated(ActivatedAbility {
-                mana_cost: total_cost,
-                effects: ironsmith_core::ResolutionProgram::from_effects(vec![
-                    EffectAst::subject_verb(
-                        SubjectVerbRoleAst::Actor,
-                        PlayerAst::Implicit,
-                        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Reconfigure {
-                            target,
-                        }),
-                    ),
-                ]),
-                choices: vec![],
-                timing: ActivationTiming::SorcerySpeed,
-                additional_restrictions: vec![],
-                activation_restrictions: vec![],
-                mana_output: None,
-                activation_condition: None,
-                mana_usage_restrictions: vec![],
-                is_loyalty_ability: false,
-            }),
-            functional_zones: vec![Zone::Battlefield],
-        }
-        .into(),
-        effects_ast: None,
-        reference_imports: ReferenceImports::default(),
-        trigger_spec: None,
-    }))
+    // CR 702.151a defines two independent abilities. The attach activation
+    // targets another creature; the unattach activation has no targets and
+    // can be activated only while attached to a creature.
+    let attach_target =
+        TargetAst::Object(ObjectFilter::creature().you_control().other(), None, None);
+    let abilities = [attach_target, TargetAst::Source(None)]
+        .into_iter()
+        .enumerate()
+        .map(|(branch, target)| ParsedAbility {
+            ability: Ability {
+                kind: AbilityKind::Activated(ActivatedAbility {
+                    mana_cost: total_cost.clone(),
+                    effects: ironsmith_core::ResolutionProgram::from_effects(vec![
+                        EffectAst::subject_verb(
+                            SubjectVerbRoleAst::Actor,
+                            PlayerAst::Implicit,
+                            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Reconfigure {
+                                target,
+                            }),
+                        ),
+                    ]),
+                    choices: vec![],
+                    timing: ActivationTiming::SorcerySpeed,
+                    additional_restrictions: vec![],
+                    activation_restrictions: vec![],
+                    mana_output: None,
+                    activation_condition: (branch == 1).then(|| {
+                        crate::cards::builders::PredicateAst::AttachedToSourceMatches(
+                            ObjectFilter::creature(),
+                        )
+                    }),
+                    mana_usage_restrictions: vec![],
+                    is_loyalty_ability: false,
+                }),
+                functional_zones: vec![Zone::Battlefield],
+            }
+            .into(),
+            effects_ast: None,
+            reference_imports: ReferenceImports::default(),
+            trigger_spec: None,
+        })
+        .collect();
+    Ok(Some(abilities))
 }

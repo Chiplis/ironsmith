@@ -60,6 +60,9 @@ fn convert_zone_change_trigger(
     out = out.this_subject_number(trigger.this_subject_number);
     out = out.count(convert_count_mode(trigger.count));
     out = out.cause_filter(trigger.cause_filter);
+    if trigger.during_own_resolution {
+        out = out.during_own_resolution();
+    }
     if let Some(origin_condition) = trigger.origin_condition {
         out = out.origin_condition(origin_condition);
     }

@@ -975,11 +975,20 @@ impl EffectExecutor for ManifestDreadEffect {
             false,
             KeywordActionKind::ManifestDread,
         )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(outcome);
+        }
         let mut graveyard_snapshots = Vec::new();
-        for card_id in top_cards
-            .into_iter()
-            .filter(|&card_id| card_id != card_to_manifest)
-        {
+        // CR 701.62a: every looked-at card that wasn't manifested goes to
+        // the graveyard, including the selected card if entry was prohibited.
+        // A card moved elsewhere by a replacement is no longer in this group.
+        for card_id in top_cards {
+            if !game
+                .object(card_id)
+                .is_some_and(|card| card.zone == Zone::Library)
+            {
+                continue;
+            }
             if let EventOutcome::Proceed(result) = apply_zone_change(
                 game,
                 card_id,
@@ -994,6 +1003,9 @@ impl EffectExecutor for ManifestDreadEffect {
                         ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
                     })
                 }));
+            }
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
             }
         }
 

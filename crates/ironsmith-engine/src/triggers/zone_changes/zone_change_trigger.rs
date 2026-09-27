@@ -134,6 +134,8 @@ pub struct ZoneChangeTrigger {
     pub player: PlayerRelation,
     /// Optional filter on what caused the zone change.
     pub cause_filter: Option<CauseFilter>,
+    /// Match only a spell changing zones during its own successful resolution.
+    pub during_own_resolution: bool,
     /// Optional active-turn qualifier.
     pub during_turn: Option<PlayerFilter>,
     /// Optional phase restriction on when the event occurs.
@@ -160,6 +162,7 @@ impl Default for ZoneChangeTrigger {
             object_filter: ObjectFilter::default(),
             player: PlayerRelation::Any,
             cause_filter: None,
+            during_own_resolution: false,
             during_turn: None,
             timing: None,
             origin_condition: None,
@@ -176,6 +179,12 @@ impl ZoneChangeTrigger {
     /// Create a new zone change trigger with default settings (matches everything).
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Require the moving spell to be in its own successful resolution.
+    pub fn during_own_resolution(mut self) -> Self {
+        self.during_own_resolution = true;
+        self
     }
 
     /// Set the source zone pattern.
@@ -916,6 +925,9 @@ impl ZoneChangeTrigger {
                 display.push(' ');
                 display.push_str(&cause_phrase);
             }
+            if self.during_own_resolution {
+                display.push_str(" during its resolution");
+            }
             if let Some(during_turn) = &self.during_turn {
                 let phrase = match during_turn {
                     PlayerFilter::You => Some("during your turn"),
@@ -1299,6 +1311,26 @@ impl TriggerMatcher for ZoneChangeTrigger {
         let Some(zc) = event.downcast::<ZoneChangeEvent>() else {
             return false;
         };
+
+        if self.during_own_resolution {
+            let Some(resolving_spell) = zc.cause.resolving_spell else {
+                return false;
+            };
+            // Nonbattlefield zone-change events use the destination object
+            // id. Its pre-move snapshot retains the resolving stack identity.
+            let moved_resolving_spell = zc.objects.contains(&resolving_spell)
+                || zc.snapshots().iter().any(|snapshot| {
+                    snapshot.object_id == resolving_spell
+                        && (!(self.this_object || self.object_filter.source)
+                            || ctx
+                                .game
+                                .object(ctx.source_id)
+                                .is_some_and(|source| source.stable_id == snapshot.stable_id))
+                });
+            if !moved_resolving_spell {
+                return false;
+            }
+        }
 
         if let Some(during_turn) = &self.during_turn
             && !current_turn_matches_player_filter(during_turn, ctx, None)

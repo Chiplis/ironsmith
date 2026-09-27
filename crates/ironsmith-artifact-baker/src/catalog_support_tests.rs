@@ -398,11 +398,11 @@ fn catalog_bankbuster_pilot_crews_for_three_but_does_not_saddle_for_three() {
         game.calculated_characteristics(pilot).unwrap().power,
         Some(1)
     );
-    engine::effects::CrewCostEffect { required_power: 3 }
+    engine::effects::CrewCostEffect::new(3)
         .can_execute_as_cost(&game, source, alice)
         .unwrap();
     assert!(
-        engine::effects::CrewCostEffect { required_power: 4 }
+        engine::effects::CrewCostEffect::new(4)
             .can_execute_as_cost(&game, source, alice)
             .is_err()
     );

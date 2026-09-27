@@ -356,6 +356,10 @@ pub(super) fn compile_put_counters_action(
     }
     let mut put_counters =
         crate::effects::PutCountersEffect::new(*counter_type, resolved_count, spec.clone());
+    if count.has_surface_hint(ironsmith_core::ValueSurfaceHint::BlightKeywordAction) {
+        put_counters =
+            put_counters.with_completion_action(crate::events::KeywordActionKind::Blight);
+    }
     if let Some(target_count) = target_count {
         put_counters = put_counters.with_target_count(*target_count);
     }

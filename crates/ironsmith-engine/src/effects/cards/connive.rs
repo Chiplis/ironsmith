@@ -114,17 +114,22 @@ impl EffectExecutor for ConniveEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let (target_ids, from_tagged_lki) = match connive_tagged_object_ids(ctx, &self.target) {
-            Some(ids) => (ids, true),
+        // CR 701.50e: zero is not a connive event, including for replacements.
+        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+        if count == 0 {
+            return Ok(EffectOutcome::count(0));
+        }
+        let target_ids = match connive_tagged_object_ids(ctx, &self.target) {
+            Some(ids) => ids,
             // CR 701.50c: a source that changed zones still connives, using
             // its last known information.
             None if matches!(self.target.base(), ChooseSpec::Source)
                 && ctx.source_snapshot.is_some()
                 && resolve_objects_for_effect(game, ctx, &self.target).is_err() =>
             {
-                (vec![ctx.source], true)
+                vec![ctx.source]
             }
-            None => (resolve_objects_for_effect(game, ctx, &self.target)?, false),
+            None => resolve_objects_for_effect(game, ctx, &self.target)?,
         };
         if target_ids.is_empty() {
             return Ok(EffectOutcome::target_invalid());
@@ -134,11 +139,9 @@ impl EffectExecutor for ConniveEffect {
             .into_iter()
             .filter_map(|object_id| {
                 let snapshot = connive_snapshot_for_object(game, ctx, object_id)?;
-                if !snapshot.has_card_type(CardType::Creature)
-                    && !(from_tagged_lki && game.object(object_id).is_none())
-                {
-                    return None;
-                }
+                // CR 701.50a-b: the instructed permanent connives even if it
+                // stopped being a creature. Target legality, where relevant,
+                // is handled by the target specification/resolution pipeline.
                 Some(ConniveInstruction {
                     object_id,
                     controller: snapshot.controller,
@@ -150,7 +153,6 @@ impl EffectExecutor for ConniveEffect {
             return Ok(EffectOutcome::target_invalid());
         }
 
-        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
         let mut events = Vec::new();
         let mut connived_objects = Vec::new();
         let player_order = players_in_apnap_order(game);

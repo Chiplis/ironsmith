@@ -14,9 +14,10 @@ use crate::card::PtValue;
 use crate::card::{CardBuilder, LinkedFaceLayout, PowerToughness};
 use crate::color::ColorSet;
 use crate::cost::{OptionalCost, OptionalCostKind, TotalCost};
+#[cfg(any(test, ironsmith_runtime_parser_tests))]
+use crate::effect::ChoiceCount;
 use crate::effect::{
-    ChoiceCount, Condition, Effect, EffectId, EffectMode, EffectPredicate, EventValueSpec, Until,
-    Value,
+    Condition, Effect, EffectId, EffectMode, EffectPredicate, EventValueSpec, Until, Value,
 };
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
@@ -2737,14 +2738,13 @@ impl CardDefinitionBuilder {
             .owned_by(PlayerFilter::You)
             .in_zone(Zone::Graveyard)
             .with_mana_value(mana_value);
-        let target =
-            ChooseSpec::target(ChooseSpec::Object(filter)).with_count(ChoiceCount::up_to(1));
+        let target = ChooseSpec::target(ChooseSpec::Object(filter));
 
         Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::this_dies(),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    Effect::return_from_graveyard_to_hand(target.clone()),
+                    Effect::may_single(Effect::return_from_graveyard_to_hand(target.clone())),
                 ]),
                 choices: vec![target],
                 intervening_if: None,
@@ -3098,6 +3098,7 @@ impl CardDefinitionBuilder {
                 crate::triggers::ZoneChangeTrigger::new()
                     .from(Zone::Stack)
                     .to(Zone::Graveyard)
+                    .during_own_resolution()
                     .this(),
             )
         };
@@ -3166,10 +3167,16 @@ impl CardDefinitionBuilder {
 
         // CR 702.153a: the sacrifice is an optional additional cost paid while
         // casting (601.2b/f-h); the cast trigger copies only if it was paid.
-        self.optional_costs.push(OptionalCost::custom(
+        let cost_ref = ironsmith_core::OptionalCostRef::with_discriminator(
+            ironsmith_core::OptionalCostKind::Casualty,
+            format!("printed-{}", self.optional_costs.len()),
+        );
+        let mut optional_cost = OptionalCost::custom(
             "Casualty",
             TotalCost::from_cost(crate::costs::Cost::sacrifice(creature_filter)),
-        ));
+        );
+        optional_cost.reference = cost_ref.clone();
+        self.optional_costs.push(optional_cost);
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::you_cast_this_spell(),
@@ -3178,7 +3185,7 @@ impl CardDefinitionBuilder {
                     Effect::may_choose_new_targets(EffectId(0)),
                 ]),
                 choices: vec![],
-                intervening_if: Some(Condition::ThisSpellPaidLabel("Casualty".into())),
+                intervening_if: Some(Condition::ThisSpellPaidLabel(cost_ref)),
                 presentation_label: None,
             }),
             functional_zones: vec![Zone::Stack],
@@ -3189,12 +3196,18 @@ impl CardDefinitionBuilder {
     /// optional sacrifice paid while casting; the copy's starting loyalty is
     /// the sacrificed creature's power (CR 702.153a).
     pub fn variable_casualty_planeswalker_copy(mut self) -> Self {
-        self.optional_costs.push(OptionalCost::custom(
+        let cost_ref = ironsmith_core::OptionalCostRef::with_discriminator(
+            ironsmith_core::OptionalCostKind::Casualty,
+            format!("printed-{}", self.optional_costs.len()),
+        );
+        let mut optional_cost = OptionalCost::custom(
             "Casualty",
             TotalCost::from_cost(crate::costs::Cost::sacrifice(
                 ObjectFilter::creature().you_control(),
             )),
-        ));
+        );
+        optional_cost.reference = cost_ref.clone();
+        self.optional_costs.push(optional_cost);
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::you_cast_this_spell(),
@@ -3202,7 +3215,7 @@ impl CardDefinitionBuilder {
                     crate::effects::VariableCasualtyPlaneswalkerCopyEffect::new(),
                 )]),
                 choices: vec![],
-                intervening_if: Some(Condition::ThisSpellPaidLabel("Casualty".into())),
+                intervening_if: Some(Condition::ThisSpellPaidLabel(cost_ref)),
                 presentation_label: None,
             }),
             functional_zones: vec![Zone::Stack],
@@ -4390,7 +4403,11 @@ impl CardDefinitionBuilder {
             })
             .with_ability(Ability {
                 kind: AbilityKind::Triggered(TriggeredAbility {
-                    trigger: Trigger::counter_removed_from(ObjectFilter::source()),
+                    trigger: Trigger::new(
+                        crate::triggers::CounterRemovedFromTrigger::new(ObjectFilter::source())
+                            .counter_type(CounterType::Time)
+                            .last(),
+                    ),
                     effects: crate::resolution::ResolutionProgram::from_effects(vec![
                         Effect::may_single(Effect::new(
                             crate::effects::CastSourceEffect::new()
@@ -4400,7 +4417,7 @@ impl CardDefinitionBuilder {
                         )),
                     ]),
                     choices: vec![],
-                    intervening_if: Some(Condition::SourceHasNoCounter(CounterType::Time)),
+                    intervening_if: Some(Condition::SourceIsInZone(Zone::Exile)),
                     presentation_label: None,
                 }),
                 functional_zones: vec![Zone::Exile],

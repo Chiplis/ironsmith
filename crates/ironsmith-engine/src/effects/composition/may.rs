@@ -32,7 +32,11 @@ fn execute_optional_effects(
     let has_action = effects.iter().any(|effect| !is_object_selection(effect));
     let mut outcomes = Vec::new();
     for (index, effect) in effects.iter().enumerate() {
-        let mut outcome = execute_effect(game, effect, ctx)?;
+        let was_optional = ctx.optional_action;
+        ctx.optional_action = true;
+        let result = execute_effect(game, effect, ctx);
+        ctx.optional_action = was_optional;
+        let mut outcome = result?;
         if has_action && is_object_selection(effect) {
             outcome.set_value(OutcomeValue::None);
         }
@@ -331,6 +335,22 @@ impl MayEffect {
             return Ok(true);
         }
 
+        if let Some(put) = self.effects.first().and_then(|effect| {
+            let mut effect = effect;
+            while let Some(child) = effect.transparent_child_effect() {
+                effect = child;
+            }
+            effect.downcast_ref::<crate::effects::PutCountersEffect>()
+        }) && put.completion_action == Some(crate::events::KeywordActionKind::Blight)
+        {
+            return Ok(crate::effects::CostExecutableEffect::can_execute_as_cost(
+                put,
+                game,
+                ctx.source,
+                ctx.controller,
+            )
+            .is_err());
+        }
         if self.effects.len() != 1 {
             return Ok(false);
         }

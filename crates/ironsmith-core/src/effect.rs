@@ -1439,6 +1439,8 @@ impl UntapEffect {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct PutCountersEffect {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub completion_action: Option<crate::event_model::KeywordActionKind>,
     pub counter_type: crate::counter::CounterType,
     pub amount: Value,
     pub target: ChooseSpec,
@@ -1463,12 +1465,18 @@ impl DoubleCountersEffect {
 }
 
 impl PutCountersEffect {
+    pub fn with_completion_action(mut self, action: crate::event_model::KeywordActionKind) -> Self {
+        self.completion_action = Some(action);
+        self
+    }
+
     pub fn new(
         counter_type: crate::counter::CounterType,
         amount: impl Into<Value>,
         target: ChooseSpec,
     ) -> Self {
         Self {
+            completion_action: None,
             counter_type,
             amount: amount.into(),
             target,
@@ -2406,11 +2414,24 @@ impl EachPlayerScryEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CrewCostEffect {
     pub required_power: u32,
+    /// Teamwork shares the selection, but never crew substitutions or events.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub teamwork: bool,
 }
 
 impl CrewCostEffect {
     pub fn new(required_power: u32) -> Self {
-        Self { required_power }
+        Self {
+            required_power,
+            teamwork: false,
+        }
+    }
+
+    pub fn teamwork(required_power: u32) -> Self {
+        Self {
+            required_power,
+            teamwork: true,
+        }
     }
 }
 

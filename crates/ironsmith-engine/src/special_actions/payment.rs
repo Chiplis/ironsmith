@@ -129,12 +129,13 @@ pub(super) fn check_special_action_payment(
 /// Pay a cost a resolving spell or ability demands (ward, for one). The payer
 /// may activate mana abilities while paying (CR 605.3a), so the check counts
 /// untapped sources and the payment goes through the interactive mana route.
-pub(crate) fn pay_resolution_cost_with_mana_abilities(
+pub(crate) fn pay_resolution_cost_with_snapshot(
     game: &mut GameState,
     player: PlayerId,
     source: ObjectId,
     cost: &crate::cost::TotalCost,
     reason: crate::costs::PaymentReason,
+    snapshot: Option<crate::snapshot::ObjectSnapshot>,
     dm: &mut dyn DecisionMaker,
 ) -> bool {
     let payment = SpecialActionPayment {
@@ -142,8 +143,15 @@ pub(crate) fn pay_resolution_cost_with_mana_abilities(
         cost: cost.clone(),
         reason,
     };
-    check_special_action_payment(game, player, &payment).is_ok()
-        && pay_special_action_payment(game, player, &payment, dm).is_ok()
+    pay_special_action_payment_with_snapshot(
+        &mut game.clone(),
+        player,
+        &payment,
+        snapshot.clone(),
+        &mut crate::decision::SelectFirstDecisionMaker,
+    )
+    .is_ok()
+        && pay_special_action_payment_with_snapshot(game, player, &payment, snapshot, dm).is_ok()
 }
 
 /// Adjacent mana components are one payment, so paying a generic component
@@ -184,6 +192,16 @@ pub(super) fn pay_special_action_payment(
     payment: &SpecialActionPayment,
     dm: &mut dyn DecisionMaker,
 ) -> Result<(), ActionError> {
+    pay_special_action_payment_with_snapshot(game, player, payment, None, dm)
+}
+
+pub(super) fn pay_special_action_payment_with_snapshot(
+    game: &mut GameState,
+    player: PlayerId,
+    payment: &SpecialActionPayment,
+    snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    dm: &mut dyn DecisionMaker,
+) -> Result<(), ActionError> {
     let provenance = game.provenance_graph_mut().alloc_root(
         crate::provenance::ProvenanceNodeKind::EffectExecution {
             source: payment.source,
@@ -193,6 +211,7 @@ pub(super) fn pay_special_action_payment(
     let mut ctx = CostContext::new(payment.source, player, dm)
         .with_reason(payment.reason)
         .with_provenance(provenance);
+    ctx.source_snapshot = snapshot;
     ctx.interactive_mana_exclusions = Some(Vec::new());
     pay_total_cost_without_preflight_with_choice(
         game,

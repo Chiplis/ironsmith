@@ -1112,6 +1112,7 @@ mod tests {
                 let creature = create_creature_on_battlefield(&mut game, "Bear", alice);
                 game.update_cant_effects();
                 let cause = EventCause {
+                    resolving_spell: None,
                     cause_type,
                     source: Some(protector),
                     source_controller: Some(cause_controller),

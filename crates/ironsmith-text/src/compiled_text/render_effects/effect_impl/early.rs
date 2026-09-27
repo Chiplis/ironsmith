@@ -3582,7 +3582,7 @@
         return format!("{} unless {}", inner_text, unless_clause);
     }
     if let Some(put_counters) = effect.downcast_ref::<crate::effects::PutCountersEffect>() {
-        if value_has_surface_hint(&put_counters.amount, ValueSurfaceHint::BlightKeywordAction)
+        if put_counters.completion_action == Some(crate::events::KeywordActionKind::Blight)
             && put_counters.counter_type == CounterType::MinusOneMinusOne
             && put_counters.target == ChooseSpec::Object(ObjectFilter::creature().you_control())
             && put_counters.target_count.is_none()
@@ -5023,8 +5023,11 @@
         );
     }
     if let Some(reconfigure) = effect.downcast_ref::<crate::effects::ReconfigureEffect>() {
+        if matches!(reconfigure.target.base(), ChooseSpec::Source) {
+            return "Unattach this source".to_string();
+        }
         return format!(
-            "Attach this source to {} or unattach it",
+            "Attach this source to {}",
             describe_choose_spec(&reconfigure.target)
         );
     }
