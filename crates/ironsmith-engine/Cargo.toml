@@ -110,7 +110,7 @@ required-features = ["bench-support"]
 
 [features]
 default = []
-serialization = ["dep:serde", "dep:serde_json"]
+serialization = ["dep:serde", "dep:serde_json", "ironsmith-core/serde"]
 analysis = ["dep:ironsmith-semantic-compare"]
 effect-model-interpreter = []
 artifact-codec = ["serialization", "effect-model-interpreter"]

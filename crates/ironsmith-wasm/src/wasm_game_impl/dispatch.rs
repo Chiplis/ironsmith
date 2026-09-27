@@ -2323,9 +2323,10 @@ impl WasmGame {
     /// Deferred claims about `player_index`'s hidden cards that only its
     /// end-of-match disclosure can settle. `claimSubjects` and
     /// `libraryAnchors` are public facts (identical on every peer);
-    /// `obligations` counts this engine's own pending ledger entries about the
-    /// player's cards. A player with any of them must deliver a verified
-    /// disclosure; withholding it is a verdict against that player.
+    /// `obligations` counts the shared ledger's pending entries about the
+    /// player's cards (identical on every peer). A player with any of them
+    /// must deliver a verified disclosure; withholding it is a verdict
+    /// against that player.
     #[wasm_bindgen(js_name = endOfMatchDisclosureObligations)]
     pub fn end_of_match_disclosure_obligations(&self, player_index: u8) -> Result<JsValue, JsValue> {
         #[derive(Serialize)]
@@ -2352,11 +2353,19 @@ impl WasmGame {
             .filter(|departed| subjects.contains(&departed.object.stable_id))
             .count();
         let result = DisclosureObligations {
+            // The ledger is shared, so every peer counts the same entries.
+            // Claims about a card now face up in a public zone were checked
+            // there by every peer and need no disclosure.
             obligations: self
                 .game
                 .hidden_identity_obligations()
                 .iter()
                 .filter(|obligation| obligation.owner == owner)
+                .filter(|obligation| {
+                    !self
+                        .game
+                        .hidden_identity_obligation_settled_publicly(obligation)
+                })
                 .count(),
             claim_subjects: live_subjects + departed_subjects,
             library_anchors: self

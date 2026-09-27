@@ -579,6 +579,7 @@ impl GameState {
             },
         );
         let was_face_down = self.is_face_down(old_id);
+        let was_foretold = self.is_foretold(old_id);
         let preserved_exile_viewers = if self
             .objects
             .get(&old_id)
@@ -663,6 +664,16 @@ impl GameState {
         let old_object = ObjectStore::into_owned_object(self.objects.remove(&old_id)?);
         self.turn_store.forecast_revealed_hand_cards.remove(&old_id);
         let hidden_card_info = self.auxiliary_tracking_mut().hidden_cards.remove(&old_id);
+        if hidden_card_info.is_some()
+            && old_object.zone.is_public()
+            && !was_face_down
+            && !was_foretold
+        {
+            // Every peer had to open this card while it sat face up in a
+            // public zone, checking its claims then: settle them now,
+            // identically on every peer.
+            self.settle_public_hidden_identity_obligations(old_object.stable_id);
+        }
         self.auxiliary_tracking_mut()
             .sector_designations
             .remove(&old_id);

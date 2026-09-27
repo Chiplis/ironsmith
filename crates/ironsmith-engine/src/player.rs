@@ -7,6 +7,10 @@ use std::collections::HashMap;
 
 /// Mana pool tracking by color/type.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub struct ManaPool {
     pub white: u32,
     pub blue: u32,

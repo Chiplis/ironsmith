@@ -355,6 +355,13 @@ pub(crate) struct PublicAuditCheckpoint {
     grand_melee: Option<SyncGrandMelee>,
     stack: Vec<SyncStackEntry>,
     hidden_zones: Vec<PublicAuditHiddenZone>,
+    /// SHA-256 (hex) of the canonical JSON of the shared hidden-claim ledger
+    /// (obligations, face-down cast claims, claim subjects, library anchor
+    /// keys; see `PublicHiddenClaimLedger`). Identical on every peer, so the
+    /// checkpoint hash every signed action carries commits to the ledger.
+    /// Omitted while the ledger is empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    hidden_claim_ledger_digest: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -550,14 +557,14 @@ struct SyncRulesState {
     /// as `(player, [(commander, damage)])`, sorted for a stable encoding.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     commander_damage: Vec<(u8, Vec<(u64, u32)>)>,
-    /// The perspective whose engine recorded `hidden_identity_obligations`.
-    /// The ledger is local (only peers holding a placeholder record a claim),
-    /// so an importer merges it differently when it came from another peer.
+    /// The perspective whose engine exported the ledger (informational: the
+    /// ledger is shared, so every perspective exports the same one).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     hidden_obligation_ledger_perspective: Option<u8>,
-    /// Pending claims about cards the exporter held as placeholders (see
-    /// `hidden_hand_choices`). Public facts: every claim was made in the
-    /// public decision stream about a card every peer tracks.
+    /// The shared claim ledger (see `hidden_hand_choices`), in recording
+    /// order, identical on every peer. Public facts: every claim was made in
+    /// the public decision stream about a card every peer tracks, and its
+    /// filter context is in public claim form.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     hidden_identity_obligations: Vec<SyncHiddenIdentityObligation>,
     /// Public face-down cast kinds of hidden hand cards being cast.
@@ -589,9 +596,15 @@ struct SyncFaceDownCastClaim {
     permission_source: Option<u64>,
 }
 
-/// The plain part of an obligation's filter context. Snapshots of tagged,
-/// targeted, and source objects have no wire encoding; an importer that
-/// still holds the same claim in memory keeps its full context.
+/// An obligation's filter context, lossless for the public claim form the
+/// shared ledger records (see `GameState::public_claim_filter_context`).
+///
+/// Plain fields travel directly. The object-bearing fields (source, target
+/// and tagged snapshots, tagged players, prior effect outcomes) travel as
+/// one JSON text in `contextObjects` (like the filter: a stable,
+/// self-describing encoding that keeps 64-bit ids exact across the JS
+/// boundary), with map entries sorted by key so every peer encodes the same
+/// bytes.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 struct SyncObligationFilterContext {
@@ -613,6 +626,28 @@ struct SyncObligationFilterContext {
     chosen_player: Option<u8>,
     target_players: Vec<u8>,
     stack_entry: Option<u64>,
+    /// JSON of [`SyncClaimContextObjects`]; absent when every object-bearing
+    /// field is empty.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    context_objects: Option<String>,
+}
+
+/// The object-bearing part of a claim's filter context, in public claim form.
+/// Maps are sorted vectors (the engine keeps them in `HashMap`s, whose
+/// iteration order differs between wasm instances).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct SyncClaimContextObjects {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_snapshot: Option<ironsmith::snapshot::ObjectSnapshot>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    target_objects: Vec<ironsmith::snapshot::ObjectSnapshot>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tagged_objects: Vec<(String, Vec<ironsmith::snapshot::ObjectSnapshot>)>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tagged_players: Vec<(String, Vec<u8>)>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    effect_outcomes: Vec<(u32, ironsmith::effect::EffectOutcome)>,
 }
 
 fn player_indices(players: &[PlayerId]) -> Vec<u8> {
@@ -624,8 +659,74 @@ fn players_from_indices(players: &[u8]) -> Vec<PlayerId> {
 }
 
 impl SyncObligationFilterContext {
-    fn from_context(ctx: &ironsmith::filter::FilterContext) -> Self {
-        Self {
+    /// Encode `ctx`. Fails when the context is not in public claim form (a
+    /// snapshot still carrying compiled abilities or a secret choice, or an
+    /// outcome carrying events): those have no lossless encoding.
+    fn from_context(ctx: &ironsmith::filter::FilterContext) -> Result<Self, String> {
+        let snapshot_ok = |snapshot: &ironsmith::snapshot::ObjectSnapshot| {
+            if snapshot.is_public_claim_form() {
+                Ok(snapshot.clone())
+            } else {
+                Err(format!(
+                    "claim context snapshot of object {} is not in public claim form",
+                    snapshot.object_id.0
+                ))
+            }
+        };
+        let mut objects = SyncClaimContextObjects {
+            source_snapshot: ctx.source_snapshot.as_ref().map(snapshot_ok).transpose()?,
+            target_objects: ctx
+                .target_objects
+                .iter()
+                .map(snapshot_ok)
+                .collect::<Result<_, _>>()?,
+            tagged_objects: ctx
+                .tagged_objects
+                .iter()
+                .map(|(tag, snapshots)| {
+                    Ok((
+                        tag.as_str().to_string(),
+                        snapshots.iter().map(snapshot_ok).collect::<Result<_, String>>()?,
+                    ))
+                })
+                .collect::<Result<_, String>>()?,
+            tagged_players: ctx
+                .tagged_players
+                .iter()
+                .map(|(tag, players)| (tag.as_str().to_string(), player_indices(players)))
+                .collect(),
+            effect_outcomes: ctx
+                .effect_outcomes
+                .iter()
+                .map(|(id, outcome)| {
+                    if outcome.events.is_empty() {
+                        Ok((id.0, outcome.clone()))
+                    } else {
+                        Err(format!(
+                            "claim context outcome of effect {} carries events",
+                            id.0
+                        ))
+                    }
+                })
+                .collect::<Result<_, String>>()?,
+        };
+        objects.tagged_objects.sort_by(|left, right| left.0.cmp(&right.0));
+        objects.tagged_players.sort_by(|left, right| left.0.cmp(&right.0));
+        objects.effect_outcomes.sort_by_key(|(id, _)| *id);
+        let empty = objects.source_snapshot.is_none()
+            && objects.target_objects.is_empty()
+            && objects.tagged_objects.is_empty()
+            && objects.tagged_players.is_empty()
+            && objects.effect_outcomes.is_empty();
+        let context_objects = if empty {
+            None
+        } else {
+            Some(
+                serde_json::to_string(&objects)
+                    .map_err(|error| format!("claim context objects do not encode: {error}"))?,
+            )
+        };
+        Ok(Self {
             you: ctx.you.map(|player| player.0),
             source: ctx.source.map(|id| id.0),
             caster: ctx.caster.map(|player| player.0),
@@ -644,13 +745,20 @@ impl SyncObligationFilterContext {
             chosen_player: ctx.chosen_player.map(|player| player.0),
             target_players: player_indices(&ctx.target_players),
             stack_entry: ctx.stack_entry.map(|id| id.0),
-        }
+            context_objects,
+        })
     }
 
-    fn to_context(&self) -> ironsmith::filter::FilterContext {
-        ironsmith::filter::FilterContext {
+    fn to_context(&self) -> Result<ironsmith::filter::FilterContext, String> {
+        let objects: SyncClaimContextObjects = match self.context_objects.as_deref() {
+            Some(json) => serde_json::from_str(json)
+                .map_err(|error| format!("claim context objects do not decode: {error}"))?,
+            None => SyncClaimContextObjects::default(),
+        };
+        Ok(ironsmith::filter::FilterContext {
             you: self.you.map(PlayerId::from_index),
             source: self.source.map(ObjectId::from_raw),
+            source_snapshot: objects.source_snapshot,
             caster: self.caster.map(PlayerId::from_index),
             prospective_cast: self.prospective_cast.map(ObjectId::from_raw),
             active_player: self.active_player.map(PlayerId::from_index),
@@ -666,9 +774,26 @@ impl SyncObligationFilterContext {
             x_value: self.x_value,
             chosen_player: self.chosen_player.map(PlayerId::from_index),
             target_players: players_from_indices(&self.target_players),
+            target_objects: objects.target_objects,
+            tagged_objects: objects
+                .tagged_objects
+                .into_iter()
+                .map(|(tag, snapshots)| (ironsmith::tag::TagKey::from(tag), snapshots))
+                .collect(),
+            tagged_players: objects
+                .tagged_players
+                .into_iter()
+                .map(|(tag, players)| {
+                    (ironsmith::tag::TagKey::from(tag), players_from_indices(&players))
+                })
+                .collect(),
+            effect_outcomes: objects
+                .effect_outcomes
+                .into_iter()
+                .map(|(id, outcome)| (ironsmith::effect::EffectId(id), outcome))
+                .collect(),
             stack_entry: self.stack_entry.map(ObjectId::from_raw),
-            ..Default::default()
-        }
+        })
     }
 }
 
@@ -792,9 +917,12 @@ fn face_down_kind_from_sync(
     )
 }
 
+/// Encode one ledger entry. A claim that cannot be encoded losslessly is an
+/// error, never dropped: the ledger is shared and hashed, so dropping an
+/// entry would fork this peer's ledger from the others'.
 fn sync_hidden_identity_obligation(
     obligation: &ironsmith::game_state::HiddenIdentityObligation,
-) -> Option<SyncHiddenIdentityObligation> {
+) -> Result<SyncHiddenIdentityObligation, String> {
     use ironsmith::game_state::HiddenIdentityCheck;
     let (check, face_down_kind, permission_source) = match obligation.check {
         HiddenIdentityCheck::Matches => ("matches".to_string(), None, None),
@@ -805,15 +933,21 @@ fn sync_hidden_identity_obligation(
             ("cast_face_down".to_string(), Some(kind), source)
         }
     };
-    // A filter without a stable encoding cannot be carried; the claim is then
-    // kept only by engines that already hold it in memory.
-    let filter = serde_json::to_string(&obligation.filter).ok()?;
-    Some(SyncHiddenIdentityObligation {
+    let describe = |error: String| {
+        format!(
+            "hidden claim \"{}\" about card {} cannot be encoded: {error}",
+            obligation.description, obligation.stable_id.0.0
+        )
+    };
+    let filter = serde_json::to_string(&obligation.filter)
+        .map_err(|error| describe(format!("filter: {error}")))?;
+    Ok(SyncHiddenIdentityObligation {
         stable_id: obligation.stable_id.0.0,
         owner: obligation.owner.0,
         zone: sync_zone_name(obligation.zone).to_string(),
         filter,
-        filter_context: SyncObligationFilterContext::from_context(&obligation.filter_ctx),
+        filter_context: SyncObligationFilterContext::from_context(&obligation.filter_ctx)
+            .map_err(describe)?,
         description: obligation.description.clone(),
         check,
         face_down_kind,
@@ -824,28 +958,105 @@ fn sync_hidden_identity_obligation(
 
 fn hidden_identity_obligation_from_sync(
     sync: &SyncHiddenIdentityObligation,
-) -> Option<ironsmith::game_state::HiddenIdentityObligation> {
+) -> Result<ironsmith::game_state::HiddenIdentityObligation, String> {
     use ironsmith::game_state::HiddenIdentityCheck;
+    let describe = |error: &str| {
+        format!(
+            "hidden claim \"{}\" about card {} cannot be decoded: {error}",
+            sync.description, sync.stable_id
+        )
+    };
     let check = match sync.check.as_str() {
         "matches" => HiddenIdentityCheck::Matches,
         "does_not_match" => HiddenIdentityCheck::DoesNotMatch,
         "foretell" => HiddenIdentityCheck::Foretell,
-        "cast_face_down" => HiddenIdentityCheck::CastFaceDown(face_down_kind_from_sync(
-            sync.face_down_kind.as_deref()?,
-            sync.permission_source,
-        )?),
-        _ => return None,
+        "cast_face_down" => HiddenIdentityCheck::CastFaceDown(
+            sync.face_down_kind
+                .as_deref()
+                .and_then(|kind| face_down_kind_from_sync(kind, sync.permission_source))
+                .ok_or_else(|| describe("unknown face-down kind"))?,
+        ),
+        other => return Err(describe(&format!("unknown check {other}"))),
     };
-    Some(ironsmith::game_state::HiddenIdentityObligation {
+    Ok(ironsmith::game_state::HiddenIdentityObligation {
         stable_id: StableId::from_raw(sync.stable_id),
         owner: PlayerId::from_index(sync.owner),
-        zone: sync_zone_from_name(&sync.zone).ok()?,
-        filter: serde_json::from_str(&sync.filter).ok()?,
-        filter_ctx: sync.filter_context.to_context(),
+        zone: sync_zone_from_name(&sync.zone).map_err(|_| describe("unknown zone"))?,
+        filter: serde_json::from_str(&sync.filter)
+            .map_err(|error| describe(&format!("filter: {error}")))?,
+        filter_ctx: sync.filter_context.to_context().map_err(|error| describe(&error))?,
         description: sync.description.clone(),
         check,
         library_anchor: sync.library_anchor.clone(),
     })
+}
+
+/// The shared hidden-claim ledger in its canonical, public form: what every
+/// peer holds identically at every sequence. Its digest is committed to by
+/// the public audit checkpoint (`hiddenClaimLedgerDigest`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PublicHiddenClaimLedger<'a> {
+    obligations: &'a [SyncHiddenIdentityObligation],
+    face_down_cast_claims: &'a [SyncFaceDownCastClaim],
+    claim_subjects: &'a [u64],
+    /// `(owner, object, anchor key)`: the anchor fields every perspective
+    /// holds identically (deck-manifest slots and known names are private).
+    library_anchors: Vec<(u8, u64, String)>,
+}
+
+impl PublicHiddenClaimLedger<'_> {
+    fn is_empty(&self) -> bool {
+        self.obligations.is_empty()
+            && self.face_down_cast_claims.is_empty()
+            && self.claim_subjects.is_empty()
+            && self.library_anchors.is_empty()
+    }
+}
+
+fn public_hidden_claim_ledger(rules: &SyncRulesState) -> PublicHiddenClaimLedger<'_> {
+    PublicHiddenClaimLedger {
+        obligations: &rules.hidden_identity_obligations,
+        face_down_cast_claims: &rules.hidden_face_down_cast_claims,
+        claim_subjects: &rules.hidden_claim_subjects,
+        library_anchors: rules
+            .hidden_library_anchors
+            .iter()
+            .map(|anchor| {
+                let key = ironsmith::game_state::HiddenLibraryAnchor {
+                    owner: PlayerId::from_index(anchor.owner),
+                    object_id: ObjectId::from_raw(anchor.object_id),
+                    slot: anchor.slot,
+                    commitment: anchor.commitment.clone(),
+                    origin_slot: anchor.origin_slot,
+                    origin_commitment: anchor.origin_commitment.clone(),
+                    public_slot: anchor.public_slot,
+                    public_commitment: anchor.public_commitment.clone(),
+                    known_name: None,
+                }
+                .key();
+                (anchor.owner, anchor.object_id, key)
+            })
+            .collect(),
+    }
+}
+
+/// SHA-256 (hex) of the canonical JSON of the shared hidden-claim ledger, or
+/// `None` when the ledger is empty (matches without hidden claims keep their
+/// previous public checkpoint encoding).
+fn hidden_claim_ledger_digest(rules: &SyncRulesState) -> Result<Option<String>, String> {
+    let ledger = public_hidden_claim_ledger(rules);
+    if ledger.is_empty() {
+        return Ok(None);
+    }
+    let bytes = serde_json::to_vec(&ledger)
+        .map_err(|error| format!("hidden claim ledger does not encode: {error}"))?;
+    Ok(Some(
+        Sha256::digest(&bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect(),
+    ))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2275,7 +2486,17 @@ impl WasmGame {
         ids
     }
 
+    /// Test shorthand for [`WasmGame::try_build_sync_checkpoint`].
+    #[cfg(test)]
     pub(crate) fn build_sync_checkpoint(&self) -> SyncCheckpoint {
+        self.try_build_sync_checkpoint()
+            .expect("sync checkpoint should encode")
+    }
+
+    /// Build this engine's full checkpoint. Fails when the shared hidden-claim
+    /// ledger holds an entry without a lossless encoding (it is never
+    /// silently dropped).
+    pub(crate) fn try_build_sync_checkpoint(&self) -> Result<SyncCheckpoint, JsValue> {
         let players = self
             .game
             .players
@@ -2394,7 +2615,7 @@ impl WasmGame {
         let (consecutive_priority_passes, priority_players_in_game) =
             self.priority_state.priority_tracker_snapshot();
 
-        SyncCheckpoint {
+        Ok(SyncCheckpoint {
             version: SYNC_CHECKPOINT_VERSION,
             format: self.match_format,
             perspective: self.perspective.0,
@@ -2596,16 +2817,65 @@ impl WasmGame {
                 ids.sort_unstable();
                 ids
             },
-            rules: self.sync_rules_state(),
+            rules: self.sync_rules_state().map_err(|error| JsValue::from_str(&error))?,
             id_counters: SyncIdCounters::from_game(&self.game),
-        }
+        })
     }
 
-    fn sync_rules_state(&self) -> SyncRulesState {
+    /// Only the shared hidden-claim ledger fields of [`SyncRulesState`], as
+    /// `sync_rules_state` encodes them (the public audit checkpoint digests
+    /// them on every action, so the rest is not built).
+    fn hidden_claim_ledger_rules_state(&self) -> Result<SyncRulesState, String> {
+        if self.game.hidden_identity_obligations().is_empty()
+            && self.game.hidden_face_down_cast_claims().is_empty()
+            && self.game.hidden_claim_subjects().is_empty()
+            && self.game.hidden_library_anchors().is_empty()
+        {
+            return Ok(SyncRulesState::default());
+        }
+        let full = self.sync_rules_state()?;
+        Ok(SyncRulesState {
+            hidden_identity_obligations: full.hidden_identity_obligations,
+            hidden_face_down_cast_claims: full.hidden_face_down_cast_claims,
+            hidden_claim_subjects: full.hidden_claim_subjects,
+            hidden_library_anchors: full.hidden_library_anchors,
+            ..SyncRulesState::default()
+        })
+    }
+
+    fn sync_rules_state(&self) -> Result<SyncRulesState, String> {
         // Grand Melee keeps combat and the extra-turn queue per marker lane, and
         // its restore loads the focused lane, so the main copy is not repeated.
         let grand_melee = self.game.grand_melee().is_some();
-        SyncRulesState {
+        let hidden_identity_obligations = self
+            .game
+            .hidden_identity_obligations()
+            .iter()
+            .map(sync_hidden_identity_obligation)
+            .collect::<Result<Vec<_>, _>>()?;
+        let face_down_cast_permissions = self
+            .game
+            .face_down_cast_permissions()
+            .iter()
+            .map(|permission| {
+                Ok(SyncFaceDownCastPermission {
+                    source: permission.source.0,
+                    player: permission.player.0,
+                    zone: sync_zone_name(permission.zone).to_string(),
+                    filter: serde_json::to_string(&permission.filter).map_err(|error| {
+                        format!(
+                            "face-down cast permission \"{}\" cannot be encoded: {error}",
+                            permission.description
+                        )
+                    })?,
+                    description: permission.description.clone(),
+                    requires_source_on_battlefield: permission.requires_source_on_battlefield,
+                    expires_after_turn: permission.expires_after_turn,
+                    single_use: permission.single_use,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        Ok(SyncRulesState {
             combat: if grand_melee {
                 None
             } else {
@@ -2723,12 +2993,7 @@ impl WasmGame {
                 .hidden_card_entries()
                 .next()
                 .map(|_| self.perspective.0),
-            hidden_identity_obligations: self
-                .game
-                .hidden_identity_obligations()
-                .iter()
-                .filter_map(sync_hidden_identity_obligation)
-                .collect(),
+            hidden_identity_obligations,
             hidden_face_down_cast_claims: self
                 .game
                 .hidden_face_down_cast_claims()
@@ -2782,24 +3047,8 @@ impl WasmGame {
                     hidden: sync_hidden_card(&departed.info),
                 })
                 .collect(),
-            face_down_cast_permissions: self
-                .game
-                .face_down_cast_permissions()
-                .iter()
-                .filter_map(|permission| {
-                    Some(SyncFaceDownCastPermission {
-                        source: permission.source.0,
-                        player: permission.player.0,
-                        zone: sync_zone_name(permission.zone).to_string(),
-                        filter: serde_json::to_string(&permission.filter).ok()?,
-                        description: permission.description.clone(),
-                        requires_source_on_battlefield: permission.requires_source_on_battlefield,
-                        expires_after_turn: permission.expires_after_turn,
-                        single_use: permission.single_use,
-                    })
-                })
-                .collect(),
-        }
+            face_down_cast_permissions,
+        })
     }
 
     /// Restore the hidden-claim state of a checkpoint: face-down cast claims
@@ -2807,48 +3056,51 @@ impl WasmGame {
     /// and the obligation ledger. Runs after the checkpoint's objects and
     /// hidden-card metadata are restored.
     ///
-    /// The ledger is local to the peer that recorded it. A checkpoint this
-    /// perspective exported itself (a savepoint restore) replaces the ledger,
-    /// keeping the full filter context of claims still held in memory. A
-    /// checkpoint from another peer (a resync) cannot carry claims about the
-    /// exporter's own cards, which the exporter never held as placeholders,
-    /// so those are kept from `previous_ledger`. Entries whose card is not a
-    /// placeholder here are dropped (see
-    /// `GameState::restore_hidden_identity_obligations`).
-    fn restore_hidden_claim_state(
-        &mut self,
-        rules: &SyncRulesState,
-        previous_ledger: Vec<ironsmith::game_state::HiddenIdentityObligation>,
-        previous_perspective: PlayerId,
-    ) {
-        self.game.restore_hidden_face_down_cast_claims(
-            rules
-                .hidden_face_down_cast_claims
-                .iter()
-                .filter_map(|claim| {
-                    Some((
-                        ObjectId::from_raw(claim.object),
-                        face_down_kind_from_sync(&claim.kind, claim.permission_source)?,
-                    ))
-                }),
-        );
-        self.game.restore_face_down_cast_permissions(
-            rules
-                .face_down_cast_permissions
-                .iter()
-                .filter_map(|permission| {
-                    Some(ironsmith::game_state::FaceDownCastPermission {
-                        source: ObjectId::from_raw(permission.source),
-                        player: PlayerId::from_index(permission.player),
-                        zone: sync_zone_from_name(&permission.zone).ok()?,
-                        filter: serde_json::from_str(&permission.filter).ok()?,
-                        description: permission.description.clone(),
-                        requires_source_on_battlefield: permission.requires_source_on_battlefield,
-                        expires_after_turn: permission.expires_after_turn,
-                        single_use: permission.single_use,
+    /// The ledger is shared and its encoding lossless, so the imported
+    /// ledger replaces this engine's verbatim, whether the checkpoint is this
+    /// engine's own savepoint or another peer's (redacted, hash-checked)
+    /// checkpoint: nothing held in memory is merged back in. An entry that
+    /// does not decode is an error, never dropped.
+    fn restore_hidden_claim_state(&mut self, rules: &SyncRulesState) -> Result<(), JsValue> {
+        let face_down_claims = rules
+            .hidden_face_down_cast_claims
+            .iter()
+            .map(|claim| {
+                face_down_kind_from_sync(&claim.kind, claim.permission_source)
+                    .map(|kind| (ObjectId::from_raw(claim.object), kind))
+                    .ok_or_else(|| {
+                        JsValue::from_str(&format!(
+                            "face-down cast claim of object {} has an unknown kind {}",
+                            claim.object, claim.kind
+                        ))
                     })
-                }),
-        );
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        self.game.restore_hidden_face_down_cast_claims(face_down_claims);
+        let permissions = rules
+            .face_down_cast_permissions
+            .iter()
+            .map(|permission| {
+                let undecodable = |what: &str| {
+                    JsValue::from_str(&format!(
+                        "face-down cast permission \"{}\" has an undecodable {what}",
+                        permission.description
+                    ))
+                };
+                Ok(ironsmith::game_state::FaceDownCastPermission {
+                    source: ObjectId::from_raw(permission.source),
+                    player: PlayerId::from_index(permission.player),
+                    zone: sync_zone_from_name(&permission.zone).map_err(|_| undecodable("zone"))?,
+                    filter: serde_json::from_str(&permission.filter)
+                        .map_err(|_| undecodable("filter"))?,
+                    description: permission.description.clone(),
+                    requires_source_on_battlefield: permission.requires_source_on_battlefield,
+                    expires_after_turn: permission.expires_after_turn,
+                    single_use: permission.single_use,
+                })
+            })
+            .collect::<Result<Vec<_>, JsValue>>()?;
+        self.game.restore_face_down_cast_permissions(permissions);
         self.game.restore_hidden_claim_subjects(
             rules
                 .hidden_claim_subjects
@@ -2879,40 +3131,14 @@ impl WasmGame {
             .collect();
         self.game.restore_departed_hidden_cards(departed);
 
-        let imported: Vec<_> = rules
+        let ledger = rules
             .hidden_identity_obligations
             .iter()
-            .filter_map(hidden_identity_obligation_from_sync)
-            .map(|imported| {
-                previous_ledger
-                    .iter()
-                    .find(|held| held.same_claim(&imported))
-                    .cloned()
-                    .unwrap_or(imported)
-            })
-            .collect();
-        let exporter = rules
-            .hidden_obligation_ledger_perspective
-            .map(PlayerId::from_index);
-        let mut merged = imported;
-        if let Some(exporter) = exporter
-            && exporter != previous_perspective
-        {
-            // A foreign checkpoint (forced resync) must never erase a claim
-            // this engine still holds: the exporter never held claims about
-            // its own cards, nor about cards it already knew (e.g. privately
-            // revealed to it), and claims whose filter has no stable wire
-            // encoding never reach any checkpoint (see
-            // `sync_hidden_identity_obligation`). A claim whose card is no
-            // longer a placeholder here is dropped by the restore below, so
-            // keeping every held claim cannot resurrect a checked one.
-            for held in previous_ledger {
-                if !merged.iter().any(|claim| claim.same_claim(&held)) {
-                    merged.push(held);
-                }
-            }
-        }
-        self.game.restore_hidden_identity_obligations(merged);
+            .map(hidden_identity_obligation_from_sync)
+            .collect::<Result<Vec<_>, String>>()
+            .map_err(|error| JsValue::from_str(&error))?;
+        self.game.restore_hidden_identity_obligations(ledger);
+        Ok(())
     }
 
     fn departed_hidden_card_from_sync(
@@ -3113,7 +3339,20 @@ impl WasmGame {
             .then(|| Self::public_audit_known_object_identity(object))
     }
 
+    /// Test shorthand for [`WasmGame::try_build_public_audit_checkpoint`].
+    #[cfg(test)]
     pub(crate) fn build_public_audit_checkpoint(&self) -> PublicAuditCheckpoint {
+        self.try_build_public_audit_checkpoint()
+            .expect("public audit checkpoint should encode")
+    }
+
+    pub(crate) fn try_build_public_audit_checkpoint(
+        &self,
+    ) -> Result<PublicAuditCheckpoint, JsValue> {
+        let hidden_claim_ledger_digest = self
+            .hidden_claim_ledger_rules_state()
+            .and_then(|rules| hidden_claim_ledger_digest(&rules))
+            .map_err(|error| JsValue::from_str(&error))?;
         let (consecutive_priority_passes, priority_players_in_game) =
             self.priority_state.priority_tracker_snapshot();
         let players = self
@@ -3293,7 +3532,7 @@ impl WasmGame {
             }
         }
 
-        PublicAuditCheckpoint {
+        Ok(PublicAuditCheckpoint {
             version: SYNC_CHECKPOINT_VERSION,
             format: self.match_format,
             perspective: 0,
@@ -3423,7 +3662,8 @@ impl WasmGame {
                 })
                 .collect(),
             hidden_zones,
-        }
+            hidden_claim_ledger_digest,
+        })
     }
 
     fn should_redact_for_perspective(&self, object: &SyncObject, perspective: PlayerId) -> bool {
@@ -3472,13 +3712,29 @@ impl WasmGame {
         &self,
         perspective: PlayerId,
     ) -> Result<SyncCheckpoint, JsValue> {
-        let mut checkpoint = self.build_sync_checkpoint();
+        let mut checkpoint = self.try_build_sync_checkpoint()?;
         checkpoint.perspective = perspective.0;
         for object in &mut checkpoint.objects {
             if self.should_redact_for_perspective(object, perspective) {
                 self.redact_sync_object(object)?;
+                // Like anchors below: once another owner's card has a public
+                // ziffle position, that position is all the perspective may
+                // hold (this engine's deck-manifest slot would link the card
+                // across shuffles).
+                if let Some(hidden) = object.hidden_card.as_mut()
+                    && hidden.owner != perspective.0
+                {
+                    redact_hidden_slot_for_other_perspective(
+                        &mut hidden.slot,
+                        &mut hidden.commitment,
+                        hidden.public_slot,
+                        hidden.public_commitment.as_deref(),
+                    );
+                }
             }
         }
+        // The shared claim ledger (obligations, face-down cast claims, claim
+        // subjects) is public by construction and exported unchanged.
         // Library anchors and departed snapshots of cards the perspective does
         // not own carry only what it may know: no printed name and, once the
         // card has a public ziffle position, no deck-manifest slot.
@@ -3664,10 +3920,6 @@ impl WasmGame {
             return Err(JsValue::from_str("checkpoint has no players"));
         }
 
-        // The obligation ledger held in memory before the reset (see
-        // `restore_hidden_claim_state`).
-        let previous_ledger = self.game.hidden_identity_obligations().to_vec();
-        let previous_perspective = self.perspective;
         self.reset_runtime_for_sync_checkpoint(&checkpoint);
 
         for object in checkpoint.objects.iter() {
@@ -4044,7 +4296,7 @@ impl WasmGame {
         }
         self.game.set_deploy_creatures(checkpoint.deploy_creatures);
         self.restore_sync_rules_state(&checkpoint.rules, checkpoint.grand_melee.is_some());
-        self.restore_hidden_claim_state(&checkpoint.rules, previous_ledger, previous_perspective);
+        self.restore_hidden_claim_state(&checkpoint.rules)?;
 
         for object in checkpoint.objects.iter() {
             let id = ObjectId::from_raw(object.id);
@@ -4136,10 +4388,12 @@ impl WasmGame {
         Ok(())
     }
 
-    /// Export a WASM-owned resync checkpoint that can hydrate another peer's engine.
+    /// Export a WASM-owned resync checkpoint that can hydrate another peer's
+    /// engine. Fails (never drops a claim) when the shared hidden-claim ledger
+    /// holds an entry without a lossless encoding.
     #[wasm_bindgen(js_name = exportSyncCheckpoint)]
     pub fn export_sync_checkpoint(&self) -> Result<JsValue, JsValue> {
-        serde_wasm_bindgen::to_value(&self.build_sync_checkpoint())
+        serde_wasm_bindgen::to_value(&self.try_build_sync_checkpoint()?)
             .map_err(|e| JsValue::from_str(&format!("sync checkpoint encode failed: {e}")))
     }
 
@@ -4158,7 +4412,7 @@ impl WasmGame {
     /// Export a redacted checkpoint suitable for peer audit logs.
     #[wasm_bindgen(js_name = exportPublicAuditCheckpoint)]
     pub fn export_public_audit_checkpoint(&self) -> Result<JsValue, JsValue> {
-        serde_wasm_bindgen::to_value(&self.build_public_audit_checkpoint())
+        serde_wasm_bindgen::to_value(&self.try_build_public_audit_checkpoint()?)
             .map_err(|e| JsValue::from_str(&format!("public audit checkpoint encode failed: {e}")))
     }
 
@@ -4174,6 +4428,67 @@ impl WasmGame {
         self.apply_sync_checkpoint(checkpoint)?;
         self.set_perspective(perspective_index)?;
         self.snapshot()
+    }
+
+    /// Import a checkpoint another peer exported for this engine's
+    /// perspective (`exportRedactedSyncCheckpoint(perspective)` on the
+    /// exporter), after the caller checked it against the agreed public
+    /// checkpoint hash. Returns this engine's resulting public audit
+    /// checkpoint (`exportPublicAuditCheckpoint()` shape) so the caller can
+    /// recompute its hash immediately and compare.
+    ///
+    /// The shared hidden-claim ledger (obligations, face-down cast claims,
+    /// claim subjects, library anchors) is REPLACED by the imported one, as
+    /// is every other piece of state: nothing this engine held is merged
+    /// back. (`importSyncCheckpoint` has the same replace semantics; this
+    /// entry point additionally requires the checkpoint to be redacted for
+    /// `perspective_index` and returns the audit checkpoint instead of a UI
+    /// snapshot.)
+    ///
+    /// A foreign checkpoint carries only what the exporter may tell this
+    /// perspective. Missing afterwards, and to be re-hydrated by the caller
+    /// (reopening its own openings / private views), are exactly this
+    /// perspective's own private facts the exporter does not know:
+    ///
+    /// * the identities of this player's own hidden hand cards (they arrive
+    ///   as the exporter's "Hidden Card" placeholders, with the exporter's
+    ///   commitment metadata), unless the exporter legitimately knew them
+    ///   (a public reveal, or a private reveal to the exporter);
+    /// * the identities of this player's own face-down permanents / spells /
+    ///   foretold exile cards (every face-down or foretold object is redacted
+    ///   for every perspective, the owner's included);
+    /// * everything this player learned through private views: cards of
+    ///   other players' hands it was shown, library cards it looked at or
+    ///   searched (every library card is redacted), and cards revealed only
+    ///   to it;
+    /// * its own library-order knowledge (library cards are anonymous
+    ///   placeholders) and its own cards' deck-manifest slots where the card
+    ///   has a public ziffle position (only that position is exported for
+    ///   hidden cards of other owners; for its own cards it gets what the
+    ///   exporter held);
+    /// * printed names on library anchors and departed hidden-card snapshots
+    ///   of its own cards, when the exporter did not know them;
+    /// * a teammate's hand, when this perspective may review it but the
+    ///   exporter only held placeholders.
+    ///
+    /// Everything public, including the whole claim ledger, is exact.
+    #[wasm_bindgen(js_name = importForeignSyncCheckpoint)]
+    pub fn import_foreign_sync_checkpoint(
+        &mut self,
+        checkpoint: JsValue,
+        perspective_index: u8,
+    ) -> Result<JsValue, JsValue> {
+        let checkpoint: SyncCheckpoint = serde_wasm_bindgen::from_value(checkpoint)
+            .map_err(|e| JsValue::from_str(&format!("invalid sync checkpoint: {e}")))?;
+        if checkpoint.perspective != perspective_index {
+            return Err(JsValue::from_str(&format!(
+                "foreign sync checkpoint is redacted for seat {}, not seat {perspective_index}",
+                checkpoint.perspective
+            )));
+        }
+        self.apply_sync_checkpoint(checkpoint)?;
+        self.set_perspective(perspective_index)?;
+        self.export_public_audit_checkpoint()
     }
 }
 
@@ -4255,7 +4570,10 @@ mod sync_checkpoint_tests {
         assert!(wasm.game.end_of_match_disclosure_cards(owner).iter().any(|card| card.object_id == exiled));
         wasm.validate_hidden_normal_reveal(owner, exiled, &definition).unwrap();
         wasm.game.reveal_hidden_card_with_definition(exiled, &definition).unwrap();
-        assert!(!wasm.game.has_hidden_identity_obligation(exiled));
+        // The shared claim ledger is never settled by an opening (openings
+        // are not symmetric across peers); the claim stays until the card
+        // leaves a public zone face up.
+        assert!(wasm.game.has_hidden_identity_obligation(exiled));
         assert!(!wasm.game.foretold_card_is_castable(exiled));
         wasm.game.turn.turn_number += 1;
         assert!(ironsmith::decision::compute_legal_actions(&wasm.game, owner).iter().any(|action| matches!(action,

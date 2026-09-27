@@ -612,8 +612,9 @@ struct AuxiliaryTrackingState {
     draft_removed_cards: HashMap<(PlayerId, String), HashSet<ObjectId>>,
     /// Cryptographic hidden-card slots that have not been opened on this peer.
     hidden_cards: HashMap<ObjectId, HiddenCardInfo>,
-    /// Filters that cards chosen while they were hidden placeholders must
-    /// satisfy once their identity is opened on this peer.
+    /// The shared hidden-claim ledger: filters that cards chosen (or withheld)
+    /// while hidden from some peer must satisfy once opened. Identical on
+    /// every peer (see `hidden_hand_choices::HiddenIdentityObligation`).
     hidden_identity_obligations: Vec<hidden_hand_choices::HiddenIdentityObligation>,
     /// Public face-down cast kinds carried by face-down cast commands of
     /// hidden hand cards (morph, megamorph, disguise). Every peer, including
@@ -7260,7 +7261,8 @@ impl GameState {
             }
             // Reopening a known physical card authenticates its identity; it
             // must not reset a copied/alternate face or add loyalty counters.
-            self.clear_hidden_identity_obligations(id);
+            // Opening never settles the shared claim ledger (openings are not
+            // symmetric across peers; see `HiddenIdentityObligation`).
             return Some(info);
         }
         self.prime_linked_face_definitions(def);
@@ -7279,7 +7281,6 @@ impl GameState {
                 object.add_counters(crate::object::CounterType::Loyalty, loyalty);
             }
         }
-        self.clear_hidden_identity_obligations(id);
         self.mark_continuous_state_dirty();
         Some(info)
     }

@@ -35,10 +35,20 @@ use crate::zone::Zone;
 /// (cast, discarded, revealed, moved to a public zone, or disclosed at the end
 /// of the match) against the opened card's printed characteristics.
 ///
-/// Most entries are local to peers that held a placeholder when the claim was
-/// made. Foretell also records its public claim on known peers so checkpoint
-/// export preserves the receiver's verification obligation. Every entry is a
-/// public fact about a tracked card; exporting it leaks no hidden identity.
+/// The ledger is shared: every peer records every claim, identically and in
+/// the same order, whether it holds a placeholder for the card or knows it
+/// (the owner, or a peer the card was privately revealed to). Only the checks
+/// differ: a peer checks a claim whenever it opens the card. Every entry is a
+/// public fact about a tracked card, and `filter_ctx` is recorded in public
+/// claim form (see `GameState::public_claim_filter_context`), so the ledger
+/// leaks no hidden identity and is byte-identical on every peer: it is part of
+/// the public audit checkpoint.
+///
+/// Entries leave the ledger only at symmetric points: when the card leaves a
+/// public zone face up (every peer had to open it there), when a claim
+/// subject that is no longer marked enters a library, or through a checkpoint
+/// restore. Opening a card never removes a claim, because openings are not
+/// symmetric (private reveals, an owner re-opening its own cards).
 #[derive(Debug, Clone)]
 pub struct HiddenIdentityObligation {
     pub stable_id: StableId,
@@ -340,6 +350,62 @@ pub(crate) fn identity_free_filter(filter: &ObjectFilter) -> ObjectFilter {
     generic
 }
 
+/// An effect outcome in public claim form (see
+/// `GameState::public_claim_filter_context`).
+fn public_claim_outcome(
+    outcome: &crate::effect::EffectOutcome,
+    hidden_match: bool,
+) -> crate::effect::EffectOutcome {
+    use crate::effect::{ExecutionFact, OutcomeObjectMemory};
+    let memory = |memory: &OutcomeObjectMemory| {
+        if !(hidden_match && memory.zone.is_hidden()) {
+            return memory.clone();
+        }
+        OutcomeObjectMemory {
+            object_id: memory.object_id,
+            stable_id: memory.stable_id,
+            name: String::new(),
+            controller: memory.controller,
+            owner: memory.owner,
+            zone: memory.zone,
+            power: None,
+            toughness: None,
+            mana_value: 0,
+            card_types: Vec::new(),
+            colors: crate::color::ColorSet::default(),
+            subtypes: Vec::new(),
+            is_token: memory.is_token,
+        }
+    };
+    let execution_facts = outcome
+        .execution_facts
+        .iter()
+        .map(|fact| match fact {
+            ExecutionFact::ChosenObjectMemory(memories) => {
+                ExecutionFact::ChosenObjectMemory(memories.iter().map(memory).collect())
+            }
+            ExecutionFact::AffectedObjectMemory(memories) => {
+                ExecutionFact::AffectedObjectMemory(memories.iter().map(memory).collect())
+            }
+            ExecutionFact::PlayerAffectedObjectMemory(entries) => {
+                ExecutionFact::PlayerAffectedObjectMemory(
+                    entries
+                        .iter()
+                        .map(|(player, memories)| (*player, memories.iter().map(memory).collect()))
+                        .collect(),
+                )
+            }
+            other => other.clone(),
+        })
+        .collect();
+    crate::effect::EffectOutcome {
+        status: outcome.status,
+        value: outcome.value.clone(),
+        events: Vec::new(),
+        execution_facts,
+    }
+}
+
 impl GameState {
     /// Whether a hand card's identity is tracked by the mental-poker layer,
     /// i.e. it is (or was) hidden from at least one peer. This is the same on
@@ -415,7 +481,163 @@ impl GameState {
             .collect()
     }
 
-    /// Record that `chosen` placeholders must satisfy `filter` once opened.
+    /// Whether `id`'s identity is hidden from some player right now, judged
+    /// only from facts every peer shares: the card is tracked by the
+    /// mental-poker layer, was not opened by an owner-answered public reveal,
+    /// and sits in a hidden zone or face down. A peer that happens to know
+    /// the card (its owner, a peer it was privately revealed to) answers the
+    /// same as a peer holding a placeholder.
+    pub(crate) fn claim_identity_is_private(&self, id: ObjectId) -> bool {
+        self.hidden_card_info(id).is_some()
+            && !self.is_publicly_revealed_hidden_card(id)
+            && self.object(id).is_some_and(|object| {
+                object.zone.is_hidden() || self.is_face_down(id) || self.is_foretold(id)
+            })
+    }
+
+    /// Whether this match tracks hidden cards at all (peer matches). Symmetric.
+    fn tracks_hidden_cards(&self) -> bool {
+        !self.auxiliary_tracking.hidden_cards.is_empty()
+    }
+
+    /// `ctx` in public claim form: the form in which it is recorded in the
+    /// shared obligation ledger (identical on every peer, safe to publish).
+    ///
+    /// * Plain fields (players, source id, X, ...) are public and kept.
+    /// * Every snapshot (source, targets, tagged objects, nested chosen /
+    ///   mana-source / attachment snapshots) of an object that was in a
+    ///   hidden zone or face down is replaced by
+    ///   [`ObjectSnapshot::public_placeholder`], i.e. exactly what a peer
+    ///   holding a placeholder knows. A hidden-zone card every peer opened
+    ///   through an owner-answered public reveal and that is still the same
+    ///   object in the same zone is re-snapshotted from the live object
+    ///   instead (every peer knows it).
+    /// * Compiled abilities, secretly chosen subtypes and card-definition ids
+    ///   are dropped from every snapshot: abilities have no wire encoding, a
+    ///   secret choice is private, and `CardId`s are allocated per engine in
+    ///   load order (names keep the identity). A claim whose filter reads a
+    ///   context object's abilities is therefore judged without them,
+    ///   identically on every peer.
+    /// * Effect outcomes keep their status, value and execution facts; events
+    ///   are dropped and object memories of hidden-zone objects are reduced
+    ///   to identity, ownership and zone.
+    ///
+    /// Outside peer matches (no hidden cards) nothing is ever recorded, so
+    /// this never runs there.
+    ///
+    /// [`ObjectSnapshot::public_placeholder`]: crate::snapshot::ObjectSnapshot::public_placeholder
+    pub(crate) fn public_claim_filter_context(&self, ctx: &FilterContext) -> FilterContext {
+        let hidden_match = self.tracks_hidden_cards();
+        let mut public = ctx.clone();
+        public.source_snapshot = ctx
+            .source_snapshot
+            .as_ref()
+            .map(|snapshot| self.public_claim_snapshot(snapshot, hidden_match));
+        public.target_objects = ctx
+            .target_objects
+            .iter()
+            .map(|snapshot| self.public_claim_snapshot(snapshot, hidden_match))
+            .collect();
+        public.tagged_objects = ctx
+            .tagged_objects
+            .iter()
+            .map(|(tag, snapshots)| {
+                (
+                    tag.clone(),
+                    snapshots
+                        .iter()
+                        .map(|snapshot| self.public_claim_snapshot(snapshot, hidden_match))
+                        .collect(),
+                )
+            })
+            .collect();
+        public.effect_outcomes = ctx
+            .effect_outcomes
+            .iter()
+            .map(|(id, outcome)| (*id, public_claim_outcome(outcome, hidden_match)))
+            .collect();
+        public
+    }
+
+    fn public_claim_snapshot(
+        &self,
+        snapshot: &crate::snapshot::ObjectSnapshot,
+        hidden_match: bool,
+    ) -> crate::snapshot::ObjectSnapshot {
+        use crate::snapshot::ObjectSnapshot;
+        let private = hidden_match && (snapshot.zone.is_hidden() || snapshot.face_down);
+        let mut public = if !private {
+            snapshot.clone()
+        } else if let Some(live) = self.object(snapshot.object_id).filter(|live| {
+            live.stable_id == snapshot.stable_id
+                && live.zone == snapshot.zone
+                && live.zone.is_hidden()
+                && self.is_publicly_revealed_hidden_card(live.id)
+                && !self.is_face_down(live.id)
+        }) {
+            ObjectSnapshot::from_object(live, self)
+        } else {
+            let mut placeholder = ObjectSnapshot::public_placeholder(
+                snapshot.object_id,
+                snapshot.stable_id,
+                snapshot.owner,
+                snapshot.controller,
+                snapshot.zone,
+            );
+            placeholder.kind = snapshot.kind;
+            placeholder.is_token = snapshot.is_token;
+            placeholder.face_down = snapshot.face_down;
+            placeholder.tapped = snapshot.tapped;
+            placeholder.attacking = snapshot.attacking;
+            placeholder.counters = snapshot.counters.clone();
+            placeholder.attached_to = snapshot.attached_to;
+            placeholder.attachments = snapshot.attachments.clone();
+            placeholder.is_commander = snapshot.is_commander;
+            placeholder
+        };
+        public.strip_to_public_claim_form();
+        public.chosen_object = public
+            .chosen_object
+            .take()
+            .map(|chosen| Box::new(self.public_claim_snapshot(&chosen, hidden_match)));
+        public.mana_sources_spent_to_cast = public
+            .mana_sources_spent_to_cast
+            .iter()
+            .map(|source| self.public_claim_snapshot(source, hidden_match))
+            .collect();
+        public.attachment_snapshots = public
+            .attachment_snapshots
+            .iter()
+            .map(|attachment| self.public_claim_snapshot(attachment, hidden_match))
+            .collect();
+        public
+    }
+
+    /// Append entries to the shared obligation ledger, canonicalizing their
+    /// filter context. Callers pass entries built from symmetric facts only.
+    fn push_hidden_identity_obligations(
+        &mut self,
+        obligations: Vec<HiddenIdentityObligation>,
+    ) {
+        if obligations.is_empty() {
+            return;
+        }
+        let obligations: Vec<_> = obligations
+            .into_iter()
+            .map(|mut obligation| {
+                obligation.filter_ctx = self.public_claim_filter_context(&obligation.filter_ctx);
+                obligation
+            })
+            .collect();
+        self.auxiliary_tracking_mut()
+            .hidden_identity_obligations
+            .extend(obligations);
+    }
+
+    /// Record that the `chosen` cards whose identity is private (see
+    /// [`GameState::claim_identity_is_private`]) must satisfy `filter` once
+    /// opened. `chosen` is the public answer, identical on every peer, so the
+    /// recorded entries are too.
     pub(crate) fn record_hidden_identity_obligations(
         &mut self,
         chosen: &[ObjectId],
@@ -429,7 +651,7 @@ impl GameState {
         self.mark_hidden_claim_subjects(chosen.iter().copied());
         let obligations: Vec<_> = chosen
             .iter()
-            .filter(|id| self.is_hidden_card_placeholder(**id))
+            .filter(|id| self.claim_identity_is_private(**id))
             .filter_map(|id| self.object(*id))
             .map(|object| HiddenIdentityObligation {
                 stable_id: object.stable_id,
@@ -442,15 +664,10 @@ impl GameState {
                 library_anchor: None,
             })
             .collect();
-        if obligations.is_empty() {
-            return;
-        }
-        self.auxiliary_tracking_mut()
-            .hidden_identity_obligations
-            .extend(obligations);
+        self.push_hidden_identity_obligations(obligations);
     }
 
-    /// Record that the placeholders among `withheld` must *not* satisfy
+    /// Record that the private cards among `withheld` must *not* satisfy
     /// `filter` once opened: their owner left them out of a forced reveal of
     /// every matching card, or claimed it had no (more) matching card.
     ///
@@ -458,13 +675,12 @@ impl GameState {
     /// hidden (it would take a zero-knowledge non-membership proof), so it is
     /// checked later, whenever each card is opened; a violation is reported
     /// through the same failed-verification path as any other bad opening.
-    /// Only placeholders are recorded, so the owner (who knows its cards)
-    /// records nothing.
+    /// `withheld` must be identical on every peer: every peer (the owner
+    /// included) records the same entries.
     ///
-    /// `withheld_is_public` says whether the withheld list itself is identical
-    /// on every peer (a forced reveal's leftovers); only then are its cards
-    /// marked as claim subjects here. Callers with a peer-dependent list mark
-    /// a symmetric superset themselves.
+    /// `withheld_is_public` says whether its cards are marked as claim
+    /// subjects here; callers that mark a symmetric superset themselves pass
+    /// `false`.
     pub(crate) fn record_hidden_non_matching_obligations(
         &mut self,
         withheld: &[ObjectId],
@@ -488,7 +704,7 @@ impl GameState {
                 seen.push(*id);
                 fresh
             })
-            .filter(|id| self.is_hidden_card_placeholder(*id))
+            .filter(|id| self.claim_identity_is_private(*id))
             .filter_map(|id| self.object(id))
             .filter(|object| object.zone.is_hidden())
             .map(|object| HiddenIdentityObligation {
@@ -502,55 +718,86 @@ impl GameState {
                 library_anchor: None,
             })
             .collect();
-        if obligations.is_empty() {
-            return;
-        }
-        self.auxiliary_tracking_mut()
-            .hidden_identity_obligations
-            .extend(obligations);
+        self.push_hidden_identity_obligations(obligations);
     }
 
     /// A hidden hand choice answered with fewer cards than the rules require
-    /// (`required_min`) claims that no other offered card matches: record a
-    /// [`HiddenIdentityCheck::DoesNotMatch`] obligation for every offered
-    /// placeholder that was not chosen. Choices of "up to" a number
-    /// (`required_min == 0`) or answered in full claim nothing.
+    /// claims that no other candidate card matches: record a
+    /// [`HiddenIdentityCheck::DoesNotMatch`] obligation for every private
+    /// candidate that was not chosen. Choices of "up to" a number
+    /// (`rules_min == 0`) or answered in full claim nothing.
+    ///
+    /// Everything here is symmetric across peers, since the owner (who
+    /// offered only the cards it knows match) and the other peers (who
+    /// offered placeholders) must record the same entries:
+    ///
+    /// * `hand_ids` is the candidate domain every peer shares: every card in
+    ///   the hands the choice draws from (not the locally offered cards).
+    /// * `rules_min` is the rules' requirement *before* clamping it to a
+    ///   local candidate count (e.g. the "two" of "discard two creature
+    ///   cards"). It is clamped here to the symmetric domain: the private
+    ///   cards passing the identity-free part of `filter` plus the public
+    ///   cards matching `filter`.
+    ///
+    /// Soundness for an honest owner: it chooses `min(rules_min, matches)`;
+    /// if that is below `min(rules_min, domain)` then every match was chosen,
+    /// so every other private candidate indeed does not match.
     pub(crate) fn record_hidden_shortfall_obligations(
         &mut self,
-        offered: &[ObjectId],
+        hand_ids: &[ObjectId],
         chosen: &[ObjectId],
-        required_min: usize,
+        rules_min: usize,
         filter: &ObjectFilter,
         filter_ctx: &FilterContext,
         description: &str,
     ) {
-        // Claim subjects must be identical on every peer, but `offered` is not
-        // (the owner offers the matches it knows, other peers offer
-        // placeholders) and neither, possibly, is the shortfall itself. Mark a
-        // symmetric superset of every card this choice could leave a claim
-        // about: each private hand card that passes the identity-free part of
-        // the filter.
-        if filter_depends_on_card_identity(filter) {
-            let generic = identity_free_filter(filter);
-            let subjects: Vec<ObjectId> = self
-                .all_hand_card_ids()
-                .into_iter()
-                .filter(|id| self.hidden_identity_is_private(*id))
-                .filter(|id| {
-                    self.object(*id)
-                        .is_some_and(|object| generic.matches(object, filter_ctx, self))
-                })
-                .collect();
-            self.mark_hidden_claim_subjects(subjects);
-        }
-        if chosen.len() >= required_min {
+        if !filter_depends_on_card_identity(filter) {
             return;
         }
-        let withheld: Vec<ObjectId> = offered
-            .iter()
-            .copied()
+        // Claim subjects must be identical on every peer. Mark a symmetric
+        // superset of every card this choice could leave a claim about: each
+        // private hand card that passes the identity-free part of the filter.
+        let generic = identity_free_filter(filter);
+        let subjects: Vec<ObjectId> = self
+            .all_hand_card_ids()
+            .into_iter()
+            .filter(|id| self.hidden_identity_is_private(*id))
+            .filter(|id| {
+                self.object(*id)
+                    .is_some_and(|object| generic.matches(object, filter_ctx, self))
+            })
+            .collect();
+        self.mark_hidden_claim_subjects(subjects);
+        if rules_min == 0 {
+            return;
+        }
+        let mut private_domain: Vec<ObjectId> = Vec::new();
+        let mut public_matches = 0usize;
+        for &id in hand_ids {
+            if private_domain.contains(&id) {
+                continue;
+            }
+            let Some(object) = self.object(id) else {
+                continue;
+            };
+            if object.zone != Zone::Hand {
+                continue;
+            }
+            if self.hidden_identity_is_private(id) {
+                if generic.matches(object, filter_ctx, self) {
+                    private_domain.push(id);
+                }
+            } else if filter.matches(object, filter_ctx, self) {
+                public_matches += 1;
+            }
+        }
+        let required = rules_min.min(private_domain.len() + public_matches);
+        if chosen.len() >= required {
+            return;
+        }
+        let withheld: Vec<ObjectId> = private_domain
+            .into_iter()
             .filter(|id| !chosen.contains(id))
-            .filter(|id| self.is_hidden_tracked_hand_card(*id))
             .collect();
         self.record_hidden_non_matching_obligations(
             &withheld,
@@ -562,8 +809,9 @@ impl GameState {
     }
 
     /// Record that the face-down spell `id`, cast from a hidden hand with the
-    /// public `kind`, must have that keyword once opened. Only placeholders
-    /// are recorded.
+    /// public `kind`, must have that keyword once opened. Recorded on every
+    /// peer for every tracked card (the owner included), so the shared ledger
+    /// stays identical.
     ///
     /// A permission kind records the permission's filter instead
     /// ([`HiddenIdentityCheck::Matches`]): the opened card must be one the
@@ -575,12 +823,10 @@ impl GameState {
         kind: FaceDownCastKind,
         permission: Option<&FaceDownCastPermission>,
     ) {
-        if self.hidden_card_info(id).is_some() {
-            self.mark_hidden_claim_subjects([id]);
-        }
-        if !self.is_hidden_card_placeholder(id) {
+        if self.hidden_card_info(id).is_none() {
             return;
         }
+        self.mark_hidden_claim_subjects([id]);
         let Some(object) = self.object(id) else {
             return;
         };
@@ -610,14 +856,11 @@ impl GameState {
             check,
             library_anchor: None,
         };
-        self.auxiliary_tracking_mut()
-            .hidden_identity_obligations
-            .push(obligation);
+        self.push_hidden_identity_obligations(vec![obligation]);
     }
 
     /// A foretell action remains a public identity claim while the card stays
-    /// hidden. Keep it on known peers too, so their redacted checkpoints and
-    /// library anchors cannot discard the receiver's later verification.
+    /// hidden. Recorded on every peer (known or not), like every claim.
     pub(crate) fn record_hidden_foretell_obligation(&mut self, id: ObjectId) {
         if self.hidden_card_info(id).is_none() {
             return;
@@ -813,59 +1056,57 @@ impl GameState {
         self.auxiliary_tracking_mut().hidden_face_down_cast_claims = claims.into_iter().collect();
     }
 
-    /// This peer's obligation ledger (checkpoint sync). Entries are public
-    /// claims about cards this peer held as placeholders.
+    /// The shared obligation ledger (checkpoint sync), in recording order.
+    /// Identical on every peer (see [`HiddenIdentityObligation`]).
     pub fn hidden_identity_obligations(&self) -> &[HiddenIdentityObligation] {
         &self.auxiliary_tracking.hidden_identity_obligations
     }
 
-    /// Replace the obligation ledger (checkpoint sync). Entries whose card is
-    /// no longer a hidden placeholder here (known to this peer, or gone) are
-    /// dropped unless they are public foretell claims, anchored to a library
-    /// ciphertext, or belong to a card snapshotted as its owner left the game.
+    /// Replace the obligation ledger verbatim (checkpoint sync). The ledger
+    /// is shared and its checkpoint encoding lossless, so a restore (of this
+    /// engine's own savepoint or of another peer's authoritative checkpoint)
+    /// installs exactly the exported entries, in order and without dedup:
+    /// any filtering here would make this engine's ledger differ from the
+    /// other peers'.
     pub fn restore_hidden_identity_obligations(
         &mut self,
         obligations: impl IntoIterator<Item = HiddenIdentityObligation>,
     ) {
-        let mut restored: Vec<HiddenIdentityObligation> = Vec::new();
-        for obligation in obligations {
-            if restored
-                .iter()
-                .any(|existing| existing.same_claim(&obligation))
-            {
-                continue;
-            }
-            let keep = match obligation.library_anchor.as_deref() {
-                Some(key) => self
-                    .auxiliary_tracking
-                    .hidden_library_anchors
-                    .iter()
-                    .any(|anchor| anchor.key() == key),
-                None => {
-                    let live_placeholder = self
-                        .find_object_by_stable_id(obligation.stable_id)
-                        .is_some_and(|id| {
-                            self.is_hidden_card_placeholder(id)
-                                || (obligation.check == HiddenIdentityCheck::Foretell
-                                    && self.hidden_card_info(id).is_some())
-                        });
-                    let departed =
-                        self.auxiliary_tracking
-                            .departed_hidden_cards
-                            .iter()
-                            .any(|departed| {
-                                departed.object.stable_id == obligation.stable_id
-                                    && (departed.object.card.is_none()
-                                        || obligation.check == HiddenIdentityCheck::Foretell)
-                            });
-                    live_placeholder || departed
-                }
-            };
-            if keep {
-                restored.push(obligation);
-            }
+        self.auxiliary_tracking_mut().hidden_identity_obligations =
+            obligations.into_iter().collect();
+    }
+
+    /// Whether `obligation` is about a card that currently sits face up in a
+    /// public zone (every peer opened it there, so no end-of-match disclosure
+    /// is needed for it). Symmetric.
+    pub fn hidden_identity_obligation_settled_publicly(
+        &self,
+        obligation: &HiddenIdentityObligation,
+    ) -> bool {
+        obligation.library_anchor.is_none()
+            && self
+                .find_object_by_stable_id(obligation.stable_id)
+                .is_some_and(|id| {
+                    self.object(id).is_some_and(|object| object.zone.is_public())
+                        && !self.is_face_down(id)
+                        && !self.is_foretold(id)
+                })
+    }
+
+    /// Drop the claims following `stable_id`: its card is leaving a public
+    /// zone face up, where every peer had to open (and so check) it. Called
+    /// identically on every peer from zone moves.
+    pub(crate) fn settle_public_hidden_identity_obligations(&mut self, stable_id: StableId) {
+        if self
+            .auxiliary_tracking
+            .hidden_identity_obligations
+            .iter()
+            .any(|obligation| obligation.follows(stable_id))
+        {
+            self.auxiliary_tracking_mut()
+                .hidden_identity_obligations
+                .retain(|obligation| !obligation.follows(stable_id));
         }
-        self.auxiliary_tracking_mut().hidden_identity_obligations = restored;
     }
 
     /// Cards marked as subjects of a pending public claim (checkpoint sync).
@@ -1135,9 +1376,10 @@ impl GameState {
             })
     }
 
-    /// Drop the obligations of a card whose identity has now been opened.
-    /// Obligations anchored to a library ciphertext stay: the opened object
-    /// need not be that physical card.
+    /// Drop the obligations following `id` (used where every peer drops them
+    /// at the same point, e.g. a card that is no longer a claim subject
+    /// entering a library). Obligations anchored to a library ciphertext
+    /// stay: the object need not be that physical card.
     pub(crate) fn clear_hidden_identity_obligations(&mut self, id: ObjectId) {
         let Some(stable_id) = self.object(id).map(|object| object.stable_id) else {
             return;

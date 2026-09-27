@@ -2675,6 +2675,7 @@ export async function buildSignedResyncEnvelope({
   lastSequence,
   finalStateHash,
   checkpoint,
+  checkpointSequence = null,
   actions = [],
 }, cryptoImpl = globalThis.crypto) {
   const actionLastSequence = transcriptLastSequence(actions);
@@ -2691,6 +2692,16 @@ export async function buildSignedResyncEnvelope({
     checkpointHash: await checkpointHash(checkpoint, cryptoImpl),
     actionsHash: await transcriptActionsHash(actions, cryptoImpl),
   };
+  // Present only when `checkpoint` is an importable export taken at that
+  // accepted sequence (checkpoint-based Verified resync); a head export sent
+  // only for shape keeps the original signed payload.
+  if (checkpointSequence != null) {
+    const sequence = Number(checkpointSequence);
+    if (!Number.isSafeInteger(sequence) || sequence <= 0 || sequence > actionLastSequence) {
+      throw new Error("Resync checkpoint sequence is outside the action log");
+    }
+    payload.checkpointSequence = sequence;
+  }
   return {
     ...payload,
     signatureAlgorithm: "ecdsa-p256-sha256",
@@ -2716,6 +2727,9 @@ export async function verifySignedResyncEnvelope({
     checkpointHash: String(envelope.checkpointHash || ""),
     actionsHash: String(envelope.actionsHash || ""),
   };
+  if (envelope.checkpointSequence != null) {
+    payload.checkpointSequence = Number(envelope.checkpointSequence);
+  }
   const expectedCheckpointHash = await checkpointHash(checkpoint, cryptoImpl);
   if (payload.checkpointHash !== expectedCheckpointHash) {
     throw new Error("Resync checkpoint hash mismatch");
@@ -2737,10 +2751,17 @@ export async function verifySignedResyncEnvelope({
   if (!valid) {
     throw new Error("Resync envelope signature is invalid");
   }
+  const checkpointSequence = payload.checkpointSequence;
   return {
     valid: true,
     checkpointHash: payload.checkpointHash,
     actionsHash: payload.actionsHash,
+    // Signed: the checkpoint is claimed to be the state after this action.
+    checkpointSequence: Number.isSafeInteger(checkpointSequence)
+      && checkpointSequence > 0
+      && checkpointSequence <= expectedLastSequence
+      ? checkpointSequence
+      : null,
   };
 }
 

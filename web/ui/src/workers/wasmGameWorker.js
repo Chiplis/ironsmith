@@ -68,6 +68,7 @@ const SNAPSHOT_METHODS = new Set([
   "dispatch",
   "forfeitPlayer",
   "importSyncCheckpoint",
+  "importForeignSyncCheckpoint",
   "injectTranscriptRandomSeeds",
   "revealHiddenObject",
   "revealHiddenPosition",
@@ -97,6 +98,7 @@ const RUNTIME_EVALUATION_METHODS = new Set([
 // card index lists, so venturing into the dungeon has compiled rooms.
 const DUNGEON_LOADING_METHODS = new Set([
   "importSyncCheckpoint",
+  "importForeignSyncCheckpoint",
   "loadDecks",
   "loadDemoDecks",
   "replayTrustedMatch",
@@ -399,6 +401,7 @@ function collectNamesForMethod(method, args) {
       names.push(args?.[0]);
       break;
     case "importSyncCheckpoint":
+    case "importForeignSyncCheckpoint":
       collectCheckpointCardNames(args?.[0], names);
       break;
     case "dispatch": {

@@ -4025,6 +4025,29 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	      return;
 	    }
     const handIds = new Set((localPlayer?.hand || []).map((id) => Number(id)));
+    if (options.includeOwnerViewableHidden && typeof currentGame.hiddenObjectViewableBy === "function") {
+      // After a foreign checkpoint import: this seat's own hidden cards outside
+      // the hand (face-down permanents, face-down exile it may look at) whose
+      // identities the exporter's redacted checkpoint could not carry. Library
+      // cards stay closed; the responders' owner visible-state rule gates the rest.
+      handIds.clear();
+      for (const object of checkpoint.objects || []) {
+        const hidden = object?.hiddenCard || object?.hidden_card || null;
+        const zone = String(object?.zone || hidden?.zone || "");
+        const objectId = Number(object?.id);
+        if (!hidden || Number(hidden.owner) !== Number(localIndex)) continue;
+        if (["library", "outside_game", "hand"].includes(zone)) continue;
+        if (!Number.isSafeInteger(objectId) || objectId <= 0) continue;
+        try {
+          if (await currentGame.hiddenObjectViewableBy(wasmObjectIdArg(objectId), Number(localIndex))) {
+            handIds.add(objectId);
+          }
+        } catch {
+          // Not viewable by this seat: leave it closed.
+        }
+      }
+      if (handIds.size === 0) return;
+    }
 	    if (handIds.size === 0) {
 	      if (checkpointKey) ziffleHandRevealKeyRef.current = checkpointKey;
 	      if (checkpointQuickKey) ziffleHandRevealQuickKeyRef.current = checkpointQuickKey;

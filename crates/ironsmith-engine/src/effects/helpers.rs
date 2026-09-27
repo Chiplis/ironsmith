@@ -2127,6 +2127,10 @@ pub fn resolve_objects_for_effect_with_choice_description(
             return Ok(Vec::new());
         }
 
+        // `rules_min`: the rules' requirement before clamping to the local
+        // candidate count (which differs between the owner and peers holding
+        // placeholders); see `record_hidden_shortfall_obligations`.
+        let mut rules_min = count.min;
         let (min, max) = if count.is_dynamic_x() {
             let x = if let Some(x) = resolved_dynamic_count {
                 x
@@ -2135,6 +2139,7 @@ pub fn resolve_objects_for_effect_with_choice_description(
                     ExecutionError::UnresolvableValue("X value not set".to_string())
                 })? as usize
             };
+            rules_min = if count.is_up_to_dynamic_x() { 0 } else { x };
             if count.is_up_to_dynamic_x() {
                 (0, x.min(candidates.len()))
             } else if spec.count_value().is_some() {
@@ -2284,9 +2289,9 @@ pub fn resolve_objects_for_effect_with_choice_description(
             // Fewer than the rules require: the owner claims the other
             // offered hidden cards do not match, checked once each is opened.
             game.record_hidden_shortfall_obligations(
-                &candidates,
+                &game.all_hand_card_ids(),
                 &chosen,
-                min,
+                rules_min,
                 filter,
                 &hidden_filter_ctx,
                 &description,

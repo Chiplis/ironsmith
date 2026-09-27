@@ -47,6 +47,8 @@ const WORKER_METHODS = [
   "getEmbeddedCardCatalogIndexJson",
   "getEmbeddedCardSourceJson",
   "importSyncCheckpoint",
+  // Checkpoint-based Verified resync (hooks/peer-lobby/messaging.js).
+  "importForeignSyncCheckpoint",
   "isKnownCardName",
   "lastAdvanceUntilDecisionPerf",
   "lastDispatchPerf",

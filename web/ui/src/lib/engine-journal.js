@@ -48,6 +48,7 @@ const ARGS_NEVER_CAPTURED = new Set([
   "queueVerifiedHiddenLibraryEpoch",
   "queueVerifiedHiddenLibraryOpening",
   "importSyncCheckpoint",
+  "importForeignSyncCheckpoint",
   "injectTranscriptRandomSeeds",
   "replayTrustedActions",
   "replayTrustedMatch",

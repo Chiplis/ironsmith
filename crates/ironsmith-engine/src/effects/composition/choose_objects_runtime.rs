@@ -1504,7 +1504,10 @@ pub(crate) fn run_choose_objects(
             });
         }
 
-        let (base_min, max) = if effect.count.dynamic_x || effect.count_value.is_some() {
+        // `rules_min` is the rules' requirement before clamping to the local
+        // candidate count, which differs between peers holding placeholders
+        // and the owner (see `record_hidden_shortfall_obligations`).
+        let (base_min, max, rules_min) = if effect.count.dynamic_x || effect.count_value.is_some() {
             let x = if let Some(count_value) = effect.count_value.as_ref() {
                 let previous_iterated_player = ctx.iteration.iterated_player;
                 if previous_iterated_player.is_none()
@@ -1525,13 +1528,14 @@ pub(crate) fn run_choose_objects(
             let optional_dynamic_choice = effect.count.up_to_x
                 || (effect.is_search && effect.search_mode == SearchSelectionMode::Optional);
             if optional_dynamic_choice {
-                (0, x.min(candidates.len()))
+                (0, x.min(candidates.len()), 0)
             } else {
                 let bounded = x.min(candidates.len());
-                (bounded, bounded)
+                (bounded, bounded, x)
             }
         } else {
-            compute_choice_bounds(effect.count, candidates.len())
+            let (min, max) = compute_choice_bounds(effect.count, candidates.len());
+            (min, max, effect.count.min)
         };
         if max == 0 && !hidden_hand_choice {
             let outcome = EffectOutcome::count(0);
@@ -1558,6 +1562,7 @@ pub(crate) fn run_choose_objects(
         let search_required_count = compute_search_required_count(effect.search_mode, max);
         let allow_hidden_partial =
             effect.is_search && has_hidden_search_zones && has_search_stated_quality;
+        let allow_hidden_partial_search = allow_hidden_partial;
         let min = if effect.is_search {
             if allow_hidden_partial {
                 0
@@ -1837,6 +1842,14 @@ pub(crate) fn run_choose_objects(
                 )));
             }
         }
+        // Claims enter the shared ledger, so their description must be the
+        // same on every peer; the prompt text above embeds locally clamped
+        // bounds and names.
+        let claim_description = if effect.description == "Choose" {
+            format!("Choose {}", effect.filter.description())
+        } else {
+            effect.description.clone()
+        };
         if effect.is_search && !effect.count.is_random() {
             // Every library card chosen by a filtered search must satisfy the
             // search's own filter once opened (moved to a public zone,
@@ -1861,11 +1874,13 @@ pub(crate) fn run_choose_objects(
                     &library_choices,
                     &library_zone_filter(effect),
                     &filter_ctx,
-                    &description,
+                    &claim_description,
                 );
             }
         }
-        if chose_placeholder {
+        if hidden_hand_choice {
+            // Symmetric condition (the owner chooses no placeholder), so every
+            // peer records the same claims about the chosen private cards.
             let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
             let hand_placeholders: Vec<ObjectId> = chosen
                 .iter()
@@ -1876,7 +1891,7 @@ pub(crate) fn run_choose_objects(
                 &hand_placeholders,
                 &hand_zone_filter(effect),
                 &filter_ctx,
-                &description,
+                &claim_description,
             );
         }
         if hidden_hand_choice {
@@ -1884,13 +1899,16 @@ pub(crate) fn run_choose_objects(
             // offered hidden hand cards do not match, checked once each is
             // opened (see `game_state::hidden_hand_choices`).
             let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
+            let hand_ids =
+                hand_candidate_ids(effect, game, ctx, &filter_ctx, chooser_id).unwrap_or_default();
+            let rules_min = if allow_hidden_partial_search { 0 } else { rules_min };
             game.record_hidden_shortfall_obligations(
-                &candidates,
+                &hand_ids,
                 &chosen,
-                min,
+                rules_min,
                 &hand_zone_filter(effect),
                 &filter_ctx,
-                &description,
+                &claim_description,
             );
         }
         if effect.reveal && !chosen.is_empty() {

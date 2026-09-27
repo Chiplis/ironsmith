@@ -47,6 +47,10 @@ use std::sync::Arc;
 
 /// Control-flow status of an effect execution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub enum OutcomeStatus {
     /// Effect executed successfully.
     #[default]
@@ -84,6 +88,10 @@ impl OutcomeStatus {
 
 /// Structured payload emitted by an effect execution.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub enum OutcomeValue {
     #[default]
     None,
@@ -144,6 +152,10 @@ impl OutcomeValue {
 /// resolution details that are not game events and should not be fed into the
 /// trigger or replacement systems.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub struct OutcomeObjectMemory {
     pub object_id: ObjectId,
     pub stable_id: StableId,
@@ -274,6 +286,10 @@ impl OutcomeObjectMemory {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub enum ExecutionFact {
     Accepted,
     Declined,
@@ -354,12 +370,19 @@ impl ExecutionFact {
 /// Ok(EffectOutcome::aggregate(outcomes))
 /// ```
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub struct EffectOutcome {
     /// Control-flow status of the effect execution.
     pub status: OutcomeStatus,
     /// Structured payload preserved for later consumers.
     pub value: OutcomeValue,
-    /// Events that occurred during execution (for trigger checking).
+    /// Events that occurred during execution (for trigger checking). Not
+    /// encoded: only event-free outcomes (hidden-claim filter contexts) are
+    /// serialized.
+    #[cfg_attr(feature = "serialization", serde(skip))]
     pub events: Vec<crate::triggers::TriggerEvent>,
     /// Non-triggerable execution metadata preserved across composition.
     pub execution_facts: Vec<ExecutionFact>,

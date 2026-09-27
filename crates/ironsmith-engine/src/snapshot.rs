@@ -34,6 +34,10 @@ use crate::zone::Zone;
 /// These are stored separately from the effective characteristics in an LKI
 /// snapshot because effects from later layers are not copiable (CR 707.2).
 #[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub struct CopiableValues {
     pub name: String,
     pub mana_cost: Option<ManaCost>,
@@ -47,6 +51,10 @@ pub struct CopiableValues {
     pub supertypes: Vec<Supertype>,
     pub colors: ColorSet,
     pub loyalty: Option<u32>,
+    /// Not encoded: compiled abilities have no wire form. Only snapshots in
+    /// public claim form (see [`ObjectSnapshot::is_public_claim_form`]) are
+    /// serialized, and those carry no abilities.
+    #[cfg_attr(feature = "serialization", serde(skip))]
     pub abilities: Arc<Vec<Ability>>,
     pub aura_attach_filter: Option<AuraAttachmentFilter>,
 }
@@ -109,11 +117,22 @@ impl CopiableValues {
 /// This unified type replaces the previous separate snapshot types.
 ///
 /// It captures all relevant fields from an Object for LKI purposes.
+///
+/// With the `serialization` feature the snapshot has a serde encoding used by
+/// the hidden-claim ledger of peer matches. The encoding omits the two fields
+/// that cannot (or must not) travel: compiled `abilities` and the secretly
+/// chosen subtype. It is lossless only for snapshots in public claim form
+/// ([`ObjectSnapshot::is_public_claim_form`]); encoders must check that.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub struct ObjectSnapshot {
     /// Noncopiable choices needed by abilities after this exact object leaves.
     pub chosen_subtype: Option<Subtype>,
     pub chosen_object: Option<Box<ObjectSnapshot>>,
+    #[cfg_attr(feature = "serialization", serde(skip))]
     pub(crate) secret_chosen_subtype: Option<(PlayerId, Subtype)>,
     // === Identity ===
     /// The object's ID at the time of snapshot.
@@ -172,7 +191,8 @@ pub struct ObjectSnapshot {
     pub loyalty: Option<u32>,
     /// Defense (if battle).
     pub defense: Option<u32>,
-    /// Abilities the object had.
+    /// Abilities the object had. Not encoded (see the type docs).
+    #[cfg_attr(feature = "serialization", serde(skip))]
     pub abilities: Arc<Vec<Ability>>,
     /// For Auras: what this object can enchant.
     pub aura_attach_filter: Option<AuraAttachmentFilter>,
@@ -196,6 +216,7 @@ pub struct ObjectSnapshot {
 
     // === Non-copiable state ===
     /// Counters on the object.
+    #[cfg_attr(feature = "serialization", serde(with = "counter_pairs"))]
     pub counters: std::collections::BTreeMap<CounterType, u32>,
     /// Whether this was a token.
     pub is_token: bool,
@@ -229,6 +250,141 @@ pub struct ObjectSnapshot {
     pub is_commander: bool,
     /// The zone the object was in.
     pub zone: Zone,
+}
+
+/// Counters encoded as `(kind, count)` pairs: a named counter kind is not a
+/// valid JSON map key.
+#[cfg(feature = "serialization")]
+mod counter_pairs {
+    use super::CounterType;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::BTreeMap;
+
+    pub(super) fn serialize<S: Serializer>(
+        counters: &BTreeMap<CounterType, u32>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        counters
+            .iter()
+            .map(|(kind, count)| (*kind, *count))
+            .collect::<Vec<_>>()
+            .serialize(serializer)
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<BTreeMap<CounterType, u32>, D::Error> {
+        Ok(Vec::<(CounterType, u32)>::deserialize(deserializer)?
+            .into_iter()
+            .collect())
+    }
+}
+
+impl ObjectSnapshot {
+    /// A snapshot carrying only what every peer knows about an object whose
+    /// identity is hidden from some player: its identity, ownership, zone
+    /// and public status. Every characteristic is left empty, exactly as a
+    /// peer holding a hidden-card placeholder would see it.
+    pub fn public_placeholder(
+        object_id: ObjectId,
+        stable_id: StableId,
+        owner: PlayerId,
+        controller: PlayerId,
+        zone: Zone,
+    ) -> Self {
+        Self {
+            chosen_subtype: None,
+            chosen_object: None,
+            secret_chosen_subtype: None,
+            object_id,
+            stable_id,
+            kind: ObjectKind::Card,
+            card: None,
+            controller,
+            owner,
+            name: String::new(),
+            first_printed_set_name: None,
+            mana_cost: None,
+            colors: ColorSet::default(),
+            supertypes: Vec::new(),
+            card_types: Vec::new(),
+            subtypes: Vec::new(),
+            compiled_card_text: String::new(),
+            ability_labels: Vec::new(),
+            other_face: None,
+            other_face_name: None,
+            linked_face_layout: LinkedFaceLayout::default(),
+            linked_face_mana_value: None,
+            power: None,
+            toughness: None,
+            base_power: None,
+            base_toughness: None,
+            loyalty: None,
+            defense: None,
+            abilities: Arc::new(Vec::new()),
+            aura_attach_filter: None,
+            copiable_values: CopiableValues::default(),
+            x_value: None,
+            cast_order_this_turn: None,
+            mana_spent_to_cast: ManaPool::default(),
+            optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
+            snow_mana_spent_to_cast: ManaPool::default(),
+            mana_sources_spent_to_cast: Vec::new(),
+            counters: std::collections::BTreeMap::new(),
+            is_token: false,
+            tapped: false,
+            attacking: false,
+            goaded: None,
+            flipped: false,
+            face_down: false,
+            transform_count: 0,
+            attached_to: None,
+            attachments: Vec::new(),
+            attachment_snapshots: Vec::new(),
+            was_enchanted: false,
+            is_monstrous: false,
+            is_prepared: false,
+            is_commander: false,
+            zone,
+        }
+    }
+
+    /// Whether this snapshot (and every nested snapshot) is in the public
+    /// claim form recorded by the hidden-claim ledger: no compiled abilities,
+    /// no secretly chosen subtype, and no card-definition ids (`card`,
+    /// `other_face`: allocated per engine in load order, so they differ
+    /// between peers; names carry the identity instead). Only such snapshots
+    /// have a lossless, engine-independent serde encoding.
+    pub fn is_public_claim_form(&self) -> bool {
+        self.card.is_none()
+            && self.other_face.is_none()
+            && self.abilities.is_empty()
+            && self.copiable_values.abilities.is_empty()
+            && self.secret_chosen_subtype.is_none()
+            && self
+                .chosen_object
+                .as_deref()
+                .is_none_or(ObjectSnapshot::is_public_claim_form)
+            && self
+                .mana_sources_spent_to_cast
+                .iter()
+                .all(ObjectSnapshot::is_public_claim_form)
+            && self
+                .attachment_snapshots
+                .iter()
+                .all(ObjectSnapshot::is_public_claim_form)
+    }
+
+    /// Drop what the public claim form cannot carry (see
+    /// [`ObjectSnapshot::is_public_claim_form`]) from this snapshot itself;
+    /// callers canonicalize nested snapshots.
+    pub(crate) fn strip_to_public_claim_form(&mut self) {
+        self.card = None;
+        self.other_face = None;
+        self.abilities = Arc::new(Vec::new());
+        self.copiable_values.abilities = Arc::new(Vec::new());
+        self.secret_chosen_subtype = None;
+    }
 }
 
 impl ObjectSnapshot {

@@ -314,11 +314,6 @@ impl DiscardEffect {
         // The number of cards the rules require this choice to take; a hidden
         // hand choice answered with fewer claims no other card matches.
         let mut rules_min = 0usize;
-        let offered_hand_cards = if hidden_hand_choice {
-            hand_cards.clone()
-        } else {
-            Vec::new()
-        };
         let cards_to_discard = if !self.random
             && !self.any_number
             && required == hand_cards.len()
@@ -395,7 +390,10 @@ impl DiscardEffect {
                     })
             }
         } else {
-            rules_min = required;
+            // The unclamped count: `required` is clamped to the locally
+            // offered cards, which differ between peers (see
+            // `record_hidden_shortfall_obligations`).
+            rules_min = count;
             let spec = ChooseObjectsSpec::new(
                 ctx.source,
                 format!(
@@ -458,8 +456,12 @@ impl DiscardEffect {
                 filter_ctx,
                 "discard a card matching the filter",
             );
+            let full_hand: Vec<_> = game
+                .player(player_id)
+                .map(|player| player.hand.to_vec())
+                .unwrap_or_default();
             game.record_hidden_shortfall_obligations(
-                &offered_hand_cards,
+                &full_hand,
                 &cards_to_discard,
                 rules_min,
                 filter,

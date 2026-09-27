@@ -316,6 +316,10 @@ impl CardSharedHandles {
 
 /// The kind of game object.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub enum ObjectKind {
     /// A physical card
     Card,
@@ -346,6 +350,10 @@ impl std::fmt::Display for ObjectKind {
 
 /// A legal thing an attachment can be attached to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub enum AttachmentTarget {
     Object(ObjectId),
     Player(PlayerId),
