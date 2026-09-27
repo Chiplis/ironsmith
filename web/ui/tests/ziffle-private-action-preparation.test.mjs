@@ -21,7 +21,7 @@ test('live preparation agrees random outcome before proving its shuffle and queu
     payloadSizeBytes: () => 0, submitPerf: {}, command: { type: 'priority_action' },
     nextSequence: 8, session: { localPlayerIndex: 0 }, preActionStateHash: 'previous',
     preActionPublicCheckpointHash: 'checkpoint', preSubmitState: {}, signedActionIntent: {},
-    timePeerSyncPhase: async (_name, _details, work) => work(),
+    runSubmissionPhase: async (_name, _details, work) => work(),
     buildLocalRngRevealsForRequirements: async () => [reveal],
     injectCryptoMaterialForRequirements: async (_requirements, audit, options) => {
       if (!options.skipRandomness) queued.push(...(audit.rngReveals || []));

@@ -16,6 +16,7 @@ import {
 import { journalSummary, recordCardRoutes } from "@/lib/engine-journal";
 import { useI18n } from "@/i18n/I18nContext";
 import { playerDisplayName } from "@/lib/player-display";
+import { matchDisputeDiagnostics } from "@/lib/match-dispute-diagnostics";
 
 const defaultTriggerClassName = "stone-pill table-zone-action-button inline-flex items-center justify-center gap-1 rounded-none px-2.5 py-0.5 text-[13px] font-medium uppercase transition-all select-none hover:brightness-110";
 
@@ -128,6 +129,8 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
     return exportDiagnostics({
       multiplayer: {
         mode: multiplayer?.mode, role: multiplayer?.role, lastAppliedSequence: multiplayer?.lastAppliedSequence,
+        matchStarted: multiplayer?.matchStarted,
+        matchDisputed: matchDisputeDiagnostics(multiplayer?.matchDisputed),
         submittingAction: multiplayer?.submittingAction, peerWait, connectionWarnings: multiplayer?.connectionWarnings, matchClock: clock,
         players: lobbyPlayers,
       },

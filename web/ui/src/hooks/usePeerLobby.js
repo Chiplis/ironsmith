@@ -1,3 +1,4 @@
+import { assertMatchNotDisputed, isMatchDisputed } from "./peer-lobby/match-lifecycle.js";
 import { createValueStore } from "../lib/value-store.js";
 import { describeSubstitutions, withSupportedCards } from "../lib/unsupported-card-substitution.js";
 import {
@@ -624,6 +625,14 @@ export function usePeerLobby({
 
   const submitMultiplayerCommand = useCallback(
     async (command, label = "") => {
+      const assertSubmissionActive = () => assertMatchNotDisputed(multiplayerRef.current, "Action submission");
+      const runSubmissionPhase = async (...args) => {
+        assertSubmissionActive();
+        const result = await timePeerSyncPhase(...args);
+        assertSubmissionActive();
+        return result;
+      };
+      assertSubmissionActive();
       let session = multiplayerRef.current;
       if (!session.matchStarted) {
         setStatus("Match has not started yet", true);
@@ -631,7 +640,7 @@ export function usePeerLobby({
       }
       if (session.submittingAction) {
         setStatus("Waiting for the previous action to sync");
-        await timePeerSyncPhase("submit_action:wait_previous_action", {}, () => waitForSubmissionIdle());
+        await runSubmissionPhase("submit_action:wait_previous_action", {}, () => waitForSubmissionIdle());
         session = multiplayerRef.current;
         if (!session.matchStarted) {
           setStatus("Match has not started yet", true);
@@ -698,6 +707,7 @@ export function usePeerLobby({
           }
         }
         let preSubmitState = gameRef.current ? await gameRef.current.uiState() : stateRef.current;
+        assertSubmissionActive();
         if (!isDecisionCommandCompatible(preSubmitState?.decision, command)) {
           updateMultiplayer((prev) => ({ ...prev, submittingAction: false }));
           setStatus("That action is no longer available");
@@ -845,11 +855,13 @@ export function usePeerLobby({
         // crosses PeerJS, where BinaryPack turns `undefined` fields into `null`.
         // Freeze its wire form now so every signed/hashed copy matches what
         // peers receive and compare against `message.command`.
+        assertSubmissionActive();
         command = wireStablePayload(command);
         const nextSequence = Number(multiplayerRef.current.lastAppliedSequence || 0) + 1;
         if (trustedMode) {
           await servicesRef.current.submitTrustedIntent(command, label || "");
           localSubmissionCommitted = true;
+          assertSubmissionActive();
           setStatus("Action accepted by host");
           return;
         }
@@ -904,6 +916,7 @@ export function usePeerLobby({
           responseTimeoutMs = ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD,
           extraPayload = null
         ) => {
+          assertSubmissionActive();
           showLocalActionWait(waitPatch);
           broadcastLocalActionProgress(
             phase,
@@ -1008,7 +1021,7 @@ export function usePeerLobby({
           }
           return signedActionIntent;
         };
-        const pendingIntentCleared = await timePeerSyncPhase("submit_action:wait_pending_intent", {}, () => waitForPendingActionIntentBeforeLocalSubmit(nextSequence));
+        const pendingIntentCleared = await runSubmissionPhase("submit_action:wait_pending_intent", {}, () => waitForPendingActionIntentBeforeLocalSubmit(nextSequence));
         if (!pendingIntentCleared) {
           updateMultiplayer((prev) => ({ ...prev, submittingAction: false }));
           setStatus("Another action was signed first");
@@ -1052,8 +1065,9 @@ export function usePeerLobby({
 	          enforceObservationBounds: false,
 	        });
         localSubmissionSnapshot = await timePeerSyncPhase("submit_action:validation_snapshot", {}, () => createSequencedActionValidationSnapshot());
+        assertSubmissionActive();
         stagedMatchClockRuntime = stageLocalMatchClockAudit(clock);
-        let cryptoRequirements = await timePeerSyncPhase(
+        let cryptoRequirements = await runSubmissionPhase(
           "submit_action:preview_requirements",
           submitPerf,
           async () => filterCryptoRequirementsForCommand(
@@ -1116,7 +1130,7 @@ export function usePeerLobby({
           operation: "Building random reveals",
           detail: `${cryptoRequirements.length} requirement${cryptoRequirements.length === 1 ? "" : "s"}`,
         }, "payload_generation");
-        const rngReveals = await timePeerSyncPhase(
+        const rngReveals = await runSubmissionPhase(
           "submit_action:build_local_rng_reveals",
           {
             ...submitPerf,
@@ -1155,7 +1169,7 @@ export function usePeerLobby({
           operation: "Building local shuffle proofs",
           detail: `${cryptoRequirements.length} requirement${cryptoRequirements.length === 1 ? "" : "s"}`,
         }, "payload_generation");
-        let shuffleProofs = await timePeerSyncPhase(
+        let shuffleProofs = await runSubmissionPhase(
           "submit_action:build_local_shuffle_proofs",
           {
             ...submitPerf,
@@ -1186,7 +1200,7 @@ export function usePeerLobby({
           uiState: preSubmitState,
           updateState: false,
         };
-        await timePeerSyncPhase(
+        await runSubmissionPhase(
           "submit_action:inject_crypto_material",
           {
             ...submitPerf,
@@ -1199,7 +1213,7 @@ export function usePeerLobby({
           }, { ...actionCryptoOptions, randomnessOnly: shuffleProofs.length > 0 })
         );
         if (shuffleProofs.length > 0) {
-          cryptoRequirements = await timePeerSyncPhase(
+          cryptoRequirements = await runSubmissionPhase(
             "submit_action:refresh_requirements_after_shuffle",
             submitPerf,
             async () => filterCryptoRequirementsForCommand(
@@ -1231,7 +1245,7 @@ export function usePeerLobby({
             shuffleProofs, rngReveals,
           }, { ...actionCryptoOptions, skipRandomness: true });
         }
-        let remoteCryptoMaterial = await timePeerSyncPhase(
+        let remoteCryptoMaterial = await runSubmissionPhase(
           "submit_action:collect_remote_crypto_material_pre",
           {
             ...submitPerf,
@@ -1262,7 +1276,7 @@ export function usePeerLobby({
           ...submitPerf,
           material: summarizeCryptoMaterialForPerf(remoteCryptoMaterial),
         });
-        await timePeerSyncPhase(
+        await runSubmissionPhase(
           "submit_action:reveal_remote_openings_pre",
           {
             ...submitPerf,
@@ -1274,7 +1288,7 @@ export function usePeerLobby({
             updateState: false,
           })
         );
-        let preOpenings = await timePeerSyncPhase(
+        let preOpenings = await runSubmissionPhase(
           "submit_action:build_local_openings_pre",
           {
             ...submitPerf,
@@ -1312,6 +1326,7 @@ export function usePeerLobby({
         // example a shuffle replacement during mill). Finish that protocol
         // work before executing any part of the authoritative command.
         for (let pass = 0; pass < 256; pass++) {
+          assertSubmissionActive();
           const refreshed = filterCryptoRequirementsForCommand(command, preSubmitState,
             freshCryptoRequirementsForSequence(nextSequence, await previewRequirementsForCommand(command)));
           const missing = missingShuffleRequirements(refreshed, shuffleProofs);
@@ -1407,7 +1422,7 @@ export function usePeerLobby({
           detail: label || summarizePeerCommand(command)?.type || String(command?.type || "action"),
         }, "engine_work", PROTOCOL_RESPONSE_TIMEOUT_MS);
         setStatus("Engine is applying the action locally");
-        let appliedState = await timePeerSyncPhase(
+        let appliedState = await runSubmissionPhase(
           "submit_action:apply_synced_command",
           {
             ...submitPerf,
@@ -1419,7 +1434,7 @@ export function usePeerLobby({
             publishState: publishAppliedStateImmediately,
           })
         );
-        const appliedRequirements = await timePeerSyncPhase(
+        const appliedRequirements = await runSubmissionPhase(
           "submit_action:applied_requirements_from_state",
           submitPerf,
           async () => filterCryptoRequirementsForCommand(
@@ -1450,7 +1465,7 @@ export function usePeerLobby({
           throw new Error("A private shuffle was not prepared before command execution");
         }
         if (postShuffleRequirements.length > 0) {
-          const postShuffleProofs = await timePeerSyncPhase(
+          const postShuffleProofs = await runSubmissionPhase(
             "submit_action:build_local_post_shuffle_proofs",
             {
               ...submitPerf,
@@ -1463,7 +1478,7 @@ export function usePeerLobby({
           );
           shuffleProofs = mergeShuffleProofs(shuffleProofs, postShuffleProofs);
         }
-        await timePeerSyncPhase(
+        await runSubmissionPhase(
           "submit_action:verify_shuffle_proofs",
           {
             ...submitPerf,
@@ -1484,7 +1499,7 @@ export function usePeerLobby({
           shuffleProofs,
           shuffleApplicationRequirements
         );
-        await timePeerSyncPhase(
+        await runSubmissionPhase(
           "submit_action:apply_verified_shuffle_proofs",
           {
             ...submitPerf,
@@ -1498,7 +1513,7 @@ export function usePeerLobby({
         // applied, the same order peers use when they apply this action, so a
         // card still in a shuffled library is opened against the post-shuffle
         // ceremony on every seat and is not re-redacted by the reseal.
-        const remotePostOpeningState = await timePeerSyncPhase(
+        const remotePostOpeningState = await runSubmissionPhase(
           "submit_action:reveal_remote_openings_post",
           {
             ...submitPerf,
@@ -1516,7 +1531,7 @@ export function usePeerLobby({
         if (remotePostOpeningState) {
           appliedState = remotePostOpeningState;
         }
-        await timePeerSyncPhase(
+        await runSubmissionPhase(
           "submit_action:reveal_local_ziffle_hand",
           {
             ...submitPerf,
@@ -1556,7 +1571,7 @@ export function usePeerLobby({
               `${missingRemotePostOpenRequirements.length} requirement`
               + `${missingRemotePostOpenRequirements.length === 1 ? "" : "s"}`,
           }, "crypto_material");
-          const postRemoteCryptoMaterial = await timePeerSyncPhase(
+          const postRemoteCryptoMaterial = await runSubmissionPhase(
             "submit_action:collect_remote_crypto_material_post",
             {
               ...submitPerf,
@@ -1587,7 +1602,7 @@ export function usePeerLobby({
               postRemoteCryptoMaterial.privateViewProofs
             ),
           };
-          const postRemoteOpeningState = await timePeerSyncPhase(
+          const postRemoteOpeningState = await runSubmissionPhase(
             "submit_action:reveal_remote_openings_post_missing",
             {
               ...submitPerf,
@@ -1623,7 +1638,7 @@ export function usePeerLobby({
           progressCurrent: 0,
           progressTotal: expectedOpeningPreviewTotal || null,
         }, "opening_generation");
-        const postOpenings = await timePeerSyncPhase(
+        const postOpenings = await runSubmissionPhase(
           "submit_action:build_local_openings_post",
           {
             ...submitPerf,
@@ -1642,7 +1657,7 @@ export function usePeerLobby({
           openings: Array.isArray(postOpenings) ? postOpenings.length : 0,
           bytes: payloadSizeBytes(postOpenings),
         });
-        const localRequirementOpenings = await timePeerSyncPhase(
+        const localRequirementOpenings = await runSubmissionPhase(
           "submit_action:build_local_requirement_openings",
           {
             ...submitPerf,
@@ -1669,7 +1684,7 @@ export function usePeerLobby({
           localRequirementOpenings,
           command,
         );
-        const localPostOpeningState = await timePeerSyncPhase(
+        const localPostOpeningState = await runSubmissionPhase(
           "submit_action:reveal_local_openings_post",
           {
             ...submitPerf,
@@ -1696,7 +1711,7 @@ export function usePeerLobby({
           selectedLocalRequirementOpenings,
           remoteCryptoMaterial.openings
         );
-        const localPrivateViewProofs = await timePeerSyncPhase(
+        const localPrivateViewProofs = await runSubmissionPhase(
           "submit_action:build_local_private_view_proofs",
           {
             ...submitPerf,
@@ -1717,7 +1732,7 @@ export function usePeerLobby({
           localPrivateViewProofs,
           remoteCryptoMaterial.privateViewProofs
         );
-        await timePeerSyncPhase(
+        await runSubmissionPhase(
           "submit_action:reveal_private_audit_proofs",
           {
             ...submitPerf,
@@ -1728,7 +1743,7 @@ export function usePeerLobby({
             updateState: false,
           })
         );
-        const localPublicCheckpointHash = await timePeerSyncPhase(
+        const localPublicCheckpointHash = await runSubmissionPhase(
           "submit_action:current_public_checkpoint_hash",
           submitPerf,
           () => currentPublicAuditCheckpointHash()
@@ -1744,7 +1759,7 @@ export function usePeerLobby({
           progressTotal: 1,
         }, "payload_signing", PROTOCOL_RESPONSE_TIMEOUT_MS);
         setStatus("Generating action verification payload");
-        const audit = await timePeerSyncPhase(
+        const audit = await runSubmissionPhase(
           "submit_action:build_sequenced_action_audit",
           {
             ...submitPerf,
@@ -1777,7 +1792,7 @@ export function usePeerLobby({
           audit,
         };
         recordPeerSyncPerf("submit_action:message_summary", summarizeSequencedActionForPerf(message));
-        await timePeerSyncPhase(
+        await runSubmissionPhase(
           "submit_action:verify_sequenced_action_audit",
           summarizeSequencedActionForPerf(message),
           () => verifySequencedActionAudit({
@@ -1787,7 +1802,7 @@ export function usePeerLobby({
             command,
           })
         );
-        await timePeerSyncPhase(
+        await runSubmissionPhase(
           "submit_action:verify_audit_satisfies_crypto_requirements",
           {
             ...summarizeSequencedActionForPerf(message),
@@ -1805,7 +1820,7 @@ export function usePeerLobby({
         }
         clearLocalActionWait();
         setStatus("Waiting for peers to verify action payload");
-        const quorumCertificate = await timePeerSyncPhase(
+        const quorumCertificate = await runSubmissionPhase(
           "submit_action:collect_action_quorum_certificate",
           summarizeSequencedActionForPerf(message),
           () => collectActionQuorumCertificate(message)
@@ -1817,12 +1832,14 @@ export function usePeerLobby({
           };
           await verifyActionQuorumForMessage(message);
         }
+        assertSubmissionActive();
         commitMatchClockAudit(clock, appliedState);
         await appendAppliedSequencedAction(message);
         localSubmissionCommitted = true;
         // The action is committed; free the engine savepoint now rather than
         // holding it across relay/publish/drain (drained actions take their own).
         await localSubmissionSnapshot?.release?.();
+        assertSubmissionActive();
         if (signedActionIntent) {
           broadcastActionIntentProgress(
             signedActionIntent,
@@ -1870,6 +1887,10 @@ export function usePeerLobby({
         });
         if (signedActionIntent && !localSubmissionCommitted) {
           broadcastActionIntentCancel(signedActionIntent, failureReason);
+        }
+        if (isMatchDisputed(multiplayerRef.current)) {
+          setStatus(multiplayerRef.current.matchDisputed?.reason || failureReason, true);
+          return;
         }
         const protocolTimeoutClaim = protocolResponseTimeoutClaimFromError(err);
         if (protocolTimeoutClaim) {
@@ -2000,6 +2021,9 @@ export function usePeerLobby({
   }, [submitMultiplayerCommand]);
 
   useEffect(() => {
+    // A dispute stops the match, but its locally accepted clock is evidence.
+    // Only a genuine lobby/reset transition may replace that history with zero.
+    if (isMatchDisputed(multiplayerRef.current)) return undefined;
     if (!multiplayer.matchStarted || !matchClockConfigRef.current.initialMs) {
       const idleSnapshot = createMatchClockSnapshot({
         policy: matchClockConfigRef.current,
@@ -2111,6 +2135,7 @@ export function usePeerLobby({
     };
   }, [
     multiplayer.matchStarted,
+    multiplayer.mode,
     setStatus,
     updateMultiplayer,
   ]);

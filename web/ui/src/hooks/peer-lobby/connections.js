@@ -2633,12 +2633,9 @@ export function usePeerLobbyConnections(base, servicesRef) {
   function shouldReplacePendingActionIntentEvidence(record = {}, evidence = {}) {
     if (!evidence?.requestPayload) return false;
     if (!record.evidence?.requestPayload) return true;
-    const evidenceRequestedAtMs = Number(evidence.requestedAtMs || Date.now());
-    const previousRequestedAtMs = Number(record.evidence.requestedAtMs || 0);
-    if (evidenceRequestedAtMs < previousRequestedAtMs) return false;
     const evidenceDueAtMs = pendingActionIntentEvidenceDueAtMs(evidence);
     const previousDueAtMs = pendingActionIntentEvidenceDueAtMs(record.evidence);
-    return evidenceDueAtMs >= previousDueAtMs || Date.now() >= previousDueAtMs;
+    return evidenceDueAtMs >= previousDueAtMs;
   }
 
   async function pendingActionIntentHardTimeoutEvidence(key, record = {}) {
@@ -2667,12 +2664,19 @@ export function usePeerLobbyConnections(base, servicesRef) {
       window.clearTimeout(existingTimeoutId);
       pendingActionIntentTimeoutsRef.current.delete(key);
     }
-    const dueAtMs = pendingActionIntentDueAtMs(record);
+    const dueAtMs = Math.max(
+      pendingActionIntentDueAtMs(record),
+      Number(record.timeoutConfirmation?.notBeforeMs || 0)
+    );
     if (!Number.isFinite(dueAtMs)) return;
     const delayMs = Math.max(1, Math.ceil(dueAtMs - Date.now()));
     const timeoutId = window.setTimeout(() => {
+      // A cancelled callback can already be queued when a progress update
+      // installs its replacement. It must not remove or act for that timer.
+      if (pendingActionIntentTimeoutsRef.current.get(key) !== timeoutId
+        || pendingActionIntentsRef.current.get(key) !== record) return;
       pendingActionIntentTimeoutsRef.current.delete(key);
-      void handlePendingActionIntentTimeout(key).catch((err) => {
+      void handlePendingActionIntentTimeout(key, dueAtMs).catch((err) => {
         emitSyncFailureNotice(
           "Action intent timeout failed",
           err instanceof Error ? err.message : String(err)
@@ -2695,11 +2699,18 @@ export function usePeerLobbyConnections(base, servicesRef) {
     return applied;
   }
 
-  async function observedMatchClockElapsedForIntent(intent) {
+  async function observedMatchClockElapsedForIntent(intent, record) {
     const payload = signedActionIntentPayload(intent);
+    const key = actionIntentKey(payload);
     const liveState = gameRef.current && typeof gameRef.current.uiState === "function"
       ? await gameRef.current.uiState()
       : stateRef.current;
+    // uiState can be delayed behind engine work. Never let that read update
+    // the clock of a completed, cancelled, replaced, or disputed action.
+    if (pendingActionIntentsRef.current.get(key) !== record
+      || protocolActionIntentInactiveReason(key)
+      || payload.matchId !== currentAuditMatchId()
+      || Number(payload.seq) <= Number(multiplayerRef.current.lastAppliedSequence || 0)) return null;
     const snapshot = updateMatchClockForState(liveState);
     if (!snapshot.enabled || Number(snapshot.activePlayerIndex) !== Number(payload.actorIndex)) {
       return null;
@@ -2761,7 +2772,9 @@ export function usePeerLobbyConnections(base, servicesRef) {
     if (existing && existing.fingerprint !== fingerprint) {
       throw new Error("Refusing conflicting signed action intent for this sequence");
     }
-    if (matchingAppliedActionForIntent(verifiedIntent)) {
+    if (matchingAppliedActionForIntent(verifiedIntent)
+      || Number(verifiedIntent.seq) <= Number(multiplayerRef.current.lastAppliedSequence || 0)
+      || verifiedIntent.matchId !== currentAuditMatchId()) {
       return verifiedIntent;
     }
     const record = existing || {
@@ -2773,13 +2786,6 @@ export function usePeerLobbyConnections(base, servicesRef) {
     };
     if (!record.firstObservedAtMs) {
       record.firstObservedAtMs = Date.now();
-    }
-    const observedElapsed = await observedMatchClockElapsedForIntent(verifiedIntent);
-    if (observedElapsed != null) {
-      record.observedElapsedAtIntentMs = Math.max(
-        Number(record.observedElapsedAtIntentMs || 0),
-        Number(observedElapsed || 0)
-      );
     }
     if (evidence?.requestPayload) {
       const evidenceRequestedAtMs = Number(evidence.requestedAtMs || Date.now());
@@ -2793,6 +2799,19 @@ export function usePeerLobbyConnections(base, servicesRef) {
     }
     pendingActionIntentsRef.current.set(key, record);
     schedulePendingActionIntentTimeout(key, record);
+    // Publish the shared record and merge its deadline before yielding to the
+    // worker. Concurrent progress handlers must see and extend this record.
+    const observedElapsed = await observedMatchClockElapsedForIntent(verifiedIntent, record);
+    if (pendingActionIntentsRef.current.get(key) !== record
+      || protocolActionIntentInactiveReason(key)
+      || verifiedIntent.matchId !== currentAuditMatchId()
+      || Number(verifiedIntent.seq) <= Number(multiplayerRef.current.lastAppliedSequence || 0)) return verifiedIntent;
+    if (observedElapsed != null) {
+      record.observedElapsedAtIntentMs = Math.max(
+        Number(record.observedElapsedAtIntentMs || 0),
+        Number(observedElapsed || 0)
+      );
+    }
     return verifiedIntent;
   }
 
@@ -2963,6 +2982,10 @@ export function usePeerLobbyConnections(base, servicesRef) {
       responseTimeoutMs,
       requestedAtMs: Date.now(),
     });
+    if (protocolActionIntentInactiveReason(messageIntentKey)
+      || !pendingActionIntentsRef.current.has(messageIntentKey)
+      || verifiedIntent.matchId !== currentAuditMatchId()
+      || Number(verifiedIntent.seq) <= Number(multiplayerRef.current.lastAppliedSequence || 0)) return;
     if (
       message.senderIndex != null
       && Number(message.senderIndex) !== Number(verifiedIntent.actorIndex)
@@ -3180,10 +3203,11 @@ export function usePeerLobbyConnections(base, servicesRef) {
     return false;
   }
 
-  async function handlePendingActionIntentTimeout(key) {
+  async function handlePendingActionIntentTimeout(key, scheduledAtMs = null) {
     const record = pendingActionIntentsRef.current.get(key);
-    if (!record) return;
+    if (!record || record.timeoutClaimPending || protocolActionIntentInactiveReason(key)) return;
     const intent = record.intent || {};
+    if (intent.matchId !== currentAuditMatchId()) return;
     if (matchingAppliedActionForIntent(intent)) {
       clearPendingActionIntent(key);
       return;
@@ -3199,38 +3223,92 @@ export function usePeerLobbyConnections(base, servicesRef) {
     }
     const dueAtMs = pendingActionIntentDueAtMs(record);
     if (Date.now() < dueAtMs) {
+      record.timeoutConfirmation = null;
       schedulePendingActionIntentTimeout(key, record);
       return;
     }
-    const hardDueAtMs = pendingActionIntentHardDueAtMs(record);
-    const evidenceDueAtMs = pendingActionIntentEvidenceDueAtMs(record.evidence || {});
-    const evidence = hardDueAtMs <= evidenceDueAtMs
-      ? await pendingActionIntentHardTimeoutEvidence(key, record)
-      : (record.evidence || {});
-    const timeoutMs = pendingActionIntentEvidenceTimeoutMs(evidence);
-    const requestedAtMs = pendingActionIntentEvidenceRequestedAtMs(evidence);
-    const targetPlayerIndex = normalizePlayerIndex(intent.actorIndex);
-    if (targetPlayerIndex == null) return;
-    const target = playerForProtocolResponseTimeout(targetPlayerIndex);
-    const requestPayload = cloneMultiplayerPayload(evidence.requestPayload || {});
-    const requestPayloadHash = String(
-      evidence.requestPayloadHash
-      || await sha256Hex(canonicalMultiplayerPayload(requestPayload))
-    );
-    await submitProtocolResponseTimeoutClaim({
-      matchId: currentAuditMatchId(),
-      basisSequence: currentSequence,
-      targetPlayerIndex,
-      targetPeerId: String(target?.peerId || evidence.actorPeerId || ""),
-      targetName: target?.name || `Player ${targetPlayerIndex + 1}`,
-      requesterIndex: resolveLocalPlayerIndex(multiplayerRef.current),
-      requestType: String(evidence.requestType || requestPayload.type || "action_intent"),
-      requestId: String(evidence.requestId || requestPayload.requestId || ""),
-      requestPayloadHash,
-      requestPayload,
-      responseTimeoutMs: timeoutMs,
-      requestedAtMs,
-    });
+    const nowMs = Date.now();
+    const confirmation = record.timeoutConfirmation;
+    const expectedCheckMs = scheduledAtMs ?? confirmation?.notBeforeMs ?? dueAtMs;
+    const schedulerWasLate = nowMs - expectedCheckMs > MATCH_CLOCK_CLAIM_SKEW_MS;
+    if (!confirmation || confirmation.dueAtMs !== dueAtMs || schedulerWasLate) {
+      // Let queued messages reach their verified deadline updates before
+      // attributing silence to a peer. Repeated local suspension may postpone
+      // observation, but never extends the signed evidence or its hard cap.
+      const recoveryMs = schedulerWasLate
+        ? ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD + MATCH_CLOCK_CLAIM_SKEW_MS
+        : MATCH_CLOCK_CLAIM_SKEW_MS;
+      record.timeoutConfirmation = { dueAtMs, notBeforeMs: nowMs + recoveryMs };
+      recordPeerSyncPerf("action_intent_timeout:catch_up", {
+        seq, actor: intent.actorIndex, scheduler_delay_ms: Math.max(0, nowMs - expectedCheckMs),
+        recovery_ms: recoveryMs,
+      });
+      schedulePendingActionIntentTimeout(key, record);
+      return;
+    }
+    if (nowMs < confirmation.notBeforeMs) {
+      schedulePendingActionIntentTimeout(key, record);
+      return;
+    }
+    const evidenceAtCheck = record.evidence;
+    record.timeoutClaimPending = true;
+    try {
+      const hardDueAtMs = pendingActionIntentHardDueAtMs(record);
+      const evidenceDueAtMs = pendingActionIntentEvidenceDueAtMs(record.evidence || {});
+      const evidence = hardDueAtMs <= evidenceDueAtMs
+        ? await pendingActionIntentHardTimeoutEvidence(key, record)
+        : (record.evidence || {});
+      const timeoutMs = pendingActionIntentEvidenceTimeoutMs(evidence);
+      const requestedAtMs = pendingActionIntentEvidenceRequestedAtMs(evidence);
+      const targetPlayerIndex = normalizePlayerIndex(intent.actorIndex);
+      if (targetPlayerIndex == null) return;
+      const target = playerForProtocolResponseTimeout(targetPlayerIndex);
+      const requestPayload = cloneMultiplayerPayload(evidence.requestPayload || {});
+      const requestPayloadHash = String(
+        evidence.requestPayloadHash
+        || await sha256Hex(canonicalMultiplayerPayload(requestPayload))
+      );
+      // Hashing can yield long enough for progress, application, cancellation,
+      // or a different match. Do not submit a claim built from stale evidence.
+      if (pendingActionIntentsRef.current.get(key) !== record
+        || protocolActionIntentInactiveReason(key)
+        || intent.matchId !== currentAuditMatchId()
+        || Number(multiplayerRef.current.lastAppliedSequence || 0) !== currentSequence
+        || matchingAppliedActionForIntent(intent)) return;
+      if (record.evidence !== evidenceAtCheck || pendingActionIntentDueAtMs(record) !== dueAtMs) {
+        schedulePendingActionIntentTimeout(key, record);
+        return;
+      }
+      if (Date.now() - nowMs > MATCH_CLOCK_CLAIM_SKEW_MS) {
+        record.timeoutConfirmation = {
+          dueAtMs,
+          notBeforeMs: Date.now() + ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD + MATCH_CLOCK_CLAIM_SKEW_MS,
+        };
+        schedulePendingActionIntentTimeout(key, record);
+        return;
+      }
+      recordPeerSyncPerf("action_intent_timeout:confirmed", {
+        seq, actor: intent.actorIndex, basis_sequence: currentSequence,
+        request_type: evidence.requestType, request_id: evidence.requestId,
+        response_timeout_ms: timeoutMs, requested_at_ms: requestedAtMs,
+      });
+      await submitProtocolResponseTimeoutClaim({
+        matchId: currentAuditMatchId(),
+        basisSequence: currentSequence,
+        targetPlayerIndex,
+        targetPeerId: String(target?.peerId || evidence.actorPeerId || ""),
+        targetName: target?.name || `Player ${targetPlayerIndex + 1}`,
+        requesterIndex: resolveLocalPlayerIndex(multiplayerRef.current),
+        requestType: String(evidence.requestType || requestPayload.type || "action_intent"),
+        requestId: String(evidence.requestId || requestPayload.requestId || ""),
+        requestPayloadHash,
+        requestPayload,
+        responseTimeoutMs: timeoutMs,
+        requestedAtMs,
+      });
+    } finally {
+      record.timeoutClaimPending = false;
+    }
   }
 
   async function verifyActionMatchesPendingIntent(message) {

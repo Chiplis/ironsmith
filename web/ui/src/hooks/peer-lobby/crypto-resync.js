@@ -1,3 +1,4 @@
+import { assertMatchNotDisputed, compactMatchDisputeEvidence, isMatchDisputed } from "./match-lifecycle.js";
 import { acceptedZiffleEpochs, assertZiffleEpochInputs, isPrivateZiffleEpoch, ziffleEpochMaterial, ziffleInputDeckFields } from "../../lib/ziffle-private-epochs.js";
 import { matchingActionPrefix } from '../../lib/relay/resync.js';
 import { relayMatchId, canPersistMatch } from '../../lib/relay/session.js';
@@ -1388,6 +1389,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 
   const authorizedCryptoMaterialRequirementsForRequest = useCallback(async (conn, message) => {
     const session = multiplayerRef.current;
+    assertMatchNotDisputed(session, "Cryptographic material request");
     if (!session.matchStarted) {
       throw new Error("Cryptographic material request received before match start");
     }
@@ -1454,6 +1456,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
         command,
       });
 
+    assertMatchNotDisputed(multiplayerRef.current, "Cryptographic material request");
 	    const localSeat = resolveLocalCryptoPlayerIndex();
 	    let previewedRequirements = filterCryptoRequirementsForCommand(
 	      command,
@@ -1487,8 +1490,10 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 	          ...locallyKnownRequestedPublicOpenRequirements,
 	        ],
 	      });
+      assertMatchNotDisputed(multiplayerRef.current, "Cryptographic material request");
       return { requirements: authorizedRequirements, actionIntent };
     } catch (err) {
+      assertMatchNotDisputed(multiplayerRef.current, "Cryptographic material request");
       const postApplyRequirements = await derivePostApplyCryptoRequirementsForRequest({
         command,
         seq,
@@ -1507,6 +1512,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 	          ...locallyKnownRequestedPublicOpenRequirements,
 	        ],
 	      });
+      assertMatchNotDisputed(multiplayerRef.current, "Cryptographic material request");
       return { requirements: authorizedRequirements, actionIntent };
     }
 		  }, [
@@ -1534,6 +1540,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
         requestPerf,
         () => authorizedCryptoMaterialRequirementsForRequest(conn, message)
       );
+      assertMatchNotDisputed(multiplayerRef.current, "Cryptographic material request");
       const authorizedPerf = {
         ...requestPerf,
         authorized_requirements: summarizeCryptoRequirementsForPerf(requirements),
@@ -1551,6 +1558,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
           })
         );
       }
+      assertMatchNotDisputed(multiplayerRef.current, "Cryptographic material request");
       setStatus("Generating hidden-card opening payloads for peer action");
       const material = await timePeerSyncPhase(
         "crypto_material_request:build_local_material",
@@ -1568,6 +1576,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
           requirements,
         })
       );
+      assertMatchNotDisputed(multiplayerRef.current, "Cryptographic material request");
       recordPeerSyncPerf("crypto_material_request:send_response", {
         ...authorizedPerf,
         material: summarizeCryptoMaterialForPerf(material),
@@ -2191,6 +2200,9 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
   }
 
   function updateMatchClockForState(uiState, options = {}) {
+    if (isMatchDisputed(multiplayerRef.current) && !options.reset) {
+      return multiplayerRef.current.matchClock || runtimeMatchClockSnapshot();
+    }
     const policy = normalizeMatchClockPolicy(options.policy || matchClockConfigRef.current);
     matchClockConfigRef.current = policy;
     const playerCount = playerCountForClock(uiState);
@@ -2405,6 +2417,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
   }
 
   function commitMatchClockAudit(clock, uiState) {
+    assertMatchNotDisputed(multiplayerRef.current, "Match clock commit");
     if (!clock || typeof clock !== "object") {
       return updateMatchClockForState(uiState);
     }
@@ -2428,6 +2441,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
   }
 
   function stageLocalMatchClockAudit(clock) {
+    assertMatchNotDisputed(multiplayerRef.current, "Match clock preparation");
     if (!clock || typeof clock !== "object") return null;
     const previous = {
       ...matchClockRef.current,
@@ -2458,6 +2472,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 
   function restoreMatchClockRuntime(runtime, uiState) {
     if (!runtime) return null;
+    const frozenClock = multiplayerRef.current.matchDisputed?.acceptedClockRuntime;
+    if (frozenClock) {
+      matchClockRef.current = cloneMultiplayerPayload(frozenClock);
+      matchClockConfigRef.current = cloneMultiplayerPayload(frozenClock.policy);
+      return publishMatchClockSnapshot(runtimeMatchClockSnapshot());
+    }
     matchClockRef.current = {
       ...runtime,
       baseRemainingMsByPlayer: [...(runtime.baseRemainingMsByPlayer || [])],
@@ -4059,9 +4079,57 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     );
   }
 
+  function frozenAcceptedMatchClockRuntime() {
+    const acceptedSequence = Number(multiplayerRef.current.lastAppliedSequence || 0);
+    // The live runtime can already describe the next action while its crypto
+    // work or durable append is pending. Only the local accepted prefix is
+    // authoritative here; never recover the clock from a remote snapshot.
+    const acceptedActions = actionHistoryRef.current.filter((entry) =>
+      Number(entry?.seq || 0) <= acceptedSequence
+    );
+    const acceptedClock = latestMatchClockAuditFromActions(acceptedActions);
+    const current = matchClockRef.current;
+    const policy = normalizeMatchClockPolicy(acceptedClock?.policy || current.policy || matchClockConfigRef.current);
+    const playerCount = Math.max(current.playerCount || 0,
+      Array.isArray(acceptedClock?.remainingMsByPlayer) ? acceptedClock.remainingMsByPlayer.length : 0);
+    if (!acceptedClock && acceptedSequence > 0 && Number(current.lastSequence || 0) > acceptedSequence) {
+      throw new Error("Accepted match clock is missing from the local action transcript");
+    }
+    return {
+      policy,
+      playerCount,
+      baseRemainingMsByPlayer: normalizeMatchClockRemaining(
+        acceptedClock?.remainingMsByPlayer
+          || (acceptedSequence === 0 ? [] : current.baseRemainingMsByPlayer),
+        playerCount,
+        policy.initialMs
+      ),
+      activePlayerIndex: null,
+      epochStartedAtMs: null,
+      clockHash: acceptedClock ? String(acceptedClock.clockHash)
+        : acceptedSequence === 0 ? INITIAL_MATCH_CLOCK_HASH : String(current.clockHash),
+      lastSequence: acceptedClock ? Number(acceptedClock.seq) : acceptedSequence,
+    };
+  }
+
   function markMatchDisputed(reason, evidence = {}) {
+    // Keep the first cause. Follow-on failures must not erase the original
+    // evidence or replace the reason with a secondary clock/protocol error.
+    if (isMatchDisputed(multiplayerRef.current)) return;
     const body = String(reason || "Match transcript fork detected");
     const dispute = evidence?.dispute || null;
+    const acceptedClockRuntime = frozenAcceptedMatchClockRuntime();
+    matchClockRef.current = cloneMultiplayerPayload(acceptedClockRuntime);
+    matchClockConfigRef.current = cloneMultiplayerPayload(acceptedClockRuntime.policy);
+    const frozenClockSnapshot = runtimeMatchClockSnapshot();
+    recordDiagnosticEvent("match_disputed", {
+      reason: body,
+      lastAppliedSequence: Number(multiplayerRef.current.lastAppliedSequence || 0),
+      clockSequence: Number(matchClockRef.current.lastSequence || 0),
+      clockHash: String(matchClockRef.current.clockHash || INITIAL_MATCH_CLOCK_HASH),
+      evidence: compactMatchDisputeEvidence(evidence),
+    });
+    pendingSequencedActionsRef.current.clear();
     ignoreAndClearAllPendingActionIntents("match_disputed");
     if (dispute && liveAuditTranscriptRef.current) {
       const existingDisputes = Array.isArray(liveAuditTranscriptRef.current.disputes)
@@ -4080,13 +4148,16 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     updateMultiplayer((prev) => ({
       ...prev,
       mode: "disputed",
+      matchClock: frozenClockSnapshot,
+      actionTimer: actionTimerSnapshotFromMatchClock(frozenClockSnapshot),
       matchStarted: false,
       submittingAction: false,
       matchDisputed: {
         reason: body,
+        acceptedClockRuntime: cloneMultiplayerPayload(acceptedClockRuntime),
         evidence: cloneMultiplayerPayload(evidence),
-        accusedPlayers: Array.isArray(dispute?.accusedPlayers)
-          ? dispute.accusedPlayers.map(Number)
+        accusedPlayers: Array.isArray(evidence?.accusedPlayers || dispute?.accusedPlayers)
+          ? (evidence.accusedPlayers || dispute.accusedPlayers).map(Number)
           : [],
         at: Date.now(),
       },
@@ -4174,14 +4245,21 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
   }
 
   async function appendAppliedSequencedAction(message) {
+    assertMatchNotDisputed(multiplayerRef.current, "Action acceptance");
     const nextSequence = Number(message.seq || 0);
     const entry = acceptedActionEntryForMessage(message);
     const session = multiplayerRef.current;
+    let durablyAccepted = false;
     if (canPersistMatch(session) && session.role === "host" && session.matchStarted) {
       const started = performance.now();
       await appendRelayAction(session.lobbyId, matchStartPayloadRef.current, session, entry);
+      durablyAccepted = true;
       markActionStage(null, "durable acceptance", { sequence: nextSequence, persist_ms: performance.now() - started });
     }
+    // A successful durable append has already accepted this validated action.
+    // If a dispute arrived during the request, retain the durable prefix here
+    // too instead of rolling the engine back behind the journal.
+    if (!durablyAccepted) assertMatchNotDisputed(multiplayerRef.current, "Action acceptance");
     actionHistoryRef.current.push(entry);
     if (liveAuditTranscriptRef.current) {
       liveAuditTranscriptRef.current = { ...liveAuditTranscriptRef.current, actions: actionHistoryRef.current };
@@ -4199,6 +4277,21 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       lastAppliedSequence: nextSequence,
       submittingAction: false,
     }));
+    if (isMatchDisputed(multiplayerRef.current)) {
+      const acceptedClockRuntime = frozenAcceptedMatchClockRuntime();
+      matchClockRef.current = cloneMultiplayerPayload(acceptedClockRuntime);
+      matchClockConfigRef.current = cloneMultiplayerPayload(acceptedClockRuntime.policy);
+      const frozenClockSnapshot = runtimeMatchClockSnapshot();
+      updateMultiplayer((prev) => ({
+        ...prev,
+        matchClock: frozenClockSnapshot,
+        actionTimer: actionTimerSnapshotFromMatchClock(frozenClockSnapshot),
+        matchDisputed: {
+          ...prev.matchDisputed,
+          acceptedClockRuntime: cloneMultiplayerPayload(acceptedClockRuntime),
+        },
+      }));
+    }
   }
 
   async function persistRelayCheckpoint() {
@@ -4355,16 +4448,20 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       );
     }
     actionHistoryRef.current = restoreActionCursor(snapshot.actionHistoryCursor);
+    const liveDisputes = isMatchDisputed(multiplayerRef.current)
+      ? liveAuditTranscriptRef.current?.disputes : null;
     liveAuditTranscriptRef.current = snapshot.liveAuditTranscript
-      ? { ...snapshot.liveAuditTranscript, actions: actionHistoryRef.current }
+      ? { ...snapshot.liveAuditTranscript, actions: actionHistoryRef.current,
+          ...(liveDisputes ? { disputes: liveDisputes } : {}) }
       : null;
     matchStartPayloadRef.current = snapshot.matchStartPayload
       ? cloneMultiplayerPayload(snapshot.matchStartPayload)
       : null;
     auditStateHashRef.current = snapshot.auditStateHash;
     initialPublicCheckpointHashRef.current = snapshot.initialPublicCheckpointHash || "";
-    matchClockConfigRef.current = cloneMultiplayerPayload(snapshot.matchClockConfig);
-    matchClockRef.current = cloneMultiplayerPayload(snapshot.matchClock);
+    const frozenClock = multiplayerRef.current.matchDisputed?.acceptedClockRuntime;
+    matchClockConfigRef.current = cloneMultiplayerPayload(frozenClock?.policy || snapshot.matchClockConfig);
+    matchClockRef.current = cloneMultiplayerPayload(frozenClock || snapshot.matchClock);
     if (snapshot.actionCryptoRequirements) actionCryptoRequirementsRef.current = new Map(
       [...snapshot.actionCryptoRequirements.entries()].map(([seq, requirements]) => [
         seq,

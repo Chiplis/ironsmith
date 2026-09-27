@@ -1,3 +1,4 @@
+import { assertMatchNotDisputed, isMatchDisputed } from "./match-lifecycle.js";
 import { acceptedZiffleEpochs, assertZiffleEpochInputs, assertZiffleEpochVerification, buildZiffleInputDeck, isPrivateZiffleEpoch, ziffleEpochMaterial, ziffleInputDeckFields } from "../../lib/ziffle-private-epochs.js";
 import { assertRuntimeVersion } from "../../lib/runtime-version.js";
 import { collectZiffleRevealTokenGroups } from "../../lib/ziffle-reveal-token-collection.js";
@@ -253,7 +254,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
     if (drainingPendingSequencedActionsRef.current) return;
     drainingPendingSequencedActionsRef.current = true;
     try {
-      while (!awaitingStateResyncRef.current) {
+      while (!awaitingStateResyncRef.current && !isMatchDisputed(multiplayerRef.current)) {
         const nextSequence = Number(multiplayerRef.current.lastAppliedSequence || 0) + 1;
         const pending = pendingSequencedActionsRef.current.get(nextSequence);
         if (!pending) break;
@@ -273,6 +274,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
   }
 
   async function applySequencedActionMessage(message, options = {}) {
+    assertMatchNotDisputed(multiplayerRef.current, "Sequenced action");
     const nextSequence = Number(message?.seq || 0);
     if (
       !options.dryRun
@@ -315,6 +317,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
   }
 
   async function applySequencedActionMessageInner(message, options = {}) {
+    assertMatchNotDisputed(multiplayerRef.current, "Sequenced action");
     const nextSequence = Number(message?.seq || 0);
     const session = multiplayerRef.current;
     const dryRun = Boolean(options.dryRun);
@@ -398,6 +401,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
     let applyPhaseMarkedAt = applyPhaseStartedAt;
     const applyPhaseMarks = [];
     const markApplyPhase = (name) => {
+      assertMatchNotDisputed(multiplayerRef.current, "Sequenced action");
       const at = applyPhaseNow();
       applyPhaseMarks.push({ phase: applyPhase, ms: Math.round(at - applyPhaseMarkedAt) });
       applyPhaseMarkedAt = at;
@@ -411,6 +415,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       phases: [...applyPhaseMarks, { phase: applyPhase, ms: Math.round(applyPhaseNow() - applyPhaseMarkedAt) }],
     });
     try {
+      assertMatchNotDisputed(multiplayerRef.current, "Sequenced action");
       const localSecurityMode = sessionSecurityMode(
         session,
         matchPayloadSecurityMode(matchStartPayloadRef.current, MULTIPLAYER_SECURITY_VERIFIED)
@@ -447,6 +452,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
           preState: liveStateForClock,
           publishState: false,
         });
+        assertMatchNotDisputed(multiplayerRef.current, "Sequenced action");
         if (dryRun) {
           await restoreValidationSnapshot();
           return { trusted: true };
@@ -731,6 +737,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
         message.audit?.publicCheckpointHash,
         "Sequenced action public checkpoint hash does not match local state"
       );
+      assertMatchNotDisputed(multiplayerRef.current, "Sequenced action");
       if (dryRun) {
         await restoreValidationSnapshot();
         recordDiagnosticEvent("action_quorum:dry_run", applyPhaseReport());
@@ -759,7 +766,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	      const rejectedActionCheat = isRejectedActionCheatReason(failureReason);
 	      const unauthorizedAddCardCheat = isUnauthorizedAddCardCommand(message?.command);
 	      if (!rejectedActionCheat && !unauthorizedAddCardCheat) {
-	        recordDiagnosticEvent("apply_action:failed", applyPhaseReport());
+	        recordDiagnosticEvent("apply_action:failed", { ...applyPhaseReport(), error: failureReason });
 	        console.error("[ironsmith] apply_action:failed", {
 	          seq: nextSequence,
 	          actor: Number(message?.actorIndex ?? -1),
@@ -778,6 +785,11 @@ export function usePeerLobbyValidation(base, servicesRef) {
           ...prev,
           submittingAction: false,
         }));
+      }
+      if (isMatchDisputed(multiplayerRef.current)) {
+        if (dryRun || throwOnFailure) throw err;
+        setStatus(multiplayerRef.current.matchDisputed?.reason || failureReason, true);
+        return { disputed: true };
       }
       if (dryRun) {
         throw err;
@@ -2999,6 +3011,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 
   async function validateIncomingRngRequest(conn, message, label) {
     const session = multiplayerRef.current;
+    assertMatchNotDisputed(session, label);
     if (!session.matchStarted) {
       throw new Error(`${label} received before match start`);
     }
@@ -4447,6 +4460,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	        players: payload.players,
 	        rematch: null,
 	        matchStarted: true,
+	        matchDisputed: null,
 	        lastAppliedSequence: 0,
 	        submittingAction: false,
 	        matchClock,

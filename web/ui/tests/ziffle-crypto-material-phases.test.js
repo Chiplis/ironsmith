@@ -1,3 +1,4 @@
+import { assertMatchNotDisputed } from "../src/hooks/peer-lobby/match-lifecycle.js";
 import { isPrivateZiffleEpoch } from "../src/lib/ziffle-private-epochs.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -177,6 +178,7 @@ test('an unsigned crypto-material request cannot reserve a private shuffle autho
   assert.ok(callbackStart >= 0 && callbackEnd > callbackStart);
   const calls = [];
   const context = {
+    assertMatchNotDisputed,
     multiplayerRef: { current: { matchStarted: true, lastAppliedSequence: 7 } },
     currentAuditMatchId: () => 'match',
     playerIndexForPeerId: () => 0,
