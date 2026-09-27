@@ -3260,6 +3260,67 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
     ]
   );
 
+  // The object ids a command may legitimately open (the same derivation
+  // buildLocalOpeningsForCommand uses on the actor). Must run against the
+  // pre-command state: stable ids / hidden refs resolve to current objects.
+  const commandObjectIdsForOpeningAllowList = useCallback(async (command, uiState = null) => {
+    const output = new Set();
+    if (!command || typeof command !== "object") return output;
+    const state = uiState || stateRef.current;
+    collectCommandObjectIds(command, output, state);
+    await addResolvedSelectObjectCommandIds(output, command, state);
+    const localized = new Set();
+    await localizeSelectObjectOpeningIds(localized, command);
+    for (const objectId of localized) output.add(Number(objectId));
+    if (command.type === "select_objects" && Array.isArray(command.object_ids)) {
+      for (const objectId of command.object_ids) {
+        const numeric = Number(objectId);
+        if (Number.isSafeInteger(numeric) && numeric > 0) output.add(numeric);
+      }
+    }
+    return output;
+  }, []);
+
+  // Reject any opening owned by `owner` (the signer of the action) that no
+  // locally derived requirement or command object asks for. Honest actors only
+  // ship openings for command objects and for public_open requirements; an
+  // extra self-owned opening is at best noise and at worst an attempt to
+  // relabel a hidden card. Other owners' openings are remote material the
+  // actor cannot forge (manifest-bound salts) and are left to the requirement
+  // checks.
+  const assertAuditOpeningsExpected = useCallback(({
+    openings = [],
+    requirements = [],
+    commandObjectIds = new Set(),
+    owner = null,
+    exemptDeckHashes = [],
+  } = {}) => {
+    // Openings into a private epoch created by this action are bound to that
+    // epoch's intermediate requirements (previewZiffleActionRequirements),
+    // which the final requirement lists do not retain.
+    const exempt = new Set((exemptDeckHashes || []).map(String));
+    const publicRequirements = (requirements || []).filter((requirement) =>
+      String(requirement?.type || "") === "public_open"
+    );
+    for (const opening of openings || []) {
+      if (!opening || opening.owner == null || opening.slot == null) continue;
+      if (owner != null && Number(opening.owner) !== Number(owner)) continue;
+      const openingDeckHash = ziffleDeckHashFromCommitment(
+        opening.positionCommitment || opening.position_commitment || ""
+      );
+      if (openingDeckHash && exempt.has(openingDeckHash)) continue;
+      if (publicRequirements.some((requirement) => openingMatchesRequirement(opening, requirement))) {
+        continue;
+      }
+      const objectId = Number(opening.objectId ?? opening.object_id);
+      if (Number.isSafeInteger(objectId) && commandObjectIds?.has?.(objectId)) continue;
+      throw new Error(
+        `Audit opening for player ${Number(opening.owner) + 1}, slot ${Number(opening.slot)}`
+        + " is not required by this action"
+      );
+    }
+  }, []);
+
   const verifyAuditSatisfiesCryptoRequirements = useCallback(async ({ requirements = [], audit = {} }) => {
     for (const requirement of requirements || []) {
       const type = String(requirement?.type || "");
@@ -3803,34 +3864,48 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 			        ) {
 		          localRevealObjectId = null;
 		        }
-			        const localHiddenZiffleCommitment =
-			          localHiddenMetadata?.commitment
-			          && ziffleDeckHashFromCommitment(localHiddenMetadata.commitment)
-	            ? String(localHiddenMetadata.commitment)
-	            : "";
-	        const openingPublicZiffleCommitment = String(
-	          opening.publicCommitment || opening.public_commitment || ""
-	        );
-	        const openingPublicZifflePosition =
-	          zifflePositionFromCommitment(openingPublicZiffleCommitment)
-	          ?? (
-	            ziffleDeckHashFromCommitment(openingPublicZiffleCommitment)
-	            && opening.publicSlot != null
-	              ? Number(opening.publicSlot)
-	              : opening.public_slot != null
-	                ? Number(opening.public_slot)
-	                : null
-	          );
-	        const revealPosition =
-	          opening.position != null
+			        // Only a position the opening itself proved (a ziffle
+			        // positionCommitment, which verifyAuditOpeningsAgainstManifests
+			        // bound to this slot by reveal proof or authenticated object
+			        // order) may select a hidden card by position. Never fill the
+			        // position in from local placeholder metadata or unproven
+			        // publicCommitment/position fields: that would let an owner
+			        // relabel any ziffle-committed card as an arbitrary deck slot.
+			        const openingProvedZiffleCommitment =
+			          ziffleDeckHashFromCommitment(openingPositionCommitment)
+			            ? openingPositionCommitment
+			            : "";
+			        const targetCurrentZiffleCommitment = (() => {
+			          if (!localHiddenMetadata) return "";
+			          const publicCommitment = String(
+			            localHiddenMetadata.publicCommitment ?? localHiddenMetadata.public_commitment ?? ""
+			          );
+			          if (ziffleDeckHashFromCommitment(publicCommitment)) return publicCommitment;
+			          const commitment = String(localHiddenMetadata.commitment || "");
+			          return ziffleDeckHashFromCommitment(commitment) ? commitment : "";
+			        })();
+			        if (targetCurrentZiffleCommitment && !openingProvedZiffleCommitment) {
+			          throw new Error(
+			            "Opening targets a ziffle-committed hidden card without proving its position"
+			          );
+			        }
+			        if (
+			          targetCurrentZiffleCommitment
+			          && targetCurrentZiffleCommitment !== openingProvedZiffleCommitment
+			          && String(localHiddenMetadata?.commitment || "") !== openingProvedZiffleCommitment
+			        ) {
+			          localRevealObjectId = null;
+			          localHiddenMetadata = null;
+			        }
+	        const revealPosition = openingProvedZiffleCommitment
+	          ? (
+	            zifflePositionFromCommitment(openingProvedZiffleCommitment)
+	            ?? (opening.position != null ? Number(opening.position) : null)
+	          )
+	          : opening.position != null
 	            ? Number(opening.position)
-	            : localHiddenZiffleCommitment && localHiddenMetadata?.slot != null
-	              ? Number(localHiddenMetadata.slot)
-	              : openingPublicZifflePosition;
-		        const revealPositionCommitment =
-		          String(opening.positionCommitment || "")
-		          || localHiddenZiffleCommitment
-		          || openingPublicZiffleCommitment;
+	            : null;
+		        const revealPositionCommitment = openingProvedZiffleCommitment;
 	        const isZifflePositionReveal = Boolean(
 	          revealPosition != null
 	          && ziffleDeckHashFromCommitment(revealPositionCommitment)
@@ -3907,21 +3982,16 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
           revealPosition != null
           && typeof currentGame.revealHiddenPosition === "function"
         ) {
-          const ceremony = ziffleCeremonyForOwner(opening.owner, {
-            commitment: revealPositionCommitment,
-            context: ziffleContextFromOpening(opening),
-          });
           try {
+            // The position commitment is only ever the opening's proved one;
+            // never synthesize it from a locally looked-up ceremony.
             latestState = await currentGame.revealHiddenPosition({
               owner: Number(opening.owner),
               ...(localRevealObjectId != null ? { objectId: Number(localRevealObjectId) } : {}),
               position: Number(revealPosition),
               originalSlot: Number(opening.slot),
               cardName: String(opening.card),
-              positionCommitment: revealPositionCommitment
-                || (ceremony
-                  ? ziffleRuntimeCommitment(ceremony.deckHash, revealPosition)
-                  : undefined),
+              positionCommitment: revealPositionCommitment || undefined,
               commitment: opening.commitment || undefined,
               recomputeDecision,
             });
@@ -4092,5 +4162,5 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
   }
 
 
-  return { addResolvedSelectObjectCommandIds, batchedOwnerPublicZiffleOpeningsForRequirements, buildDeckSlotOpeningForExport, buildLocalDeckAuditManifest, buildLocalOpeningFromRequirement, buildLocalOpeningsForCommand, buildLocalRequirementOpeningsForRequirements, buildOpeningFromResolvedCommittedSlot, buildSequencedActionAudit, currentHiddenCardMetadataForObject, currentHiddenObjectIdForOpening, currentKnownPublicAuditCheckpointHash, currentPublicAuditCheckpointHash, currentZiffleOriginForOpening, localizeSelectObjectOpeningIds, prefetchZiffleRevealTokensForPublicOpenRequirements, previewAuditOpeningInInspector, previewRequirementsForCommand, resolveCommittedSlotForZifflePosition, resolveCommittedZiffleRevealSlot, revealAuditOpenings, sanitizeObjectBoundOpening, verifiedAuditOpeningKey, verifyAuditOpeningsAgainstManifests, verifyAuditSatisfiesCryptoRequirements, verifyCurrentPublicCheckpointHash, verifySequencedActionAudit };
+  return { addResolvedSelectObjectCommandIds, assertAuditOpeningsExpected, commandObjectIdsForOpeningAllowList, batchedOwnerPublicZiffleOpeningsForRequirements, buildDeckSlotOpeningForExport, buildLocalDeckAuditManifest, buildLocalOpeningFromRequirement, buildLocalOpeningsForCommand, buildLocalRequirementOpeningsForRequirements, buildOpeningFromResolvedCommittedSlot, buildSequencedActionAudit, currentHiddenCardMetadataForObject, currentHiddenObjectIdForOpening, currentKnownPublicAuditCheckpointHash, currentPublicAuditCheckpointHash, currentZiffleOriginForOpening, localizeSelectObjectOpeningIds, prefetchZiffleRevealTokensForPublicOpenRequirements, previewAuditOpeningInInspector, previewRequirementsForCommand, resolveCommittedSlotForZifflePosition, resolveCommittedZiffleRevealSlot, revealAuditOpenings, sanitizeObjectBoundOpening, verifiedAuditOpeningKey, verifyAuditOpeningsAgainstManifests, verifyAuditSatisfiesCryptoRequirements, verifyCurrentPublicCheckpointHash, verifySequencedActionAudit };
 }

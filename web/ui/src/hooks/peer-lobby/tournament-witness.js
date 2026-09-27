@@ -21,6 +21,7 @@ import {
   byteLength,
   claimPayload,
   genesisRequestPayload,
+  statusRequestPayload,
   verifyCertificate,
   verifyForfeitCertificate,
   verifyGenesisAttestation,
@@ -56,6 +57,9 @@ export function usePeerLobbyTournamentWitness(base, servicesRef) {
   const services = () => servicesRef.current;
   const matchTournament = () => matchStartPayloadRef.current?.tournament || null;
   const matchPlayers = () => reindexPlayers(matchStartPayloadRef.current?.players || multiplayerRef.current.players || []);
+  // The genesis this browser verified against the witness attestation at
+  // match start (verifyMatchWitness). Every challenge/forfeit must carry it.
+  const matchGenesisHash = () => String(matchStartPayloadRef.current?.genesis?.payloadHash || "");
 
   function sessionWitnessKey(session = multiplayerRef.current) {
     return String(session.tournament?.witnessPublicKey || "");
@@ -216,6 +220,7 @@ export function usePeerLobbyTournamentWitness(base, servicesRef) {
     const session = multiplayerRef.current;
     const localSeat = resolveLocalPlayerIndex(session);
     if (challenge.matchId !== matchStartPayloadRef.current.auditMatchId || challenge.accusedSeat !== localSeat) return;
+    if (!matchGenesisHash() || challenge.genesisHash !== matchGenesisHash()) return;
     if (challengesRef.current.get(challenge.challengeId)?.status === "answered") return;
     const players = matchPlayers();
     const claimant = players.find((player) => Number(player.index) === challenge.claimantSeat);
@@ -239,6 +244,19 @@ export function usePeerLobbyTournamentWitness(base, servicesRef) {
       answeredAt: Date.now(),
     });
     let answer = build(responses);
+    // The witness requires the outstanding protocol response itself; when it
+    // does not fit, send a signed digest of it rather than dropping it.
+    if (byteLength(answer) > WITNESS_MAX_ANSWER_BYTES && responses.length) {
+      responses = await Promise.all(responses.map(async (response) => ({
+        type: String(response?.type || ""),
+        protocolVersion: Number(response?.protocolVersion || 0),
+        requestId: String(response?.requestId || ""),
+        ...(response?.error ? { error: String(response.error).slice(0, 512) } : {}),
+        truncated: true,
+        responseHash: await sha256Hex(canonicalJson(response)),
+      })));
+      answer = build(responses);
+    }
     while (byteLength(answer) > WITNESS_MAX_ANSWER_BYTES && responses.length) {
       responses = responses.slice(0, -1);
       answer = build(responses);
@@ -305,6 +323,7 @@ export function usePeerLobbyTournamentWitness(base, servicesRef) {
     const forfeit = await verifyForfeitCertificate(signedForfeit, tournament.witnessPublicKey, {
       matchId: matchStartPayloadRef.current.auditMatchId,
       tournamentId: tournament.tournamentId,
+      genesisHash: matchGenesisHash() || "missing-local-genesis",
       claimantSeat: resolveLocalPlayerIndex(multiplayerRef.current),
     });
     const record = challengesRef.current.get(forfeit.challengeId);
@@ -341,13 +360,21 @@ export function usePeerLobbyTournamentWitness(base, servicesRef) {
   async function syncWitnessStatus() {
     const tournament = matchTournament();
     if (!tournament || typeof peerRef.current?.witness !== "function") return;
-    let entries;
-    try { entries = await peerRef.current.witness("status", { matchId: matchStartPayloadRef.current.auditMatchId }); }
-    catch { return; }
     const localSeat = resolveLocalPlayerIndex(multiplayerRef.current);
+    const matchId = matchStartPayloadRef.current.auditMatchId;
+    let entries;
+    try {
+      // Authenticate as the seat (attested audit key), not by peer id.
+      const statusRequest = localSeat == null ? null : statusRequestPayload({ matchId, seat: localSeat, requestedAt: Date.now() });
+      const statusSignature = statusRequest ? await signAuditPayload(auditKeyPairRef.current, statusRequest) : "";
+      entries = await peerRef.current.witness("status", statusRequest ? { matchId, statusRequest, statusSignature } : { matchId });
+    }
+    catch { return; }
     for (const entry of entries || []) {
       const challenge = entry?.challenge?.payload;
       if (!challenge) continue;
+      // Records of another game that shared this match id (rematch) are ignored.
+      if (!matchGenesisHash() || challenge.genesisHash !== matchGenesisHash()) continue;
       if (entry.status === "open" && challenge.accusedSeat === localSeat) {
         await handleWitnessEvent({ event: "challenge", challenge: entry.challenge, claim: entry.claim, claimSignature: entry.claimSignature });
       } else if (entry.status === "forfeited" && entry.forfeit && challenge.claimantSeat === localSeat) {
@@ -363,6 +390,11 @@ export function usePeerLobbyTournamentWitness(base, servicesRef) {
     await verifyForfeitCertificate(command.witness_forfeit, tournament.witnessPublicKey, {
       matchId: matchStartPayloadRef.current.auditMatchId,
       tournamentId: tournament.tournamentId,
+      // Bound to the genesis this peer verified and to the current head: a
+      // forfeit from another game, or one the accused has since acted past,
+      // is not applicable.
+      genesisHash: matchGenesisHash() || "missing-local-genesis",
+      basisSequence: Number(multiplayerRef.current.lastAppliedSequence || 0),
       accusedSeat: Number(command.player),
       claimantSeat: Number(actorIndex),
     });

@@ -17,6 +17,8 @@ export function endOfMatchDisclosureStatusLabel(entry) {
       return entry.reason === "sent" ? "disclosed" : "verified";
     case "cheat_detected":
       return `cheat detected${entry.reason ? ` (${entry.reason})` : ""}`;
+    case "withheld":
+      return `cheat detected: disclosure withheld${entry.reason ? ` (${entry.reason})` : ""}`;
     case "missing":
       return "disclosure missing";
     default:

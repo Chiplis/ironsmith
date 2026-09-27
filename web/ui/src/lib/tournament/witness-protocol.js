@@ -24,6 +24,7 @@ export const WITNESS_DOMAINS = Object.freeze({
   challenge: "ironsmith-witness-challenge-v1",
   answer: "ironsmith-witness-challenge-answer-v1",
   forfeit: "ironsmith-witness-forfeit-v1",
+  status: "ironsmith-witness-status-request-v1",
 });
 
 export const WITNESS_FORFEIT_REASON = "witness_unanswered_challenge";
@@ -266,10 +267,14 @@ export function claimPayload({ matchId, tournamentId, claimantSeat, accusedSeat,
   };
 }
 
-export function challengePayload({ challengeId, claim, claimHash, openedAt, deadline }) {
+// `genesisHash` is the attested genesis of the match the challenge belongs
+// to, so a forfeit can never be replayed into another game (a rematch that
+// reuses the match id, or a re-attested genesis).
+export function challengePayload({ challengeId, claim, claimHash, openedAt, deadline, genesisHash }) {
   return {
     domain: WITNESS_DOMAINS.challenge,
     challengeId: String(challengeId || ""),
+    genesisHash: String(genesisHash || ""),
     matchId: claim.matchId,
     tournamentId: claim.tournamentId,
     claimHash: String(claimHash || ""),
@@ -302,10 +307,22 @@ export function answerPayload({ challengeId, matchId, accusedSeat, headSequence,
   };
 }
 
+// A seat asking the witness for its challenges proves it holds the seat's
+// attested audit key; peer ids are only routing hints.
+export function statusRequestPayload({ matchId, seat, requestedAt }) {
+  return {
+    domain: WITNESS_DOMAINS.status,
+    matchId: String(matchId || ""),
+    seat: Number(seat),
+    requestedAt: Number(requestedAt || 0),
+  };
+}
+
 export function forfeitPayload(challenge, decidedAt) {
   return {
     domain: WITNESS_DOMAINS.forfeit,
     challengeId: challenge.challengeId,
+    genesisHash: String(challenge.genesisHash || ""),
     matchId: challenge.matchId,
     tournamentId: challenge.tournamentId,
     claimHash: challenge.claimHash,
@@ -322,7 +339,7 @@ export function forfeitPayload(challenge, decidedAt) {
 
 export async function verifyForfeitCertificate(signed, witnessPublicKey, expected = {}) {
   const forfeit = await verifySignedWitnessPayload(signed, witnessPublicKey, WITNESS_DOMAINS.forfeit, "Witness forfeit certificate");
-  for (const field of ["matchId", "tournamentId", "accusedSeat", "claimantSeat"]) {
+  for (const field of ["matchId", "tournamentId", "accusedSeat", "claimantSeat", "genesisHash", "basisSequence"]) {
     if (expected[field] != null && String(forfeit[field]) !== String(expected[field])) {
       throw new Error(`Witness forfeit certificate ${field} does not match`);
     }
@@ -368,6 +385,7 @@ export async function verifyTranscriptWitness(match, genesisHash) {
   });
   return {
     tournamentId: attestation.tournamentId,
+    genesisHash: attestation.genesisHash,
     tournamentName: String(tournament.tournamentName || ""),
     witnessPublicKey,
     witnessKeyPinned: pinned.length > 0,

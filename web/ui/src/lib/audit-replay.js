@@ -592,6 +592,41 @@ export async function applyAuditReplayActionWithGame({
 // Mirrors END_OF_MATCH_DISCLOSURE_DOMAIN in hooks/peer-lobby/end-of-match-disclosure.js.
 const END_OF_MATCH_DISCLOSURE_DOMAIN = "ironsmith-end-of-match-disclosure-v1";
 
+// Mirrors pendingDisclosureClaimCount in hooks/peer-lobby/end-of-match-disclosure.js:
+// deferred claims about `player`'s hidden cards (public facts only) that only
+// its end-of-match disclosure can settle. Null when the engine cannot tell.
+async function pendingDisclosureClaimCount(game, player) {
+  const obligations = optionalGameMethod(game, "endOfMatchDisclosureObligations");
+  if (!obligations) return null;
+  const result = await obligations(Number(player));
+  const subjects = Number(result?.claimSubjects ?? result?.claim_subjects ?? 0);
+  const anchors = Number(result?.libraryAnchors ?? result?.library_anchors ?? 0);
+  return (Number.isFinite(subjects) ? subjects : 0) + (Number.isFinite(anchors) ? anchors : 0);
+}
+
+// The verdict for a player that delivered no disclosure: withheld (a verdict
+// against it) when claims about its hidden cards are pending, not required
+// when none are, missing when the engine cannot tell.
+async function absentDisclosureVerdict(game, player, missingReason) {
+  const pendingClaims = await pendingDisclosureClaimCount(game, player);
+  if (pendingClaims != null && pendingClaims > 0) {
+    return {
+      status: "withheld",
+      reason: `withheld its end-of-match disclosure with ${pendingClaims} pending`
+        + ` claim${pendingClaims === 1 ? "" : "s"} about hidden cards`,
+      accusedPlayers: [Number(player)],
+    };
+  }
+  if (pendingClaims === 0) {
+    return { status: "not_required", reason: "no pending claims about hidden cards" };
+  }
+  return { status: "missing", reason: missingReason };
+}
+
+// Disclosure verdicts that complete verification (withheld is a verdict
+// against the player, not a failure to verify).
+const SETTLED_DISCLOSURE_STATUSES = new Set(["verified", "not_required", "withheld"]);
+
 function transcriptPlayerForSeat(match, seat) {
   return transcriptPlayers(match).find((player, index) =>
     Number(player?.index ?? index) === Number(seat)
@@ -609,7 +644,11 @@ function transcriptDeckManifestForSeat(match, seat) {
 async function replayVerdictForDisclosure(game, match, entry, cryptoImpl, transcriptMatchId = "") {
   const disclosure = entry?.disclosure || null;
   if (!disclosure) {
-    return { status: "missing", reason: "no signed end-of-match disclosure in the transcript" };
+    return absentDisclosureVerdict(
+      game,
+      Number(entry?.player),
+      "no signed end-of-match disclosure in the transcript"
+    );
   }
   const player = Number(disclosure.player ?? entry.player);
   const payload = {
@@ -746,9 +785,11 @@ export async function verifyEndOfMatchDisclosuresWithGame({
       if (!ziffleDisclosureDueForPlayer(state, player)) continue;
       const requirements = await requirementsForPlayer(player);
       if (requirements.length === 0 || reports.some(report => report.player === player)) continue;
-      reports.push({ player, recordedVerdict: null, replayVerdict: {
-        status: "missing", reason: "Transcript omits a required end-of-match disclosure",
-      } });
+      reports.push({ player, recordedVerdict: null, replayVerdict: await absentDisclosureVerdict(
+        game,
+        player,
+        "Transcript omits a required end-of-match disclosure"
+      ) });
     }
   }
   return reports;
@@ -819,8 +860,12 @@ export async function replayAuditTranscriptWithGame({
       finalPublicCheckpointHash,
       endOfMatchDisclosures,
       endOfMatchDisclosuresVerified: endOfMatchDisclosures.every(
-        (entry) => entry.replayVerdict?.status === "verified"
+        (entry) => SETTLED_DISCLOSURE_STATUSES.has(entry.replayVerdict?.status)
       ),
+      endOfMatchDisclosureWithheldPlayers: endOfMatchDisclosures
+        .filter((entry) => entry.replayVerdict?.status === "withheld")
+        .map((entry) => Number(entry.player))
+        .sort((left, right) => left - right),
     };
   } catch (err) {
     replayError = err;

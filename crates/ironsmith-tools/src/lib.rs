@@ -1,4 +1,5 @@
 pub mod serde_tag_keys;
+pub mod runtime_audit;
 mod tooling;
 
 pub use ironsmith_registry::{

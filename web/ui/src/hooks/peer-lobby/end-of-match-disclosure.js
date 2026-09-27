@@ -12,8 +12,11 @@
 // owns (never the rest of its library). Every
 // peer verifies the openings against the deck commitments and the obligation
 // ledger. A mismatch is reported as a detected cheat; a player that never
-// sends its disclosure is reported as "disclosure missing". Neither blocks the
-// other players, and nothing here touches the public checkpoint hash.
+// sends its disclosure while claims about its hidden cards are pending is
+// reported as "withheld" (a verdict against it: the exported outcome is
+// disputed with that player accused), otherwise as "disclosure missing".
+// Neither blocks the other players, and nothing here touches the public
+// checkpoint hash.
 //
 // A claimed card that entered a library is disclosed too: the engine anchors
 // it to the durable ziffle ciphertext it was dealt from (a verified ceremony
@@ -49,6 +52,29 @@ export const DISCLOSURE_STATUS_PENDING = "pending";
 export const DISCLOSURE_STATUS_VERIFIED = "verified";
 export const DISCLOSURE_STATUS_CHEAT = "cheat_detected";
 export const DISCLOSURE_STATUS_MISSING = "missing";
+// A player with pending deferred claims (claim subjects or library anchors,
+// public facts identical on every peer) that never delivered a valid
+// disclosure before the timeout: a verdict against that player, carried into
+// the exported outcome (disputed, player accused) and re-derived by audit
+// replay (lib/audit-replay.js). Players with no pending claims owe nothing.
+export const DISCLOSURE_STATUS_WITHHELD = "withheld";
+
+// Whether a status is only a timeout verdict (a late valid disclosure may
+// still replace it, and it never replaces a final verdict).
+function isTimeoutDisclosureStatus(status) {
+  return status === DISCLOSURE_STATUS_MISSING || status === DISCLOSURE_STATUS_WITHHELD;
+}
+
+// The number of deferred claims about `player`'s hidden cards that only its
+// end-of-match disclosure can settle, from public facts only (so every peer
+// and the audit replay agree). Null when the engine cannot tell.
+export async function pendingDisclosureClaimCount(game, player) {
+  if (typeof game?.endOfMatchDisclosureObligations !== "function") return null;
+  const result = await game.endOfMatchDisclosureObligations(Number(player));
+  const subjects = Number(result?.claimSubjects ?? result?.claim_subjects ?? 0);
+  const anchors = Number(result?.libraryAnchors ?? result?.library_anchors ?? 0);
+  return (Number.isFinite(subjects) ? subjects : 0) + (Number.isFinite(anchors) ? anchors : 0);
+}
 
 function playerLeftGame(uiState, playerIndex) {
   const player = (uiState?.players || []).find((entry) =>
@@ -116,7 +142,7 @@ export function usePeerLobbyEndOfMatchDisclosure(base, servicesRef) {
     // Same rule as the UI verdict: a final verdict is never downgraded to
     // "missing" by a late timer.
     if (
-      fields.status === DISCLOSURE_STATUS_MISSING
+      isTimeoutDisclosureStatus(fields.status)
       && existing.status !== DISCLOSURE_STATUS_PENDING
     ) {
       return;
@@ -154,7 +180,7 @@ export function usePeerLobbyEndOfMatchDisclosure(base, servicesRef) {
       if (
         existing
         && existing.status !== DISCLOSURE_STATUS_PENDING
-        && status === DISCLOSURE_STATUS_MISSING
+        && isTimeoutDisclosureStatus(status)
       ) {
         return prev;
       }
@@ -351,24 +377,48 @@ export function usePeerLobbyEndOfMatchDisclosure(base, servicesRef) {
         : null;
       if (!existing) setDisclosureStatus(matchId, player, DISCLOSURE_STATUS_PENDING, "awaiting");
     }
-    missingTimerRef.current = window.setTimeout(() => {
+    missingTimerRef.current = window.setTimeout(async () => {
       missingTimerRef.current = null;
-      const latest = multiplayerRef.current;
       if (String(services().currentAuditMatchId?.() || "") !== matchId) return;
       for (const player of players) {
         if (player === localSeat) continue;
         const key = `${matchId}:${player}`;
         if (processedDisclosuresRef.current.has(key)) continue;
+        const latest = multiplayerRef.current;
         const entry = latest.endOfMatchDisclosure?.matchId === matchId
           ? latest.endOfMatchDisclosure.byPlayer?.[player]
           : null;
         if (entry && entry.status !== DISCLOSURE_STATUS_PENDING) continue;
+        if (pendingDisclosuresRef.current.has(key)) {
+          // Our engine lags the sender; its disclosure is here, not withheld.
+          setDisclosureStatus(matchId, player, DISCLOSURE_STATUS_MISSING,
+            "disclosure arrived before the match ended here");
+          recordPeerSyncPerf("end_of_match_disclosure:missing", { player });
+          continue;
+        }
+        let pendingClaims = null;
+        try {
+          pendingClaims = await pendingDisclosureClaimCount(gameRef.current, player);
+        } catch {
+          pendingClaims = null;
+        }
+        if (String(services().currentAuditMatchId?.() || "") !== matchId) return;
+        if (pendingClaims != null && pendingClaims > 0) {
+          const reason = `withheld its end-of-match disclosure with ${pendingClaims} pending`
+            + ` claim${pendingClaims === 1 ? "" : "s"} about hidden cards`;
+          const name = playerNameForIndex(multiplayerRef.current.players, player);
+          setDisclosureStatus(matchId, player, DISCLOSURE_STATUS_WITHHELD, reason);
+          recordPeerSyncPerf("end_of_match_disclosure:withheld", { player, pendingClaims });
+          emitSyncFailureNotice("Cheat detected", `${name} ${reason}`);
+          setStatus?.(`Cheat detected from ${name}: ${reason}`, true);
+          continue;
+        }
         setDisclosureStatus(
           matchId,
           player,
           DISCLOSURE_STATUS_MISSING,
-          pendingDisclosuresRef.current.has(key)
-            ? "disclosure arrived before the match ended here"
+          pendingClaims === 0
+            ? "no end-of-match disclosure received (none required)"
             : "no end-of-match disclosure received"
         );
         recordPeerSyncPerf("end_of_match_disclosure:missing", { player });

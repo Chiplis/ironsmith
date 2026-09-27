@@ -71,6 +71,7 @@ import {
   safeSend,
   sameShuffleOrder,
   sequencedActionSecurityMode,
+  pinnedSessionSecurityMode,
   sessionSecurityMode,
   sha256Hex,
   shuffleOrderIdMap,
@@ -103,6 +104,9 @@ import {
 } from "./shared.js";
 import { recordDiagnosticEvent } from "../../lib/action-diagnostics.js";
 import { disclosureDueForPlayer } from "./end-of-match-disclosure.js";
+import { assertGenesisSeedRevealBinding, assertVerifiedMatchStartIsFresh, rememberStartedGenesis, rotateGenesisSeedNonce } from "./genesis-binding.js";
+import { initialAuditStateHashForMatch } from "../../lib/multiplayer-audit.js";
+import { genesisAuditKeyLookup, signZiffleShuffleStep, verifyZiffleCeremonyStepSignatures } from "../../lib/ziffle-step-signatures.js";
 
 export function usePeerLobbyValidation(base, servicesRef) {
   const { ziffleActionRevealLocksRef } = base;
@@ -170,6 +174,8 @@ export function usePeerLobbyValidation(base, servicesRef) {
   const verifyActionMatchesPendingIntent = useCallback((...args) => servicesRef.current.verifyActionMatchesPendingIntent(...args), [servicesRef]);
   const verifyActionQuorumForMessage = useCallback((...args) => servicesRef.current.verifyActionQuorumForMessage(...args), [servicesRef]);
   const verifyAuditSatisfiesCryptoRequirements = useCallback((...args) => servicesRef.current.verifyAuditSatisfiesCryptoRequirements(...args), [servicesRef]);
+  const assertAuditOpeningsExpected = useCallback((...args) => servicesRef.current.assertAuditOpeningsExpected(...args), [servicesRef]);
+  const commandObjectIdsForOpeningAllowList = useCallback((...args) => servicesRef.current.commandObjectIdsForOpeningAllowList(...args), [servicesRef]);
   const verifyCurrentPublicCheckpointHash = useCallback((...args) => servicesRef.current.verifyCurrentPublicCheckpointHash(...args), [servicesRef]);
   const verifyMatchClockAuditForAction = useCallback((...args) => servicesRef.current.verifyMatchClockAuditForAction(...args), [servicesRef]);
   const verifySequencedActionAudit = useCallback((...args) => servicesRef.current.verifySequencedActionAudit(...args), [servicesRef]);
@@ -485,6 +491,17 @@ export function usePeerLobbyValidation(base, servicesRef) {
         command: message.command,
       });
       applyPhase = markApplyPhase("verify_pending_intent");
+      if (fairRandomRevealLockConflict({
+        matchId: message.audit?.matchId,
+        seq: message.audit?.seq ?? nextSequence,
+        actorIndex: message.audit?.actor ?? message.actorIndex,
+        prevStateHash: message.audit?.prevStateHash,
+        command: message.command,
+      })) {
+        throw new Error(
+          "Sequenced action does not match pending fair-random intent revealed for this sequence"
+        );
+      }
       const pendingIntentVerification = await verifyActionMatchesPendingIntent(message);
       if (!options.skipQuorumCertificate) {
         applyPhase = markApplyPhase("verify_quorum");
@@ -567,9 +584,16 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	            MATCH_CLOCK_CLAIM_SKEW_MS,
 	            MATCH_CLOCK_ELAPSED_UNDERREPORT_SKEW_MS
 	          ),
+	          // The post-resync exemption forgives an actor claiming less elapsed
+	          // time than observed (resync alignment is imprecise). It lets the next
+	          // action debit more time than this seat observed only when this seat
+	          // never observed the running epoch (fresh rejoin), and such a seat
+	          // also refuses to vouch for a timeout on it.
 	          enforceObservationBounds:
 	            options.enforceMatchClockObservationBounds !== false
-	            && !skipMatchClockObservationBounds,
+	            && !(skipMatchClockObservationBounds
+	              && !isActionTimeoutForfeitCommand(message.command)
+	              && servicesRef.current.captureMatchClockObservation?.()?.epochHostDerived),
 	          enforceUnderreportBounds:
 	            options.enforceMatchClockObservationBounds !== false
 	            && !skipMatchClockObservationBounds
@@ -578,6 +602,14 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	        });
 	      }
       applyPhase = markApplyPhase("reveal_pre_openings");
+      // Command objects are resolved against the pre-command state; they bound
+      // which unrequired-looking openings the actor may ship (see
+      // assertAuditOpeningsExpected below).
+      const openingAllowedObjectIds = await commandObjectIdsForOpeningAllowList(
+        message.command,
+        liveStateForClock
+      );
+      const observedActionRequirements = [];
       const futureEpochHashes = new Set((message.audit?.shuffleProofs || []).filter(isPrivateZiffleEpoch).map(proof => String(proof.deckHash)));
       const immediatePreOpenings = (message.audit?.openings || []).filter(opening =>
         !futureEpochHashes.has(ziffleDeckHashFromCommitment(opening.positionCommitment)));
@@ -611,6 +643,10 @@ export function usePeerLobbyValidation(base, servicesRef) {
           await previewRequirementsForCommand(localCommand)
         )
       );
+      for (const objectId of await commandObjectIdsForOpeningAllowList(localCommand, liveStateForClock)) {
+        openingAllowedObjectIds.add(Number(objectId));
+      }
+      observedActionRequirements.push(...cryptoRequirements);
       const preparedActionMaterial = futureEpochHashes.size > 0
         || (message.audit?.rngReveals || []).length > 0
         || (Number(matchStartPayloadRef.current?.protocolVersion) >= 15
@@ -619,6 +655,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
         cryptoRequirements = await previewZiffleActionRequirements({ command: localCommand, seq: nextSequence,
           shuffleProofs: message.audit?.shuffleProofs || [], openings: message.audit?.openings || [],
           rngReveals: message.audit?.rngReveals || [] }, cryptoRequirements, { install: true });
+        observedActionRequirements.push(...cryptoRequirements);
         await revealAuditOpenings(message.audit.openings || [], { timing: "pre", command: localCommand,
           shuffleProofs: message.audit.shuffleProofs, uiState: liveStateForClock, updateState: false });
       }
@@ -718,6 +755,17 @@ export function usePeerLobbyValidation(base, servicesRef) {
       await verifyAuditSatisfiesCryptoRequirements({
         requirements: appliedCryptoRequirements,
         audit: message.audit,
+      });
+      assertAuditOpeningsExpected({
+        openings: message.audit?.openings || [],
+        requirements: [
+          ...observedActionRequirements,
+          ...cryptoRequirements,
+          ...appliedCryptoRequirements,
+        ],
+        commandObjectIds: openingAllowedObjectIds,
+        owner: message.actorIndex,
+        exemptDeckHashes: [...futureEpochHashes],
       });
       await revealPrivateAuditProofsForLocalViewer(message.audit || {}, {
         updateState: false,
@@ -893,13 +941,35 @@ export function usePeerLobbyValidation(base, servicesRef) {
     if (!currentGame || typeof currentGame.ziffleBuildShuffleStep !== "function") {
       throw new Error("Ziffle shuffle backend is not available");
     }
-    return currentGame.ziffleBuildShuffleStep({
+    const step = await currentGame.ziffleBuildShuffleStep({
       ...cloneMultiplayerPayload(request),
       entropyHex: randomAuditHex(32),
     });
+    // Ziffle proofs need no secret, so the step is attributable only through
+    // this signature by our genesis audit key over the exact ceremony, input,
+    // and output (lib/ziffle-step-signatures.js).
+    const { keyPair } = await ensureAuditIdentity();
+    const signature = await signZiffleShuffleStep(
+      keyPair,
+      request,
+      Array.isArray(request?.steps) ? request.steps : [],
+      step
+    );
+    return { ...step, signature };
+  }
+
+  // Seat -> audit key, from the signed genesis roster only.
+  function genesisAuditKeyForSeat(payload = matchStartPayloadRef.current) {
+    return genesisAuditKeyLookup(payload?.players || []);
+  }
+
+  async function assertZiffleCeremonyStepsSigned(ceremony, payload = matchStartPayloadRef.current) {
+    await verifyZiffleCeremonyStepSignatures(ceremony, genesisAuditKeyForSeat(payload));
   }
 
   async function answerZiffleShuffleStepRequest(conn, message) {
+    // Announce the (first) response so peers can close their wait on this seat.
+    conn = servicesRef.current.protocolResponseConn?.(conn, message) || conn;
     try {
       const step = await buildLocalZiffleShuffleStep(message.request || {});
       safeSend(conn, {
@@ -971,6 +1041,8 @@ export function usePeerLobbyValidation(base, servicesRef) {
       keys: cloneMultiplayerPayload(ceremony.keys || []),
       steps: cloneMultiplayerPayload(ceremony.steps || []),
       ...ziffleInputDeckFields(ceremony),
+      owner: Number(ceremony.owner),
+      zone: String(ceremony.zone || "library"),
       shuffler: Number(shuffler.index || 0),
     };
   }
@@ -980,6 +1052,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       shuffler: Number(step.shuffler),
       deckHex: String(step.deckHex || ""),
       proofHex: String(step.proofHex || ""),
+      signature: String(step.signature || ""),
     });
   }
 
@@ -1084,6 +1157,10 @@ export function usePeerLobbyValidation(base, servicesRef) {
       return { ceremony, verified };
     }));
     const verifyMs = nowMonotonicMs() - verifyStartedAt;
+    await Promise.all(ceremonies.map((ceremony) => assertZiffleCeremonyStepsSigned(
+      ceremony,
+      options.payload || matchStartPayloadRef.current
+    )));
     for (const { ceremony, verified } of verifiedCeremonies) {
       ceremony.verification = verified;
       ceremony.deckHash = String(verified.deckHash || "");
@@ -1116,6 +1193,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
     });
     return currentGame.ziffleBuildRevealToken({
       deckCount: Number(ceremony.deckCount),
+      deckHash: String(ceremony.deckHash || ""),
       context: String(ceremony.context || ""),
       keyContext,
       keys: cloneMultiplayerPayload(ceremony.keys || []),
@@ -1197,6 +1275,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       });
       return await currentGame.ziffleBuildRevealTokens({
         deckCount: Number(ceremony.deckCount),
+        deckHash: String(ceremony.deckHash || ""),
         context: String(ceremony.context || ""),
         keyContext,
         keys: cloneMultiplayerPayload(ceremony.keys || []),
@@ -1259,6 +1338,20 @@ export function usePeerLobbyValidation(base, servicesRef) {
       Number(object?.id),
       object,
     ]));
+    // Ownership is not permission to look: an owner may not see its own card
+    // an opponent exiled face down (Gonti, Praetor's Grasp) or a face-down
+    // permanent it owns but does not control. Ask the engine's view rules;
+    // without that export, fail closed for these zones.
+    const ownerMayView = async (objectId) => {
+      if (typeof currentGame.hiddenObjectViewableBy !== "function") return false;
+      const numeric = Number(objectId);
+      if (!Number.isSafeInteger(numeric) || numeric <= 0) return false;
+      try {
+        return Boolean(await currentGame.hiddenObjectViewableBy(wasmObjectIdArg(numeric), Number(owner)));
+      } catch {
+        return false;
+      }
+    };
     const collectZoneObjectIds = (player, zoneKey) => {
       for (const objectId of player?.[zoneKey] || []) {
         const object = objectsById.get(Number(objectId));
@@ -1287,6 +1380,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       const object = objectsById.get(Number(objectId));
       const hidden = object?.hiddenCard || object?.hidden_card || null;
       if (!hidden || Number(hidden.owner) !== Number(owner)) continue;
+      if (!await ownerMayView(objectId)) continue;
       addMetadataPosition({
         objectId: Number(objectId),
         owner: hidden.owner,
@@ -1323,6 +1417,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       if (!hidden || Number(hidden.owner) !== Number(owner)) continue;
       const zone = String(object?.zone || hidden.zone || "");
       if (blockedZones.has(zone)) continue;
+      if (!await ownerMayView(object?.id)) continue;
       addMetadataPosition({
         objectId: Number(object?.id),
         owner: hidden.owner,
@@ -1636,6 +1731,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       if (matching.length !== 1) throw new Error("Action shuffle does not match the locally previewed requirement");
       const proof = matching[0];
       assertZiffleShuffleProofBoundToSignedMatch(proof, requirement);
+      await assertZiffleCeremonyStepsSigned(proof);
       const verified = await currentGame.ziffleVerifyShuffle({
         deckCount: Number(proof.deckCount), context: String(proof.context),
         keyContext: String(proof.keyContext || proof.context), keys: cloneMultiplayerPayload(proof.keys || []),
@@ -1896,7 +1992,85 @@ export function usePeerLobbyValidation(base, servicesRef) {
     return reject("requirements_do_not_authorize_positions");
   }
 
+  // An attached ceremony is considered only for an in-flight action: it must be
+  // byte-identical to one of that action's shuffle proofs, bound to the signed
+  // match and roster, signed step-by-step by every shuffler, and verify to its
+  // own claimed deck hash from a complete chain.
+  async function verifiedProvisionalZiffleCeremony(attached, auth, owner) {
+    if (!attached || typeof attached !== "object" || !auth || typeof auth !== "object") return null;
+    const seq = Number(auth.seq);
+    const deckHash = String(attached.deckHash || "");
+    const context = String(attached.context || "");
+    const zone = String(attached.zone || "library");
+    if (!Number.isSafeInteger(seq) || seq <= 0 || !deckHash) return null;
+    if (Number(attached.owner) !== Number(owner)) return null;
+    if (!context.startsWith(`${currentAuditMatchId()}:action:${seq}:shuffle:`)
+      || !context.endsWith(`:${Number(owner)}:${zone}`)) {
+      throw new Error("attached ceremony is not an action shuffle of the authorized sequence");
+    }
+    const proofs = auth.shuffleProofs || auth.actionAudit?.shuffleProofs || [];
+    const fields = (entry) => canonicalMultiplayerPayload({
+      owner: Number(entry?.owner),
+      zone: String(entry?.zone || "library"),
+      deckCount: Number(entry?.deckCount),
+      context: String(entry?.context || ""),
+      keyContext: String(entry?.keyContext || entry?.context || ""),
+      keys: entry?.keys || [],
+      steps: entry?.steps || [],
+      deckHash: String(entry?.deckHash || ""),
+      inputDeck: entry?.inputDeck ?? null,
+    });
+    const attachedFields = fields(attached);
+    if (!Array.isArray(proofs) || !proofs.some((proof) => fields(proof) === attachedFields)) {
+      throw new Error("attached ceremony is not one of the authorized action's shuffle proofs");
+    }
+    assertZiffleShuffleProofBoundToSignedMatch(attached);
+    await assertZiffleCeremonyStepsSigned(attached);
+    const currentGame = gameRef.current;
+    if (!currentGame || typeof currentGame.ziffleVerifyShuffle !== "function") return null;
+    const verified = await currentGame.ziffleVerifyShuffle({
+      deckCount: Number(attached.deckCount),
+      context,
+      keyContext: String(attached.keyContext || context),
+      keys: cloneMultiplayerPayload(attached.keys || []),
+      steps: cloneMultiplayerPayload(attached.steps || []),
+      ...ziffleInputDeckFields(attached),
+    });
+    if (String(verified?.deckHash || "") !== deckHash) {
+      throw new Error("attached ceremony does not verify to its claimed deck hash");
+    }
+    return cloneMultiplayerPayload(attached);
+  }
+
+  // After authorization, a provisional ceremony must have become locally
+  // accepted (authorizing the action previews and verifies its shuffle epochs
+  // against this engine's own requirements, then remembers them).
+  async function locallyAcceptedZiffleCeremonyFor(provisional, auth) {
+    const owner = Number(provisional.owner);
+    const exact = { deckHash: String(provisional.deckHash || ""), context: String(provisional.context || "") };
+    const matches = (entry) => entry
+      && String(entry.deckHash || "") === exact.deckHash
+      && String(entry.context || "") === exact.context
+      && Number(entry.deckCount) === Number(provisional.deckCount);
+    let accepted = ziffleCeremonyForOwner(owner, exact);
+    if (!matches(accepted) && auth?.command) {
+      try {
+        const initial = await previewRequirementsForCommand(auth.command);
+        await previewZiffleActionRequirements(auth, initial);
+      } catch {
+        // Fall through: without local acceptance no token is built.
+      }
+      accepted = ziffleCeremonyForOwner(owner, exact);
+    }
+    if (!matches(accepted)) {
+      throw new Error("Ziffle reveal-token request names a ceremony this peer has not accepted");
+    }
+    return accepted;
+  }
+
   async function answerZiffleRevealTokenRequest(conn, message) {
+    // Announce the (first) response so peers can close their wait on this seat.
+    conn = servicesRef.current.protocolResponseConn?.(conn, message) || conn;
     let diagnostics = null;
     try {
       const requester = playerIndexForPeerId(conn?.peer);
@@ -1975,9 +2149,29 @@ export function usePeerLobbyValidation(base, servicesRef) {
           hasZiffleKey: Boolean(player.ziffleKey),
         })),
       };
-      const ceremony = ziffleCeremonyForOwner(message.ceremonyOwner, lookup)
-        || attachedCeremony
-        || await waitForZiffleCeremony(message.ceremonyOwner, lookup);
+      // Tokens are only ever built against a ceremony this peer accepted itself
+      // (genesis-verified, or a verified shuffle from an applied or locally
+      // previewed action). The requester chooses the lookup keys and can attach
+      // any ceremony, so an attached one is at most provisional: it must be a
+      // fully verified, signed shuffle of the in-flight action it claims, and
+      // the local copy accepted while authorizing that action replaces it
+      // before any token is built.
+      let ceremony = ziffleCeremonyForOwner(message.ceremonyOwner, lookup);
+      let provisionalCeremony = false;
+      if (!ceremony && attachedCeremony && message.actionAuthorization) {
+        try {
+          ceremony = await verifiedProvisionalZiffleCeremony(
+            attachedCeremony,
+            message.actionAuthorization,
+            requestedOwner
+          );
+          provisionalCeremony = Boolean(ceremony);
+        } catch (err) {
+          diagnostics.attachedCeremonyRejectReason = toErrorMessage(err);
+          ceremony = null;
+        }
+      }
+      if (!ceremony) ceremony = await waitForZiffleCeremony(message.ceremonyOwner, lookup);
       if (!ceremony) {
         const error = new Error("Unknown ziffle ceremony");
         error.ziffleDiagnostics = diagnostics;
@@ -2023,7 +2217,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
           ? new Set()
           : await waitForAuthorizedZiffleRevealPositions(
             requestedOwner,
-            String(ceremony.deckHash || message.deckHash || ""),
+            String(ceremony.deckHash || ""),
             cardPositions
           );
       for (const position of cardPositions) {
@@ -2034,6 +2228,10 @@ export function usePeerLobbyValidation(base, servicesRef) {
         ) {
           throw new Error("Ziffle reveal-token request is not authorized by the visible hidden-zone state");
         }
+      }
+      if (provisionalCeremony) {
+        ceremony = await locallyAcceptedZiffleCeremonyFor(ceremony, message.actionAuthorization);
+        normalizeZiffleCardPositions(cardPositions, ceremony, { label: "Ziffle reveal-token request" });
       }
       if (authorizedByAction && message.actionAuthorization?.actionIntent) {
         const requestPayload = cloneMultiplayerPayload(message);
@@ -2073,12 +2271,14 @@ export function usePeerLobbyValidation(base, servicesRef) {
       if (ziffleDiagnostics) {
         console.warn("Ironsmith ziffle reveal-token request failed", ziffleDiagnostics);
       }
+      // Diagnostics (stored/previewed requirement slots and positions, live
+      // ceremony summaries, peer list) stay local: they describe this seat's
+      // hidden-card bookkeeping and must never go on the wire.
       safeSend(conn, {
         type: "ziffle_reveal_token_response",
         protocolVersion: PROTOCOL_VERSION,
         requestId: message.requestId,
         error: toErrorMessage(err),
-        diagnostics: ziffleDiagnostics || null,
       });
     }
   }
@@ -2590,6 +2790,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
     if (pendingVerifications.length > 0) {
       const verifyStartedAt = nowMonotonicMs();
       const verifiedProofs = await Promise.all(pendingVerifications.map(async ({ proof, accepted }) => {
+        await assertZiffleCeremonyStepsSigned(proof);
         const verified = await currentGame.ziffleVerifyShuffle({
           deckCount: Number(proof.deckCount),
           context: String(proof.context || ""),
@@ -2932,6 +3133,38 @@ export function usePeerLobbyValidation(base, servicesRef) {
     );
   }
 
+  // Once this peer reveals its fair-random nonce for (match, seq, actor,
+  // pre-state), the actor has seen the outcome. The action at that sequence
+  // is then pinned to the command of the revealed intent: a cancel does not
+  // release it, a different command cannot re-roll with fresh nonces, and a
+  // different (cheap) action cannot be substituted. Cancels before any reveal
+  // stay free, since commitments alone disclose nothing.
+  function fairRandomRevealLockKey({ matchId, seq, actorIndex, prevStateHash } = {}) {
+    return [
+      "fair-random-intent",
+      String(matchId || ""),
+      Number(seq || 0),
+      Number(actorIndex),
+      String(prevStateHash || ""),
+    ].join(":");
+  }
+
+  function fairRandomRevealLockConflict(intent = {}) {
+    const locked = rngRevealCommitSetLocksRef.current.get(fairRandomRevealLockKey(intent));
+    if (!locked) return false;
+    return locked !== canonicalMultiplayerPayload(intent.command || {});
+  }
+
+  function lockFairRandomRevealIntent(intent = {}) {
+    if (fairRandomRevealLockConflict(intent)) {
+      throw new Error("Random reveal request conflicts with an action intent already revealed for this sequence");
+    }
+    rngRevealCommitSetLocksRef.current.set(
+      fairRandomRevealLockKey(intent),
+      canonicalMultiplayerPayload(intent.command || {})
+    );
+  }
+
   function fairRandomRequirementId(requirement) {
     return String(
       requirement?.id
@@ -3111,6 +3344,15 @@ export function usePeerLobbyValidation(base, servicesRef) {
       publicCheckpointHash,
       command,
     });
+    if (fairRandomRevealLockConflict({
+      matchId: currentAuditMatchId(),
+      seq,
+      actorIndex,
+      prevStateHash,
+      command,
+    })) {
+      throw new Error(`${label} conflicts with an action intent whose randomness was already revealed`);
+    }
     return {
       matchId: currentAuditMatchId(),
       seq,
@@ -3128,6 +3370,8 @@ export function usePeerLobbyValidation(base, servicesRef) {
   }
 
   async function answerRngCommitRequest(conn, message) {
+    // Announce the (first) response so peers can close their wait on this seat.
+    conn = servicesRef.current.protocolResponseConn?.(conn, message) || conn;
     try {
       const request = await validateIncomingRngRequest(conn, message, "Random commitment request");
       const localPlayer = resolveLocalPlayerIndex(multiplayerRef.current);
@@ -3176,6 +3420,8 @@ export function usePeerLobbyValidation(base, servicesRef) {
   }
 
   async function answerRngRevealRequest(conn, message) {
+    // Announce the (first) response so peers can close their wait on this seat.
+    conn = servicesRef.current.protocolResponseConn?.(conn, message) || conn;
     try {
       const request = await validateIncomingRngRequest(conn, message, "Random reveal request");
       const stored = rngCommitNoncesRef.current.get(String(message.commitRequestId || ""));
@@ -3207,6 +3453,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
         throw new Error("Random reveal request conflicts with the locked commitment set");
       }
       rngRevealCommitSetLocksRef.current.set(lockKey, commitSetHash);
+      lockFairRandomRevealIntent(request);
       const requestPayload = cloneMultiplayerPayload(message);
       await rememberPendingActionIntent(request.actionIntent, {
         requestType: "rng_reveal_request",
@@ -4208,6 +4455,8 @@ export function usePeerLobbyValidation(base, servicesRef) {
           keyContext,
           keys,
           steps: cloneMultiplayerPayload(steps),
+          owner: Number(ownerPlayer.index || 0),
+          zone: "library",
           shuffler: Number(shuffler.index || 0),
         };
         let step;
@@ -4238,6 +4487,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
           shuffler: Number(step.shuffler ?? shuffler.index ?? 0),
           deckHex: String(step.deckHex || ""),
           proofHex: String(step.proofHex || ""),
+          signature: String(step.signature || ""),
         });
       }
       const verified = await currentGame.ziffleVerifyShuffle({
@@ -4280,6 +4530,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       throw new Error("Ziffle mental-poker backend is not available");
     }
     for (const ceremony of ceremonies) {
+      await assertZiffleCeremonyStepsSigned(ceremony, payload);
       const verified = await currentGame.ziffleVerifyShuffle({
         deckCount: Number(ceremony.deckCount),
         context: String(ceremony.context || ""),
@@ -4321,12 +4572,31 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	      }
 	      // The lobby's advertised mode binds the match: a host cannot start a
 	      // Verified lobby (or tournament) as a Trusted match.
-	      if (currentSession.securityMode === MULTIPLAYER_SECURITY_VERIFIED && !verifiedMode) {
-	        throw new Error("Host tried to start this Verified lobby as a Trusted match");
+	      // The pin is the mode this seat consented to when it joined (see
+	      // pinnedSessionSecurityMode); host lobby_state cannot move it.
+	      const consentedSecurityMode = pinnedSessionSecurityMode(currentSession, matchStartPayloadRef.current)
+	        || (currentSession.securityMode === MULTIPLAYER_SECURITY_VERIFIED ? MULTIPLAYER_SECURITY_VERIFIED : "");
+	      if (consentedSecurityMode && consentedSecurityMode !== securityMode) {
+	        throw new Error(
+	          isVerifiedMultiplayerSecurityMode(consentedSecurityMode)
+	            ? "Host tried to start this Verified lobby as a Trusted match"
+	            : `Host tried to start this ${consentedSecurityMode} lobby as a ${securityMode} match`
+	        );
 	      }
 	      payload.securityMode = securityMode;
-	      if (verifiedMode && !options.skipGenesisVerification) {
+	      const resyncReplayOfAcceptedGenesis = Boolean(options.verifiedResyncReplay)
+	        && (!matchStartPayloadRef.current
+	          || String(matchStartPayloadRef.current?.genesis?.payloadHash || "")
+	            === String(payload?.genesis?.payloadHash || ""));
+	      if (verifiedMode && !options.skipGenesisVerification && !resyncReplayOfAcceptedGenesis) {
+	        // A resent match_start must never rewind (or swap) a running match.
+	        assertVerifiedMatchStartIsFresh(payload, {
+	          session: currentSession,
+	          currentPayload: matchStartPayloadRef.current,
+	          gameOver: Boolean(stateRef.current?.game_over),
+	        });
 	        await verifySignedMatchGenesis(payload);
+	        assertGenesisSeedRevealBinding(payload, localEntry);
 	        await servicesRef.current.verifyMatchWitness(payload, currentSession);
 	      }
 	      if (verifiedMode) {
@@ -4405,7 +4675,12 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	      pendingSequencedActionsRef.current.clear();
 	      drainingPendingSequencedActionsRef.current = false;
 	      localZiffleRevealInFlightRef.current = null;
-	      auditStateHashRef.current = INITIAL_AUDIT_STATE_HASH;
+	      // Clients start the chain from the signed genesis; the host re-derives
+	      // it once its final genesis (with the checkpoint hash) is signed.
+	      const initialAuditStateHash = verifiedMode && !options.skipGenesisVerification
+	        ? await initialAuditStateHashForMatch(payload)
+	        : INITIAL_AUDIT_STATE_HASH;
+	      auditStateHashRef.current = initialAuditStateHash;
 	      const initialPublicCheckpointHash = await publicCheckpointHash(
 	        await currentGame.exportPublicAuditCheckpoint()
 	      );
@@ -4431,10 +4706,14 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	        protocolVersion: PROTOCOL_VERSION,
 	        signatureAlgorithm: verifiedMode ? "ecdsa-p256-sha256" : "none",
 	        genesis: verifiedMode ? cloneMultiplayerPayload(payload.genesis) : null,
-	        initialStateHash: INITIAL_AUDIT_STATE_HASH,
+	        initialStateHash: initialAuditStateHash,
 	        initialPublicCheckpointHash,
 	        actions: [],
 	      };
+	      if (verifiedMode && !options.skipGenesisVerification) {
+	        rememberStartedGenesis(payload);
+	        rotateGenesisSeedNonce(payload.auditMatchId, localEntry.index);
+	      }
 	      writeStoredPlayerIndex(payload.lobbyId || payload.hostPeerId, localEntry.index);
 
 	      updateMultiplayer((prev) => ({
@@ -4448,6 +4727,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	        startingLife: payload.startingLife,
 	        format: normalizeMatchFormat(payload.format),
 	        securityMode,
+	        lockedSecurityMode: securityMode,
 	        localDeckCount:
 	          payload.deckAuditManifests?.[localEntry.index]?.deckCount
 	          ?? payload.players?.[localEntry.index]?.deckCount
@@ -4483,5 +4763,5 @@ export function usePeerLobbyValidation(base, servicesRef) {
   );
 
 
-  return { answerRngCommitRequest, answerRngRevealRequest, answerZiffleRevealTokenRequest, answerZiffleShuffleStepRequest, appendZiffleShuffleStep, applyMatchStart, applySequencedActionMessage, applySequencedActionMessageInner, applyVerifiedShuffleProofs, assertZiffleShuffleProofBoundToSignedMatch, authorizedZiffleRevealPositionsForOwner, bufferFutureSequencedAction, bufferedSequencedActionOptions, buildLiveZiffleShuffleProofs, buildLocalRngRevealsForRequirements, buildLocalShuffleProofsForRequirements, buildLocalZiffleRevealToken, buildLocalZiffleRevealTokens, buildLocalZiffleShuffleStep, buildZiffleCeremoniesForPayload, collectFairRandomReveal, collectZiffleRevealTokens, collectZiffleRevealTokensBatch, compactActionAuthorizationForDiagnostics, compactCryptoRequirementForDiagnostics, currentHostRouteInfo, drainPendingSequencedActions, fairRandomCommitSetHash, fairRandomRequestContextKey, fairRandomRequirementId, handIdsForRevealKey, hydrateViewedCardsFromLiveObjects, isHiddenViewedCardName, isInspectorOnlyViewedCards, localZiffleHandRevealKey, localZiffleHandRevealObjectIdsKey, normalizedZiffleShuffleCeremony, openConnectionForPeerCandidates, openZiffleRoute, playerIndexForPeerId, preserveViewedCardsFromHint, previewZiffleActionRequirements, recordZiffleShufflePerf, restoreSequencedActionValidationSnapshotIfCurrent, revealLocalZiffleHand, revealLocalZiffleHandInner, rngCommitmentForNonce, routePeerIdForPlayer, routingPlayers, runBatchedZiffleShuffleCeremonies, sendDirectProtocolMessage, sequencedActionValidationSnapshotStillCurrent, signRngCommitmentEntry, signRngRevealEntry, validateCompleteRngCommitSet, validateIncomingRngRequest, verifyRngCommitmentEntry, verifyRngRevealEntry, verifyShuffleProofsForRequirements, verifyZiffleCeremoniesForPayload, viewedCardsStateHint, waitForAuthorizedZiffleRevealPositions, waitForRevealAuthorizationSequence, waitForZiffleCeremony, waitForZiffleRoute, zifflePositionFromRequirement, zifflePositionsDetail, ziffleRequirementType, ziffleRequirementViewer, ziffleRequirementZone, ziffleRequirementsAuthorizeRevealPositions, ziffleRequirementsAuthorizeRevealPositionsByMetadata, ziffleRevealAuthorizedByAction, ziffleRevealAuthorizedByOutboundCryptoRequest, ziffleRevealPositionFromRequirement, ziffleRevealTokenOptionsForLocalHandReveal, ziffleRoutePeerCandidates, ziffleShuffleRequestForCeremony };
+  return { fairRandomRevealLockConflict, answerRngCommitRequest, answerRngRevealRequest, answerZiffleRevealTokenRequest, answerZiffleShuffleStepRequest, appendZiffleShuffleStep, applyMatchStart, applySequencedActionMessage, applySequencedActionMessageInner, applyVerifiedShuffleProofs, assertZiffleShuffleProofBoundToSignedMatch, authorizedZiffleRevealPositionsForOwner, bufferFutureSequencedAction, bufferedSequencedActionOptions, buildLiveZiffleShuffleProofs, buildLocalRngRevealsForRequirements, buildLocalShuffleProofsForRequirements, buildLocalZiffleRevealToken, buildLocalZiffleRevealTokens, buildLocalZiffleShuffleStep, buildZiffleCeremoniesForPayload, collectFairRandomReveal, collectZiffleRevealTokens, collectZiffleRevealTokensBatch, compactActionAuthorizationForDiagnostics, compactCryptoRequirementForDiagnostics, currentHostRouteInfo, drainPendingSequencedActions, fairRandomCommitSetHash, fairRandomRequestContextKey, fairRandomRequirementId, handIdsForRevealKey, hydrateViewedCardsFromLiveObjects, isHiddenViewedCardName, isInspectorOnlyViewedCards, localZiffleHandRevealKey, localZiffleHandRevealObjectIdsKey, normalizedZiffleShuffleCeremony, openConnectionForPeerCandidates, openZiffleRoute, playerIndexForPeerId, preserveViewedCardsFromHint, previewZiffleActionRequirements, recordZiffleShufflePerf, restoreSequencedActionValidationSnapshotIfCurrent, revealLocalZiffleHand, revealLocalZiffleHandInner, rngCommitmentForNonce, routePeerIdForPlayer, routingPlayers, runBatchedZiffleShuffleCeremonies, sendDirectProtocolMessage, sequencedActionValidationSnapshotStillCurrent, signRngCommitmentEntry, signRngRevealEntry, validateCompleteRngCommitSet, validateIncomingRngRequest, verifyRngCommitmentEntry, verifyRngRevealEntry, verifyShuffleProofsForRequirements, verifyZiffleCeremoniesForPayload, viewedCardsStateHint, waitForAuthorizedZiffleRevealPositions, waitForRevealAuthorizationSequence, waitForZiffleCeremony, waitForZiffleRoute, zifflePositionFromRequirement, zifflePositionsDetail, ziffleRequirementType, ziffleRequirementViewer, ziffleRequirementZone, ziffleRequirementsAuthorizeRevealPositions, ziffleRequirementsAuthorizeRevealPositionsByMetadata, ziffleRevealAuthorizedByAction, ziffleRevealAuthorizedByOutboundCryptoRequest, ziffleRevealPositionFromRequirement, ziffleRevealTokenOptionsForLocalHandReveal, ziffleRoutePeerCandidates, ziffleShuffleRequestForCeremony };
 }

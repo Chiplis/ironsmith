@@ -21,7 +21,7 @@ mod bid_life;
 mod choose_mode;
 mod choose_mode_runtime;
 mod choose_objects;
-mod choose_objects_runtime;
+pub(crate) mod choose_objects_runtime;
 mod choose_spell_cast_history;
 mod conditional;
 mod cumulative_upkeep;

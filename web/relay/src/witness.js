@@ -4,13 +4,23 @@ import { canonicalJson, importAuditPublicKey, randomAuditHex, verifyAuditPayload
 import {
   WITNESS_ANSWER_WINDOW_MS, WITNESS_MAX_ANSWER_BYTES, WITNESS_MAX_OPEN_CHALLENGES, WITNESS_MAX_REQUEST_BYTES,
   answerPayload, byteLength, certificatePayload, challengePayload, claimPayload, forfeitPayload, genesisAttestationPayload,
-  payloadHash, redeemPayload, signWitnessPayload, verifyGenesisRequest, verifyInvite, witnessPublicKeyFromPrivateJwk,
+  payloadHash, redeemPayload, signWitnessPayload, statusRequestPayload, verifyGenesisRequest, verifyInvite, witnessPublicKeyFromPrivateJwk,
 } from '../../ui/src/lib/tournament/witness-protocol.js';
 
 const PEER = /^ws-([a-f0-9]{32})-([a-f0-9]{32})$/;
 const KEY = /^[a-f0-9]{130}$/;
 const REDEEM_SKEW = 10 * 60_000;
 const CLAIM_SKEW = 2 * 60_000;
+const STATUS_SKEW = 5 * 60_000;
+// Protocol requests the accused must actually answer (not just point at
+// another seat) for the witness to accept its answer.
+const PROTOCOL_RESPONSES = {
+  crypto_material_request: 'crypto_material_response',
+  ziffle_reveal_token_request: 'ziffle_reveal_token_response',
+  ziffle_shuffle_step_request: 'ziffle_shuffle_step_response',
+  rng_commit_request: 'rng_commit_response',
+  rng_reveal_request: 'rng_reveal_response',
+};
 const MAX_REDEEM_BODY = 16 * 1024;
 const MAX_GENESIS = 4;
 const MAX_CHALLENGES = 32;
@@ -124,14 +134,16 @@ export class WitnessDisputes {
         const now = Date.now(); const records = await this.records();
         const decided = (await this.decide(records, now)).map(delivery);
         if (path === '/status') return { decided,
-          challenges: records.filter(r => claimantOf(r) === body.peer || accusedOf(r).peerId === body.peer).map(view) };
+          challenges: records.filter(r => body.seat != null
+            ? r.claim.claimantSeat === body.seat || r.claim.accusedSeat === body.seat
+            : claimantOf(r) === body.peer || accusedOf(r).peerId === body.peer).map(view) };
         if (path === '/open') return { decided, ...await this.open(records, body, now) };
         if (path === '/answer') return { decided, ...await this.answer(records, body) };
         throw new Error('Not found');
       }));
     } catch (error) { return json({ error: error.message }, 400); }
   }
-  async open(records, { roomId, claim, claimSignature, players }, now) {
+  async open(records, { roomId, claim, claimSignature, players, genesisHash }, now) {
     const open = records.filter(r => r.status === 'open');
     const same = open.find(r => r.claim.claimantSeat === claim.claimantSeat && r.claim.accusedSeat === claim.accusedSeat);
     if (same) return { record: view(same) };
@@ -139,8 +151,8 @@ export class WitnessDisputes {
     if (records.length >= MAX_CHALLENGES) throw new Error('Challenge limit reached for this match');
     const window = Number(this.env.WITNESS_ANSWER_WINDOW_MS) || WITNESS_ANSWER_WINDOW_MS;
     const challengeId = randomAuditHex(16); const claimHash = await payloadHash(claim);
-    const challenge = await sign(this.env, challengePayload({ challengeId, claim, claimHash, openedAt: now, deadline: now + window }));
-    const record = { challengeId, roomId, players, claim, claimSignature, claimHash, challenge, status: 'open' };
+    const challenge = await sign(this.env, challengePayload({ challengeId, claim, claimHash, openedAt: now, deadline: now + window, genesisHash }));
+    const record = { challengeId, roomId, players, claim, claimSignature, claimHash, genesisHash, challenge, status: 'open' };
     await this.save(record); records.push(record); await this.arm(records);
     return { record: view(record) };
   }
@@ -151,9 +163,22 @@ export class WitnessDisputes {
     if (!canonical(answerPayload, answer)) throw new Error('Answer is not canonical');
     if (answer.matchId !== r.claim.matchId || answer.accusedSeat !== r.claim.accusedSeat) throw new Error('Answer does not match the challenge');
     const accused = accusedOf(r);
-    if (peer !== accused.peerId) throw new Error('Only the accused seat may answer');
     if (byteLength(answer) > WITNESS_MAX_ANSWER_BYTES) throw new Error('Answer is too large');
-    if (!await verifySignature(accused.auditPublicKey, answer, answerSignature)) throw new Error('Answer signature is invalid');
+    // The seat's attested signing key authenticates the answer; the socket's
+    // peer id is not required to match (a victim whose route changed can
+    // still answer for its seat).
+    if (!await verifySignature(accused.auditPublicKey, answer, answerSignature)) {
+      throw new Error(peer === accused.peerId ? 'Answer signature is invalid' : 'Only the accused seat may answer: answer signature is invalid');
+    }
+    // A challenge over an unanswered protocol request is only answered by
+    // the response itself (possibly an error), not by pointing at another
+    // seat, unless the accused claims the game has since moved on.
+    const request = r.claim.request;
+    const responseType = request && typeof request === 'object' ? PROTOCOL_RESPONSES[request.type] : null;
+    if (responseType && !(answer.headSequence > r.claim.basisSequence) && !answer.responses.some(response =>
+      response && response.type === responseType && response.requestId === request.requestId)) {
+      throw new Error('Answer does not include the outstanding protocol response');
+    }
     r.status = 'answered'; r.answer = { payload: answer, signature: answerSignature };
     await this.save(r); await this.arm(records);
     return { record: view(r), claimant: claimantOf(r) };
@@ -183,8 +208,18 @@ async function genesis(lobby, state, config, body) {
   if (request.players.some(p => p.peerId.match(PEER)?.[1] !== state.room)) throw new Error('Genesis request seats a peer outside this room');
   if (new Set(request.players.map(p => p.peerId)).size !== request.players.length) throw new Error('A peer occupies two seats');
   if (request.players[request.hostSeat]?.peerId !== config.host) throw new Error('Genesis request host seat is not the lobby host');
-  const attestation = await signWitnessPayload(keyPair, genesisAttestationPayload(request, certificates, Date.now()));
   const storage = lobby.ctx.storage;
+  // The first attestation for a match id is immutable: a host cannot later
+  // re-seat a victim (e.g. behind a sock-puppet peer id) or swap the genesis.
+  // An identical re-request is idempotent and returns the stored attestation.
+  const lockKey = `witness:genesis-lock:${request.matchId}`;
+  const locked = await storage.get(lockKey);
+  const fingerprint = await payloadHash(genesisAttestationPayload(request, certificates, 0));
+  if (locked && locked !== fingerprint) throw new Error('A different genesis is already attested for this match id');
+  const existing = locked && await storage.get(`witness:genesis:${request.matchId}`);
+  if (existing) return { attestation: existing, witnessPublicKey: publicKey };
+  const attestation = await signWitnessPayload(keyPair, genesisAttestationPayload(request, certificates, Date.now()));
+  if (!locked) await storage.put(lockKey, fingerprint);
   await storage.put(`witness:genesis:${request.matchId}`, attestation);
   const stored = [...await storage.list({ prefix: 'witness:genesis:' })].sort(([, a], [, b]) => b.payload.issuedAt - a.payload.issuedAt);
   if (stored.length > MAX_GENESIS) await storage.delete(stored.slice(MAX_GENESIS).map(([key]) => key));
@@ -205,14 +240,17 @@ async function challenge(lobby, state, config, { claim, claimSignature }) {
   if (byteLength(claim.request) > WITNESS_MAX_REQUEST_BYTES) throw new Error('Claim request is too large');
   if (!await verifySignature(claimant.auditPublicKey, claim, claimSignature)) throw new Error('Claim signature is invalid');
   await witnessKey(lobby.env);
-  const out = await disputes(lobby, state, claim.matchId, 'open', { roomId: state.room, claim, claimSignature, players });
+  const genesisHash = String(attestation.payload.genesisHash || '');
+  const out = await disputes(lobby, state, claim.matchId, genesisHash, 'open', { roomId: state.room, claim, claimSignature, players, genesisHash });
   lobby.deliver(accused.peerId, { type: 'witness_event', event: 'challenge', challenge: out.record.challenge, claim, claimSignature });
   return { challenge: out.record.challenge };
 }
 
-async function disputes(lobby, state, matchId, path, body) {
+// Dispute state is keyed by the attested genesis too, so challenges and
+// forfeits of one game can never surface in another that shares a match id.
+async function disputes(lobby, state, matchId, genesisHash, path, body) {
   const env = lobby.env;
-  const response = await post(env.DISPUTES.get(env.DISPUTES.idFromName(`${state.room}:${matchId}`)), path, body);
+  const response = await post(env.DISPUTES.get(env.DISPUTES.idFromName(`${state.room}:${matchId}:${genesisHash}`)), path, body);
   const out = await response.json();
   if (!response.ok) throw new Error(out.error || 'Witness request failed');
   for (const { to, message } of out.decided) lobby.deliver(to, message);
@@ -228,12 +266,28 @@ export async function witnessOp(lobby, state, msg) {
   if (msg.op === 'challenge') return challenge(lobby, state, config, body);
   const matchId = msg.op === 'answer' ? body.answer?.matchId : body.matchId;
   if (typeof matchId !== 'string' || !matchId || matchId.length > 128) throw new Error('Unknown match');
+  const attestation = await lobby.ctx.storage.get(`witness:genesis:${matchId}`);
+  if (!attestation) throw new Error('Unknown match');
+  const genesisHash = String(attestation.payload.genesisHash || '');
   if (msg.op === 'answer') {
     await witnessKey(lobby.env);
-    const out = await disputes(lobby, state, matchId, 'answer', { answer: body.answer, answerSignature: body.answerSignature, peer: state.peer });
+    const out = await disputes(lobby, state, matchId, genesisHash, 'answer', { answer: body.answer, answerSignature: body.answerSignature, peer: state.peer });
     lobby.deliver(out.claimant, { type: 'witness_event', event: 'answer', challenge: out.record.challenge, answer: out.record.answer });
     return { status: 'answered' };
   }
-  if (msg.op === 'status') return (await disputes(lobby, state, matchId, 'status', { peer: state.peer })).challenges;
+  if (msg.op === 'status') {
+    // A seat-signed status request lists that seat's challenges whatever
+    // peer id it connects from; otherwise fall back to the socket's peer id.
+    let seat = null;
+    if (body.statusRequest) {
+      const request = body.statusRequest;
+      if (!canonical(statusRequestPayload, request) || request.matchId !== matchId) throw new Error('Status request is not canonical');
+      if (!(Math.abs(request.requestedAt - Date.now()) <= STATUS_SKEW)) throw new Error('Status request is stale');
+      const player = attestation.payload.players[request.seat];
+      if (!player || !await verifySignature(player.auditPublicKey, request, body.statusSignature)) throw new Error('Status request signature is invalid');
+      seat = request.seat;
+    }
+    return (await disputes(lobby, state, matchId, genesisHash, 'status', { peer: state.peer, seat })).challenges;
+  }
   throw new Error('Unknown witness op');
 }

@@ -171,6 +171,9 @@ export function usePeerLobby({
   const pendingActionIntentsRef = useRef(new Map());
   const pendingActionIntentTimeoutsRef = useRef(new Map());
   const ignoredActionIntentKeysRef = useRef(new Map());
+  // Locally observed protocol waits (requester awaiting a responder), keyed
+  // `${requester}:${requestId}`, plus observed action intents (`intent:${key}`).
+  const protocolWaitObservationsRef = useRef(new Map());
   const actionIntentOpeningPreviewKeysRef = useRef(new Map());
   const reconnectChallengesRef = useRef(new Map());
   const privateViewDisclosuresRef = useRef(new Map());
@@ -256,7 +259,7 @@ export function usePeerLobby({
     rngRevealWaitersRef, rngCommitNoncesRef, signedRngCommitmentsRef, rngRevealCommitSetLocksRef,
     timeoutVoteWaitersRef, actionQuorumVoteWaitersRef, signedActionQuorumVotesRef,
     cryptoMaterialWaitersRef, outboundCryptoMaterialRequestsRef, pendingActionIntentsRef,
-    pendingActionIntentTimeoutsRef, ignoredActionIntentKeysRef, actionIntentOpeningPreviewKeysRef,
+    pendingActionIntentTimeoutsRef, ignoredActionIntentKeysRef, protocolWaitObservationsRef, actionIntentOpeningPreviewKeysRef,
     reconnectChallengesRef, privateViewDisclosuresRef, liveZiffleCeremoniesRef,
     localZiffleCeremonyLookupRef, ziffleOpeningPositionsRef, ziffleHandRevealKeyRef,
     ziffleHandRevealQuickKeyRef, localZiffleRevealInFlightRef, verifiedShuffleProofsRef,
@@ -564,9 +567,11 @@ export function usePeerLobby({
     })) {
       return true;
     }
-    if (threshold <= 0) {
+    // Two active players: like a match-clock timeout, the claimant's own
+    // observation decides and the target's validator disputes a false claim.
+    if (threshold <= 0 && roster.length === 0) {
       markMatchDisputed(
-        `Protocol response timeout from ${targetName}; two-player matches require external arbitration.`,
+        `Protocol response timeout from ${targetName}; no independent player can judge the claim.`,
         {
           type: "protocol_response_timeout",
           accusedPlayers: [targetPlayerIndex],
@@ -593,6 +598,7 @@ export function usePeerLobby({
       eligible_at_ms: requestedAtMs + responseTimeoutMs,
       claimed_at_ms: Date.now(),
       basis_sequence: Number(claim.basisSequence ?? multiplayerRef.current.lastAppliedSequence ?? 0),
+      ...(timedOutActionIntentKey ? { action_intent_key: timedOutActionIntentKey } : {}),
     };
     try {
       await submitMultiplayerCommand(
@@ -683,7 +689,7 @@ export function usePeerLobby({
         stopLocalActionIntentProgress();
         if (signedActionIntent && !localSubmissionCommitted) {
           rememberIgnoredActionIntentKey(actionIntentKey(signedActionIntent), reason || "local_action_cancelled");
-          broadcastActionIntentCancel(signedActionIntent, reason);
+          void Promise.resolve(broadcastActionIntentCancel(signedActionIntent, reason)).catch(() => {});
         }
       };
       updateMultiplayer((prev) => ({ ...prev, submittingAction: true }));
@@ -1886,7 +1892,7 @@ export function usePeerLobby({
           error: failureReason,
         });
         if (signedActionIntent && !localSubmissionCommitted) {
-          broadcastActionIntentCancel(signedActionIntent, failureReason);
+          void Promise.resolve(broadcastActionIntentCancel(signedActionIntent, failureReason)).catch(() => {});
         }
         if (isMatchDisputed(multiplayerRef.current)) {
           setStatus(multiplayerRef.current.matchDisputed?.reason || failureReason, true);
@@ -2292,6 +2298,9 @@ export function usePeerLobby({
         finalPublicCheckpointHash,
         matchDisputed: multiplayerRef.current.matchDisputed || null,
         disputes,
+        withheldDisclosurePlayers: endOfMatchDisclosures
+          .filter((entry) => !entry?.disclosure && entry?.verdict?.status === "withheld")
+          .map((entry) => Number(entry.player)),
       }),
     };
   }, [currentAuditMatchId]);

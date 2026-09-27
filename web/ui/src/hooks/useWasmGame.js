@@ -32,7 +32,9 @@ const WORKER_METHODS = [
   // (hooks/peer-lobby/end-of-match-disclosure.js, lib/audit-replay.js).
   "endOfMatchDisclosureRequirements",
   "verifyEndOfMatchDisclosure",
+  "endOfMatchDisclosureObligations",
   "hiddenCardOpenState",
+  "hiddenObjectViewableBy",
   "exportHiddenCardOpening",
   "exportPublicAuditCheckpoint",
   "exportRedactedSyncCheckpoint",

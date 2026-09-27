@@ -83,9 +83,10 @@ import {
 } from "./shared.js";
 import { recordPeerRtt } from "../../lib/action-diagnostics.js";
 import { buildZiffleRuntimeManifest } from "../../lib/ziffle-runtime-manifest.js";
+import { checkPeerGenesisAck, genesisRosterPlayers, genesisSeedCommitmentFor, localGenesisAck } from "./genesis-binding.js";
 
 export function usePeerLobbyConnections(base, servicesRef) {
-  const { actionIntentOpeningPreviewKeysRef, actionQuorumVoteWaitersRef, actionSubmissionStartedAtMsRef, auditEncryptionKeyPairRef, auditEncryptionPublicKeyRef, auditKeyPairRef, auditPublicKeyRef, auditVerifyKeyCacheRef, connectionHeartbeatsRef, cryptoMaterialWaitersRef, ensureDirectPeerConnectionsRef, gameRef, ignoredActionIntentKeysRef, liveZiffleCeremoniesRef, localRevealedOpeningsRef, localZiffleCeremonyLookupRef, matchClockConfigRef, matchStartPayloadRef, multiplayerRef, peerHeartbeatConfigRef, pendingActionIntentTimeoutsRef, pendingActionIntentsRef, privateDeckManifestsRef, privateViewDisclosuresRef, rngCommitWaitersRef, rngRevealWaitersRef, setMultiplayer, setStatus, stateRef, submissionIdleWaitersRef, timeoutVoteWaitersRef, ziffleHandRevealKeyRef, ziffleHandRevealQuickKeyRef, ziffleKeyPairsRef, ziffleOpeningPositionsRef, ziffleRevealTokenCacheRef, ziffleRevealWaitersRef, ziffleShuffleWaitersRef } = base;
+  const { actionIntentOpeningPreviewKeysRef, actionQuorumVoteWaitersRef, actionSubmissionStartedAtMsRef, auditEncryptionKeyPairRef, auditEncryptionPublicKeyRef, auditKeyPairRef, auditPublicKeyRef, auditVerifyKeyCacheRef, connectionHeartbeatsRef, cryptoMaterialWaitersRef, ensureDirectPeerConnectionsRef, gameRef, ignoredActionIntentKeysRef, protocolWaitObservationsRef, liveZiffleCeremoniesRef, localRevealedOpeningsRef, localZiffleCeremonyLookupRef, matchClockConfigRef, matchStartPayloadRef, multiplayerRef, peerHeartbeatConfigRef, pendingActionIntentTimeoutsRef, pendingActionIntentsRef, privateDeckManifestsRef, privateViewDisclosuresRef, rngCommitWaitersRef, rngRevealWaitersRef, setMultiplayer, setStatus, stateRef, submissionIdleWaitersRef, timeoutVoteWaitersRef, ziffleHandRevealKeyRef, ziffleHandRevealQuickKeyRef, ziffleKeyPairsRef, ziffleOpeningPositionsRef, ziffleRevealTokenCacheRef, ziffleRevealWaitersRef, ziffleShuffleWaitersRef } = base;
   const actionHistoryEntryForSequence = useCallback((...args) => servicesRef.current.actionHistoryEntryForSequence(...args), [servicesRef]);
   const applySequencedActionMessage = useCallback((...args) => servicesRef.current.applySequencedActionMessage(...args), [servicesRef]);
   const collectZiffleRevealTokens = useCallback((...args) => servicesRef.current.collectZiffleRevealTokens(...args), [servicesRef]);
@@ -138,6 +139,19 @@ export function usePeerLobbyConnections(base, servicesRef) {
       }
     }
     return false;
+  }
+
+  // Every peer periodically signs "I started genesis H" on its heartbeats, so
+  // peers can detect a host that showed seats different rosters/keys.
+  function genesisAckHeartbeatField() {
+    const payload = matchStartPayloadRef.current;
+    if (!payload?.genesis?.payloadHash || !multiplayerRef.current.matchStarted) return {};
+    const ack = localGenesisAck(payload, {
+      keyPair: auditKeyPairRef.current,
+      localSeat: resolveLocalPlayerIndexFromPeer(multiplayerRef.current, payload.players),
+      localPeerId: multiplayerRef.current.localPeerId,
+    });
+    return ack ? { genesisAck: ack } : {};
   }
 
   const startConnectionHeartbeat = useCallback((key, conn, onStale) => {
@@ -206,6 +220,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
               type: "peer_heartbeat",
               protocolVersion: PROTOCOL_VERSION,
               at: nowMs,
+              ...genesisAckHeartbeatField(),
             });
             return;
           }
@@ -223,6 +238,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
           type: "peer_heartbeat",
           protocolVersion: PROTOCOL_VERSION,
           at: nowMs,
+          ...genesisAckHeartbeatField(),
         });
       }, intervalMs),
     };
@@ -238,6 +254,21 @@ export function usePeerLobbyConnections(base, servicesRef) {
     }
     if (message?.type !== "peer_heartbeat") return false;
     if (message.protocolVersion !== PROTOCOL_VERSION) return false;
+    if (message.genesisAck && matchStartPayloadRef.current?.genesis?.payloadHash) {
+      void checkPeerGenesisAck(conn, message.genesisAck, {
+        payload: matchStartPayloadRef.current,
+        onViolation: (reason, seat) => {
+          const body = `Cheat detected: ${reason}`;
+          emitSyncFailureNotice("Cheat detected", body);
+          servicesRef.current.markMatchDisputed?.(body, {
+            type: "genesis_ack_mismatch_v1",
+            seat,
+            genesisPayloadHash: String(matchStartPayloadRef.current?.genesis?.payloadHash || ""),
+            accusedPlayers: [],
+          });
+        },
+      }).catch(() => {});
+    }
     safeSend(conn, {
       type: "peer_heartbeat_ack",
       protocolVersion: PROTOCOL_VERSION,
@@ -497,6 +528,8 @@ export function usePeerLobbyConnections(base, servicesRef) {
       protocolVersion: PROTOCOL_VERSION,
       timeoutMs: matchClockConfigRef.current.initialMs,
       player,
+      // Commits this seat's secret match-seed nonce (revealed at match start).
+      seedCommitment: await genesisSeedCommitmentFor(matchId, player?.index ?? player?.seat ?? 0),
     });
   }, [ensureAuditIdentity]);
 
@@ -827,10 +860,19 @@ export function usePeerLobbyConnections(base, servicesRef) {
   }
 
   async function waitForProtocolResponse(waiter, claim) {
+    // Publish the wait so every peer times it from its own observation, the
+    // responder can be fed the request by any peer, and the active player's
+    // match clock pauses while it waits on another seat.
+    const localWait = openLocalProtocolWait(claim).catch(() => null);
     try {
-      return await waiter;
+      const value = await waiter;
+      void localWait.then((entry) => closeLocalProtocolWait(entry, "answered"));
+      return value;
     } catch (err) {
-      if (!isProtocolResponseWaitTimeout(err)) throw err;
+      if (!isProtocolResponseWaitTimeout(err)) {
+        void localWait.then((entry) => closeLocalProtocolWait(entry, "error"));
+        throw err;
+      }
       const timing = err?.protocolResponseTimeoutTiming || {};
       throw await makeProtocolResponseTimeoutError(err, {
         ...claim,
@@ -838,6 +880,505 @@ export function usePeerLobbyConnections(base, servicesRef) {
         ...(timing.requestedAtMs != null ? { requestedAtMs: timing.requestedAtMs } : {}),
       });
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Protocol wait observations.
+  //
+  // A protocol-response-timeout forfeit may only be signed from LOCAL
+  // knowledge. The requester broadcasts a signed notice (with the request
+  // itself) when it starts waiting on a seat; every other peer records its own
+  // observation time and forwards the request to the target, so a requester
+  // cannot claim a timeout for a request the target never saw. The target
+  // broadcasts a signed answer notice when it responds, which cancels the
+  // claim everywhere. Voters measure elapsed time from their own observation,
+  // never from the requester's requestedAtMs.
+  // ---------------------------------------------------------------------------
+  const PROTOCOL_WAIT_NOTICE_DOMAIN = "ironsmith-protocol-wait-notice-v1";
+  const PROTOCOL_WAIT_ANSWER_DOMAIN = "ironsmith-protocol-wait-answer-v1";
+  const PROTOCOL_WAIT_MAX_OBSERVATIONS = 512;
+  const PROTOCOL_WAIT_MAX_FORWARD_BYTES = 256 * 1024;
+  const PROTOCOL_WAIT_NOTICE_DISPATCH_GRACE_MS = 3000;
+  const PROTOCOL_WAIT_VOTE_DEFER_MAX_MS = 10000;
+  const PROTOCOL_WAIT_REQUEST_ANSWERERS = {
+    crypto_material_request: "answerCryptoMaterialRequest",
+    ziffle_reveal_token_request: "answerZiffleRevealTokenRequest",
+    ziffle_shuffle_step_request: "answerZiffleShuffleStepRequest",
+    rng_commit_request: "answerRngCommitRequest",
+    rng_reveal_request: "answerRngRevealRequest",
+  };
+
+  function protocolWaitKey(requester, requestId) {
+    return `${Number(requester)}:${String(requestId || "")}`;
+  }
+
+  function protocolWaitNoticePayload(notice = {}) {
+    return {
+      domain: PROTOCOL_WAIT_NOTICE_DOMAIN,
+      matchId: String(notice.matchId || ""),
+      basisSequence: Math.max(0, Math.floor(Number(notice.basisSequence || 0))),
+      requester: Number(notice.requester),
+      target: Number(notice.target),
+      requestType: String(notice.requestType || ""),
+      requestId: String(notice.requestId || ""),
+      requestPayloadHash: String(notice.requestPayloadHash || ""),
+      responseTimeoutMs: Math.max(1, Math.floor(Number(notice.responseTimeoutMs || PROTOCOL_RESPONSE_TIMEOUT_MS))),
+    };
+  }
+
+  function protocolWaitAnswerPayload(answer = {}) {
+    return {
+      domain: PROTOCOL_WAIT_ANSWER_DOMAIN,
+      matchId: String(answer.matchId || ""),
+      requester: Number(answer.requester),
+      responder: Number(answer.responder),
+      requestType: String(answer.requestType || ""),
+      requestId: String(answer.requestId || ""),
+      status: String(answer.status || "answered"),
+      responseHash: String(answer.responseHash || ""),
+    };
+  }
+
+  function pruneProtocolWaitObservations() {
+    const map = protocolWaitObservationsRef.current;
+    const matchId = currentAuditMatchId();
+    for (const [key, entry] of map.entries()) {
+      if (String(entry?.matchId || "") !== matchId) map.delete(key);
+    }
+    while (map.size > PROTOCOL_WAIT_MAX_OBSERVATIONS) {
+      map.delete(map.keys().next().value);
+    }
+  }
+
+  // Merges a verified notice into the local record. The first observation
+  // time is kept: a re-sent notice cannot restart (or backdate) the timer.
+  function recordProtocolWaitObservation(notice, extra = {}) {
+    const map = protocolWaitObservationsRef.current;
+    const key = protocolWaitKey(notice.requester, notice.requestId);
+    const existing = map.get(key);
+    if (existing && !existing.placeholder) {
+      if (!existing.requestPayload && extra.requestPayload) existing.requestPayload = extra.requestPayload;
+      return existing;
+    }
+    // An answer seen before the notice only counts if it came from the seat
+    // the notice names.
+    const earlyAnswerValid = existing?.answerStatus
+      && (existing.target == null || Number(existing.target) === Number(notice.target));
+    const entry = {
+      ...(existing || {}),
+      ...notice,
+      kind: "request",
+      placeholder: false,
+      observedAtMs: Date.now(),
+      observedAtMonoMs: nowMonotonicMs(),
+      answeredAtMs: earlyAnswerValid ? existing.answeredAtMs : null,
+      answeredAtMonoMs: earlyAnswerValid ? existing.answeredAtMonoMs : null,
+      answerStatus: earlyAnswerValid ? String(existing.answerStatus) : "",
+      requestHandled: Boolean(existing?.requestHandled),
+      requestPayload: extra.requestPayload || existing?.requestPayload || null,
+      local: Boolean(extra.local),
+    };
+    map.set(key, entry);
+    pruneProtocolWaitObservations();
+    return entry;
+  }
+
+  function protocolWaitPlaceholder(requester, requestId) {
+    const map = protocolWaitObservationsRef.current;
+    const key = protocolWaitKey(requester, requestId);
+    let entry = map.get(key);
+    if (!entry) {
+      entry = {
+        kind: "request",
+        placeholder: true,
+        matchId: currentAuditMatchId(),
+        requester: Number(requester),
+        requestId: String(requestId || ""),
+        answerStatus: "",
+        answeredAtMs: null,
+        answeredAtMonoMs: null,
+        requestHandled: false,
+      };
+      map.set(key, entry);
+      pruneProtocolWaitObservations();
+    }
+    return entry;
+  }
+
+  function markProtocolWaitAnswered(entry, status = "answered") {
+    if (!entry || entry.answerStatus) return;
+    entry.answerStatus = String(status || "answered");
+    entry.answeredAtMs = Date.now();
+    entry.answeredAtMonoMs = nowMonotonicMs();
+  }
+
+  function broadcastProtocolWaitMessage(payload, excludeIndices = []) {
+    const session = multiplayerRef.current;
+    const excluded = new Set(excludeIndices.map(Number));
+    let sent = false;
+    for (const player of session.players || []) {
+      if (excluded.has(Number(player.index))) continue;
+      const peerId = routePeerIdForPlayer(player);
+      if (!peerId || peerId === session.localPeerId) continue;
+      sent = sendDirectPeerMessage(peerId, payload) || sent;
+    }
+    return sent;
+  }
+
+  function protocolWaitPlayer(index) {
+    return reindexPlayers(matchStartPayloadRef.current?.players || multiplayerRef.current.players || [])
+      .find((player) => Number(player.index) === Number(index)) || null;
+  }
+
+  async function openLocalProtocolWait(claim = {}) {
+    const session = multiplayerRef.current;
+    if (!session.matchStarted) return null;
+    const requester = normalizePlayerIndex(claim.requesterIndex) ?? resolveLocalPlayerIndex(session);
+    const target = normalizePlayerIndex(claim.targetPlayerIndex);
+    const requestId = String(claim.requestId || "");
+    if (requester == null || target == null || requester === target || !requestId) return null;
+    if (Number(requester) !== Number(resolveLocalPlayerIndex(session))) return null;
+    const requestPayload = cloneMultiplayerPayload(claim.requestPayload || {});
+    const requestPayloadHash = String(
+      claim.requestPayloadHash || await sha256Hex(canonicalMultiplayerPayload(requestPayload))
+    );
+    const notice = protocolWaitNoticePayload({
+      matchId: currentAuditMatchId(),
+      basisSequence: claim.basisSequence ?? session.lastAppliedSequence ?? 0,
+      requester,
+      target,
+      requestType: claim.requestType || requestPayload.type,
+      requestId,
+      requestPayloadHash,
+      responseTimeoutMs: claim.responseTimeoutMs,
+    });
+    const entry = recordProtocolWaitObservation(notice, { requestPayload, local: true });
+    const { keyPair } = await ensureAuditIdentity();
+    const signature = await signAuditPayload(keyPair, notice);
+    const deliverable = payloadSizeBytes(requestPayload) <= PROTOCOL_WAIT_MAX_FORWARD_BYTES;
+    broadcastProtocolWaitMessage({
+      type: "protocol_wait_notice",
+      protocolVersion: PROTOCOL_VERSION,
+      notice,
+      signature,
+      ...(deliverable ? { requestPayload } : {}),
+    }, [requester]);
+    return entry;
+  }
+
+  function closeLocalProtocolWait(entry, status) {
+    markProtocolWaitAnswered(entry, status);
+  }
+
+  async function handleProtocolWaitNoticeMessage(message) {
+    const session = multiplayerRef.current;
+    if (!session.matchStarted || !message?.notice) return;
+    const notice = protocolWaitNoticePayload(message.notice);
+    if (canonicalMultiplayerPayload(notice) !== canonicalMultiplayerPayload(message.notice)) return;
+    if (notice.matchId !== currentAuditMatchId()) return;
+    if (notice.basisSequence < Number(session.lastAppliedSequence || 0)) return;
+    const localIndex = resolveLocalPlayerIndex(session);
+    if (localIndex == null || Number(notice.requester) === Number(localIndex)) return;
+    if (!protocolWaitPlayer(notice.requester) || !protocolWaitPlayer(notice.target)
+      || notice.requester === notice.target || !notice.requestId) return;
+    const publicKey = await importCachedAuditPublicKey(publicKeyForAuditSigner(notice.requester));
+    if (!await verifyAuditPayload(publicKey, notice, String(message.signature || ""))) {
+      throw new Error("Protocol wait notice signature is invalid");
+    }
+    let requestPayload = null;
+    if (message.requestPayload && typeof message.requestPayload === "object") {
+      const hash = await sha256Hex(canonicalMultiplayerPayload(message.requestPayload));
+      if (
+        hash === notice.requestPayloadHash
+        && String(message.requestPayload.type || "") === notice.requestType
+        && String(message.requestPayload.requestId || "") === notice.requestId
+      ) {
+        requestPayload = cloneMultiplayerPayload(message.requestPayload);
+      }
+    }
+    const entry = recordProtocolWaitObservation(notice, { requestPayload });
+    if (Number(notice.target) === Number(localIndex)) {
+      scheduleProtocolRequestFromNotice(entry);
+      return;
+    }
+    // Relay the signed request to the target so a requester cannot keep it
+    // from the seat it later accuses.
+    if (!message.forwardedBy && entry.requestPayload && !entry.forwarded) {
+      entry.forwarded = true;
+      const targetPlayer = protocolWaitPlayer(notice.target);
+      const routePeerId = targetPlayer ? routePeerIdForPlayer(targetPlayer) : "";
+      if (routePeerId && routePeerId !== session.localPeerId) {
+        sendDirectPeerMessage(routePeerId, {
+          type: "protocol_wait_notice",
+          protocolVersion: PROTOCOL_VERSION,
+          notice,
+          signature: String(message.signature || ""),
+          requestPayload: entry.requestPayload,
+          forwardedBy: Number(localIndex),
+        });
+      }
+    }
+  }
+
+  function scheduleProtocolRequestFromNotice(entry) {
+    if (!entry?.requestPayload || entry.requestHandled || entry.answerStatus || entry.dispatchTimer) return;
+    entry.dispatchTimer = window.setTimeout(() => {
+      entry.dispatchTimer = null;
+      if (entry.requestHandled || entry.answerStatus) return;
+      void answerProtocolRequestFromNotice(entry).catch(() => {});
+    }, PROTOCOL_WAIT_NOTICE_DISPATCH_GRACE_MS);
+  }
+
+  // Target: the direct request never arrived, so answer the copy carried by
+  // the signed notice. The response still goes only to the requester.
+  async function answerProtocolRequestFromNotice(entry) {
+    const answererName = PROTOCOL_WAIT_REQUEST_ANSWERERS[String(entry.requestType || "")];
+    const answerer = answererName ? servicesRef.current[answererName] : null;
+    if (typeof answerer !== "function") return;
+    const requesterPlayer = protocolWaitPlayer(entry.requester);
+    const routePeerId = requesterPlayer ? routePeerIdForPlayer(requesterPlayer) : "";
+    const requesterPeerId = String(requesterPlayer?.peerId || "");
+    if (!routePeerId || !requesterPeerId) return;
+    entry.requestHandled = true;
+    const conn = {
+      peer: requesterPeerId,
+      open: true,
+      send: (payload) => {
+        sendDirectPeerMessage(routePeerId, payload);
+        return { bytes: payloadSizeBytes(payload) };
+      },
+    };
+    await answerer(conn, cloneMultiplayerPayload(entry.requestPayload));
+  }
+
+  // Responder: wraps the connection a protocol request arrived on so the
+  // first response to it is announced (signed) to every peer.
+  function protocolResponseConn(conn, request = {}) {
+    const requestId = String(request?.requestId || "");
+    if (!conn || !requestId || !multiplayerRef.current.matchStarted) return conn;
+    // Requests relayed through the host arrive on the host's connection, so
+    // prefer the requester seat the request names.
+    const requester = normalizePlayerIndex(request?.requesterIndex)
+      ?? normalizePlayerIndex(servicesRef.current.playerIndexForPeerId?.(conn.peer));
+    if (requester == null || !protocolWaitPlayer(requester)) return conn;
+    const entry = protocolWaitPlaceholder(requester, requestId);
+    entry.requestHandled = true;
+    if (entry.dispatchTimer) {
+      window.clearTimeout(entry.dispatchTimer);
+      entry.dispatchTimer = null;
+    }
+    let announced = false;
+    const wrapped = Object.create(conn);
+    wrapped.send = (payload) => {
+      const result = conn.send(payload);
+      if (
+        !announced
+        && String(payload?.requestId || "") === requestId
+        && String(payload?.type || "").endsWith("_response")
+      ) {
+        announced = true;
+        void announceProtocolResponse(requester, request, payload).catch(() => {});
+      }
+      return result;
+    };
+    return wrapped;
+  }
+
+  async function announceProtocolResponse(requester, request, response) {
+    const session = multiplayerRef.current;
+    const responder = resolveLocalPlayerIndex(session);
+    if (responder == null || Number(responder) === Number(requester)) return;
+    const answer = protocolWaitAnswerPayload({
+      matchId: currentAuditMatchId(),
+      requester,
+      responder,
+      requestType: String(request?.type || ""),
+      requestId: String(request?.requestId || ""),
+      status: response?.error ? "error" : "answered",
+      responseHash: await sha256Hex(canonicalMultiplayerPayload(response || {})),
+    });
+    markProtocolWaitAnswered(protocolWaitPlaceholder(requester, answer.requestId), answer.status);
+    const { keyPair } = await ensureAuditIdentity();
+    broadcastProtocolWaitMessage({
+      type: "protocol_wait_answer",
+      protocolVersion: PROTOCOL_VERSION,
+      answer,
+      signature: await signAuditPayload(keyPair, answer),
+    }, [responder]);
+  }
+
+  async function handleProtocolWaitAnswerMessage(message) {
+    const session = multiplayerRef.current;
+    if (!session.matchStarted || !message?.answer) return;
+    const answer = protocolWaitAnswerPayload(message.answer);
+    if (canonicalMultiplayerPayload(answer) !== canonicalMultiplayerPayload(message.answer)) return;
+    if (answer.matchId !== currentAuditMatchId() || !answer.requestId) return;
+    if (!protocolWaitPlayer(answer.responder) || !protocolWaitPlayer(answer.requester)) return;
+    const publicKey = await importCachedAuditPublicKey(publicKeyForAuditSigner(answer.responder));
+    if (!await verifyAuditPayload(publicKey, answer, String(message.signature || ""))) {
+      throw new Error("Protocol wait answer signature is invalid");
+    }
+    const entry = protocolWaitPlaceholder(answer.requester, answer.requestId);
+    // Only the seat the request was addressed to can close it.
+    if (!entry.placeholder && Number(entry.target) !== Number(answer.responder)) return;
+    if (entry.placeholder) entry.target = Number(answer.responder);
+    markProtocolWaitAnswered(entry, answer.status);
+  }
+
+  function rememberActionIntentObservation(key, record) {
+    if (!key || !record?.intent) return;
+    const map = protocolWaitObservationsRef.current;
+    const mapKey = `intent:${key}`;
+    if (map.get(mapKey)?.record === record) return;
+    map.set(mapKey, {
+      kind: "intent",
+      key,
+      matchId: String(record.intent.matchId || currentAuditMatchId()),
+      actor: Number(record.intent.actorIndex),
+      seq: Number(record.intent.seq || 0),
+      record,
+      cancelled: false,
+    });
+    pruneProtocolWaitObservations();
+  }
+
+  function markActionIntentObservationCancelled(key, senderIndex) {
+    const entry = protocolWaitObservationsRef.current.get(`intent:${key}`);
+    if (!entry) return;
+    if (senderIndex != null && Number(senderIndex) !== Number(entry.actor)) return;
+    entry.cancelled = true;
+  }
+
+  // Open waits the given seat has on others at the current transcript head.
+  function openProtocolWaitsForRequester(requester, basisSequence = multiplayerRef.current.lastAppliedSequence) {
+    const matchId = currentAuditMatchId();
+    const out = [];
+    for (const entry of protocolWaitObservationsRef.current.values()) {
+      if (entry?.kind !== "request" || entry.placeholder || entry.answerStatus) continue;
+      if (String(entry.matchId || "") !== matchId) continue;
+      if (Number(entry.requester) !== Number(requester)) continue;
+      if (Number(entry.basisSequence) !== Number(basisSequence || 0)) continue;
+      out.push(entry);
+    }
+    return out;
+  }
+
+  // Milliseconds of [sinceMonoMs, nowMonoMs] during which `requester` had an
+  // outstanding request to another seat, as observed locally. The match clock
+  // pauses for the requester over these intervals (see runtimeMatchClockSnapshot).
+  function observedProtocolWaitMs(requester, sinceMonoMs, nowMonoMs = nowMonotonicMs()) {
+    if (requester == null || !Number.isFinite(Number(sinceMonoMs))) return 0;
+    const since = Number(sinceMonoMs);
+    const now = Number(nowMonoMs);
+    const matchId = currentAuditMatchId();
+    const basis = Number(multiplayerRef.current.lastAppliedSequence || 0);
+    const intervals = [];
+    for (const entry of protocolWaitObservationsRef.current.values()) {
+      if (entry?.kind !== "request" || entry.placeholder) continue;
+      if (String(entry.matchId || "") !== matchId) continue;
+      if (Number(entry.requester) !== Number(requester) || Number(entry.target) === Number(requester)) continue;
+      if (Number(entry.basisSequence) !== basis) continue;
+      const start = Math.max(since, Number(entry.observedAtMonoMs ?? now));
+      const end = Math.min(now, Number(entry.answeredAtMonoMs ?? now));
+      if (end > start) intervals.push([start, end]);
+    }
+    intervals.sort((left, right) => left[0] - right[0]);
+    let total = 0;
+    let cursor = -Infinity;
+    for (const [start, end] of intervals) {
+      const from = Math.max(start, cursor);
+      if (end > from) total += end - from;
+      cursor = Math.max(cursor, end);
+    }
+    return Math.max(0, Math.floor(total));
+  }
+
+  // Voter: throws unless this browser itself observed the timed-out request
+  // (or the target's signed action intent) and its own timer has expired.
+  async function assertLocalProtocolTimeoutObservation(claim = {}, options = {}) {
+    const matchId = currentAuditMatchId();
+    const basis = Number(multiplayerRef.current.lastAppliedSequence || 0);
+    const forfeitedPlayer = normalizePlayerIndex(claim.forfeitedPlayer);
+    const requester = normalizePlayerIndex(claim.requester);
+    if (forfeitedPlayer == null || requester == null) {
+      throw new Error("Protocol-timeout vote request has invalid seats");
+    }
+    if (Number(claim.basisSequence) !== basis) {
+      throw new Error("Protocol-timeout vote request is not based on the local transcript head");
+    }
+    const map = protocolWaitObservationsRef.current;
+    const direct = map.get(protocolWaitKey(requester, claim.requestId));
+    let dueAtMs;
+    if (direct && !direct.placeholder) {
+      if (
+        String(direct.matchId || "") !== matchId
+        || Number(direct.target) !== forfeitedPlayer
+        || String(direct.requestType || "") !== String(claim.requestType || "")
+        || String(direct.requestPayloadHash || "") !== String(claim.requestPayloadHash || "")
+        || Number(direct.basisSequence) !== basis
+      ) {
+        throw new Error("Protocol-timeout claim does not match the locally observed request");
+      }
+      if (direct.answerStatus) {
+        throw new Error("The accused seat answered this protocol request");
+      }
+      if (!direct.requestPayload && !direct.local) {
+        throw new Error("Protocol request was not relayed to the accused seat; cannot attest a timeout");
+      }
+      dueAtMs = Number(direct.observedAtMs) + Math.max(
+        Number(direct.responseTimeoutMs || PROTOCOL_RESPONSE_TIMEOUT_MS),
+        Math.floor(Number(claim.responseTimeoutMs || 0))
+      );
+    } else if (direct?.placeholder && direct.answerStatus) {
+      throw new Error("The accused seat answered this protocol request");
+    } else {
+      const intentKey = String(claim.actionIntentKey || "");
+      const observed = intentKey ? map.get(`intent:${intentKey}`) : null;
+      if (!observed || String(observed.matchId || "") !== matchId || Number(observed.actor) !== forfeitedPlayer) {
+        throw new Error("This peer never observed the timed-out protocol request");
+      }
+      if (observed.cancelled) {
+        throw new Error("The accused seat cancelled the timed-out action intent");
+      }
+      if (Number(observed.seq) !== basis + 1 || matchingAppliedActionForIntent(observed.record.intent)) {
+        throw new Error("The timed-out action intent is not pending at the local transcript head");
+      }
+      if (openProtocolWaitsForRequester(forfeitedPlayer, basis).length > 0) {
+        throw new Error("The accused seat is itself waiting on another seat's protocol response");
+      }
+      dueAtMs = pendingActionIntentDueAtMs(observed.record);
+    }
+    if (!Number.isFinite(dueAtMs)) {
+      throw new Error("Protocol response timeout has no local deadline");
+    }
+    const remainingMs = dueAtMs - (Date.now() + MATCH_CLOCK_CLAIM_SKEW_MS);
+    if (remainingMs > 0) {
+      if (options.deferred || remainingMs > PROTOCOL_WAIT_VOTE_DEFER_MAX_MS) {
+        throw new Error("Protocol response timeout has not elapsed locally");
+      }
+      await sleep(remainingMs + 50);
+      return assertLocalProtocolTimeoutObservation(claim, { deferred: true });
+    }
+  }
+
+  // Target: a reason to reject a protocol-timeout forfeit aimed at this seat.
+  function localProtocolTimeoutContradiction(claim = {}) {
+    const requester = normalizePlayerIndex(claim.requester);
+    const localIndex = resolveLocalPlayerIndex(multiplayerRef.current);
+    if (requester == null || localIndex == null) return "";
+    const entry = protocolWaitObservationsRef.current.get(protocolWaitKey(requester, claim.requestId));
+    if (entry?.answerStatus && (entry.placeholder || Number(entry.target) === Number(localIndex))) {
+      return "This seat answered the protocol request named by the timeout claim";
+    }
+    const waitingOn = openProtocolWaitsForRequester(localIndex)
+      .filter((wait) => Number(wait.target) === Number(requester));
+    if (waitingOn.length > 0) {
+      return "This seat is waiting on the claimant's protocol response";
+    }
+    if (claim.twoPlayer && !entry && !claim.actionIntentKey) {
+      return "This seat never received the protocol request named by the timeout claim";
+    }
+    return "";
   }
 
   const resolveZiffleShuffleStep = useCallback((message) => {
@@ -1493,16 +2034,18 @@ export function usePeerLobbyConnections(base, servicesRef) {
 		  const publicDeckManifestForOwner = useCallback((owner) => {
     const normalized = Number(owner);
     return publicDeckManifest(
-      multiplayerRef.current.players.find(
+      genesisRosterPlayers(matchStartPayloadRef.current, multiplayerRef.current).find(
         (player) => Number(player.index) === normalized
       )?.deckAuditManifest
     );
   }, []);
 
+  // Keys come only from the signed genesis roster once a Verified match has
+  // one; host lobby_state / resync currentPlayers cannot substitute them.
   const publicKeyForAuditSigner = useCallback((signerIndex) => {
     const normalized = normalizePlayerIndex(signerIndex);
     if (normalized == null) return "";
-    const player = multiplayerRef.current.players.find(
+    const player = genesisRosterPlayers(matchStartPayloadRef.current, multiplayerRef.current).find(
       (entry) => Number(entry.index) === normalized
     );
     return String(player?.auditPublicKey || "");
@@ -1511,7 +2054,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
   const auditEncryptionPublicKeyForPlayer = useCallback((playerIndex) => {
     const normalized = normalizePlayerIndex(playerIndex);
     if (normalized == null) return "";
-    const player = (matchStartPayloadRef.current?.players || multiplayerRef.current.players || []).find(
+    const player = genesisRosterPlayers(matchStartPayloadRef.current, multiplayerRef.current).find(
       (entry) => Number(entry.index) === normalized
     );
     return String(player?.auditEncryptionPublicKey || "");
@@ -1873,6 +2416,18 @@ export function usePeerLobbyConnections(base, servicesRef) {
     const beforeExpectedObjectId = shuffleObjectId ?? objectId;
     const afterExpectedObjectId = objectId ?? shuffleObjectId;
     if (beforeExpectedObjectId == null || afterExpectedObjectId == null) return false;
+    // The ids come from the opening itself, so they may only confirm a link
+    // the ceremony already implies: one object moving from slot to position.
+    // Two different ids would let an opening pair any slot with any position.
+    if (beforeExpectedObjectId !== afterExpectedObjectId) return false;
+    // With one order missing there is no recorded permutation, so only the
+    // identity mapping is implied.
+    if (
+      (beforeOrder.length === 0 || afterOrder.length === 0)
+      && !(hasShuffleOriginalSlot && hasPosition && normalizedShuffleOriginalSlot === normalizedPosition)
+    ) {
+      return false;
+    }
     const beforeMatches =
       beforeOrder.length === 0
       || (
@@ -2757,6 +3312,12 @@ export function usePeerLobbyConnections(base, servicesRef) {
   async function rememberPendingActionIntent(intent, evidence = {}) {
     const verifiedIntent = await verifySignedActionIntent(intent);
     const key = actionIntentKey(verifiedIntent);
+    // Once this peer revealed fair-random material for the actor's intent at
+    // this sequence, no other intent at that sequence is acceptable, even
+    // after a cancel (the actor has already seen the randomness).
+    if (servicesRef.current.fairRandomRevealLockConflict?.(verifiedIntent)) {
+      throw new Error("Refusing conflicting signed action intent for this sequence");
+    }
     const inactiveReason = protocolActionIntentInactiveReason(key);
     if (inactiveReason) {
       recordPeerSyncPerf("action_intent:ignored", {
@@ -2798,6 +3359,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
       }
     }
     pendingActionIntentsRef.current.set(key, record);
+    rememberActionIntentObservation(key, record);
     schedulePendingActionIntentTimeout(key, record);
     // Publish the shared record and merge its deadline before yielding to the
     // worker. Concurrent progress handlers must see and extend this record.
@@ -3028,8 +3590,16 @@ export function usePeerLobbyConnections(base, servicesRef) {
   async function handleActionIntentCancelMessage(message) {
     if (!message?.actionIntent) return;
     const verifiedIntent = await verifySignedActionIntent(message.actionIntent);
+    // Only the intent's actor may withdraw it: the intent itself is visible to
+    // every peer, so a cancel must carry the actor's own signature over it.
+    const cancelPayload = actionIntentCancelPayload(verifiedIntent, message.reason);
+    const actorKey = await importCachedAuditPublicKey(publicKeyForAuditSigner(verifiedIntent.actorIndex));
+    if (!(await verifyAuditPayload(actorKey, cancelPayload, message.cancelSignature || ""))) {
+      throw new Error("Action intent cancel is not signed by the intent's actor");
+    }
     const key = actionIntentKey(verifiedIntent);
     rememberIgnoredActionIntentKey(key, String(message.reason || "action_intent_cancel"));
+    markActionIntentObservationCancelled(key, message.senderIndex);
     const hadPending = pendingActionIntentsRef.current.has(key);
     if (hadPending || matchingAppliedActionForIntent(verifiedIntent)) {
       clearPendingActionIntent(key);
@@ -3094,11 +3664,25 @@ export function usePeerLobbyConnections(base, servicesRef) {
     return sent;
   }
 
-  function broadcastActionIntentCancel(actionIntent, reason = "") {
+  function actionIntentCancelPayload(actionIntent, reason = "") {
+    return {
+      domain: "ironsmith.action_intent_cancel.v1",
+      matchId: String(actionIntent.matchId || ""),
+      seq: Number(actionIntent.seq || 0),
+      actorIndex: Number(actionIntent.actorIndex ?? -1),
+      intentSignature: String(actionIntent.signature || ""),
+      reason: String(reason || ""),
+    };
+  }
+
+  async function broadcastActionIntentCancel(actionIntent, reason = "") {
     if (!actionIntent) return false;
     const session = multiplayerRef.current;
+    const { keyPair } = await ensureAuditIdentity();
+    const cancelSignature = await signAuditPayload(keyPair, actionIntentCancelPayload(actionIntent, reason));
     const payload = {
       type: "action_intent_cancel",
+      cancelSignature,
       protocolVersion: PROTOCOL_VERSION,
       requestId: makeZiffleRequestId("action-cancel"),
       senderPeerId: String(session.localPeerId || ""),
@@ -3400,5 +3984,5 @@ export function usePeerLobbyConnections(base, servicesRef) {
   }
 
 
-  return { IGNORED_ACTION_INTENT_TTL_MS, MAX_IGNORED_ACTION_INTENTS, actionBroadcastResponseTimeoutMs, actionIntentKeyFromProtocolClaim, actionIntentKeyFromProtocolPayload, actionIntentProgressExtraFromMessage, actionIntentProgressOperation, auditEncryptionPublicKeyForPlayer, beginPeerWait, broadcastActionIntentCancel, broadcastActionIntentProgress, cachedZiffleRevealTokens, clearAllConnectionHeartbeats, clearAllPendingActionIntents, clearConnectionHeartbeat, clearOwnerZiffleOpeningCache, clearPeerWait, clearPeerWaitForActionIntent, clearPendingActionIntent, currentAuditMatchId, emitZiffleDiagnosticNotice, ensureAuditIdentity, ensureDirectPeerConnections, ensureZiffleIdentity, ensureZiffleOpeningProof, extendZiffleRevealTokenWaitersForActionIntent, handleActionIntentCancelMessage, handleActionIntentProgressMessage, handleConnectionHeartbeatMessage, handlePendingActionIntentTimeout, hydrateZiffleCeremonyForLookup, ignoreAndClearAllPendingActionIntents, ignoredActionIntentReason, importCachedAuditPublicKey, isDirectProtocolMessage, localRevealedOpeningForExport, localRevealedOpeningForRequirement, localRevealedOpeningForZiffleReveal, localZiffleDiagnostics, makeProtocolResponseTimeoutError, makeZiffleRequestId, markConnectionAlive, matchPayloadCeremoniesForLookup, matchingAppliedActionForIntent, normalizeZiffleRevealToken, observedMatchClockElapsedForIntent, openingNeedsZiffleProof, pendingActionIntentDueAtMs, pendingActionIntentEvidenceDueAtMs, pendingActionIntentEvidenceRequestedAtMs, pendingActionIntentEvidenceTimeoutMs, pendingActionIntentFirstObservedAtMs, pendingActionIntentHardDueAtMs, pendingActionIntentHardTimeoutEvidence, pendingActionIntentHeldForProtocolWork, pendingActionIntentRecordForSequence, pendingActionIntentSuppressesHeartbeatStale, previewActionIntentOpeningInInspector, privateDeckManifestForOwner, protocolActionIntentInactiveReason, pruneIgnoredActionIntents, publicDeckManifestForOwner, publicKeyForAuditSigner, publicZiffleKey, refreshPendingActionIntentEvidenceForAction, rememberIgnoredActionIntentKey, rememberLocalRevealedOpening, rememberLocalZiffleCeremonyForLookup, rememberPendingActionIntent, rememberPrivateDeckManifest, rememberPrivateViewDisclosure, rememberZiffleOpeningPosition, rememberZiffleRevealTokens, resolveActionQuorumVote, resolveCryptoMaterial, resolveLocalCryptoPlayerIndex, resolveRngCommit, resolveRngReveal, resolveSubmissionIdleWaiters, resolveTimeoutVote, resolveZiffleRevealToken, resolveZiffleShuffleStep, runtimeManifestForZiffleCeremony, schedulePendingActionIntentTimeout, shouldReplacePendingActionIntentEvidence, shouldSuppressProtocolMessageError, showActionIntentProgressWait, signActionIntentForCommand, signPlayerGenesis, signReconnectProofForChallenge, signedZiffleKeysForPayload, startActionIntentProgressBroadcast, startConnectionHeartbeat, updateMultiplayer, updatePeerWait, updatePeerWaitForActionIntent, verifyActionMatchesPendingIntent, verifyReconnectProofForChallenge, verifySignedActionIntent, verifyZiffleOpeningCryptographicProof, verifyZiffleOpeningProofForOpening, waitForActionQuorumVote, waitForCryptoMaterial, waitForPendingActionIntentBeforeLocalSubmit, waitForProtocolResponse, waitForRngCommit, waitForRngReveal, waitForSubmissionIdle, waitForTimeoutVote, waitForZiffleRevealToken, waitForZiffleShuffleStep, ziffleCeremonyCandidatesForOwner, ziffleCeremonyForOwner, ziffleCeremonyHasObjectOrder, ziffleObjectOrderLinksOpening, ziffleOpeningPositionForSlot, ziffleOpeningProofHasAuthenticatedObjectOrder, zifflePositionForObjectId, zifflePositionForOriginalSlot, zifflePublicKeysForPlayers, ziffleRevealMatchesOpening, ziffleRevealTokenCacheKey, ziffleShuffleObjectIdForPosition, ziffleShuffleOriginalSlotForPosition, ziffleTokensForPosition };
+  return { assertLocalProtocolTimeoutObservation, handleProtocolWaitAnswerMessage, handleProtocolWaitNoticeMessage, localProtocolTimeoutContradiction, observedProtocolWaitMs, openProtocolWaitsForRequester, protocolResponseConn, IGNORED_ACTION_INTENT_TTL_MS, MAX_IGNORED_ACTION_INTENTS, actionBroadcastResponseTimeoutMs, actionIntentKeyFromProtocolClaim, actionIntentKeyFromProtocolPayload, actionIntentProgressExtraFromMessage, actionIntentProgressOperation, auditEncryptionPublicKeyForPlayer, beginPeerWait, broadcastActionIntentCancel, broadcastActionIntentProgress, cachedZiffleRevealTokens, clearAllConnectionHeartbeats, clearAllPendingActionIntents, clearConnectionHeartbeat, clearOwnerZiffleOpeningCache, clearPeerWait, clearPeerWaitForActionIntent, clearPendingActionIntent, currentAuditMatchId, emitZiffleDiagnosticNotice, ensureAuditIdentity, ensureDirectPeerConnections, ensureZiffleIdentity, ensureZiffleOpeningProof, extendZiffleRevealTokenWaitersForActionIntent, handleActionIntentCancelMessage, handleActionIntentProgressMessage, handleConnectionHeartbeatMessage, handlePendingActionIntentTimeout, hydrateZiffleCeremonyForLookup, ignoreAndClearAllPendingActionIntents, ignoredActionIntentReason, importCachedAuditPublicKey, isDirectProtocolMessage, localRevealedOpeningForExport, localRevealedOpeningForRequirement, localRevealedOpeningForZiffleReveal, localZiffleDiagnostics, makeProtocolResponseTimeoutError, makeZiffleRequestId, markConnectionAlive, matchPayloadCeremoniesForLookup, matchingAppliedActionForIntent, normalizeZiffleRevealToken, observedMatchClockElapsedForIntent, openingNeedsZiffleProof, pendingActionIntentDueAtMs, pendingActionIntentEvidenceDueAtMs, pendingActionIntentEvidenceRequestedAtMs, pendingActionIntentEvidenceTimeoutMs, pendingActionIntentFirstObservedAtMs, pendingActionIntentHardDueAtMs, pendingActionIntentHardTimeoutEvidence, pendingActionIntentHeldForProtocolWork, pendingActionIntentRecordForSequence, pendingActionIntentSuppressesHeartbeatStale, previewActionIntentOpeningInInspector, privateDeckManifestForOwner, protocolActionIntentInactiveReason, pruneIgnoredActionIntents, publicDeckManifestForOwner, publicKeyForAuditSigner, publicZiffleKey, refreshPendingActionIntentEvidenceForAction, rememberIgnoredActionIntentKey, rememberLocalRevealedOpening, rememberLocalZiffleCeremonyForLookup, rememberPendingActionIntent, rememberPrivateDeckManifest, rememberPrivateViewDisclosure, rememberZiffleOpeningPosition, rememberZiffleRevealTokens, resolveActionQuorumVote, resolveCryptoMaterial, resolveLocalCryptoPlayerIndex, resolveRngCommit, resolveRngReveal, resolveSubmissionIdleWaiters, resolveTimeoutVote, resolveZiffleRevealToken, resolveZiffleShuffleStep, runtimeManifestForZiffleCeremony, schedulePendingActionIntentTimeout, shouldReplacePendingActionIntentEvidence, shouldSuppressProtocolMessageError, showActionIntentProgressWait, signActionIntentForCommand, signPlayerGenesis, signReconnectProofForChallenge, signedZiffleKeysForPayload, startActionIntentProgressBroadcast, startConnectionHeartbeat, updateMultiplayer, updatePeerWait, updatePeerWaitForActionIntent, verifyActionMatchesPendingIntent, verifyReconnectProofForChallenge, verifySignedActionIntent, verifyZiffleOpeningCryptographicProof, verifyZiffleOpeningProofForOpening, waitForActionQuorumVote, waitForCryptoMaterial, waitForPendingActionIntentBeforeLocalSubmit, waitForProtocolResponse, waitForRngCommit, waitForRngReveal, waitForSubmissionIdle, waitForTimeoutVote, waitForZiffleRevealToken, waitForZiffleShuffleStep, ziffleCeremonyCandidatesForOwner, ziffleCeremonyForOwner, ziffleCeremonyHasObjectOrder, ziffleObjectOrderLinksOpening, ziffleOpeningPositionForSlot, ziffleOpeningProofHasAuthenticatedObjectOrder, zifflePositionForObjectId, zifflePositionForOriginalSlot, zifflePublicKeysForPlayers, ziffleRevealMatchesOpening, ziffleRevealTokenCacheKey, ziffleShuffleObjectIdForPosition, ziffleShuffleOriginalSlotForPosition, ziffleTokensForPosition };
 }

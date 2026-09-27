@@ -371,6 +371,12 @@ pub struct ExecutionContext<'a> {
     /// resolution can't follow (CR 400.7, 603.6c, 603.7c). `None` outside a
     /// stack resolution keeps the unrestricted stable-identity lookup.
     pub resolution_object_id_floor: Option<ObjectId>,
+    /// Tag of the library search the next instruction reveals ("search ...
+    /// for up to two basic land cards, reveal those cards, ..."). Set by the
+    /// enclosing instruction list only while that search executes, so its
+    /// chosen cards are revealed publicly with the selection (opened on every
+    /// peer before the answer is replayed).
+    pub(crate) public_search_reveal_tag: Option<TagKey>,
 }
 
 impl std::fmt::Debug for ExecutionContext<'_> {
@@ -471,6 +477,7 @@ impl<'a> ExecutionContext<'a> {
             created_extra_turn_index: None,
             restarted_game: false,
             resolution_object_id_floor: None,
+            public_search_reveal_tag: None,
         }
     }
 
@@ -529,6 +536,7 @@ impl<'a> ExecutionContext<'a> {
             created_extra_turn_index: None,
             restarted_game: false,
             resolution_object_id_floor: None,
+            public_search_reveal_tag: None,
         }
     }
 
@@ -577,6 +585,7 @@ impl<'a> ExecutionContext<'a> {
             created_extra_turn_index: self.created_extra_turn_index,
             restarted_game: self.restarted_game,
             resolution_object_id_floor: self.resolution_object_id_floor,
+            public_search_reveal_tag: self.public_search_reveal_tag,
         }
     }
 

@@ -2898,11 +2898,19 @@ impl WasmGame {
         if let Some(exporter) = exporter
             && exporter != previous_perspective
         {
-            merged.extend(
-                previous_ledger
-                    .into_iter()
-                    .filter(|held| held.owner == exporter),
-            );
+            // A foreign checkpoint (forced resync) must never erase a claim
+            // this engine still holds: the exporter never held claims about
+            // its own cards, nor about cards it already knew (e.g. privately
+            // revealed to it), and claims whose filter has no stable wire
+            // encoding never reach any checkpoint (see
+            // `sync_hidden_identity_obligation`). A claim whose card is no
+            // longer a placeholder here is dropped by the restore below, so
+            // keeping every held claim cannot resurrect a checked one.
+            for held in previous_ledger {
+                if !merged.iter().any(|claim| claim.same_claim(&held)) {
+                    merged.push(held);
+                }
+            }
         }
         self.game.restore_hidden_identity_obligations(merged);
     }

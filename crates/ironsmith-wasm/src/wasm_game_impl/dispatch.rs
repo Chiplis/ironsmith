@@ -86,6 +86,38 @@ fn hidden_position_reveal_position_matches(
     info.slot == position || info.public_slot == Some(position)
 }
 
+fn hidden_commitment_is_ziffle_position(commitment: &str) -> bool {
+    commitment.starts_with("ziffle:")
+}
+
+/// An original deck slot identifies exactly one physical card. Once some other
+/// object of the same owner is bound to `slot` by its deck commitment (a
+/// revealed or slot-identified hidden card), no reveal may bind a second
+/// object to it: that would let an owner relabel an unrelated hidden card as
+/// an already-accounted-for (or never-drawn) committed card.
+fn hidden_original_slot_claimed_by_other_object<'a, I>(
+    hidden_cards: I,
+    owner: ironsmith::ids::PlayerId,
+    target: ironsmith::ids::ObjectId,
+    slot: u16,
+) -> bool
+where
+    I: IntoIterator<
+        Item = (
+            &'a ironsmith::ids::ObjectId,
+            &'a ironsmith::game_state::HiddenCardInfo,
+        ),
+    >,
+{
+    hidden_cards.into_iter().any(|(object_id, info)| {
+        *object_id != target
+            && info.owner == owner
+            && info.slot == slot
+            && !info.commitment.is_empty()
+            && !hidden_commitment_is_ziffle_position(&info.commitment)
+    })
+}
+
 fn replay_can_apply_legend_rule_choice_live(root: &ReplayRoot, ctx: &DecisionContext) -> bool {
     let ReplayRoot::Advance = root else {
         return false;
@@ -1793,6 +1825,24 @@ impl WasmGame {
                 "hidden card commitment does not match reveal",
             ));
         }
+        if input.commitment.as_deref().is_none_or(str::is_empty)
+            && hidden_commitment_is_ziffle_position(&info.commitment)
+        {
+            return Err(JsValue::from_str(
+                "hidden ziffle object reveal is missing its commitment",
+            ));
+        }
+        if hidden_original_slot_claimed_by_other_object(
+            self.game.hidden_card_entries(),
+            info.owner,
+            object_id,
+            info.slot,
+        ) && !hidden_commitment_is_ziffle_position(&info.commitment)
+        {
+            return Err(JsValue::from_str(
+                "hidden card slot is already bound to another object",
+            ));
+        }
         self.ensure_card_definitions_loaded([input.card_name.as_str()]);
         let definition = self
             .find_card_definition(&input.card_name)
@@ -1828,20 +1878,37 @@ impl WasmGame {
         input: RevealHiddenSlotInput,
     ) -> Result<JsValue, JsValue> {
         let owner = PlayerId::from_index(input.owner);
-        let Some((&object_id, info)) = self
-            .game
-            .hidden_card_entries()
-            .find(|(_, info)| info.owner == owner && info.slot == input.slot)
+        // A committed-slot reveal must name the slot's deck commitment: it is
+        // what binds the opened card to this placeholder. Matching by slot
+        // number alone could pick a ziffle placeholder whose current position
+        // happens to equal the slot.
+        let Some(commitment) = input.commitment.as_deref().filter(|value| !value.is_empty())
         else {
             return Err(JsValue::from_str(
-                "hidden slot is not present in this engine",
+                "hidden slot reveal is missing its deck commitment",
             ));
         };
-        if let Some(commitment) = input.commitment.as_deref()
-            && commitment != info.commitment
-        {
+        let has_slot = self
+            .game
+            .hidden_card_entries()
+            .any(|(_, info)| info.owner == owner && info.slot == input.slot);
+        let Some((&object_id, _info)) = self.game.hidden_card_entries().find(|(_, info)| {
+            info.owner == owner && info.slot == input.slot && info.commitment == commitment
+        }) else {
+            return Err(JsValue::from_str(if has_slot {
+                "hidden card commitment does not match reveal"
+            } else {
+                "hidden slot is not present in this engine"
+            }));
+        };
+        if hidden_original_slot_claimed_by_other_object(
+            self.game.hidden_card_entries(),
+            owner,
+            object_id,
+            input.slot,
+        ) {
             return Err(JsValue::from_str(
-                "hidden card commitment does not match reveal",
+                "hidden card slot is already bound to another object",
             ));
         }
         self.ensure_card_definitions_loaded([input.card_name.as_str()]);
@@ -1960,6 +2027,42 @@ impl WasmGame {
         if !hidden_position_reveal_commitment_matches(&info, position_commitment) {
             return Err(JsValue::from_str(
                 "hidden ziffle position commitment does not match reveal",
+            ));
+        }
+        // A placeholder that is still ziffle-committed may only be opened
+        // against its ziffle position commitment, never by bare position
+        // number (the caller must have proved the position it opens).
+        if position_commitment.is_none_or(str::is_empty) {
+            if hidden_commitment_is_ziffle_position(&info.commitment)
+                || info
+                    .public_commitment
+                    .as_deref()
+                    .is_some_and(hidden_commitment_is_ziffle_position)
+            {
+                return Err(JsValue::from_str(
+                    "hidden ziffle position reveal is missing its position commitment",
+                ));
+            }
+            // Without a position commitment this is a plain committed-slot
+            // reveal: it must open the placeholder's own deck commitment.
+            let binds_placeholder = match input.commitment.as_deref().filter(|c| !c.is_empty()) {
+                Some(commitment) => commitment == info.commitment,
+                None => input.original_slot == info.slot,
+            };
+            if !binds_placeholder {
+                return Err(JsValue::from_str(
+                    "hidden position reveal does not open the placeholder's committed slot",
+                ));
+            }
+        }
+        if hidden_original_slot_claimed_by_other_object(
+            self.game.hidden_card_entries(),
+            owner,
+            object_id,
+            input.original_slot,
+        ) {
+            return Err(JsValue::from_str(
+                "hidden card slot is already bound to another object",
             ));
         }
         let zone = info.zone;
@@ -2179,7 +2282,10 @@ impl WasmGame {
         for card in self.game.end_of_match_disclosure_cards(owner) {
             let info = &card.info;
             let matches_card = |opening: &&DisclosedOpening| {
-                let slot_match = opening.slot == Some(info.slot)
+                // A ziffle-committed card's `slot` is its shuffled position,
+                // not a deck slot: only a (proved) position opening binds it.
+                let slot_match = !hidden_commitment_is_ziffle_position(&info.commitment)
+                    && opening.slot == Some(info.slot)
                     && opening
                         .commitment
                         .as_deref()
@@ -2214,6 +2320,57 @@ impl WasmGame {
             .map_err(|e| JsValue::from_str(&format!("failed to serialize disclosure result: {e}")))
     }
 
+    /// Deferred claims about `player_index`'s hidden cards that only its
+    /// end-of-match disclosure can settle. `claimSubjects` and
+    /// `libraryAnchors` are public facts (identical on every peer);
+    /// `obligations` counts this engine's own pending ledger entries about the
+    /// player's cards. A player with any of them must deliver a verified
+    /// disclosure; withholding it is a verdict against that player.
+    #[wasm_bindgen(js_name = endOfMatchDisclosureObligations)]
+    pub fn end_of_match_disclosure_obligations(&self, player_index: u8) -> Result<JsValue, JsValue> {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct DisclosureObligations {
+            obligations: usize,
+            claim_subjects: usize,
+            library_anchors: usize,
+        }
+        let owner = PlayerId::from_index(player_index);
+        let subjects: HashSet<_> = self.game.hidden_claim_subjects().into_iter().collect();
+        let live_subjects = self
+            .game
+            .hidden_card_entries()
+            .filter(|(_, info)| info.owner == owner)
+            .filter_map(|(id, _)| self.game.object(*id).map(|object| object.stable_id))
+            .filter(|stable_id| subjects.contains(stable_id))
+            .count();
+        let departed_subjects = self
+            .game
+            .departed_hidden_cards()
+            .iter()
+            .filter(|departed| departed.info.owner == owner)
+            .filter(|departed| subjects.contains(&departed.object.stable_id))
+            .count();
+        let result = DisclosureObligations {
+            obligations: self
+                .game
+                .hidden_identity_obligations()
+                .iter()
+                .filter(|obligation| obligation.owner == owner)
+                .count(),
+            claim_subjects: live_subjects + departed_subjects,
+            library_anchors: self
+                .game
+                .hidden_library_anchors()
+                .iter()
+                .filter(|anchor| anchor.owner == owner)
+                .count(),
+        };
+        serde_wasm_bindgen::to_value(&result).map_err(|e| {
+            JsValue::from_str(&format!("failed to serialize disclosure obligations: {e}"))
+        })
+    }
+
     /// Whether `object_id` is tracked by the mental-poker layer, who owns it,
     /// and whether this engine can name it (opened here, privately or
     /// publicly). Used to check that a forced public reveal or an
@@ -2236,6 +2393,39 @@ impl WasmGame {
         };
         serde_wasm_bindgen::to_value(&state)
             .map_err(|e| JsValue::from_str(&format!("failed to serialize hidden card state: {e}")))
+    }
+
+    /// Whether the rules let `viewer` look at `object_id` in its current zone
+    /// (CR 406.3 / 708.5 / 722.4), independent of ownership. Mental-poker
+    /// responders use this to decide whether a player may ask for an opening
+    /// of a hidden card from visible state alone: an owner may not look at its
+    /// own card an opponent exiled face down (Gonti, Praetor's Grasp), nor at
+    /// a face-down permanent it owns but does not control.
+    #[wasm_bindgen(js_name = hiddenObjectViewableBy)]
+    pub fn hidden_object_viewable_by(&self, object_id: u64, viewer: u8) -> bool {
+        let id = ObjectId::from_raw(object_id);
+        let Some(object) = self.game.object(id) else {
+            return false;
+        };
+        let viewer = PlayerId::from_index(viewer);
+        if self.game.player(viewer).is_none() {
+            return false;
+        }
+        match object.zone {
+            Zone::OutsideGame => viewer == object.owner,
+            Zone::Hand => {
+                viewer == object.owner || viewer == self.game.controlling_player_for(object.owner)
+            }
+            Zone::Library => false,
+            Zone::Battlefield if self.game.is_face_down(id) => {
+                let controller = self.game.controller_of(object);
+                viewer == controller || viewer == self.game.controlling_player_for(controller)
+            }
+            Zone::Exile if self.game.is_face_down(id) => {
+                self.game.can_player_look_at_face_down_exiled_card(id, viewer)
+            }
+            _ => true,
+        }
     }
 
     #[wasm_bindgen(js_name = exportHiddenCardOpening)]

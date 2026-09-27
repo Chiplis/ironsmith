@@ -27,6 +27,11 @@ path = "src/bin/audit_compiled_cards.rs"
 test = false
 
 [[bin]]
+name = "audit_runtime_worker"
+path = "src/bin/audit_runtime_worker.rs"
+test = false
+
+[[bin]]
 name = "audit_similarity_residuals"
 path = "src/bin/audit_similarity_residuals.rs"
 test = false

@@ -3805,7 +3805,7 @@ function GameOverBar({
                 key={entry.player}
                 className={cn(
                   "break-words",
-                  entry.status === "cheat_detected" ? "text-[#ff8a7a]" : "text-muted-foreground"
+                  (entry.status === "cheat_detected" || entry.status === "withheld") ? "text-[#ff8a7a]" : "text-muted-foreground"
                 )}
                 title={entry.reason || undefined}
               >

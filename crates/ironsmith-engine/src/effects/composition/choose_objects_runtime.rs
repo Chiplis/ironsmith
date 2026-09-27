@@ -26,6 +26,30 @@ use crate::zone::Zone;
 
 use super::choose_objects::{ChooseObjectsEffect, search_zones, top_only_selection_limit};
 
+/// The tag of `effect` when it is a library search whose chosen cards `next`
+/// reveals ("search your library for up to two basic land cards, reveal those
+/// cards, ..."). Such a search reveals its selection publicly, like a search
+/// that says "reveal" itself (see `ExecutionContext::public_search_reveal_tag`).
+pub(crate) fn revealed_search_tag(
+    effect: &crate::effect::Effect,
+    next: Option<&crate::effect::Effect>,
+) -> Option<crate::tag::TagKey> {
+    let choose = effect.downcast_ref::<ChooseObjectsEffect>()?;
+    if !choose.is_search {
+        return None;
+    }
+    let reveal = next?.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+    (reveal.tag == choose.tag).then(|| choose.tag.clone())
+}
+
+/// The filter a chosen hidden library card must satisfy once opened
+/// (ownership is resolved by `library_candidate_players`).
+fn library_zone_filter(effect: &ChooseObjectsEffect) -> ObjectFilter {
+    let mut filter = effect.filter.clone();
+    filter.owner = None;
+    filter
+}
+
 fn is_implicit_object_tag(tag: &str) -> bool {
     matches!(tag, "__it__" | "it")
 }
@@ -1440,6 +1464,11 @@ pub(crate) fn run_choose_objects(
                 }
             }
         }
+        if effect.is_search && search_zones.contains(&Zone::Library) {
+            // The placeholders added above bypassed the zone scan's "search
+            // the top N cards instead" restriction (Aven Mindcensor).
+            game.restrict_library_search_candidates(chooser_id, &mut candidates);
+        }
         // A random pick among qualifying hand cards ("exile a nonland card at
         // random from your hand"): every peer must shuffle the same set, so
         // the owners reveal the qualifying private cards first (see
@@ -1591,6 +1620,9 @@ pub(crate) fn run_choose_objects(
                 Ok::<_, ExecutionError>(resolved)
             })
             .transpose()?;
+        let reveals_selection_publicly = effect.is_search
+            && has_hidden_search_zones
+            && (effect.reveal || ctx.public_search_reveal_tag.as_ref() == Some(&effect.tag));
         let chosen: Vec<ObjectId> = if effect.count.is_random() {
             let mut randomized = candidates.clone();
             game.shuffle_slice(&mut randomized);
@@ -1618,6 +1650,14 @@ pub(crate) fn run_choose_objects(
                     DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
                 );
             }
+            if reveals_selection_publicly {
+                // The chosen cards are revealed: open them on every peer
+                // before the answer is replayed (as `SearchSpec` does for a
+                // revealed search), so every engine filters the real cards.
+                spec = spec.with_selection_reveal_policy(
+                    crate::decisions::context::SelectionRevealPolicy::Public,
+                );
+            }
             make_decision(game, ctx.decision_maker, chooser_id, Some(ctx.source), spec)
         };
         if !effect.count.is_random() && ctx.decision_maker.awaiting_choice() {
@@ -1628,6 +1668,29 @@ pub(crate) fn run_choose_objects(
             } else {
                 outcome
             });
+        }
+        if effect.is_search
+            && !effect.count.is_random()
+            && let Some(rejected) = chosen.iter().copied().find(|id| {
+                !candidates.contains(id)
+                    && game
+                        .object(*id)
+                        .is_some_and(|object| object.zone == Zone::Library)
+            })
+        {
+            // A library card that is not a candidate was chosen: on a peer
+            // this is a card opened before the replay (a publicly revealed
+            // selection) that fails the search's filter. Reject it as a
+            // violated hidden choice instead of silently dropping it, which
+            // would desync this engine from the chooser's.
+            let name = game
+                .object(rejected)
+                .map(|object| object.name.to_string())
+                .unwrap_or_default();
+            return Err(ExecutionError::Impossible(format!(
+                "{}: {name} does not satisfy the hidden choice \"{description}\"",
+                crate::game_state::HIDDEN_IDENTITY_VIOLATION_PREFIX
+            )));
         }
         let preserve_order = effect.count_value.as_ref().is_some_and(|value| {
             value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ChooseAllInOrder)
@@ -1647,8 +1710,20 @@ pub(crate) fn run_choose_objects(
         // an honest choice they are no-ops on the owner, so skip them wherever
         // a placeholder was chosen instead of rewriting the choice differently
         // from the owner.
-        let chose_placeholder =
-            hidden_hand_choice && chosen.iter().any(|id| game.is_hidden_card_placeholder(*id));
+        //
+        // A library search that picked placeholders is the same: the owner's
+        // engine knows the cards, peers only see "Hidden Card" (which every
+        // name-based normalization would collapse).
+        let chose_library_placeholder = effect.is_search
+            && chosen.iter().any(|id| {
+                game.is_hidden_card_placeholder(*id)
+                    && game
+                        .object(*id)
+                        .is_some_and(|object| object.zone == Zone::Library)
+            });
+        let chose_placeholder = (hidden_hand_choice
+            && chosen.iter().any(|id| game.is_hidden_card_placeholder(*id)))
+            || chose_library_placeholder;
         let allow_hidden_partial = allow_hidden_partial || hidden_hand_choice;
         let chosen = enforce_public_search_choice_constraint(
             game,
@@ -1760,6 +1835,34 @@ pub(crate) fn run_choose_objects(
                 return Err(ExecutionError::Impossible(format!(
                     "chosen objects have aggregate value {chosen_total}, below required minimum {minimum}"
                 )));
+            }
+        }
+        if effect.is_search && !effect.count.is_random() {
+            // Every library card chosen by a filtered search must satisfy the
+            // search's own filter once opened (moved to a public zone,
+            // revealed, or disclosed at the end of the match). The chosen
+            // list is identical on every peer, so the claim subjects (and
+            // library anchors, should the card be shuffled back) are
+            // symmetric; only peers holding placeholders record obligations.
+            // An unfiltered search ("search for a card") records nothing.
+            let library_choices: Vec<ObjectId> = chosen
+                .iter()
+                .copied()
+                .filter(|id| {
+                    game.hidden_card_info(*id).is_some()
+                        && game
+                            .object(*id)
+                            .is_some_and(|object| object.zone == Zone::Library)
+                })
+                .collect();
+            if !library_choices.is_empty() {
+                let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
+                game.record_hidden_identity_obligations(
+                    &library_choices,
+                    &library_zone_filter(effect),
+                    &filter_ctx,
+                    &description,
+                );
             }
         }
         if chose_placeholder {

@@ -129,6 +129,11 @@ struct ZiffleVerifyShuffleOutput {
 struct ZiffleBuildRevealTokenInput {
     deck_count: usize,
     context: String,
+    /// Deck hash the caller believes it is operating on. When present it
+    /// must equal the hash of the final verified step, so a caller cannot
+    /// be steered into answering for a deck other than the one it accepted.
+    #[serde(default)]
+    deck_hash: String,
     #[serde(default)]
     key_context: String,
     #[serde(default)]
@@ -146,6 +151,11 @@ struct ZiffleBuildRevealTokenInput {
 struct ZiffleBuildRevealTokensInput {
     deck_count: usize,
     context: String,
+    /// Deck hash the caller believes it is operating on. When present it
+    /// must equal the hash of the final verified step, so a caller cannot
+    /// be steered into answering for a deck other than the one it accepted.
+    #[serde(default)]
+    deck_hash: String,
     #[serde(default)]
     key_context: String,
     #[serde(default)]
@@ -201,6 +211,11 @@ struct ZiffleRevealTokenBatchOutput {
 struct ZiffleRevealCardInput {
     deck_count: usize,
     context: String,
+    /// Deck hash the caller believes it is operating on. When present it
+    /// must equal the hash of the final verified step, so a caller cannot
+    /// be steered into answering for a deck other than the one it accepted.
+    #[serde(default)]
+    deck_hash: String,
     #[serde(default)]
     key_context: String,
     #[serde(default)]
@@ -216,6 +231,11 @@ struct ZiffleRevealCardInput {
 struct ZiffleRevealCardsInput {
     deck_count: usize,
     context: String,
+    /// Deck hash the caller believes it is operating on. When present it
+    /// must equal the hash of the final verified step, so a caller cannot
+    /// be steered into answering for a deck other than the one it accepted.
+    #[serde(default)]
+    deck_hash: String,
     #[serde(default)]
     key_context: String,
     #[serde(default)]
@@ -580,6 +600,38 @@ fn verify_ziffle_steps_with_input<const N: usize>(
     Ok(verified)
 }
 
+/// Reveal and token paths operate only on a complete ceremony: one verified
+/// step per roster key, so no partial (or empty) chain can expose parent
+/// ciphertexts selected through `inputDeck.sources` directly. A non-empty
+/// `expected_deck_hash` must be the hash of the final verified step.
+fn complete_ceremony_deck<'a, const N: usize>(
+    ceremony: &'a VerifiedCeremony<N>,
+    steps: &[ZiffleShuffleStepInput],
+    expected_deck_hash: &str,
+) -> Result<&'a Verified<MaskedDeck<N>>, VerifierError> {
+    if steps.is_empty() || steps.len() != ceremony.keys.len() {
+        return Err(VerifierError::new(
+            "ziffle reveal requires a complete shuffle with one step per player",
+        ));
+    }
+    let deck = ceremony
+        .deck
+        .as_ref()
+        .ok_or_else(|| VerifierError::new("ziffle ceremony has no shuffle steps"))?;
+    let expected = expected_deck_hash.trim();
+    if !expected.is_empty() {
+        let last = steps
+            .last()
+            .ok_or_else(|| VerifierError::new("ziffle ceremony has no shuffle steps"))?;
+        if ziffle_deck_hash(&last.deck_hex)? != expected {
+            return Err(VerifierError::new(
+                "ziffle ceremony steps do not produce the claimed deck hash",
+            ));
+        }
+    }
+    Ok(deck)
+}
+
 fn build_ziffle_shuffle_step<const N: usize>(
     input: ZiffleBuildShuffleStepInput,
 ) -> Result<ZiffleShuffleStepOutput, VerifierError> {
@@ -706,10 +758,7 @@ fn build_ziffle_reveal_token<const N: usize>(
         input.input_deck.as_ref(),
     )?;
     let context = ceremony.proof_context.as_slice();
-    let verified_deck = ceremony
-        .deck
-        .as_ref()
-        .ok_or_else(|| VerifierError::new("ziffle ceremony has no shuffle steps"))?;
+    let verified_deck = complete_ceremony_deck(&ceremony, &input.steps, &input.deck_hash)?;
     let card = verified_deck
         .get(input.card_position)
         .ok_or_else(|| VerifierError::new("ziffle card position is out of range"))?;
@@ -743,10 +792,7 @@ fn build_ziffle_reveal_tokens<const N: usize>(
         input.input_deck.as_ref(),
     )?;
     let context = ceremony.proof_context.as_slice();
-    let verified_deck = ceremony
-        .deck
-        .as_ref()
-        .ok_or_else(|| VerifierError::new("ziffle ceremony has no shuffle steps"))?;
+    let verified_deck = complete_ceremony_deck(&ceremony, &input.steps, &input.deck_hash)?;
     let secret_key: SecretKey = ziffle_from_hex(&input.secret_key_hex, "ziffle secret key")?;
     let public_key: PublicKey = ziffle_from_hex(&input.public_key_hex, "ziffle public key")?;
     let player = input
@@ -798,10 +844,7 @@ fn reveal_ziffle_card<const N: usize>(
         input.input_deck.as_ref(),
     )?;
     let context = ceremony.proof_context.as_slice();
-    let verified_deck = ceremony
-        .deck
-        .as_ref()
-        .ok_or_else(|| VerifierError::new("ziffle ceremony has no shuffle steps"))?;
+    let verified_deck = complete_ceremony_deck(&ceremony, &input.steps, &input.deck_hash)?;
     let card = verified_deck
         .get(input.card_position)
         .ok_or_else(|| VerifierError::new("ziffle card position is out of range"))?;
@@ -849,10 +892,7 @@ fn reveal_ziffle_cards<const N: usize>(
         input.input_deck.as_ref(),
     )?;
     let context = ceremony.proof_context.as_slice();
-    let verified_deck = ceremony
-        .deck
-        .as_ref()
-        .ok_or_else(|| VerifierError::new("ziffle ceremony has no shuffle steps"))?;
+    let verified_deck = complete_ceremony_deck(&ceremony, &input.steps, &input.deck_hash)?;
     let mut out = Vec::with_capacity(input.card_positions.len());
     for card_position in input.card_positions {
         let card = verified_deck
@@ -961,6 +1001,7 @@ mod ziffle_backend_tests {
         for (player, secret_key_hex, public_key_hex) in secrets {
             let token = build_ziffle_reveal_token::<10>(ZiffleBuildRevealTokenInput {
                 deck_count: 10,
+                deck_hash: String::new(),
                 context: context.clone(),
                 key_context: String::new(),
                 input_deck: None,
@@ -981,6 +1022,7 @@ mod ziffle_backend_tests {
         }
         let reveal = reveal_ziffle_card::<10>(ZiffleRevealCardInput {
             deck_count: 10,
+            deck_hash: String::new(),
             context,
             key_context: String::new(),
             input_deck: None,

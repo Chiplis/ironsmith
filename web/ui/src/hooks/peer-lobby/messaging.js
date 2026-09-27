@@ -6,7 +6,7 @@ import { replayTrustedMatch, replayTrustedActions } from '../../lib/relay/replay
 import { readRelaySession, readPeerSession, relayCheckpoint, relayMatchId } from '../../lib/relay/session.js';
 import { PUBLIC_FORMATS, isRelayId, relayBaseUrl } from '../../lib/relay/formats.js';
 import { loadFormatCatalog, validateFormatDeck, assertFormatMatch } from '../../lib/relay/format-legality.js';
-import { buildPeerOptions, describePeerServer, relayPeerOptions } from './shared.js';
+import { buildPeerOptions, describePeerServer, pinnedSessionSecurityMode, relayPeerOptions } from './shared.js';
 import {
   CURRENT_AUDIT_MAX_PLAYERS,
   CURRENT_AUDIT_MIN_PLAYERS,
@@ -95,6 +95,8 @@ import {
 import { approximateMessageBytes, recordDiagnosticEvent, recordPeerMessage, recordPeerState } from "../../lib/action-diagnostics.js";
 import { describeSubstitutions, withSupportedCards } from "../../lib/unsupported-card-substitution.js";
 import { formatDeckRequirement } from "../../lib/lobby-deck.js";
+import { answerMatchSeedRevealRequest, collectMatchSeedReveals, pinPlayersToGenesisRoster, rememberStartedGenesis, resolveMatchSeedReveal, rotateGenesisSeedNonce } from "./genesis-binding.js";
+import { initialAuditStateHashForMatch } from "../../lib/multiplayer-audit.js";
 
 const MAX_LOBBY_CHAT_LENGTH = 120;
 const LOBBY_CHAT_EMOJI_PATTERNS = [
@@ -314,6 +316,33 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       if (!matchPayload || typeof matchPayload !== "object") {
         throw new Error("Resync payload is missing match state");
       }
+      // The security mode is pinned for the lobby/match the moment this seat
+      // first observed it (joined the lobby or accepted match start). A resync can
+      // never change it: otherwise a host could downgrade a Verified match to
+      // Trusted and replay unsigned host-authored commands.
+      const pinnedResyncSecurityMode = pinnedSessionSecurityMode(
+        multiplayerRef.current,
+        matchStartPayloadRef.current
+      );
+      if (pinnedResyncSecurityMode) {
+        const offeredMode = matchPayloadSecurityMode(matchPayload, pinnedResyncSecurityMode);
+        if (offeredMode !== pinnedResyncSecurityMode) {
+          const reason = `Host resync tried to change the match security mode from ${pinnedResyncSecurityMode} to ${offeredMode}`;
+          if (isVerifiedMultiplayerSecurityMode(pinnedResyncSecurityMode)) {
+            emitSyncFailureNotice("Cheat detected", `Cheat detected from the match host: ${reason}`);
+          }
+          throw new Error(reason);
+        }
+        matchPayload.securityMode = pinnedResyncSecurityMode;
+      }
+      // What this seat itself observed of the running clock epoch, captured
+      // before the replay below rebuilds the clock runtime; it caps how much
+      // elapsed time the host's unsigned clock snapshot may debit.
+      const priorClockObservation = multiplayerRef.current.matchStarted
+        && matchStartPayloadRef.current
+        && relayMatchId(matchPayload) === relayMatchId(matchStartPayloadRef.current)
+        ? servicesRef.current.captureMatchClockObservation?.() || null
+        : null;
       if ((!message?.checkpoint || typeof message.checkpoint !== "object")
           && !(message?.replayOnly === true && isTrustedMultiplayerSecurityMode(matchPayloadSecurityMode(matchPayload)))) {
         throw new Error("Resync payload is missing WASM checkpoint");
@@ -376,7 +405,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         stateRef.current = nextState;
         setState(nextState);
         restoreMatchClockRuntimeFromActionTranscript(actionHistoryRef.current, nextState, matchPayload);
-        const matchClock = alignMatchClockObservationFromHostSnapshot(matchPayload.currentMatchClock, nextState);
+        const matchClock = alignMatchClockObservationFromHostSnapshot(matchPayload.currentMatchClock, nextState, { priorObservation: priorClockObservation });
         updateMultiplayer(prev => ({ ...prev, players: resyncPlayers, submittingAction: false,
           matchClock, actionTimer: actionTimerSnapshotFromMatchClock(matchClock) }));
         matchClockObservationExemptSequenceRef.current = Number(message.lastSequence) + 1;
@@ -503,7 +532,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         restoreMatchClockRuntimeFromActionTranscript(acceptedActions, nextState, matchPayload);
         const matchClock = alignMatchClockObservationFromHostSnapshot(
           matchPayload.currentMatchClock,
-          nextState
+          nextState,
+          { priorObservation: priorClockObservation }
         );
         matchClockObservationExemptSequenceRef.current = messageLastSequence + 1;
         const acceptedMatchPayload = {
@@ -571,6 +601,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           startingLife: Number(acceptedMatchPayload.startingLife || prev.startingLife || 20),
           format: normalizeMatchFormat(acceptedMatchPayload.format || prev.format),
           securityMode: MULTIPLAYER_SECURITY_TRUSTED,
+          lockedSecurityMode: MULTIPLAYER_SECURITY_TRUSTED,
           localPlayerIndex: localEntry.index ?? prev.localPlayerIndex,
           players: acceptedSessionPlayers.length > 0 ? acceptedSessionPlayers : prev.players,
           lastAppliedSequence: messageLastSequence,
@@ -603,6 +634,15 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       const messageLastSequence = Number(message?.lastSequence ?? continuity.finalSequence);
       if (messageLastSequence !== continuity.finalSequence) {
         throw new Error("Resync message last sequence does not match action transcript");
+      }
+      // A Verified resync only ever extends the accepted match: it may not
+      // swap in a different (e.g. earlier rematch) signed genesis.
+      const acceptedVerifiedMatch = matchStartPayloadRef.current;
+      if (currentSession.matchStarted && acceptedVerifiedMatch) {
+        if (relayMatchId(matchPayload) !== relayMatchId(acceptedVerifiedMatch)
+            || String(matchPayload.genesis?.payloadHash || "") !== String(acceptedVerifiedMatch.genesis?.payloadHash || "")) {
+          throw new Error("Resync payload belongs to a different match");
+        }
       }
       await verifySignedMatchGenesis(matchPayload);
       const verifyTranscriptShuffleProof = async (proof) => {
@@ -648,7 +688,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         protocolVersion: PROTOCOL_VERSION,
         signatureAlgorithm: "ecdsa-p256-sha256",
         genesis: cloneMultiplayerPayload(matchPayload.genesis),
-        initialStateHash: INITIAL_AUDIT_STATE_HASH,
+        initialStateHash: await initialAuditStateHashForMatch(matchPayload),
         initialPublicCheckpointHash: matchPayload.initialPublicCheckpointHash || "",
         actions: actionEntries.map((entry) => cloneMultiplayerPayload(entry)),
       }, globalThis.crypto, {
@@ -717,6 +757,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       try {
         await applyMatchStart(replayMatchPayload, {
           deferLocalZiffleReveal: true,
+          // Already bound above to the accepted genesis and a transcript
+          // that extends the local one; this restart replays, never rewinds.
+          verifiedResyncReplay: true,
         });
         for (const action of actionEntries) {
           await applySequencedActionMessage(cloneMultiplayerPayload(action), {
@@ -753,7 +796,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       setState(nextState);
       const matchClock = alignMatchClockObservationFromHostSnapshot(
         matchPayload.currentMatchClock,
-        nextState
+        nextState,
+        { priorObservation: priorClockObservation }
       );
 
       const lastSequence = continuity.finalSequence;
@@ -761,8 +805,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       const acceptedMatchPayload = matchStartPayloadRef.current
         ? cloneMultiplayerPayload(matchStartPayloadRef.current)
         : cloneMultiplayerPayload(replayMatchPayload);
+      // Host-supplied currentPlayers may carry presence, never new keys.
       const acceptedSessionPlayersBase = Array.isArray(matchPayload.currentPlayers)
-        ? cloneMultiplayerPayload(matchPayload.currentPlayers)
+        ? pinPlayersToGenesisRoster(cloneMultiplayerPayload(matchPayload.currentPlayers), acceptedMatchPayload)
         : acceptedMatchPayload.players || [];
       const acceptedSessionPlayers = acceptedSessionPlayersBase.map((player) =>
         expectedHostSeat != null && Number(player?.index) === Number(expectedHostSeat)
@@ -785,7 +830,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       drainingPendingSequencedActionsRef.current = false;
       localZiffleRevealInFlightRef.current = null;
       auditStateHashRef.current =
-        actionEntries.at(-1)?.audit?.nextStateHash || INITIAL_AUDIT_STATE_HASH;
+        actionEntries.at(-1)?.audit?.nextStateHash || await initialAuditStateHashForMatch(acceptedMatchPayload);
       initialPublicCheckpointHashRef.current =
         acceptedMatchPayload.initialPublicCheckpointHash
         || transcriptReport.initialPublicCheckpointHash
@@ -799,7 +844,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         protocolVersion: PROTOCOL_VERSION,
         signatureAlgorithm: "ecdsa-p256-sha256",
         genesis: cloneMultiplayerPayload(acceptedMatchPayload.genesis),
-        initialStateHash: INITIAL_AUDIT_STATE_HASH,
+        initialStateHash: await initialAuditStateHashForMatch(acceptedMatchPayload),
         initialPublicCheckpointHash: initialPublicCheckpointHashRef.current,
         actions: actionHistoryRef.current,
       };
@@ -818,6 +863,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         startingLife: Number(acceptedMatchPayload.startingLife || prev.startingLife || 20),
         format: normalizeMatchFormat(acceptedMatchPayload.format || prev.format),
         securityMode,
+        lockedSecurityMode: securityMode,
         localPlayerIndex: localEntry.index ?? prev.localPlayerIndex,
         players: acceptedSessionPlayers.length > 0 ? acceptedSessionPlayers : prev.players,
         lastAppliedSequence: lastSequence,
@@ -872,6 +918,18 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       scheduleResyncRetry,
     ]
   );
+
+  function clientConnectionForPlayer(player) {
+    const ids = [player?.peerId, player?.currentPeerId].map((id) => String(id || "")).filter(Boolean);
+    for (const id of ids) {
+      const conn = clientConnectionsRef.current.get(id);
+      if (conn) return conn;
+    }
+    for (const conn of clientConnectionsRef.current.values()) {
+      if (ids.includes(String(conn?.peer || ""))) return conn;
+    }
+    return null;
+  }
 
   const broadcastLobbyState = useCallback(() => {
     let session = multiplayerRef.current;
@@ -1171,6 +1229,19 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       };
     }));
     payload.players = players.map(toPublicPlayer);
+    try {
+      // Replaces the host-chosen seed with H(every seat's committed nonce).
+      await collectMatchSeedReveals(payload, {
+        connectionForPlayer: clientConnectionForPlayer,
+        safeSend,
+        protocolVersion: PROTOCOL_VERSION,
+      });
+    } catch (err) {
+      emitSyncFailureNotice("Match seed setup failed", toErrorMessage(err));
+      updateMultiplayer((prev) => ({ ...prev, mode: "lobby" }));
+      setStatus(`Match seed setup failed: ${toErrorMessage(err)}`, true);
+      return;
+    }
     payload.genesis = await buildSignedMatchGenesis({
       keyPair: auditKeyPairRef.current,
       match: payload,
@@ -1213,11 +1284,19 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       await verifySignedMatchGenesis(payload);
       await servicesRef.current.attachWitnessGenesis(payload);
       matchStartPayloadRef.current = cloneMultiplayerPayload(payload);
+      // The action chain roots in the final signed genesis (as on clients).
+      auditStateHashRef.current = await initialAuditStateHashForMatch(payload);
+      rememberStartedGenesis(payload);
+      rotateGenesisSeedNonce(
+        payload.auditMatchId,
+        payload.players.find((player) => player.peerId === session.localPeerId)?.index ?? 0
+      );
       if (liveAuditTranscriptRef.current) {
         liveAuditTranscriptRef.current = {
           ...liveAuditTranscriptRef.current,
           match: cloneMultiplayerPayload(payload),
           genesis: cloneMultiplayerPayload(payload.genesis),
+          initialStateHash: auditStateHashRef.current,
           initialPublicCheckpointHash: payload.initialPublicCheckpointHash || "",
         };
       }
@@ -1426,6 +1505,27 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       ...toPublicPlayer(player),
       ready: false,
     }));
+    try {
+      // Replaces the host-chosen seed with H(every seat's committed nonce).
+      await collectMatchSeedReveals(payload, {
+        connectionForPlayer: clientConnectionForPlayer,
+        safeSend,
+        protocolVersion: PROTOCOL_VERSION,
+      });
+    } catch (err) {
+      emitSyncFailureNotice("Rematch seed setup failed", toErrorMessage(err));
+      updateMultiplayer((prev) => ({
+        ...prev,
+        mode: "in_match",
+        rematch: {
+          ...(prev.rematch || {}),
+          phase: "sideboarding",
+          players,
+        },
+      }));
+      setStatus(`Rematch seed setup failed: ${toErrorMessage(err)}`, true);
+      return;
+    }
     payload.genesis = await buildSignedMatchGenesis({
       keyPair: auditKeyPairRef.current,
       match: payload,
@@ -1484,11 +1584,19 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       await verifySignedMatchGenesis(payload);
       await servicesRef.current.attachWitnessGenesis(payload);
       matchStartPayloadRef.current = cloneMultiplayerPayload(payload);
+      // The action chain roots in the final signed genesis (as on clients).
+      auditStateHashRef.current = await initialAuditStateHashForMatch(payload);
+      rememberStartedGenesis(payload);
+      rotateGenesisSeedNonce(
+        payload.auditMatchId,
+        payload.players.find((player) => player.peerId === session.localPeerId)?.index ?? 0
+      );
       if (liveAuditTranscriptRef.current) {
         liveAuditTranscriptRef.current = {
           ...liveAuditTranscriptRef.current,
           match: cloneMultiplayerPayload(payload),
           genesis: cloneMultiplayerPayload(payload.genesis),
+          initialStateHash: auditStateHashRef.current,
           initialPublicCheckpointHash: payload.initialPublicCheckpointHash || "",
         };
       }
@@ -2121,6 +2229,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           receiveLobbyChat(message.entry);
           return;
         case "lobby_state": {
+          let rejectedLobbySecurityMode = "";
           const nextSession = updateMultiplayer((prev) => {
             const localEntry = (message.players || []).find(
               (player) => player.peerId === prev.localPeerId
@@ -2132,10 +2241,18 @@ export function usePeerLobbyMessaging(base, servicesRef) {
               );
             }
             const nextFormat = normalizeMatchFormat(message.format || prev.format);
-            const nextSecurityMode = normalizeMultiplayerSecurityMode(
+            // The guest consents to the mode it first saw for this lobby. A host
+            // cannot switch it afterwards (never mid-match, and not in the lobby
+            // without the guest leaving and rejoining under the new mode).
+            const offeredSecurityMode = normalizeMultiplayerSecurityMode(
               message.securityMode,
               prev.securityMode
             );
+            const pinnedLobbySecurityMode = pinnedSessionSecurityMode(prev, matchStartPayloadRef.current);
+            if (pinnedLobbySecurityMode && offeredSecurityMode !== pinnedLobbySecurityMode) {
+              rejectedLobbySecurityMode = offeredSecurityMode;
+            }
+            const nextSecurityMode = pinnedLobbySecurityMode || offeredSecurityMode;
             const localDeckSubmission = parseDeckSubmission(
               nextFormat,
               prev.localDeckText,
@@ -2150,15 +2267,27 @@ export function usePeerLobbyMessaging(base, servicesRef) {
               startingLife: Number(message.startingLife || prev.startingLife || 20),
               format: nextFormat,
               securityMode: nextSecurityMode,
+              lockedSecurityMode: nextSecurityMode,
               localDeckCount: localDeckSubmission.deckCount,
               localCommanderCount: localDeckSubmission.commanderCount,
               deckOptions: normalizeLobbyDeckOptions(message.deckOptions),
-              players: message.players || [],
+              // Mid-match lobby_state may update presence, never signed keys.
+              players: prev.matchStarted
+                ? pinPlayersToGenesisRoster(message.players || [], matchStartPayloadRef.current)
+                : message.players || [],
               localPlayerIndex: localEntry ? localEntry.index : prev.localPlayerIndex,
               matchStarted: Boolean(message.matchStarted),
               submittingAction: false,
             };
           });
+          if (rejectedLobbySecurityMode) {
+            const reason = `Host tried to change this lobby's security mode from ${nextSession.lockedSecurityMode} to ${rejectedLobbySecurityMode}; leave and rejoin to accept a different mode`;
+            emitSyncFailureNotice(
+              isVerifiedMultiplayerSecurityMode(nextSession.lockedSecurityMode) ? "Cheat detected" : "Lobby mode change rejected",
+              reason
+            );
+            setStatus(reason, true);
+          }
           rememberDefaultLobbyDeck(
             nextSession.localDeckText,
             nextSession.localCommanderText
@@ -2232,6 +2361,13 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           awaitingStateResyncRef.current = false;
           await applyMatchStart(message);
           return;
+        case "match_seed_reveal_request":
+          await answerMatchSeedRevealRequest(hostConnectionRef.current, message, {
+            session: multiplayerRef.current,
+            safeSend,
+            protocolVersion: PROTOCOL_VERSION,
+          });
+          return;
         case "ziffle_shuffle_step_request":
           await answerZiffleShuffleStepRequest(hostConnectionRef.current, message);
           return;
@@ -2288,6 +2424,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           return;
         case "action_intent_cancel":
           await handleActionIntentCancelMessage(message);
+          return;
+        case "protocol_wait_notice":
+          await servicesRef.current.handleProtocolWaitNoticeMessage?.(message);
+          return;
+        case "protocol_wait_answer":
+          await servicesRef.current.handleProtocolWaitAnswerMessage?.(message);
           return;
         case "ziffle_reveal_token_request":
           await answerZiffleRevealTokenRequest(hostConnectionRef.current, message);
@@ -2543,6 +2685,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       case "action_intent_cancel":
         await handleActionIntentCancelMessage(message);
         return;
+      case "protocol_wait_notice":
+        await servicesRef.current.handleProtocolWaitNoticeMessage?.(message);
+        return;
+      case "protocol_wait_answer":
+        await servicesRef.current.handleProtocolWaitAnswerMessage?.(message);
+        return;
       default:
         return;
     }
@@ -2653,6 +2801,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           || message?.type === "crypto_material_response"
           || message?.type === "action_intent_progress"
           || message?.type === "action_intent_cancel"
+          || message?.type === "protocol_wait_notice"
+          || message?.type === "protocol_wait_answer"
         ) {
           void handlePeerMessage(conn, message).catch((err) => {
             if (shouldSuppressProtocolMessageError(err, message)) return;
@@ -2838,6 +2988,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       case "lobby_chat_send":
         publishLobbyChat(conn.peer, message.text);
         return;
+      case "match_seed_reveal_response":
+        resolveMatchSeedReveal(message, conn.peer);
+        return;
       case "ziffle_shuffle_step_request":
         await answerZiffleShuffleStepRequest(conn, message);
         return;
@@ -2910,6 +3063,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         return;
       case "action_intent_cancel":
         await handleActionIntentCancelMessage(message);
+        return;
+      case "protocol_wait_notice":
+        await servicesRef.current.handleProtocolWaitNoticeMessage?.(message);
+        return;
+      case "protocol_wait_answer":
+        await servicesRef.current.handleProtocolWaitAnswerMessage?.(message);
         return;
       case "ziffle_reveal_token_request":
         await answerZiffleRevealTokenRequest(conn, message);
@@ -3547,6 +3706,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         if (
           message?.type === "resync_ack"
           || message?.type === "trusted_action_ack"
+          || message?.type === "match_seed_reveal_response"
           || message?.type === "ziffle_shuffle_step_request"
           || message?.type === "ziffle_shuffle_step_response"
           || message?.type === "ziffle_reveal_token_request"
@@ -3565,6 +3725,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           || message?.type === "action_quorum_vote_response"
           || message?.type === "action_intent_progress"
           || message?.type === "action_intent_cancel"
+          || message?.type === "protocol_wait_notice"
+          || message?.type === "protocol_wait_answer"
         ) {
           void handleClientMessage(conn, message).catch(handleError);
           return;
@@ -4033,6 +4195,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         startingLife: lifeTotal,
         format: normalizedFormat,
         securityMode: normalizedSecurityMode,
+        lockedSecurityMode: normalizedSecurityMode,
         tournament,
         signalingServer: peerServerLabelRef.current,
         localDeckText: String(deckText || ""),
@@ -4492,7 +4655,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             return;
           }
           if (
-            message?.type === "ziffle_shuffle_step_request"
+            message?.type === "match_seed_reveal_request"
+            || message?.type === "ziffle_shuffle_step_request"
             || message?.type === "ziffle_shuffle_step_response"
             || message?.type === "ziffle_reveal_token_request"
             || message?.type === "ziffle_reveal_token_response"
@@ -4510,6 +4674,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             || message?.type === "action_quorum_vote_response"
             || message?.type === "action_intent_progress"
             || message?.type === "action_intent_cancel"
+            || message?.type === "protocol_wait_notice"
+            || message?.type === "protocol_wait_answer"
           ) {
             void handleHostMessage(message).catch((err) => {
               if (shouldSuppressProtocolMessageError(err, message)) return;
@@ -4586,6 +4752,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           ...(peer.config ? {
             format: peer.config.format,
             securityMode: tournament ? MULTIPLAYER_SECURITY_VERIFIED : MULTIPLAYER_SECURITY_TRUSTED,
+            // The relay room, not the host, fixes the lobby's mode.
+            lockedSecurityMode: tournament ? MULTIPLAYER_SECURITY_VERIFIED : MULTIPLAYER_SECURITY_TRUSTED,
             tournament,
             ...(tournament ? { localName: tournament.playerName } : {}),
           } : {}),

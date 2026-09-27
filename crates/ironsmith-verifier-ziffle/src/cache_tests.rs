@@ -84,6 +84,7 @@ fn reveal_input(fixture: &Fixture) -> ZiffleRevealCardInput {
         .map(|(seat, key)| {
             let token = build_ziffle_reveal_token::<N>(ZiffleBuildRevealTokenInput {
                 deck_count: N,
+                deck_hash: String::new(),
                 context: input.context.clone(),
                 key_context: input.key_context.clone(),
                 input_deck: None,
@@ -105,6 +106,7 @@ fn reveal_input(fixture: &Fixture) -> ZiffleRevealCardInput {
         .collect();
     ZiffleRevealCardInput {
         deck_count: N,
+        deck_hash: String::new(),
         context: input.context.clone(),
         key_context: input.key_context.clone(),
         input_deck: None,
@@ -242,6 +244,7 @@ fn warm_cache_never_bypasses_token_proofs_or_card_positions() {
     assert!(reveal_ziffle_card::<N>(invalid).is_err());
     let batch = ZiffleRevealCardsInput {
         deck_count: N,
+        deck_hash: String::new(),
         context: good.context,
         key_context: good.key_context,
         input_deck: None,
@@ -274,6 +277,7 @@ fn warm_cache_never_bypasses_token_proofs_or_card_positions() {
     assert!(
         build_ziffle_reveal_tokens::<N>(ZiffleBuildRevealTokensInput {
             deck_count: N,
+            deck_hash: String::new(),
             context: input.context,
             key_context: input.key_context,
             input_deck: None,

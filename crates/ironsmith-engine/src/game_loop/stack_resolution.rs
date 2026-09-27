@@ -808,6 +808,13 @@ fn execute_resolution_program_inner(
                     rebase_target_scope(&ctx.targets, &scope_assignments);
                 active_scope = Some((effect_targets, effect_target_assignments));
             }
+            let previous_search_reveal = std::mem::replace(
+                &mut ctx.public_search_reveal_tag,
+                crate::effects::composition::choose_objects_runtime::revealed_search_tag(
+                    effect,
+                    selected_effects.get(effect_index + 1),
+                ),
+            );
             let outcome = if !is_modal_effect
                 && let Some((effect_targets, effect_target_assignments)) = &active_scope
             {
@@ -819,6 +826,7 @@ fn execute_resolution_program_inner(
             } else {
                 execute_effect(game, effect, ctx)
             };
+            ctx.public_search_reveal_tag = previous_search_reveal;
             match outcome {
                 // Per-event matching: the events an instruction reports are
                 // matched with the ones it queued, at its end (CR 603.2);

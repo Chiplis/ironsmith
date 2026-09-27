@@ -123,9 +123,19 @@ import {
   zifflePositionFromCommitment,
 } from "./shared.js";
 import { markActionStage, recordDiagnosticEvent } from "../../lib/action-diagnostics.js";
+import { auditMatchInstanceId } from "../../lib/multiplayer-audit.js";
 
 export function usePeerLobbyCryptoResync(base, servicesRef) {
   const { actionCryptoRequirementsRef, actionHistoryRef, applySyncedCommand, applyingSequencedActionsRef, auditKeyPairRef, auditStateHashRef, awaitingStateResyncRef, clientConnectionsRef, drainingPendingSequencedActionsRef, gameRef, hostConnectionRef, ignoredActionIntentKeysRef, initialPublicCheckpointHashRef, liveAuditTranscriptRef, liveZiffleCeremoniesRef, localDisconnectObservationsRef, localRevealedOpeningsRef, localZiffleCeremonyLookupRef, localZiffleRevealInFlightRef, matchClockConfigRef, matchClockObservationExemptSequenceRef, matchClockRef, matchStartPayloadRef, multiplayerRef, outboundCryptoMaterialRequestsRef, peerConnectionsRef, peerRef, pendingSequencedActionsRef, privateViewDisclosuresRef, reconnectChallengesRef, relayedActionIdsRef, resyncWaitersRef, resyncingPeerIdsRef, setState, setStatus, signedActionQuorumVotesRef, stateRef, timeoutClaimInFlightRef, verifiedAuditOpeningsRef, verifiedShuffleProofsRef, ziffleHandRevealKeyRef, ziffleHandRevealQuickKeyRef, ziffleOpeningPositionsRef, ziffleRevealTokenCacheRef } = base;
+
+  // Forfeit votes name the match instance (lobby id + signed genesis hash),
+  // so a vote from an earlier game in the same lobby can't be replayed.
+  function voteMatchInstanceId() {
+    return auditMatchInstanceId({
+      auditMatchId: currentAuditMatchId(),
+      genesis: matchStartPayloadRef.current?.genesis,
+    });
+  }
   const applySequencedActionMessage = useCallback((...args) => servicesRef.current.applySequencedActionMessage(...args), [servicesRef]);
   const auditEncryptionPublicKeyForPlayer = useCallback((...args) => servicesRef.current.auditEncryptionPublicKeyForPlayer(...args), [servicesRef]);
   const buildLocalOpeningFromRequirement = useCallback((...args) => servicesRef.current.buildLocalOpeningFromRequirement(...args), [servicesRef]);
@@ -1525,6 +1535,8 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 	  ]);
 
   const answerCryptoMaterialRequest = useCallback(async (conn, message) => {
+    // Announce the (first) response so peers can close their wait on this seat.
+    conn = servicesRef.current.protocolResponseConn?.(conn, message) || conn;
     const requestPerf = {
       request_id: String(message?.requestId || ""),
       requester: message?.requesterIndex == null ? null : Number(message.requesterIndex),
@@ -2159,12 +2171,25 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 
   function runtimeMatchClockSnapshot(nowMs = nowMonotonicMs()) {
     const runtime = matchClockRef.current;
+    // While the active player waits on another seat's protocol response
+    // (crypto material, reveal tokens, fair-random commits/reveals, shuffle
+    // steps), its clock is paused. Every peer measures the wait from its own
+    // observation of the signed wait/answer notices, so the elapsed bounds in
+    // verifyMatchClockAuditForAction stay local-observation checks.
+    const epochStartedAtMs = runtime.epochStartedAtMs;
+    const protocolWaitMs = runtime.activePlayerIndex == null || epochStartedAtMs == null
+      ? 0
+      : Math.max(0, Number(servicesRef.current.observedProtocolWaitMs?.(
+          runtime.activePlayerIndex,
+          Number(epochStartedAtMs),
+          nowMs
+        ) || 0));
     return createMatchClockSnapshot({
       policy: runtime.policy || matchClockConfigRef.current,
       playerCount: runtime.playerCount,
       baseRemainingMsByPlayer: runtime.baseRemainingMsByPlayer,
       activePlayerIndex: runtime.activePlayerIndex,
-      epochStartedAtMs: runtime.epochStartedAtMs,
+      epochStartedAtMs: epochStartedAtMs == null ? epochStartedAtMs : Number(epochStartedAtMs) + protocolWaitMs,
       clockHash: runtime.clockHash || INITIAL_MATCH_CLOCK_HASH,
       lastSequence: runtime.lastSequence || 0,
       nowMs,
@@ -2226,12 +2251,33 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       epochStartedAtMs: activePlayerIndex == null
         ? null
         : (reset || activeChanged ? nowMs : current.epochStartedAtMs ?? nowMs),
+      // The running epoch's start came from an unbounded host snapshot (this
+      // seat had no local observation to cap it); cleared by any new epoch.
+      epochHostDerived: activePlayerIndex != null
+        && !reset
+        && !activeChanged
+        && current.epochStartedAtMs != null
+        && Boolean(current.epochHostDerived),
+      epochObservedLocallyAtMs: current.epochObservedLocallyAtMs ?? null,
       clockHash: reset
         ? INITIAL_MATCH_CLOCK_HASH
         : String(current.clockHash || INITIAL_MATCH_CLOCK_HASH),
       lastSequence: reset ? 0 : Number(current.lastSequence || 0),
     };
     return publishMatchClockSnapshot(runtimeMatchClockSnapshot(nowMs));
+  }
+
+  // The local clock observation a resync may not exceed: captured before the
+  // resync replay rebuilds the runtime (which restarts the epoch locally).
+  function captureMatchClockObservation() {
+    const runtime = matchClockRef.current || {};
+    return {
+      activePlayerIndex: runtime.activePlayerIndex ?? null,
+      epochStartedAtMs: runtime.epochStartedAtMs ?? null,
+      epochHostDerived: Boolean(runtime.epochHostDerived),
+      clockHash: String(runtime.clockHash || INITIAL_MATCH_CLOCK_HASH),
+      lastSequence: Number(runtime.lastSequence || 0),
+    };
   }
 
   function currentMatchClockSnapshot() {
@@ -2258,9 +2304,10 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     );
     let elapsedMs = 0;
     if (activePlayer != null) {
+      // snapshot.startedAtMs excludes protocol waits on other seats.
       const observedElapsed = Math.max(
         0,
-        Math.floor(nowMonotonicMs() - Number(runtime.epochStartedAtMs ?? nowMonotonicMs()))
+        Math.floor(nowMonotonicMs() - Number(snapshot.startedAtMs ?? nowMonotonicMs()))
       );
       elapsedMs = isTimeoutForfeit
         ? Number(baseRemaining[activePlayer] || 0)
@@ -2540,9 +2587,26 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     return updateMatchClockForState(uiState, { policy });
   }
 
-  function alignMatchClockObservationFromHostSnapshot(hostSnapshot, uiState) {
+  function alignMatchClockObservationFromHostSnapshot(hostSnapshot, uiState, options = {}) {
+    // epochHostDerived: this seat did not itself observe the running epoch's
+    // start (a fresh rejoin), so it neither vouches for a timeout on it nor
+    // treats its own elapsed estimate as an upper bound on the next action.
+    const prior = options?.priorObservation || null;
+    const priorStartMs = prior?.epochStartedAtMs == null ? NaN : Number(prior.epochStartedAtMs);
+    const priorObserved = Number.isFinite(priorStartMs) && !prior?.epochHostDerived;
+    const withoutHostAlignment = () => {
+      const snapshot = updateMatchClockForState(uiState);
+      if (!priorObserved && matchClockRef.current?.activePlayerIndex != null) {
+        matchClockRef.current = {
+          ...matchClockRef.current,
+          epochHostDerived: true,
+          epochObservedLocallyAtMs: matchClockRef.current.epochStartedAtMs ?? nowMonotonicMs(),
+        };
+      }
+      return snapshot;
+    };
     if (!hostSnapshot || typeof hostSnapshot !== "object") {
-      return updateMatchClockForState(uiState);
+      return withoutHostAlignment();
     }
     const runtime = matchClockRef.current;
     const policy = normalizeMatchClockPolicy(runtime.policy || matchClockConfigRef.current);
@@ -2554,10 +2618,10 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       hostClockHash
       && hostClockHash !== String(runtime.clockHash || INITIAL_MATCH_CLOCK_HASH)
     ) {
-      return updateMatchClockForState(uiState);
+      return withoutHostAlignment();
     }
     if (hostSequence && hostSequence !== Number(runtime.lastSequence || 0)) {
-      return updateMatchClockForState(uiState);
+      return withoutHostAlignment();
     }
     const baseRemaining = normalizeMatchClockRemaining(
       runtime.baseRemainingMsByPlayer,
@@ -2570,13 +2634,24 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       policy.initialMs
     );
     const nowMs = nowMonotonicMs();
-    const activeElapsed = activePlayerIndex == null
+    const hostActiveElapsed = activePlayerIndex == null
       ? 0
       : Math.max(
           0,
           Number(baseRemaining[activePlayerIndex] || 0)
             - Number(hostRemaining[activePlayerIndex] || 0)
         );
+    // The host's remaining-time figure is unsigned. It may give the active
+    // player more time than this seat observed, never less: the running epoch
+    // began no earlier than the epoch this seat was observing before the
+    // resync, so that start caps the elapsed time. A seat with no observation
+    // (a fresh rejoin) must take the host's figure, but marks the epoch as
+    // host-derived so it will not vouch for a timeout on it.
+    let activeElapsed = hostActiveElapsed;
+    if (activePlayerIndex != null && Number.isFinite(priorStartMs)) {
+      activeElapsed = Math.min(hostActiveElapsed, Math.max(0, Math.floor(nowMs - priorStartMs)));
+    }
+    const epochHostDerived = activePlayerIndex != null && !priorObserved;
     matchClockConfigRef.current = policy;
     matchClockRef.current = {
       policy,
@@ -2584,6 +2659,8 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       baseRemainingMsByPlayer: baseRemaining,
       activePlayerIndex,
       epochStartedAtMs: activePlayerIndex == null ? null : nowMs - activeElapsed,
+      epochHostDerived,
+      epochObservedLocallyAtMs: epochHostDerived ? nowMs : null,
       clockHash: String(runtime.clockHash || INITIAL_MATCH_CLOCK_HASH),
       lastSequence: Number(runtime.lastSequence || 0),
     };
@@ -2603,7 +2680,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       throw new Error("Timed-out player cannot sign their own timeout certificate");
     }
     const payload = timeoutVotePayload({
-      matchId: currentAuditMatchId(),
+      matchId: voteMatchInstanceId(),
       basisSequence,
       forfeitedPlayer,
       activePlayer,
@@ -2656,7 +2733,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       throw new Error("Multiplayer timeout forfeit is missing its quorum certificate");
     }
     const expected = {
-      matchId: currentAuditMatchId(),
+      matchId: voteMatchInstanceId(),
       basisSequence: Number(command.basis_sequence ?? certificate.basisSequence ?? 0),
       forfeitedPlayer,
       activePlayer: forfeitedPlayer,
@@ -2751,6 +2828,16 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       if (Number(timer.remainingMs ?? 0) > Number(timer.graceMs || 0) + MATCH_CLOCK_CLAIM_SKEW_MS) {
         throw new Error("Match clock has not expired");
       }
+      if (matchClockRef.current?.epochHostDerived) {
+        // This seat did not see the epoch start (fresh rejoin): vouch only
+        // once the time it has itself observed exhausts the clock.
+        const runtime = matchClockRef.current;
+        const baseRemaining = Number(runtime.baseRemainingMsByPlayer?.[forfeitedPlayer] ?? 0);
+        const observedMs = Math.max(0, nowMonotonicMs() - Number(runtime.epochObservedLocallyAtMs ?? nowMonotonicMs()));
+        if (baseRemaining - observedMs > Number(timer.graceMs || 0) + MATCH_CLOCK_CLAIM_SKEW_MS) {
+          throw new Error("Match clock has not expired by this seat's own observation");
+        }
+      }
       const vote = await signTimeoutVoteForSnapshot({
         basisSequence,
         forfeitedPlayer,
@@ -2832,7 +2919,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     const forfeitedPlayer = Number(command.player);
     const basisSequence = Number(command.basis_sequence || multiplayerRef.current.lastAppliedSequence || 0);
     const expected = {
-      matchId: currentAuditMatchId(),
+      matchId: voteMatchInstanceId(),
       basisSequence,
       forfeitedPlayer,
       activePlayer: forfeitedPlayer,
@@ -3005,7 +3092,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     }
     return buildSignedDisconnectForfeitVote({
       keyPair,
-      matchId: currentAuditMatchId(),
+      matchId: voteMatchInstanceId(),
       basisSequence: Number(command?.basis_sequence ?? multiplayerRef.current.lastAppliedSequence ?? 0),
       forfeitedPlayer,
       forfeitedPeerId,
@@ -3078,7 +3165,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
         ...command,
         disconnected_peer_id: forfeitedPeerId,
         disconnect_timeout_ms: disconnectTimeoutMs,
-        matchId: currentAuditMatchId(),
+        matchId: voteMatchInstanceId(),
         nowMs: Date.now(),
         maxFutureSkewMs: MATCH_CLOCK_CLAIM_SKEW_MS,
       },
@@ -3099,7 +3186,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 
     const target = playerForDisconnectForfeit(forfeitedPlayer);
     const expected = {
-      matchId: currentAuditMatchId(),
+      matchId: voteMatchInstanceId(),
       basisSequence: Number(command.basis_sequence ?? multiplayerRef.current.lastAppliedSequence ?? 0),
       forfeitedPlayer,
       forfeitedPeerId: String(command.disconnected_peer_id || target?.peerId || ""),
@@ -3262,7 +3349,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     }
     return buildSignedProtocolResponseTimeoutVote({
       keyPair,
-      matchId: currentAuditMatchId(),
+      matchId: voteMatchInstanceId(),
       basisSequence: Number(command?.basis_sequence ?? multiplayerRef.current.lastAppliedSequence ?? 0),
       forfeitedPlayer,
       forfeitedPeerId,
@@ -3328,6 +3415,27 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       throw new Error("Protocol response timeout has not elapsed");
     }
     const roster = protocolResponseTimeoutRoster(forfeitedPlayer);
+    // The accused seat knows whether it answered (or was itself waiting on the
+    // claimant). With two active players this is the only judge, exactly like
+    // a two-player match-clock timeout: a false claim becomes a dispute.
+    const localIndex = resolveLocalPlayerIndex(multiplayerRef.current);
+    if (actorIndex != null && localIndex != null && Number(localIndex) === forfeitedPlayer) {
+      const contradiction = servicesRef.current.localProtocolTimeoutContradiction?.({
+        requester: actorIndex,
+        requestId: String(command.request_id || certificate?.requestId || ""),
+        actionIntentKey: String(command.action_intent_key || ""),
+        twoPlayer: roster.length <= 1,
+      });
+      if (contradiction) {
+        const reason = `Protocol response timeout claim is contradicted locally: ${contradiction}`;
+        markMatchDisputed(reason, {
+          type: "protocol_response_timeout_contradicted",
+          accusedPlayers: [actorIndex],
+          command: cloneMultiplayerPayload(command),
+        });
+        throw new Error(reason);
+      }
+    }
     if (options.skipCertificate) return;
     await verifyProtocolResponseTimeoutCertificate({
       certificate,
@@ -3335,7 +3443,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
         ...command,
         timed_out_peer_id: forfeitedPeerId,
         response_timeout_ms: responseTimeoutMs,
-        matchId: currentAuditMatchId(),
+        matchId: voteMatchInstanceId(),
         nowMs: Date.now(),
         maxFutureSkewMs: MATCH_CLOCK_CLAIM_SKEW_MS,
       },
@@ -3448,7 +3556,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 
     const target = playerForProtocolResponseTimeout(forfeitedPlayer);
     const expected = {
-      matchId: currentAuditMatchId(),
+      matchId: voteMatchInstanceId(),
       basisSequence: Number(command.basis_sequence ?? multiplayerRef.current.lastAppliedSequence ?? 0),
       forfeitedPlayer,
       forfeitedPeerId: String(command.timed_out_peer_id || command.forfeited_peer_id || target?.peerId || ""),
@@ -3519,6 +3627,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
             requestId,
             ...voteRequestExpected,
             timedOutRequestId,
+            actionIntentKey: String(command.action_intent_key || ""),
             requesterIndex: localPlayer,
           });
           return waiter;
@@ -3595,6 +3704,19 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       if (basisSequence !== Number(multiplayerRef.current.lastAppliedSequence || 0)) {
         throw new Error("Protocol-timeout vote request is not based on the local transcript head");
       }
+      // Sign only from local knowledge: this peer must itself have observed
+      // the request (or the target's action intent) go unanswered, timed from
+      // its own observation rather than the requester's requestedAtMs.
+      await servicesRef.current.assertLocalProtocolTimeoutObservation({
+        requester,
+        forfeitedPlayer,
+        basisSequence,
+        requestType: String(message?.requestType || ""),
+        requestId: String(message?.timedOutRequestId || message?.originalRequestId || ""),
+        requestPayloadHash: String(message?.requestPayloadHash || ""),
+        responseTimeoutMs: Number(message?.responseTimeoutMs || PROTOCOL_RESPONSE_TIMEOUT_MS),
+        actionIntentKey: String(message?.actionIntentKey || ""),
+      });
       const vote = await signProtocolResponseTimeoutVoteForCommand({
         type: "forfeit_player",
         player: forfeitedPlayer,
@@ -3638,7 +3760,9 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       if (isProtocolResponseTimeoutForfeitCommand(message.command)) return 0;
       // The witness's signed forfeit is the independent attestation.
       if (isWitnessForfeitCommand(message.command)) return 0;
-      return players.length;
+      // Thresholds count non-actor votes only: every other non-target player.
+      const actor = Number(message?.audit?.actor ?? message?.actorIndex);
+      return players.filter((player) => Number(player.index) !== actor).length;
     }
     return actionQuorumThreshold(players.length);
   }
@@ -3742,15 +3866,20 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 
     const votes = [];
     const seen = new Set();
+    // The actor's own vote is carried but never counts toward the threshold,
+    // matching verifyActionQuorumCertificate.
+    const quorumActor = Number(message?.audit?.actor ?? message?.actorIndex);
+    let countedVotes = 0;
     const addVote = async (vote) => {
       const voter = await verifyActionQuorumVoteForMessage(vote, message);
       if (seen.has(voter)) return;
       seen.add(voter);
+      if (Number(voter) !== quorumActor) countedVotes += 1;
       votes.push(cloneMultiplayerPayload(vote));
     };
 
     await addVote(await signActionQuorumVoteForMessage(message));
-    if (votes.length < threshold) {
+    if (countedVotes < threshold) {
       ensureDirectPeerConnections(players);
       const localPlayer = resolveLocalPlayerIndex(multiplayerRef.current);
       const pendingWaitRequestIds = [];
@@ -3809,7 +3938,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
           );
         });
       const unsettled = new Set(pending);
-      while (votes.length < threshold && unsettled.size > 0) {
+      while (countedVotes < threshold && unsettled.size > 0) {
         const settled = await Promise.race([...unsettled].map((promise) =>
           promise.then(
             (vote) => ({ promise, vote }),
@@ -3832,9 +3961,9 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       }
     }
 
-    if (votes.length < threshold) {
+    if (countedVotes < threshold) {
       throw new Error(
-        `Action quorum certificate has ${votes.length} vote(s), expected at least ${threshold}`
+        `Action quorum certificate has ${countedVotes} non-actor vote(s), expected at least ${threshold}`
       );
     }
     votes.sort((left, right) => Number(left.voter) - Number(right.voter));
@@ -4063,7 +4192,8 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 
   function stateHashBeforeSequence(seq) {
     const previousSeq = Number(seq) - 1;
-    if (previousSeq <= 0) return INITIAL_AUDIT_STATE_HASH;
+    // seq 1 chains from the genesis-derived root recorded at match start.
+    if (previousSeq <= 0) return String(liveAuditTranscriptRef.current?.initialStateHash || INITIAL_AUDIT_STATE_HASH);
     const previous = actionHistoryEntryForSequence(previousSeq);
     return String(previous?.audit?.nextStateHash || "");
   }
@@ -4170,6 +4300,10 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     const existing = actionHistoryEntryForSequence(seq);
     if (!existing) return true;
     if (sequencedActionsEquivalent(existing, message)) return true;
+    // Envelopes of another match (a rematch reusing the lobby id) are never
+    // fork evidence here: they must name our match id and, via
+    // expectedPrevStateHash, chain from our genesis-rooted transcript.
+    if (String(message?.audit?.matchId || "") !== String(existing?.audit?.matchId || "")) return true;
 
     const expectedPrevStateHash = stateHashBeforeSequence(seq);
     if (!expectedPrevStateHash) return true;
@@ -4486,5 +4620,5 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
   }
 
 
-  return { persistRelayCheckpoint, actionCryptoRequirementsForSequence, actionHistoryEntryForSequence, actionQuorumRoster, actionQuorumThresholdForMessage, actionQuorumVoteCacheKey, actionQuorumVoteConflict, alignMatchClockObservationFromHostSnapshot, answerActionQuorumVoteRequest, answerCryptoMaterialRequest, answerDisconnectForfeitVoteRequest, answerProtocolResponseTimeoutVoteRequest, answerTimeoutVoteRequest, appendAppliedSequencedAction, assertAcceptedActionExtendsTranscript, authorizedCryptoMaterialRequirementsForRequest, batchedOwnerPrivateZiffleOpeningsForLocalViewer, broadcastMatchPresence, broadcastToClients, buildHostedResyncPayload, buildLocalCryptoMaterialForRequirements, buildLocalPrivateViewProofsForRequirements, buildMatchClockAuditForCommand, clearAllPeerResyncs, clearLocalDisconnectObservation, collectActionQuorumCertificate, collectDisconnectForfeitCertificateForCommand, collectProtocolResponseTimeoutCertificateForCommand, collectRemoteCryptoMaterialForRequirements, collectTimeoutCertificateForCommand, commandObjectHiddenRefs, commandObjectStableIds, commitMatchClockAudit, createSequencedActionValidationSnapshot, cryptoRequirementReplayKey, currentHiddenRefForObjectId, currentMatchClockSnapshot, currentObjectIdForHiddenRef, currentObjectIdForStableId, currentStableIdForObjectId, derivePostApplyCryptoRequirementsForRequest, disconnectForfeitRoster, filterOpeningsForCommandHiddenRefs, finishPeerResync, forfeitedPlayersForQuorum, freshCryptoRequirementsForSequence, handleHistoricalSequencedAction, hiddenPositionBatchRevealFromOpening, injectCryptoMaterialForRequirements, latestMatchClockAuditFromActions, leaveLobby, localDisconnectObservationForPlayer, markMatchDisputed, openingMatchesCommandHiddenRef, playerCountForClock, playerForDisconnectForfeit, playerForProtocolResponseTimeout, privateOpeningFromEncryptedProof, privateOpeningFromProof, privateOpeningsForLocalViewer, protocolResponseTimeoutRoster, publishCurrentRuntimeState, publishMatchClockSnapshot, relaySequencedAction, remapCommandForLocalHiddenOpening, remapPriorityCommandForLocalHiddenOpening, remapSelectObjectsCommandForLocalHiddenOpening, rememberActionCryptoRequirements, rememberLocalDisconnectObservation, rememberSignedActionQuorumVote, resetMatchClockForMatch, resolvePeerResyncWaitersIfIdle, restoreMatchClockRuntime, restoreMatchClockRuntimeFromActionTranscript, restoreSequencedActionValidationSnapshot, revealPrivateAuditProofsForLocalViewer, revealPrivateOpeningsForInjection, runtimeMatchClockSnapshot, sendHostedStateMessage, sendMatchStartToClients, sequencedActionRelayKey, sequencedActionsEquivalent, shuffleProofAlreadyAppliedBefore, shuffleProofReplayKey, shuffleProofRequirementAlreadyRecordedBefore, signActionQuorumVoteForMessage, signDisconnectForfeitVoteForCommand, signProtocolResponseTimeoutVoteForCommand, signTimeoutVoteForSnapshot, stageLocalMatchClockAudit, stateHashBeforeSequence, teardownPeer, updateMatchClockForState, validateDisconnectForfeitCommand, validateProtocolResponseTimeoutCommand, validateTimeoutForfeitCommand, validateTrustedSequencedAction, verifyActionQuorumForMessage, verifyActionQuorumVoteForMessage, verifyMatchClockAuditForAction, verifyTimeoutCertificate, verifyTimeoutVote, waitForPeerResyncs };
+  return { persistRelayCheckpoint, actionCryptoRequirementsForSequence, actionHistoryEntryForSequence, actionQuorumRoster, actionQuorumThresholdForMessage, actionQuorumVoteCacheKey, actionQuorumVoteConflict, alignMatchClockObservationFromHostSnapshot, captureMatchClockObservation, answerActionQuorumVoteRequest, answerCryptoMaterialRequest, answerDisconnectForfeitVoteRequest, answerProtocolResponseTimeoutVoteRequest, answerTimeoutVoteRequest, appendAppliedSequencedAction, assertAcceptedActionExtendsTranscript, authorizedCryptoMaterialRequirementsForRequest, batchedOwnerPrivateZiffleOpeningsForLocalViewer, broadcastMatchPresence, broadcastToClients, buildHostedResyncPayload, buildLocalCryptoMaterialForRequirements, buildLocalPrivateViewProofsForRequirements, buildMatchClockAuditForCommand, clearAllPeerResyncs, clearLocalDisconnectObservation, collectActionQuorumCertificate, collectDisconnectForfeitCertificateForCommand, collectProtocolResponseTimeoutCertificateForCommand, collectRemoteCryptoMaterialForRequirements, collectTimeoutCertificateForCommand, commandObjectHiddenRefs, commandObjectStableIds, commitMatchClockAudit, createSequencedActionValidationSnapshot, cryptoRequirementReplayKey, currentHiddenRefForObjectId, currentMatchClockSnapshot, currentObjectIdForHiddenRef, currentObjectIdForStableId, currentStableIdForObjectId, derivePostApplyCryptoRequirementsForRequest, disconnectForfeitRoster, filterOpeningsForCommandHiddenRefs, finishPeerResync, forfeitedPlayersForQuorum, freshCryptoRequirementsForSequence, handleHistoricalSequencedAction, hiddenPositionBatchRevealFromOpening, injectCryptoMaterialForRequirements, latestMatchClockAuditFromActions, leaveLobby, localDisconnectObservationForPlayer, markMatchDisputed, openingMatchesCommandHiddenRef, playerCountForClock, playerForDisconnectForfeit, playerForProtocolResponseTimeout, privateOpeningFromEncryptedProof, privateOpeningFromProof, privateOpeningsForLocalViewer, protocolResponseTimeoutRoster, publishCurrentRuntimeState, publishMatchClockSnapshot, relaySequencedAction, remapCommandForLocalHiddenOpening, remapPriorityCommandForLocalHiddenOpening, remapSelectObjectsCommandForLocalHiddenOpening, rememberActionCryptoRequirements, rememberLocalDisconnectObservation, rememberSignedActionQuorumVote, resetMatchClockForMatch, resolvePeerResyncWaitersIfIdle, restoreMatchClockRuntime, restoreMatchClockRuntimeFromActionTranscript, restoreSequencedActionValidationSnapshot, revealPrivateAuditProofsForLocalViewer, revealPrivateOpeningsForInjection, runtimeMatchClockSnapshot, sendHostedStateMessage, sendMatchStartToClients, sequencedActionRelayKey, sequencedActionsEquivalent, shuffleProofAlreadyAppliedBefore, shuffleProofReplayKey, shuffleProofRequirementAlreadyRecordedBefore, signActionQuorumVoteForMessage, signDisconnectForfeitVoteForCommand, signProtocolResponseTimeoutVoteForCommand, signTimeoutVoteForSnapshot, stageLocalMatchClockAudit, stateHashBeforeSequence, teardownPeer, updateMatchClockForState, validateDisconnectForfeitCommand, validateProtocolResponseTimeoutCommand, validateTimeoutForfeitCommand, validateTrustedSequencedAction, verifyActionQuorumForMessage, verifyActionQuorumVoteForMessage, verifyMatchClockAuditForAction, verifyTimeoutCertificate, verifyTimeoutVote, waitForPeerResyncs };
 }

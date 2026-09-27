@@ -344,7 +344,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                   {disclosureEntries.map((entry) => (
                     <div
                       key={entry.player}
-                      className={entry.status === "cheat_detected" ? "text-[#ff8a7a]" : "text-muted-foreground"}
+                      className={(entry.status === "cheat_detected" || entry.status === "withheld") ? "text-[#ff8a7a]" : "text-muted-foreground"}
                       title={entry.reason || undefined}
                     >
                       {entry.name}: {endOfMatchDisclosureStatusLabel(entry)}

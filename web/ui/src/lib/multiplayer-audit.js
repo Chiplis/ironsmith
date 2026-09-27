@@ -1,5 +1,6 @@
 import { assertZiffleEpochHistory, assertZiffleEpochVerification, ziffleInputDeckFields } from "./ziffle-private-epochs.js";
 import { sha256Bytes } from "./sha256.js";
+import { genesisAuditKeyLookup, verifyZiffleCeremonyStepSignatures } from "./ziffle-step-signatures.js";
 import { WITNESS_DISPUTE_TYPE, WITNESS_FORFEIT_REASON, verifyForfeitCertificate, verifyTranscriptWitness, verifyWitnessDispute } from "./tournament/witness-protocol.js";
 
 const textEncoder = new TextEncoder();
@@ -18,7 +19,7 @@ export const DISCONNECT_FORFEIT_REASON = "disconnect_timeout_policy";
 export const DISCONNECT_AUTO_FORFEIT_MS = 60 * 1000;
 export const PROTOCOL_RESPONSE_TIMEOUT_REASON = "protocol_response_timeout_policy";
 export const PROTOCOL_RESPONSE_TIMEOUT_MS = 120 * 1000;
-export const CURRENT_AUDIT_PROTOCOL_VERSION = 15;
+export const CURRENT_AUDIT_PROTOCOL_VERSION = 16;
 const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, CURRENT_AUDIT_PROTOCOL_VERSION]);
 export const CURRENT_AUDIT_MIN_PLAYERS = 2;
 export const CURRENT_AUDIT_MAX_PLAYERS = 4;
@@ -951,11 +952,16 @@ export async function buildSignedActionEnvelope({
   };
 }
 
+// Required votes from players OTHER than the actor. The actor's own vote never
+// counts: two conflicting certificates must share at least one non-actor
+// signer (a strict majority of the non-actor voters), or a colluding actor
+// could get {actor,X} and {actor,Y} both accepted. Two players stay
+// tamper-evident only (0).
 export function actionQuorumThreshold(playerCount) {
   const count = assertCurrentAuditPlayerCount(playerCount, "Action quorum");
   if (count === 2) return 0;
-  if (count === 3) return 2;
-  return 3;
+  const nonActorVoters = count - 1;
+  return Math.floor(nonActorVoters / 2) + 1;
 }
 
 export function isDisconnectForfeitCommand(command) {
@@ -1136,9 +1142,12 @@ export async function verifyActionQuorumCertificate({
     }
     seen.add(voter);
   }
-  if (seen.size < threshold) {
+  // The actor's own vote is carried for evidence but never counts toward the
+  // threshold (see actionQuorumThreshold).
+  const nonActorVoters = [...seen].filter((voter) => voter !== expected.actor).length;
+  if (nonActorVoters < threshold) {
     throw new Error(
-      `Action quorum certificate has ${seen.size} unique vote(s), expected at least ${threshold}`
+      `Action quorum certificate has ${nonActorVoters} non-actor vote(s), expected at least ${threshold}`
     );
   }
   return {
@@ -1512,6 +1521,13 @@ export async function verifyProtocolResponseTimeoutCertificate({
     ? protocolResponseTimeoutVoteThreshold(roster.length)
     : Math.max(0, Number(requiredThreshold || 0));
   if (threshold <= 0) {
+    // Two active players: no independent voter exists. As with a two-player
+    // match-clock timeout, the claimant's observation stands live and the
+    // accused seat's own validator disputes a false claim; a post-hoc
+    // verifier still refuses to certify it (no independent attestation).
+    if (roster.length <= 1) {
+      return { valid: true, threshold: 0, voters: [] };
+    }
     throw new Error("Protocol response timeout forfeit requires at least two non-target voters");
   }
   if (!certificate || typeof certificate !== "object") {
@@ -1721,7 +1737,7 @@ export function buildActionForkDisputeEvidence({
   };
 }
 
-async function verifyActionForkDispute(dispute, players, cryptoImpl = globalThis.crypto) {
+async function verifyActionForkDispute(dispute, players, cryptoImpl = globalThis.crypto, context = {}) {
   if (!dispute || typeof dispute !== "object") {
     throw new Error("Dispute evidence is malformed");
   }
@@ -1732,10 +1748,22 @@ async function verifyActionForkDispute(dispute, players, cryptoImpl = globalThis
   if (!Number.isSafeInteger(sequence) || sequence <= 0) {
     throw new Error("Dispute evidence has an invalid sequence");
   }
+  const expectedMatchId = String(context?.matchId || "");
+  const prevStateHashBySeq = context?.prevStateHashBySeq instanceof Map
+    ? context.prevStateHashBySeq
+    : null;
+  let expectedForkPrevStateHash = null;
+  if (prevStateHashBySeq) {
+    if (!prevStateHashBySeq.has(sequence)) {
+      throw new Error("Dispute evidence does not fork from this transcript's verified chain");
+    }
+    expectedForkPrevStateHash = prevStateHashBySeq.get(sequence);
+  }
   const existing = await verifySequencedActionEnvelope({
     entry: dispute.existingAction || dispute.existing,
     players,
     expectedSeq: sequence,
+    expectedPrevStateHash: expectedForkPrevStateHash,
   }, cryptoImpl);
   const conflicting = await verifySequencedActionEnvelope({
     entry: dispute.conflictingAction || dispute.conflicting,
@@ -1743,6 +1771,15 @@ async function verifyActionForkDispute(dispute, players, cryptoImpl = globalThis
     expectedSeq: sequence,
     expectedPrevStateHash: existing.audit?.prevStateHash || "",
   }, cryptoImpl);
+  if (expectedMatchId) {
+    for (const action of [existing, conflicting]) {
+      if (String(action?.audit?.matchId || "") !== expectedMatchId) {
+        throw new Error("Dispute evidence action belongs to a different match");
+      }
+    }
+  } else if (String(existing.audit?.matchId || "") !== String(conflicting.audit?.matchId || "")) {
+    throw new Error("Dispute evidence actions belong to different matches");
+  }
   if (!sequencedActionsConflict(existing, conflicting)) {
     throw new Error("Dispute evidence does not contain conflicting actions");
   }
@@ -1800,13 +1837,13 @@ async function verifyActionForkDispute(dispute, players, cryptoImpl = globalThis
   };
 }
 
-async function verifyTranscriptDisputes(disputes, players, cryptoImpl = globalThis.crypto, witness = null, matchId = "") {
+async function verifyTranscriptDisputes(disputes, players, cryptoImpl = globalThis.crypto, witness = null, matchId = "", prevStateHashBySeq = null) {
   const entries = Array.isArray(disputes) ? disputes : [];
   const reports = [];
   for (const dispute of entries) {
     reports.push(dispute?.type === WITNESS_DISPUTE_TYPE
       ? await verifyWitnessDispute(dispute, players, witness, matchId)
-      : await verifyActionForkDispute(dispute, players, cryptoImpl));
+      : await verifyActionForkDispute(dispute, players, cryptoImpl, { matchId, prevStateHashBySeq }));
   }
   return reports;
 }
@@ -1933,6 +1970,7 @@ export function playerGenesisPayload({
   protocolVersion,
   timeoutMs,
   player,
+  seedCommitment = "",
 }) {
   const playerRecord = publicPlayerGenesisRecord(player);
   if (playerRecord) {
@@ -1950,6 +1988,9 @@ export function playerGenesisPayload({
     protocolVersion: Number(protocolVersion || 0),
     timeoutMs: Number(timeoutMs || 0),
     player: playerRecord,
+    // Commitment to this seat's secret match-seed nonce, fixed before the
+    // seat sees any other seat's nonce (revealed only to build the genesis).
+    seedCommitment: String(seedCommitment || ""),
   };
 }
 
@@ -1959,16 +2000,19 @@ export async function buildSignedPlayerGenesis({
   protocolVersion,
   timeoutMs,
   player,
+  seedCommitment = "",
 }, cryptoImpl = globalThis.crypto) {
   const payload = playerGenesisPayload({
     matchId,
     protocolVersion,
     timeoutMs,
     player,
+    seedCommitment,
   });
   return {
     signer: Number(player?.index ?? player?.seat ?? 0),
     payloadHash: await sha256Hex(canonicalJson(payload), cryptoImpl),
+    seedCommitment: String(seedCommitment || ""),
     signatureAlgorithm: "ecdsa-p256-sha256",
     signature: await signAuditPayload(keyPair, payload, cryptoImpl),
   };
@@ -1989,6 +2033,7 @@ export async function verifySignedPlayerGenesis({
     protocolVersion,
     timeoutMs,
     player,
+    seedCommitment: signature.seedCommitment,
   });
   const payloadHash = await sha256Hex(canonicalJson(payload), cryptoImpl);
   if (payloadHash !== String(signature.payloadHash || "")) {
@@ -2024,6 +2069,16 @@ export function matchGenesisPayload(match) {
     startingLife: Number(match?.startingLife || 0),
     openingHandSize: Number(match?.openingHandSize || 0),
     seed: Number(match?.seed || 0),
+    // The committed per-seat nonces the seed is derived from (see
+    // verifyMatchSeedReveals), so acked genesis hashes agree on them too.
+    seedReveals: Array.isArray(match?.seedReveals)
+      ? match.seedReveals
+          .map((reveal) => ({
+            seat: Number(reveal?.seat),
+            nonce: String(reveal?.nonce || "").toLowerCase(),
+          }))
+          .sort((left, right) => left.seat - right.seat)
+      : [],
     timeoutMs: Number(match?.timeoutMs || 0),
     initialPublicCheckpointHash: String(match?.initialPublicCheckpointHash || ""),
     matchClockPolicy: match?.matchClockPolicy
@@ -2065,6 +2120,134 @@ export async function buildSignedMatchGenesis({
     signatureAlgorithm: "ecdsa-p256-sha256",
     hostSignature: await signAuditPayload(keyPair, payload, cryptoImpl),
   };
+}
+
+const MATCH_SEED_COMMIT_DOMAIN = "ironsmith-match-seed-commit-v1";
+const MATCH_SEED_DOMAIN = "ironsmith-verified-match-seed-v1";
+const AUDIT_CHAIN_GENESIS_DOMAIN = "ironsmith-audit-chain-genesis-v1";
+const MATCH_GENESIS_ACK_DOMAIN = "ironsmith-match-genesis-ack-v1";
+const HEX_64 = /^[0-9a-f]{64}$/;
+
+// Seed commit-reveal: every seat commits H(nonce) inside its signed player
+// genesis before it can see any other seat's nonce; the host reveals its own
+// nonce only after it has published its commitment to every guest, and the
+// engine seed is H(all nonces). No single seat (host included) can pick it.
+export async function matchSeedCommitment(nonceHex, cryptoImpl = globalThis.crypto) {
+  return sha256Hex(canonicalJson({
+    domain: MATCH_SEED_COMMIT_DOMAIN,
+    nonce: String(nonceHex || "").toLowerCase(),
+  }), cryptoImpl);
+}
+
+export async function deriveMatchSeedFromReveals({ matchId, reveals = [] }, cryptoImpl = globalThis.crypto) {
+  const normalized = (Array.isArray(reveals) ? reveals : [])
+    .map((reveal) => ({
+      seat: Number(reveal?.seat),
+      nonce: String(reveal?.nonce || "").toLowerCase(),
+    }))
+    .sort((left, right) => left.seat - right.seat);
+  const digest = await sha256Hex(canonicalJson({
+    domain: MATCH_SEED_DOMAIN,
+    matchId: String(matchId || ""),
+    reveals: normalized,
+  }), cryptoImpl);
+  // 52 bits keeps the seed an exact JS integer on every peer.
+  const seed = Number(BigInt(`0x${digest.slice(0, 13)}`) & BigInt(Number.MAX_SAFE_INTEGER));
+  return seed > 0 ? seed : 1;
+}
+
+async function verifyMatchSeedReveals(match, players, cryptoImpl) {
+  const reveals = Array.isArray(match?.seedReveals) ? match.seedReveals : [];
+  if (reveals.length !== players.length) {
+    throw new Error("Match genesis requires one seed reveal per player");
+  }
+  const bySeat = new Map();
+  for (const reveal of reveals) {
+    const seat = Number(reveal?.seat);
+    const nonce = String(reveal?.nonce || "").toLowerCase();
+    if (!Number.isSafeInteger(seat) || bySeat.has(seat) || !HEX_64.test(nonce)) {
+      throw new Error("Match genesis has a malformed seed reveal");
+    }
+    bySeat.set(seat, nonce);
+  }
+  for (const player of players) {
+    const seat = Number(player?.index);
+    const commitment = String(player?.playerGenesisSignature?.seedCommitment || "");
+    if (!HEX_64.test(commitment)) {
+      throw new Error(`Match genesis player ${seat + 1} is missing its seed commitment`);
+    }
+    if (!bySeat.has(seat)) {
+      throw new Error(`Match genesis player ${seat + 1} is missing its seed reveal`);
+    }
+    if (await matchSeedCommitment(bySeat.get(seat), cryptoImpl) !== commitment) {
+      throw new Error(`Match genesis player ${seat + 1} seed reveal does not match its commitment`);
+    }
+  }
+  const expectedSeed = await deriveMatchSeedFromReveals({
+    matchId: match?.auditMatchId || match?.matchId || "",
+    reveals: [...bySeat.entries()].map(([seat, nonce]) => ({ seat, nonce })),
+  }, cryptoImpl);
+  if (Number(match?.seed) !== expectedSeed) {
+    throw new Error("Match genesis seed was not derived from every player's committed nonce");
+  }
+}
+
+// seq 1's prevStateHash: commits the whole action chain to this exact genesis,
+// so envelopes from another match (e.g. a rematch reusing the lobby id) can
+// never chain into, or fork, this one.
+export async function genesisAuditChainHash({ matchId, genesisPayloadHash }, cryptoImpl = globalThis.crypto) {
+  return sha256Hex(canonicalJson({
+    domain: AUDIT_CHAIN_GENESIS_DOMAIN,
+    matchId: String(matchId || ""),
+    genesisPayloadHash: String(genesisPayloadHash || ""),
+  }), cryptoImpl);
+}
+
+export async function initialAuditStateHashForMatch(match, cryptoImpl = globalThis.crypto) {
+  const genesisPayloadHash = String(match?.genesis?.payloadHash || "");
+  if (!genesisPayloadHash) return "0".repeat(64);
+  return genesisAuditChainHash({
+    matchId: match?.auditMatchId || match?.matchId || "",
+    genesisPayloadHash,
+  }, cryptoImpl);
+}
+
+// Per-match unique id: the lobby-scoped auditMatchId plus the signed genesis
+// hash. Use it wherever evidence must not be replayable across rematches.
+export function auditMatchInstanceId(match) {
+  const matchId = String(match?.auditMatchId || match?.matchId || "");
+  const genesisPayloadHash = String(match?.genesis?.payloadHash || "");
+  return genesisPayloadHash ? `${matchId}:${genesisPayloadHash}` : matchId;
+}
+
+export function matchGenesisAckPayload({ matchId, genesisPayloadHash, seat, peerId }) {
+  return {
+    domain: MATCH_GENESIS_ACK_DOMAIN,
+    matchId: String(matchId || ""),
+    genesisPayloadHash: String(genesisPayloadHash || ""),
+    seat: Number(seat),
+    peerId: String(peerId || ""),
+  };
+}
+
+export async function buildSignedMatchGenesisAck({ keyPair, ...fields }, cryptoImpl = globalThis.crypto) {
+  const payload = matchGenesisAckPayload(fields);
+  return {
+    ...payload,
+    signatureAlgorithm: "ecdsa-p256-sha256",
+    signature: await signAuditPayload(keyPair, payload, cryptoImpl),
+  };
+}
+
+export async function verifySignedMatchGenesisAck({ ack, publicKeyHex }, cryptoImpl = globalThis.crypto) {
+  if (!ack || typeof ack !== "object" || String(ack.domain || "") !== MATCH_GENESIS_ACK_DOMAIN) return false;
+  const payload = matchGenesisAckPayload(ack);
+  try {
+    const key = await importAuditPublicKey(String(publicKeyHex || ""), cryptoImpl);
+    return await verifyAuditPayload(key, payload, String(ack.signature || ""), cryptoImpl);
+  } catch {
+    return false;
+  }
 }
 
 async function verifyOpenDecklistForGenesisPlayer(player, manifest, cryptoImpl) {
@@ -2248,6 +2431,9 @@ export async function verifySignedMatchGenesis(match, cryptoImpl = globalThis.cr
         throw new Error(`Match genesis ziffle ceremony for player ${owner + 1} has an invalid shuffle step`);
       }
     }
+    // Every step must be signed by its shuffler's genesis audit key; the
+    // assembler cannot author another player's shuffle.
+    await verifyZiffleCeremonyStepSignatures(ceremony, genesisAuditKeyLookup(players), cryptoImpl);
   }
   const host = players.find((player) => Number(player?.index) === Number(genesis.hostSeat));
   if (!host?.auditPublicKey) {
@@ -2274,6 +2460,7 @@ export async function verifySignedMatchGenesis(match, cryptoImpl = globalThis.cr
     protocolVersion: payload.protocolVersion,
     timeoutMs: payload.timeoutMs,
   }, cryptoImpl)));
+  await verifyMatchSeedReveals(match, players, cryptoImpl);
   return {
     valid: true,
     payloadHash,
@@ -2354,17 +2541,22 @@ function verifyTranscriptOutcome({
   transcript,
   checkpointOutcome,
   disputeReports,
+  withheldDisclosurePlayers = [],
   finalStateHash,
   finalPublicCheckpointHash,
 }) {
-  const disputeAccusedPlayers = Array.from(new Set(
-    disputeReports.flatMap((report) => report.accusedPlayers || [])
-  )).sort((left, right) => left - right);
-  const derived = disputeReports.length > 0
+  const withheld = Array.from(new Set((withheldDisclosurePlayers || []).map(Number)))
+    .sort((left, right) => left - right);
+  const disputeAccusedPlayers = Array.from(new Set([
+    ...disputeReports.flatMap((report) => report.accusedPlayers || []),
+    ...withheld,
+  ])).sort((left, right) => left - right);
+  const derived = disputeReports.length > 0 || withheld.length > 0
     ? {
         status: "disputed",
         disputed: true,
         accusedPlayers: disputeAccusedPlayers,
+        ...(withheld.length > 0 ? { withheldDisclosurePlayers: withheld } : {}),
       }
     : (
       checkpointOutcome || {
@@ -2375,7 +2567,11 @@ function verifyTranscriptOutcome({
   const outcome = transcript?.outcome;
   if (outcome && typeof outcome === "object") {
     const claimedStatus = normalizeOutcomeStatus(outcome.status);
-    if (claimedStatus && claimedStatus !== derived.status) {
+    // A transcript exported before the disclosure timeout elapsed may still
+    // claim the undisputed outcome; a withheld-disclosure verdict derived
+    // from the evidence then overrides it rather than failing verification.
+    const withheldOnly = disputeReports.length === 0 && withheld.length > 0;
+    if (claimedStatus && claimedStatus !== derived.status && !withheldOnly) {
       throw new Error("Match outcome does not match verifiable transcript evidence");
     }
     if (
@@ -2385,7 +2581,11 @@ function verifyTranscriptOutcome({
     ) {
       throw new Error("Match outcome winner does not match the final public checkpoint");
     }
-    if (derived.status === "disputed" && Array.isArray(outcome.accusedPlayers)) {
+    if (
+      derived.status === "disputed"
+      && (!claimedStatus || claimedStatus === "disputed")
+      && Array.isArray(outcome.accusedPlayers)
+    ) {
       const claimedAccused = outcome.accusedPlayers
         .map(Number)
         .sort((left, right) => left - right);
@@ -3690,6 +3890,10 @@ async function verifyShuffleProofList({
     if (typeof verifyShuffleProof !== "function") {
       throw new Error("Live audit transcript contains shuffle proofs but no verifier was provided");
     }
+    await verifyZiffleCeremonyStepSignatures(
+      proof,
+      (seat) => String(players.get(Number(seat))?.auditPublicKey || ""),
+    );
     const ceremony = ziffleCeremonyFromShuffleProof(proof, seq);
     if (proof.inputDeck) {
       const accepted = [...acceptedCeremonies, ...verifiedCeremonies]
@@ -3716,6 +3920,17 @@ async function verifyTranscriptEndOfMatchDisclosures({
   const disclosedPlayers = new Set();
   for (const entry of entries) {
     const disclosure = entry?.disclosure;
+    if (
+      entry
+      && entry.disclosure == null
+      && entry.verdict
+      && typeof entry.verdict === "object"
+      && players.has(Number(entry.player))
+    ) {
+      // An absent disclosure (missing / withheld): an unsigned local verdict
+      // note. Engine replay re-derives the verdict from the final state.
+      continue;
+    }
     if (!disclosure || typeof disclosure !== "object") {
       throw new Error("End-of-match disclosure is missing its signed payload");
     }
@@ -3790,7 +4005,7 @@ export async function verifyLiveAuditTranscript(
     deckAuditManifests: transcript.match.deckAuditManifests || [],
     genesis: transcript.genesis,
   };
-  await verifySignedMatchGenesis(transcriptMatch, cryptoImpl);
+  const genesisReport = await verifySignedMatchGenesis(transcriptMatch, cryptoImpl);
   const witnessReport = await verifyTranscriptWitness(
     transcriptMatch,
     await sha256Hex(canonicalJson(matchGenesisPayload(transcriptMatch)), cryptoImpl),
@@ -3848,7 +4063,16 @@ export async function verifyLiveAuditTranscript(
       verifiedZiffleCeremonies.push(normalized);
     }
   };
-  let stateHash = String(transcript.initialStateHash || "0".repeat(64));
+  // The chain root is derived from the signed genesis, never trusted from
+  // the transcript: that binds every envelope to this exact match instance.
+  let stateHash = await genesisAuditChainHash({
+    matchId: expectedMatchId,
+    genesisPayloadHash: genesisReport.payloadHash,
+  }, cryptoImpl);
+  if (transcript.initialStateHash && String(transcript.initialStateHash) !== stateHash) {
+    throw new Error("Live audit transcript initial state hash is not bound to its signed genesis");
+  }
+  const prevStateHashBySeq = new Map();
   let clockHash = INITIAL_MATCH_CLOCK_HASH;
   let finalPublicCheckpointHash = String(transcript.initialPublicCheckpointHash || "");
   let expectedSeq = 1;
@@ -3867,6 +4091,7 @@ export async function verifyLiveAuditTranscript(
     if (audit.prevStateHash !== stateHash) {
       throw new Error(`Audit state hash mismatch at sequence ${expectedSeq}`);
     }
+    prevStateHashBySeq.set(expectedSeq, stateHash);
     if (canonicalJson(audit.command) !== canonicalJson(entry.command)) {
       throw new Error(`Audit command mismatch at sequence ${expectedSeq}`);
     }
@@ -3931,7 +4156,10 @@ export async function verifyLiveAuditTranscript(
           || activeQuorumPlayers.length < 3
           || Number(audit.actor) === forfeitTarget
           ? 0
-          : actionQuorumPlayers.length
+          // Every non-target player other than the actor must co-sign.
+          : actionQuorumPlayers.filter((player) =>
+              Number(player.index) !== Number(audit.actor)
+            ).length
       );
     let disconnectForfeitReport = null;
     let protocolTimeoutForfeitReport = null;
@@ -3940,7 +4168,7 @@ export async function verifyLiveAuditTranscript(
         certificate: audit.command?.disconnect_certificate || audit.command?.disconnectCertificate,
         command: {
           ...audit.command,
-          matchId: audit.matchId,
+          matchId: auditMatchInstanceId({ auditMatchId: audit.matchId, genesis: { payloadHash: genesisReport.payloadHash } }),
         },
         players: actionQuorumPlayers,
       }, cryptoImpl);
@@ -3951,7 +4179,7 @@ export async function verifyLiveAuditTranscript(
           || audit.command?.protocolTimeoutCertificate,
         command: {
           ...audit.command,
-          matchId: audit.matchId,
+          matchId: auditMatchInstanceId({ auditMatchId: audit.matchId, genesis: { payloadHash: genesisReport.payloadHash } }),
         },
         players: actionQuorumPlayers,
       }, cryptoImpl);
@@ -3971,6 +4199,10 @@ export async function verifyLiveAuditTranscript(
       await verifyForfeitCertificate(audit.command.witness_forfeit, witnessReport.witnessPublicKey, {
         matchId: expectedMatchId,
         tournamentId: witnessReport.tournamentId,
+        // Bound to this game's attested genesis and to the head it was
+        // opened at, so a forfeit from another game/rematch cannot replay.
+        genesisHash: witnessReport.genesisHash,
+        basisSequence: expectedSeq - 1,
         accusedSeat: forfeitTarget,
         claimantSeat: Number(audit.actor),
       });
@@ -4115,6 +4347,7 @@ export async function verifyLiveAuditTranscript(
     throw new Error("Live audit transcript verification requires engine replay");
   }
   let engineReplay = null;
+  const withheldDisclosurePlayers = new Set();
   if (replayTranscript) {
     const replayReport = await replayTranscript({
       transcript,
@@ -4198,7 +4431,15 @@ export async function verifyLiveAuditTranscript(
         throw new Error("Engine replay returned invalid end-of-match disclosure player coverage");
       }
       reportedPlayers.add(player);
-      if (report?.replayVerdict?.status !== "verified") {
+      const replayStatus = report?.replayVerdict?.status;
+      // Withholding a disclosure owed for pending deferred claims is a verdict
+      // against that player: the outcome becomes disputed with it accused.
+      if (replayStatus === "withheld" && !disclosedPlayers.has(player)) {
+        withheldDisclosurePlayers.add(player);
+        continue;
+      }
+      if (replayStatus === "not_required" && !disclosedPlayers.has(player)) continue;
+      if (replayStatus !== "verified") {
         throw new Error(`Engine replay end-of-match disclosure failed for player ${player + 1}: `
           + String(report?.replayVerdict?.reason || report?.replayVerdict?.status || "missing verdict"));
       }
@@ -4218,17 +4459,22 @@ export async function verifyLiveAuditTranscript(
       ...(disclosuresVerified != null ? { endOfMatchDisclosuresVerified: disclosuresVerified } : {}),
     };
   }
+  // A fork may only be proven from this transcript's own chain: the forked
+  // sequence must extend a verified prefix (or the verified tip).
+  prevStateHashBySeq.set(expectedSeq, stateHash);
   const disputeReports = await verifyTranscriptDisputes(
     transcript.disputes || transcript.disputeEvidence || [],
     players,
     cryptoImpl,
     witnessReport,
     expectedMatchId,
+    prevStateHashBySeq,
   );
   const outcome = verifyTranscriptOutcome({
     transcript,
     checkpointOutcome,
     disputeReports,
+    withheldDisclosurePlayers: [...withheldDisclosurePlayers],
     finalStateHash: stateHash,
     finalPublicCheckpointHash,
   });

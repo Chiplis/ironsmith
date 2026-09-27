@@ -160,6 +160,13 @@ impl EffectExecutor for SequenceEffect {
                 assignment_cursor = end;
                 active_scope = Some(rebase_target_scope(&ctx.targets, &scoped_assignments));
             }
+            let previous_search_reveal = std::mem::replace(
+                &mut ctx.public_search_reveal_tag,
+                super::choose_objects_runtime::revealed_search_tag(
+                    effect,
+                    self.effects.get(index + 1),
+                ),
+            );
             let outcome = if let Some((scoped_targets, scoped_assignments)) = &active_scope {
                 ctx.with_temp_targets(scoped_targets.clone(), |ctx| {
                     ctx.with_temp_target_assignments(scoped_assignments.clone(), |ctx| {
@@ -169,6 +176,7 @@ impl EffectExecutor for SequenceEffect {
             } else {
                 execute_effect(game, effect, ctx)
             };
+            ctx.public_search_reveal_tag = previous_search_reveal;
             // CR 608.2b: a coordinated sibling whose targets have all become
             // illegal does nothing, and the other siblings still resolve.
             // Executors that report the empty scope as `Err(InvalidTarget)`

@@ -169,6 +169,22 @@ export function sessionSecurityMode(session, fallback = MULTIPLAYER_SECURITY_TRU
   return normalizeMultiplayerSecurityMode(session?.securityMode, fallback);
 }
 
+// The security mode this seat consented to for its lobby and current match.
+// `lockedSecurityMode` is recorded when the seat first observes the lobby
+// (relay room config, first lobby_state, own createLobby) and when a match
+// start or resync is accepted; a started match also pins the accepted match
+// payload's mode. Returns "" only while nothing has been observed yet.
+export function pinnedSessionSecurityMode(session, acceptedMatchPayload = null) {
+  if (session?.lockedSecurityMode) {
+    return normalizeMultiplayerSecurityMode(session.lockedSecurityMode);
+  }
+  if (session?.matchStarted && acceptedMatchPayload) {
+    return matchPayloadSecurityMode(acceptedMatchPayload, sessionSecurityMode(session));
+  }
+  if (session?.matchStarted) return sessionSecurityMode(session);
+  return "";
+}
+
 export function sequencedActionSecurityMode(message, session) {
   return normalizeMultiplayerSecurityMode(
     message?.securityMode,
@@ -935,20 +951,34 @@ export function buildExportedMatchOutcome({
   finalPublicCheckpointHash,
   matchDisputed,
   disputes = [],
+  withheldDisclosurePlayers = [],
 }) {
   // Only signed evidence in the transcript makes an exported match
   // "disputed"; the verifier derives the same status from it. A dispute this
   // browser saw without such evidence (for example a 1v1 protocol timeout
   // outside a tournament) is kept as an unverified note beside the outcome.
-  if (disputes.length > 0) {
-    const accusedPlayers = Array.from(new Set(
-      disputes.flatMap((dispute) => dispute?.accusedPlayers || []).map(Number)
-    )).sort((left, right) => left - right);
+  // A withheld end-of-match disclosure (pending deferred claims, no valid
+  // disclosure before the timeout) is such evidence too: audit replay
+  // re-derives it from the final state and the transcript's disclosures.
+  const withheld = Array.from(new Set((withheldDisclosurePlayers || []).map(Number)))
+    .filter((player) => Number.isInteger(player) && player >= 0);
+  if (disputes.length > 0 || withheld.length > 0) {
+    const accusedPlayers = Array.from(new Set([
+      ...disputes.flatMap((dispute) => dispute?.accusedPlayers || []).map(Number),
+      ...withheld,
+    ])).sort((left, right) => left - right);
     return {
       status: "disputed",
       disputed: true,
-      reason: String(matchDisputed?.reason || "Match transcript fork detected"),
+      reason: String(
+        disputes.length > 0
+          ? matchDisputed?.reason || "Match transcript fork detected"
+          : "End-of-match disclosure withheld"
+      ),
       accusedPlayers,
+      ...(withheld.length > 0
+        ? { withheldDisclosurePlayers: [...withheld].sort((left, right) => left - right) }
+        : {}),
       finalStateHash,
       finalPublicCheckpointHash,
     };
