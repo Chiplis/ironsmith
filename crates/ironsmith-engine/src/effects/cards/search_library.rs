@@ -183,10 +183,17 @@ impl EffectExecutor for SearchLibraryEffect {
                     }
 
                     // For other destinations, move then shuffle
-                    let (new_id, move_events, move_facts) = if let Some(search_override) =
-                        search_override
-                    {
-                        exile_found_cards_for_opposition_agent(game, &[card_id], search_override)
+                    let (new_id, move_events, move_facts) = if search_override.is_some() {
+                        let exiled = exile_found_cards_for_opposition_agent(
+                            game,
+                            ctx,
+                            &[card_id],
+                            chooser_id,
+                        );
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(EffectOutcome::count(0));
+                        }
+                        exiled
                             .first()
                             .copied()
                             .map(|id| (Some(id), Vec::new(), Vec::new()))

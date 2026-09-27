@@ -40,10 +40,12 @@ import {
   buildObjectNameById,
 } from "@/lib/decision-object-meta";
 import {
-  defaultTriggerOrderingOrder,
-  isTriggerOrderingDecision,
-  normalizeTriggerOrderingOrder,
-} from "@/lib/trigger-ordering";
+  defaultEffectOrderingOrder,
+  isEffectOrderingDecision,
+  normalizeEffectOrderingOrder,
+  effectOrderingOptionIndices,
+  effectOrderingSubmitLabel,
+} from "@/lib/effect-ordering";
 import { useHoverSuppressedWhileScrolling } from "@/lib/useHoverSuppressedWhileScrolling";
 import { cn } from "@/lib/utils";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
@@ -1624,7 +1626,7 @@ function MobileBattleDecisionLayer({
     multiplayer,
     dispatch,
     cancelDecision,
-    triggerOrderingState,
+    effectOrderingState,
   } = useGame();
   const {
     hoveredObjectId,
@@ -1863,22 +1865,22 @@ function MobileBattleDecisionLayer({
   );
   const submitAction = submitState.key === decisionIdentity ? submitState.action : null;
   const combatAction = combatActionState.key === decisionIdentity ? combatActionState.action : null;
-  const triggerOrderingDecision = isTriggerOrderingDecision(decision);
-  const triggerOrderingSubmitAction = useMemo(() => {
-    if (!triggerOrderingDecision) return null;
-    const order = triggerOrderingState?.order?.length
-      ? normalizeTriggerOrderingOrder(triggerOrderingState.order, decision)
-      : defaultTriggerOrderingOrder(decision);
+  const effectOrderingDecision = isEffectOrderingDecision(decision);
+  const effectOrderingSubmitAction = useMemo(() => {
+    if (!effectOrderingDecision) return null;
+    const order = effectOrderingState?.order?.length
+      ? normalizeEffectOrderingOrder(effectOrderingState.order, decision)
+      : defaultEffectOrderingOrder(decision);
     return {
-      label: "Submit Order",
+      label: effectOrderingSubmitLabel(decision),
       disabled: !canAct,
       onSubmit: () => {
         clearHover();
-        dispatch({ type: "select_options", option_indices: order }, "Order submitted");
+        dispatch({ type: "select_options", option_indices: effectOrderingOptionIndices(decision, order) }, effectOrderingSubmitLabel(decision));
       },
     };
-  }, [canAct, clearHover, decision, dispatch, triggerOrderingDecision, triggerOrderingState]);
-  const effectiveSubmitAction = triggerOrderingSubmitAction || submitAction;
+  }, [canAct, clearHover, decision, dispatch, effectOrderingDecision, effectOrderingState]);
+  const effectiveSubmitAction = effectOrderingSubmitAction || submitAction;
   const canSubmitFocused = canAct
     && !!effectiveSubmitAction
     && !effectiveSubmitAction.disabled
@@ -2440,7 +2442,7 @@ function PriorityBar({
     state,
     dispatch,
     cancelDecision,
-    triggerOrderingState,
+    effectOrderingState,
     multiplayer,
     playerAccentOverrides,
     startResolveAll,
@@ -2547,11 +2549,11 @@ function PriorityBar({
   const showInlineViewedCards = Boolean(viewedCardsToken)
     && !showViewedCardsStep
     && !["select_objects", "select_options", "targets"].includes(decision?.kind);
-  const triggerOrderingDecision = isTriggerOrderingDecision(decision);
+  const effectOrderingDecision = isEffectOrderingDecision(decision);
   const showStripDecisionSummary = (
     decision?.kind === "targets"
     && !showViewedCardsStep
-    && !triggerOrderingDecision
+    && !effectOrderingDecision
   );
   const toolbarDecisionSummary = useMemo(() => {
     const parts = [
@@ -2710,21 +2712,21 @@ function PriorityBar({
     [decisionIdentity]
   );
   const submitAction = submitState.key === decisionIdentity ? submitState.action : null;
-  const triggerOrderingSubmitAction = useMemo(() => {
-    if (!triggerOrderingDecision) return null;
-    const order = triggerOrderingState?.order?.length
-      ? normalizeTriggerOrderingOrder(triggerOrderingState.order, decision)
-      : defaultTriggerOrderingOrder(decision);
+  const effectOrderingSubmitAction = useMemo(() => {
+    if (!effectOrderingDecision) return null;
+    const order = effectOrderingState?.order?.length
+      ? normalizeEffectOrderingOrder(effectOrderingState.order, decision)
+      : defaultEffectOrderingOrder(decision);
     return {
-      label: "Submit Order",
+      label: effectOrderingSubmitLabel(decision),
       disabled: !canAct,
       onSubmit: () => {
         clearHover();
-        dispatch({ type: "select_options", option_indices: order }, "Order submitted");
+        dispatch({ type: "select_options", option_indices: effectOrderingOptionIndices(decision, order) }, effectOrderingSubmitLabel(decision));
       },
     };
-  }, [canAct, clearHover, decision, dispatch, triggerOrderingDecision, triggerOrderingState]);
-  const effectiveSubmitAction = triggerOrderingSubmitAction || submitAction;
+  }, [canAct, clearHover, decision, dispatch, effectOrderingDecision, effectOrderingState]);
+  const effectiveSubmitAction = effectOrderingSubmitAction || submitAction;
   const canSubmitFocused = canAct
     && !!effectiveSubmitAction
     && !effectiveSubmitAction.disabled
@@ -2826,12 +2828,12 @@ function PriorityBar({
         >
           {peerWaiting ? (
             <PeerWaitButtonContent />
-          ) : !isPriorityDecision && effectiveSubmitAction && !showViewedCardsStep && inline && !belowToolbar ? (
+          ) : !isPriorityDecision && effectiveSubmitAction && !showViewedCardsStep && inline && !belowToolbar && !effectOrderingDecision ? (
             <span className="sr-only">
               {effectiveSubmitAction.label || t("decision.submitPlain")}
             </span>
           ) : (
-            showViewedCardsStep ? t("decision.done") : (effectiveSubmitAction?.label || t("decision.submitPlain"))
+            showViewedCardsStep ? t("decision.done") : ui(effectiveSubmitAction?.label || t("decision.submitPlain"))
           )}
         </Button>
       </PeerWaitPopover>
@@ -3184,7 +3186,7 @@ function PriorityBar({
                       sourceObjectId={decision?.source_id}
                       onInspectObject={handleActionCardInspect}
                     />
-                  ) : !triggerOrderingDecision && (
+                  ) : !effectOrderingDecision && (
                     <div className="action-strip-decision-meta flex min-w-0 flex-1 flex-col justify-center px-1">
                       <div className="flex min-w-0 items-baseline gap-2">
                         <span className="decision-stage-chip">{decisionStageLabel(decision, t)}</span>
@@ -3248,7 +3250,7 @@ function PriorityBar({
                       onCardHoverEnd={handleViewedCardHoverEnd}
                       compact
                     />
-                  ) : (!triggerOrderingDecision && (
+                  ) : (!effectOrderingDecision && (
                     <>
                       {showInlineViewedCards ? (
                         <ViewedCardsStrip
@@ -3484,12 +3486,12 @@ function PriorityBar({
                       >
                         {peerWaiting ? (
                           <PeerWaitButtonContent />
-                        ) : !isPriorityDecision && effectiveSubmitAction && !showViewedCardsStep ? (
+                        ) : !isPriorityDecision && effectiveSubmitAction && !showViewedCardsStep && !effectOrderingDecision ? (
                           <span className="sr-only">
                             {effectiveSubmitAction.label || t("decision.submitPlain")}
                           </span>
                         ) : (
-                          showViewedCardsStep ? t("decision.done") : (effectiveSubmitAction?.label || t("decision.submitPlain"))
+                          showViewedCardsStep ? t("decision.done") : ui(effectiveSubmitAction?.label || t("decision.submitPlain"))
                         )}
                       </Button>
                     </PeerWaitPopover>
@@ -3525,7 +3527,7 @@ function PriorityBar({
                       sourceObjectId={decision?.source_id}
                       onInspectObject={handleActionCardInspect}
                     />
-                  ) : !triggerOrderingDecision && (
+                  ) : !effectOrderingDecision && (
                     <div className="action-strip-decision-meta flex min-w-0 flex-1 flex-col justify-center py-1.5">
                       <div className="flex min-w-0 items-center gap-2">
                         <span className="decision-stage-chip">{decisionStageLabel(decision, t)}</span>
@@ -3632,7 +3634,7 @@ function PriorityBar({
                 onCardHoverEnd={handleViewedCardHoverEnd}
                 compact
               />
-            ) : (!triggerOrderingDecision && (
+            ) : (!effectOrderingDecision && (
               <>
                 {showInlineViewedCards ? (
                   <ViewedCardsStrip

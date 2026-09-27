@@ -4569,6 +4569,38 @@ pub(crate) fn lower_compiler_static_ability_core(
 ) -> Result<StaticAbility, CardTextError> {
     let crate::model::CompilerStaticAbilityCore { id, label, payload } = ability;
     match payload {
+        crate::model::CompilerStaticAbilityPayloadCore::KeywordActionReplacement {
+            action,
+            source_filter,
+            performer_filter,
+            replacement_effects,
+            optional,
+            display,
+        } => {
+            let mut ctx = crate::model::facts::EffectLoweringContext::new();
+            // Keyword-action replacements bind "it" to the object performing
+            // the replaced action, independently of the replacement's source.
+            ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.key());
+            let (replacement_effects, choices) =
+                crate::compile_support::compile_effects(&replacement_effects, &mut ctx)?;
+            if !choices.is_empty() {
+                return Err(CardTextError::InvariantViolation(
+                    "keyword-action replacement cannot announce targets".into(),
+                ));
+            }
+            Ok(StaticAbility {
+                id,
+                label,
+                payload: crate::static_abilities::StaticAbilityPayload::KeywordActionReplacement {
+                    action,
+                    source_filter,
+                    performer_filter,
+                    replacement_effects,
+                    optional,
+                    display,
+                },
+            })
+        }
         crate::model::CompilerStaticAbilityPayloadCore::ExileWouldDieInstead {
             filter,
             damaged_by,
@@ -5427,6 +5459,79 @@ pub fn validate_iterated_player_bindings_in_lowered_effects(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keyword_action_replacement_keeps_the_replaced_object_reference() {
+        let replaced_object = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
+        let ability = crate::model::CompilerStaticAbilityCore::keyword_action_replacement(
+            crate::events::KeywordActionKind::Connive,
+            ObjectFilter::creature().controlled_by(PlayerFilter::You),
+            vec![
+                EffectAst::subject_verb(
+                    crate::cards::builders::SubjectVerbRoleAst::Actor,
+                    crate::model::PlayerAst::You,
+                    SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
+                        count: Value::Fixed(1),
+                    }),
+                ),
+                EffectAst::subject_verb_connive(replaced_object, Value::Fixed(1)),
+            ],
+            "If a creature you control would connive, instead draw a card, then it connives.",
+        );
+        let lowered =
+            lower_compiler_static_ability_core(ability).expect("replacement should lower");
+        let crate::static_abilities::StaticAbilityPayload::KeywordActionReplacement {
+            replacement_effects,
+            ..
+        } = lowered.payload
+        else {
+            panic!("expected keyword action replacement");
+        };
+        let connive = replacement_effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<crate::effects::ConniveEffect>())
+            .expect("replacement should connive");
+        assert_eq!(
+            connive.target.base(),
+            &ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key()),
+            "the conniving creature comes from the replaced event"
+        );
+    }
+
+    #[test]
+    fn keyword_action_replacement_repeated_explore_keeps_one_subject() {
+        let explore = EffectAst::subject_verb_explore(TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            None,
+        ));
+        let ability = crate::model::CompilerStaticAbilityCore::keyword_action_replacement(
+            crate::events::KeywordActionKind::Explore,
+            ObjectFilter::creature().controlled_by(PlayerFilter::You),
+            vec![explore.clone(), explore],
+            "If a creature you control would explore, instead it explores, then it explores again.",
+        );
+        let lowered =
+            lower_compiler_static_ability_core(ability).expect("replacement should lower");
+        let crate::static_abilities::StaticAbilityPayload::KeywordActionReplacement {
+            replacement_effects,
+            ..
+        } = lowered.payload
+        else {
+            panic!("expected keyword action replacement");
+        };
+        assert_eq!(replacement_effects.len(), 2);
+        for effect in replacement_effects {
+            let inner = effect.as_tagged().map_or(&effect, |tagged| &tagged.effect);
+            let explore = inner
+                .downcast_ref::<crate::effects::ExploreEffect>()
+                .expect("replacement should explore");
+            assert_eq!(
+                explore.target.base(),
+                &ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key()),
+                "both explores must use the creature from the replaced event: {effect:#?}"
+            );
+        }
+    }
 
     /// A granted keyword must function in the same zones as the printed one.
     ///

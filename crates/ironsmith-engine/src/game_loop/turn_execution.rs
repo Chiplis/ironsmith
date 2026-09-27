@@ -74,8 +74,32 @@ pub fn execute_turn_with(
                             decision_maker.decide_distribute(game, distribute_ctx),
                         );
                     }
+                    crate::decisions::context::DecisionContext::Number(ref ctx) => {
+                        runner.respond_number(decision_maker.decide_number(game, ctx));
+                    }
+                    crate::decisions::context::DecisionContext::TextInput(ref ctx) => {
+                        runner.respond_text(decision_maker.decide_text(game, ctx));
+                    }
+                    crate::decisions::context::DecisionContext::Colors(ref ctx) => {
+                        runner.respond_colors(decision_maker.decide_colors(game, ctx));
+                    }
+                    crate::decisions::context::DecisionContext::Counters(ref ctx) => {
+                        runner.respond_counters(decision_maker.decide_counters(game, ctx));
+                    }
+                    crate::decisions::context::DecisionContext::Partition(ref ctx) => {
+                        runner.respond_partition(decision_maker.decide_partition(game, ctx));
+                    }
+                    crate::decisions::context::DecisionContext::Proliferate(ref ctx) => {
+                        runner.respond_proliferate(decision_maker.decide_proliferate(game, ctx));
+                    }
+                    crate::decisions::context::DecisionContext::Targets(ref ctx) => {
+                        runner.respond_targets(decision_maker.decide_targets(game, ctx));
+                    }
+                    crate::decisions::context::DecisionContext::Priority(ref ctx) => {
+                        runner.respond_priority(decision_maker.decide_priority(game, ctx));
+                    }
                     _ => {
-                        // Other decision types shouldn't appear during turn execution
+                        return Err(GameLoopError::InvalidState("unsupported runner decision".into()));
                     }
                 }
             }

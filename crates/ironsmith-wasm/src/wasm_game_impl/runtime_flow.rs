@@ -1,3 +1,44 @@
+// Runner replay and ordinary effect replay share the same option contract.
+// Counts are mode points for weighted decisions; repeating a nonrepeatable
+// option must never stand in for selecting another legal mode.
+pub(super) fn validate_replay_option_selection(
+    ctx: &ironsmith::decisions::context::SelectOptionsContext,
+    selected: &[usize],
+) -> Result<(), String> {
+    let mut counts = HashMap::<usize, usize>::new();
+    let mut total = 0usize;
+    for index in selected {
+        let option = ctx
+            .options
+            .iter()
+            .find(|option| option.index == *index && option.legal)
+            .ok_or_else(|| format!("option index {index} is not legal"))?;
+        let count = counts.entry(*index).or_default();
+        *count += 1;
+        let limit = if option.repeatable {
+            option
+                .max_count
+                .map(|limit| limit as usize)
+                .unwrap_or(usize::MAX)
+        } else {
+            1
+        };
+        if *count > limit {
+            return Err(format!(
+                "option index {index} may be selected at most {limit} time(s)"
+            ));
+        }
+        total = total.saturating_add(option.point_cost.max(1) as usize);
+    }
+    if total < ctx.min || total > ctx.max {
+        return Err(format!(
+            "must select {}..={} option point(s), got {total}",
+            ctx.min, ctx.max
+        ));
+    }
+    Ok(())
+}
+
 impl WasmGame {
     fn prune_grand_melee_host_lanes(&mut self) {
         let live_markers = self
@@ -143,7 +184,8 @@ impl WasmGame {
         };
         self.game.turn.step == Some(ironsmith::game_state::Step::Cleanup)
             && obj.min > 0
-            && obj.player != self.perspective
+            && self.game.controlling_player_for(obj.player) != self.perspective
+            && !self.runner.as_ref().is_some_and(|runner| runner.has_pending_replay_choice())
     }
 
     /// Publish one `advance_until_decision` pass: to the single "last" slot the
@@ -435,12 +477,22 @@ impl WasmGame {
         }
     }
 
-    /// Handle a response to a TurnRunner-sourced decision (attackers/blockers/discard).
+    /// Handle a response to a TurnRunner-sourced decision.
     fn dispatch_runner_decision(
         &mut self,
         pending_ctx: DecisionContext,
         command: UiCommand,
     ) -> Result<JsValue, JsValue> {
+        self.apply_runner_decision(pending_ctx, command)?;
+        self.snapshot()
+    }
+
+    /// Apply the same validated runner command without constructing a JS snapshot.
+    pub(super) fn apply_runner_decision(
+        &mut self,
+        pending_ctx: DecisionContext,
+        command: UiCommand,
+    ) -> Result<(), JsValue> {
         let _runner = self.runner.as_mut().ok_or_else(|| {
             // Restore decision on structural error so UI can retry.
             self.pending_decision = Some(pending_ctx.clone());
@@ -482,132 +534,64 @@ impl WasmGame {
                     .unwrap()
                     .respond_blockers(converted, player);
             }
-            (
-                DecisionContext::SelectObjects(obj_ctx),
-                UiCommand::SelectObjects {
-                    object_ids,
-                    object_stable_ids,
-                    object_hidden_refs,
-                },
-            ) => {
-                let object_ids = normalize_select_object_choice_ids(
-                    &self.game,
-                    obj_ctx,
-                    &object_ids,
-                    &object_stable_ids,
-                    &object_hidden_refs,
-                )
-                .map_err(|e| restore_on_err(self, pending_ctx.clone(), e))?;
-                // Validate discard selection against the decision context.
-                let legal_ids: Vec<u64> = obj_ctx
-                    .candidates
-                    .iter()
-                    .filter(|c| c.legal)
-                    .map(|c| c.id.0)
-                    .collect();
-                validate_object_selection(
-                    obj_ctx.min,
-                    obj_ctx.max,
-                    obj_ctx.allow_partial_completion,
-                    &object_ids,
-                    &legal_ids,
-                )
-                .map_err(|e| restore_on_err(self, pending_ctx.clone(), e))?;
-
-                let cards: Vec<ObjectId> = object_ids
-                    .iter()
-                    .map(|&id| ObjectId::from_raw(id))
-                    .collect();
-                self.runner.as_mut().unwrap().respond_discard(cards);
-            }
-            (DecisionContext::Boolean(_), UiCommand::SelectOptions { option_indices }) => {
-                validate_option_selection(1, Some(1), &option_indices, &[0usize, 1usize])?;
-                let answer = option_indices.first().copied() == Some(1);
-                self.runner.as_mut().unwrap().respond_boolean(answer);
-            }
-            (
-                DecisionContext::SelectOptions(options_ctx),
-                UiCommand::SelectOptions { option_indices },
-            ) => {
-                let legal_indices = options_ctx
-                    .options
-                    .iter()
-                    .map(|option| option.index)
-                    .collect::<Vec<_>>();
-                validate_option_selection(
-                    options_ctx.min,
-                    Some(options_ctx.max),
-                    &option_indices,
-                    &legal_indices,
-                )
-                .map_err(|err| restore_on_err(self, pending_ctx.clone(), err))?;
-                self.runner
-                    .as_mut()
-                    .unwrap()
-                    .respond_options(option_indices);
-            }
-            (DecisionContext::ManaPayment(_), command @ UiCommand::ManaPayment { .. }) => {
-                let answer = self.command_to_replay_answer(&pending_ctx, command)
-                    .map_err(|e| restore_on_err(self, pending_ctx.clone(), e))?;
-                let ReplayDecisionAnswer::ManaPayment(response) = answer else {
-                    return Err(restore_on_err(self, pending_ctx.clone(), JsValue::from_str("expected a mana payment")));
-                };
-                self.runner.as_mut().unwrap().respond_mana_payment(response);
-            }
-            (DecisionContext::Order(_), command @ UiCommand::SelectOptions { .. }) => {
-                // An ordering asked by a replayed runner effect (a draw-step
-                // replacement's "in any order").
+            (_, command) => {
                 let answer = self
                     .command_to_replay_answer(&pending_ctx, command)
-                    .map_err(|e| restore_on_err(self, pending_ctx.clone(), e))?;
-                let ReplayDecisionAnswer::Order(order) = answer else {
-                    return Err(restore_on_err(
-                        self,
-                        pending_ctx.clone(),
-                        JsValue::from_str("expected an ordering"),
-                    ));
-                };
-                self.runner.as_mut().unwrap().respond_order(order);
-            }
-            (
-                DecisionContext::Distribute(_),
-                command @ UiCommand::SelectOptions { .. },
-            ) => {
-                // CR 510.1c-d: a combat-damage division chosen before damage.
-                let answer = self
-                    .command_to_replay_answer(&pending_ctx, command)
-                    .map_err(|e| restore_on_err(self, pending_ctx.clone(), e))?;
-                let ReplayDecisionAnswer::Distribute(distribution) = answer else {
-                    return Err(restore_on_err(
-                        self,
-                        pending_ctx.clone(),
-                        JsValue::from_str("expected a combat-damage division"),
-                    ));
-                };
-                self.runner
-                    .as_ref()
-                    .unwrap()
-                    .validate_combat_damage_distribution(&self.game, &distribution)
-                    .map_err(|e| {
-                        restore_on_err(self, pending_ctx.clone(), JsValue::from_str(&e))
-                    })?;
-                self.runner
-                    .as_mut()
-                    .unwrap()
-                    .respond_distribute(distribution);
-            }
-            _ => {
-                self.pending_decision = Some(pending_ctx);
-                self.runner_pending_decision = true;
-                return Err(JsValue::from_str("unexpected command for runner decision"));
+                    .map_err(|err| restore_on_err(self, pending_ctx.clone(), err))?;
+                if let ReplayDecisionAnswer::Distribute(distribution) = &answer
+                    && !self.runner.as_ref().unwrap().has_pending_replay_choice()
+                {
+                    // Only ordinary combat assignments use combat's division
+                    // rules; replayed effects validate their own distribution.
+                    self.runner
+                        .as_ref()
+                        .unwrap()
+                        .validate_combat_damage_distribution(&self.game, distribution)
+                        .map_err(|err| {
+                            restore_on_err(self, pending_ctx.clone(), JsValue::from_str(&err))
+                        })?;
+                }
+                let runner = self.runner.as_mut().unwrap();
+                match answer {
+                    ReplayDecisionAnswer::Boolean(value) => runner.respond_boolean(value),
+                    ReplayDecisionAnswer::Number(value) => runner.respond_number(value),
+                    ReplayDecisionAnswer::Text(value) => runner.respond_text(value),
+                    ReplayDecisionAnswer::Objects(objects) => runner.respond_discard(objects),
+                    ReplayDecisionAnswer::Options(options) => runner.respond_options(options),
+                    ReplayDecisionAnswer::ManaPayment(response) => {
+                        runner.respond_mana_payment(response)
+                    }
+                    ReplayDecisionAnswer::Targets(targets) => runner.respond_targets(targets),
+                    ReplayDecisionAnswer::Order(order) => runner.respond_order(order),
+                    ReplayDecisionAnswer::Distribute(distribution) => {
+                        runner.respond_distribute(distribution)
+                    }
+                    ReplayDecisionAnswer::Colors(colors) => runner.respond_colors(colors),
+                    ReplayDecisionAnswer::Counters(counters) => runner.respond_counters(counters),
+                    ReplayDecisionAnswer::Partition(partition) => {
+                        runner.respond_partition(partition)
+                    }
+                    ReplayDecisionAnswer::Proliferate(response) => {
+                        runner.respond_proliferate(response)
+                    }
+                    ReplayDecisionAnswer::Priority(action) => runner.respond_priority(action),
+                    ReplayDecisionAnswer::Attackers(_) | ReplayDecisionAnswer::Blockers(_) => {
+                        return Err(restore_on_err(
+                            self,
+                            pending_ctx.clone(),
+                            JsValue::from_str("unexpected command for runner decision"),
+                        ));
+                    }
+                }
             }
         }
 
         // The runner is now in a state where advance() will apply the response.
         // We're no longer awaiting priority (runner will handle the next steps).
         self.runner_awaiting_priority = false;
-        self.advance_until_decision()?;
-        self.snapshot()
+        self.runner_pending_decision = false;
+        self.pending_decision = None;
+        self.advance_until_decision()
     }
 
     pub(super) fn finish_live_priority_dispatch(
@@ -1288,18 +1272,8 @@ impl WasmGame {
                 DecisionContext::SelectOptions(options),
                 UiCommand::SelectOptions { option_indices },
             ) => {
-                let legal_indices: Vec<usize> = options
-                    .options
-                    .iter()
-                    .filter(|o| o.legal)
-                    .map(|o| o.index)
-                    .collect();
-                validate_option_selection(
-                    options.min,
-                    Some(options.max),
-                    &option_indices,
-                    &legal_indices,
-                )?;
+                validate_replay_option_selection(options, &option_indices)
+                    .map_err(|err| JsValue::from_str(&err))?;
                 Ok(ReplayDecisionAnswer::Options(option_indices))
             }
             (
@@ -1598,19 +1572,16 @@ impl WasmGame {
                 Ok(ReplayDecisionAnswer::Blockers(converted))
             }
             (DecisionContext::Modes(modes), UiCommand::SelectOptions { option_indices }) => {
-                let legal: Vec<usize> = modes
-                    .spec
-                    .modes
-                    .iter()
-                    .filter(|mode| mode.legal)
-                    .map(|mode| mode.index)
-                    .collect();
-                validate_option_selection(
-                    modes.spec.min_modes,
-                    Some(modes.spec.max_modes),
-                    &option_indices,
-                    &legal,
-                )?;
+                use ironsmith::decisions::DecisionSpec;
+                let DecisionContext::SelectOptions(options) = modes.spec.build_context(
+                    modes.player,
+                    modes.source,
+                    &self.game,
+                ) else {
+                    unreachable!("mode specifications build option choices");
+                };
+                validate_replay_option_selection(&options, &option_indices)
+                    .map_err(|err| JsValue::from_str(&err))?;
                 Ok(ReplayDecisionAnswer::Options(option_indices))
             }
             (

@@ -39,11 +39,11 @@ import {
   selectObjectSyncMetadataForCommand,
 } from "@/lib/sync-commands";
 import {
-  buildTriggerOrderingKey,
-  defaultTriggerOrderingOrder,
-  isTriggerOrderingDecision,
-  normalizeTriggerOrderingOrder,
-} from "@/lib/trigger-ordering";
+  buildEffectOrderingKey,
+  defaultEffectOrderingOrder,
+  isEffectOrderingDecision,
+  normalizeEffectOrderingOrder,
+} from "@/lib/effect-ordering";
 import { DEFAULT_UI_FONT, uiFontStack } from "@/lib/ui-fonts";
 import { readFixedStartingBoard, storeFixedStartingBoard } from "@/lib/starting-board";
 import { hexToRgbString } from "@/lib/player-colors";
@@ -813,12 +813,12 @@ function summarizeCommand(command) {
   return summary;
 }
 
-function currentOrderForDecision(triggerOrderingState, decision, key = buildTriggerOrderingKey(decision)) {
-  if (!isTriggerOrderingDecision(decision)) return [];
-  if (triggerOrderingState?.key === key) {
-    return normalizeTriggerOrderingOrder(triggerOrderingState.order, decision);
+function currentOrderForDecision(effectOrderingState, decision, key = buildEffectOrderingKey(decision)) {
+  if (!isEffectOrderingDecision(decision)) return [];
+  if (effectOrderingState?.key === key) {
+    return normalizeEffectOrderingOrder(effectOrderingState.order, decision);
   }
-  return defaultTriggerOrderingOrder(decision);
+  return defaultEffectOrderingOrder(decision);
 }
 
 export function GameProvider({ children }) {
@@ -842,7 +842,7 @@ export function GameProvider({ children }) {
   });
   const [playerAccentOverrides, setPlayerAccentOverrides] = useState(readStoredPlayerAccentOverrides);
   const [inspectorDebug, setInspectorDebug] = useState(false);
-  const [triggerOrderingState, setTriggerOrderingState] = useState({ key: "", order: [] });
+  const [effectOrderingState, setEffectOrderingState] = useState({ key: "", order: [] });
   const [semanticThreshold, setSemanticThresholdRaw] = useState(96);
   const [cardsMeetingThreshold, setCardsMeetingThreshold] = useState(0);
   const [semanticStats, setSemanticStats] = useState(null);
@@ -987,15 +987,15 @@ export function GameProvider({ children }) {
     stateRef.current = visibleState;
   }, [setState, stateRef]);
 
-  const moveTriggerOrderingItem = useCallback((position, direction) => {
+  const moveEffectOrderingItem = useCallback((position, direction) => {
     const decision = stateRef.current?.decision || null;
-    if (!isTriggerOrderingDecision(decision)) return;
-    const key = buildTriggerOrderingKey(decision);
+    if (!isEffectOrderingDecision(decision)) return;
+    const key = buildEffectOrderingKey(decision);
 
-    setTriggerOrderingState((current) => {
+    setEffectOrderingState((current) => {
       const currentOrder = current.key === key
-        ? normalizeTriggerOrderingOrder(current.order, decision)
-        : defaultTriggerOrderingOrder(decision);
+        ? normalizeEffectOrderingOrder(current.order, decision)
+        : defaultEffectOrderingOrder(decision);
       const nextPosition = Number(position) + Number(direction);
       if (
         !Number.isInteger(position)
@@ -1015,16 +1015,16 @@ export function GameProvider({ children }) {
     });
   }, [stateRef]);
 
-  const activeTriggerOrderingState = useMemo(() => {
+  const activeEffectOrderingState = useMemo(() => {
     const decision = state?.decision || null;
-    if (!isTriggerOrderingDecision(decision)) return null;
+    if (!isEffectOrderingDecision(decision)) return null;
 
-    const key = buildTriggerOrderingKey(decision);
+    const key = buildEffectOrderingKey(decision);
     return {
       key,
-      order: currentOrderForDecision(triggerOrderingState, decision, key),
+      order: currentOrderForDecision(effectOrderingState, decision, key),
     };
-  }, [state?.decision, triggerOrderingState]);
+  }, [state?.decision, effectOrderingState]);
 
   const setSemanticThreshold = useCallback(
     async (value) => {
@@ -2026,9 +2026,9 @@ export function GameProvider({ children }) {
         if (!isSnapshotRendered() && !acceptCurrentPayment) return;
         const isTargetSubmit = command?.type === "select_targets";
         const currentDecision = stateRef.current?.decision || null;
-        const stopAfterTriggerOrderingSubmit = (
+        const stopAfterEffectOrderingSubmit = (
           command?.type === "select_options"
-          && isTriggerOrderingDecision(currentDecision)
+          && isEffectOrderingDecision(currentDecision)
         );
         if (multiplayer.matchStarted) {
           let currentState = stateRef.current;
@@ -2160,8 +2160,8 @@ export function GameProvider({ children }) {
           const finalizeStartedAt = performance.now();
           await finalizeState(game, st, {
             message: successMessage,
-            allowOpponentAutomation: !stopAfterTriggerOrderingSubmit,
-            allowTrivialAutomation: !stopAfterTriggerOrderingSubmit,
+            allowOpponentAutomation: !stopAfterEffectOrderingSubmit,
+            allowTrivialAutomation: !stopAfterEffectOrderingSubmit,
             clearViewedCards: true,
           });
           const finalizeMs = performance.now() - finalizeStartedAt;
@@ -2903,8 +2903,8 @@ export function GameProvider({ children }) {
       setPlayerAccentOverride,
       inspectorDebug,
       setInspectorDebug,
-      triggerOrderingState: activeTriggerOrderingState,
-      moveTriggerOrderingItem,
+      effectOrderingState: activeEffectOrderingState,
+      moveEffectOrderingItem,
       semanticThreshold,
       setSemanticThreshold,
       cardsMeetingThreshold,
@@ -2952,7 +2952,7 @@ export function GameProvider({ children }) {
       runWasmInteraction,
       dispatch, dispatchInBackground, cancelBackgroundDispatch, cancelDecision, refresh, autoPassEnabled, holdRule, uiFont,
       playerAccentOverrides, setPlayerAccentOverride, inspectorDebug, fixedStartingBoard,
-      activeTriggerOrderingState, moveTriggerOrderingItem,
+      activeEffectOrderingState, moveEffectOrderingItem,
       semanticThreshold, setSemanticThreshold, cardsMeetingThreshold,
       logEntries, pushLog,
       multiplayer, canStartHostedMatch, createLobby, joinLobby, leaveLobby, redeemTournamentInvite, startHostedMatch, updateLobbyDeck,

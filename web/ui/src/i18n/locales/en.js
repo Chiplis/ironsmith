@@ -1,5 +1,16 @@
 // All interface copy for en. Preserve interpolation placeholders.
 export const messages = {
+  "Replacement": "Replacement",
+  "Replacement effects": "Replacement effects",
+  "Replacement order": "Replacement order",
+  "Replacement effects: {0}": "Replacement effects: {0}",
+  "Apply first": "Apply first",
+  "Apply First": "Apply First",
+  "Apply earlier": "Apply earlier",
+  "Apply later": "Apply later",
+  "Move {0} earlier": "Move {0} earlier",
+  "Move {0} later": "Move {0} later",
+  "Use the arrows to put the replacement you want to apply first at the top, then choose Apply First. Remaining effects are checked again after it applies.": "Use the arrows to put the replacement you want to apply first at the top, then choose Apply First. Remaining effects are checked again after it applies.",
   "action.goToPhase": "Go to {phase}",
   "card.previewDetails": "Card details",
   "card.manaAbility.add": "Add",

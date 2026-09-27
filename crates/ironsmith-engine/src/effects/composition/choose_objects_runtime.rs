@@ -1808,11 +1808,12 @@ pub(crate) fn run_choose_objects(
             ctx.remember_face_down_exile_viewers(&chosen, chooser_id);
         }
 
-        let (objects_for_tags, outcome_objects) = if let Some(search) = search_override {
-            (
-                Vec::new(),
-                exile_found_cards_for_opposition_agent(game, &chosen, search),
-            )
+        let (objects_for_tags, outcome_objects) = if search_override.is_some() {
+            let exiled = exile_found_cards_for_opposition_agent(game, ctx, &chosen, chooser_id);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            (Vec::new(), exiled)
         } else {
             (chosen.clone(), chosen.clone())
         };

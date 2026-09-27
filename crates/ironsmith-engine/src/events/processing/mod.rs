@@ -3917,6 +3917,10 @@ pub fn process_simultaneous_damage_assignments_with_event_with_dm(
     // The prevention events of this batch are coalesced below.
     game.effect_store.trigger_matching_holds += 1;
     let allocations = collect_simultaneous_prevention_allocations(game, events, dm);
+    if dm.awaiting_choice() {
+        game.effect_store.trigger_matching_holds -= 1;
+        return Vec::new();
+    }
     // CR 615.5: the batch's additional prevention effects happen after the
     // whole simultaneous damage event, so they are collected here.
     let follow_up_start = game
@@ -3939,6 +3943,9 @@ pub fn process_simultaneous_damage_assignments_with_event_with_dm(
                 Some(&allocations[index]),
             ),
         );
+        if dm.awaiting_choice() {
+            break;
+        }
     }
     game.effect_store.trigger_matching_holds -= 1;
     coalesce_simultaneous_shield_prevention_events(game, pending_event_start);
@@ -4183,8 +4190,8 @@ fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_a
         }
         TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
             debug_assert!(
-                false,
-                "damage replacement choice remained pending after decision-driven processing"
+                dm.awaiting_choice(),
+                "damage replacement choice remained pending without a captured decision"
             );
             return ProcessedDamageResult {
                 assignments: Vec::new(),
@@ -4307,6 +4314,9 @@ fn execute_prevention_follow_ups(
     pending: Vec<crate::prevention::PendingPreventionFollowUp>,
 ) {
     for pending in pending {
+        if dm.awaiting_choice() {
+            break;
+        }
         let follow_up = pending.follow_up;
         let prevented_event =
             crate::events::RawEvent::new(pending.damage.clone(), pending.provenance);

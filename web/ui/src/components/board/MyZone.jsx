@@ -12,7 +12,7 @@ import StackTimelineRail from "@/components/right-rail/StackTimelineRail";
 import { useHoverActions } from "@/context/HoverContext";
 import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
-import { isTriggerOrderingDecision } from "@/lib/trigger-ordering";
+import { isEffectOrderingDecision } from "@/lib/effect-ordering";
 import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
@@ -299,7 +299,7 @@ export default function MyZone({
   );
   const visibleStackObjects = getVisibleStackObjects(state);
   const stackPreviewCount = Array.isArray(state?.stack_preview) ? state.stack_preview.length : 0;
-  const triggerOrderingCount = isTriggerOrderingDecision(state?.decision)
+  const effectOrderingCount = isEffectOrderingDecision(state?.decision)
     ? (state?.decision?.options || []).length
     : 0;
   const mergedMobileHeader = Boolean(embeddedActionBar);
@@ -311,7 +311,7 @@ export default function MyZone({
     && (
       visibleStackObjects.length > 0
       || stackPreviewCount > 0
-      || triggerOrderingCount > 0
+      || effectOrderingCount > 0
     );
 
   const transientZoneViews = Object.keys(zoneActivity || {});

@@ -7,7 +7,7 @@ import { I18nProvider } from "../src/i18n/I18nContext";
 import FloatingCardPreview from "../src/components/right-rail/FloatingCardPreview";
 import StackTimelineRail from "../src/components/right-rail/StackTimelineRail";
 import PlayerZonePiles from "../src/components/board/PlayerZonePiles";
-import { buildTriggerOrderingKey, normalizeTriggerOrderingOrder } from "../src/lib/trigger-ordering";
+import { buildEffectOrderingKey, normalizeEffectOrderingOrder } from "../src/lib/effect-ordering";
 import "../src/index.css";
 
 // Two Blood Artist triggers and a Zulaport Cutthroat trigger wait to be
@@ -52,7 +52,7 @@ const game = { objectDetails: async (id) => cards[Number(id)] || null };
 window.__inspections = [];
 
 function Fixture() {
-  const key = buildTriggerOrderingKey(decision);
+  const key = buildEffectOrderingKey(decision);
   const [order, setOrder] = useState([0, 1, 2]);
   const state = useMemo(() => ({
     perspective: 0,
@@ -68,9 +68,9 @@ function Fixture() {
     state,
     game,
     dispatch: () => {},
-    triggerOrderingState: { key, order },
-    moveTriggerOrderingItem: (position, direction) => setOrder((current) => {
-      const next = normalizeTriggerOrderingOrder(current, decision);
+    effectOrderingState: { key, order },
+    moveEffectOrderingItem: (position, direction) => setOrder((current) => {
+      const next = normalizeEffectOrderingOrder(current, decision);
       const target = position + direction;
       if (target < 0 || target >= next.length) return next;
       [next[position], next[target]] = [next[target], next[position]];

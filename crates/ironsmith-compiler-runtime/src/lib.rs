@@ -775,6 +775,88 @@ mod tests {
     use ironsmith::zone::Zone;
 
     #[test]
+    fn compiled_leader_replacement_keeps_the_original_conniving_creature() {
+        use ironsmith::ability::AbilityKind;
+        use ironsmith::effects::{EffectContext, ResolvedTarget, execute_effect};
+        use ironsmith::events::{KeywordActionEvent, KeywordActionKind};
+        use ironsmith::object::CounterType;
+
+        let (_, definition) = compile_builder_to_artifact(
+            compiler::CardDefinitionBuilder::new(ironsmith::ids::CardId::new(), "Leader, Super-Genius"),
+            "Mana cost: {2}{U}{U}\nType: Legendary Creature — Gamma Scientist Villain\nPower/Toughness: 1/3\nIf a creature you control would connive, instead you draw a card, then that creature connives.\nAt the beginning of combat on your turn, target creature you control connives.",
+            false,
+        )
+        .expect("Leader should compile and materialize through its artifact");
+        let trigger = definition
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(trigger) => Some(trigger),
+                _ => None,
+            })
+            .expect("Leader has a beginning-of-combat trigger");
+        let alice = PlayerId::from_index(0);
+
+        for choose_leader in [false, true] {
+            let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let leader = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            let creature_card =
+                ironsmith::card::CardBuilder::new(ironsmith::ids::CardId::new(), "Other creature")
+                    .card_types(vec![CardType::Creature])
+                    .power_toughness(ironsmith::card::PowerToughness::fixed(2, 2))
+                    .build();
+            let other = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+            for _ in 0..3 {
+                game.create_object_from_card(&creature_card, alice, Zone::Library);
+            }
+            let conniver = if choose_leader { leader } else { other };
+            let bystander = if choose_leader { other } else { leader };
+            let mut ctx = EffectContext::new_default(leader, alice)
+                .with_targets(vec![ResolvedTarget::Object(conniver)]);
+            let mut events = Vec::new();
+            for effect in trigger.effects.all_effects() {
+                events.extend(execute_effect(&mut game, effect, &mut ctx).unwrap().events);
+            }
+
+            let player = game.player(alice).unwrap();
+            assert_eq!(
+                player.library.len(),
+                1,
+                "replacement and connive each draw once"
+            );
+            assert_eq!(player.hand.len(), 1, "two draws and one discard");
+            assert_eq!(player.graveyard.len(), 1, "connive discards exactly once");
+            let connives = events
+                .iter()
+                .filter_map(|event| event.downcast::<KeywordActionEvent>())
+                .filter(|event| event.action == KeywordActionKind::Connive)
+                .map(|event| event.source)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                connives,
+                vec![conniver],
+                "only the selected creature connives"
+            );
+            assert_eq!(
+                game.object(conniver)
+                    .unwrap()
+                    .counters
+                    .get(&CounterType::PlusOnePlusOne),
+                Some(&1),
+                "the original conniver gets the discarded nonland's counter",
+            );
+            assert_eq!(
+                game.object(bystander)
+                    .unwrap()
+                    .counters
+                    .get(&CounterType::PlusOnePlusOne),
+                None,
+                "the unselected creature must not receive a connive counter",
+            );
+        }
+    }
+
+    #[test]
     fn converts_assign_no_combat_damage_effect_payload() {
         let compiler_effect = compiler::effect::Effect::assign_no_combat_damage(
             compiler::target::ChooseSpec::Source,

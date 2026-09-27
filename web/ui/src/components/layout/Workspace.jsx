@@ -32,7 +32,7 @@ import {
   stackEntryTargetObjectIds,
   stackSelectionKeys,
 } from "@/lib/stack-targets";
-import { buildObjectControllerById, optionForClickedObject } from "@/lib/decision-object-meta";
+import { buildObjectControllerById, optionForClickedObjects } from "@/lib/decision-object-meta";
 import { buildCombatStateArrows } from "@/lib/combat-arrows";
 import { samePlayerId } from "@/lib/player-display";
 import { sameActionRef } from "@/lib/sync-commands";
@@ -1294,14 +1294,12 @@ export default function Workspace({
         && decision?.kind === "select_options"
         && samePlayerId(decision.player, state?.perspective)
       ) {
-        // A merged permanent is clicked as a group; the option may name one of
-        // its members, so try every id the click stands for.
+        // Check the whole merged permanent together: different members may
+        // refer to different modes, so a first-match shortcut is ambiguous.
         const clickedIds = Array.isArray(options?.candidateObjectIds) && options.candidateObjectIds.length > 0
           ? options.candidateObjectIds
           : [objectId];
-        const option = clickedIds
-          .map((candidateId) => optionForClickedObject(decision, candidateId))
-          .find(Boolean);
+        const option = optionForClickedObjects(decision, clickedIds);
         if (option) {
           window.dispatchEvent(
             new CustomEvent("ironsmith:select-option-choice", {

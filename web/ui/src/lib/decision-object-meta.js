@@ -16,18 +16,38 @@ export function optionReferencesObject(opt, objectId) {
   return optionObjectIds(opt).some((id) => id === normalizedId);
 }
 
-// The option to take when the player clicks an object on the board. Equivalent
-// options are grouped, so the group's own card may not be the one clicked.
-export function optionForClickedObject(decision, objectId) {
-  if (!decision || decision.kind !== "select_options" || objectId == null) return null;
+// A click can stand for every member of a merged permanent. Submit only when
+// all matching options describe one choice; sharing a preview object does not
+// make two modes equivalent. Explicitly grouped equivalent actions may still
+// choose the matching member, as their option-row shortcut does.
+export function optionForClickedObjects(decision, objectIds) {
+  if (!decision || decision.kind !== "select_options") return null;
+  const clicked = new Set((objectIds || []).filter(id => id != null).map(String));
+  const matches = new Map();
   for (const opt of decision.options || []) {
-    if (opt?.legal === false) continue;
-    if (optionReferencesObject(opt, objectId)) return opt;
-    const grouped = (opt?.grouped_options || [])
-      .find((candidate) => candidate?.legal !== false && optionReferencesObject(candidate, objectId));
-    if (grouped) return grouped;
+    const grouped = Array.isArray(opt?.grouped_options) ? opt.grouped_options : [];
+    const candidates = [opt, ...grouped];
+    const actionSignature = (option) => JSON.stringify([
+      String(option?.description || "").trim().toLowerCase(),
+      Boolean(option?.repeatable),
+      option?.max_count ?? (option?.repeatable ? null : 1),
+      option?.point_cost ?? 1,
+    ]);
+    const equivalentGroup = grouped.length > 0
+      && String(opt?.description || "").trim().length > 0
+      && candidates.every(candidate => actionSignature(candidate) === actionSignature(opt));
+    for (const candidate of candidates) {
+      if (candidate?.legal === false || candidate?.index == null) continue;
+      if (!optionObjectIds(candidate).some(id => clicked.has(id))) continue;
+      const key = equivalentGroup ? `group:${opt.index}` : `option:${candidate.index}`;
+      if (!matches.has(key)) matches.set(key, candidate);
+    }
   }
-  return null;
+  return matches.size === 1 ? matches.values().next().value : null;
+}
+
+export function optionForClickedObject(decision, objectId) {
+  return optionForClickedObjects(decision, [objectId]);
 }
 
 import { getPlayerAccent } from "./player-colors.js";

@@ -6416,6 +6416,14 @@ mod determinism_tests {
 #[cfg(all(test, target_arch = "wasm32"))]
 mod tests;
 
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "tests/territorial_kavu.rs"]
+mod territorial_kavu_tests;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "tests/opposition_agent_search.rs"]
+mod opposition_agent_search_tests;
+
 #[derive(Debug, Clone, Serialize)]
 struct ManualManaAbilityView {
     source_id: String,

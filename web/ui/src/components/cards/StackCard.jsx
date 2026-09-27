@@ -21,6 +21,7 @@ function stackEntryKindLabel(entry) {
   if (!abilityKind) return "Spell";
   if (normalized === "triggered") return "Trigger";
   if (normalized === "activated") return "Activation";
+  if (normalized === "replacement") return "Replacement";
   return `${abilityKind} ability`;
 }
 
@@ -85,6 +86,8 @@ export default function StackCard({
   const scryfallUrl = useScryfallImageUrl(name);
   const isCastEntry = !entry.ability_kind;
   const isPendingTrigger = Boolean(entry?.__trigger_ordering);
+  const isPendingReplacement = Boolean(entry?.__replacement_ordering);
+  const isPending = isPendingTrigger || isPendingReplacement;
   const kindLabel = stackEntryKindLabel(entry);
   const detailText = stackEntryDetailText(entry);
   const pt = entry.power_toughness
@@ -113,7 +116,7 @@ export default function StackCard({
   // Falls back to the card when an entry has no id of its own. A pending
   // trigger's id is a placeholder that no state carries, so its preview is
   // the source object the engine named for it.
-  const previewObjectId = isPendingTrigger ? inspectObjectId : (entry?.id ?? inspectObjectId);
+  const previewObjectId = isPending ? inspectObjectId : (entry?.id ?? inspectObjectId);
   const canPreview = !isLeaving && inspectObjectId != null;
   const handleHoverEnter = useCallback((event) => {
     if (!canPreview) return;
@@ -213,6 +216,7 @@ export default function StackCard({
     "data-card-image-url": artUrl || "",
     "data-card-name": name,
     "data-pending-trigger": isPendingTrigger ? "true" : undefined,
+    "data-pending-replacement": isPendingReplacement ? "true" : undefined,
     onClick: handleClick,
     onPointerDown: handlePointerDown,
     onMouseEnter: handleHoverEnter,
@@ -222,7 +226,7 @@ export default function StackCard({
   const stateClasses = cn(
     onClick ? "cursor-pointer" : "cursor-default",
     isActive && "stack-card-active",
-    isPendingTrigger && "stack-card-pending",
+    isPending && "stack-card-pending",
     targetingMode && "card-targeting-mode",
     isLegalTarget && "target-legal",
     isCastTargetHovered && "hovered",

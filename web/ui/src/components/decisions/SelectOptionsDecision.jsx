@@ -12,11 +12,14 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SymbolText } from "@/lib/mana-symbols";
 import {
-  buildTriggerOrderingKey,
-  defaultTriggerOrderingOrder,
-  isTriggerOrderingDecision,
-  normalizeTriggerOrderingOrder,
-} from "@/lib/trigger-ordering";
+  buildEffectOrderingKey,
+  defaultEffectOrderingOrder,
+  isEffectOrderingDecision,
+  normalizeEffectOrderingOrder,
+  isReplacementOrderingDecision,
+  effectOrderingOptionIndices,
+  effectOrderingSubmitLabel,
+} from "@/lib/effect-ordering";
 import { normalizeDecisionText } from "./decisionText";
 import { useTranslatedDecisionText } from "@/i18n/useTranslatedDecisionText";
 import { useI18n } from "@/i18n/I18nContext";
@@ -478,7 +481,7 @@ export default function SelectOptionsDecision({
   const reason = (decision.reason || "").toLowerCase();
 
   // Dispatch to sub-type based on decision metadata
-  if (reason === "ordering" || reason.startsWith("order ")) {
+  if (reason === "ordering" || reason.startsWith("order ") || isReplacementOrderingDecision(decision)) {
     return (
       <OrderingDecision
         decision={decision}
@@ -1274,8 +1277,8 @@ function OrderingDecision({
   const {
     dispatch,
     state,
-    triggerOrderingState,
-    moveTriggerOrderingItem,
+    effectOrderingState,
+    moveEffectOrderingItem,
     playerAccentOverrides,
   } = useGame();
   const { hoverCard, clearHover } = useHover();
@@ -1290,8 +1293,9 @@ function OrderingDecision({
     [state],
   );
   const trivialOrdering = options.length <= 1;
-  const triggerOrdering = isTriggerOrderingDecision(decision);
-  const triggerOrderingKey = buildTriggerOrderingKey(decision);
+  const effectOrdering = isEffectOrderingDecision(decision);
+  const replacementOrdering = isReplacementOrderingDecision(decision);
+  const effectOrderingKey = buildEffectOrderingKey(decision);
   const localOrderingKey = useMemo(
     () =>
       `${decision.description || ""}|${optionsSignature(decision.options || [])}`,
@@ -1299,43 +1303,43 @@ function OrderingDecision({
   );
   const [localOrderState, setLocalOrderState] = useState(() => ({
     key: localOrderingKey,
-    order: defaultTriggerOrderingOrder(decision),
+    order: defaultEffectOrderingOrder(decision),
   }));
   const order = useMemo(() => {
-    if (!triggerOrdering) {
+    if (!effectOrdering) {
       if (localOrderState.key === localOrderingKey) {
-        return normalizeTriggerOrderingOrder(localOrderState.order, decision);
+        return normalizeEffectOrderingOrder(localOrderState.order, decision);
       }
-      return defaultTriggerOrderingOrder(decision);
+      return defaultEffectOrderingOrder(decision);
     }
-    if (triggerOrderingState?.key === triggerOrderingKey) {
-      return normalizeTriggerOrderingOrder(
-        triggerOrderingState.order,
+    if (effectOrderingState?.key === effectOrderingKey) {
+      return normalizeEffectOrderingOrder(
+        effectOrderingState.order,
         decision,
       );
     }
-    return defaultTriggerOrderingOrder(decision);
+    return defaultEffectOrderingOrder(decision);
   }, [
     decision,
     localOrderState,
     localOrderingKey,
-    triggerOrdering,
-    triggerOrderingKey,
-    triggerOrderingState,
+    effectOrdering,
+    effectOrderingKey,
+    effectOrderingState,
   ]);
 
   const move = (position, direction) => {
     const newPos = position + direction;
     if (newPos < 0 || newPos >= order.length) return;
-    if (triggerOrdering) {
-      moveTriggerOrderingItem(position, direction);
+    if (effectOrdering) {
+      moveEffectOrderingItem(position, direction);
       return;
     }
     setLocalOrderState((current) => {
       const next =
         current.key === localOrderingKey
-          ? normalizeTriggerOrderingOrder(current.order, decision)
-          : defaultTriggerOrderingOrder(decision);
+          ? normalizeEffectOrderingOrder(current.order, decision)
+          : defaultEffectOrderingOrder(decision);
       [next[position], next[newPos]] = [next[newPos], next[position]];
       return {
         key: localOrderingKey,
@@ -1345,20 +1349,20 @@ function OrderingDecision({
   };
   const handleSubmit = useCallback(() => {
     dispatch(
-      { type: "select_options", option_indices: order.slice() },
-      "Order submitted",
+      { type: "select_options", option_indices: effectOrderingOptionIndices(decision, order) },
+      replacementOrdering ? "Replacement selected" : "Order submitted",
     );
-  }, [dispatch, order]);
+  }, [decision, dispatch, order, replacementOrdering]);
   const submitAction = useMemo(
     () =>
       trivialOrdering
         ? null
         : {
-            label: "Submit Order",
+            label: effectOrderingSubmitLabel(decision),
             disabled: !canAct,
             onSubmit: handleSubmit,
           },
-    [canAct, handleSubmit, trivialOrdering],
+    [canAct, decision, handleSubmit, trivialOrdering],
   );
   useExternalSubmitAction(onSubmitActionChange, submitAction);
 
@@ -1425,19 +1429,21 @@ function OrderingDecision({
     </div>
   );
 
-  const triggerOrderingHint = (
+  const effectOrderingHint = (
     <div
       className={cn(
         "decision-trigger-hint border text-[#e5d6b8]",
         stripLayout ? "min-w-[280px] px-3 py-2" : "px-3 py-2.5",
       )}
     >
-      <div className="decision-section-header text-[12px] font-bold uppercase tracking-[0.14em]">{ui("Order In Stack")}</div>
-      <div className="mt-1 text-[13px] leading-snug text-[#e5d6b8]">{ui("Use the arrows on the stack cards to arrange these triggers. The leftmost arrow moves a trigger closer to the top of the stack.")}</div>
+      <div className="decision-section-header text-[12px] font-bold uppercase tracking-[0.14em]">{ui(replacementOrdering ? "Replacement effects" : "Order In Stack")}</div>
+      <div className="mt-1 text-[13px] leading-snug text-[#e5d6b8]">{ui(replacementOrdering
+        ? "Use the arrows to put the replacement you want to apply first at the top, then choose Apply First. Remaining effects are checked again after it applies."
+        : "Use the arrows on the stack cards to arrange these triggers. The leftmost arrow moves a trigger closer to the top of the stack.")}</div>
     </div>
   );
 
-  if (triggerOrdering && stripLayout) {
+  if (effectOrdering && stripLayout) {
     return null;
   }
 
@@ -1464,8 +1470,8 @@ function OrderingDecision({
                 />
               </div>
             )}
-            <SectionHeader text={ui(triggerOrdering ? "Stack Order" : "Order")} />
-            {triggerOrdering ? triggerOrderingHint : standardRows}
+            <SectionHeader text={ui(replacementOrdering ? "Replacement order" : effectOrdering ? "Stack Order" : "Order")} />
+            {effectOrdering ? effectOrderingHint : standardRows}
           </div>
         </div>
       ) : (
@@ -1478,8 +1484,8 @@ function OrderingDecision({
                 layout={layout}
               />
             )}
-            <SectionHeader text={ui(triggerOrdering ? "Stack Order" : "Order")} />
-            {triggerOrdering ? triggerOrderingHint : standardRows}
+            <SectionHeader text={ui(replacementOrdering ? "Replacement order" : effectOrdering ? "Stack Order" : "Order")} />
+            {effectOrdering ? effectOrderingHint : standardRows}
           </div>
         </ScrollArea>
       )}
@@ -1490,7 +1496,7 @@ function OrderingDecision({
             stripLayout ? "pt-0" : "border-t border-game-line-2/70 pt-1",
           )}
         >
-          <SubmitButton canAct={canAct} onClick={handleSubmit}>{ui("Submit Order")}</SubmitButton>
+          <SubmitButton canAct={canAct} onClick={handleSubmit}>{ui(effectOrderingSubmitLabel(decision))}</SubmitButton>
         </div>
       )}
     </div>

@@ -5,7 +5,7 @@ use crate::decision::{
     resolve_play_from_alternative_method, spell_mana_cost_for_cast,
 };
 use crate::decisions::make_decision_with_fallback;
-use crate::decisions::specs::MaySpec;
+use crate::decisions::specs::{MaySpec, ReplacementOption, ReplacementSpec};
 use crate::derived_view::DerivedGameView;
 use crate::effect::ManaSpendPermission;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -47,6 +47,8 @@ pub(crate) fn opposition_agent_search(
         return None;
     }
 
+    let mut latest = None;
+    let mut latest_timestamp = 0;
     for &source in &game.battlefield {
         let Some(object) = game.object(source) else {
             continue;
@@ -61,11 +63,19 @@ pub(crate) fn opposition_agent_search(
         ) && game
             .current_has_static_ability_id(source, StaticAbilityId::OpponentSearchExileFoundCards)
         {
-            return Some(OppositionAgentSearch { controller, source });
+            let timestamp = game
+                .effect_store
+                .continuous_effects
+                .get_entry_timestamp(source)
+                .unwrap_or(0);
+            if latest.is_none() || timestamp >= latest_timestamp {
+                latest = Some(OppositionAgentSearch { controller, source });
+                latest_timestamp = timestamp;
+            }
         }
     }
 
-    None
+    latest
 }
 
 pub(crate) fn begin_opposition_agent_search_control(
@@ -144,12 +154,80 @@ pub(crate) fn move_found_card_for_opposition_agent(
 
 pub(crate) fn exile_found_cards_for_opposition_agent(
     game: &mut GameState,
+    ctx: &mut ExecutionContext,
     cards: &[ObjectId],
-    search: OppositionAgentSearch,
+    searching_player: PlayerId,
 ) -> Vec<ObjectId> {
-    cards
+    let replacements: Vec<_> = game
+        .battlefield
         .iter()
-        .filter_map(|&card_id| move_found_card_for_opposition_agent(game, card_id, search))
+        .filter_map(|&source| {
+            let object = game.object(source)?;
+            let controller = game.controller_of(object);
+            (controller != searching_player
+                && game.current_has_static_ability_id(
+                    source,
+                    StaticAbilityId::OpponentSearchExileFoundCards,
+                ))
+            .then_some(OppositionAgentSearch { controller, source })
+        })
+        .collect();
+
+    // Each found card has competing exile-and-play-permission replacements.
+    // Collect the choices before changing zones, so an interactive pause never
+    // commits a partial search. The search's scoped player control is still
+    // active when the owner makes this replacement decision.
+    let mut selected = Vec::new();
+    for &card_id in cards {
+        let Some(card) = game.object(card_id) else {
+            continue;
+        };
+        let owner = card.owner;
+        let card_name = card.name.to_string();
+        let index = if replacements.len() > 1 {
+            let options = replacements
+                .iter()
+                .enumerate()
+                .map(|(index, replacement)| {
+                    let source_name = game
+                        .current_name(replacement.source)
+                        .unwrap_or_else(|| "Unknown object".into());
+                    let controller_name = game
+                        .player(replacement.controller)
+                        .map(|player| player.name.to_string())
+                        .unwrap_or_else(|| "that player".into());
+                    ReplacementOption::new(
+                        index,
+                        replacement.source,
+                        format!("{source_name}\nExile {card_name}; {controller_name} may play it while it remains exiled."),
+                    )
+                    .with_related_objects(vec![replacement.source, card_id])
+                })
+                .collect();
+            let index = make_decision_with_fallback(
+                game,
+                &mut *ctx.decision_maker,
+                owner,
+                Some(ctx.source),
+                ReplacementSpec::new(options),
+                FallbackStrategy::FirstOption,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Vec::new();
+            }
+            index
+        } else {
+            0
+        };
+        if let Some(replacement) = replacements.get(index).or_else(|| replacements.first()) {
+            selected.push((card_id, *replacement));
+        }
+    }
+    selected
+        .into_iter()
+        .filter_map(|(card_id, replacement)| {
+            move_found_card_for_opposition_agent(game, card_id, replacement)
+        })
         .collect()
 }
 
@@ -841,6 +919,161 @@ mod tests {
                 StaticAbility::opponent_search_exile_found_cards(),
             ))
             .build()
+    }
+
+    struct CompetingAgentsDecisionMaker {
+        searching_player: PlayerId,
+        controller: PlayerId,
+        chosen_source: ObjectId,
+        pause: bool,
+        pending: bool,
+        replacement_choices: usize,
+    }
+
+    impl DecisionMaker for CompetingAgentsDecisionMaker {
+        fn awaiting_choice(&self) -> bool {
+            self.pending
+        }
+
+        fn decide_objects(
+            &mut self,
+            game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            assert_eq!(game.controlling_player_for(ctx.player), self.controller);
+            ctx.candidates
+                .iter()
+                .filter(|card| card.legal)
+                .map(|card| card.id)
+                .collect()
+        }
+
+        fn decide_options(&mut self, game: &GameState, ctx: &SelectOptionsContext) -> Vec<usize> {
+            assert_eq!(ctx.player, self.searching_player);
+            assert_eq!(game.controlling_player_for(ctx.player), self.controller);
+            assert!(ctx.description.contains("replacement effect"));
+            assert_eq!(ctx.options.len(), 2);
+            self.replacement_choices += 1;
+            self.pending = self.pause;
+            vec![
+                ctx.options
+                    .iter()
+                    .find(|option| option.object_id == Some(self.chosen_source))
+                    .unwrap()
+                    .index,
+            ]
+        }
+    }
+
+    #[test]
+    fn opposition_agent_latest_controls_search_and_chooses_either_exile_permission() {
+        for choose_latest in [false, true] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            let charlie = PlayerId::from_index(2);
+            let older = game.create_object_from_definition(
+                &opposition_agent_definition(),
+                bob,
+                Zone::Battlefield,
+            );
+            let latest = game.create_object_from_definition(
+                &opposition_agent_definition(),
+                charlie,
+                Zone::Battlefield,
+            );
+            let card = game.create_object_from_card(
+                &library_spell_card("Found card"),
+                alice,
+                Zone::Library,
+            );
+            let search = opposition_agent_search(&game, alice, alice).unwrap();
+            assert_eq!(
+                search.source, latest,
+                "the most recent Agent controls the search"
+            );
+            let mut dm = CompetingAgentsDecisionMaker {
+                searching_player: alice,
+                controller: charlie,
+                chosen_source: if choose_latest { latest } else { older },
+                pause: false,
+                pending: false,
+                replacement_choices: 0,
+            };
+            let mut ctx = ExecutionContext::new(ObjectId::from_raw(99_997), alice, &mut dm);
+            crate::effects::ChooseObjectsEffect::new(
+                ObjectFilter::default().in_zone(Zone::Library),
+                ChoiceCount::exactly(1),
+                PlayerFilter::You,
+                TagKey::from("searched"),
+            )
+            .in_zone(Zone::Library)
+            .as_search()
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+            assert_eq!(dm.replacement_choices, 1);
+            assert!(game.object(card).is_none());
+            let exiled = game.exile[0];
+            for player in [alice, bob, charlie] {
+                assert_eq!(
+                    game.effect_store.grant_registry.card_can_play_from_zone(
+                        &game,
+                        exiled,
+                        Zone::Exile,
+                        player
+                    ),
+                    player == if choose_latest { charlie } else { bob },
+                );
+            }
+            assert_eq!(
+                game.controlling_player_for(alice),
+                alice,
+                "search control ends after the choice"
+            );
+        }
+    }
+
+    #[test]
+    fn opposition_agent_waits_for_exile_choice_without_moving_found_cards() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let older = game.create_object_from_definition(
+            &opposition_agent_definition(),
+            bob,
+            Zone::Battlefield,
+        );
+        game.create_object_from_definition(
+            &opposition_agent_definition(),
+            charlie,
+            Zone::Battlefield,
+        );
+        let card =
+            game.create_object_from_card(&library_spell_card("Found card"), alice, Zone::Library);
+        let mut dm = CompetingAgentsDecisionMaker {
+            searching_player: alice,
+            controller: charlie,
+            chosen_source: older,
+            pause: true,
+            pending: false,
+            replacement_choices: 0,
+        };
+        let mut ctx = ExecutionContext::new(ObjectId::from_raw(99_997), alice, &mut dm);
+        crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::default().in_zone(Zone::Library),
+            ChoiceCount::exactly(1),
+            PlayerFilter::You,
+            TagKey::from("searched"),
+        )
+        .in_zone(Zone::Library)
+        .as_search()
+        .execute(&mut game, &mut ctx)
+        .unwrap();
+        assert!(dm.pending);
+        assert_eq!(game.object(card).unwrap().zone, Zone::Library);
+        assert!(game.exile.is_empty());
+        assert_eq!(game.controlling_player_for(alice), charlie);
     }
 
     fn panglacial_wurm_definition() -> crate::cards::CardDefinition {

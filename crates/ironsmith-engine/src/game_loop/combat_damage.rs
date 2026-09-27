@@ -163,7 +163,7 @@ pub(crate) fn try_execute_combat_damage_step_with_first_step_snapshot(
     )
 }
 
-fn try_execute_combat_damage_step_with_dm_and_first_step_snapshot(
+pub(crate) fn try_execute_combat_damage_step_with_dm_and_first_step_snapshot(
     game: &mut GameState,
     combat: &CombatState,
     first_strike: bool,
@@ -727,6 +727,10 @@ fn execute_general_combat_damage_batch_path(
         crate::events::processing::process_simultaneous_damage_assignments_with_event_with_dm(
             game, &batch, dm,
         );
+    if dm.awaiting_choice() {
+        game.turn_store.combat_damage_assignments = assignments_checkpoint;
+        return Ok(Vec::new());
+    }
     // CR 120.10: excess damage is judged against each permanent's state
     // before this step's damage is dealt.
     let excess_capacities = CombatExcessCapacities::before_damage(
@@ -1105,6 +1109,10 @@ fn execute_unblocked_player_damage_batch_path(
         crate::events::processing::process_simultaneous_damage_assignments_with_event_with_dm(
             game, &batch, dm,
         );
+
+    if dm.awaiting_choice() {
+        return Vec::new();
+    }
 
     // Replacement/prevention is collected for the entire batch first. Only
     // after every source has a final assignment do we commit actual damage.

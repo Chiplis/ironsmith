@@ -19,9 +19,8 @@ use crate::game_loop::{
     finish_blocker_declaration_transaction_deferring_triggers,
     generate_and_queue_step_triggers, get_declare_attackers_decision,
     get_declare_blockers_decision, preview_attack_cost_needs_mana_window,
-    preview_optional_attack_cost_prompts, put_triggers_on_stack, queue_combat_damage_triggers,
-    queue_block_declaration_events, try_execute_combat_damage_step,
-    try_execute_combat_damage_step_with_first_step_snapshot,
+    preview_optional_attack_cost_prompts, queue_combat_damage_triggers,
+    queue_block_declaration_events,
 };
 use crate::game_state::{
     AddedStepPlacement, GameState, Phase, ScheduledStep, Step, TurnScheduleDestination,
@@ -243,6 +242,21 @@ struct PendingSbaChoices {
     response: Option<AttackCostAnswer>,
 }
 
+/// A turn-based action waiting for replacement/prevention or nested effect
+/// choices. Its trial state is discarded until every answer is available.
+#[derive(Debug, Clone)]
+struct PendingTurnActionChoices {
+    answers: Vec<AttackCostAnswer>,
+    prompt: DecisionContext,
+    response: Option<AttackCostAnswer>,
+}
+
+#[derive(Debug, Clone)]
+struct PendingCleanupDiscard {
+    cards: Vec<ObjectId>,
+    choices: PendingTurnActionChoices,
+}
+
 /// A draw-step draw replaced by effects that ask for choices (CR 616.1,
 /// 608.2d: Abundance's land/nonland choice, Underrealm Lich's pick). The
 /// effects run on a private copy with the answers so far and are published
@@ -335,6 +349,33 @@ struct PendingBlockerManaWindow {
     declaration_source: ObjectId,
 }
 
+#[derive(Debug, Clone)]
+struct PendingCombatManaChoices {
+    player: PlayerId,
+    choice: usize,
+    attack: bool,
+    answers: Vec<AttackCostAnswer>,
+    prompt: DecisionContext,
+    response: Option<AttackCostAnswer>,
+}
+
+#[derive(Debug, Clone)]
+struct PendingBlockerPreparationChoices {
+    declarations: Vec<BlockerDeclaration>,
+    defending_player: PlayerId,
+    answers: Vec<AttackCostAnswer>,
+    prompt: DecisionContext,
+    response: Option<AttackCostAnswer>,
+}
+
+#[derive(Debug, Clone)]
+struct PendingBlockerPaymentChoices {
+    transaction: BlockDeclarationTransaction,
+    answers: Vec<AttackCostAnswer>,
+    prompt: DecisionContext,
+    response: Option<AttackCostAnswer>,
+}
+
 fn next_blocker_mana_window_context(
     game: &GameState,
     pending: &mut PendingBlockerManaWindow,
@@ -368,9 +409,20 @@ enum RunnerProgress<T> {
 #[derive(Debug, Clone)]
 enum AttackCostAnswer {
     Boolean(bool),
+    Number(u32),
+    Text(String),
     Objects(Vec<ObjectId>),
     Options(Vec<usize>),
     Order(Vec<ObjectId>),
+    Colors(Vec<crate::color::Color>),
+    Counters(Vec<(crate::object::CounterType, u32)>),
+    Partition(Vec<ObjectId>),
+    Proliferate(crate::decisions::specs::ProliferateResponse),
+    Targets(Vec<crate::game_state::Target>),
+    Distribute(Vec<(crate::game_state::Target, u32)>),
+    Priority(crate::decision::LegalAction),
+    Attackers(Vec<crate::decisions::spec::AttackerDeclaration>),
+    Blockers(Vec<crate::decisions::spec::BlockerDeclaration>),
     ManaPayment(crate::mana_payment::ManaPaymentResponse),
 }
 
@@ -399,6 +451,156 @@ impl QueuedAttackCostDecisionMaker {
 }
 
 impl DecisionMaker for QueuedAttackCostDecisionMaker {
+    fn decide_priority(&mut self, _game: &GameState, ctx: &crate::decisions::context::PriorityContext) -> crate::decision::LegalAction {
+        match self.next_answer() {
+            Some(AttackCostAnswer::Priority(answer)) => answer,
+            _ => {
+                self.pending_prompt.get_or_insert_with(|| DecisionContext::Priority(ctx.clone()));
+                crate::decision::LegalAction::PassPriority
+            }
+        }
+    }
+
+    fn decide_attackers(&mut self, _game: &GameState, ctx: &crate::decisions::context::AttackersContext) -> Vec<crate::decisions::spec::AttackerDeclaration> {
+        match self.next_answer() {
+            Some(AttackCostAnswer::Attackers(answer)) => answer,
+            _ => {
+                self.pending_prompt.get_or_insert_with(|| DecisionContext::Attackers(ctx.clone()));
+                Vec::new()
+            }
+        }
+    }
+
+    fn decide_blockers(&mut self, _game: &GameState, ctx: &crate::decisions::context::BlockersContext) -> Vec<crate::decisions::spec::BlockerDeclaration> {
+        match self.next_answer() {
+            Some(AttackCostAnswer::Blockers(answer)) => answer,
+            _ => {
+                self.pending_prompt.get_or_insert_with(|| DecisionContext::Blockers(ctx.clone()));
+                Vec::new()
+            }
+        }
+    }
+
+    fn decide_number(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::NumberContext,
+    ) -> u32 {
+        match self.next_answer() {
+            Some(AttackCostAnswer::Number(answer)) => answer,
+            _ => {
+                self.pending_prompt
+                    .get_or_insert_with(|| DecisionContext::Number(ctx.clone()));
+                ctx.min
+            }
+        }
+    }
+
+    fn decide_text(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::TextInputContext,
+    ) -> String {
+        match self.next_answer() {
+            Some(AttackCostAnswer::Text(answer)) => answer,
+            _ => {
+                self.pending_prompt
+                    .get_or_insert_with(|| DecisionContext::TextInput(ctx.clone()));
+                ctx.initial_value.clone().unwrap_or_default()
+            }
+        }
+    }
+
+    fn decide_colors(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::ColorsContext,
+    ) -> Vec<crate::color::Color> {
+        match self.next_answer() {
+            Some(AttackCostAnswer::Colors(answer)) => answer,
+            _ => {
+                self.pending_prompt
+                    .get_or_insert_with(|| DecisionContext::Colors(ctx.clone()));
+                Vec::new()
+            }
+        }
+    }
+
+    fn decide_counters(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::CountersContext,
+    ) -> Vec<(crate::object::CounterType, u32)> {
+        match self.next_answer() {
+            Some(AttackCostAnswer::Counters(answer)) => answer,
+            _ => {
+                self.pending_prompt
+                    .get_or_insert_with(|| DecisionContext::Counters(ctx.clone()));
+                Vec::new()
+            }
+        }
+    }
+
+    fn decide_partition(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::PartitionContext,
+    ) -> Vec<ObjectId> {
+        match self.next_answer() {
+            Some(AttackCostAnswer::Partition(answer)) => answer,
+            _ => {
+                self.pending_prompt
+                    .get_or_insert_with(|| DecisionContext::Partition(ctx.clone()));
+                Vec::new()
+            }
+        }
+    }
+
+    fn decide_proliferate(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::ProliferateContext,
+    ) -> crate::decisions::specs::ProliferateResponse {
+        match self.next_answer() {
+            Some(AttackCostAnswer::Proliferate(answer)) => answer,
+            _ => {
+                self.pending_prompt
+                    .get_or_insert_with(|| DecisionContext::Proliferate(ctx.clone()));
+                Default::default()
+            }
+        }
+    }
+
+    fn decide_targets(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::TargetsContext,
+    ) -> Vec<crate::game_state::Target> {
+        match self.next_answer() {
+            Some(AttackCostAnswer::Targets(answer)) => answer,
+            _ => {
+                self.pending_prompt
+                    .get_or_insert_with(|| DecisionContext::Targets(ctx.clone()));
+                Vec::new()
+            }
+        }
+    }
+
+    fn decide_distribute(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::DistributeContext,
+    ) -> Vec<(crate::game_state::Target, u32)> {
+        match self.next_answer() {
+            Some(AttackCostAnswer::Distribute(answer)) => answer,
+            _ => {
+                self.pending_prompt
+                    .get_or_insert_with(|| DecisionContext::Distribute(ctx.clone()));
+                Vec::new()
+            }
+        }
+    }
+
     fn decide_mana_payment(
         &mut self,
         game: &GameState,
@@ -554,6 +756,10 @@ pub struct TurnRunner {
     pending_attacker_payment_choices: Option<PendingAttackerPaymentChoices>,
     /// Block declaration paused after CR 509.1d cost locking and before payment.
     pending_blocker_mana_window: Option<PendingBlockerManaWindow>,
+    /// Nested choices made while activating mana abilities to pay combat costs.
+    pending_combat_mana_choices: Option<PendingCombatManaChoices>,
+    pending_blocker_preparation_choices: Option<PendingBlockerPreparationChoices>,
+    pending_blocker_payment_choices: Option<PendingBlockerPaymentChoices>,
     /// Pending single-option response for a runner-driven SelectOptions decision.
     pending_option: Option<usize>,
     /// Pending blocker declarations from the caller.
@@ -572,6 +778,8 @@ pub struct TurnRunner {
     pending_draw_replacement_effects: Option<PendingDrawReplacementEffects>,
     /// Choices of an SBA check the runner is applying.
     pending_sba_choices: Option<PendingSbaChoices>,
+    pending_combat_damage_choices: Option<PendingTurnActionChoices>,
+    pending_cleanup_discard: Option<PendingCleanupDiscard>,
     /// Active teammates whose turn-based draw is still pending this draw step.
     remaining_draw_players: Vec<PlayerId>,
     /// Draw events accumulated while shared-team draw choices pause and resume.
@@ -612,6 +820,9 @@ impl TurnRunner {
             pending_attacker_mana_window: None,
             pending_attacker_payment_choices: None,
             pending_blocker_mana_window: None,
+            pending_combat_mana_choices: None,
+            pending_blocker_preparation_choices: None,
+            pending_blocker_payment_choices: None,
             pending_option: None,
             pending_blockers: None,
             pending_discard: None,
@@ -621,6 +832,8 @@ impl TurnRunner {
             pending_draw_reveal: None,
             pending_draw_replacement_effects: None,
             pending_sba_choices: None,
+            pending_combat_damage_choices: None,
+            pending_cleanup_discard: None,
             remaining_draw_players: Vec::new(),
             shared_draw_events: Vec::new(),
             pending_commander_choice: None,
@@ -1022,6 +1235,7 @@ impl TurnRunner {
                 self.pending_attacker_optional_costs = None;
                 self.pending_attacker_mana_window = None;
                 self.pending_attacker_payment_choices = None;
+                self.pending_combat_mana_choices = None;
                 self.pending_option = None;
                 self.pending_boolean = None;
                 self.pending_discard = None;
@@ -1053,21 +1267,20 @@ impl TurnRunner {
                         return Ok(action);
                     }
                 } else if let Some(pending) = self.pending_attacker_mana_window.take() {
-                    let mut window_closed = false;
-                    if let Some(choice) = self.pending_option.take() {
-                        match apply_attack_mana_ability_window_response(
-                            game,
-                            tq,
-                            game.turn.active_player,
-                            choice,
-                        ) {
-                            Ok(closed) => window_closed = closed,
-                            Err(err) => {
-                                self.pending_attacker_mana_window = Some(pending);
-                                return Err(err);
-                            }
+                    let choice = self.pending_option.take();
+                    let window_closed = match self.apply_combat_mana_with_choices(
+                        game, tq, game.turn.active_player, choice, true,
+                    ) {
+                        Ok(RunnerProgress::Complete(closed)) => closed,
+                        Ok(RunnerProgress::NeedsDecision(prompt)) => {
+                            self.pending_attacker_mana_window = Some(pending);
+                            return Ok(TurnAction::Decision(prompt));
                         }
-                    }
+                        Err(err) => {
+                            self.pending_attacker_mana_window = Some(pending);
+                            return Err(err);
+                        }
+                    };
 
                     if !window_closed
                         && let Some(ctx) = attack_mana_ability_window_context(
@@ -1225,7 +1438,9 @@ impl TurnRunner {
                     record_declared_attacking_bands(&mut self.combat, bands);
                 }
                 crate::game_loop::drain_pending_trigger_events(game, tq);
-                put_triggers_on_stack(game, tq)?;
+                // The caller's priority loop puts these triggers on the stack
+                // with its interactive decision maker. Stacking here with the
+                // default chooser silently selects modes, targets, and order.
 
                 // Also sync game.combat for anything that reads it
                 game.combat = Some(self.combat.clone());
@@ -1247,6 +1462,9 @@ impl TurnRunner {
 
             TurnState::DeclareBlockersCheck => {
                 self.pending_blocker_mana_window = None;
+                self.pending_combat_mana_choices = None;
+                self.pending_blocker_preparation_choices = None;
+                self.pending_blocker_payment_choices = None;
                 self.pending_option = None;
                 if self.combat.attackers.is_empty() {
                     // Skip blockers and combat damage
@@ -1284,142 +1502,101 @@ impl TurnRunner {
             }
 
             TurnState::DeclareBlockersApply => {
-                if let Some(mut pending) = self.pending_blocker_mana_window.take() {
-                    if let Some(choice) = self.pending_option.take() {
-                        let payer =
-                            pending
-                                .payers
-                                .get(pending.next_payer)
-                                .copied()
-                                .ok_or_else(|| {
-                                    GameLoopError::InvalidState(
-                                        "blocking-cost mana window has no current payer"
-                                            .to_string(),
-                                    )
-                                })?;
-                        match apply_blocker_mana_ability_window_response(game, tq, payer, choice) {
-                            Ok(true) => pending.next_payer += 1,
-                            Ok(false) => {}
-                            Err(error) => {
-                                self.pending_blocker_mana_window = Some(pending);
-                                return Err(error);
-                            }
-                        }
-                    }
-                    if let Some(context) = next_blocker_mana_window_context(game, &mut pending) {
-                        self.pending_blocker_mana_window = Some(pending);
-                        return Ok(TurnAction::Decision(DecisionContext::SelectOptions(
-                            context,
-                        )));
-                    }
-                    let defending_player =
-                        pending.transaction.defending_player().ok_or_else(|| {
-                            GameLoopError::InvalidState(
-                                "blocking-cost transaction has no defending player".to_string(),
-                            )
-                        })?;
-                    let mut decision_maker = AutoPassDecisionMaker;
-                    match finish_blocker_declaration_transaction_deferring_triggers(
-                        pending.transaction,
-                        game,
-                        &mut self.combat,
-                        &mut decision_maker,
-                    ) {
-                        Ok(pairs) => self.declared_block_pairs.extend(pairs),
-                        Err(error) => {
-                            self.state = TurnState::DeclareBlockersDecision;
-                            return Err(error);
-                        }
-                    }
-                    if self.remaining_defending_players.first().copied() == Some(defending_player) {
-                        self.remaining_defending_players.remove(0);
-                    }
-                    self.defending_player = None;
-                    if !self.remaining_defending_players.is_empty() {
-                        self.state = TurnState::DeclareBlockersDecision;
-                        return Ok(TurnAction::Continue);
-                    }
-                    self.queue_declared_block_events(game, tq);
-                    put_triggers_on_stack(game, tq)?;
-                    game.combat = Some(self.combat.clone());
-                    game.reset_priority_for_new_window();
-                    self.state = TurnState::DeclareBlockersPriority;
-                    return Ok(TurnAction::RunPriority);
-                }
-
-                let (declarations, defending_player) =
-                    self.pending_blockers.take().unwrap_or_else(|| {
-                        (
-                            Vec::new(),
-                            self.defending_player.unwrap_or(game.turn.active_player),
-                        )
-                    });
-                if self.defending_player != Some(defending_player) {
-                    return Err(crate::decision::ResponseError::InvalidBlockers(
-                        "blocker declaration was submitted for the wrong defending player"
-                            .to_string(),
-                    )
-                    .into());
-                }
-                let mut decision_maker = AutoPassDecisionMaker;
-                let transaction = match begin_blocker_declaration_transaction(
-                    game,
-                    &self.combat,
-                    tq,
-                    &declarations,
-                    defending_player,
-                    &mut decision_maker,
-                ) {
-                    Ok(transaction) => transaction,
-                    Err(error) => {
-                        self.state = TurnState::DeclareBlockersDecision;
-                        return Err(error);
-                    }
-                };
-                transaction.stage_proposed_combat_for_payment(game);
-                let payers = transaction.mana_cost_payers();
-                if !payers.is_empty() {
-                    let declaration_source = transaction.declaration_source().ok_or_else(|| {
-                        GameLoopError::InvalidState(
-                            "blocking costs exist without a declaration source".to_string(),
-                        )
-                    })?;
-                    let mut pending = PendingBlockerManaWindow {
-                        transaction,
-                        payers,
-                        next_payer: 0,
-                        declaration_source,
+                let defending_player;
+                if let Some(mut pending) = self.pending_blocker_payment_choices.take() {
+                    let Some(response) = pending.response.take() else {
+                        let prompt = pending.prompt.clone();
+                        self.pending_blocker_payment_choices = Some(pending);
+                        return Ok(TurnAction::Decision(prompt));
                     };
-                    if let Some(context) = next_blocker_mana_window_context(game, &mut pending) {
-                        self.pending_blocker_mana_window = Some(pending);
-                        return Ok(TurnAction::Decision(DecisionContext::SelectOptions(
-                            context,
-                        )));
+                    pending.answers.push(response);
+                    defending_player = pending.transaction.defending_player().ok_or_else(|| {
+                        GameLoopError::InvalidState("blocking-cost transaction has no defending player".to_string())
+                    })?;
+                    if let Some(action) = self.finish_block_payment_with_choices(
+                        pending.transaction, pending.answers, game,
+                    )? {
+                        return Ok(action);
                     }
-                    match finish_blocker_declaration_transaction_deferring_triggers(
-                        pending.transaction,
-                        game,
-                        &mut self.combat,
-                        &mut decision_maker,
-                    ) {
-                        Ok(pairs) => self.declared_block_pairs.extend(pairs),
+                } else if let Some(mut pending) = self.pending_blocker_mana_window.take() {
+                    let payer = pending.payers.get(pending.next_payer).copied().ok_or_else(|| {
+                        GameLoopError::InvalidState("blocking-cost mana window has no current payer".to_string())
+                    })?;
+                    let choice = self.pending_option.take();
+                    match self.apply_combat_mana_with_choices(game, tq, payer, choice, false) {
+                        Ok(RunnerProgress::Complete(true)) => pending.next_payer += 1,
+                        Ok(RunnerProgress::Complete(false)) => {}
+                        Ok(RunnerProgress::NeedsDecision(prompt)) => {
+                            self.pending_blocker_mana_window = Some(pending);
+                            return Ok(TurnAction::Decision(prompt));
+                        }
                         Err(error) => {
-                            self.state = TurnState::DeclareBlockersDecision;
+                            self.pending_blocker_mana_window = Some(pending);
                             return Err(error);
                         }
+                    }
+                    if let Some(context) = next_blocker_mana_window_context(game, &mut pending) {
+                        self.pending_blocker_mana_window = Some(pending);
+                        return Ok(TurnAction::Decision(DecisionContext::SelectOptions(context)));
+                    }
+                    defending_player = pending.transaction.defending_player().ok_or_else(|| {
+                        GameLoopError::InvalidState("blocking-cost transaction has no defending player".to_string())
+                    })?;
+                    if let Some(action) = self.finish_block_payment_with_choices(
+                        pending.transaction, Vec::new(), game,
+                    )? {
+                        return Ok(action);
                     }
                 } else {
-                    match finish_blocker_declaration_transaction_deferring_triggers(
-                        transaction,
-                        game,
-                        &mut self.combat,
-                        &mut decision_maker,
-                    ) {
-                        Ok(pairs) => self.declared_block_pairs.extend(pairs),
-                        Err(error) => {
-                            self.state = TurnState::DeclareBlockersDecision;
-                            return Err(error);
+                    let (declarations, player, answers) =
+                        if let Some(mut pending) = self.pending_blocker_preparation_choices.take() {
+                            let Some(response) = pending.response.take() else {
+                                let prompt = pending.prompt.clone();
+                                self.pending_blocker_preparation_choices = Some(pending);
+                                return Ok(TurnAction::Decision(prompt));
+                            };
+                            pending.answers.push(response);
+                            (pending.declarations, pending.defending_player, pending.answers)
+                        } else {
+                            let (declarations, player) = self.pending_blockers.take().unwrap_or_else(|| {
+                                (Vec::new(), self.defending_player.unwrap_or(game.turn.active_player))
+                            });
+                            (declarations, player, Vec::new())
+                        };
+                    defending_player = player;
+                    if self.defending_player != Some(defending_player) {
+                        return Err(crate::decision::ResponseError::InvalidBlockers(
+                            "blocker declaration was submitted for the wrong defending player".to_string(),
+                        ).into());
+                    }
+                    let transaction = match self.prepare_block_payment_with_choices(
+                        declarations, defending_player, answers, game, tq,
+                    )? {
+                        RunnerProgress::Complete(transaction) => transaction,
+                        RunnerProgress::NeedsDecision(prompt) => return Ok(TurnAction::Decision(prompt)),
+                    };
+                    transaction.stage_proposed_combat_for_payment(game);
+                    let payers = transaction.mana_cost_payers();
+                    if !payers.is_empty() {
+                        let declaration_source = transaction.declaration_source().ok_or_else(|| {
+                            GameLoopError::InvalidState("blocking costs exist without a declaration source".to_string())
+                        })?;
+                        let mut pending = PendingBlockerManaWindow {
+                            transaction, payers, next_payer: 0, declaration_source,
+                        };
+                        if let Some(context) = next_blocker_mana_window_context(game, &mut pending) {
+                            self.pending_blocker_mana_window = Some(pending);
+                            return Ok(TurnAction::Decision(DecisionContext::SelectOptions(context)));
                         }
+                        if let Some(action) = self.finish_block_payment_with_choices(
+                            pending.transaction, Vec::new(), game,
+                        )? {
+                            return Ok(action);
+                        }
+                    } else if let Some(action) = self.finish_block_payment_with_choices(
+                        transaction, Vec::new(), game,
+                    )? {
+                        return Ok(action);
                     }
                 }
                 if self.remaining_defending_players.first().copied() == Some(defending_player) {
@@ -1431,12 +1608,9 @@ impl TurnRunner {
                     return Ok(TurnAction::Continue);
                 }
                 self.queue_declared_block_events(game, tq);
-                put_triggers_on_stack(game, tq)?;
-
-                // Sync game.combat
+                // The priority loop announces trigger modes, targets, and order.
                 game.combat = Some(self.combat.clone());
                 game.reset_priority_for_new_window();
-
                 self.state = TurnState::DeclareBlockersPriority;
                 Ok(TurnAction::RunPriority)
             }
@@ -1473,12 +1647,13 @@ impl TurnRunner {
             }
 
             TurnState::CombatDamageFirstStrikeAssign => {
-                if let Some(ctx) = self.next_combat_damage_assignment_decision(game, true, false) {
+                if self.pending_combat_damage_choices.is_none()
+                    && let Some(ctx) = self.next_combat_damage_assignment_decision(game, true, false) {
                     return Ok(TurnAction::Decision(ctx));
                 }
-                let events = try_execute_combat_damage_step(game, &self.combat, true)
-                    .map_err(|error| GameLoopError::InvalidState(error.to_string()))?;
-                queue_combat_damage_triggers(game, &events, tq);
+                if let Some(ctx) = self.apply_combat_damage_with_choices(game, tq, true)? {
+                    return Ok(TurnAction::Decision(ctx));
+                }
                 self.state = TurnState::CombatDamageFirstStrikeSbas;
                 Ok(TurnAction::Continue)
             }
@@ -1512,17 +1687,13 @@ impl TurnRunner {
             }
 
             TurnState::CombatDamageRegularAssign => {
-                if let Some(ctx) = self.next_combat_damage_assignment_decision(game, false, true) {
+                if self.pending_combat_damage_choices.is_none()
+                    && let Some(ctx) = self.next_combat_damage_assignment_decision(game, false, true) {
                     return Ok(TurnAction::Decision(ctx));
                 }
-                let events = try_execute_combat_damage_step_with_first_step_snapshot(
-                    game,
-                    &self.combat,
-                    false,
-                    &self.first_step_strikers,
-                )
-                .map_err(|error| GameLoopError::InvalidState(error.to_string()))?;
-                queue_combat_damage_triggers(game, &events, tq);
+                if let Some(ctx) = self.apply_combat_damage_with_choices(game, tq, false)? {
+                    return Ok(TurnAction::Decision(ctx));
+                }
                 self.state = TurnState::CombatDamageRegularSbas;
                 Ok(TurnAction::Continue)
             }
@@ -1734,7 +1905,6 @@ impl TurnRunner {
                         RunnerProgress::Complete(()) => {}
                         RunnerProgress::NeedsDecision(ctx) => return Ok(TurnAction::Decision(ctx)),
                     }
-                    put_triggers_on_stack(game, tq)?;
                     // CR 514.3a grants the active player priority after either
                     // state-based actions or waiting triggers, even if those
                     // actions left the stack empty.
@@ -1775,11 +1945,16 @@ impl TurnRunner {
         declarations: Vec<AttackerDeclaration>,
         bands: Vec<Vec<ObjectId>>,
     ) {
+        if let Some(slot) = self.replay_response_slot() {
+            *slot = Some(AttackCostAnswer::Attackers(declarations.into_iter().map(|d| crate::decisions::spec::AttackerDeclaration { creature: d.creature, target: d.target }).collect()));
+            return;
+        }
         self.pending_attackers = Some(declarations);
         self.pending_attacking_bands = Some(bands);
         self.pending_attacker_optional_costs = None;
         self.pending_attacker_mana_window = None;
         self.pending_attacker_payment_choices = None;
+        self.pending_combat_mana_choices = None;
         self.pending_option = None;
         self.pending_boolean = None;
         self.pending_draw_replacement = None;
@@ -1791,129 +1966,151 @@ impl TurnRunner {
         declarations: Vec<BlockerDeclaration>,
         defending_player: PlayerId,
     ) {
+        if let Some(slot) = self.replay_response_slot() {
+            *slot = Some(AttackCostAnswer::Blockers(declarations.into_iter().map(|d| crate::decisions::spec::BlockerDeclaration { blocker: d.blocker, blocking: d.blocking }).collect()));
+            return;
+        }
         self.pending_blockers = Some((declarations, defending_player));
     }
 
-    /// Provide a discard selection in response to a `Decision(SelectObjects(...))`.
-    pub fn respond_discard(&mut self, cards: Vec<ObjectId>) {
-        if let Some(pending) = self.pending_sba_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Objects(cards));
-            return;
-        }
-        if let Some(pending) = self.pending_untap_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Objects(cards));
-            return;
-        }
-        if let Some(pending) = self.pending_attraction_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Objects(cards));
-            return;
-        }
-        if let Some(pending) = self.pending_restart_entry_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Objects(cards));
-            return;
-        }
-        if let Some(pending) = self.pending_draw_replacement_effects.as_mut() {
-            pending.response = Some(AttackCostAnswer::Objects(cards));
-            return;
-        }
-        if let Some(pending) = self.pending_attacker_payment_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Objects(cards));
-            return;
-        }
-        self.pending_discard = Some(cards);
+    /// True while a turn-based operation is waiting on a nested player choice.
+    pub fn has_pending_replay_choice(&self) -> bool {
+        self.pending_sba_choices.is_some()
+            || self.pending_untap_choices.is_some()
+            || self.pending_attraction_choices.is_some()
+            || self.pending_restart_entry_choices.is_some()
+            || self.pending_draw_replacement_effects.is_some()
+            || self.pending_attacker_payment_choices.is_some()
+            || self.pending_combat_damage_choices.is_some()
+            || self.pending_cleanup_discard.is_some()
+            || self.pending_combat_mana_choices.is_some()
+            || self.pending_blocker_preparation_choices.is_some()
+            || self.pending_blocker_payment_choices.is_some()
     }
 
-    /// Provide a boolean response in response to a `Decision(Boolean(...))`.
-    pub fn respond_boolean(&mut self, answer: bool) {
+    fn replay_response_slot(&mut self) -> Option<&mut Option<AttackCostAnswer>> {
+        if self.has_pending_combat_cost_choice() {
+            return self.combat_cost_response_slot();
+        }
+        if let Some(pending) = self.pending_combat_damage_choices.as_mut() {
+            return Some(&mut pending.response);
+        }
+        if let Some(pending) = self.pending_cleanup_discard.as_mut() {
+            return Some(&mut pending.choices.response);
+        }
         if let Some(pending) = self.pending_sba_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Boolean(answer));
-            return;
+            return Some(&mut pending.response);
         }
         if let Some(pending) = self.pending_untap_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Boolean(answer));
-            return;
+            return Some(&mut pending.response);
         }
         if let Some(pending) = self.pending_attraction_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Boolean(answer));
-            return;
+            return Some(&mut pending.response);
         }
         if let Some(pending) = self.pending_restart_entry_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Boolean(answer));
-            return;
+            return Some(&mut pending.response);
         }
         if let Some(pending) = self.pending_draw_replacement_effects.as_mut() {
-            pending.response = Some(AttackCostAnswer::Boolean(answer));
-            return;
+            return Some(&mut pending.response);
         }
         if let Some(pending) = self.pending_attacker_payment_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Boolean(answer));
+            return Some(&mut pending.response);
+        }
+        None
+    }
+
+    pub fn respond_discard(&mut self, answer: Vec<ObjectId>) {
+        if let Some(slot) = self.replay_response_slot() {
+            *slot = Some(AttackCostAnswer::Objects(answer));
+            return;
+        }
+        self.pending_discard = Some(answer);
+    }
+
+    pub fn respond_boolean(&mut self, answer: bool) {
+        if let Some(slot) = self.replay_response_slot() {
+            *slot = Some(AttackCostAnswer::Boolean(answer));
             return;
         }
         self.pending_boolean = Some(answer);
     }
 
-    /// Provide a response to a runner-driven single-select options decision.
-    pub fn respond_options(&mut self, option_indices: Vec<usize>) {
-        if let Some(pending) = self.pending_sba_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Options(option_indices));
+    pub fn respond_options(&mut self, answer: Vec<usize>) {
+        if let Some(slot) = self.replay_response_slot() {
+            *slot = Some(AttackCostAnswer::Options(answer));
             return;
         }
-        if let Some(pending) = self.pending_untap_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Options(option_indices));
-            return;
-        }
-        if let Some(pending) = self.pending_attraction_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Options(option_indices));
-            return;
-        }
-        if let Some(pending) = self.pending_restart_entry_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Options(option_indices));
-            return;
-        }
-        if let Some(pending) = self.pending_draw_replacement_effects.as_mut() {
-            pending.response = Some(AttackCostAnswer::Options(option_indices));
-            return;
-        }
-        if let Some(pending) = self.pending_attacker_payment_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Options(option_indices));
-            return;
-        }
-        self.pending_option = option_indices.first().copied();
+        self.pending_option = answer.first().copied();
     }
 
-    /// Provide an ordering in response to a runner-driven `Decision(Order(...))`
-    /// raised by a replayed effect (for example a draw-step replacement).
-    pub fn respond_order(&mut self, order: Vec<ObjectId>) {
-        if let Some(pending) = self.pending_sba_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Order(order));
+    pub fn respond_order(&mut self, answer: Vec<ObjectId>) {
+        if let Some(slot) = self.replay_response_slot() {
+            *slot = Some(AttackCostAnswer::Order(answer));
             return;
-        }
-        if let Some(pending) = self.pending_untap_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Order(order));
-            return;
-        }
-        if let Some(pending) = self.pending_attraction_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Order(order));
-            return;
-        }
-        if let Some(pending) = self.pending_restart_entry_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Order(order));
-            return;
-        }
-        if let Some(pending) = self.pending_draw_replacement_effects.as_mut() {
-            pending.response = Some(AttackCostAnswer::Order(order));
-            return;
-        }
-        if let Some(pending) = self.pending_attacker_payment_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Order(order));
         }
     }
 
-    /// Provide a combat-damage division in response to a
-    /// `Decision(Distribute(...))` raised before a combat-damage step.
-    /// An empty or illegal division falls back to the default division.
-    pub fn respond_distribute(&mut self, distribution: Vec<(crate::game_state::Target, u32)>) {
-        self.pending_distribution = Some(distribution);
+    pub fn respond_distribute(&mut self, answer: Vec<(crate::game_state::Target, u32)>) {
+        if let Some(slot) = self.replay_response_slot() {
+            *slot = Some(AttackCostAnswer::Distribute(answer));
+            return;
+        }
+        self.pending_distribution = Some(answer);
+    }
+
+    pub fn respond_number(&mut self, answer: u32) {
+        if let Some(slot) = self.replay_response_slot() {
+            *slot = Some(AttackCostAnswer::Number(answer));
+            return;
+        }
+    }
+
+    pub fn respond_text(&mut self, answer: String) {
+        if let Some(slot) = self.replay_response_slot() {
+            *slot = Some(AttackCostAnswer::Text(answer));
+            return;
+        }
+    }
+
+    pub fn respond_colors(&mut self, answer: Vec<crate::color::Color>) {
+        if let Some(slot) = self.replay_response_slot() {
+            *slot = Some(AttackCostAnswer::Colors(answer));
+            return;
+        }
+    }
+
+    pub fn respond_counters(&mut self, answer: Vec<(crate::object::CounterType, u32)>) {
+        if let Some(slot) = self.replay_response_slot() {
+            *slot = Some(AttackCostAnswer::Counters(answer));
+            return;
+        }
+    }
+
+    pub fn respond_partition(&mut self, answer: Vec<ObjectId>) {
+        if let Some(slot) = self.replay_response_slot() {
+            *slot = Some(AttackCostAnswer::Partition(answer));
+            return;
+        }
+    }
+
+    pub fn respond_proliferate(&mut self, answer: crate::decisions::specs::ProliferateResponse) {
+        if let Some(slot) = self.replay_response_slot() {
+            *slot = Some(AttackCostAnswer::Proliferate(answer));
+            return;
+        }
+    }
+
+    pub fn respond_targets(&mut self, answer: Vec<crate::game_state::Target>) {
+        if let Some(slot) = self.replay_response_slot() {
+            *slot = Some(AttackCostAnswer::Targets(answer));
+            return;
+        }
+    }
+
+    pub fn respond_priority(&mut self, answer: crate::decision::LegalAction) {
+        if let Some(slot) = self.replay_response_slot() {
+            *slot = Some(AttackCostAnswer::Priority(answer));
+        }
     }
 
     /// Check a proposed division for the combat-damage prompt the runner is
@@ -1989,6 +2186,141 @@ impl TurnRunner {
     // Private helpers
     // ------------------------------------------------------------------
 
+    fn combat_cost_response_slot(&mut self) -> Option<&mut Option<AttackCostAnswer>> {
+        if let Some(pending) = self.pending_combat_mana_choices.as_mut() {
+            return Some(&mut pending.response);
+        }
+        if let Some(pending) = self.pending_blocker_preparation_choices.as_mut() {
+            return Some(&mut pending.response);
+        }
+        self.pending_blocker_payment_choices
+            .as_mut()
+            .map(|pending| &mut pending.response)
+    }
+
+    fn has_pending_combat_cost_choice(&self) -> bool {
+        self.pending_combat_mana_choices.is_some()
+            || self.pending_blocker_preparation_choices.is_some()
+            || self.pending_blocker_payment_choices.is_some()
+    }
+
+    /// Mana abilities can ask for colors, objects, or other choices of their
+    /// own. Replay the activation on a private copy until all are answered;
+    /// opening a prompt must not tap its source or spend an activation cost.
+    fn apply_combat_mana_with_choices(
+        &mut self,
+        game: &mut GameState,
+        tq: &mut TriggerQueue,
+        player: PlayerId,
+        choice: Option<usize>,
+        attack: bool,
+    ) -> Result<RunnerProgress<bool>, GameLoopError> {
+        let (choice, answers) = if let Some(mut pending) = self.pending_combat_mana_choices.take() {
+            if pending.player != player || pending.attack != attack {
+                self.pending_combat_mana_choices = Some(pending);
+                return Err(GameLoopError::InvalidState(
+                    "combat mana choice resumed for a different declaration".to_string(),
+                ));
+            }
+            let Some(response) = pending.response.take() else {
+                let prompt = pending.prompt.clone();
+                self.pending_combat_mana_choices = Some(pending);
+                return Ok(RunnerProgress::NeedsDecision(prompt));
+            };
+            pending.answers.push(response);
+            (pending.choice, pending.answers)
+        } else {
+            let Some(choice) = choice else {
+                return Ok(RunnerProgress::Complete(false));
+            };
+            (choice, Vec::new())
+        };
+
+        let mut activation_game = game.clone();
+        let mut activation_triggers = tq.clone();
+        let mut dm = QueuedAttackCostDecisionMaker::new(answers.clone());
+        dm.capture_mana_payment = true;
+        let result = if attack {
+            apply_attack_mana_ability_window_response(
+                &mut activation_game, &mut activation_triggers, player, choice, &mut dm,
+            )
+        } else {
+            apply_blocker_mana_ability_window_response(
+                &mut activation_game, &mut activation_triggers, player, choice, &mut dm,
+            )
+        };
+        if let Some(prompt) = dm.pending_prompt {
+            self.pending_combat_mana_choices = Some(PendingCombatManaChoices {
+                player, choice, attack, answers, prompt: prompt.clone(), response: None,
+            });
+            return Ok(RunnerProgress::NeedsDecision(prompt));
+        }
+        let closed = result?;
+        *game = activation_game;
+        *tq = activation_triggers;
+        Ok(RunnerProgress::Complete(closed))
+    }
+
+    fn prepare_block_payment_with_choices(
+        &mut self,
+        declarations: Vec<BlockerDeclaration>,
+        defending_player: PlayerId,
+        answers: Vec<AttackCostAnswer>,
+        game: &GameState,
+        tq: &TriggerQueue,
+    ) -> Result<RunnerProgress<BlockDeclarationTransaction>, GameLoopError> {
+        let mut dm = QueuedAttackCostDecisionMaker::new(answers.clone());
+        let result = begin_blocker_declaration_transaction(
+            game, &self.combat, tq, &declarations, defending_player, &mut dm,
+        );
+        if let Some(prompt) = dm.pending_prompt {
+            self.pending_blocker_preparation_choices = Some(PendingBlockerPreparationChoices {
+                declarations, defending_player, answers, prompt: prompt.clone(), response: None,
+            });
+            return Ok(RunnerProgress::NeedsDecision(prompt));
+        }
+        match result {
+            Ok(transaction) => Ok(RunnerProgress::Complete(transaction)),
+            Err(error) => {
+                self.state = TurnState::DeclareBlockersDecision;
+                Err(error)
+            }
+        }
+    }
+
+    /// As with attack payments, each blocking-cost choice is tentative until
+    /// the complete payment succeeds. This also preserves the declaration's
+    /// original rollback checkpoint if a later cost cannot be paid.
+    fn finish_block_payment_with_choices(
+        &mut self,
+        transaction: BlockDeclarationTransaction,
+        answers: Vec<AttackCostAnswer>,
+        game: &mut GameState,
+    ) -> Result<Option<TurnAction>, GameLoopError> {
+        let mut payment_game = game.clone();
+        let mut payment_combat = self.combat.clone();
+        let mut dm = QueuedAttackCostDecisionMaker::new(answers.clone());
+        let result = finish_blocker_declaration_transaction_deferring_triggers(
+            transaction.clone(), &mut payment_game, &mut payment_combat, &mut dm,
+        );
+        if let Some(prompt) = dm.pending_prompt {
+            self.pending_blocker_payment_choices = Some(PendingBlockerPaymentChoices {
+                transaction, answers, prompt: prompt.clone(), response: None,
+            });
+            return Ok(Some(TurnAction::Decision(prompt)));
+        }
+        *game = payment_game;
+        self.combat = payment_combat;
+        match result {
+            Ok(pairs) => self.declared_block_pairs.extend(pairs),
+            Err(error) => {
+                self.state = TurnState::DeclareBlockersDecision;
+                return Err(error);
+            }
+        }
+        Ok(None)
+    }
+
     /// Replay answers against a private payment transaction. Publish only a
     /// completed payment or its rollback; prompts never spend real resources.
     fn finish_attack_payment_with_choices(
@@ -2031,77 +2363,99 @@ impl TurnRunner {
         }
     }
 
-    /// Handle the first cleanup discard check.
-    fn advance_cleanup_discard(
+    /// Resolve the entire simultaneous damage batch on a private state. A
+    /// replacement choice must never publish some creatures' damage first.
+    fn apply_combat_damage_with_choices(
         &mut self,
         game: &mut GameState,
-    ) -> Result<TurnAction, GameLoopError> {
-        if let Some(discard) = self.pending_discard.take() {
-            // Caller already provided a discard selection (from a prior Decision yield).
-            // Apply it with an auto-pass DM for madness replacement.
-            let mut auto_dm = crate::decision::AutoPassDecisionMaker;
-            let discarding_player = cleanup_discard_owner(game, &discard);
-            crate::turn::apply_cleanup_discard(game, &discard, &mut auto_dm);
-            // CR 805.4: each teammate of a shared turn discards to their own
-            // maximum hand size before the rest of the cleanup step.
-            if let Some(player) = discarding_player
-                && let Some((next, spec)) =
-                    crate::turn::get_cleanup_discard_spec_after(game, Some(player))
-            {
-                use crate::decisions::DecisionSpec;
-                let ctx = spec.build_context(next, None, game);
-                self.state = TurnState::CleanupDiscard;
-                return Ok(TurnAction::Decision(ctx));
-            }
-            self.state = TurnState::CleanupApply;
-            return Ok(TurnAction::Continue);
+        tq: &mut TriggerQueue,
+        first_strike: bool,
+    ) -> Result<Option<DecisionContext>, GameLoopError> {
+        let mut answers = Vec::new();
+        if let Some(mut pending) = self.pending_combat_damage_choices.take() {
+            let Some(answer) = pending.response.take() else {
+                let prompt = pending.prompt.clone();
+                self.pending_combat_damage_choices = Some(pending);
+                return Ok(Some(prompt));
+            };
+            answers = pending.answers;
+            answers.push(answer);
         }
-
-        if let Some((player, spec)) = crate::turn::get_cleanup_discard_spec(game) {
-            use crate::decisions::DecisionSpec;
-            let ctx = spec.build_context(player, None, game);
-            // Yield the discard decision to the caller
-            self.state = TurnState::CleanupDiscard; // stay here until respond_discard
-            return Ok(TurnAction::Decision(ctx));
+        let mut hypothetical = game.clone();
+        let mut dm = QueuedAttackCostDecisionMaker::new(answers.clone());
+        let result = crate::game_loop::try_execute_combat_damage_step_with_dm_and_first_step_snapshot(
+            &mut hypothetical,
+            &self.combat,
+            first_strike,
+            (!first_strike).then_some(&self.first_step_strikers),
+            &mut dm,
+        );
+        if let Some(prompt) = dm.pending_prompt {
+            self.pending_combat_damage_choices = Some(PendingTurnActionChoices {
+                answers, prompt: prompt.clone(), response: None,
+            });
+            return Ok(Some(prompt));
         }
-
-        // No discard needed
-        self.state = TurnState::CleanupApply;
-        Ok(TurnAction::Continue)
+        let events = result.map_err(|error| GameLoopError::InvalidState(error.to_string()))?;
+        *game = hypothetical;
+        queue_combat_damage_triggers(game, &events, tq);
+        Ok(None)
     }
 
-    /// Handle recursive cleanup discard check.
-    fn advance_cleanup_discard_recursive(
+    fn advance_cleanup_discard(&mut self, game: &mut GameState) -> Result<TurnAction, GameLoopError> {
+        self.advance_cleanup_discard_with_choices(game, false)
+    }
+
+    fn advance_cleanup_discard_recursive(&mut self, game: &mut GameState) -> Result<TurnAction, GameLoopError> {
+        self.advance_cleanup_discard_with_choices(game, true)
+    }
+
+    /// Keep the whole selected discard batch in hand while collecting every
+    /// replacement choice. Initial and recursive cleanup share this path.
+    fn advance_cleanup_discard_with_choices(
         &mut self,
         game: &mut GameState,
+        recursive: bool,
     ) -> Result<TurnAction, GameLoopError> {
-        if let Some(discard) = self.pending_discard.take() {
-            let mut auto_dm = crate::decision::AutoPassDecisionMaker;
-            let discarding_player = cleanup_discard_owner(game, &discard);
-            crate::turn::apply_cleanup_discard(game, &discard, &mut auto_dm);
-            // CR 805.4: each teammate discards before the next cleanup pass.
-            if let Some(player) = discarding_player
-                && let Some((next, spec)) =
-                    crate::turn::get_cleanup_discard_spec_after(game, Some(player))
-            {
+        let (cards, answers) = if let Some(mut pending) = self.pending_cleanup_discard.take() {
+            let Some(answer) = pending.choices.response.take() else {
+                let prompt = pending.choices.prompt.clone();
+                self.pending_cleanup_discard = Some(pending);
+                return Ok(TurnAction::Decision(prompt));
+            };
+            pending.choices.answers.push(answer);
+            (pending.cards, pending.choices.answers)
+        } else if let Some(cards) = self.pending_discard.take() {
+            (cards, Vec::new())
+        } else {
+            if let Some((player, spec)) = crate::turn::get_cleanup_discard_spec(game) {
                 use crate::decisions::DecisionSpec;
-                let ctx = spec.build_context(next, None, game);
-                self.state = TurnState::CleanupRecursiveDiscard;
-                return Ok(TurnAction::Decision(ctx));
+                return Ok(TurnAction::Decision(spec.build_context(player, None, game)));
             }
-            // Another cleanup step
             self.state = TurnState::CleanupApply;
             return Ok(TurnAction::Continue);
-        }
+        };
 
-        if let Some((player, spec)) = crate::turn::get_cleanup_discard_spec(game) {
+        let discarding_player = cleanup_discard_owner(game, &cards);
+        let mut hypothetical = game.clone();
+        let mut dm = QueuedAttackCostDecisionMaker::new(answers.clone());
+        crate::turn::apply_cleanup_discard(&mut hypothetical, &cards, &mut dm);
+        if let Some(prompt) = dm.pending_prompt {
+            self.pending_cleanup_discard = Some(PendingCleanupDiscard {
+                cards,
+                choices: PendingTurnActionChoices { answers, prompt: prompt.clone(), response: None },
+            });
+            return Ok(TurnAction::Decision(prompt));
+        }
+        *game = hypothetical;
+        // Each teammate of a shared turn discards to their own hand size.
+        if let Some(player) = discarding_player
+            && let Some((next, spec)) = crate::turn::get_cleanup_discard_spec_after(game, Some(player))
+        {
             use crate::decisions::DecisionSpec;
-            let ctx = spec.build_context(player, None, game);
-            self.state = TurnState::CleanupRecursiveDiscard; // stay here
-            return Ok(TurnAction::Decision(ctx));
+            self.state = if recursive { TurnState::CleanupRecursiveDiscard } else { TurnState::CleanupDiscard };
+            return Ok(TurnAction::Decision(spec.build_context(next, None, game)));
         }
-
-        // Done with cleanup, execute final cleanup step
         self.state = TurnState::CleanupApply;
         Ok(TurnAction::Continue)
     }
@@ -2420,8 +2774,8 @@ impl TurnRunner {
     }
 
     pub fn respond_mana_payment(&mut self, response: crate::mana_payment::ManaPaymentResponse) {
-        if let Some(pending) = self.pending_attraction_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::ManaPayment(response));
+        if let Some(slot) = self.replay_response_slot() {
+            *slot = Some(AttackCostAnswer::ManaPayment(response));
         }
     }
 
@@ -3206,6 +3560,14 @@ fn next_runner_state_after_phase(game: &mut GameState, normal_next: TurnState) -
     let phase = game.turn.phase;
     finish_phase(game, phase, normal_destination)
 }
+
+#[cfg(test)]
+#[path = "turn_runner_combat_cost_tests.rs"]
+mod combat_cost_choice_tests;
+
+#[cfg(test)]
+#[path = "turn_runner_choice_tests.rs"]
+mod choice_tests;
 
 #[cfg(test)]
 mod tests {
@@ -5008,6 +5370,10 @@ mod tests {
             game.is_tapped(attacker),
             "attacker should be tapped after the attack is applied"
         );
+        assert!(game.stack.is_empty());
+        assert_eq!(tq.entries.len(), 1);
+        crate::game_loop::advance_priority_with_dm(&mut game, &mut tq, &mut AutoPassDecisionMaker)
+            .expect("the priority loop should stack the exert trigger");
         assert_eq!(
             game.stack.len(),
             1,
@@ -5064,6 +5430,10 @@ mod tests {
         assert!(matches!(action, TurnAction::RunPriority));
         assert!(game.is_tapped(support));
         assert_eq!(runner.combat.attackers.len(), 1);
+        assert!(game.stack.is_empty());
+        assert_eq!(tq.entries.len(), 1);
+        crate::game_loop::advance_priority_with_dm(&mut game, &mut tq, &mut AutoPassDecisionMaker)
+            .expect("the priority loop should stack the enlist trigger");
         assert_eq!(
             game.stack.len(),
             1,

@@ -6,7 +6,7 @@ import { useGame } from "@/context/GameContext";
 import InspectorStackTimeline from "./InspectorStackTimeline";
 import { cn } from "@/lib/utils";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
-import { isTriggerOrderingDecision } from "@/lib/trigger-ordering";
+import { isEffectOrderingDecision } from "@/lib/effect-ordering";
 import { samePlayerId } from "@/lib/player-display";
 
 const STACK_EDGE_MARGIN = 6;
@@ -34,7 +34,7 @@ export default function StackTimelineRail({
   const rawStackEntryCount = Math.max(stackObjects.length, stackPreview.length);
   const orderingEntryCount = useMemo(
     () =>
-      isTriggerOrderingDecision(decision)
+      isEffectOrderingDecision(decision)
         ? rawStackEntryCount + (decision?.options || []).length
         : rawStackEntryCount,
     [decision, rawStackEntryCount],

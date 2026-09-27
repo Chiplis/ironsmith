@@ -10,10 +10,11 @@ import useLayoutReflow from "@/lib/motion/useLayoutReflow";
 import { cn } from "@/lib/utils";
 import { stackEntryRenderKeys } from "@/lib/stack-targets";
 import {
-  buildTriggerOrderingEntries,
-  buildTriggerOrderingKey,
-  isTriggerOrderingDecision,
-} from "@/lib/trigger-ordering";
+  buildEffectOrderingEntries,
+  buildEffectOrderingKey,
+  isEffectOrderingDecision,
+  isReplacementOrderingDecision,
+} from "@/lib/effect-ordering";
 
 function isFocusedDecision(decision) {
   return (
@@ -57,13 +58,15 @@ export default function InspectorStackTimeline({
 }) {
   const ui = useUiText();
   const {
-    triggerOrderingState,
-    moveTriggerOrderingItem,
+    state,
+    effectOrderingState,
+    moveEffectOrderingItem,
   } = useGame();
   const bodyRef = useRef(null);
   const focusedDecision = isFocusedDecision(decision) && canAct;
-  const triggerOrderingActive = isTriggerOrderingDecision(decision);
-  const triggerOrderingKey = buildTriggerOrderingKey(decision);
+  const effectOrderingActive = isEffectOrderingDecision(decision);
+  const replacementOrderingActive = isReplacementOrderingDecision(decision);
+  const effectOrderingKey = buildEffectOrderingKey(decision);
   const hasStackEntries = stackObjects.length > 0 || stackPreview.length > 0;
   const stackIds = useMemo(
     () => stackEntryRenderKeys(stackObjects).map((key) => `live-${key}`),
@@ -74,16 +77,16 @@ export default function InspectorStackTimeline({
     () => resolveActiveStackInspectId(stackObjects, selectedObjectId),
     [selectedObjectId, stackObjects]
   );
-  // Triggers waiting to be ordered sit above the live stack: the order a
-  // player arranges them in here is the order they will land in.
-  const pendingTriggerEntries = useMemo(() => {
-    if (!triggerOrderingActive || triggerOrderingState?.key !== triggerOrderingKey) return [];
-    return buildTriggerOrderingEntries(decision, triggerOrderingState.order).map((entry) => ({
+  // Pending choices share the same cards and arrows. Replacements are kept
+  // above a separate Stack heading because they change an event directly.
+  const pendingOrderingEntries = useMemo(() => {
+    if (!effectOrderingActive || effectOrderingState?.key !== effectOrderingKey) return [];
+    return buildEffectOrderingEntries(decision, effectOrderingState.order, state).map((entry) => ({
       ...entry,
-      __timeline_key: `pending-${entry.__trigger_ordering_option_index}`,
+      __timeline_key: `pending-${entry.id}`,
       __leaving: false,
     }));
-  }, [decision, triggerOrderingActive, triggerOrderingKey, triggerOrderingState]);
+  }, [decision, effectOrderingActive, effectOrderingKey, effectOrderingState, state]);
   const liveTimelineEntries = useMemo(
     () => stackObjects.map((entry, index) => ({
       ...entry,
@@ -93,8 +96,8 @@ export default function InspectorStackTimeline({
     [stackObjects, stackIds]
   );
   const timelineEntries = useMemo(
-    () => [...pendingTriggerEntries, ...liveTimelineEntries],
-    [pendingTriggerEntries, liveTimelineEntries]
+    () => [...pendingOrderingEntries, ...liveTimelineEntries],
+    [pendingOrderingEntries, liveTimelineEntries]
   );
   const itemCount = timelineEntries.length || stackPreview.length;
   const timelineSignature = timelineEntries.map((entry) => entry.__timeline_key).join("|");
@@ -108,21 +111,25 @@ export default function InspectorStackTimeline({
     leaveTo: { opacity: 0, y: -14, scale: 0.96 },
   });
 
-  if (!hasStackEntries && pendingTriggerEntries.length === 0) return null;
+  if (!hasStackEntries && pendingOrderingEntries.length === 0) return null;
 
   const embeddedExpandedMaxHeight = Number.isFinite(maxBodyHeight) && maxBodyHeight > 0
     ? Math.max(96, Math.round(maxBodyHeight))
     : 380;
 
   const positionLabelForIndex = (index) => {
+    if (replacementOrderingActive) {
+      if (index < pendingOrderingEntries.length) return index === 0 ? "Apply first" : `#${index + 1}`;
+      return index === pendingOrderingEntries.length ? "Resolving" : `#${timelineEntries.length - index}`;
+    }
     if (index !== 0) return `#${timelineEntries.length - index}`;
-    if (focusedDecision && !triggerOrderingActive) return "Resolving";
+    if (focusedDecision && !effectOrderingActive) return "Resolving";
     return "Top";
   };
 
   const renderEntry = (entry, index) => {
-    const isPending = Boolean(entry.__trigger_ordering);
-    // A pending trigger can be previewed and inspected through the object it
+    const isPending = Boolean(entry.__effect_ordering);
+    // A pending effect can be previewed and inspected through the object it
     // came from, once the engine has named one for it.
     const canInspect = !entry.__leaving && (!isPending || stackInspectObjectId(entry) != null);
     return (
@@ -130,6 +137,11 @@ export default function InspectorStackTimeline({
         key={entry.__timeline_key}
         className="stack-timeline-entry pointer-events-auto relative"
       >
+        {replacementOrderingActive && index === pendingOrderingEntries.length && (
+          <div className="stack-panel-header">
+            <span className="stack-panel-title">{ui("Stack")}</span>
+          </div>
+        )}
         <StackCard
           entry={entry}
           density={compact ? "compact" : "default"}
@@ -146,9 +158,15 @@ export default function InspectorStackTimeline({
           reorderControls={isPending
             ? {
                 canMoveLeft: canAct && index > 0,
-                canMoveRight: canAct && index < (pendingTriggerEntries.length - 1),
-                onMoveLeft: () => moveTriggerOrderingItem(index, -1),
-                onMoveRight: () => moveTriggerOrderingItem(index, 1),
+                canMoveRight: canAct && index < (pendingOrderingEntries.length - 1),
+                onMoveLeft: () => moveEffectOrderingItem(index, -1),
+                onMoveRight: () => moveEffectOrderingItem(index, 1),
+                ...(replacementOrderingActive ? {
+                  leftLabel: ui("Move {0} earlier", { 0: entry.name }),
+                  rightLabel: ui("Move {0} later", { 0: entry.name }),
+                  leftTitle: "Apply earlier",
+                  rightTitle: "Apply later",
+                } : {}),
               }
             : null}
         />
@@ -178,7 +196,10 @@ export default function InspectorStackTimeline({
     </div>
   );
 
-  const countLabel = focusedDecision
+  const displayedCount = replacementOrderingActive ? pendingOrderingEntries.length : itemCount;
+  const countLabel = replacementOrderingActive
+    ? ui("Replacement effects: {0}", { 0: displayedCount })
+    : focusedDecision
     ? ui("Stack entries: {0}", { 0: itemCount })
     : ui("Entries: {0}", { 0: itemCount });
 
@@ -194,17 +215,18 @@ export default function InspectorStackTimeline({
       style={embedded ? undefined : { height: `${Math.max(0, timelineHeight)}px` }}
       data-inspector-stack-timeline
       data-density={compact ? "compact" : "default"}
-      data-ordering={triggerOrderingActive ? "true" : "false"}
+      data-ordering={effectOrderingActive ? "true" : "false"}
+      data-ordering-kind={replacementOrderingActive ? "replacement" : effectOrderingActive ? "trigger" : undefined}
     >
       <header className="stack-panel-header pointer-events-none">
-        <span className="stack-panel-title">{ui(title)}</span>
+        <span className="stack-panel-title">{ui(replacementOrderingActive ? "Replacement effects" : title)}</span>
         {/* The count reads as a bare number; the full label stays in the
             accessible text (and in innerText, which the e2e suites match). */}
         <span className="stack-panel-count" title={countLabel}>
-          <span aria-hidden="true">{itemCount}</span>
+          <span aria-hidden="true">{displayedCount}</span>
           <span className="sr-only">{countLabel}</span>
         </span>
-        {triggerOrderingActive && (
+        {effectOrderingActive && (
           <span className="stack-panel-state">{ui("Order")}</span>
         )}
       </header>

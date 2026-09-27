@@ -167,14 +167,21 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
             let chosen_ids: Vec<ObjectId> =
                 chosen.iter().map(|snapshot| snapshot.object_id).collect();
 
-            if self.destination == Zone::Library && search_override.is_none() {
+            if search_override.is_some() {
+                moved_ids =
+                    exile_found_cards_for_opposition_agent(game, ctx, &chosen_ids, chooser_id);
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
+                game.shuffle_player_library(player_id);
+            } else if self.destination == Zone::Library {
                 game.shuffle_library_except_then_put_on_top(
                     player_id,
                     &chosen_ids,
                     "searched cards put on top after library shuffle",
                 );
                 moved_ids.extend(chosen_ids);
-            } else if self.destination == Zone::Battlefield && search_override.is_none() {
+            } else if self.destination == Zone::Battlefield {
                 moved_ids.extend(
                     move_to_battlefield_batch_with_options(
                         game,
@@ -193,11 +200,7 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                 game.shuffle_player_library(player_id);
             } else {
                 for card_id in chosen_ids {
-                    let new_id = if let Some(search) = search_override {
-                        exile_found_cards_for_opposition_agent(game, &[card_id], search)
-                            .first()
-                            .copied()
-                    } else {
+                    let new_id = {
                         // CR 614.1: a found card put into a hand or graveyard
                         // goes through the normal replacement-aware zone change.
                         let additional_effects = ctx.additional_replacement_effects_snapshot();
@@ -210,7 +213,9 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                             &mut *ctx.decision_maker,
                             &additional_effects,
                         ) {
-                            crate::events::processing::EventOutcome::Proceed(change) => change.new_object_id,
+                            crate::events::processing::EventOutcome::Proceed(change) => {
+                                change.new_object_id
+                            }
                             _ => None,
                         }
                     };

@@ -4358,6 +4358,7 @@ pub(crate) fn apply_attack_mana_ability_window_response(
     trigger_queue: &mut TriggerQueue,
     player: PlayerId,
     choice: usize,
+    decision_maker: &mut impl DecisionMaker,
 ) -> Result<bool, GameLoopError> {
     apply_declaration_mana_ability_window_response(
         game,
@@ -4365,6 +4366,7 @@ pub(crate) fn apply_attack_mana_ability_window_response(
         player,
         choice,
         "attack declaration",
+        decision_maker,
     )
 }
 
@@ -4373,6 +4375,7 @@ pub(crate) fn apply_blocker_mana_ability_window_response(
     trigger_queue: &mut TriggerQueue,
     player: PlayerId,
     choice: usize,
+    decision_maker: &mut impl DecisionMaker,
 ) -> Result<bool, GameLoopError> {
     apply_declaration_mana_ability_window_response(
         game,
@@ -4380,6 +4383,7 @@ pub(crate) fn apply_blocker_mana_ability_window_response(
         player,
         choice,
         "blocker declaration",
+        decision_maker,
     )
 }
 
@@ -4389,11 +4393,11 @@ fn apply_declaration_mana_ability_window_response(
     player: PlayerId,
     choice: usize,
     declaration_kind: &str,
+    decision_maker: &mut impl DecisionMaker,
 ) -> Result<bool, GameLoopError> {
     use crate::special_actions::{SpecialAction, perform};
 
-    let mut decision_maker = crate::decision::AutoPassDecisionMaker;
-    let mana_abilities = get_available_mana_abilities(game, player, &mut decision_maker);
+    let mana_abilities = get_available_mana_abilities(game, player, decision_maker);
     if choice > mana_abilities.len() {
         return Err(GameLoopError::InvalidState(format!(
             "Invalid {declaration_kind} mana-ability window choice: {choice} > {}",
@@ -4413,7 +4417,7 @@ fn apply_declaration_mana_ability_window_response(
         },
         game,
         player,
-        &mut decision_maker,
+        decision_maker,
     )
     .map_err(|err| {
         GameLoopError::InvalidState(format!(
@@ -4424,7 +4428,7 @@ fn apply_declaration_mana_ability_window_response(
     queue_ability_activated_event(
         game,
         trigger_queue,
-        &mut decision_maker,
+        decision_maker,
         permanent_id,
         player,
         true,

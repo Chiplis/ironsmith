@@ -1540,10 +1540,19 @@ fn current_ability_surface_texts_for_battlefield(
     }
 
     // Ability additions do not rewrite compiled_card_text. Each current
-    // ability reads as its printed line (its own, or a borrowed source's) or,
-    // without a canonical origin, as the lightweight runtime wording.
+    // ability reads as its printed text (its own, or a borrowed source's) or,
+    // without a canonical origin, as the lightweight runtime wording. Modal
+    // abilities own several lines; compare both sides line by line so their
+    // complete label is not appended after its already-printed mode lines.
     let texts: Vec<String> = (0..current.abilities.len())
-        .map(|index| current_indexed_ability_surface_text(game, object, current, index))
+        .flat_map(|index| {
+            current_indexed_ability_surface_text(game, object, current, index)
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
         .collect();
 
     // Walk the printed text in order. A line some current ability reads as is
@@ -1555,6 +1564,7 @@ fn current_ability_surface_texts_for_battlefield(
         object
             .ability_labels
             .iter()
+            .flat_map(|label| label.lines())
             .any(|label| label.trim() == line)
     };
     let labels_known =
@@ -3430,6 +3440,86 @@ mod tests {
             .expect("expected Bears in battlefield snapshot");
         let encoded = serde_json::to_value(snapshot).expect("snapshot should serialize");
         assert_eq!(encoded["abilities"], serde_json::json!(["Lifelink"]));
+    }
+
+    #[test]
+    fn territorial_kavu_modal_ability_is_displayed_once_on_battlefield() {
+        let _guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let definition = ironsmith_registry_test::compile_to_runtime_definition(
+            "Territorial Kavu",
+            "Type: Creature — Kavu\nPower/Toughness: */*\nDomain — This creature's power and toughness are each equal to the number of basic land types among lands you control.\nWhenever this creature attacks, choose one —\n• Discard a card. If you do, draw a card.\n• Exile up to one target card from a graveyard.",
+            false,
+        )
+        .expect("Territorial Kavu should compile");
+        let stack_id = game.create_object_from_definition(&definition, alice, Zone::Stack);
+        let battlefield_id =
+            game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let stack_details = build_object_details_snapshot(&game, stack_id, Some(&definition))
+            .expect("stack details should build");
+        let battlefield_details =
+            build_object_details_snapshot(&game, battlefield_id, Some(&definition))
+                .expect("battlefield details should build");
+
+        assert_eq!(
+            battlefield_details.oracle_text, stack_details.oracle_text,
+            "the battlefield must display each printed ability exactly as it does on the stack"
+        );
+        assert_eq!(
+            battlefield_details
+                .oracle_text
+                .matches("Whenever this creature attacks")
+                .count(),
+            1
+        );
+        let current = game.calculated_characteristics(battlefield_id).unwrap();
+        assert_eq!(
+            current
+                .abilities
+                .iter()
+                .filter(|ability| matches!(ability.kind, AbilityKind::Triggered(_)))
+                .count(),
+            1,
+            "the duplicate was presentation text, not a second executable trigger"
+        );
+
+        let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &HashSet::new());
+        assert_eq!(
+            battlefield
+                .iter()
+                .find(|permanent| permanent.id == battlefield_id.0)
+                .unwrap()
+                .oracle_text,
+            stack_details.oracle_text
+        );
+
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                battlefield_id,
+                alice,
+                EffectTarget::Specific(battlefield_id),
+                Modification::AddAbility(StaticAbility::lifelink()),
+            ));
+        let granted_details =
+            build_object_details_snapshot(&game, battlefield_id, Some(&definition)).unwrap();
+        assert_eq!(
+            granted_details.oracle_text,
+            format!("{}\nLifelink", stack_details.oracle_text),
+            "a granted ability must not duplicate the printed modal ability"
+        );
+
+        let object = game.object(battlefield_id).unwrap();
+        let mut without_trigger = game.calculated_characteristics(battlefield_id).unwrap();
+        without_trigger
+            .abilities
+            .retain(|ability| !matches!(ability.kind, AbilityKind::Triggered(_)));
+        assert_eq!(
+            current_ability_surface_texts_for_battlefield(&game, object, Some(&without_trigger)),
+            vec![definition.ability_labels[0].clone(), "Lifelink".to_string()],
+            "losing a multiline ability must remove its header and every mode line"
+        );
     }
 
     /// The battlefield abilities of a Grizzly Bears sharing a battlefield with
