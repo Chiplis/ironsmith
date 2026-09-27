@@ -207,6 +207,66 @@ export function buildCounterBadge(counter) {
 export function BattlefieldCounterBadge({ badge }) {
   const ui = useUiText();
   const amountLabel = badge.amount > 99 ? "99+" : String(badge.amount);
+  const chargeFrame = badge.shapeClassName === "charge" ? (
+    <svg
+      className="battlefield-counter-charge-frame"
+      viewBox="0 0 76 40"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id="charge-frame-base" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor="#0d4a7c" />
+          <stop offset="0.48" stopColor="#0b3158" />
+          <stop offset="1" stopColor="#061629" />
+        </linearGradient>
+        <radialGradient id="charge-frame-light" cx="0.28" cy="0.5" r="0.72">
+          <stop offset="0" stopColor="#2e91dc" stopOpacity="0.96" />
+          <stop offset="0.36" stopColor="#1765a8" stopOpacity="0.82" />
+          <stop offset="0.72" stopColor="#0d3e6e" stopOpacity="0.22" />
+          <stop offset="1" stopColor="#061629" stopOpacity="0" />
+        </radialGradient>
+        <filter id="charge-frame-glow" x="-20%" y="-30%" width="140%" height="160%">
+          <feGaussianBlur stdDeviation="0.8" result="charge-blur" />
+          <feFlood floodColor="#55bfff" floodOpacity="0.34" />
+          <feComposite in2="charge-blur" operator="in" />
+          <feMerge>
+            <feMergeNode />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+      <path
+        className="battlefield-counter-charge-frame__body"
+        d="M20 1.5C9.5 1.5 1.5 9.6 1.5 20S9.5 38.5 20 38.5h43.5c6.3 0 11-4.7 11-11V12.5c0-6.3-4.7-11-11-11Z"
+        fill="url(#charge-frame-base)"
+        stroke="#06111d"
+        strokeWidth="3"
+        strokeLinejoin="round"
+        filter="url(#charge-frame-glow)"
+      />
+      <path
+        d="M20 2.5C10.1 2.5 2.5 10.2 2.5 20S10.1 37.5 20 37.5h43.5c5.6 0 10-4.4 10-10V12.5c0-5.6-4.4-10-10-10Z"
+        fill="url(#charge-frame-light)"
+        opacity="0.9"
+      />
+      <path
+        d="M20 2.5C10.1 2.5 2.5 10.2 2.5 20S10.1 37.5 20 37.5h43.5c5.6 0 10-4.4 10-10V12.5c0-5.6-4.4-10-10-10Z"
+        fill="none"
+        stroke="var(--counter-stroke, #bbebff)"
+        strokeOpacity="0.82"
+        strokeWidth="1"
+      />
+      <path
+        d="M10 9.5c3.2-4 7.2-5.8 12.5-5.8h40"
+        fill="none"
+        stroke="#e8f9ff"
+        strokeOpacity="0.3"
+        strokeWidth="1"
+        strokeLinecap="round"
+      />
+    </svg>
+  ) : null;
   const icon = badge.icon ? (
     <img
       className={`battlefield-counter-icon ${badge.iconClassName || ""}`.trim()}
@@ -231,6 +291,7 @@ export function BattlefieldCounterBadge({ badge }) {
         "--counter-stroke": badge.palette.stroke,
       }}
     >
+      {chargeFrame}
       {badge.variant === "loyalty" ? (
         <>
           {icon}
