@@ -1740,7 +1740,9 @@
    left edge. Keep this override separate from the generic counter rail so the
    other counter families can keep their own silhouettes. */
 .battlefield-counter-chip--shape-charge {
+  width: clamp(68px, calc(var(--bf-card-width, 124px) * 0.54), 84px);
   min-height: clamp(19px, calc(var(--bf-card-height, 96px) * 0.2), 42px);
+  flex: 0 0 auto;
   padding-left: clamp(20px, calc(var(--bf-card-width, 124px) * 0.16), 34px);
   border: 0;
   background: transparent !important;
