@@ -828,6 +828,64 @@ impl EffectExecutor for ManifestObjectsEffect {
             game.shuffle_slice(&mut object_ids);
         }
 
+        // CR 701.40e / 701.58e: cards from a library enter one at a time.
+        // Prepare each face-down object only immediately before its own entry,
+        // so replacements and entry events observe earlier manifested cards.
+        let library_owner = game.object(object_ids[0]).map(|object| object.owner);
+        if object_ids.iter().all(|id| {
+            game.object(*id).is_some_and(|object| {
+                object.zone == Zone::Library && Some(object.owner) == library_owner
+            })
+        }) {
+            let mut moved_ids = Vec::new();
+            let mut affected_memory = Vec::new();
+            let mut events = Vec::new();
+            for object_id in object_ids {
+                let Some(object) = game.object(object_id) else {
+                    continue;
+                };
+                let memory =
+                    OutcomeObjectMemory::from_snapshot(&ObjectSnapshot::from_object(object, game));
+                let Some(preparation) = prepare_manifest_card(game, object_id, self.cloak) else {
+                    continue;
+                };
+                match move_to_battlefield_with_options(
+                    game,
+                    ctx,
+                    object_id,
+                    BattlefieldEntryOptions::specific(controller, self.tapped),
+                ) {
+                    BattlefieldEntryOutcome::Moved(new_id) => {
+                        game.set_manifested(new_id);
+                        moved_ids.push(new_id);
+                        affected_memory.push(memory);
+                        events.push(TriggerEvent::new_with_provenance(
+                            KeywordActionEvent::new(
+                                if self.cloak {
+                                    KeywordActionKind::Cloak
+                                } else {
+                                    KeywordActionKind::Manifest
+                                },
+                                controller,
+                                ctx.source,
+                                1,
+                            ),
+                            ctx.provenance,
+                        ));
+                    }
+                    BattlefieldEntryOutcome::Prevented => {
+                        rollback_manifest_preparation(game, &preparation);
+                    }
+                }
+                if ctx.decision_maker.awaiting_choice() {
+                    break;
+                }
+            }
+            return Ok(EffectOutcome::with_objects(moved_ids)
+                .with_affected_object_memory(affected_memory)
+                .with_events(events));
+        }
+
         let mut entries = Vec::with_capacity(object_ids.len());
         for object_id in object_ids {
             let Some(object) = game.object(object_id) else {
@@ -1391,17 +1449,13 @@ impl EffectExecutor for CipherEffect {
             EventOutcome::NotApplicable => return Ok(EffectOutcome::target_invalid()),
         };
 
-        let Some(exiled_stable_id) = game.object(exiled_id).map(|obj| obj.stable_id) else {
-            return Ok(EffectOutcome::target_invalid());
-        };
-
         game.imprint_card(chosen_creature, exiled_id);
         let ability = crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_deals_combat_damage_to_player(
                 crate::target::PlayerFilter::Any,
             ),
             vec![crate::effect::Effect::cast_encoded_card_copy(
-                exiled_stable_id,
+                exiled_id,
             )],
         );
         // CR 702.99a: the encoded card's static ability grants the trigger to
@@ -1411,7 +1465,18 @@ impl EffectExecutor for CipherEffect {
         let grant = crate::effects::ApplyContinuousEffect::new(
             crate::continuous::EffectTarget::Specific(chosen_creature),
             crate::continuous::Modification::AddAbilityGeneric(ability),
-            crate::effect::Until::Forever,
+            crate::effect::Until::ForAsLongAs(
+                ironsmith_core::ContinuousDurationPredicate::all([
+                    ironsmith_core::ContinuousDurationPredicate::ObjectInZone {
+                        object: ironsmith_core::ContinuousDurationObject::Specific(exiled_id),
+                        zone: Zone::Exile,
+                    },
+                    ironsmith_core::ContinuousDurationPredicate::ObjectInZone {
+                        object: ironsmith_core::ContinuousDurationObject::Specific(chosen_creature),
+                        zone: Zone::Battlefield,
+                    },
+                ]),
+            ),
         )
         .with_source_type(crate::continuous::EffectSourceType::Resolution {
             locked_targets: vec![chosen_creature],
@@ -1428,11 +1493,11 @@ impl EffectExecutor for CipherEffect {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CastEncodedCardCopyEffect {
-    pub encoded_card: StableId,
+    pub encoded_card: ObjectId,
 }
 
 impl CastEncodedCardCopyEffect {
-    pub fn new(encoded_card: StableId) -> Self {
+    pub fn new(encoded_card: ObjectId) -> Self {
         Self { encoded_card }
     }
 }
@@ -1447,9 +1512,7 @@ impl EffectExecutor for CastEncodedCardCopyEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let Some(encoded_id) = game.find_object_by_stable_id(self.encoded_card) else {
-            return Ok(EffectOutcome::target_invalid());
-        };
+        let encoded_id = self.encoded_card;
         let Some(encoded_obj) = game.object(encoded_id).cloned() else {
             return Ok(EffectOutcome::target_invalid());
         };
@@ -1906,17 +1969,11 @@ impl EffectExecutor for AdaptEffect {
         // "The next time target creature adapts this turn, it adapts as though
         // it had no +1/+1 counters on it" is consumed by this adapt.
         let turn = game.turn.turn_number;
-        let ignores_counters = game
-            .object(source_id)
-            .map(|o| o.stable_id)
-            .is_some_and(|stable| {
-                let store = &mut game.turn_store.adapt_ignores_counters;
-                let found = store.iter().position(|(id, t)| *id == stable && *t == turn);
-                if let Some(index) = found {
-                    store.remove(index);
-                }
-                found.is_some()
-            });
+        let store = &mut game.turn_store.adapt_ignores_counters;
+        let ignores_counters = store.iter().any(|(id, t)| *id == source_id && *t == turn);
+        // Every already-active "next time" permission refers to this same
+        // adaptation; multiple resolutions do not bank later adaptations.
+        store.retain(|(id, t)| *t == turn && *id != source_id);
         if !ignores_counters && game.counter_count(source_id, CounterType::PlusOnePlusOne) > 0 {
             return Ok(EffectOutcome::count(0));
         }

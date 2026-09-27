@@ -393,6 +393,8 @@ struct SyncStackEntry {
     /// The ability's own target id; absent in older checkpoints.
     #[serde(default)]
     ability_id: Option<u64>,
+    #[serde(default)]
+    ninjutsu_attack_target: Option<SyncGrandMeleeAttackTarget>,
     controller: u8,
     targets: Vec<SyncTarget>,
     is_ability: bool,
@@ -526,6 +528,9 @@ struct SyncRulesState {
     /// player's last upkeep began (echo, CR 702.30a), sorted.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     came_under_control_since_last_upkeep: Vec<u64>,
+    /// Echo's interval captured for the currently resolving upkeep.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    echo_eligible_this_upkeep: Vec<u64>,
     /// Seats whose hidden draws open an owner reveal window (Miracle); fixed
     /// at match setup from public inputs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1355,10 +1360,52 @@ fn target_from_sync_input(input: SyncTarget) -> Target {
     }
 }
 
+fn sync_attack_target(target: &AttackTarget) -> SyncGrandMeleeAttackTarget {
+    match target {
+        AttackTarget::Player(player) => SyncGrandMeleeAttackTarget::Player { player: player.0 },
+        AttackTarget::Planeswalker(object) => {
+            SyncGrandMeleeAttackTarget::Planeswalker { object: object.0 }
+        }
+        AttackTarget::Battle(object) => SyncGrandMeleeAttackTarget::Battle { object: object.0 },
+        AttackTarget::Nothing {
+            defending_player,
+            was_planeswalker,
+        } => SyncGrandMeleeAttackTarget::Nothing {
+            defending_player: defending_player.map(|player| player.0),
+            was_planeswalker: *was_planeswalker,
+        },
+    }
+}
+
+fn attack_target_from_sync(target: &SyncGrandMeleeAttackTarget) -> AttackTarget {
+    match target {
+        SyncGrandMeleeAttackTarget::Player { player } => {
+            AttackTarget::Player(PlayerId::from_index(*player))
+        }
+        SyncGrandMeleeAttackTarget::Planeswalker { object } => {
+            AttackTarget::Planeswalker(ObjectId::from_raw(*object))
+        }
+        SyncGrandMeleeAttackTarget::Battle { object } => {
+            AttackTarget::Battle(ObjectId::from_raw(*object))
+        }
+        SyncGrandMeleeAttackTarget::Nothing {
+            defending_player,
+            was_planeswalker,
+        } => AttackTarget::Nothing {
+            defending_player: defending_player.map(PlayerId::from_index),
+            was_planeswalker: *was_planeswalker,
+        },
+    }
+}
+
 fn sync_stack_entry(entry: &StackEntry) -> SyncStackEntry {
     SyncStackEntry {
         object_id: entry.object_id.0,
         ability_id: entry.ability_id.map(|id| id.0),
+        ninjutsu_attack_target: entry
+            .ninjutsu_attack_target
+            .as_ref()
+            .map(sync_attack_target),
         controller: entry.controller.0,
         targets: entry
             .targets
@@ -1386,6 +1433,10 @@ fn stack_entry_from_sync(entry: &SyncStackEntry) -> StackEntry {
         .collect();
     restored.is_ability = entry.is_ability;
     restored.ability_id = entry.ability_id.map(ObjectId::from_raw);
+    restored.ninjutsu_attack_target = entry
+        .ninjutsu_attack_target
+        .as_ref()
+        .map(attack_target_from_sync);
     restored.x_value = entry.x_value;
     restored.source_stable_id = entry.source_stable_id.map(StableId::from_raw);
     restored.source_name = entry.source_name.clone();
@@ -2512,6 +2563,7 @@ impl WasmGame {
                 .map(|entry| SyncStackEntry {
                     object_id: entry.object_id.0,
                     ability_id: entry.ability_id.map(|id| id.0),
+                    ninjutsu_attack_target: entry.ninjutsu_attack_target.as_ref().map(sync_attack_target),
                     controller: entry.controller.0,
                     targets: entry
                         .targets
@@ -2603,6 +2655,17 @@ impl WasmGame {
                     .game
                     .turn_store
                     .came_under_control_since_last_upkeep
+                    .iter()
+                    .map(|id| id.0)
+                    .collect();
+                ids.sort_unstable();
+                ids
+            },
+            echo_eligible_this_upkeep: {
+                let mut ids: Vec<u64> = self
+                    .game
+                    .turn_store
+                    .echo_eligible_this_upkeep
                     .iter()
                     .map(|id| id.0)
                     .collect();
@@ -2918,6 +2981,12 @@ impl WasmGame {
         self.game.turn_store.main_phases_started_this_turn = rules.main_phases_started_this_turn;
         self.game.turn_store.came_under_control_since_last_upkeep = rules
             .came_under_control_since_last_upkeep
+            .iter()
+            .copied()
+            .map(ObjectId::from_raw)
+            .collect();
+        self.game.turn_store.echo_eligible_this_upkeep = rules
+            .echo_eligible_this_upkeep
             .iter()
             .copied()
             .map(ObjectId::from_raw)
@@ -3331,6 +3400,7 @@ impl WasmGame {
                 .map(|entry| SyncStackEntry {
                     object_id: entry.object_id.0,
                     ability_id: entry.ability_id.map(|id| id.0),
+                    ninjutsu_attack_target: entry.ninjutsu_attack_target.as_ref().map(sync_attack_target),
                     controller: entry.controller.0,
                     targets: entry
                         .targets
@@ -3691,6 +3761,7 @@ impl WasmGame {
                     .collect();
                 stack_entry.is_ability = entry.is_ability;
                 stack_entry.ability_id = entry.ability_id.map(ObjectId::from_raw);
+                stack_entry.ninjutsu_attack_target = entry.ninjutsu_attack_target.as_ref().map(attack_target_from_sync);
                 stack_entry.x_value = entry.x_value;
                 stack_entry.source_stable_id = entry.source_stable_id.map(StableId::from_raw);
                 stack_entry.source_name = entry.source_name.clone();
@@ -4101,6 +4172,27 @@ impl WasmGame {
 #[cfg(test)]
 mod sync_checkpoint_tests {
     use super::*;
+
+    #[test]
+    fn ninjutsu_destination_survives_stack_checkpoint_serialization() {
+        for target in [
+            AttackTarget::Player(PlayerId::from_index(2)),
+            AttackTarget::Planeswalker(ObjectId::from_raw(50)),
+            AttackTarget::Battle(ObjectId::from_raw(51)),
+            AttackTarget::Nothing { defending_player: Some(PlayerId::from_index(1)), was_planeswalker: true },
+        ] {
+            let mut entry = StackEntry::new(ObjectId::from_raw(10), PlayerId::from_index(0));
+            entry.is_ability = true;
+            entry.ninjutsu_attack_target = Some(target.clone());
+            let json = serde_json::to_value(sync_stack_entry(&entry)).unwrap();
+            let stored: SyncStackEntry = serde_json::from_value(json.clone()).unwrap();
+            assert_eq!(stack_entry_from_sync(&stored).ninjutsu_attack_target, Some(target));
+            let mut legacy = json;
+            legacy.as_object_mut().unwrap().remove("ninjutsuAttackTarget");
+            let stored: SyncStackEntry = serde_json::from_value(legacy).unwrap();
+            assert_eq!(stack_entry_from_sync(&stored).ninjutsu_attack_target, None);
+        }
+    }
 
 
     fn hidden_foretell_fixture(known: bool) -> (WasmGame, ObjectId, CardDefinition) {

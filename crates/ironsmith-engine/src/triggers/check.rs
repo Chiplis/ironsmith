@@ -1076,7 +1076,7 @@ fn add_monarch_designation_triggers(
                     "Whenever a creature deals combat damage to the monarch".to_string(),
                 ),
                 effects: ResolutionProgram::from_effects(vec![Effect::become_monarch_player(
-                    PlayerFilter::Specific(game.controller_of(source_obj)),
+                    PlayerFilter::ControllerOf(crate::target::ObjectRef::Specific(source_obj.id)),
                 )]),
                 choices: vec![],
                 intervening_if: None,
@@ -1084,6 +1084,15 @@ fn add_monarch_designation_triggers(
             },
             trigger_event,
         );
+        // CR 725.2 / 608.2h: obtain this creature's controller on resolution.
+        // Retain an exact-object reference whose snapshot is refreshed on
+        // departure, so a later incarnation cannot supply its controller.
+        if let Some(entry) = triggered.last_mut() {
+            entry.tagged_objects.insert(
+                crate::tag::TagKey::from("__monarch_damage_source"),
+                vec![game.cached_object_snapshot_with_calculated_characteristics(source_obj)],
+            );
+        }
     }
 }
 
@@ -2894,81 +2903,37 @@ fn check_triggers_with_view_and_registry(
         }
     }
 
-    // Replicate: When a spell with Replicate is cast, it triggers to copy itself for each time
-    // its Replicate cost was paid. (We model this as a synthetic triggered ability so it
-    // stacks and can be responded to like the real mechanic.)
+    // Every Replicate or granted Conspire instance has its own trigger. Repeated
+    // payment of one Replicate cost increases that trigger's copy count, not
+    // the number of triggers (CR 702.56a-b, 702.78a-b).
     if trigger_event.kind() == crate::events::traits::EventKind::SpellCast
         && let Some(cast) = trigger_event.downcast::<crate::events::spells::SpellCastEvent>()
         && let Some(entry) = game.stack.iter().find(|e| e.object_id == cast.spell)
+        && let Some(obj) = game.object(cast.spell)
     {
-        let times = entry.optional_costs_paid.times_paid_label("Replicate");
-        if times > 0
-            && let Some(obj) = game.object(cast.spell)
-        {
+        for (cost_index, (reference, times)) in entry.optional_costs_paid.costs.iter().enumerate() {
+            if *times == 0 || !matches!(reference.kind,
+                crate::cost::OptionalCostKind::Replicate | crate::cost::OptionalCostKind::GrantedConspire)
+            {
+                continue;
+            }
             let copy_effect_id = crate::effect::EffectId(0);
-            let effects = vec![
-                Effect::with_id(
-                    copy_effect_id.0,
-                    Effect::copy_spell_n(crate::target::ChooseSpec::Source, times as i32),
-                ),
-                Effect::may_choose_new_targets(copy_effect_id),
-            ];
             let ability = TriggeredAbility {
                 trigger: Trigger::you_cast_this_spell(),
-                effects: ResolutionProgram::from_effects(effects),
+                effects: ResolutionProgram::from_effects(vec![
+                    Effect::with_id(copy_effect_id.0,
+                        Effect::copy_spell_n(crate::target::ChooseSpec::Source, *times as i32)),
+                    Effect::may_choose_new_targets(copy_effect_id),
+                ]),
                 choices: vec![],
                 intervening_if: None,
                 presentation_label: None,
             };
-            let trigger_identity = compute_trigger_identity(&ability);
-
-            triggered.push(TriggeredAbilityEntry {
-                source: cast.spell,
-                controller: cast.caster,
-                x_value: entry.x_value,
-                event_value_amount: None,
-                ability,
-                triggering_event: trigger_event.clone(),
-                source_stable_id: obj.stable_id,
-                source_name: obj.name.to_string(),
-                source_snapshot: None,
-                tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
-                source_kind: TriggeredAbilitySourceKind::Object,
-                trigger_identity,
-            });
-        }
-    }
-
-    // Conspire granted by a static ability is modeled as a dynamic optional cost.
-    // Printed conspire cards already carry their own trigger, so only the
-    // granted-cost label is handled here.
-    if trigger_event.kind() == crate::events::traits::EventKind::SpellCast
-        && let Some(cast) = trigger_event.downcast::<crate::events::spells::SpellCastEvent>()
-        && let Some(entry) = game.stack.iter().find(|e| e.object_id == cast.spell)
-    {
-        let times = entry
-            .optional_costs_paid
-            .times_paid_label("Granted Conspire");
-        if times > 0
-            && let Some(obj) = game.object(cast.spell)
-        {
-            let copy_effect_id = crate::effect::EffectId(0);
-            let effects = vec![
-                Effect::with_id(
-                    copy_effect_id.0,
-                    Effect::copy_spell_n(crate::target::ChooseSpec::Source, times as i32),
-                ),
-                Effect::may_choose_new_targets(copy_effect_id),
-            ];
-            let ability = TriggeredAbility {
-                trigger: Trigger::you_cast_this_spell(),
-                effects: ResolutionProgram::from_effects(effects),
-                choices: vec![],
-                intervening_if: None,
-                presentation_label: None,
-            };
-            let trigger_identity = compute_trigger_identity(&ability);
-
+            let mut identity = DefaultHasher::new();
+            compute_trigger_identity(&ability).hash(&mut identity);
+            cost_index.hash(&mut identity);
+            reference.hash(&mut identity);
+            let trigger_identity = TriggerIdentity(identity.finish());
             triggered.push(TriggeredAbilityEntry {
                 source: cast.spell,
                 controller: cast.caster,

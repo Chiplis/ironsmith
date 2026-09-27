@@ -318,7 +318,7 @@ fn source_abilities(
     let object = game
         .object(object_id)
         .expect("static-effect source should exist");
-    if object.zone == Zone::Battlefield && text_box_scope.includes(object_id) {
+    let mut abilities = if object.zone == Zone::Battlefield && text_box_scope.includes(object_id) {
         let overlay = text_box_cache.entry(object_id).or_insert_with(|| {
             crate::continuous::text_box_characteristics_with_effects(
                 object_id,
@@ -340,7 +340,12 @@ fn source_abilities(
         overlay.abilities.clone()
     } else {
         object.abilities_vec()
-    }
+    };
+    abilities.extend(object.temporary_static_ability_grants.iter()
+        .filter(|grant| !grant.is_expired(game.turn.turn_number))
+        .filter_map(|grant| grant.materialize())
+        .map(crate::ability::Ability::static_ability));
+    abilities
 }
 
 fn generate_direct_static_effects(

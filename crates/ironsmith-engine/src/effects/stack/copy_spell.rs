@@ -50,6 +50,7 @@ pub(crate) fn resolving_source_stack_entry(ctx: &ExecutionContext) -> StackEntry
     entry.target_distributions = ctx.target_distributions.clone();
     entry.x_value = ctx.x_value;
     entry.mana_spent_on_activation = ctx.mana.activation_payment.clone();
+    entry.ninjutsu_attack_target = ctx.ninjutsu_attack_target.clone();
     entry.casting_method = ctx.casting_method.clone();
     entry.optional_costs_paid = ctx.optional_costs_paid.clone();
     entry.defending_player = ctx.combat.defending_player;
@@ -180,6 +181,7 @@ pub(crate) fn create_stack_copy_from_object(
     // to activate it either.
     copy_entry.mana_spent_on_activation = crate::player::ManaPool::default();
     copy_entry.ability_effects = original_entry.ability_effects.clone();
+    copy_entry.ninjutsu_attack_target = original_entry.ninjutsu_attack_target.clone();
     copy_entry.is_ability = original_entry.is_ability;
     copy_entry.casting_method = original_entry.casting_method.clone();
     copy_entry.optional_costs_paid = original_entry.optional_costs_paid.clone();

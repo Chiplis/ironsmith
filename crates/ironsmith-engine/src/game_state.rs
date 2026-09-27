@@ -527,6 +527,9 @@ struct CommanderTracking {
 struct ExileTracking {
     /// Which players may inspect a face-down card in exile.
     face_down_exile_viewers: HashMap<ObjectId, HashSet<PlayerId>>,
+    /// Exact exiled incarnation -> source permanent whose current controller
+    /// receives permission to look. Earned permissions also persist above.
+    face_down_exile_view_sources: HashMap<ObjectId, ObjectId>,
     /// Snapshot of a card just before it moved to the stack for casting.
     cast_origin_snapshots: HashMap<ObjectId, ObjectSnapshot>,
     /// Cards exiled via Plot, keyed by object id -> (player who plotted it, turn plotted).
@@ -886,6 +889,8 @@ pub struct TurnStore {
     pub cast_spell_lki: HashMap<ObjectId, Arc<(Object, StackEntry)>>,
     /// Exhaust activated abilities that have been activated by this object instance.
     pub exhaust_abilities_activated: HashSet<(ObjectId, usize)>,
+    /// Exhaust proposals counted at their beginning; finalization must not count twice.
+    pub exhaust_activations_in_progress: HashSet<(ObjectId, usize)>,
     /// Activation totals that survive turns and control changes, but not object identity changes.
     pub ability_activations_per_object: HashMap<(ObjectId, crate::continuous::AbilityOrigin), u32>,
     /// Explicit combat damage assignments keyed by attacker then damage recipient.
@@ -897,11 +902,11 @@ pub struct TurnStore {
     /// Hand cards revealed by Forecast through the end of the current upkeep.
     /// A zone change removes the old object ID immediately.
     pub forecast_revealed_hand_cards: HashSet<ObjectId>,
-    /// Permanents that were still summoning sick when their controller's
-    /// current turn began, recorded during that untap step. They came under
-    /// that player's control after the player's previous turn began, i.e.
-    /// since the beginning of the player's last upkeep (echo, CR 702.30a).
+    /// Control acquisitions since each controller's latest upkeep began.
     pub came_under_control_since_last_upkeep: HashSet<ObjectId>,
+    /// Acquisitions in the interval preceding the currently begun upkeep,
+    /// retained while its echo triggers await their intervening-if recheck.
+    pub echo_eligible_this_upkeep: HashSet<ObjectId>,
     /// Permanents transformed by a day/night change whose "As this
     /// transforms" programs (CR 712.20) still need a decision maker.
     pub pending_day_night_as_transforms: Vec<ObjectId>,
@@ -918,7 +923,7 @@ pub struct TurnStore {
     pub end_combat_phase_procedure_pending: bool,
     /// Objects whose next adapt during the recorded turn ignores their +1/+1
     /// counters (Biomancer's Familiar), keyed by stable identity.
-    pub adapt_ignores_counters: Vec<(StableId, u32)>,
+    pub adapt_ignores_counters: Vec<(ObjectId, u32)>,
 }
 
 /// Runtime effect managers, queued trigger state, and temporary effect registries.
@@ -3166,6 +3171,8 @@ pub struct StackEntry {
     /// its own reserved id (never a real object) so a player can choose
     /// exactly which one to counter, copy or redirect (CR 113.1a, 701.6a).
     pub ability_id: Option<ObjectId>,
+    /// Attack destination selected by this activation's Ninjutsu cost.
+    pub ninjutsu_attack_target: Option<crate::combat_state::AttackTarget>,
     pub controller: PlayerId,
     pub provenance: ProvNodeId,
     pub targets: Vec<Target>,
@@ -3274,6 +3281,7 @@ impl StackEntry {
         Self {
             object_id,
             ability_id: None,
+            ninjutsu_attack_target: None,
             controller,
             provenance: ProvNodeId::default(),
             targets: Vec::new(),
@@ -3320,6 +3328,7 @@ impl StackEntry {
         Self {
             object_id: source_id,
             ability_id: None,
+            ninjutsu_attack_target: None,
             controller,
             provenance: ProvNodeId::default(),
             targets: Vec::new(),
@@ -6778,7 +6787,9 @@ impl GameState {
 
     /// Can the permanent be sacrificed?
     pub fn can_be_sacrificed(&self, permanent: ObjectId) -> bool {
-        self.effect_store.cant_effects.can_be_sacrificed(permanent)
+        self.object(permanent).is_some_and(|object| object.zone == Zone::Battlefield)
+            && !self.is_phased_out(permanent)
+            && self.effect_store.cant_effects.can_be_sacrificed(permanent)
     }
 
     /// Check sacrifice protection against the initiating effect or payment.
@@ -6990,6 +7001,7 @@ impl GameState {
         // Update zone indexes
         match zone {
             Zone::Battlefield => {
+                self.turn_store.came_under_control_since_last_upkeep.insert(id);
                 self.battlefield.push(id);
                 self.battlefield_flags_mut()
                     .controller_at_last_refresh

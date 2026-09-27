@@ -1715,7 +1715,7 @@ impl StaticAbilityKind for EffectDiscardToLibraryReplacement {
             source,
             controller,
             // Use the composable matcher that filters on cause type
-            WouldDiscardMatcher::you_from_effect(),
+            WouldDiscardMatcher::you_from_effect().with_destination(Zone::Graveyard),
             ReplacementAction::InteractiveChooseDestination {
                 destinations: vec![Zone::Graveyard, Zone::Library],
                 description: "Put discarded card on top of library instead of graveyard?"

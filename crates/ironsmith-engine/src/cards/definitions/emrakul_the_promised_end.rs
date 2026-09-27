@@ -77,7 +77,7 @@ mod tests {
             .downcast_ref::<crate::effects::ControlPlayerEffect>()
             .expect("first effect should control the chosen opponent");
         assert_eq!(control.start, PlayerControlStart::NextTurn);
-        assert_eq!(control.duration, PlayerControlDuration::UntilEndOfTurn);
+        assert_eq!(control.duration, PlayerControlDuration::WholeTurn);
 
         assert!(
             triggered_ability.effects[1]

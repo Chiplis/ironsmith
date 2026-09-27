@@ -2141,12 +2141,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::ZoneMoves(ZoneMoveActionAst::Exile {
                 target,
                 face_down,
+                source_controller_may_look,
                 source_top_only,
                 target_plural_surface,
             }) => f
                 .debug_struct("Exile")
                 .field("target", target)
                 .field("face_down", face_down)
+                .field("source_controller_may_look", source_controller_may_look)
                 .field("source_top_only", source_top_only)
                 .field("target_plural_surface", target_plural_surface)
                 .finish(),

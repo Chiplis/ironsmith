@@ -4944,6 +4944,21 @@ impl EffectAst {
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                 target,
                 face_down,
+                source_controller_may_look: false,
+                source_top_only: false,
+                target_plural_surface: false,
+            }),
+        )
+    }
+
+    pub fn subject_verb_exile_with_source_controller_look(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
+                target,
+                face_down: true,
+                source_controller_may_look: true,
                 source_top_only: false,
                 target_plural_surface: false,
             }),

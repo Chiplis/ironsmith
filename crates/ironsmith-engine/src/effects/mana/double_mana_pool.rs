@@ -1,6 +1,6 @@
 //! Double a player's unspent mana.
 
-use super::choice_helpers::mana_added_value_outcome;
+use super::choice_helpers::{credit_mana_symbols_from_context, mana_added_value_outcome};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
@@ -11,8 +11,8 @@ use crate::target::PlayerFilter;
 
 /// Effect that doubles each type of unspent mana a player has.
 ///
-/// Restricted mana is cloned as restricted mana so its spending permissions and
-/// any source-linked bonuses are preserved.
+/// CR 701.10f / 106.6: add new mana of each type. Restrictions, bonuses,
+/// and provenance of the old mana are not properties of its type.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DoubleManaPoolEffect {
     /// Which player's mana pool to double.
@@ -42,52 +42,14 @@ impl EffectExecutor for DoubleManaPoolEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let (unrestricted_symbols, restricted_units, source_provenance) = {
-            let Some(player) = game.player(player_id) else {
-                return Err(ExecutionError::InvalidTarget);
-            };
-
-            let restricted_units = player.restricted_mana.clone();
-            let unrestricted_symbols = [
-                ManaSymbol::White,
-                ManaSymbol::Blue,
-                ManaSymbol::Black,
-                ManaSymbol::Red,
-                ManaSymbol::Green,
-                ManaSymbol::Colorless,
-            ]
-            .into_iter()
-            .flat_map(|symbol| {
-                let total = player.mana_pool.amount(symbol);
-                let restricted = restricted_units
-                    .iter()
-                    .filter(|unit| unit.symbol == symbol)
-                    .count() as u32;
-                std::iter::repeat_n(symbol, total.saturating_sub(restricted) as usize)
-            })
-            .collect::<Vec<_>>();
-
-            (
-                unrestricted_symbols,
-                restricted_units,
-                player.mana_source_provenance.clone(),
-            )
-        };
-
-        let mut added = unrestricted_symbols.clone();
-        added.extend(restricted_units.iter().map(|unit| unit.symbol));
-
-        let Some(player) = game.player_mut(player_id) else {
-            return Err(ExecutionError::InvalidTarget);
-        };
-        for symbol in &unrestricted_symbols {
-            player.mana_pool.add(*symbol, 1);
-        }
-        for unit in restricted_units {
-            player.mana_pool.add(unit.symbol, 1);
-            player.restricted_mana.push(unit);
-        }
-        player.mana_source_provenance.extend(source_provenance);
+        let player = game.player(player_id).ok_or(ExecutionError::InvalidTarget)?;
+        let symbols = [
+            ManaSymbol::White, ManaSymbol::Blue, ManaSymbol::Black,
+            ManaSymbol::Red, ManaSymbol::Green, ManaSymbol::Colorless,
+        ].into_iter().flat_map(|symbol| {
+            std::iter::repeat_n(symbol, player.mana_pool.amount(symbol) as usize)
+        }).collect::<Vec<_>>();
+        let added = credit_mana_symbols_from_context(game, player_id, symbols, ctx);
 
         Ok(mana_added_value_outcome(ctx, player_id, added))
     }
@@ -138,7 +100,7 @@ mod tests {
     }
 
     #[test]
-    fn double_mana_pool_duplicates_restricted_mana_units() {
+    fn double_mana_pool_adds_new_mana_without_copying_restrictions_or_source() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
@@ -169,13 +131,9 @@ mod tests {
 
         let player = game.player(alice).expect("alice exists");
         assert_eq!(player.mana_pool.red, 4);
-        assert_eq!(player.restricted_mana.len(), 2);
-        assert!(
-            player
-                .restricted_mana
-                .iter()
-                .all(|unit| unit == &restricted),
-            "expected restricted mana copy to preserve restriction metadata"
-        );
+        assert_eq!(player.restricted_mana, vec![restricted]);
+        assert_eq!(player.mana_source_provenance.iter().filter(|unit| unit.source == source).count(), 2);
+        assert_eq!(player.mana_source_provenance.iter().filter(|unit| unit.source == mana_source).count(), 1);
+        assert!(player.mana_source_provenance.iter().filter(|unit| unit.source == source).all(|unit| !unit.restricted));
     }
 }

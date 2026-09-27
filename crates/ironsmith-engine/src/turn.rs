@@ -714,21 +714,6 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
         should_untap
     };
 
-    // CR 702.30a: echo asks whether a permanent came under its controller's
-    // control since the beginning of their last upkeep. A permanent that is
-    // still summoning sick as its controller's turn begins has not been
-    // controlled continuously since that player's previous turn began.
-    game.turn_store.came_under_control_since_last_upkeep = permanents
-        .iter()
-        .copied()
-        .filter(|&id| {
-            game.is_summoning_sick(id)
-                && game
-                    .current_controller(id)
-                    .is_some_and(|controller| active_players.contains(&controller))
-        })
-        .collect();
-
     // Second pass: untap eligible permanents. Only the active player's
     // permanents have been under their controller continuously since that
     // player's most recent turn began; off-turn Seedborn-style untaps do not

@@ -721,14 +721,18 @@ impl CardDefinitionBuilder {
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_attacks_with_greater_power(),
             vec![
-                crate::effect::Effect::put_counters(
+                crate::effect::Effect::with_id(0, crate::effect::Effect::put_counters(
                     crate::object::CounterType::PlusOnePlusOne,
                     1,
                     crate::target::ChooseSpec::Source,
-                ),
-                crate::effect::Effect::emit_keyword_action(
-                    crate::events::KeywordActionKind::Train,
-                    1,
+                )),
+                crate::effect::Effect::if_then(
+                    crate::effect::EffectId(0),
+                    crate::effect::EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0)),
+                    vec![crate::effect::Effect::emit_keyword_action(
+                        crate::events::KeywordActionKind::Train,
+                        1,
+                    )],
                 ),
             ],
         ))
@@ -1219,7 +1223,13 @@ impl CardDefinitionBuilder {
     pub fn dash(mut self, cost: ManaCost) -> Self {
         self.alternative_casts
             .push(crate::alternative_cast::AlternativeCastingMethod::Dash { cost });
-        self
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::grant_object_ability_for_filter(
+                crate::target::ObjectFilter::source(),
+                crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::haste()),
+                "Dash haste".to_string(),
+            ).with_condition(crate::ConditionExpr::ThisSpellPaidLabel("Dash".into())),
+        ))
     }
 
     pub fn blitz(mut self, cost: ManaCost) -> Self {
@@ -1227,7 +1237,23 @@ impl CardDefinitionBuilder {
             .push(crate::alternative_cast::AlternativeCastingMethod::Blitz {
                 total_cost: TotalCost::mana(cost),
             });
-        self
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::grant_object_ability_for_filter(
+                crate::target::ObjectFilter::source(),
+                crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::haste()),
+                "Blitz haste".to_string(),
+            ).with_condition(crate::ConditionExpr::ThisSpellPaidLabel("Blitz".into())),
+        ))
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::grant_object_ability_for_filter(
+                crate::target::ObjectFilter::source(),
+                crate::ability::Ability::triggered(
+                    crate::triggers::Trigger::this_dies(),
+                    vec![crate::effect::Effect::target_draws(1, crate::target::PlayerFilter::You)],
+                ),
+                "Blitz death draw".to_string(),
+            ).with_condition(crate::ConditionExpr::ThisSpellPaidLabel("Blitz".into())),
+        ))
     }
 
     pub fn warp(mut self, cost: ManaCost) -> Self {
@@ -1435,7 +1461,7 @@ impl CardDefinitionBuilder {
                     ),
                 ]),
                 choices: vec![],
-                intervening_if: None,
+                intervening_if: Some(crate::effect::Condition::SourceIsInZone(crate::zone::Zone::Battlefield)),
                 presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
@@ -1572,8 +1598,14 @@ impl CardDefinitionBuilder {
         let cost = TotalCost::from_cost(crate::costs::Cost::effect(crate::effect::Effect::new(
             crate::effects::ConspireCostEffect::new(),
         )));
-        self.optional_costs
-            .push(OptionalCost::custom(label.clone(), cost));
+        // Each printed instance links only to its own payment (CR 702.78b).
+        let reference = crate::cost::OptionalCostRef::with_discriminator(
+            crate::cost::OptionalCostKind::Conspire,
+            format!("printed-{}", existing_instances + 1),
+        );
+        let mut optional = OptionalCost::custom(label, cost);
+        optional.reference = reference.clone();
+        self.optional_costs.push(optional);
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: crate::triggers::Trigger::you_cast_this_spell(),
@@ -1590,7 +1622,7 @@ impl CardDefinitionBuilder {
                     ),
                 ]),
                 choices: vec![],
-                intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel(label.into())),
+                intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel(reference)),
                 presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Stack],

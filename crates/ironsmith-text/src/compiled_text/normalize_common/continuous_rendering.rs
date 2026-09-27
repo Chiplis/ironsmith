@@ -4432,6 +4432,9 @@ fn describe_continuous_duration_predicate(
                 describe_duration_object(object)
             )
         }
+        Predicate::ObjectInZone { object, zone } => {
+            format!("{} remains in {}", describe_duration_object(object), zone)
+        }
         Predicate::ObjectTapped(object) => {
             format!("{} remains tapped", describe_duration_object(object))
         }

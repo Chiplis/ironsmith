@@ -2725,7 +2725,7 @@ impl Effect {
     }
 
     /// Create an effect that offers casting a copy of a specific encoded card.
-    pub fn cast_encoded_card_copy(encoded_card: StableId) -> Self {
+    pub fn cast_encoded_card_copy(encoded_card: ObjectId) -> Self {
         use crate::effects::CastEncodedCardCopyEffect;
         Self::new(CastEncodedCardCopyEffect::new(encoded_card))
     }

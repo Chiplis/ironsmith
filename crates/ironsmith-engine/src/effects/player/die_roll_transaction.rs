@@ -83,6 +83,7 @@ fn choose_next_modifier(
     ctx: &mut ExecutionContext,
     player: PlayerId,
     remaining: &[AvailableDieRollModifier],
+    rolls: &[ResolvedDieRoll],
 ) -> Option<usize> {
     if remaining.len() == 1 {
         return Some(0);
@@ -90,7 +91,11 @@ fn choose_next_modifier(
     let options = remaining
         .iter()
         .enumerate()
-        .map(|(index, modifier)| (modifier.display.clone(), index))
+        .map(|(index, modifier)| (
+            format!("{} (current die results: {})", modifier.display,
+                rolls.iter().map(|roll| roll.result.to_string()).collect::<Vec<_>>().join(", ")),
+            index,
+        ))
         .collect::<Vec<_>>();
     ask_choose_one(game, &mut ctx.decision_maker, player, ctx.source, &options)
 }
@@ -131,7 +136,7 @@ fn apply_reroll_modifiers(
 ) -> Result<bool, ExecutionError> {
     let mut remaining = available_modifiers(game, player, true);
     while !remaining.is_empty() {
-        let Some(index) = choose_next_modifier(game, ctx, player, &remaining) else {
+        let Some(index) = choose_next_modifier(game, ctx, player, &remaining, rolls) else {
             return Ok(false);
         };
         if ctx.decision_maker.awaiting_choice() {
@@ -143,7 +148,8 @@ fn apply_reroll_modifiers(
             &mut ctx.decision_maker,
             player,
             modifier.source,
-            modifier.display.clone(),
+            format!("{} (rolled {})", modifier.display,
+                rolls.iter().map(|roll| roll.result.to_string()).collect::<Vec<_>>().join(", ")),
             FallbackStrategy::Decline,
         );
         if ctx.decision_maker.awaiting_choice() {
@@ -202,7 +208,7 @@ fn apply_numerical_modifiers(
 ) -> bool {
     let mut remaining = available_modifiers(game, player, false);
     while !remaining.is_empty() {
-        let Some(index) = choose_next_modifier(game, ctx, player, &remaining) else {
+        let Some(index) = choose_next_modifier(game, ctx, player, &remaining, std::slice::from_ref(roll)) else {
             return false;
         };
         if ctx.decision_maker.awaiting_choice() {
@@ -210,8 +216,8 @@ fn apply_numerical_modifiers(
         }
         let modifier = remaining.remove(index);
         let description = format!(
-            "pay {} life to increase or decrease the die result by {}",
-            modifier.spec.life_cost, modifier.spec.amount
+            "Die result {}: pay {} life to increase or decrease it by {}",
+            roll.result, modifier.spec.life_cost, modifier.spec.amount
         );
         let should_apply = ask_may_choice(
             game,

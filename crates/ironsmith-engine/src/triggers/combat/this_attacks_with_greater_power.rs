@@ -5,7 +5,7 @@ use crate::events::combat::CreatureAttackedEvent;
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 
-/// Trigger that fires when the source attacks and you control another attacker
+/// Trigger that fires when the source attacks together with another attacker
 /// with strictly greater power.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ThisAttacksWithGreaterPowerTrigger;
@@ -41,12 +41,6 @@ impl TriggerMatcher for ThisAttacksWithGreaterPowerTrigger {
         combat.attackers.iter().any(|attacker_info| {
             let attacker_id = attacker_info.creature;
             if attacker_id == ctx.source_id {
-                return false;
-            }
-            let Some(attacker_obj) = ctx.game.object(attacker_id) else {
-                return false;
-            };
-            if ctx.game.controller_of(attacker_obj) != ctx.controller {
                 return false;
             }
             Self::effective_power(ctx, attacker_id).is_some_and(|power| power > source_power)

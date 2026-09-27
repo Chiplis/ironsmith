@@ -42,6 +42,75 @@ pub(crate) fn hand_special_action(
     }
 }
 
+/// A granted alternative keyword has the same battlefield abilities as an
+/// intrinsic instance (CR 702.109a, 702.152a). Carry those abilities with the
+/// resolving spell, without copying its paid-cost state onto permanent copies.
+pub(crate) fn ensure_alternative_battlefield_abilities(
+    object: &mut crate::object::Object,
+    method: &AlternativeCastingMethod,
+) {
+    let (name, blitz) = match method {
+        AlternativeCastingMethod::Dash { .. } => ("Dash", false),
+        AlternativeCastingMethod::Blitz { .. } => ("Blitz", true),
+        _ => return,
+    };
+    let condition = crate::ConditionExpr::ThisSpellPaidLabel(name.into());
+    let haste = crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::haste());
+    let death_draw = crate::ability::Ability::triggered(
+        crate::triggers::Trigger::this_dies(),
+        vec![crate::effect::Effect::target_draws(1, crate::target::PlayerFilter::You)],
+    );
+    let abilities = object.abilities.iter().filter_map(|ability| match &ability.kind {
+        crate::ability::AbilityKind::Static(ability) => Some(ability.clone()),
+        _ => None,
+    }).chain(object.temporary_static_ability_grants.iter().filter_map(|grant| grant.materialize()));
+    let mut has_haste = false;
+    let mut has_death_draw = false;
+    for ability in abilities {
+        if ability.granted_inline_condition() != Some(&condition) { continue; }
+        for granted in ability.source_granted_inline_abilities() {
+            has_haste |= granted == &haste;
+            has_death_draw |= is_blitz_death_draw_ability(granted);
+        }
+    }
+    let mut missing = Vec::new();
+    if !has_haste { missing.push(haste); }
+    if blitz && !has_death_draw { missing.push(death_draw); }
+    if missing.is_empty() { return; }
+    let mut grant = crate::static_abilities::GrantObjectAbilityForFilter::new(
+        crate::target::ObjectFilter::source(),
+        missing.remove(0),
+        format!("{name} battlefield abilities"),
+    ).with_condition(condition);
+    grant.additional_abilities = missing;
+    let ability = crate::static_abilities::StaticAbility::new(grant);
+    object.temporary_static_ability_grants.push(crate::object::TemporaryStaticAbilityGrant {
+        ability: ability.id(), ability_payload: Some(ability), expires_end_of_turn: u32::MAX,
+    });
+}
+
+/// Identify Blitz's ordinary death ability structurally. Runtime effects do
+/// not implement semantic `PartialEq`, so comparing complete abilities would
+/// fail to recognize an already-defined component and grant it twice.
+pub fn is_blitz_death_draw_ability(ability: &crate::ability::Ability) -> bool {
+    let crate::ability::AbilityKind::Triggered(triggered) = &ability.kind else { return false; };
+    if ability.functional_zones.as_slice() != [Zone::Battlefield]
+        || !triggered.choices.is_empty()
+        || triggered.intervening_if.is_some()
+        || triggered.trigger.downcast_ref::<crate::triggers::ZoneChangeTrigger>()
+            != Some(&crate::triggers::ZoneChangeTrigger::this_dies())
+    {
+        return false;
+    }
+    let [segment] = triggered.effects.segments.as_slice() else { return false; };
+    if !segment.self_replacements.is_empty() { return false; }
+    let [effect] = segment.default_effects.as_slice() else { return false; };
+    effect.downcast_ref::<crate::effects::DrawCardsEffect>().is_some_and(|draw| {
+        draw.count == crate::effect::Value::Fixed(1)
+            && draw.player == crate::target::PlayerFilter::You
+    })
+}
+
 /// Which method is being used to cast a spell.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum CastingMethod {

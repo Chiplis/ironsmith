@@ -2014,7 +2014,7 @@ fn apply_reconfigure_attached_type_rule(object: &Object, chars: &mut CalculatedC
 }
 
 /// CR 701.54c: the Ring emblem's "Your Ring-bearer is legendary" is a
-/// layer-4 effect that applies only while the creature is its controller's
+/// layer-4 effect that applies while the permanent is its controller's
 /// Ring-bearer. Being a Ring-bearer is not a copiable value (CR 701.54b), so
 /// the supertype is derived here instead of written into the object.
 fn apply_ring_bearer_legendary_rule(
@@ -2023,7 +2023,6 @@ fn apply_ring_bearer_legendary_rule(
     game: &crate::game_state::GameState,
 ) {
     if object.zone != Zone::Battlefield
-        || !chars.card_types.contains(&CardType::Creature)
         || chars.supertypes.contains(&Supertype::Legendary)
     {
         return;
@@ -2369,7 +2368,6 @@ fn calculate_characteristics_layer_batch_with_effects(
                         continue;
                     };
                     apply_ability_counters_through(object, chars, counters, next_counter, None);
-                    add_suspected_abilities(object, game, chars);
                     prune_ability_gain_prohibitions(chars);
                     guards[idx].update(chars);
                 }
@@ -2552,7 +2550,6 @@ fn calculate_characteristics_layer_batch_with_effects(
                     continue;
                 };
                 apply_ability_counters_through(object, chars, counters, next_counter, None);
-                add_suspected_abilities(object, game, chars);
                 prune_ability_gain_prohibitions(chars);
                 guards[idx].update(chars);
             }
@@ -3162,7 +3159,6 @@ fn calculate_with_layers_direct_internal(
                         &mut next_ability_counter,
                         None,
                     );
-                    add_suspected_abilities(object, game, &mut chars);
                     prune_ability_gain_prohibitions(&mut chars);
                     calc_guard.update(&chars);
                 }
@@ -3326,7 +3322,6 @@ fn calculate_with_layers_direct_internal(
                 &mut next_ability_counter,
                 None,
             );
-            add_suspected_abilities(object, game, &mut chars);
             prune_ability_gain_prohibitions(&mut chars);
             calc_guard.update(&chars);
         }
@@ -4013,6 +4008,9 @@ pub(crate) fn continuous_duration_predicate_matches(
             .all(|predicate| continuous_duration_predicate_matches(predicate, game)),
         Predicate::ObjectOnBattlefield(object) => continuous_duration_object_id(object)
             .is_some_and(|id| continuous_duration_object_is_visible(game, id)),
+        Predicate::ObjectInZone { object, zone } => continuous_duration_object_id(object)
+            .and_then(|id| game.object(id))
+            .is_some_and(|object| object.zone == *zone),
         Predicate::ObjectTapped(object) => {
             continuous_duration_object_id(object).is_some_and(|id| {
                 continuous_duration_object_is_visible(game, id) && game.is_tapped(id)

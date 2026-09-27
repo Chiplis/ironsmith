@@ -134,6 +134,13 @@ fn step_triggers(game: &mut GameState, step: Step, dm: &mut dyn DecisionMaker) {
         _ => Phase::Combat,
     };
     game.turn.step = Some(step);
+    if step == Step::Upkeep {
+        // The turn runner records the upkeep boundary before scanning triggers.
+        // Include that state transition when this harness enters the step directly.
+        for player in game.active_players() {
+            game.mark_upkeep_began(player);
+        }
+    }
     let mut queue = TriggerQueue::new();
     for event in ironsmith::triggers::generate_step_trigger_events_for_active_players(game) {
         for entry in ironsmith::triggers::check_triggers(game, &event) {

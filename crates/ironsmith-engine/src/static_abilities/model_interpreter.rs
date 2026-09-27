@@ -3,6 +3,7 @@ use crate::continuous::ContinuousEffect;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::replacement::ReplacementEffect;
+use ironsmith_core::ConditionConjunction;
 use std::fmt;
 
 pub type CompiledStaticAbility = ironsmith_core::StaticAbility<
@@ -31,6 +32,7 @@ pub struct StaticAbilityModelInterpreter {
     model: CompiledStaticAbility,
     leaf_static_ability: Option<StaticAbility>,
     granted_inline_ability: Option<crate::ability::Ability>,
+    granted_inline_condition: Option<crate::ConditionExpr>,
     source_granted_inline_abilities: Vec<crate::ability::Ability>,
     enter_as_copy_spec: Option<super::EnterAsCopyAsEntersSpec>,
     level_abilities: Option<Vec<crate::ability::LevelAbility>>,
@@ -129,6 +131,7 @@ impl StaticAbilityModelInterpreter {
     pub fn new(model: CompiledStaticAbility) -> Self {
         let leaf_static_ability = Self::cached_leaf_static_ability(&model);
         let granted_inline_ability = Self::cached_granted_inline_ability(&model);
+        let granted_inline_condition = Self::cached_granted_inline_condition(&model);
         let source_granted_inline_abilities = Self::cached_source_granted_inline_abilities(&model);
         let enter_as_copy_spec = Self::cached_enter_as_copy_spec(&model);
         let level_abilities = Self::cached_level_abilities(&model);
@@ -153,6 +156,7 @@ impl StaticAbilityModelInterpreter {
             model,
             leaf_static_ability,
             granted_inline_ability,
+            granted_inline_condition,
             source_granted_inline_abilities,
             enter_as_copy_spec,
             level_abilities,
@@ -383,6 +387,24 @@ impl StaticAbilityModelInterpreter {
             }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
                 Self::cached_granted_inline_ability(ability)
+            }
+            _ => None,
+        }
+    }
+
+    fn cached_granted_inline_condition(model: &CompiledStaticAbility) -> Option<crate::ConditionExpr> {
+        match &model.payload {
+            ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
+                grant.condition.clone()
+            }
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition }
+                if Self::cached_granted_inline_ability(ability).is_some()
+                    || !Self::cached_source_granted_inline_abilities(ability).is_empty() =>
+            {
+                Some(match Self::cached_granted_inline_condition(ability) {
+                    Some(inner) => inner.and(condition.clone()),
+                    None => condition.clone(),
+                })
             }
             _ => None,
         }
@@ -2888,6 +2910,10 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn granted_inline_ability(&self) -> Option<&crate::ability::Ability> {
         self.granted_inline_ability.as_ref()
+    }
+
+    fn granted_inline_condition(&self) -> Option<&crate::ConditionExpr> {
+        self.granted_inline_condition.as_ref()
     }
 
     fn source_granted_inline_abilities(&self) -> Vec<&crate::ability::Ability> {

@@ -292,6 +292,8 @@ pub struct ExecutionContext<'a> {
     pub casting_method: crate::alternative_cast::CastingMethod,
     /// Combat-linked player selections and context.
     pub combat: CombatExecutionContext,
+    /// The destination captured by this particular Ninjutsu activation.
+    pub ninjutsu_attack_target: Option<crate::combat_state::AttackTarget>,
     /// Last known information for target objects (for when they leave the battlefield).
     pub target_snapshots: HashMap<ObjectId, ObjectSnapshot>,
     /// Last known information for the source object.
@@ -447,6 +449,7 @@ impl<'a> ExecutionContext<'a> {
             optional_action: false,
             casting_method: crate::alternative_cast::CastingMethod::Normal,
             combat: CombatExecutionContext::default(),
+            ninjutsu_attack_target: None,
             target_snapshots: HashMap::new(),
             source_snapshot: None,
             tagged_objects: HashMap::new(),
@@ -504,6 +507,7 @@ impl<'a> ExecutionContext<'a> {
             optional_action: false,
             casting_method: crate::alternative_cast::CastingMethod::Normal,
             combat: CombatExecutionContext::default(),
+            ninjutsu_attack_target: None,
             target_snapshots: HashMap::new(),
             source_snapshot: None,
             tagged_objects: HashMap::new(),
@@ -551,6 +555,7 @@ impl<'a> ExecutionContext<'a> {
             optional_action: self.optional_action,
             casting_method: self.casting_method,
             combat: self.combat,
+            ninjutsu_attack_target: self.ninjutsu_attack_target.clone(),
             target_snapshots: self.target_snapshots,
             source_snapshot: self.source_snapshot,
             tagged_objects: self.tagged_objects,

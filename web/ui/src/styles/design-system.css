@@ -140,8 +140,8 @@
 .my-zone-board-shell .player-look-pile .zone-pile-slot:first-child {
   margin-top: 0;
 }
-/* Our piles hang from Look's top edge (measured in PlayerZonePiles), so the
-   Graveyard label and art line up with Look's. */
+/* Our piles follow the battlefield's top edge (measured in PlayerZonePiles).
+   Look normally aligns with them, but can move up to leave room for the stack. */
 .my-zone-board-shell .player-zone-piles {
   top: var(--zone-piles-top, auto);
   bottom: auto;

@@ -4830,11 +4830,11 @@ fn evaluate_condition_in_context(
         }
         Condition::SourceCameUnderYourControlSinceYourLastUpkeep => {
             Ok(game.object(shared.source).is_some_and(|obj| {
-                obj.zone == crate::zone::Zone::Battlefield
+                obj.zone == crate::zone::Zone::Battlefield && !game.is_phased_out(obj.id)
                     && game.controller_of(obj) == shared.controller
                     && game
                         .turn_store
-                        .came_under_control_since_last_upkeep
+                        .echo_eligible_this_upkeep
                         .contains(&obj.id)
             }))
         }
@@ -5067,7 +5067,7 @@ fn evaluate_condition_in_context(
         }
         Condition::SourceIsInZone(zone) => Ok(game
             .object(shared.source)
-            .map(|obj| obj.zone == *zone)
+            .map(|obj| obj.zone == *zone && !game.is_phased_out(obj.id))
             .unwrap_or(false)),
         Condition::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
             let Some(source_obj) = game.object(shared.source) else {

@@ -992,6 +992,7 @@ pub(super) fn resolve_stack_entry_full(
         ctx = ctx.with_x(x);
     }
     ctx.effect_outcomes = entry.effect_outcomes.clone();
+    ctx.ninjutsu_attack_target = entry.ninjutsu_attack_target.clone();
     if let Some(defending) = entry.defending_player {
         ctx = ctx.with_defending_player(defending);
     }
@@ -1480,6 +1481,18 @@ pub(super) fn resolve_stack_entry_full(
                     entry.keyword_payment_contributions.clone();
             }
 
+            // Imported spell objects and effect-granted casting methods also
+            // need the keyword's conditional battlefield abilities.
+            let battlefield_method = obj.cast_alternative_method_owned().or_else(|| {
+                if let CastingMethod::Alternative(index) = entry.casting_method {
+                    obj.alternative_casts.get(index).cloned()
+                } else { None }
+            });
+            if let Some(method) = battlefield_method
+                && let Some(spell) = game.object_mut(entry.object_id) {
+                crate::alternative_cast::ensure_alternative_battlefield_abilities(spell, &method);
+            }
+
             // It's a permanent spell, move to battlefield with ETB processing
             // This handles replacement effects like "enters tapped" or "enters with counters"
             let etb_result = game.move_object_with_etb_processing_with_dm(
@@ -1630,27 +1643,6 @@ pub(super) fn resolve_stack_entry_full(
                     _ => false,
                 };
                 if cast_with_dash {
-                    let dash_haste = crate::effects::ApplyContinuousEffect::new(
-                        crate::continuous::EffectTarget::Specific(result.new_id),
-                        crate::continuous::Modification::AddAbility(
-                            crate::static_abilities::StaticAbility::haste(),
-                        ),
-                        crate::effect::Until::EndOfTurn,
-                    )
-                    .with_source_type(
-                        crate::continuous::EffectSourceType::Resolution {
-                            locked_targets: vec![result.new_id],
-                        },
-                    );
-                    let _ = crate::effects::execute_effect(
-                        game,
-                        &crate::effect::Effect::new(dash_haste),
-                        &mut crate::effects::ExecutionContext::new_default(
-                            result.new_id,
-                            entry.controller,
-                        ),
-                    );
-
                     let return_to_hand = crate::effects::ScheduleDelayedTriggerEffect::new(
                         Trigger::beginning_of_end_step(crate::target::PlayerFilter::Any),
                         vec![crate::effect::Effect::new(
@@ -1672,46 +1664,6 @@ pub(super) fn resolve_stack_entry_full(
                     );
                 }
                 if cast_with_blitz {
-                    let blitz_haste = crate::effects::ApplyContinuousEffect::new(
-                        crate::continuous::EffectTarget::Specific(result.new_id),
-                        crate::continuous::Modification::AddAbility(
-                            crate::static_abilities::StaticAbility::haste(),
-                        ),
-                        crate::effect::Until::YouStopControllingThis,
-                    )
-                    .with_source_type(
-                        crate::continuous::EffectSourceType::Resolution {
-                            locked_targets: vec![result.new_id],
-                        },
-                    );
-                    let _ = crate::effects::execute_effect(
-                        game,
-                        &crate::effect::Effect::new(blitz_haste),
-                        &mut crate::effects::ExecutionContext::new_default(
-                            result.new_id,
-                            entry.controller,
-                        ),
-                    );
-
-                    let draw_when_dies = crate::effects::ScheduleDelayedTriggerEffect::new(
-                        Trigger::this_dies(),
-                        vec![crate::effect::Effect::target_draws(
-                            1,
-                            crate::target::PlayerFilter::Specific(entry.controller),
-                        )],
-                        true,
-                        vec![result.new_id],
-                        crate::target::PlayerFilter::Specific(entry.controller),
-                    );
-                    let _ = crate::effects::execute_effect(
-                        game,
-                        &crate::effect::Effect::new(draw_when_dies),
-                        &mut crate::effects::ExecutionContext::new_default(
-                            result.new_id,
-                            entry.controller,
-                        ),
-                    );
-
                     let sacrifice_at_end_step = crate::effects::ScheduleDelayedTriggerEffect::new(
                         Trigger::beginning_of_end_step(crate::target::PlayerFilter::Any),
                         vec![crate::effect::Effect::new(

@@ -41,6 +41,7 @@ fn exile_object(
     ctx: &mut ExecutionContext,
     object_id: crate::ids::ObjectId,
     face_down: bool,
+    source_controller_may_look: bool,
 ) -> Result<Option<OutcomeStatus>, ExecutionError> {
     if let Some(obj) = game.object(object_id) {
         let from_zone = obj.zone;
@@ -80,6 +81,9 @@ fn exile_object(
                             }
                         }
                         game.add_exiled_with_source_link(ctx.source, new_id);
+                        if source_controller_may_look {
+                            game.grant_face_down_exile_source_controller_view(new_id, ctx.source);
+                        }
                         if let Some(object) = game.object(new_id) {
                             ctx.tag_object(
                                 crate::tag::SOURCE_EXILED_TAG,
@@ -228,7 +232,7 @@ impl EffectExecutor for ExileEffect {
                     let outcome = apply_single_target_object_from_context(
                         game,
                         ctx,
-                        |game, ctx, object_id| exile_object(game, ctx, object_id, self.face_down),
+                        |game, ctx, object_id| exile_object(game, ctx, object_id, self.face_down, self.source_controller_may_look),
                     )?;
 
                     // Reflexive follow-ups such as "when a creature card is
@@ -287,7 +291,7 @@ impl EffectExecutor for ExileEffect {
                     for target in selected {
                         if let ResolvedTarget::Object(object_id) = target {
                             let pre_memory = OutcomeObjectMemory::from_object_id(game, object_id);
-                            match exile_object(game, ctx, object_id, self.face_down)? {
+                            match exile_object(game, ctx, object_id, self.face_down, self.source_controller_may_look)? {
                                 None => {
                                     exiled_count += 1;
                                     if let Some(memory) = pre_memory.as_ref() {
@@ -372,6 +376,9 @@ impl EffectExecutor for ExileEffect {
                                     }
                                     if result.final_zone == Zone::Exile {
                                         game.add_exiled_with_source_link(ctx.source, new_id);
+                                        if self.source_controller_may_look {
+                                            game.grant_face_down_exile_source_controller_view(new_id, ctx.source);
+                                        }
                                         if let Some(object) = game.object(new_id) {
                                             ctx.tag_object(
                                                 crate::tag::SOURCE_EXILED_TAG,

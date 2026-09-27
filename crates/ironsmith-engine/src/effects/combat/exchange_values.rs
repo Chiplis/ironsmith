@@ -148,11 +148,10 @@ impl ExchangeValuesEffect {
             ResolvedExchangeValue::Stat {
                 object,
                 kind,
-                value,
+                ..
             } => {
-                if value == next_value {
-                    return Ok(EffectOutcome::resolved());
-                }
+                // CR 701.12g creates the setting effect even when the
+                // current values are equal; later P/T layers still apply.
                 let modification = match kind {
                     ExchangeValueKind::Power => Modification::SetPower {
                         value: Value::Fixed(next_value),
@@ -237,10 +236,6 @@ impl EffectExecutor for ExchangeValuesEffect {
             ResolvedExchangeValue::LifeTotal { value, .. }
             | ResolvedExchangeValue::Stat { value, .. } => value,
         };
-
-        if left_value == right_value {
-            return Ok(EffectOutcome::resolved());
-        }
 
         if !Self::can_apply_life_exchange(game, left, right_value)
             || !Self::can_apply_life_exchange(game, right, left_value)

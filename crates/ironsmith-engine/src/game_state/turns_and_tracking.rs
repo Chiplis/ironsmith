@@ -1,7 +1,16 @@
 use super::*;
 
 impl GameState {
-    pub(crate) fn mark_upkeep_began(&mut self, player: PlayerId) {
+    /// Record an actual upkeep boundary, including additional upkeeps.
+    pub fn mark_upkeep_began(&mut self, player: PlayerId) {
+        let controlled = self.battlefield.iter().copied()
+            .filter(|&id| self.current_controller(id) == Some(player)).collect::<Vec<_>>();
+        for id in controlled {
+            self.turn_store.echo_eligible_this_upkeep.remove(&id);
+            if self.turn_store.came_under_control_since_last_upkeep.remove(&id) {
+                self.turn_store.echo_eligible_this_upkeep.insert(id);
+            }
+        }
         let previous = self
             .turn_store
             .current_upkeep_turn_by_player
@@ -1363,6 +1372,14 @@ impl GameState {
         self.turn.active_player = next_player;
         self.turn.priority_player = Some(next_player);
         self.turn.turn_number += 1;
+        // CR 723.1: controlling a turn lasts through every cleanup step.
+        // Expire it only when the next actual (non-skipped) turn begins.
+        let new_turn = self.turn.turn_number;
+        self.auxiliary_tracking_mut().player_control_effects.retain(|effect| {
+            !matches!(effect.duration, PlayerControlDuration::WholeTurn)
+                || !effect.active
+                || effect.expires_on_turn.is_none_or(|turn| turn >= new_turn)
+        });
         self.refresh_range_of_influence_snapshot();
         self.turn.phase = Phase::Beginning;
         self.turn.step = Some(Step::Untap);
@@ -1624,7 +1641,7 @@ impl GameState {
             expires_on_turn: None,
         };
 
-        if effect.active && matches!(duration, PlayerControlDuration::UntilEndOfTurn) {
+        if effect.active && matches!(duration, PlayerControlDuration::UntilEndOfTurn | PlayerControlDuration::WholeTurn) {
             effect.expires_on_turn = Some(current_turn);
         }
 
@@ -1756,7 +1773,7 @@ impl GameState {
             }
 
             effect.active = true;
-            if matches!(effect.duration, PlayerControlDuration::UntilEndOfTurn) {
+            if matches!(effect.duration, PlayerControlDuration::UntilEndOfTurn | PlayerControlDuration::WholeTurn) {
                 effect.expires_on_turn = Some(current_turn);
             }
         }
@@ -2422,6 +2439,18 @@ impl GameState {
             .get(&TurnCounterKey::Named(name.to_string()))
     }
 
+    /// CR 702.177b counts beginning an Exhaust activation, including while
+    /// paying for it. Action checkpoints roll this fact back on cancellation.
+    pub(crate) fn begin_exhaust_activation(&mut self, source: ObjectId, ability_index: usize) {
+        if self.current_ability(source, ability_index).is_some_and(|ability|
+            matches!(&ability.kind, crate::ability::AbilityKind::Activated(activated)
+                if activated.is_exhaust_ability()))
+        {
+            self.record_ability_activation(source, ability_index);
+            self.turn_store.exhaust_activations_in_progress.insert((source, ability_index));
+        }
+    }
+
     /// Records that an activated ability was used.
     /// Used for OncePerTurn timing restrictions.
     pub fn record_ability_activation(&mut self, source: ObjectId, ability_index: usize) {
@@ -2437,6 +2466,9 @@ impl GameState {
         ability_index: usize,
         origin: Option<crate::continuous::AbilityOrigin>,
     ) {
+        if self.turn_store.exhaust_activations_in_progress.remove(&(source, ability_index)) {
+            return;
+        }
         if let Some(origin) = origin {
             let total = self
                 .turn_store
@@ -2445,19 +2477,10 @@ impl GameState {
                 .or_default();
             *total = total.saturating_add(1);
         }
-        let exhaust_controller = self.object(source).and_then(|object| {
-            object
-                .abilities
-                .get(ability_index)
-                .and_then(|ability| match &ability.kind {
-                    crate::ability::AbilityKind::Activated(activated)
-                        if activated.is_exhaust_ability() =>
-                    {
-                        Some(self.controller_of(object))
-                    }
-                    _ => None,
-                })
-        });
+        let exhaust_controller = self.current_ability(source, ability_index)
+            .filter(|ability| matches!(&ability.kind,
+                crate::ability::AbilityKind::Activated(activated) if activated.is_exhaust_ability()))
+            .and_then(|_| self.object(source).map(|object| self.controller_of(object)));
         self.turn_store
             .turn_history
             .activated_abilities_this_turn
@@ -2512,9 +2535,13 @@ impl GameState {
 
     /// Check if an exhaust ability has already been activated by this object instance.
     pub fn exhaust_ability_activated(&self, source: ObjectId, ability_index: usize) -> bool {
-        self.turn_store
-            .exhaust_abilities_activated
-            .contains(&(source, ability_index))
+        if let Some(origin) = self.current_characteristics(source)
+            .and_then(|chars| chars.abilities.origin(ability_index).cloned())
+        {
+            return self.turn_store.ability_activations_per_object
+                .get(&(source, origin)).copied().unwrap_or(0) > 0;
+        }
+        self.turn_store.exhaust_abilities_activated.contains(&(source, ability_index))
     }
 
     /// Count exhaust activations by this player during the current turn.
@@ -2646,6 +2673,14 @@ impl GameState {
 
     /// Pushes a spell or ability onto the stack.
     pub fn push_to_stack(&mut self, mut entry: StackEntry) {
+        // Costs record their choice before this entry is constructed. Consume
+        // it now so countering or copying another activation cannot change it.
+        if entry.is_ability && entry.ninjutsu_attack_target.is_none()
+            && entry.ability_effects.as_ref().is_some_and(|program|
+                program.all_effects().into_iter().any(|effect| effect.downcast_ref::<crate::effects::NinjutsuEffect>().is_some()))
+        {
+            entry.ninjutsu_attack_target = self.pop_ninjutsu_attack_target(entry.object_id);
+        }
         if !entry.is_ability {
             let tag = crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG);
             let spent_sources = self

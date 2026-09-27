@@ -168,6 +168,12 @@ pub enum ContinuousDurationPlayer {
 pub enum ContinuousDurationPredicate {
     All(Vec<ContinuousDurationPredicate>),
     ObjectOnBattlefield(ContinuousDurationObject),
+    /// Exact object identity remaining in a specified zone. Unlike a
+    /// battlefield-presence predicate, phasing does not end this relation.
+    ObjectInZone {
+        object: ContinuousDurationObject,
+        zone: crate::zone::Zone,
+    },
     ObjectTapped(ContinuousDurationObject),
     ObjectControlledBy {
         object: ContinuousDurationObject,
@@ -5166,6 +5172,10 @@ impl RetargetStackObjectEffect {
 pub struct ExileEffect {
     pub spec: ChooseSpec,
     pub face_down: bool,
+    /// The exiled card grants the source permanent's current controller
+    /// permission to look at it (for example, CR 702.75a Hideaway).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub source_controller_may_look: bool,
     /// Preserve an authored instruction to turn an already face-down object
     /// face up as it is exiled. Exile's rules semantics already expose the
     /// card; this flag retains only the explicit action surface.
@@ -5177,12 +5187,18 @@ impl ExileEffect {
         Self {
             spec,
             face_down: false,
+            source_controller_may_look: false,
             turn_face_up: false,
         }
     }
 
     pub fn with_face_down(mut self, face_down: bool) -> Self {
         self.face_down = face_down;
+        self
+    }
+
+    pub fn with_source_controller_look(mut self) -> Self {
+        self.source_controller_may_look = true;
         self
     }
 

@@ -131,32 +131,20 @@ impl EffectExecutor for NinjutsuCostEffect {
                 )
             })?;
 
-        if let Some(combat) = game.combat.as_mut() {
-            combat
-                .attackers
-                .retain(|info| info.creature != chosen_attacker);
-            combat.blockers.remove(&chosen_attacker);
-            combat.blocked_attackers.remove(&chosen_attacker);
-            combat.damage_assignment_order.remove(&chosen_attacker);
-            for blockers in combat.blockers.values_mut() {
-                blockers.retain(|id| *id != chosen_attacker);
-            }
-            for order in combat.damage_assignment_order.values_mut() {
-                order.retain(|id| *id != chosen_attacker);
-            }
+        // Return is a cost, but its zone change still sees replacements
+        // (CR 118.11), notably Unearth's exile replacement.
+        let outcome = crate::effects::zones::apply_zone_change(
+            game, chosen_attacker, Zone::Battlefield, Zone::Hand,
+            ctx.cause.clone(), ctx.decision_maker,
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
         }
-
-        let _new_id = game
-            .move_object_with_commander_options(
-                chosen_attacker,
-                Zone::Hand,
-                ctx.cause.clone(),
-                &mut *ctx.decision_maker,
-            )
-            .map(|(new_id, _)| new_id)
-            .ok_or_else(|| {
-                ExecutionError::Impossible("Failed to return chosen attacker to hand".to_string())
-            })?;
+        if !matches!(outcome, crate::events::processing::EventOutcome::Proceed(ref result)
+            if result.new_object_id.is_some())
+        {
+            return Err(ExecutionError::Impossible("Failed to return chosen attacker".to_string()));
+        }
 
         game.record_ninjutsu_attack_target(ctx.source, attack_target);
 
@@ -276,32 +264,20 @@ impl EffectExecutor for SneakCostEffect {
                 )
             })?;
 
-        if let Some(combat) = game.combat.as_mut() {
-            combat
-                .attackers
-                .retain(|info| info.creature != chosen_attacker);
-            combat.blockers.remove(&chosen_attacker);
-            combat.blocked_attackers.remove(&chosen_attacker);
-            combat.damage_assignment_order.remove(&chosen_attacker);
-            for blockers in combat.blockers.values_mut() {
-                blockers.retain(|id| *id != chosen_attacker);
-            }
-            for order in combat.damage_assignment_order.values_mut() {
-                order.retain(|id| *id != chosen_attacker);
-            }
+        // Return is a cost, but its zone change still sees replacements
+        // (CR 118.11), notably Unearth's exile replacement.
+        let outcome = crate::effects::zones::apply_zone_change(
+            game, chosen_attacker, Zone::Battlefield, Zone::Hand,
+            ctx.cause.clone(), ctx.decision_maker,
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
         }
-
-        let _new_id = game
-            .move_object_with_commander_options(
-                chosen_attacker,
-                Zone::Hand,
-                ctx.cause.clone(),
-                &mut *ctx.decision_maker,
-            )
-            .map(|(new_id, _)| new_id)
-            .ok_or_else(|| {
-                ExecutionError::Impossible("Failed to return chosen attacker to hand".to_string())
-            })?;
+        if !matches!(outcome, crate::events::processing::EventOutcome::Proceed(ref result)
+            if result.new_object_id.is_some())
+        {
+            return Err(ExecutionError::Impossible("Failed to return chosen attacker".to_string()));
+        }
 
         game.record_sneak_attack_target(ctx.source, attack_target);
 
@@ -392,7 +368,8 @@ impl EffectExecutor for NinjutsuEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let Some(attack_target) = pop_ninjutsu_attack_target(game, ctx.source) else {
+        let Some(attack_target) = ctx.ninjutsu_attack_target.clone()
+            .or_else(|| pop_ninjutsu_attack_target(game, ctx.source)) else {
             return Ok(EffectOutcome::target_invalid());
         };
 

@@ -4895,11 +4895,19 @@ pub(crate) fn affinity_for_artifacts_reduction_with_view(
     spell: &crate::object::Object,
     view: &DerivedGameView<'_>,
 ) -> u32 {
-    if spell_has_affinity_for_artifacts(game, spell) {
-        count_artifacts_controlled_with_view(game, player, view)
-    } else {
-        0
-    }
+    let intrinsic = spell.abilities.iter().filter(|ability| matches!(
+        &ability.kind, crate::ability::AbilityKind::Static(ability)
+            if ability.id() == crate::static_abilities::StaticAbilityId::AffinityForArtifacts
+    )).count();
+    let granted = spell_granted_cost_static_abilities(game, spell)
+        .iter()
+        .filter(|ability| {
+            ability.id() == crate::static_abilities::StaticAbilityId::AffinityForArtifacts
+        })
+        .count();
+    // Affinity is cumulative; unlike Convoke each instance reduces the total.
+    count_artifacts_controlled_with_view(game, player, view)
+        .saturating_mul((intrinsic + granted) as u32)
 }
 
 pub(crate) fn apply_spell_cost_modifiers(
@@ -6257,28 +6265,6 @@ pub fn spell_has_delve(game: &GameState, spell: &crate::object::Object) -> bool 
         || spell_granted_cost_static_abilities(game, spell)
             .iter()
             .any(|ability| ability.has_delve())
-}
-
-fn spell_has_affinity_for_artifacts(game: &GameState, spell: &crate::object::Object) -> bool {
-    has_affinity_for_artifacts(spell)
-        || spell_granted_cost_static_abilities(game, spell)
-            .iter()
-            .any(|ability| {
-                ability.id() == crate::static_abilities::StaticAbilityId::AffinityForArtifacts
-            })
-}
-
-fn has_affinity_for_artifacts(spell: &crate::object::Object) -> bool {
-    use crate::ability::AbilityKind;
-    use ironsmith_core::StaticAbilityId;
-
-    spell.abilities.iter().any(|a| {
-        if let AbilityKind::Static(s) = &a.kind {
-            s.id() == StaticAbilityId::AffinityForArtifacts
-        } else {
-            false
-        }
-    })
 }
 
 /// Count cards in a player's graveyard (for Delve calculation).

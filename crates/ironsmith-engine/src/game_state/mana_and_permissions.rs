@@ -224,6 +224,7 @@ impl GameState {
         }
 
         self.battlefield_flags_mut().controller_at_last_refresh = controllers;
+        self.remember_face_down_exile_source_controllers();
         for &id in &changed {
             self.set_summoning_sick(id);
         }
@@ -393,6 +394,7 @@ impl GameState {
             .battlefield
             .iter()
             .copied()
+            .filter(|&object_id| !self.is_phased_out(object_id))
             .filter(|&object_id| {
                 self.current_has_static_ability_id(
                     object_id,
@@ -410,6 +412,7 @@ impl GameState {
                         .battlefield
                         .iter()
                         .copied()
+                        .filter(|&object_id| !self.is_phased_out(object_id))
                         .filter(|&object_id| self.controller_of_id(object_id) == Some(player))
                         .filter(|&object_id| {
                             self.current_card_types(object_id).is_some_and(|types| {
@@ -3093,9 +3096,8 @@ impl GameState {
         if self.current_controller(bearer) != Some(player) {
             return None;
         }
-        if !self.current_is_creature(bearer) {
-            return None;
-        }
+        // CR 701.54a–b: creature type is required when choosing a bearer,
+        // not for retaining the permanent's designation afterwards.
         Some(bearer)
     }
 

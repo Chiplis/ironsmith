@@ -160,6 +160,8 @@ pub struct WouldDiscardMatcher {
     pub cause_filter: CauseFilter,
     /// Optional filter for the card being discarded.
     pub card_filter: Option<ObjectFilter>,
+    /// The destination this replacement substitutes for, when specified.
+    pub destination: Option<crate::zone::Zone>,
 }
 
 impl WouldDiscardMatcher {
@@ -169,6 +171,7 @@ impl WouldDiscardMatcher {
             player_filter,
             cause_filter,
             card_filter: None,
+            destination: None,
         }
     }
 
@@ -214,6 +217,11 @@ impl WouldDiscardMatcher {
         self.card_filter = Some(card_filter);
         self
     }
+
+    pub fn with_destination(mut self, destination: crate::zone::Zone) -> Self {
+        self.destination = Some(destination);
+        self
+    }
 }
 
 impl ReplacementMatcher for WouldDiscardMatcher {
@@ -225,6 +233,10 @@ impl ReplacementMatcher for WouldDiscardMatcher {
         let Some(discard) = downcast_event::<DiscardEvent>(event) else {
             return false;
         };
+
+        if self.destination.is_some_and(|destination| discard.destination != destination) {
+            return false;
+        }
 
         // Check player filter
         if !self

@@ -566,6 +566,7 @@ pub fn apply_priority_response_with_dm(
             // Save checkpoint before starting the action chain
             // This allows rollback if the player makes an invalid choice
             state.save_checkpoint(game);
+            game.begin_exhaust_activation(*source, *ability_index);
 
             // Get the ability cost, effects, tracking info, and source info for the stack entry
             let (
@@ -873,6 +874,17 @@ pub fn apply_priority_response_with_dm(
                 let source_snapshot = game.object(*source).map(|obj| {
                     ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
                 });
+
+                let view = crate::derived_view::DerivedGameView::new(game);
+                if !crate::decision::exhaust_activation_allows(
+                    game, player, *source, *ability_index, mana_ability, &view,
+                ) {
+                    return Err(GameLoopError::InvalidState("Exhaust ability was already activated".into()));
+                }
+                if mana_ability.is_exhaust_ability() {
+                    state.save_checkpoint(game);
+                    game.begin_exhaust_activation(*source, *ability_index);
+                }
 
                 if mana_cost.is_none() {
                     // Pay all costs immediately

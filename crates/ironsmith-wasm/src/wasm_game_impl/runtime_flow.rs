@@ -546,6 +546,14 @@ impl WasmGame {
                     .unwrap()
                     .respond_options(option_indices);
             }
+            (DecisionContext::ManaPayment(_), command @ UiCommand::ManaPayment { .. }) => {
+                let answer = self.command_to_replay_answer(&pending_ctx, command)
+                    .map_err(|e| restore_on_err(self, pending_ctx.clone(), e))?;
+                let ReplayDecisionAnswer::ManaPayment(response) = answer else {
+                    return Err(restore_on_err(self, pending_ctx.clone(), JsValue::from_str("expected a mana payment")));
+                };
+                self.runner.as_mut().unwrap().respond_mana_payment(response);
+            }
             (DecisionContext::Order(_), command @ UiCommand::SelectOptions { .. }) => {
                 // An ordering asked by a replayed runner effect (a draw-step
                 // replacement's "in any order").

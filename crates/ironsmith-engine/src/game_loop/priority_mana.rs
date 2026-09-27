@@ -2777,6 +2777,7 @@ pub(crate) fn propose_spell_cast(
     if let Some(obj) = game.object_mut(new_id) {
         if let Some(method) = selected_method {
             obj.cast_alternative_method = Some(Box::new(method.clone()));
+            crate::alternative_cast::ensure_alternative_battlefield_abilities(obj, &method);
             // CR 702.140a: Mutate is an alternative cost whose spell targets a
             // non-Human creature with the same owner.  Keep this requirement in
             // the ordinary resolution program so every casting path, legality

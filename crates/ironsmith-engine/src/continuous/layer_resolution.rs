@@ -102,7 +102,6 @@ pub(super) fn calculate_with_layers(
                         &mut next_ability_counter,
                         None,
                     );
-                    add_suspected_abilities(object, ctx.game, &mut chars);
                     prune_ability_gain_prohibitions(&mut chars);
                     calc_guard.update(&chars);
                 }
@@ -653,7 +652,6 @@ pub(super) fn calculate_with_layers(
                 &mut next_ability_counter,
                 None,
             );
-            add_suspected_abilities(object, ctx.game, &mut chars);
             prune_ability_gain_prohibitions(&mut chars);
             calc_guard.update(&chars);
         }
@@ -1755,27 +1753,6 @@ pub(super) fn advance_layer_batch_source_state(
     }
 }
 
-/// CR 701.60c: a suspected permanent has menace and "This creature can't
-/// block" for as long as it's suspected.
-pub(super) fn add_suspected_abilities(
-    object: &Object,
-    game: &crate::game_state::GameState,
-    chars: &mut CalculatedCharacteristics,
-) {
-    if object.zone != crate::zone::Zone::Battlefield || !game.is_suspected(object.id) {
-        return;
-    }
-    use crate::static_abilities::StaticAbilityId;
-    for (id, ability) in [
-        (StaticAbilityId::Menace, StaticAbility::menace()),
-        (StaticAbilityId::CantBlock, StaticAbility::cant_block()),
-    ] {
-        if !chars.static_abilities.iter().any(|a| a.id() == id) {
-            push_static_ability_once(chars, ability);
-        }
-    }
-}
-
 /// Exalted counters compile as a named counter kind (CR 122.1b).
 fn is_exalted_counter(counter_type: CounterType) -> bool {
     matches!(counter_type, CounterType::Named(name) if name.eq_ignore_ascii_case("exalted"))
@@ -1941,7 +1918,7 @@ pub(super) fn add_temporary_static_ability_grants(
         if chars
             .static_abilities
             .iter()
-            .any(|existing| existing.id() == ability.id())
+            .any(|existing| existing == &ability)
         {
             continue;
         }

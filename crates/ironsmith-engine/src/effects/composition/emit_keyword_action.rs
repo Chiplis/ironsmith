@@ -325,7 +325,12 @@ impl EffectExecutor for EmitKeywordActionEffect {
             let source_snapshot = on_battlefield
                 .map(|object| game.cached_object_snapshot_with_calculated_characteristics(object))
                 .or_else(|| ctx.source_snapshot.clone());
-            let lookback = if on_battlefield.is_none() {
+            // Only a source sacrificed by this exploit ability gets lookback.
+            // An ETB-time snapshot must not revive an ability whose source left
+            // before this sacrifice (CR 603.10a, 702.110b).
+            let exploited_itself = object_tags.get(crate::tag::EXPLOITED_TAG)
+                .is_some_and(|objects| objects.iter().any(|object| object.object_id == ctx.source));
+            let lookback = if on_battlefield.is_none() && exploited_itself {
                 source_snapshot.iter().cloned().collect()
             } else {
                 Vec::new()

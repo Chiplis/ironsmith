@@ -577,6 +577,10 @@ pub(crate) fn materialize_duration_predicate(
         Predicate::ObjectOnBattlefield(object) => Predicate::ObjectOnBattlefield(
             materialize_duration_object(object, target, source_type, ctx)?,
         ),
+        Predicate::ObjectInZone { object, zone } => Predicate::ObjectInZone {
+            object: materialize_duration_object(object, target, source_type, ctx)?,
+            zone: *zone,
+        },
         Predicate::ObjectTapped(object) => Predicate::ObjectTapped(materialize_duration_object(
             object,
             target,

@@ -2874,6 +2874,8 @@ pub enum PlayerControlStart {
 pub enum PlayerControlDuration {
     /// Until end of the current turn.
     UntilEndOfTurn,
+    /// Through all cleanup steps, until the controlled turn actually ends.
+    WholeTurn,
     /// Until the source leaves the battlefield.
     UntilSourceLeaves,
     /// No duration limit.
@@ -2929,7 +2931,7 @@ impl ControlPlayerEffect {
         Self::new(
             player,
             PlayerControlStart::NextTurn,
-            PlayerControlDuration::UntilEndOfTurn,
+            PlayerControlDuration::WholeTurn,
         )
     }
 

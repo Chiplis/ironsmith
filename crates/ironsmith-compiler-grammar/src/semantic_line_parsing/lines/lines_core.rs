@@ -65,7 +65,7 @@ pub(super) fn hideaway_line_ast(count: i32) -> LineAst {
                 player: PlayerAst::You,
                 tag: chosen_tag.clone(),
             }),
-            EffectAst::subject_verb_exile(TargetAst::Tagged(chosen_tag.clone(), None), true),
+            EffectAst::subject_verb_exile_with_source_controller_look(TargetAst::Tagged(chosen_tag.clone(), None)),
             EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
                 looked_tag,
                 Some(chosen_tag),

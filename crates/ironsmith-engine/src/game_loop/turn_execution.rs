@@ -62,6 +62,9 @@ pub fn execute_turn_with(
                     crate::decisions::context::DecisionContext::SelectOptions(ref options_ctx) => {
                         runner.respond_options(decision_maker.decide_options(game, options_ctx));
                     }
+                    crate::decisions::context::DecisionContext::ManaPayment(ref payment_ctx) => {
+                        runner.respond_mana_payment(decision_maker.decide_mana_payment(game, payment_ctx));
+                    }
                     crate::decisions::context::DecisionContext::Order(ref order_ctx) => {
                         runner.respond_order(decision_maker.decide_order(game, order_ctx));
                     }

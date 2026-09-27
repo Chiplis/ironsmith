@@ -41,10 +41,10 @@ impl EffectExecutor for NextAdaptIgnoresCountersEffect {
             if object.zone != Zone::Battlefield {
                 continue;
             }
-            let stable = object.stable_id;
             let store = &mut game.turn_store.adapt_ignores_counters;
             store.retain(|(_, recorded_turn)| *recorded_turn == turn);
-            store.push((stable, turn));
+            // The permission belongs to this incarnation (CR 400.7).
+            store.push((object_id, turn));
             count += 1;
         }
         Ok(EffectOutcome::count(count))

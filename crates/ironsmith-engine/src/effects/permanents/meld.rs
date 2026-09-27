@@ -37,6 +37,7 @@ impl EffectExecutor for MeldEffect {
         if source.owner != ctx.controller
             || game.controller_of(&source) != ctx.controller
             || source.kind != ObjectKind::Card
+            || game.is_phased_out(source_id)
         {
             return Ok(EffectOutcome::resolved());
         }
@@ -45,27 +46,40 @@ impl EffectExecutor for MeldEffect {
             return Ok(EffectOutcome::resolved());
         };
 
-        let counterpart_id = match source.zone {
-            Zone::Battlefield => game.battlefield.iter().copied().find(|&candidate_id| {
-                game.object(candidate_id).is_some_and(|candidate| {
-                    candidate_id != source_id
-                        && candidate.owner == ctx.controller
-                        && game.controller_of(candidate) == ctx.controller
-                        && candidate.name.eq_ignore_ascii_case(counterpart_name)
-                })
-            }),
-            Zone::Exile => game.exile.iter().copied().find(|&candidate_id| {
-                game.object(candidate_id).is_some_and(|candidate| {
-                    candidate_id != source_id
-                        && candidate.owner == ctx.controller
-                        && game.controller_of(candidate) == ctx.controller
-                        && candidate.name.eq_ignore_ascii_case(counterpart_name)
-                })
-            }),
-            _ => None,
+        let candidates = match source.zone {
+            Zone::Battlefield => &game.battlefield,
+            Zone::Exile => &game.exile,
+            _ => return Ok(EffectOutcome::resolved()),
         };
-        let Some(counterpart_id) = counterpart_id else {
+        let candidates = candidates.iter().copied().filter(|&candidate_id| {
+                game.object(candidate_id).is_some_and(|candidate| {
+                    candidate_id != source_id
+                        && !game.is_phased_out(candidate_id)
+                        && candidate.owner == ctx.controller
+                        && game.controller_of(candidate) == ctx.controller
+                        && candidate.name.eq_ignore_ascii_case(counterpart_name)
+                })
+            }).collect::<Vec<_>>();
+        let Some(&first) = candidates.first() else {
             return Ok(EffectOutcome::resolved());
+        };
+        let counterpart_id = if candidates.len() == 1 {
+            first
+        } else {
+            let spec = crate::decisions::specs::ChooseObjectsSpec::new(
+                ctx.source,
+                "Choose a permanent to meld with this permanent",
+                candidates.clone(),
+                1,
+                Some(1),
+            );
+            let chosen = crate::decisions::make_decision(
+                game, ctx.decision_maker, ctx.controller, Some(ctx.source), spec,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            crate::effects::helpers::normalize_object_selection(chosen, &candidates, 1)[0]
         };
 
         let source_attack_target = if self.enters_attacking {

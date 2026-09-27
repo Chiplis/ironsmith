@@ -152,7 +152,7 @@ pub(super) fn tribute_opponents(game: &GameState, controller: PlayerId) -> Vec<P
     let mut opponents = game
         .players
         .iter()
-        .filter(|player| player.is_in_game() && player.id != controller)
+        .filter(|player| player.is_in_game() && game.are_opponents(controller, player.id))
         .map(|player| player.id)
         .collect::<Vec<_>>();
     opponents.sort_by_key(|player| player.0);
@@ -277,6 +277,7 @@ pub(crate) fn replacement_effect_choice_description(
     effect: &ReplacementEffect,
 ) -> String {
     match &effect.replacement {
+        ReplacementAction::DiscardWithMadness => "Exile this discarded card with Madness".to_string(),
         ReplacementAction::Additionally(_) => {
             format!(
                 "Do not apply {}",
@@ -1323,29 +1324,39 @@ pub fn execute_discard(
     let discard_event = DiscardEvent::with_cause(card_id, player, cause.clone());
     let event = Event::new_with_provenance(discard_event, provenance);
 
-    // Process through the trait-based replacement effect system
-    let result = process_with_dm(game, event, decision_maker);
+    // Madness participates in the same CR 616 choice as discard and zone
+    // replacements. Only applying this particular replacement can authorize
+    // its linked trigger; merely ending up in exile is insufficient.
+    let mut additional_effects = Vec::new();
+    if game.object(card_id).is_some_and(|card|
+        card.alternative_casts.iter().any(|alternative| alternative.is_madness()))
+    {
+        additional_effects.push(ReplacementEffect::with_matcher(
+            card_id,
+            player,
+            crate::events::cards::matchers::WouldDiscardMatcher::any_player()
+                .with_card_filter(crate::target::ObjectFilter::source())
+                .with_destination(Zone::Graveyard),
+            ReplacementAction::DiscardWithMadness,
+        ));
+    }
+    assign_ephemeral_effect_ids(&mut additional_effects, (u64::MAX / 2).saturating_add(2048));
+    let result = process_with_dm_and_additional_effects(game, event, decision_maker, &additional_effects);
     // CR 616.1f: an interactive destination choice (Library of Leng) applies
     // that replacement, then the remaining applicable ones (madness, Rest in
     // Peace) still get their chance at the rewritten event.
-    let result = continue_after_destination_choices(game, result, decision_maker, &[]);
+    let result = continue_after_destination_choices(game, result, decision_maker, &additional_effects);
+    if decision_maker.awaiting_choice() {
+        // The caller replays its checkpoint after answering the replacement
+        // prompt. Never commit a provisional destination in the meantime.
+        return DiscardResult::prevented();
+    }
 
     match result {
         TraitEventResult::Proceed(final_event) | TraitEventResult::Modified(final_event) => {
             // Extract the final destination from the (possibly modified) event
             if let Some(discard) = downcast_event::<DiscardEvent>(final_event.inner()) {
-                let mut destination = discard.destination;
-
-                // Check for Madness: if card has Madness and destination is Graveyard,
-                // replace destination with Exile (Madness replacement effect)
-                let has_madness = game
-                    .object(card_id)
-                    .map(|obj| obj.alternative_casts.iter().any(|alt| alt.is_madness()))
-                    .unwrap_or(false);
-
-                if has_madness && destination == Zone::Graveyard {
-                    destination = Zone::Exile;
-                }
+                let destination = discard.destination;
 
                 let new_id = if destination == Zone::Library {
                     move_to_top_of_library(
@@ -1360,7 +1371,7 @@ pub fn execute_discard(
                 };
 
                 // Mark as madness_exiled if card went to exile via Madness
-                if has_madness
+                if discard.madness_applied
                     && destination == Zone::Exile
                     && let Some(id) = new_id
                 {
@@ -1464,29 +1475,6 @@ pub fn execute_discard(
                 return DiscardResult::prevented();
             }
 
-            // CR 702.35a / 616.1: madness is itself a replacement of the
-            // discarded card's move to the graveyard, and the affected player
-            // chooses which applicable replacement applies first. Madness
-            // dominates a graveyard-hate exile for that player (if they
-            // decline the madness cast, the card's later move to the
-            // graveyard is again subject to the hate effect), so apply it.
-            let has_madness = game
-                .object(card_id)
-                .is_some_and(|obj| obj.alternative_casts.iter().any(|alt| alt.is_madness()));
-            if has_madness {
-                let new_id = game.move_object(card_id, Zone::Exile, cause.clone());
-                if let Some(id) = new_id {
-                    game.set_madness_exiled(id);
-                    queue_madness_trigger(game, id, player, &cause, provenance);
-                }
-                return DiscardResult {
-                    new_id,
-                    final_zone: Zone::Exile,
-                    type_verifiable: zone_allows_type_verification(Zone::Exile),
-                    prevented: false,
-                };
-            }
-
             game.effect_store
                 .replacement_effects
                 .mark_effect_used(effect_id);
@@ -1544,11 +1532,10 @@ fn queue_madness_trigger(
         presentation_label: None,
     };
     let trigger_identity = crate::triggers::compute_trigger_identity(&ability);
-    let triggering_event = crate::triggers::TriggerEvent::new_with_provenance(
-        crate::events::cards::DiscardEvent::with_cause(exiled_id, player, cause.clone())
-            .with_destination(Zone::Exile),
-        provenance,
-    );
+    let mut discarded = crate::events::cards::DiscardEvent::with_cause(exiled_id, player, cause.clone())
+        .with_destination(Zone::Exile);
+    discarded.madness_applied = true;
+    let triggering_event = crate::triggers::TriggerEvent::new_with_provenance(discarded, provenance);
     game.defer_trigger_entries([crate::triggers::TriggeredAbilityEntry {
         source: exiled_id,
         controller: owner,
@@ -1720,7 +1707,18 @@ fn trait_effect_matches_event(
         .with_prospective_etb_game(prospective_etb_game)
         .with_event_source_snapshot(event_source_snapshot);
     if !matcher.matches_event(event.inner(), &ctx) {
-        return None;
+        // Discard includes a move out of the hand. Zone replacements must
+        // compete with discard replacements before that move, and must see
+        // its evolving destination after each applied replacement (CR 616.1).
+        let discard = crate::events::downcast_event::<crate::events::DiscardEvent>(event.inner())?;
+        let snapshot = game.object(discard.card).map(|card|
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(card, game));
+        let zone_change = crate::events::ZoneChangeEvent::with_cause(
+            discard.card, Zone::Hand, discard.destination, discard.cause.clone(), snapshot,
+        );
+        if !matcher.matches_event(&zone_change, &ctx) {
+            return None;
+        }
     }
 
     let trait_priority = effect
@@ -4804,7 +4802,6 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
             // Planeswalkers intrinsically enter with loyalty counters equal to
             // their printed loyalty. Model this as ETB counters so replacement
             // effects can modify it (e.g., Doubling Season).
-            let loyalty = loyalty_after_compleated_life_payment(obj, loyalty);
             enters_with_counters.push((CounterType::Loyalty, loyalty));
             intrinsic_loyalty = Some(loyalty);
         }
@@ -5048,6 +5045,41 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
             &current_event,
             COPIED_OBJECT_ETB_ID_BASE,
         );
+        // Compleated modifies the entire proposed loyalty placement at the
+        // ordinary CR 616 priority, so the affected player can order it with
+        // counter doublers. Re-evaluate the proposed characteristics after
+        // copy/as-enters choices rather than retaining the original abilities.
+        let compleated_life_payments = game.object(object).map_or(0, |obj| {
+            obj.optional_costs_paid.times_paid_label("CompleatedLifePaid")
+        });
+        let compleated_effect = (compleated_life_payments > 0)
+            .then(|| downcast_event::<EnterBattlefieldEvent>(current_event.inner()))
+            .flatten()
+            .and_then(|etb| etb.prospective_game_state(game))
+            .and_then(|prospective| {
+                let proposed = prospective.object(object)?;
+                let has_compleated = prospective.current_abilities(object).is_some_and(|abilities| {
+                    abilities.iter().any(|ability| matches!(
+                        &ability.kind,
+                        crate::ability::AbilityKind::Static(marker)
+                            if marker.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
+                                && marker.display().eq_ignore_ascii_case("compleated")
+                    ))
+                });
+                if !has_compleated {
+                    return None;
+                }
+                let mut effect = ReplacementEffect::with_matcher(
+                    object, prospective.controller_of(proposed),
+                    crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                    crate::replacement::ReplacementAction::AddCountersToPlacement {
+                        counter_type: Some(CounterType::Loyalty),
+                        additional: -i64::from(compleated_life_payments) * 2,
+                    },
+                );
+                effect.id = ReplacementEffectId(u64::MAX - 1_250_000);
+                Some(effect)
+            });
         let current_additional_effects: Vec<ReplacementEffect> = copy_choice_effects
             .iter()
             .filter(|effect| {
@@ -5061,6 +5093,7 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                 prepared_object_effects.is_none() && !state.was_applied(effect.id)
             }))
             .chain(prepared_object_effects.iter().flatten())
+            .chain(compleated_effect.iter())
             .cloned()
             .collect();
         let result = process_event_direct(
@@ -5583,26 +5616,6 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
             }
         }
     }
-}
-
-fn loyalty_after_compleated_life_payment(obj: &crate::object::Object, loyalty: u32) -> u32 {
-    let life_paid_count = obj
-        .optional_costs_paid
-        .times_paid_label("CompleatedLifePaid");
-    if life_paid_count == 0 || !object_has_compleated_marker(obj) {
-        return loyalty;
-    }
-    loyalty.saturating_sub(life_paid_count.saturating_mul(2))
-}
-
-fn object_has_compleated_marker(obj: &crate::object::Object) -> bool {
-    obj.abilities.iter().any(|ability| {
-        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
-            return false;
-        };
-        static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
-            && static_ability.display().eq_ignore_ascii_case("compleated")
-    })
 }
 
 /// Result of processing a zone change event with full replacement effect handling.

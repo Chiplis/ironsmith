@@ -28913,6 +28913,20 @@ fn describe_structural_training_keyword(ability: &Ability) -> Option<String> {
     let [put, emit] = triggered.effects.flattened_default_effects() else {
         return None;
     };
+    let (put, emit) = if let Some(identified) = put.downcast_ref::<crate::effects::WithIdEffect>() {
+        let conditional = emit.downcast_ref::<crate::effects::IfEffect>()?;
+        if conditional.condition != identified.id
+            || conditional.predicate != EffectPredicate::Value(Comparison::GreaterThan(0))
+            || !conditional.else_.is_empty()
+            || conditional.per_player_result
+        {
+            return None;
+        }
+        let [emit] = conditional.then.as_slice() else { return None; };
+        (identified.effect.as_ref(), emit)
+    } else {
+        (put, emit)
+    };
     let put = put.downcast_ref::<crate::effects::PutCountersEffect>()?;
     if put.counter_type != CounterType::PlusOnePlusOne
         || put.amount != Value::Fixed(1)
@@ -30414,6 +30428,25 @@ fn ability_is_rendered_with_alternative_cast(def: &CardDefinition, ability: &Abi
     let AbilityKind::Static(static_ability) = &ability.kind else {
         return false;
     };
+    if let Some(Condition::ThisSpellPaidLabel(paid)) = static_ability.granted_inline_condition() {
+        let granted = static_ability.source_granted_inline_abilities();
+        if let [granted] = granted.as_slice() {
+            let haste = Ability::static_ability(crate::static_abilities::StaticAbility::haste());
+            if def.alternative_casts.iter().any(|method| {
+                *paid == crate::cost::OptionalCostRef::from(method.name())
+                    && match method {
+                        AlternativeCastingMethod::Dash { .. } => **granted == haste,
+                        AlternativeCastingMethod::Blitz { .. } => {
+                            **granted == haste
+                                || crate::alternative_cast::is_blitz_death_draw_ability(granted)
+                        }
+                        _ => false,
+                    }
+            }) {
+                return true;
+            }
+        }
+    }
     if static_ability
         .this_spell_cost_reduction()
         .and_then(|reduction| reduction.alternative_cast)
@@ -30425,6 +30458,105 @@ fn ability_is_rendered_with_alternative_cast(def: &CardDefinition, ability: &Abi
         .iter()
         .filter_map(|method| qualified_cost_reduction_ability_for_method(def, method))
         .any(|rendered| std::ptr::eq(rendered, static_ability))
+}
+
+#[cfg(test)]
+mod audit_20260927_keyword_tests {
+    use super::*;
+
+    #[test]
+    fn parsed_dash_blitz_keep_conditional_abilities_and_keyword_surface() {
+        for keyword in ["Dash", "Blitz"] {
+            let oracle = format!("{keyword} {{1}}{{R}}");
+            let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+                crate::CardId::new(), "Keyword creature",
+            )
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .parse_text(&oracle)
+            .expect("alternative keyword compiles");
+            let expected = if keyword == "Blitz" { format!("{oracle}.") } else { oracle };
+            assert_eq!(crate::compiled_text_lines(&definition), vec![expected]);
+            let player = crate::PlayerId(0);
+            for paid in [false, true] {
+                let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                let mut id = game.create_object_from_definition(
+                    &definition, player, if paid { Zone::Stack } else { Zone::Battlefield },
+                );
+                if paid {
+                    game.object_mut(id).unwrap().optional_costs_paid.mark_label_paid(keyword);
+                    let mut entry = crate::game_state::StackEntry::new(id, player);
+                    entry.casting_method = crate::alternative_cast::CastingMethod::Alternative(0);
+                    entry.optional_costs_paid.mark_label_paid(keyword);
+                    game.push_to_stack(entry);
+                    crate::game_loop::resolve_stack_entry_with(
+                        &mut game, &mut crate::decision::SelectFirstDecisionMaker,
+                    ).unwrap();
+                    id = game.battlefield[0];
+                }
+                game.refresh_continuous_state();
+                assert_eq!(
+                    game.current_has_static_ability_id(id, crate::static_abilities::StaticAbilityId::Haste),
+                    paid,
+                );
+                if keyword == "Blitz" {
+                    game.take_pending_trigger_events();
+                    game.move_object_by_effect(id, Zone::Graveyard).unwrap();
+                    let mut queue = crate::triggers::TriggerQueue::new();
+                    crate::game_loop::drain_pending_trigger_events(&mut game, &mut queue);
+                    assert_eq!(queue.entries.len(), usize::from(paid));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn parsed_training_and_cumulative_upkeep_keep_runtime_guards_and_keyword_surface() {
+        for oracle in ["Training", "Cumulative upkeep {1}"] {
+            let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+                crate::CardId::new(), "Upkeep or training creature",
+            )
+            .card_types(vec![CardType::Creature])
+            .parse_text(oracle)
+            .expect("keyword compiles");
+            let AbilityKind::Triggered(triggered) = &definition.abilities[0].kind else {
+                panic!("keyword trigger");
+            };
+            if oracle == "Training" {
+                let [identified, conditional] = triggered.effects.flattened_default_effects() else {
+                    panic!("counter result and completion event");
+                };
+                let identified = identified.downcast_ref::<crate::effects::WithIdEffect>().unwrap();
+                let conditional = conditional.downcast_ref::<crate::effects::IfEffect>().unwrap();
+                assert_eq!(conditional.condition, identified.id);
+                assert_eq!(conditional.predicate, EffectPredicate::Value(Comparison::GreaterThan(0)));
+                assert_eq!(crate::compiled_text_lines(&definition), vec![
+                    "Training (Whenever this creature attacks with another creature with greater power, put a +1/+1 counter on this creature.)",
+                ]);
+            } else {
+                assert_eq!(triggered.intervening_if, Some(Condition::SourceIsInZone(Zone::Battlefield)));
+                assert_eq!(crate::compiled_text_lines(&definition), vec![format!("{oracle}.")]);
+            }
+        }
+    }
+
+    #[test]
+    fn unrelated_abilities_conditioned_on_dash_are_still_rendered() {
+        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::CardId::new(), "Conditional flyer",
+        )
+        .card_types(vec![CardType::Creature])
+        .dash(crate::mana::ManaCost::new())
+        .with_ability(Ability::static_ability(
+            crate::static_abilities::StaticAbility::grant_object_ability_for_filter(
+                ObjectFilter::source(),
+                Ability::static_ability(crate::static_abilities::StaticAbility::flying()),
+                "Conditional flying".into(),
+            ).with_condition(Condition::ThisSpellPaidLabel("Dash".into())).unwrap(),
+        ))
+        .build();
+        assert!(crate::compiled_text_lines(&definition).join(" ").to_lowercase().contains("flying"));
+    }
 }
 
 fn render_madness_cost(cost: &crate::mana::ManaCost) -> String {

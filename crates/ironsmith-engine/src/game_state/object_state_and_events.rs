@@ -8,6 +8,7 @@ impl GameState {
 
     /// Set summoning sickness on a creature.
     pub fn set_summoning_sick(&mut self, id: ObjectId) {
+        self.turn_store.came_under_control_since_last_upkeep.insert(id);
         if self.battlefield_flags_mut().summoning_sick.insert(id) {
             self.mark_summoning_sickness_changed(id);
         }
@@ -349,7 +350,23 @@ impl GameState {
 
     /// Mark a permanent as suspected.
     pub fn set_suspected(&mut self, id: ObjectId) {
+        let Some(object) = self.object(id).filter(|object| object.zone == Zone::Battlefield) else {
+            return;
+        };
+        if self.is_phased_out(id) { return; }
+        let controller = self.current_controller(id).unwrap_or(object.owner);
         if self.battlefield_flags_mut().suspected.insert(id) {
+            // CR 701.60c, 613.7: the designation grants abilities in layer six
+            // with the timestamp of suspecting, so later ability loss wins.
+            for ability in [crate::static_abilities::StaticAbility::menace(), crate::static_abilities::StaticAbility::cant_block()] {
+                let effect = crate::continuous::ContinuousEffect::new(
+                    id, controller, crate::continuous::EffectTarget::Specific(id),
+                    crate::continuous::Modification::AddAbility(ability),
+                ).with_source_type(crate::continuous::EffectSourceType::Resolution { locked_targets: vec![id] })
+                    .with_condition(crate::ConditionExpr::SourceSuspected)
+                    .until(crate::effect::Until::ThisLeavesTheBattlefield);
+                self.effect_store.continuous_effects.add_effect(effect);
+            }
             self.mark_source_designation_changed(id, Self::condition_reads_suspected_state);
         }
     }
@@ -1402,6 +1419,13 @@ impl GameState {
         let permanent_snapshot = self
             .object(id)
             .map(|object| self.cached_object_snapshot_with_calculated_characteristics(object));
+        if let Some(snapshot) = permanent_snapshot.as_ref() {
+            for entry in &mut self.stack {
+                if entry.is_ability && entry.object_id == id {
+                    entry.source_snapshot = Some(snapshot.clone());
+                }
+            }
+        }
         self.mark_continuous_state_dirty();
         if self.battlefield_flags_mut().phased_out.insert(id) {
             self.battlefield_flags_mut()
@@ -2125,6 +2149,7 @@ impl GameState {
             let tracking = self.exile_tracking_mut();
             tracking.plotted_cards.remove(&id);
             tracking.face_down_exile_viewers.remove(&id);
+            tracking.face_down_exile_view_sources.remove(&id);
         }
         self.remove_exiled_with_source_link(id);
     }
@@ -2151,6 +2176,40 @@ impl GameState {
                         || self.controlling_player_for(*entitled_player) == viewer
                 })
             })
+            || self.face_down_exile_source_controller(id).is_some_and(|player| {
+                player == viewer || self.controlling_player_for(player) == viewer
+            })
+    }
+
+    /// A resolution-created look permission follows the source permanent's
+    /// controller, but never a new incarnation of either linked object.
+    pub fn grant_face_down_exile_source_controller_view(&mut self, id: ObjectId, source: ObjectId) {
+        self.exile_tracking_mut().face_down_exile_view_sources.insert(id, source);
+        self.remember_face_down_exile_source_controllers();
+    }
+
+    fn face_down_exile_source_controller(&self, id: ObjectId) -> Option<PlayerId> {
+        if self.object(id)?.zone != Zone::Exile {
+            return None;
+        }
+        let source = *self.exile_tracking.face_down_exile_view_sources.get(&id)?;
+        if self.object(source)?.zone != Zone::Battlefield || self.is_phased_out(source) {
+            return None;
+        }
+        self.current_controller(source)
+    }
+
+    /// CR 406.3: once entitled, a player keeps permission even after control
+    /// changes or the source leaves. This does not require actually looking.
+    pub(crate) fn remember_face_down_exile_source_controllers(&mut self) {
+        let grants = self.exile_tracking.face_down_exile_view_sources.keys().copied()
+            .filter_map(|id| self.face_down_exile_source_controller(id).map(|player| (id, player)))
+            .filter(|(id, player)| !self.exile_tracking.face_down_exile_viewers
+                .get(id).is_some_and(|viewers| viewers.contains(player)))
+            .collect::<Vec<_>>();
+        for (id, player) in grants {
+            self.grant_face_down_exile_view(id, player);
+        }
     }
 
     // === Chosen color helpers ===

@@ -261,6 +261,16 @@ pub(super) fn apply_trait_replacement(
             }
         }
 
+        ReplacementAction::DiscardWithMadness => {
+            if let Some(discard) = crate::events::downcast_event::<crate::events::DiscardEvent>(event.inner()) {
+                let mut discard = discard.with_destination(Zone::Exile);
+                discard.madness_applied = true;
+                TraitApplyResult::Modified(event.rewrap(discard))
+            } else {
+                TraitApplyResult::Unchanged(event)
+            }
+        }
+
         ReplacementAction::MoveToZoneWithCounters { .. } => TraitApplyResult::Replaced(Vec::new()),
 
         ReplacementAction::ExileWithSourceLink => TraitApplyResult::Replaced(Vec::new()),
@@ -1393,6 +1403,17 @@ fn apply_trait_add_counters_to_placement(
         EventKind::EnterBattlefield => {
             let etb = downcast_event::<EnterBattlefieldEvent>(event.inner())?;
             let mut increased = etb.clone();
+            // Multiple contributions to one counter type are a single
+            // placement. Apply the additive adjustment once to that total.
+            let mut counters: Vec<(CounterType, u32)> = Vec::new();
+            for (kind, count) in increased.enters_with_counters.drain(..) {
+                if let Some((_, total)) = counters.iter_mut().find(|(existing, _)| *existing == kind) {
+                    *total = total.saturating_add(count);
+                } else {
+                    counters.push((kind, count));
+                }
+            }
+            increased.enters_with_counters = counters;
             let mut changed = false;
             for (existing_type, count) in &mut increased.enters_with_counters {
                 if *count > 0 && counter_type.is_none_or(|ct| ct == *existing_type) {

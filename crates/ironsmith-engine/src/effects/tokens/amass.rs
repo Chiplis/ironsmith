@@ -108,6 +108,16 @@ impl EffectExecutor for AmassEffect {
             selected.first().copied().unwrap_or(army_candidates[0])
         };
 
+        // CR 701.47a places counters before adding the amass subtype. Counter
+        // replacements inspect the Army's characteristics at that earlier step.
+        let counters_outcome = PutCountersEffect::new(
+            CounterType::PlusOnePlusOne,
+            amount,
+            ChooseSpec::SpecificObject(chosen_army),
+        )
+        .execute(game, ctx)?;
+        outcomes.push(counters_outcome);
+
         // "Amass <Subtype>" causes the chosen Army creature to become that subtype
         // in addition to its other types if it doesn't already have it. That is
         // a type-changing (layer 4) effect, not a copiable value (CR 701.47a).
@@ -122,14 +132,6 @@ impl EffectExecutor for AmassEffect {
             );
             let _ = become_subtype.execute(game, ctx)?;
         }
-
-        let counters_outcome = PutCountersEffect::new(
-            CounterType::PlusOnePlusOne,
-            amount,
-            ChooseSpec::SpecificObject(chosen_army),
-        )
-        .execute(game, ctx)?;
-        outcomes.push(counters_outcome);
 
         let action_event = TriggerEvent::new_with_provenance(
             KeywordActionEvent::new(KeywordActionKind::Amass, ctx.controller, ctx.source, amount),

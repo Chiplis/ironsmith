@@ -272,6 +272,28 @@ pub(crate) struct CardSharedHandles {
 
 impl CardSharedHandles {
     pub(crate) fn from_definition(def: &crate::cards::CardDefinition) -> Self {
+        let mut abilities = def.abilities.clone();
+        // Attraction definitions store the Visit program in spell_effect.
+        // Materialize it as an ordinary, copiable triggered ability so layer
+        // 6 ability removal and grants apply to it (CR 702.159).
+        if def.card.subtypes.contains(&Subtype::Attraction)
+            && let Some(program) = &def.spell_effect
+        {
+            let mut visit = Ability::triggered(
+                crate::triggers::Trigger::keyword_action_from_source(
+                    crate::events::KeywordActionKind::VisitAttraction,
+                    crate::target::PlayerFilter::Any,
+                ),
+                Vec::new(),
+            );
+            if let crate::ability::AbilityKind::Triggered(trigger) = &mut visit.kind {
+                trigger.effects = program.clone();
+                trigger.presentation_label = Some(ironsmith_core::PresentationLabel::AbilityWord(
+                    "Visit".to_string(),
+                ));
+            }
+            abilities.push(visit);
+        }
         Self {
             name: def.card.name.clone().into(),
             first_printed_set_name: def.card.first_printed_set_name.clone().map(Into::into),
@@ -282,7 +304,7 @@ impl CardSharedHandles {
             compiled_card_text: Object::compiled_display_text(def),
             ability_labels: Object::display_ability_labels(def),
             other_face_name: def.card.other_face_name.clone().map(Into::into),
-            abilities: Arc::new(def.abilities.clone()),
+            abilities: Arc::new(abilities),
             spell_effect: shared_optional_value(def.spell_effect.clone()),
             aura_attach_filter: shared_optional_value(def.aura_attach_filter.clone()),
             alternative_casts: def.alternative_casts.clone().into(),

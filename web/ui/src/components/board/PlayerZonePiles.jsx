@@ -16,6 +16,8 @@ import SelectionCheckBadge from "@/components/cards/SelectionCheckBadge";
 
 // How long a zone takes to grow when it starts holding something to pick.
 const ZONE_TARGET_GROW_MS = 220;
+const LOOK_STACK_GAP = 12;
+const STACK_MIN_VISIBLE_HEIGHT = 72;
 
 function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverride, fading = false, onOpenChange }) {
   const ui = useUiText();
@@ -296,7 +298,9 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
         />
       ) : null}
       </div>
-      <PopoverContent ref={menuRef} className={`zone-pile-menu${zone === "look" ? " zone-pile-menu--look" : ""}`} side={zone === "look" ? "right" : "left"} align="start" sideOffset={-(stripBounds.cardWidth + 6)} alignOffset={-6} avoidCollisions={false}
+      {/* Look expands upward above the stack; follow its animated target scale. */}
+      <PopoverContent ref={menuRef} className={`zone-pile-menu${zone === "look" ? " zone-pile-menu--look" : ""}`} side={zone === "look" ? "right" : "left"} align={zone === "look" ? "end" : "start"} sideOffset={-(stripBounds.cardWidth + 6)} alignOffset={-6} avoidCollisions={false}
+        updatePositionStrategy={zone === "look" ? "always" : "optimized"}
         data-local-zone-strip={samePlayerId(player.id ?? player.index, state?.perspective) ? "true" : undefined}
         style={{ "--zone-strip-width": `${stripBounds.width}px`, "--zone-strip-card-width": `${stripBounds.cardWidth}px` }}
         aria-label={ui("{0}'s {1}", { 0: player.name, 1: ui(label) })}
@@ -373,6 +377,7 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
     const container = piles?.parentElement;
     if (!container) return undefined;
     const row = container.querySelector(".battlefield-row");
+    const look = piles.querySelector(".player-look-pile");
     let frame;
     const measure = () => {
       const bounds = container.getBoundingClientRect();
@@ -386,24 +391,32 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
       // another synchronous layout of the entire battlefield.
       const boardBounds = board?.getBoundingClientRect();
       const pilesBounds = board ? piles.getBoundingClientRect() : null;
-      piles.style.setProperty("--zone-pile-width", `${Math.min(56, cardWidth * 0.7)}px`);
+      const lookHeight = look?.offsetHeight || 0;
+      const lookCardHeight = look?.querySelector(".zone-pile")?.offsetHeight || 0;
+      const pileWidth = Math.min(56, cardWidth * 0.7);
+      piles.style.setProperty("--zone-pile-width", `${pileWidth}px`);
       if (board) {
         board.style.setProperty("--battlefield-objects-top", `${Math.max(0, top - boardBounds.top)}px`);
-        const lookTop = Math.max(0, top - boardBounds.top);
-        // The local piles column hangs from Look's top edge, so Graveyard
-        // lines up with Look. Place against the container's padding box and
-        // derive Look's offset from where the column is going, not where the
-        // previous layout left it.
-        const pilesTop = Math.max(0, boardBounds.top + lookTop - bounds.top - container.clientTop);
+        const zoneTop = Math.max(0, top - boardBounds.top);
+        // Keep Graveyard aligned with the battlefield. On short boards, Look
+        // moves up, then shrinks if needed to leave a usable stack viewport.
+        const lookCardRoom = boardBounds.height - LOOK_STACK_GAP - STACK_MIN_VISIBLE_HEIGHT
+          - (lookHeight - lookCardHeight);
+        look?.style.setProperty("--zone-pile-width", `${Math.min(pileWidth, Math.max(1, lookCardRoom * 63 / 88))}px`);
+        const lookTop = lookHeight
+          ? Math.min(zoneTop, Math.max(0, boardBounds.height - lookHeight - LOOK_STACK_GAP - STACK_MIN_VISIBLE_HEIGHT))
+          : zoneTop;
+        const pilesTop = Math.max(0, boardBounds.top + zoneTop - bounds.top - container.clientTop);
         const nextPilesTop = bounds.top + container.clientTop + pilesTop;
         piles.style.setProperty("--zone-piles-top", `${pilesTop}px`);
         // Chat hangs 6px under Exile; give it whatever the board has left.
         piles.style.setProperty("--exile-chat-room", `${Math.max(0, boardBounds.bottom - nextPilesTop - pilesBounds.height - 12)}px`);
-        // Let the stack use the full height from Look's top edge. The zone
-        // piles layer above the stack, so an expanded Look still covers it.
+        // Keep Look in a separate row above the stack, with room for the
+        // expanded strip's padding. The stack reclaims this space when Look
+        // disappears, including after its retained cards finish fading.
         piles.style.setProperty("--look-area-top", `${boardBounds.top + lookTop - nextPilesTop}px`);
         piles.style.setProperty("--look-area-left", `${boardBounds.left + 70 - pilesBounds.left}px`);
-        board.style.setProperty("--stack-area-top", `${lookTop}px`);
+        board.style.setProperty("--stack-area-top", `${lookTop + (lookHeight ? lookHeight + LOOK_STACK_GAP : 0)}px`);
       }
     };
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); };
@@ -412,6 +425,7 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
     observer.observe(container);
     observer.observe(piles);
     if (row) observer.observe(row);
+    if (look) observer.observe(look);
     const mutations = new MutationObserver((records) => {
       // Card internals change for hover, targeting and animation. Only the
       // grid and its positioned wrappers determine the piles' placement.

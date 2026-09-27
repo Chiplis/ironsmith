@@ -83,6 +83,8 @@ mod tests {
         assert_eq!(game.controlling_player_for(bob), alice);
 
         game.cleanup_player_control_end_of_turn();
+        assert_eq!(game.controlling_player_for(bob), alice);
+        game.next_turn();
         assert_eq!(game.controlling_player_for(bob), bob);
     }
 }

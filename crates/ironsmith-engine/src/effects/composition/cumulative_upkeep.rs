@@ -252,10 +252,7 @@ impl EffectExecutor for CumulativeUpkeepEffect {
             ctx,
         )?
         .max(0) as usize;
-        if count == 0 {
-            return Ok(EffectOutcome::count(0));
-        }
-
+        // A cost of zero still offers a choice (CR 118.5, 702.24a).
         let can_attempt = payment_can_complete(&self.payment, count, game, ctx);
         let wants_to_pay = can_attempt
             && make_boolean_decision(

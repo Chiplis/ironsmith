@@ -904,6 +904,10 @@ fn object_lki_snapshot<'a>(
         .as_ref()
         .filter(|snapshot| snapshot.object_id == object_id)
         .or_else(|| ctx.target_snapshots.get(&object_id))
+        .or_else(|| {
+            ctx.tagged_objects.values().flatten()
+                .find(|snapshot| snapshot.object_id == object_id)
+        })
 }
 
 fn tagged_snapshots_for_choose_spec<'a>(
@@ -1599,7 +1603,7 @@ fn resolve_controller_of(
         ObjectRef::Specific(object_id) => {
             if let Some(obj) = game.object(*object_id) {
                 Ok(game.controller_of(obj))
-            } else if let Some(snapshot) = ctx.target_snapshots.get(object_id) {
+            } else if let Some(snapshot) = object_lki_snapshot(ctx, *object_id) {
                 Ok(snapshot.controller)
             } else {
                 Err(ExecutionError::ObjectNotFound(*object_id))

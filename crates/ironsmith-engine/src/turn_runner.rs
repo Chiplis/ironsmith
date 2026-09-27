@@ -62,6 +62,7 @@ pub enum TurnState {
 
     // === First Main Phase ===
     FirstMain,
+    FirstMainAttractions,
     FirstMainPriority,
 
     // === Combat Phase ===
@@ -116,6 +117,7 @@ impl TurnState {
             Self::Draw => "draw",
             Self::DrawPriority => "draw_priority",
             Self::FirstMain => "first_main",
+            Self::FirstMainAttractions => "first_main_attractions",
             Self::FirstMainPriority => "first_main_priority",
             Self::BeginCombat => "begin_combat",
             Self::BeginCombatPriority => "begin_combat_priority",
@@ -160,6 +162,7 @@ impl TurnState {
             "draw" => Self::Draw,
             "draw_priority" => Self::DrawPriority,
             "first_main" => Self::FirstMain,
+            "first_main_attractions" => Self::FirstMainAttractions,
             "first_main_priority" => Self::FirstMainPriority,
             "begin_combat" => Self::BeginCombat,
             "begin_combat_priority" => Self::BeginCombatPriority,
@@ -368,10 +371,12 @@ enum AttackCostAnswer {
     Objects(Vec<ObjectId>),
     Options(Vec<usize>),
     Order(Vec<ObjectId>),
+    ManaPayment(crate::mana_payment::ManaPaymentResponse),
 }
 
 #[derive(Debug, Clone)]
 struct QueuedAttackCostDecisionMaker {
+    capture_mana_payment: bool,
     answers: Vec<AttackCostAnswer>,
     next: usize,
     pending_prompt: Option<DecisionContext>,
@@ -380,6 +385,7 @@ struct QueuedAttackCostDecisionMaker {
 impl QueuedAttackCostDecisionMaker {
     fn new(answers: Vec<AttackCostAnswer>) -> Self {
         Self {
+            capture_mana_payment: false,
             answers,
             next: 0,
             pending_prompt: None,
@@ -393,6 +399,30 @@ impl QueuedAttackCostDecisionMaker {
 }
 
 impl DecisionMaker for QueuedAttackCostDecisionMaker {
+    fn decide_mana_payment(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::ManaPaymentContext,
+    ) -> crate::mana_payment::ManaPaymentResponse {
+        use crate::mana_payment::ManaPaymentResponse;
+        if !self.capture_mana_payment {
+            let options = crate::decisions::context::SelectOptionsContext::new(
+                ctx.player, Some(ctx.source), format!("Confirm mana payment for {}", ctx.subject),
+                vec![crate::decisions::context::SelectableOption::new(1, "Confirm payment"),
+                     crate::decisions::context::SelectableOption::new(0, "Cancel")], 1, 1,
+            );
+            return if self.decide_options(game, &options).first().copied() == Some(1) {
+                ManaPaymentResponse::Confirm { plan_id: ctx.plan.id, request_hash: ctx.plan.request_hash }
+            } else { ManaPaymentResponse::Cancel };
+        }
+        match self.next_answer() {
+            Some(AttackCostAnswer::ManaPayment(response)) => response,
+            _ => {
+                self.pending_prompt.get_or_insert_with(|| DecisionContext::ManaPayment(ctx.clone()));
+                ManaPaymentResponse::Cancel
+            }
+        }
+    }
     fn awaiting_choice(&self) -> bool {
         self.pending_prompt.is_some()
     }
@@ -514,6 +544,7 @@ pub struct TurnRunner {
     pending_attacking_bands: Option<Vec<Vec<ObjectId>>>,
     /// Mandatory choices for permanents that may remain tapped this untap step.
     pending_untap_choices: Option<PendingUntapChoices>,
+    pending_attraction_choices: Option<PendingUntapChoices>,
     /// Choices made while a restart's deferred cards enter (CR 726.4).
     pending_restart_entry_choices: Option<PendingUntapChoices>,
     /// Pending attacker-cost prompts and their collected answers.
@@ -575,6 +606,7 @@ impl TurnRunner {
             pending_attackers: None,
             pending_attacking_bands: None,
             pending_untap_choices: None,
+            pending_attraction_choices: None,
             pending_restart_entry_choices: None,
             pending_attacker_optional_costs: None,
             pending_attacker_mana_window: None,
@@ -909,11 +941,11 @@ impl TurnRunner {
                 crate::game_loop::add_saga_lore_counters(game, tq);
                 // CR 505.5: after the Saga turn-based action, roll to visit
                 // Attractions if the active player controls one.
-                crate::game_loop::roll_to_visit_attractions(game, tq)?;
-
-                self.state = TurnState::FirstMainPriority;
-                Ok(TurnAction::RunPriority)
+                self.state = TurnState::FirstMainAttractions;
+                self.advance_attraction_roll(game, tq)
             }
+
+            TurnState::FirstMainAttractions => self.advance_attraction_roll(game, tq),
 
             TurnState::FirstMainPriority => {
                 game.empty_mana_pools();
@@ -1772,6 +1804,10 @@ impl TurnRunner {
             pending.response = Some(AttackCostAnswer::Objects(cards));
             return;
         }
+        if let Some(pending) = self.pending_attraction_choices.as_mut() {
+            pending.response = Some(AttackCostAnswer::Objects(cards));
+            return;
+        }
         if let Some(pending) = self.pending_restart_entry_choices.as_mut() {
             pending.response = Some(AttackCostAnswer::Objects(cards));
             return;
@@ -1794,6 +1830,10 @@ impl TurnRunner {
             return;
         }
         if let Some(pending) = self.pending_untap_choices.as_mut() {
+            pending.response = Some(AttackCostAnswer::Boolean(answer));
+            return;
+        }
+        if let Some(pending) = self.pending_attraction_choices.as_mut() {
             pending.response = Some(AttackCostAnswer::Boolean(answer));
             return;
         }
@@ -1822,6 +1862,10 @@ impl TurnRunner {
             pending.response = Some(AttackCostAnswer::Options(option_indices));
             return;
         }
+        if let Some(pending) = self.pending_attraction_choices.as_mut() {
+            pending.response = Some(AttackCostAnswer::Options(option_indices));
+            return;
+        }
         if let Some(pending) = self.pending_restart_entry_choices.as_mut() {
             pending.response = Some(AttackCostAnswer::Options(option_indices));
             return;
@@ -1845,6 +1889,10 @@ impl TurnRunner {
             return;
         }
         if let Some(pending) = self.pending_untap_choices.as_mut() {
+            pending.response = Some(AttackCostAnswer::Order(order));
+            return;
+        }
+        if let Some(pending) = self.pending_attraction_choices.as_mut() {
             pending.response = Some(AttackCostAnswer::Order(order));
             return;
         }
@@ -2369,6 +2417,47 @@ impl TurnRunner {
         }
         *game = hypothetical;
         None
+    }
+
+    pub fn respond_mana_payment(&mut self, response: crate::mana_payment::ManaPaymentResponse) {
+        if let Some(pending) = self.pending_attraction_choices.as_mut() {
+            pending.response = Some(AttackCostAnswer::ManaPayment(response));
+        }
+    }
+
+    fn advance_attraction_roll(
+        &mut self,
+        game: &mut GameState,
+        tq: &mut TriggerQueue,
+    ) -> Result<TurnAction, GameLoopError> {
+        let mut pending = self.pending_attraction_choices.take().unwrap_or(PendingUntapChoices {
+            answers: Vec::new(), prompt: None, response: None,
+        });
+        if let Some(answer) = pending.response.take() {
+            pending.answers.push(answer);
+        } else if let Some(prompt) = pending.prompt.clone() {
+            self.pending_attraction_choices = Some(pending);
+            return Ok(TurnAction::Decision(prompt));
+        }
+        // Replay from the same RNG/forced-roll state. Nothing, including mana,
+        // life, modifier usage or trigger history, is committed before all
+        // choices complete. Earlier main-phase turn-based actions run once.
+        let mut hypothetical = game.clone();
+        let mut hypothetical_queue = tq.clone();
+        let mut dm = QueuedAttackCostDecisionMaker::new(pending.answers.clone());
+        dm.capture_mana_payment = true;
+        crate::game_loop::roll_to_visit_attractions_with_dm(
+            &mut hypothetical, &mut hypothetical_queue, &mut dm,
+        )?;
+        if let Some(prompt) = dm.pending_prompt.take() {
+            pending.prompt = Some(prompt.clone());
+            self.pending_attraction_choices = Some(pending);
+            return Ok(TurnAction::Decision(prompt));
+        }
+        *game = hypothetical;
+        *tq = hypothetical_queue;
+        self.state = TurnState::FirstMainPriority;
+        Ok(TurnAction::RunPriority)
     }
 
     /// Run the untap step on a clone with the answers collected so far. A new

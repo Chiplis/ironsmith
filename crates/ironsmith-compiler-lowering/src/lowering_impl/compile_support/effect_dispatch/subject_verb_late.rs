@@ -1069,9 +1069,19 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
             target,
             face_down,
+            source_controller_may_look,
             source_top_only,
             target_plural_surface,
         }) => {
+            if *source_controller_may_look {
+                let (spec, choices) =
+                    resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+                return Ok(Some((vec![Effect::new(
+                    crate::effects::ExileEffect::with_spec(spec)
+                        .with_face_down(*face_down)
+                        .with_source_controller_look(),
+                )], choices)));
+            }
             if *source_top_only {
                 let (spec, choices) =
                     resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -2111,7 +2121,7 @@ pub(super) fn compile_subject_verb_late(
                 ),
                 ControlDurationAst::DuringNextTurn => (
                     crate::game_state::PlayerControlStart::NextTurn,
-                    crate::game_state::PlayerControlDuration::UntilEndOfTurn,
+                    crate::game_state::PlayerControlDuration::WholeTurn,
                 ),
                 ControlDurationAst::Forever => (
                     crate::game_state::PlayerControlStart::Immediate,

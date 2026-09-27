@@ -1686,6 +1686,20 @@ fn player_may_activate_equip_abilities_any_time(
     })
 }
 
+/// CR 702.177: Exhaust's restriction applies equally to mana abilities.
+pub(crate) fn exhaust_activation_allows(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    ability_index: usize,
+    activated: &crate::ability::ActivatedAbility,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    !activated.is_exhaust_ability()
+        || !game.exhaust_ability_activated(source, ability_index)
+        || player_may_activate_exhaust_abilities_as_unactivated_this_turn(game, controller, view)
+}
+
 fn player_may_activate_exhaust_abilities_as_unactivated_this_turn(
     game: &GameState,
     controller: PlayerId,
@@ -1932,9 +1946,7 @@ fn activation_precheck_with_view(
         return None;
     }
 
-    if activated.is_exhaust_ability()
-        && game.exhaust_ability_activated(source, ability_index)
-        && !player_may_activate_exhaust_abilities_as_unactivated_this_turn(game, controller, view)
+    if !exhaust_activation_allows(game, controller, source, ability_index, activated, view)
     {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());

@@ -143,6 +143,8 @@ pub enum ZoneMoveActionAst {
     Exile {
         target: TargetAst,
         face_down: bool,
+        /// Give the source permanent's current controller continuing look permission.
+        source_controller_may_look: bool,
         /// The target is selected from the first matching object in its ordered source zone.
         source_top_only: bool,
         /// Preserve an authored plural reference even when the linked target

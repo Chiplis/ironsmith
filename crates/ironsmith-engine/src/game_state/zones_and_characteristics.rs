@@ -3283,6 +3283,10 @@ impl GameState {
         counter_type: crate::object::CounterType,
         amount: u32,
     ) -> Option<crate::triggers::TriggerEvent> {
+        // CR 702.26b: ordinary effects cannot change phased-out permanents.
+        if self.is_phased_out(id) {
+            return None;
+        }
         self.mark_continuous_state_dirty();
         let obj = self.object_mut(id)?;
         let previous_count = obj.counters.get(&counter_type).copied().unwrap_or(0);
@@ -3316,6 +3320,10 @@ impl GameState {
         source: Option<ObjectId>,
         source_controller: Option<PlayerId>,
     ) -> Option<(u32, crate::triggers::TriggerEvent)> {
+        // CR 702.26b: ordinary effects cannot change phased-out permanents.
+        if self.is_phased_out(id) {
+            return None;
+        }
         self.mark_continuous_state_dirty();
         let location_snapshot = self.object(id).map(|object| {
             crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
@@ -3363,6 +3371,10 @@ impl GameState {
         source: Option<ObjectId>,
         source_controller: Option<PlayerId>,
     ) -> Option<crate::triggers::TriggerEvent> {
+        // CR 702.26b: ordinary effects cannot change phased-out permanents.
+        if self.is_phased_out(id) {
+            return None;
+        }
         self.mark_continuous_state_dirty();
         if amount == 0 {
             return None;
@@ -4280,15 +4292,12 @@ impl GameState {
         id: ObjectId,
         ability_id: crate::static_abilities::StaticAbilityId,
     ) -> bool {
-        if self.is_suspected(id)
-            && matches!(
-                ability_id,
-                crate::static_abilities::StaticAbilityId::Menace
-                    | crate::static_abilities::StaticAbilityId::CantBlock
-            )
-        {
-            return true;
+        // CR 702.26b: absence from the characteristic cache must not make a
+        // phased-out permanent fall back to its printed abilities.
+        if self.is_phased_out(id) {
+            return false;
         }
+
 
         if let Some(chars) = self.calculated_characteristics(id) {
             return chars

@@ -159,6 +159,10 @@ pub enum ReplacementAction {
     /// Change the zone an object would go to
     ChangeDestination(Zone),
 
+    /// Exile a discarded card through its Madness replacement (CR 702.35a).
+    /// The discard event retains this provenance for the linked trigger.
+    DiscardWithMadness,
+
     /// The replacement's controller draws instead of the event's player
     /// ("that player skips that draw and you draw a card", Notion Thief).
     RedirectDrawToController,

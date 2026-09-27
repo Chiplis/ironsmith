@@ -197,9 +197,10 @@ fn apply_processed_damage_results(
     provenance: crate::provenance::ProvNodeId,
     cause: crate::events::cause::EventCause,
 ) -> EffectOutcome {
-    let source_controller = source_snapshot
-        .map(|snapshot| snapshot.controller)
-        .or_else(|| game.object(source).map(|obj| game.controller_of(obj)));
+    let source_controller = game.object(source)
+        .filter(|_| !game.is_phased_out(source))
+        .map(|obj| game.controller_of(obj))
+        .or_else(|| source_snapshot.map(|snapshot| snapshot.controller));
 
     let keywords = crate::rules::damage::source_damage_keywords(game, source, source_snapshot);
     let mut outcomes = Vec::new();

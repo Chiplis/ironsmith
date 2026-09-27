@@ -141,3 +141,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     "cfg(ironsmith_runtime_inline_compiler_runtime)",
     "cfg(ironsmith_runtime_removed_parser_helper_unit_tests)",
 ] }
+
+[[test]]
+name = "mechanics_audit_20260927_triggers"
+path = "tests/mechanics_audit_20260927_triggers.rs"

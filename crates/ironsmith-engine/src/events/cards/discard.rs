@@ -25,6 +25,8 @@ pub struct DiscardEvent {
     /// Whether type verification is required for the discard
     /// (e.g., "discard a land card" requires verification)
     pub requires_type_verification: bool,
+    /// True only when this event applied the card's Madness replacement.
+    pub madness_applied: bool,
 }
 
 impl DiscardEvent {
@@ -36,6 +38,7 @@ impl DiscardEvent {
             destination: Zone::Graveyard,
             cause,
             requires_type_verification: false,
+            madness_applied: false,
         }
     }
 

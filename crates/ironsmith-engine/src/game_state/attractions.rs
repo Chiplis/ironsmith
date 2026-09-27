@@ -240,7 +240,8 @@ impl GameState {
             .iter()
             .filter_map(|object_id| {
                 let object = self.object(*object_id)?;
-                if object.zone != Zone::Battlefield
+                if self.is_phased_out(*object_id)
+                    || object.zone != Zone::Battlefield
                     || self.current_controller(*object_id) != Some(player)
                     || !state
                         .lights

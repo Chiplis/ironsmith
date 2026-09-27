@@ -1918,6 +1918,11 @@ fn can_activate_mana_ability_with_cost_checks(
         return Err(ActionError::NoSuchAbility);
     }
     let view = crate::derived_view::DerivedGameView::new(game);
+    if !crate::decision::exhaust_activation_allows(
+        game, player, permanent_id, ability_index, mana_ability, &view,
+    ) {
+        return Err(ActionError::CantPayCost);
+    }
     if !crate::decision::activation_timing_allows(
         game,
         player,
@@ -2085,6 +2090,11 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
         return Err(ActionError::NoSuchAbility);
     }
 
+    if !crate::decision::exhaust_activation_allows(
+        game, player, permanent_id, ability_index, mana_ability, view,
+    ) {
+        return Err(ActionError::CantPayCost);
+    }
     if !crate::decision::activation_timing_allows(
         game,
         player,
@@ -2463,6 +2473,14 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
         let mana_usage_restrictions = mana_ability.mana_usage_restrictions.clone();
         let source_chosen_creature_type = game.chosen_creature_type(permanent_id);
         let mut emitted_events = Vec::new();
+
+        let view = crate::derived_view::DerivedGameView::new(game);
+        if !crate::decision::exhaust_activation_allows(
+            game, player, permanent_id, ability_index, mana_ability, &view,
+        ) {
+            return Err(ActionError::CantPayCost);
+        }
+        game.begin_exhaust_activation(permanent_id, ability_index);
 
         // Pay mana costs from TotalCost (for abilities like Blood Celebrant that cost {B})
         let mut cost_ctx = CostContext::new(permanent_id, player, decision_maker)
