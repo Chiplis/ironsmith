@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright';
 
@@ -85,6 +85,7 @@ function readVisibleDom() {
       checked: ['checkbox', 'radio'].includes(type) ? Boolean(associated?.checked) : undefined,
       options: tag === 'select' ? [...element.options].map(option => ({ value: option.value, label: option.label, disabled: option.disabled, selected: option.selected })) : undefined,
       actions: [...(!blocked ? ['click', 'hover', 'pointer_click', 'drag'] : []), ...(editable && !element.readOnly ? ['fill'] : []),
+        ...(!blocked && (role === 'button' || tag === 'label' || (tag === 'input' && type === 'file')) ? ['upload_file'] : []),
         ...(tag === 'select' ? ['select'] : []), 'press'], attributes: attrs,
       className: String(element.getAttribute('class') || '').split(/\s+/)
         .filter(value => /^(?:game-card|hand-card|field-card|stack-card|battlefield-(?:grouped|token)-card|card-action-available|card-targeting-mode|tapped|untapped|playable|summoning-sick|attack-selected|block-selected|blocker-candidate|attack-candidate|target-legal|target-illegal|card-chosen|selected|inspected|glow-[a-z-]+)$/.test(value)).join(' '), ancestry,
@@ -282,6 +283,19 @@ export class PlayerBrowser {
           try { await player.page.mouse.move(position.x, position.y, { steps: 12 }); }
           finally { await player.page.mouse.up(); }
         }
+      } else if (action === 'upload_file') {
+        if (typeof value !== 'string' || !path.isAbsolute(value)) {
+          throw new Error('upload_file requires an absolute file path in value');
+        }
+        const file = await stat(value).catch(() => null);
+        if (!file?.isFile()) throw new Error('upload_file requires an existing regular file');
+        // Open the ordinary chooser through the observed visible control. The
+        // file input may be hidden and never needs a DOM reference of its own.
+        const [chooser] = await Promise.all([
+          player.page.waitForEvent('filechooser', { timeout: this.actionTimeoutMs }),
+          locator.click(),
+        ]);
+        await chooser.setFiles(value);
       } else if (action === 'click') await locator.click();
       else if (action === 'fill') await locator.fill(String(value ?? ''));
       else if (action === 'select') await locator.selectOption(String(value));

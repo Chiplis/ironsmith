@@ -3896,6 +3896,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       slot: requirement.slot ?? null,
       objectId: requirement.objectId ?? requirement.object_id ?? null,
       commitment: requirement.commitment ?? null,
+      // Resealing a shuffled library preserves the deck slot and commitment,
+      // but the new ciphertext must be opened again for a later search.
+      publicSlot: requirement.publicSlot ?? requirement.public_slot ?? null,
+      publicCommitment: requirement.publicCommitment ?? requirement.public_commitment ?? null,
+      originSlot: requirement.originSlot ?? requirement.origin_slot ?? null,
+      originCommitment: requirement.originCommitment ?? requirement.origin_commitment ?? null,
       count: requirement.count ?? null,
       from: requirement.from ?? null,
       to: requirement.to ?? null,

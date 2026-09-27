@@ -127,8 +127,8 @@ pub(crate) fn resolve(
         }
         Value::BasicLandTypesAmong(filter) => {
             let mut seen = HashSet::new();
-            context.visit_property_objects(filter, |object| {
-                for subtype in object.subtypes(game, false) {
+            context.visit_current_subtypes(filter, |subtypes| {
+                for &subtype in subtypes {
                     if matches!(
                         subtype,
                         Subtype::Plains

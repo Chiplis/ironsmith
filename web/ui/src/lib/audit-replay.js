@@ -212,6 +212,7 @@ async function revealOpeningWithGame(game, opening) {
   const commitment = opening.commitment ? String(opening.commitment) : undefined;
   const position = opening.position ?? opening.publicPosition;
   const positionCommitment = opening.positionCommitment || opening.position_commitment;
+  let positionObjectId = null;
   const exportCheckpoint = optionalGameMethod(game, "exportSyncCheckpoint");
   const checkpoint = exportCheckpoint ? await exportCheckpoint() : null;
   const ownerMetadata = (checkpoint?.objects || [])
@@ -242,6 +243,13 @@ async function revealOpeningWithGame(game, opening) {
     if (ziffleOriginAnchorFromMetadata(hidden) || ziffleOriginAnchorFromOpening(opening)) {
       assertZiffleOpeningOriginMatchesMetadata(opening, hidden);
     }
+    // A card may already be revealed and have a new object id after changing
+    // zones. Keep the identity authenticated above instead of relying on the
+    // engine's placeholder-only positional lookup or the sender's retired id.
+    positionObjectId = Number(matches[0].id);
+    if (!Number.isSafeInteger(positionObjectId) || positionObjectId <= 0) {
+      throw new Error("Replay opening has no valid current committed card identity");
+    }
   }
 
   const revealPosition = optionalGameMethod(game, "revealHiddenPosition");
@@ -249,6 +257,7 @@ async function revealOpeningWithGame(game, opening) {
     try {
       await revealPosition({
         owner,
+        ...(positionObjectId != null ? { objectId: positionObjectId } : {}),
         position: Number(position),
         originalSlot: slot,
         cardName,

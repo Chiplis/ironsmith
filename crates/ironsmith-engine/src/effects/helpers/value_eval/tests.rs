@@ -132,6 +132,71 @@ fn nested_layer_values_read_supplied_effects() {
 }
 
 #[test]
+fn domain_uses_granted_types_in_execution_and_continuous_values() {
+    let (mut game, source, alice) = fixture();
+    let land_card = CardBuilder::new(CardId::new(), "Forest")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Forest])
+        .build();
+    let land = game.create_object_from_card(&land_card, alice, Zone::Battlefield);
+    let effect = ContinuousEffect::new(
+        source,
+        alice,
+        EffectTarget::Specific(land),
+        Modification::AddSubtypes(vec![Subtype::Island, Subtype::Swamp]),
+    );
+    game.effect_store
+        .continuous_effects
+        .add_effect(effect.clone());
+    let value = Value::BasicLandTypesAmong(ObjectFilter::land().you_control());
+    let exec = ExecutionContext::new_default(source, alice);
+    assert_eq!(
+        resolve(&value, &EvaluationContext::execution_context(&game, &exec)).unwrap(),
+        3
+    );
+    let calculation = CalculationContext {
+        objects: game.objects_map(),
+        effects: &game.effect_store.continuous_effects,
+        battlefield: &game.battlefield,
+        game: &game,
+        current_object: source,
+    };
+    assert_eq!(
+        resolve_continuous(&value, LayerValueContext::new(&calculation, source, alice)),
+        3
+    );
+    assert_eq!(
+        resolve_value_direct(
+            &value,
+            game.objects_map(),
+            &[effect],
+            &game.battlefield,
+            &HashSet::new(),
+            source,
+            alice,
+            &game,
+        ),
+        3
+    );
+    // Retained objects keep the types they had at snapshot time.
+    let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(
+        game.object(land).unwrap(),
+        &game,
+    );
+    let mut exec = exec;
+    exec.set_tagged_objects("land", vec![snapshot]);
+    game.remove_object(land);
+    assert_eq!(
+        resolve(
+            &Value::BasicLandTypesAmong(ObjectFilter::tagged("land")),
+            &EvaluationContext::execution_context(&game, &exec),
+        )
+        .unwrap(),
+        3
+    );
+}
+
+#[test]
 fn tagged_aggregates_retain_snapshot_numbers() {
     let (mut game, source, alice) = fixture();
     let mut snapshot = ObjectSnapshot::from_object(game.object(source).unwrap(), &game);

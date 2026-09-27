@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { PlayerBrowser } from './browser.mjs';
@@ -30,6 +30,7 @@ document.addEventListener('pointerup', event => {
   if (held && event.target.closest('[data-bf-side]')) document.querySelector('#result').textContent = 'Placed by ' + held;
   held = false;
 });
+
 </script>`;
 
 test('browser adapter exposes visible DOM and guards real UI actions', { timeout: 30000 }, async t => {
@@ -118,4 +119,62 @@ test('browser adapter exposes visible DOM and guards real UI actions', { timeout
   assert.equal(Buffer.from(new URL(joinedInvite.url).searchParams.get('deck'), 'base64url').toString(), '99 Plains');
   assert.equal(Buffer.from(new URL(joinedInvite.url).searchParams.get('commander'), 'base64url').toString(), commanderText);
   assert.equal((await browser.closePlayer({ playerId: second.playerId })).closed, true);
+});
+
+test('file uploads use a visible chooser button and reject invalid or stale actions before clicking', { timeout: 30000 }, async t => {
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.end(`<!doctype html><title>Upload test</title>
+      <button id="open">Open JSON</button><input id="file" type="file" accept=".json" hidden>
+      <button id="change">Change visible state</button><p id="state">Initial state</p>
+      <p id="clicks">Chooser clicks: 0</p><p id="uploaded">No file uploaded</p>
+      <script>
+        let clicks = 0;
+        document.querySelector('#open').onclick = () => {
+          document.querySelector('#clicks').textContent = 'Chooser clicks: ' + ++clicks;
+          document.querySelector('#file').click();
+        };
+        document.querySelector('#change').onclick = () => { document.querySelector('#state').textContent = 'Changed state'; };
+        document.querySelector('#file').onchange = async event => {
+          const file = event.target.files[0];
+          document.querySelector('#uploaded').textContent = file.name + ': ' + await file.text();
+        };
+      </script>`);
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'player-upload-test-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const filePath = path.join(directory, 'saved-audit.json');
+  await writeFile(filePath, '{"match":"saved audit"}');
+  const browser = new PlayerBrowser({ settleMs: 20, settleTimeoutMs: 180 });
+  t.after(() => browser.close());
+  const { playerId, observation: initial } = await browser.openPlayer({
+    url: `http://127.0.0.1:${server.address().port}/`, headless: true,
+  });
+  assert.ok(!initial.controls.some(control => control.type === 'file'), 'hidden input is not exposed');
+  const open = initial.controls.find(control => control.name === 'Open JSON');
+  assert.ok(open.actions.includes('upload_file'));
+  const upload = (observation, value) => browser.act({ playerId, observationId: observation.observationId,
+    ref: open.ref, action: 'upload_file', value });
+  for (const value of [undefined, '', 'saved-audit.json']) {
+    await assert.rejects(upload(initial, value), /absolute file path/);
+  }
+  await assert.rejects(upload(initial, path.join(directory, 'missing.json')), /existing regular file/);
+  await assert.rejects(upload(initial, directory), /existing regular file/);
+  const page = browser.player(playerId).page;
+  assert.equal(await page.locator('#clicks').innerText(), 'Chooser clicks: 0');
+
+  const uploaded = await upload(initial, filePath);
+  assert.match(uploaded.text, /Chooser clicks: 1/);
+  assert.match(uploaded.text, /saved-audit\.json: \{"match":"saved audit"\}/);
+
+  // A page change after observing must prevent even opening the chooser.
+  await page.locator('#change').click();
+  await assert.rejects(upload(uploaded, filePath), error => {
+    assert.equal(error.code, 'STALE_OBSERVATION');
+    assert.match(error.observation.text, /Changed state/);
+    return true;
+  });
+  assert.equal(await page.locator('#clicks').innerText(), 'Chooser clicks: 1');
 });

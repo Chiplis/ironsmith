@@ -58,7 +58,7 @@ directory reported by `start_local_table`.
    when needed, `commanderText`; both survive joining a lobby.
 4. Use `observe` to read the page. `act` takes a control `ref` and the matching
    `observationId`, plus `click`, `fill`, `select`, `press`, `hover`,
-   `pointer_click`, or `drag`.
+   `pointer_click`, `drag`, or `upload_file`.
    If the page changes, inspect the returned fresh observation before choosing
    another action. Never reuse an old action blindly.
 5. To host, open **Create Lobby**, select **Verified**, and create the lobby.
@@ -76,6 +76,11 @@ directory reported by `start_local_table`.
 8. After a natural game result, inspect both peers' winner and hidden-card
    disclosure status. Use the UI's **Verify Match → Current Match** and
    **Export Match** actions to verify and save the audit transcript.
+
+To reopen a saved audit, open **Verify Match**, observe the visible **Open JSON**
+button, and use `act` with its fresh ref, `action: "upload_file"`, and
+`value: "/absolute/path/to/audit.json"`. This clicks the normal file chooser
+and selects that existing file; hidden file inputs do not need references.
 
 Hand-card clicks inspect a card. To play a land or permanent, use `drag` with
 the card's ref and a `position: {"x": 500, "y": 700}` inside your visible

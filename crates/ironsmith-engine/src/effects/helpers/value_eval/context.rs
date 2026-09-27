@@ -347,6 +347,23 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
         result.unwrap_or(0)
     }
 
+    pub(super) fn visit_current_subtypes(
+        &self,
+        filter: &ObjectFilter,
+        mut visit: impl FnMut(&[Subtype]),
+    ) {
+        match self.mode {
+            Mode::Execution(_) => self.visit_property_objects(filter, |object| {
+                visit(&object.subtypes(self.game, true));
+            }),
+            // Domain must see type-changing effects from layer 4 when it is
+            // evaluated for power/toughness in layer 7, including batch calculations.
+            Mode::Continuous(layer) => layer.visit_layered(filter, |_, chars| {
+                visit(&chars.subtypes);
+            }),
+        }
+    }
+
     pub(super) fn visit_property_objects(
         &self,
         filter: &ObjectFilter,

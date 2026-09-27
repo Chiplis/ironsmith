@@ -1697,6 +1697,52 @@ fn homicidal_seclusion_affects_only_the_unique_controlled_creature() {
 }
 
 #[test]
+fn territorial_kavu_counts_land_types_granted_by_leyline() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let domain = Value::BasicLandTypesAmong(ObjectFilter::land().you_control());
+    let kavu = CardDefinitionBuilder::new(CardId::new(), "Territorial Kavu")
+        .card_types(vec![CardType::Creature])
+        .with_ability(Ability::static_ability(
+            StaticAbility::characteristic_defining_pt(domain.clone(), domain),
+        ))
+        .build();
+    let kavu_id = game.create_object_from_definition(&kavu, alice, Zone::Battlefield);
+    let forest = CardBuilder::new(CardId::new(), "Forest")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Forest])
+        .build();
+    let land = game.create_object_from_card(&forest, alice, Zone::Battlefield);
+    game.create_object_from_card(&forest, bob, Zone::Battlefield);
+    assert_eq!(game.calculated_power(kavu_id), Some(1));
+    let leyline = CardDefinitionBuilder::new(CardId::new(), "Leyline of the Guildpact")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::static_ability(StaticAbility::add_subtypes(
+            ObjectFilter::land().you_control(),
+            vec![
+                Subtype::Plains,
+                Subtype::Island,
+                Subtype::Swamp,
+                Subtype::Mountain,
+                Subtype::Forest,
+            ],
+        )))
+        .build();
+    let leyline_id = game.create_object_from_definition(&leyline, alice, Zone::Battlefield);
+    assert_eq!(game.current_subtypes(land).unwrap().len(), 5);
+    assert_eq!(game.calculated_power(kavu_id), Some(5));
+    assert_eq!(game.calculated_toughness(kavu_id), Some(5));
+    game.move_object_by_effect(leyline_id, Zone::Graveyard);
+    assert_eq!(game.calculated_power(kavu_id), Some(1));
+    assert_eq!(game.calculated_toughness(kavu_id), Some(1));
+    game.create_object_from_definition(&leyline, alice, Zone::Battlefield);
+    game.move_object_by_effect(land, Zone::Graveyard);
+    assert_eq!(game.calculated_power(kavu_id), Some(0));
+    assert_eq!(game.calculated_toughness(kavu_id), Some(0));
+}
+
+#[test]
 fn test_domain_count_expression_counts_distinct_basic_land_types() {
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);

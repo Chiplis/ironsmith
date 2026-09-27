@@ -72,8 +72,8 @@ export function createPlayerServer(runtime) {
     return (await runtime.browser()).openPlayer({ ...args, url, deckText: deck.deckText, commanderText: deck.commanderText });
   });
   register('observe', 'Read this player’s visible UI and fresh control references.', { playerId }, async args => (await runtime.browser()).observe(args), { readOnly: true });
-  register('act', 'Use a visible control from the latest observation. pointer_click clicks a viewport position inside the referenced control; drag moves the referenced control to a viewport position. Both require position. A stale observation returns a fresh observation without acting.', {
-    playerId, observationId: z.string().min(1), ref: z.string().min(1), action: z.enum(['click', 'fill', 'select', 'press', 'hover', 'pointer_click', 'drag']), value: z.string().optional(),
+  register('act', 'Use a visible control from the latest observation. pointer_click clicks a viewport position inside the referenced control; drag moves the referenced control to a viewport position. Both require position. upload_file clicks a visible file-chooser control and selects the existing absolute file path supplied in value. A stale observation returns a fresh observation without acting.', {
+    playerId, observationId: z.string().min(1), ref: z.string().min(1), action: z.enum(['click', 'fill', 'select', 'press', 'hover', 'pointer_click', 'drag', 'upload_file']), value: z.string().optional(),
     position: z.object({ x: z.number().nonnegative(), y: z.number().nonnegative() }).optional(),
   }, async args => (await runtime.browser()).act(args));
   register('join_lobby', 'Join a lobby through the visible app UI.', { playerId, lobby: z.string().min(1) }, async args => (await runtime.browser()).joinLobby(args));
