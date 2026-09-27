@@ -14,15 +14,16 @@ async function harness(t) {
   await server.listen();
   const browser = await chromium.launch();
   t.after(async () => { await browser.close(); await server.close(); });
-  const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+  const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const page = await context.newPage();
   const cardRequests = [], errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.route(/\/cards\/[^/?]+\.json(?:\?|$)/, route => {
+  await context.route(/\/cards\/[^/?]+\.json(?:\?|$)/, route => {
     cardRequests.push(route.request().url());
     return route.abort('failed');
   });
-  await page.route('https://api.scryfall.com/**', route => route.fulfill({ status: 404, body: '' }));
-  await page.route('https://cards.scryfall.io/**', route => route.fulfill({
+  await context.route('https://api.scryfall.com/**', route => route.fulfill({ status: 404, body: '' }));
+  await context.route('https://cards.scryfall.io/**', route => route.fulfill({
     contentType: 'image/svg+xml', headers: { 'access-control-allow-origin': '*' },
     body: '<svg xmlns="http://www.w3.org/2000/svg" width="488" height="680"><rect width="488" height="680" fill="#81744e"/></svg>',
   }));
@@ -85,11 +86,13 @@ test('embedded catalogue preserves complete source payloads and loads cards with
 test('Add Card search and insertion use the embedded catalogue without card JSON requests', { timeout: 120000 }, async t => {
   const { page, cardRequests, errors, url } = await harness(t);
   await page.goto(url, { waitUntil: 'domcontentloaded' });
+  await page.locator('.game-card').first().waitFor({ state: 'attached', timeout: 60000 });
   await page.getByRole('button', { name: /^add card$/i }).click({ timeout: 60000 });
   await page.getByPlaceholder('Card name', { exact: true }).fill('Storm Crow');
   await page.getByRole('option', { name: 'Storm Crow', exact: true }).waitFor();
   await page.getByRole('option', { name: 'Storm Crow', exact: true }).click();
-  await page.getByLabel('Zone', { exact: true }).selectOption('battlefield');
+  await page.getByRole('dialog').locator('select')
+    .filter({ has: page.locator('option[value="battlefield"]') }).selectOption('battlefield');
   await page.locator('.add-card-submit').click();
   await page.locator('.game-card[data-card-name="Storm Crow"]').first().waitFor({ state: 'attached' });
   assert.deepEqual(cardRequests, [], 'startup, autocomplete, metadata and card insertion need no card JSON HTTP requests');

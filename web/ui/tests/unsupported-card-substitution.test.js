@@ -8,6 +8,7 @@ import {
   resetKnownSubstitutions,
   substituteUnsupportedCards,
 } from "../src/lib/unsupported-card-substitution.js";
+import { installEmbeddedCardCatalog } from "../src/lib/embedded-card-catalog.js";
 
 test("takes the colour a card leans on most", () => {
   assert.equal(dominantManaColor("{2}{R}{R}"), "R");
@@ -69,6 +70,37 @@ test("falls back to the colourless basic when no printing is on hand", async () 
     fetchImpl: stubFetch({}),
   });
   assert.deepEqual(result.deck, ["Wastes"]);
+});
+
+test("source-only embedded cards retain mana colours for substitution without card HTTP", async () => {
+  const requested = [];
+  const release = installEmbeddedCardCatalog({
+    ready: Promise.resolve(),
+    getIndexJson: () => '{"cards":[]}',
+    getSourceJson: (route) => route === "uncompiled-embedded-spell" ? JSON.stringify({
+      canonicalName: "Uncompiled Embedded Spell",
+      group: { name: "Uncompiled Embedded Spell", block: "Mana cost: {2}{G}{G}", kind: "single" },
+      artifacts: [],
+      scryfall: { mana_cost: "{2}{G}{G}" },
+    }) : null,
+  });
+  try {
+    const result = await substituteUnsupportedCards({
+      deck: ["Uncompiled Embedded Spell", "Missing Embedded Spell"], sideboard: [],
+    }, {
+      game: { filterKnownCardNames: async () => [] },
+      fetchImpl: async (url) => { requested.push(url); throw new Error("Card JSON is unavailable"); },
+    });
+    assert.deepEqual(result.deck, ["Forest", "Wastes"]);
+    assert.deepEqual(result.substitutions, [
+      { from: "Uncompiled Embedded Spell", to: "Forest" },
+      { from: "Missing Embedded Spell", to: "Wastes" },
+    ]);
+    assert.deepEqual(requested, []);
+  } finally {
+    release();
+    resetKnownSubstitutions();
+  }
 });
 
 test("leaves a fully supported deck untouched", async () => {

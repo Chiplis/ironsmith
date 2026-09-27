@@ -1,6 +1,7 @@
 import { cardRouteKey } from "./scryfall.js";
 import { versionedCardAssetUrl } from "./card-asset-cache.js";
 import { resolveCardAssetUrl } from "./card-art-url.js";
+import { readEmbeddedCardSource } from "./embedded-card-catalog.js";
 
 // A card the engine cannot load still has to occupy its slot in the deck, so
 // it becomes a basic land of the colour it leaned on most rather than blocking
@@ -34,11 +35,15 @@ const manaCostRequests = new Map();
 
 export async function loadCardManaCost(cardName, { fetchImpl = globalThis.fetch } = {}) {
   const route = cardRouteKey(cardName);
-  if (!route || typeof fetchImpl !== "function") return "";
+  if (!route) return "";
   if (manaCostRequests.has(route)) return manaCostRequests.get(route);
-  const request = Promise.resolve()
-    .then(() => fetchImpl(versionedCardAssetUrl(resolveCardAssetUrl(route)), { cache: "force-cache" }))
-    .then(async (response) => (response?.ok ? String((await response.json())?.scryfall?.mana_cost || "") : ""))
+  const request = (async () => {
+    const embedded = await readEmbeddedCardSource(route);
+    if (embedded !== undefined) return String(embedded?.scryfall?.mana_cost || "");
+    if (typeof fetchImpl !== "function") return "";
+    const response = await fetchImpl(versionedCardAssetUrl(resolveCardAssetUrl(route)), { cache: "force-cache" });
+    return response?.ok ? String((await response.json())?.scryfall?.mana_cost || "") : "";
+  })()
     // A card with no printing on hand tells us nothing about its colours; the
     // colourless basic is the honest stand-in.
     .catch(() => "");

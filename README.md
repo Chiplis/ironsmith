@@ -78,6 +78,16 @@ while. It also installs the `wasm32-unknown-unknown` target and the pinned `wasm
 CLI if they are missing. Later runs only pick up cards the registry does not have yet, and
 `./rebuild-wasm.sh --release` additionally runs the shipped optimizer over the WASM.
 
+The browser engine includes the full card catalogue as indexed Brotli-compressed
+chunks: compiled definitions, source text, aliases, and card metadata. Add Card,
+deck loading, and card metadata lookup read those chunks locally rather than
+fetching individual card JSON files. Only the needed chunks are decompressed;
+the catalogue is not expanded into memory in full. Card images still load from
+their image URLs. The rebuild script caches the bundle by its source contents,
+and the existing frontend build/deploy command includes it through the engine
+WASM. The generated `public/cards/` files remain available for older runtimes
+and development builds made without the embedded catalogue.
+
 ## Browser / npm package
 
 Build and verify the lean `ironsmith-wasm` npm artifact with:

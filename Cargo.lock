@@ -1279,6 +1279,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ironsmith-card-catalog"
+version = "0.1.0"
+dependencies = [
+ "brotli",
+ "brotli-decompressor",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+]
+
+[[package]]
 name = "ironsmith-card-source"
 version = "0.1.0"
 dependencies = [
@@ -1900,6 +1911,7 @@ version = "0.1.2"
 dependencies = [
  "console_error_panic_hook",
  "getrandom 0.4.2",
+ "ironsmith-card-catalog",
  "ironsmith-compiled-artifact",
  "ironsmith-core",
  "ironsmith-dynamic-compile",

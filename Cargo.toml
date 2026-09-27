@@ -2,6 +2,7 @@
 members = [
     "crates/ironsmith-tag-walk-derive",
     "crates/ironsmith-card-source",
+    "crates/ironsmith-card-catalog",
     "crates/ironsmith-artifact-baker",
     "crates/ironsmith-compiled-artifact",
     "crates/ironsmith-artifact-effect-decoder",
