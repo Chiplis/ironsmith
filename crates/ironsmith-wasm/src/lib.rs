@@ -570,6 +570,8 @@ pub(crate) struct CryptoRequirementView {
     #[serde(skip_serializing_if = "Option::is_none")]
     to: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    input_commitments: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     before_order: Option<Vec<u64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     after_order: Option<Vec<u64>>,
@@ -614,6 +616,7 @@ impl CryptoRequirementView {
             count: None,
             from: None,
             to: None,
+            input_commitments: None,
             before_order: None,
             after_order: None,
             random_count_before: None,
@@ -1396,6 +1399,7 @@ fn push_hidden_move_requirements(
         count: None,
         from: Some(zone_crypto_kind(before_card.zone).to_string()),
         to: Some(zone_crypto_kind(after_card.zone).to_string()),
+        input_commitments: None,
         before_order: None,
         after_order: None,
         random_count_before: None,
@@ -1543,6 +1547,7 @@ fn push_hidden_order_update_requirement(
             count: Some(after_order.len().min(u16::MAX as usize) as u16),
             from: None,
             to: None,
+            input_commitments: None,
             before_order: Some(before_ids),
             after_order: Some(after_ids),
             random_count_before: None,
@@ -1774,6 +1779,7 @@ impl WasmGame {
                     owner,
                     old_object_id,
                     new_object_id,
+                    from,
                     slot,
                     commitment,
                     ..
@@ -1787,7 +1793,16 @@ impl WasmGame {
                         .hidden_by_id
                         .get(&new_object_id)
                         .or_else(|| after.hidden_by_key.get(&key));
-                    if let (Some(before_card), Some(after_card)) = (before_card, after_card) {
+                    if let Some(after_card) = after_card {
+                        // A verified shuffle creates anonymous objects during
+                        // this command. Their subsequent draw/mill still needs
+                        // an opening even though no pre-command object existed.
+                        let intermediate_before = HiddenAuditCard {
+                            object_id: old_object_id,
+                            zone: from,
+                            ..after_card.clone()
+                        };
+                        let before_card = before_card.unwrap_or(&intermediate_before);
                         push_hidden_move_requirements(
                             &mut requirements,
                             &mut seen,
@@ -1799,6 +1814,7 @@ impl WasmGame {
                 }
                 HiddenInfoOperation::LibraryShuffle {
                     player,
+                    input_commitments,
                     before_order,
                     after_order,
                     random_count_before,
@@ -1816,10 +1832,7 @@ impl WasmGame {
                         continue;
                     }
                     let mut before_shuffle_order = effective_before_shuffle_order(
-                        player,
-                        &before,
-                        &after,
-                        &after_shuffle_order,
+                        player, &before, &after, &after_shuffle_order,
                     );
                     if before_shuffle_order.len() != after_shuffle_order.len() {
                         before_shuffle_order = before_order;
@@ -1863,6 +1876,7 @@ impl WasmGame {
                             count: Some(library_prefix_count.min(u16::MAX as usize) as u16),
                             from: None,
                             to: None,
+                            input_commitments: Some(input_commitments),
                             before_order: Some(
                                 before_shuffle_order.iter().map(|id| id.0).collect(),
                             ),
@@ -1930,6 +1944,7 @@ impl WasmGame {
                             count: Some(delta.min(u16::MAX as u64) as u16),
                             from: None,
                             to: None,
+                            input_commitments: None,
                             before_order: None,
                             after_order: None,
                             random_count_before: Some(random_count_before),
@@ -2024,6 +2039,7 @@ impl WasmGame {
                 count: Some(count),
                 from: None,
                 to: None,
+                input_commitments: None,
                 before_order: None,
                 after_order: None,
                 random_count_before: None,
@@ -2101,6 +2117,7 @@ impl WasmGame {
                     count: Some(after_library_order.len().min(u16::MAX as usize) as u16),
                     from: None,
                     to: None,
+                    input_commitments: None,
                     before_order: Some(before_shuffle_order.iter().map(|id| id.0).collect()),
                     after_order: Some(after_shuffle_order.iter().map(|id| id.0).collect()),
                     random_count_before: Some(before.random_count),
@@ -2142,6 +2159,7 @@ impl WasmGame {
                     count: Some((random_delta - shuffle_requirements).min(u16::MAX as u64) as u16),
                     from: None,
                     to: None,
+                    input_commitments: None,
                     before_order: None,
                     after_order: None,
                     random_count_before: Some(before.random_count),

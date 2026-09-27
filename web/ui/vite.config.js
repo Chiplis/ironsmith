@@ -17,9 +17,9 @@ export default defineConfig(({ mode }) => {
     'src/workers/wasmGameWorker.js', 'src/hooks/usePeerLobby.js',
     ...readdirSync(path.resolve(__dirname, 'src/hooks/peer-lobby')).filter(file => file.endsWith('.js'))
       .sort().map(file => `src/hooks/peer-lobby/${file}`),
-    ...['preview-crypto-material', 'multiplayer-audit', 'audit-replay', 'sync-commands',
+    ...['game-methods', 'preview-crypto-material', 'multiplayer-audit', 'audit-replay', 'sync-commands',
       'sync-object-identity', 'ziffle-runtime-manifest', 'ziffle-reveal-token-collection',
-      'ziffle-disclosure-origin'].map(file => `src/lib/${file}.js`),
+      'ziffle-disclosure-origin', 'ziffle-private-epochs'].map(file => `src/lib/${file}.js`),
   ];
   for (const file of protocolFiles) {
     runtimeHash.update(file).update(readFileSync(path.resolve(__dirname, file)));

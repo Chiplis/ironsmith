@@ -1,3 +1,4 @@
+import { isPrivateZiffleEpoch } from "../src/lib/ziffle-private-epochs.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -12,6 +13,7 @@ function extract(startText, endText) {
 test('shuffle randomness is queued before final private openings without collecting preliminary cards', async () => {
   const calls = [];
   const context = {
+    isPrivateZiffleEpoch,
     gameRef: { current: { injectTranscriptRandomSeeds: async material => calls.push(['randomness', material]) } },
     normalizeShuffleOrder: value => value || [],
     shuffleProofMatchesRequirement: (proof, requirement) => proof.requirementId === requirement.id,
@@ -105,4 +107,95 @@ test('private opening replay keys normalize public and origin identity aliases',
   ]) {
     assert.deepEqual(fresh(99, [changed]), [changed], 'each identity component participates in the replay key');
   }
+});
+
+test('private shuffle continuation deduplicates by ciphertext inputs despite retired runtime IDs', () => {
+  const first = { id: 'verifiable_shuffle:0:library:10:14', type: 'verifiable_shuffle', owner: 0,
+    zone: 'library', count: 3, randomCountBefore: 10, randomCountAfter: 14,
+    inputCommitments: ['ziffle:previous:0', 'ziffle:previous:2', 'ziffle:previous:3'],
+    beforeOrder: [10, 11, 12], afterOrder: [12, 10, 11] };
+  const fresh = freshRequirementsHarness(new Map([[50, [first]]]));
+  const replayed = { ...first, count: 2, beforeOrder: [90, 91, 92], afterOrder: [92, 90, 91] };
+  assert.deepEqual(fresh(51, [replayed]), [], 'the prior shuffle event cannot create another epoch on replay');
+  const differentInputs = { ...replayed, inputCommitments: ['ziffle:next:0', 'ziffle:next:2', 'ziffle:next:3'] };
+  assert.deepEqual(fresh(51, [differentInputs]), [differentInputs], 'a distinct ciphertext frontier is not discarded');
+  const { inputCommitments, ...withoutCamel } = replayed;
+  assert.deepEqual(fresh(51, [{ ...withoutCamel, input_commitments: inputCommitments }]), []);
+});
+
+test('future private positions wait for epoch consumption before requesting or injecting their identities', async () => {
+  const future = { type: 'private_open', owner: 0, viewer: 0, commitment: 'ziffle:future:1' };
+  const current = { type: 'private_open', owner: 0, viewer: 0, commitment: 'ziffle:current:0' };
+  let pending = true;
+  const collected = [];
+  const context = {
+    resolveLocalCryptoPlayerIndex: () => 0,
+    gameRef: { current: { pendingVerifiedHiddenLibraryPosition: async ({ deckHash }) =>
+      pending && deckHash === 'future' ? { position: 1 } : null } },
+    ziffleDeckHashFromCommitment: value => /^ziffle:([^:]+):/.exec(value)?.[1],
+    zifflePositionFromCommitment: value => Number(value.split(':')[2]),
+    batchedOwnerPrivateZiffleOpeningsForLocalViewer: async requirements => {
+      collected.push(requirements);
+      return { openings: [], handledRequirements: new Set(requirements) };
+    },
+  };
+  const open = new Function(...Object.keys(context), `${extract(
+    '  async function privateOpeningsForLocalViewer(', '\n\t  function hiddenPositionBatchRevealFromOpening('
+  )}\nreturn privateOpeningsForLocalViewer;`)(...Object.values(context));
+  await open([future, current]);
+  assert.deepEqual(collected, [[current]], 'a future private identity never reaches public-opening fallback');
+  pending = false;
+  await open([future]);
+  assert.deepEqual(collected[1], [future], 'the actual private hand can hydrate after its epoch is consumed');
+});
+
+test('receiver defers future encrypted private openings until the action installs their epoch', async () => {
+  const calls = [];
+  const context = {
+    resolveLocalCryptoPlayerIndex: () => 1,
+    ziffleDeckHashFromCommitment: value => /^ziffle:([^:]+):/.exec(value || '')?.[1],
+    privateOpeningFromEncryptedProof: async proof => { calls.push('decrypt'); return { ...proof, card: 'Island', slot: 1 }; },
+    sanitizeObjectBoundOpening: async opening => opening,
+    ensureZiffleOpeningProof: async opening => { calls.push('verify'); return opening; },
+    revealAuditOpenings: async () => calls.push('reveal'),
+  };
+  const reveal = new Function(...Object.keys(context), `${extract(
+    '  async function revealPrivateAuditProofsForLocalViewer(', '\n  async function batchedOwnerPrivateZiffleOpeningsForLocalViewer('
+  )}\nreturn revealPrivateAuditProofsForLocalViewer;`)(...Object.values(context));
+  const audit = { seq: 8, privateViewProofs: [{ type: 'encrypted_private_opening', owner: 0,
+    viewer: 1, positionCommitment: 'ziffle:future:1' }] };
+  await reveal(audit, { deferPrivateEpochDeckHashes: ['future'] });
+  assert.deepEqual(calls, []);
+  await reveal(audit);
+  assert.deepEqual(calls, ['decrypt', 'verify', 'reveal']);
+});
+
+test('an unsigned crypto-material request cannot reserve a private shuffle authorization lock', async () => {
+  const declaration = extract('  const authorizedCryptoMaterialRequirementsForRequest =', '\n  const answerCryptoMaterialRequest =');
+  const callbackStart = declaration.indexOf('async (conn, message) => {');
+  const callbackEnd = declaration.lastIndexOf('}, [');
+  assert.ok(callbackStart >= 0 && callbackEnd > callbackStart);
+  const calls = [];
+  const context = {
+    multiplayerRef: { current: { matchStarted: true, lastAppliedSequence: 7 } },
+    currentAuditMatchId: () => 'match',
+    playerIndexForPeerId: () => 0,
+    normalizePlayerIndex: Number,
+    auditStateHashRef: { current: 'head' },
+    INITIAL_AUDIT_STATE_HASH: 'initial',
+    gameRef: { current: { uiState: async () => ({ decision: { player: 0 } }) } },
+    isDecisionCommandCompatible: () => true,
+    verifyCurrentPublicCheckpointHash: async () => {},
+    verifySignedActionIntent: async () => { calls.push('signature'); throw new Error('Invalid signature'); },
+    resolveLocalCryptoPlayerIndex: () => 1,
+    previewRequirementsForCommand: async () => { calls.push('preview'); return []; },
+    freshCryptoRequirementsForSequence: (_seq, requirements) => requirements,
+    filterCryptoRequirementsForCommand: (_command, _state, requirements) => requirements,
+    servicesRef: { current: { previewZiffleActionRequirements: async () => calls.push('lock') } },
+  };
+  const authorize = new Function(...Object.keys(context), `return (${declaration.slice(callbackStart, callbackEnd)} });`)(...Object.values(context));
+  await assert.rejects(authorize({ peer: 'actor' }, { matchId: 'match', requesterIndex: 0,
+    actorIndex: 0, seq: 8, prevStateHash: 'head', publicCheckpointHash: 'checkpoint',
+    command: { type: 'priority_action' }, actionIntent: { signature: 'invalid' } }), /Invalid signature/);
+  assert.deepEqual(calls, ['signature']);
 });

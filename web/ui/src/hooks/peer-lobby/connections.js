@@ -1,3 +1,4 @@
+import { isPrivateZiffleEpoch, ziffleInputDeckFields } from "../../lib/ziffle-private-epochs.js";
 import { differsBeyondClock } from "../../lib/value-store.js";
 import { saveRelayLobby } from '../../lib/relay/session.js';
 import {
@@ -1093,7 +1094,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
     return Number.isSafeInteger(position) && position >= 0 ? position : null;
   }, []);
 
-	  const clearOwnerZiffleOpeningCache = useCallback((owner, matchId = currentAuditMatchId()) => {
+	  const clearOwnerZiffleOpeningCache = useCallback((owner, matchId = currentAuditMatchId(), options = {}) => {
 	    const normalizedOwner = Number(owner);
 	    if (!Number.isSafeInteger(normalizedOwner)) return;
 	    if (normalizedOwner === Number(resolveLocalPlayerIndex(multiplayerRef.current))) {
@@ -1106,7 +1107,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
       }
     }
     for (const key of [...ziffleRevealTokenCacheRef.current.keys()]) {
-      if (key.startsWith(`${normalizedOwner}:`)) {
+      if (!options.preserveCiphertextTokens && key.startsWith(`${normalizedOwner}:`)) {
         ziffleRevealTokenCacheRef.current.delete(key);
       }
 	    }
@@ -1576,6 +1577,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
       ...ceremony,
       keys: cloneMultiplayerPayload(keys || []),
       steps: cloneMultiplayerPayload(steps || []),
+      ...ziffleInputDeckFields(ceremony.inputDeck ? ceremony : explicitFallback || payloadFallback),
     };
   }, [matchPayloadCeremoniesForLookup, signedZiffleKeysForPayload]);
 
@@ -1924,14 +1926,23 @@ export function usePeerLobbyConnections(base, servicesRef) {
   // Hydration separately requires the state's current-card origin binding above.
   async function verifyZiffleOpeningCryptographicProof(opening, options = {}) {
     const origin = ziffleOriginAnchorFromOpening(opening);
+    const currentCeremony = ziffleCeremonyForOwner(opening.owner, {
+      commitment: opening.positionCommitment, shuffleProofs: options.shuffleProofs || [],
+      payload: options.payload || matchStartPayloadRef.current,
+    });
+    if (origin && isPrivateZiffleEpoch(currentCeremony)
+      && origin.originPositionCommitment !== String(opening.positionCommitment || "")) {
+      throw new Error("Private ciphertext epoch cannot inherit an earlier shuffle origin");
+    }
     if (origin) {
       const originCeremony = ziffleCeremonyForOwner(opening.owner, {
         commitment: origin.originPositionCommitment,
         payload: options.payload || matchStartPayloadRef.current,
+        shuffleProofs: options.shuffleProofs || [],
       });
       if (!originCeremony || ziffleCeremonyHasObjectOrder(originCeremony)
-        || String(originCeremony.context || "") !== currentAuditMatchId()) {
-        throw new Error("Ziffle immutable origin does not reference the initial ceremony");
+        || (String(originCeremony.context || "") !== currentAuditMatchId() && !isPrivateZiffleEpoch(originCeremony))) {
+        throw new Error("Ziffle origin does not reference an authenticated ciphertext epoch");
       }
       const initialOpening = { ...opening,
         position: origin.originPosition,
@@ -2051,6 +2062,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
       keyContext: ziffleKeyContextForCeremony(ceremony),
       keys: cloneMultiplayerPayload(ceremony.keys || []),
       steps: cloneMultiplayerPayload(ceremony.steps || []),
+      ...ziffleInputDeckFields(ceremony),
       cardPosition: position,
       tokens,
     });
@@ -2094,10 +2106,11 @@ export function usePeerLobbyConnections(base, servicesRef) {
     if (trustedOrigin) {
       const originCeremony = ziffleCeremonyForOwner(opening.owner, {
         commitment: trustedOrigin.originPositionCommitment,
+        shuffleProofs: options.shuffleProofs || [],
       });
       if (!originCeremony || ziffleCeremonyHasObjectOrder(originCeremony)
-        || String(originCeremony.context || "") !== currentAuditMatchId()) {
-        throw new Error("Ziffle immutable origin does not reference the initial ceremony");
+        || (String(originCeremony.context || "") !== currentAuditMatchId() && !isPrivateZiffleEpoch(originCeremony))) {
+        throw new Error("Ziffle origin does not reference an authenticated ciphertext epoch");
       }
       const anchoredOpening = {
         ...opening,
@@ -2121,6 +2134,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
         keyContext: ziffleKeyContextForCeremony(originCeremony),
         keys: cloneMultiplayerPayload(originCeremony.keys || []),
         steps: cloneMultiplayerPayload(originCeremony.steps || []),
+        ...ziffleInputDeckFields(originCeremony),
         cardPosition: trustedOrigin.originPosition,
         tokens,
       });
@@ -2197,6 +2211,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
       keyContext: ziffleKeyContextForCeremony(ceremony),
       keys: cloneMultiplayerPayload(ceremony.keys || []),
       steps: cloneMultiplayerPayload(ceremony.steps || []),
+      ...ziffleInputDeckFields(ceremony),
       cardPosition: position,
       tokens,
     });

@@ -135,7 +135,7 @@ test('committed Adventure opening preserves Stomp while choosing its targets', {
       state = await call('dispatch', command); refs.stateRef.current = state;
       await peer.call('dispatch', command);
       const postRequirements = state.crypto_requirements || state.cryptoRequirements || [];
-      const postOpenings = await services.current.buildLocalRequirementOpeningsForRequirements(postRequirements, { forceZiffleOpeningProof: true });
+      const postOpenings = await services.current.buildLocalRequirementOpeningsForRequirements(postRequirements, { forceZiffleOpeningProof: true, timing: 'post' });
       await services.current.verifyAuditOpeningsAgainstManifests(postOpenings);
       const ownerCheckpoint = await call('exportSyncCheckpoint');
       const ownAudit = await call('exportPublicAuditCheckpoint');

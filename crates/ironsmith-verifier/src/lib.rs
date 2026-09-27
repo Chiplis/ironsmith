@@ -7,6 +7,10 @@ pub fn execute(operation: Operation, input: &[u8]) -> Result<Vec<u8>, VerifierEr
         return ironsmith_verifier_ziffle::execute_keygen(input);
     }
 
+    ironsmith_verifier_ziffle::execute_with_input_chain(operation, input, dispatch)
+}
+
+fn dispatch(operation: Operation, input: &[u8]) -> Result<Vec<u8>, VerifierError> {
     let deck_count = ironsmith_verifier_ziffle::input_deck_count(input)?;
     match deck_count {
         2..=13 => ironsmith_verifier_shard_02_13::execute(operation, deck_count, input),

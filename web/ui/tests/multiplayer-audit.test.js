@@ -1,3 +1,4 @@
+import { buildZiffleInputDeck } from "../src/lib/ziffle-private-epochs.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
@@ -144,6 +145,7 @@ async function buildCurrentProtocolTranscript({
   privateViewDisclosures = [],
   initialPublicCheckpointHash = "initial-public-checkpoint",
   playerCount = null,
+  protocolVersion = CURRENT_AUDIT_PROTOCOL_VERSION,
 }) {
   const suppliedPlayers = players.map((player, offset) => ({
     ...player,
@@ -207,7 +209,7 @@ async function buildCurrentProtocolTranscript({
     entry.playerGenesisSignature = await buildSignedPlayerGenesis({
       keyPair,
       matchId,
-      protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
+      protocolVersion,
       timeoutMs: 300000,
       player: entry,
     }, webcrypto);
@@ -234,7 +236,7 @@ async function buildCurrentProtocolTranscript({
   }));
   const host = privatePlayers[0];
   const match = {
-    protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
+    protocolVersion,
     auditMatchId: matchId,
     lobbyId: matchId,
     hostPeerId: host.peerId,
@@ -294,7 +296,7 @@ async function buildCurrentProtocolTranscript({
     match,
     matchId,
     lobbyId: matchId,
-    protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
+    protocolVersion,
     signatureAlgorithm: "ecdsa-p256-sha256",
     genesis: match.genesis,
     initialStateHash: "0".repeat(64),
@@ -1740,6 +1742,7 @@ test("ziffle public openings must prove shuffled position to committed slot", as
       publicCheckpointHash: "public-checkpoint-after-ziffle-opening",
     }, webcrypto);
     return buildCurrentProtocolTranscript({
+      protocolVersion: 14,
       matchId,
       players: playerPublicKeys.map((auditPublicKey, index) => ({
         index,
@@ -2418,6 +2421,7 @@ test("live audit transcript verifier requires a shuffle-proof verifier", async (
       publicCheckpointHash: "public-checkpoint-after-shuffle",
     }, webcrypto);
     return buildCurrentProtocolTranscript({
+      protocolVersion: 14,
       matchId: "m-shuffle",
       players: playerPublicKeys.map((auditPublicKey, index) => ({
         index,
@@ -2938,4 +2942,119 @@ test("resync continuity rejects rollback and divergent local history", () => {
     }),
     /incomplete/,
   );
+});
+
+test('v15 signed audit accepts private subset chains and current-epoch openings for the original manifest', async () => {
+  const matchId = 'private-epoch-offline-audit';
+  const encryptionKeys = await Promise.all([0, 1].map(() => createAuditEncryptionKey(webcrypto)));
+  const keyPairs = await Promise.all([0, 1].map(() => createAuditSessionKey(webcrypto)));
+  const players = await Promise.all(keyPairs.map(async (keyPair, index) => ({ index, keyPair,
+    auditPublicKey: await exportAuditPublicKey(keyPair, webcrypto), deckCount: index === 0 ? 8 : 0,
+    auditEncryptionPublicKey: await exportAuditEncryptionPublicKey(encryptionKeys[index], webcrypto),
+    ziffleKey: { player: index, publicKeyHex: `private-key-${index}`, ownershipProofHex: `private-owner-${index}` } })));
+  const manifest = await buildPrivateDeckManifest({ matchId, owner: 0,
+    deck: ['Forest', 'Island', 'Swamp', 'Mountain', 'Plains', 'Grizzly Bears', 'Lightning Bolt', 'Nexus of Fate'] }, webcrypto);
+  const base = await buildCurrentProtocolTranscript({ matchId, players, actions: [],
+    deckAuditManifests: [publicDeckManifest(manifest)] });
+  const genesis = base.match.ziffleCeremonies[0];
+  const keys = base.match.ziffleKeys;
+  const first = { type: 'ziffle_shuffle', requirementId: 'first', owner: 0, zone: 'library', epoch: 1,
+    deckCount: 4, context: `${matchId}:action:1:shuffle:first:0:library`, keyContext: matchId,
+    deckHash: 'private-first', keys, steps: [],
+    inputDeck: buildZiffleInputDeck([genesis], [0, 2, 4, 7].map(position => `ziffle:${genesis.deckHash}:${position}`)) };
+  const second = { type: 'ziffle_shuffle', requirementId: 'second', owner: 0, zone: 'library', epoch: 2,
+    deckCount: 3, context: `${matchId}:action:2:shuffle:second:0:library`, keyContext: matchId,
+    deckHash: 'private-second', keys, steps: [],
+    inputDeck: buildZiffleInputDeck([genesis, first], ['ziffle:private-first:0', 'ziffle:private-first:2', `ziffle:${genesis.deckHash}:1`]) };
+  const plainOpening = { ...await buildDeckSlotOpening({ manifest, slot: 7 }, webcrypto),
+    position: 1, positionCommitment: 'ziffle:private-second:1',
+    originPosition: 1, originPositionCommitment: 'ziffle:private-second:1', timing: 'post' };
+  const tokens = keys.map(key => ({ player: key.player, publicKeyHex: key.publicKeyHex,
+    tokenHex: `token-${key.player}`, proofHex: `token-proof-${key.player}` }));
+  const command = { type: 'priority_action', action_ref: { kind: 'pass_priority' } };
+  const build = async (proofs, opening, privateMaterial = null) => {
+    const actions = [];
+    let previous = '0'.repeat(64);
+    for (const [index, proof] of proofs.entries()) {
+      const audit = await buildSignedActionEnvelope({ keyPair: keyPairs[0], matchId, seq: index + 1,
+        actor: 0, prevStateHash: previous, command, shuffleProofs: [proof],
+        openings: index === 1 && opening ? [opening] : [],
+        privateViewProofs: index === 1 && privateMaterial ? [privateMaterial.proof] : [],
+        publicCheckpointHash: `checkpoint-${index + 1}` }, webcrypto);
+      actions.push({ seq: index + 1, actorIndex: 0, command, audit });
+      previous = audit.nextStateHash;
+    }
+    return buildCurrentProtocolTranscript({ matchId, players, actions, deckAuditManifests: [publicDeckManifest(manifest)],
+      privateViewDisclosures: privateMaterial ? [privateMaterial.disclosure] : [] });
+  };
+  const verifiedRoot = proof => ({ deckCount: proof.deckCount, deckHash: proof.deckHash,
+    rootDeckHash: genesis.deckHash, rootContext: matchId, universeCount: 8 });
+  for (const compact of [false, true]) {
+    const opening = { ...plainOpening,
+      ziffleReveal: buildZiffleOpeningProof({ opening: plainOpening, ceremony: second, tokens, compact }) };
+    assert.deepEqual(opening.ziffleReveal.inputDeck, compact ? undefined : second.inputDeck,
+      'compact openings reuse the accepted graph without retransmitting it for every card');
+    const calls = [];
+    const options = {
+      verifyShuffleProof: async proof => { calls.push(['shuffle', proof.deckHash]); return verifiedRoot(proof); },
+      verifyZiffleOpening: async ({ ceremony, proof }) => {
+        assert.equal(ceremony.deckCount, 3);
+        assert.equal(ceremony.inputDeck.universeCount, 8);
+        assert.deepEqual(ceremony.inputDeck, second.inputDeck);
+        assert.equal(proof.originalSlot, 7, 'manifest label may exceed the current collection size');
+        calls.push(['opening', ceremony.deckHash]);
+        return { originalSlot: 7 };
+      },
+    };
+    assert.equal((await verifyEnvelopeOnlyTranscript(await build([first, second], opening), options)).valid, true);
+    assert.deepEqual(calls, [['shuffle', 'private-first'], ['shuffle', 'private-second'], ['opening', 'private-second']]);
+    const payload = { type: 'private_view_opening', matchId, requirementId: 'private_open:0:library:7:99',
+      owner: 0, viewer: 1, zone: 'library', objectId: 99, opening: { ...opening, objectId: 99, timing: 'private' } };
+    const privateMaterial = {
+      proof: { type: 'encrypted_private_opening', owner: 0, viewer: 1, zone: 'library', objectId: 99,
+        position: 1, positionCommitment: opening.positionCommitment,
+        encryptedOpening: await encryptPrivateAuditPayload({ recipientPublicKey: players[1].auditEncryptionPublicKey, payload }, webcrypto) },
+      disclosure: { seq: 2, matchId, payload },
+    };
+    calls.length = 0;
+    assert.equal((await verifyEnvelopeOnlyTranscript(await build([first, second], null, privateMaterial), options)).valid, true);
+    assert.deepEqual(calls, [['shuffle', 'private-first'], ['shuffle', 'private-second'], ['opening', 'private-second']],
+      'postgame private disclosures receive the same ciphertext/manifest proof checks as public openings');
+    const wrongPosition = structuredClone(privateMaterial);
+    wrongPosition.proof.position = 0;
+    await assert.rejects(verifyEnvelopeOnlyTranscript(await build([first, second], null, wrongPosition), options), /position does not match/);
+    for (const [field, value] of [['slot', 7], ['commitment', opening.commitment], ['requirementId', payload.requirementId], ['card', opening.card]]) {
+      const leakingHeader = structuredClone(privateMaterial);
+      leakingHeader.proof[field] = value;
+      const leakingTranscript = await build([first, second], null, leakingHeader);
+      await assert.rejects(verifyEnvelopeOnlyTranscript(leakingTranscript, options), /exposes private/);
+      await assert.rejects(verifyEnvelopeOnlyTranscript(leakingTranscript, { ...options, requirePrivateViewDisclosures: false }), /exposes private/);
+    }
+    await assert.rejects(verifyEnvelopeOnlyTranscript(await build([first, second], null, privateMaterial), {
+      ...options, verifyZiffleOpening: async () => { throw new Error('invalid private disclosure token proof'); },
+    }), /invalid private disclosure token proof/);
+
+    const staleAnchor = { ...plainOpening, originPosition: 0,
+      originPositionCommitment: `ziffle:${genesis.deckHash}:0` };
+    staleAnchor.ziffleReveal = buildZiffleOpeningProof({ opening: staleAnchor, ceremony: genesis, tokens, compact });
+    await assert.rejects(verifyEnvelopeOnlyTranscript(await build([first, second], staleAnchor), options), /origin across a private shuffle/);
+    const wrongHistory = structuredClone(second);
+    wrongHistory.inputDeck.epochs[0].steps[0].deckHex = 'different-signed-owner-root';
+    await assert.rejects(verifyEnvelopeOnlyTranscript(await build([first, wrongHistory], opening), options), /accepted signed transcript/);
+    const consumedSource = structuredClone(second);
+    consumedSource.inputDeck.sources[0] = { epoch: 0, position: 0 };
+    await assert.rejects(verifyEnvelopeOnlyTranscript(await build([first, consumedSource], opening), options), /already consumed/);
+    const alteredOpening = structuredClone(opening);
+    alteredOpening.ziffleReveal.inputDeck = structuredClone(second.inputDeck);
+    alteredOpening.ziffleReveal.inputDeck.epochs[0].steps[0].proofHex = 'another-history';
+    await assert.rejects(verifyEnvelopeOnlyTranscript(await build([first, second], alteredOpening), options), /accepted encrypted input history/);
+    await assert.rejects(verifyEnvelopeOnlyTranscript(await build([first, second], opening), {
+      ...options, verifyShuffleProof: async proof => ({ ...verifiedRoot(proof), rootDeckHash: 'other-owner' }),
+    }), /signed initial deck/);
+  }
+  const legacy = { ...first, beforeOrder: [1, 2, 3, 4], afterOrder: [4, 3, 2, 1] };
+  delete legacy.inputDeck;
+  await assert.rejects(verifyEnvelopeOnlyTranscript(await build([legacy]), {
+    verifyShuffleProof: async proof => verifiedRoot(proof),
+  }), /linked legacy shuffle/);
 });

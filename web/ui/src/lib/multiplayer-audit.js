@@ -1,3 +1,4 @@
+import { assertZiffleEpochHistory, assertZiffleEpochVerification, ziffleInputDeckFields } from "./ziffle-private-epochs.js";
 import { sha256Bytes } from "./sha256.js";
 import { WITNESS_DISPUTE_TYPE, WITNESS_FORFEIT_REASON, verifyForfeitCertificate, verifyTranscriptWitness, verifyWitnessDispute } from "./tournament/witness-protocol.js";
 
@@ -17,7 +18,8 @@ export const DISCONNECT_FORFEIT_REASON = "disconnect_timeout_policy";
 export const DISCONNECT_AUTO_FORFEIT_MS = 60 * 1000;
 export const PROTOCOL_RESPONSE_TIMEOUT_REASON = "protocol_response_timeout_policy";
 export const PROTOCOL_RESPONSE_TIMEOUT_MS = 120 * 1000;
-export const CURRENT_AUDIT_PROTOCOL_VERSION = 14;
+export const CURRENT_AUDIT_PROTOCOL_VERSION = 15;
+const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, CURRENT_AUDIT_PROTOCOL_VERSION]);
 export const CURRENT_AUDIT_MIN_PLAYERS = 2;
 export const CURRENT_AUDIT_MAX_PLAYERS = 4;
 export const ZIFFLE_OPENING_PROOF_TYPE = "ziffle_position_opening_v1";
@@ -713,10 +715,26 @@ export async function decryptPrivateAuditPayload({
   return payload;
 }
 
+function assertOpaquePrivateViewHeader(proof) {
+  const position = zifflePositionFromCommitment(proof?.positionCommitment);
+  if (!ziffleDeckHashFromCommitment(proof?.positionCommitment) || position == null
+    || proof?.position == null || !Number.isSafeInteger(Number(proof.position))
+    || Number(proof.position) !== position) {
+    throw new Error("Private-view disclosure position does not match the signed proof");
+  }
+  for (const field of ["slot", "commitment", "requirementId", "card"]) {
+    if (Object.hasOwn(proof, field)) {
+      throw new Error(`Private-view Ziffle header exposes private ${field}`);
+    }
+  }
+  return position;
+}
+
 export async function verifyPrivateViewDisclosure({
   proof,
   disclosure,
   manifest,
+  requireZifflePositionBinding = false,
 }, cryptoImpl = globalThis.crypto) {
   if (!proof?.encryptedOpening?.plaintextHash) {
     throw new Error("Private-view proof is missing its plaintext hash");
@@ -729,6 +747,23 @@ export async function verifyPrivateViewDisclosure({
   const opening = payload?.opening;
   if (!opening) {
     throw new Error("Private-view disclosure is missing the card opening");
+  }
+  if (requireZifflePositionBinding) {
+    const position = assertOpaquePrivateViewHeader(proof);
+    if (opening.position == null || Number(opening.position) !== position
+      || String(opening.positionCommitment || "") !== String(proof.positionCommitment)) {
+      throw new Error("Private-view disclosure position does not match the signed proof");
+    }
+    for (const field of ["owner", "viewer", "objectId"]) {
+      if (payload?.[field] == null || proof?.[field] == null
+        || Number(payload[field]) !== Number(proof[field])) {
+        throw new Error(`Private-view disclosure ${field} does not match the signed proof`);
+      }
+    }
+    if (String(payload.zone || "") !== String(proof.zone || "")
+      || Number(opening.owner) !== Number(proof.owner)) {
+      throw new Error("Private-view disclosure identity does not match the signed proof");
+    }
   }
   const valid = await verifyCardOpeningAgainstManifest({
     manifest,
@@ -2096,7 +2131,7 @@ export async function verifySignedMatchGenesis(match, cryptoImpl = globalThis.cr
   if (!genesis || genesis.kind !== "ironsmith-match-genesis-v1") {
     throw new Error("Match start payload is missing signed genesis");
   }
-  if (Number(match?.protocolVersion || 0) !== CURRENT_AUDIT_PROTOCOL_VERSION) {
+  if (!SUPPORTED_AUDIT_PROTOCOL_VERSIONS.has(Number(match?.protocolVersion || 0))) {
     throw new Error("Match genesis uses an unsupported protocol version");
   }
   const players = Array.isArray(match?.players) ? match.players : [];
@@ -2795,6 +2830,14 @@ function validatedShuffleOrderForProof(proof, seq) {
 }
 
 function ziffleCeremonyFromShuffleProof(proof, seq) {
+  if (proof?.inputDeck) {
+    return {
+      owner: Number(proof.owner), deckCount: Number(proof.deckCount),
+      context: String(proof.context || ""), keyContext: String(proof.keyContext || proof.context || ""),
+      keys: proof.keys || [], steps: proof.steps || [], deckHash: String(proof.deckHash || ""),
+      ...ziffleInputDeckFields(proof),
+    };
+  }
   const { beforeOrder, afterOrder } = validatedShuffleOrderForProof(proof, seq);
   return {
     owner: Number(proof?.owner),
@@ -2811,6 +2854,30 @@ function ziffleCeremonyFromShuffleProof(proof, seq) {
 }
 
 function ziffleCeremonyFromOpeningProof(proof, fallbackCeremony = {}, seq = 0) {
+  if (proof?.inputDeck || fallbackCeremony?.inputDeck) {
+    if (!fallbackCeremony?.inputDeck || (proof?.inputDeck
+      && canonicalJson(proof.inputDeck) !== canonicalJson(fallbackCeremony.inputDeck))) {
+      throw new Error(`Ziffle opening at sequence ${seq} changes its accepted encrypted input history`);
+    }
+    for (const key of ["beforeOrder", "afterOrder", "before_order", "after_order", "authenticatedOrder"]) {
+      if (Object.hasOwn(proof, key)) throw new Error("Private opening contains an object-order mapping");
+    }
+    const ceremony = {
+      ...fallbackCeremony,
+      owner: Number(proof.owner ?? fallbackCeremony.owner),
+      deckCount: Number(proof.deckCount ?? fallbackCeremony.deckCount),
+      context: String(proof.context || fallbackCeremony.context || ""),
+      keyContext: String(proof.keyContext || fallbackCeremony.keyContext || ""),
+      keys: proof.keys?.length ? proof.keys : fallbackCeremony.keys || [],
+      steps: proof.steps?.length ? proof.steps : fallbackCeremony.steps || [],
+      deckHash: String(proof.deckHash || fallbackCeremony.deckHash || ""),
+      ...ziffleInputDeckFields(fallbackCeremony),
+    };
+    if (canonicalJson(ceremony.steps) !== canonicalJson(fallbackCeremony.steps || [])) {
+      throw new Error("Private opening changes its accepted shuffle proof");
+    }
+    return ceremony;
+  }
   const beforeOrder = normalizeShuffleOrder(proof?.beforeOrder ?? proof?.before_order);
   const afterOrder = normalizeShuffleOrder(proof?.afterOrder ?? proof?.after_order);
   if (beforeOrder.length > 0 || afterOrder.length > 0) {
@@ -2914,6 +2981,7 @@ export function buildZiffleOpeningProof({
     context: String(ceremony?.context || ""),
     keyContext: String(ceremony?.keyContext || ceremony?.context || ""),
     tokens: normalizeZiffleRevealTokens(tokens, position),
+    ...(!compact && ceremony?.inputDeck ? ziffleInputDeckFields(ceremony) : {}),
   };
   if (!compact) {
     proof.keys = (Array.isArray(ceremony?.keys) ? ceremony.keys : []).map((key) => ({
@@ -3117,6 +3185,14 @@ async function verifyZifflePositionOpening({
   const origin = ziffleOriginAnchorFromOpening(opening);
   const explicitPosition = opening?.position == null ? null : Number(opening.position);
   const commitmentPosition = zifflePositionFromCommitment(opening?.positionCommitment);
+  const currentPrivateEpoch = ziffleCeremonies.find(entry => entry?.inputDeck
+    && Number(entry.owner) === Number(opening.owner)
+    && String(entry.deckHash || "") === ziffleDeckHashFromCommitment(opening?.positionCommitment));
+  if (currentPrivateEpoch && (!origin
+    || origin.originPosition !== commitmentPosition
+    || origin.originPositionCommitment !== String(opening.positionCommitment))) {
+    throw new Error(`Ziffle opening at sequence ${seq} retains an origin across a private shuffle`);
+  }
   if (origin && (commitmentPosition == null
     || (explicitPosition != null && explicitPosition !== commitmentPosition))) {
     throw new Error(`Ziffle opening at sequence ${seq} has an invalid current position`);
@@ -3209,7 +3285,10 @@ async function verifyZifflePositionOpening({
   if (opening.commitment && proof.commitment && String(proof.commitment) !== String(opening.commitment)) {
     throw new Error(`Ziffle opening at sequence ${seq} proof card commitment mismatch`);
   }
-  if (Number(proof.deckCount) !== Number(manifest.deckCount || 0)) {
+  const privateEpoch = Boolean(orderedCeremony?.inputDeck);
+  if (Number(privateEpoch ? orderedCeremony.inputDeck.universeCount : proof.deckCount) !== Number(manifest.deckCount || 0)
+    || (privateEpoch && Number(proof.deckCount) !== Number(orderedCeremony.deckCount))
+    || Number(position) >= Number(proof.deckCount)) {
     throw new Error(`Ziffle opening at sequence ${seq} proof deck count mismatch`);
   }
   const matchId = String(expectedMatchId || "");
@@ -3221,7 +3300,7 @@ async function verifyZifflePositionOpening({
   if (proofKeyContext !== matchId) {
     throw new Error(`Ziffle opening at sequence ${seq} uses a mismatched ziffle key context`);
   }
-  if (proofContext !== matchId) {
+  if (proofContext !== matchId && !privateEpoch) {
     throw new Error(`Ziffle opening at sequence ${seq} must prove its immutable genesis origin`);
   }
   const ceremony = (Array.isArray(ziffleCeremonies) ? ziffleCeremonies : []).find((entry) =>
@@ -3269,6 +3348,15 @@ async function verifyZifflePositionOpening({
     throw new Error(`Ziffle opening at sequence ${seq} reveals a different committed slot`);
   }
   const proofCeremony = ziffleCeremonyFromOpeningProof(proof, ceremonyForProof, seq);
+  if (privateEpoch) {
+    const ownerHistory = [];
+    for (const entry of ziffleCeremonies) {
+      if (Number(entry.owner) !== owner) continue;
+      if (entry.context === ceremony.context && entry.deckHash === ceremony.deckHash) break;
+      if (!ownerHistory.some(known => known.context === entry.context)) ownerHistory.push(entry);
+    }
+    assertZiffleEpochHistory(proofCeremony, ownerHistory);
+  }
   if (hasObjectOrder(proofCeremony)) {
     throw new Error(`Ziffle opening at sequence ${seq} genesis proof cannot contain an object order`);
   }
@@ -3445,6 +3533,11 @@ async function verifyPrivateViewProofs(
     seq,
     expectedMatchId,
     requireDisclosures,
+    protocolVersion = 14,
+    ziffleCeremonies = [],
+    verifyZiffleOpening,
+    expectedZiffleKeys = [],
+    expectedShuffleMatchId = expectedMatchId,
   },
   cryptoImpl = globalThis.crypto,
 ) {
@@ -3459,6 +3552,10 @@ async function verifyPrivateViewProofs(
       throw new Error("Private-view proof references an unknown viewer");
     }
     if (type === "encrypted_private_opening") {
+      if (protocolVersion >= 15 && (proof.position != null
+        || ziffleDeckHashFromCommitment(proof.positionCommitment))) {
+        assertOpaquePrivateViewHeader(proof);
+      }
       if (!proof?.encryptedOpening?.ciphertextHex || !proof?.encryptedOpening?.plaintextHash) {
         throw new Error("Private-view proof is missing encrypted opening material");
       }
@@ -3493,7 +3590,18 @@ async function verifyPrivateViewProofs(
           proof,
           disclosure: disclosure.disclosure,
           manifest,
+          requireZifflePositionBinding: protocolVersion >= 15 && Boolean(
+            ziffleDeckHashFromCommitment(proof.positionCommitment)
+            || ziffleDeckHashFromCommitment(disclosure.payload?.opening?.positionCommitment)
+          ),
         }, cryptoImpl);
+        if (protocolVersion >= 15) {
+          await verifyAuditOpenings({
+            openings: [disclosure.payload.opening], manifests, ziffleCeremonies,
+            verifyZiffleOpening, expectedZiffleKeys, expectedMatchId: expectedShuffleMatchId,
+            players, seq,
+          }, cryptoImpl);
+        }
       }
       continue;
     }
@@ -3543,6 +3651,8 @@ async function verifyShuffleProofList({
   verifyShuffleProof,
   expectedZiffleKeys = [],
   expectedMatchId = "",
+  acceptedCeremonies = [],
+  protocolVersion = 14,
   players = new Map(),
   seq,
 }) {
@@ -3581,7 +3691,16 @@ async function verifyShuffleProofList({
       throw new Error("Live audit transcript contains shuffle proofs but no verifier was provided");
     }
     const ceremony = ziffleCeremonyFromShuffleProof(proof, seq);
-    await verifyShuffleProof(proof);
+    if (proof.inputDeck) {
+      const accepted = [...acceptedCeremonies, ...verifiedCeremonies]
+        .filter(entry => Number(entry.owner) === owner);
+      assertZiffleEpochHistory(proof, accepted);
+      const verified = await verifyShuffleProof(proof);
+      assertZiffleEpochVerification(proof, verified, accepted);
+    } else {
+      if (Number(protocolVersion) >= 15) throw new Error("Private-shuffle transcript contains a linked legacy shuffle");
+      await verifyShuffleProof(proof);
+    }
     verifiedCeremonies.push(ceremony);
   }
   return verifiedCeremonies;
@@ -3658,10 +3777,10 @@ export async function verifyLiveAuditTranscript(
   if (!transcript.match || typeof transcript.match !== "object" || !transcript.genesis) {
     throw new Error("Live audit transcript is missing current protocol match genesis");
   }
-  if (Number(transcript.protocolVersion || 0) !== CURRENT_AUDIT_PROTOCOL_VERSION) {
+  if (!SUPPORTED_AUDIT_PROTOCOL_VERSIONS.has(Number(transcript.protocolVersion || 0))) {
     throw new Error("Live audit transcript uses an unsupported protocol version");
   }
-  if (Number(transcript.match.protocolVersion || 0) !== CURRENT_AUDIT_PROTOCOL_VERSION) {
+  if (Number(transcript.match.protocolVersion || 0) !== Number(transcript.protocolVersion || 0)) {
     throw new Error("Live audit transcript match uses an unsupported protocol version");
   }
   const transcriptMatch = {
@@ -3898,6 +4017,8 @@ export async function verifyLiveAuditTranscript(
       verifyShuffleProof: options.verifyShuffleProof,
       expectedZiffleKeys,
       expectedMatchId: expectedShuffleMatchId,
+      acceptedCeremonies: verifiedZiffleCeremonies,
+      protocolVersion: transcript.protocolVersion,
       players,
       seq: expectedSeq,
     });
@@ -3925,6 +4046,11 @@ export async function verifyLiveAuditTranscript(
       seq: expectedSeq,
       expectedMatchId,
       requireDisclosures: options.requirePrivateViewDisclosures !== false,
+      protocolVersion: Number(transcript.protocolVersion),
+      ziffleCeremonies: actionVerifiedZiffleCeremonies,
+      verifyZiffleOpening: options.verifyZiffleOpening,
+      expectedZiffleKeys,
+      expectedShuffleMatchId,
     }, cryptoImpl);
     for (const reveal of audit.rngReveals || []) {
       await verifyFairRandomReveal({
@@ -3952,7 +4078,6 @@ export async function verifyLiveAuditTranscript(
     }
     stateHash = audit.nextStateHash;
     finalPublicCheckpointHash = String(audit.publicCheckpointHash || "");
-    verifiedZiffleCeremonies.push(...actionZiffleCeremonies);
     expectedSeq += 1;
   }
   if (

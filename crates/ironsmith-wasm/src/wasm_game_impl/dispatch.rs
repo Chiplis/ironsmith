@@ -116,6 +116,52 @@ fn zone_from_ui_name(zone_name: &str) -> Result<Zone, String> {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VerifiedHiddenLibraryEpochInput {
+    owner: u8,
+    deck_hash: String,
+    count: usize,
+    #[serde(default)]
+    random_count_before: Option<u64>,
+    #[serde(default)]
+    expected_inputs: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VerifiedHiddenLibraryPositionInput {
+    owner: u8,
+    deck_hash: String,
+    position: u16,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PendingVerifiedHiddenLibraryPositionMetadata {
+    owner: u8,
+    zone: &'static str,
+    slot: u16,
+    commitment: String,
+    public_slot: u16,
+    public_commitment: String,
+    origin_slot: u16,
+    origin_commitment: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VerifiedHiddenLibraryOpeningInput {
+    owner: u8,
+    deck_hash: String,
+    position: u16,
+    card_name: String,
+    #[serde(default)]
+    original_slot: Option<u16>,
+    #[serde(default)]
+    commitment: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 struct ValidatedHiddenPositionReveal {
     input: RevealHiddenPositionInput,
@@ -128,6 +174,140 @@ struct ValidatedHiddenPositionReveal {
 #[cfg(test)]
 mod dispatch_tests {
     use super::*;
+
+    #[test]
+    fn verified_library_epoch_is_installed_into_nested_replay_checkpoints() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let owner = PlayerId::from_index(0);
+        let id = wasm.game.create_hidden_card_placeholder(owner, Zone::Library, 0, "ziffle:before:0".into());
+        let checkpoint = wasm.capture_replay_checkpoint();
+        wasm.pending_replay_action = Some(PendingReplayAction {
+            checkpoint: checkpoint.clone(), root: ReplayRoot::Advance, nested_answers: Vec::new(),
+        });
+        wasm.pending_live_continuation = Some(LivePriorityContinuation {
+            checkpoint: checkpoint.clone(),
+            root: PendingPriorityContinuation::ApplyDecisionContext(DecisionContext::SelectOptions(
+                ironsmith::decisions::context::SelectOptionsContext::new(
+                    owner, Some(id), "Pending shuffle", Vec::new(), 0, 0,
+                ),
+            )),
+            answers: Vec::new(), speculative_progress: Some(GameProgress::Continue),
+        });
+        wasm.pending_action_checkpoint = Some(checkpoint.clone());
+        wasm.priority_epoch_checkpoint = Some(checkpoint);
+        wasm.queue_verified_hidden_library_epoch_input(VerifiedHiddenLibraryEpochInput {
+            owner: 0, deck_hash: "after".into(), count: 1, random_count_before: Some(0),
+            expected_inputs: Some(vec!["ziffle:before:0".into()]),
+        }).unwrap();
+        assert!(wasm.pending_live_continuation.as_ref().unwrap().speculative_progress.is_none());
+        let mut games = vec![wasm.game.clone(),
+            (*wasm.pending_replay_action.as_ref().unwrap().checkpoint.game).clone(),
+            (*wasm.pending_live_continuation.as_ref().unwrap().checkpoint.game).clone(),
+            (*wasm.pending_action_checkpoint.as_ref().unwrap().game).clone(),
+            (*wasm.priority_epoch_checkpoint.as_ref().unwrap().game).clone()];
+        for game in &mut games {
+            game.shuffle_player_library(owner);
+            assert!(game.verified_hidden_library_epoch_error().is_none());
+            let new_id = game.player(owner).unwrap().library[0];
+            assert_ne!(new_id, id);
+            assert_eq!(game.hidden_card_info(new_id).unwrap().commitment, "ziffle:after:0");
+        }
+        assert!(games.windows(2).all(|pair| pair[0].player(owner).unwrap().library == pair[1].player(owner).unwrap().library));
+    }
+
+    #[test]
+    fn verified_library_epoch_public_opening_is_authenticated_before_post_shuffle_move() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let owner = PlayerId::from_index(0);
+        for slot in 0..3 {
+            wasm.game.create_hidden_card_placeholder(owner, Zone::Library, slot, format!("ziffle:old:{slot}"));
+        }
+        wasm.queue_verified_hidden_library_epoch_input(VerifiedHiddenLibraryEpochInput {
+            owner: 0, deck_hash: "future".into(), count: 3, random_count_before: Some(0),
+            expected_inputs: Some((0..3).map(|slot| format!("ziffle:old:{slot}")).collect()),
+        }).unwrap();
+        let position = VerifiedHiddenLibraryPositionInput { owner: 0, deck_hash: "future".into(), position: 2 };
+        let metadata = wasm.pending_verified_hidden_library_position_metadata(&position).unwrap();
+        assert_eq!(metadata.origin_commitment, "ziffle:future:2");
+        assert!(wasm.pending_verified_hidden_library_position_metadata(&VerifiedHiddenLibraryPositionInput {
+            owner: 1, ..position.clone()
+        }).is_none());
+        assert!(wasm.pending_verified_hidden_library_position_metadata(&VerifiedHiddenLibraryPositionInput {
+            position: 3, ..position.clone()
+        }).is_none());
+        wasm.queue_verified_hidden_library_opening_input(VerifiedHiddenLibraryOpeningInput {
+            owner: 0, deck_hash: "future".into(), position: 2, card_name: "Mountain".into(),
+            original_slot: Some(7), commitment: Some("manifest:7".into()),
+        }).unwrap();
+        assert!(wasm.queue_verified_hidden_library_opening_input(VerifiedHiddenLibraryOpeningInput {
+            owner: 0, deck_hash: "future".into(), position: 2, card_name: "Island".into(),
+            original_slot: Some(7), commitment: Some("manifest:7".into()),
+        }).unwrap_err().contains("conflicting public opening"));
+        wasm.game.shuffle_player_library(owner);
+        assert!(wasm.pending_verified_hidden_library_position_metadata(&position).is_none(), "consumed epochs cannot authorize future openings");
+        let library = wasm.game.player(owner).unwrap().library.to_vec();
+        assert!(wasm.game.is_hidden_card_placeholder(library[0]));
+        assert!(wasm.game.is_hidden_card_placeholder(library[1]));
+        assert_eq!(wasm.game.object(library[2]).unwrap().name, "Mountain");
+        let info = wasm.game.hidden_card_info(library[2]).unwrap();
+        assert_eq!(info.slot, 7);
+        assert_eq!(info.commitment, "manifest:7");
+        assert_eq!(info.origin_slot, Some(2));
+        assert_eq!(info.origin_commitment.as_deref(), Some("ziffle:future:2"));
+        assert_eq!(info.public_commitment.as_deref(), Some("ziffle:future:2"));
+        let milled = wasm.game.move_object_by_game_rule(library[2], Zone::Graveyard).unwrap();
+        assert_eq!(wasm.game.object(milled).unwrap().name, "Mountain");
+    }
+
+    #[test]
+    fn verified_library_epoch_private_draw_reveal_survives_a_pre_shuffle_continuation() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let owner = PlayerId::from_index(0);
+        for slot in 0..3 {
+            wasm.game.create_hidden_card_placeholder(owner, Zone::Library, slot, format!("ziffle:old:{slot}"));
+        }
+        wasm.queue_verified_hidden_library_epoch_input(VerifiedHiddenLibraryEpochInput {
+            owner: 0, deck_hash: "replay".into(), count: 3, random_count_before: Some(0), expected_inputs: None,
+        }).unwrap();
+        let checkpoint = wasm.capture_replay_checkpoint();
+        wasm.pending_live_continuation = Some(LivePriorityContinuation {
+            checkpoint: checkpoint.clone(),
+            root: PendingPriorityContinuation::ApplyDecisionContext(DecisionContext::SelectOptions(
+                ironsmith::decisions::context::SelectOptionsContext::new(owner, None, "After drawing", Vec::new(), 0, 0),
+            )), answers: Vec::new(), speculative_progress: None,
+        });
+        wasm.pending_replay_action = Some(PendingReplayAction {
+            checkpoint, root: ReplayRoot::Advance, nested_answers: Vec::new(),
+        });
+        wasm.game.shuffle_player_library(owner);
+        let drawn = wasm.game.draw_cards(owner, 1)[0];
+        let input = RevealHiddenPositionInput {
+            owner: 0, object_id: Some(drawn.0), position: 2, original_slot: 7, card_name: "Mountain".into(),
+            position_commitment: Some("ziffle:replay:2".into()), commitment: Some("manifest:7".into()),
+            recompute_decision: false,
+        };
+        let reveal = wasm.validate_hidden_position_reveal(&input).unwrap();
+        wasm.apply_validated_hidden_position_reveal(&reveal).unwrap();
+        let mut games = [
+            (*wasm.pending_live_continuation.as_ref().unwrap().checkpoint.game).clone(),
+            (*wasm.pending_replay_action.as_ref().unwrap().checkpoint.game).clone(),
+        ];
+        for game in &mut games {
+            game.shuffle_player_library(owner);
+            let top = *game.player(owner).unwrap().library.last().unwrap();
+            assert!(game.is_hidden_card_placeholder(top));
+            let redrawn = game.draw_cards(owner, 1)[0];
+            assert_eq!(redrawn, drawn);
+            assert_eq!(game.object(redrawn).unwrap().name, "Mountain");
+            assert_eq!(game.hidden_card_info(redrawn).unwrap().origin_commitment.as_deref(), Some("ziffle:replay:2"));
+        }
+    }
 
     #[test]
     fn known_hidden_reveal_preserves_physical_identity_and_current_characteristics() {
@@ -1823,6 +2003,42 @@ impl WasmGame {
         })
     }
 
+    fn preserve_verified_position_reveal_in_replay_checkpoints(
+        &mut self, reveal: &ValidatedHiddenPositionReveal,
+    ) -> Result<(), JsValue> {
+        let viewer = self.perspective;
+        let public = self.game.object(reveal.object_id).is_some_and(|object| object.zone.is_public())
+            && !self.game.is_face_down(reveal.object_id) && !self.game.is_foretold(reveal.object_id);
+        let registry = &self.registry;
+        let counters = snapshot_id_counters();
+        let install = |checkpoint: &mut ReplayCheckpoint| -> Result<(), JsValue> {
+            let info = &reveal.updated_info;
+            let commitment = info.public_commitment.as_deref().unwrap_or(&info.commitment);
+            let Some((hash, position)) = checkpoint.game.pending_verified_hidden_library_position(info.owner, commitment) else {
+                return Ok(());
+            };
+            checkpoint.id_counters.card = counters.card;
+            checkpoint.game.register_linked_face_family_from_catalog(&reveal.definition, registry);
+            if public {
+                checkpoint.game.queue_verified_hidden_library_public_opening(
+                    info.owner, &hash, position, &reveal.definition, Some(info.slot), Some(&info.commitment),
+                ).map_err(|error| JsValue::from_str(&error))?;
+            } else {
+                checkpoint.game.queue_verified_hidden_library_replay_opening(info, &reveal.definition, viewer)
+                    .map_err(|error| JsValue::from_str(&error))?;
+            }
+            Ok(())
+        };
+        if let Some(replay) = self.pending_replay_action.as_mut() { install(&mut replay.checkpoint)?; }
+        if let Some(continuation) = self.pending_live_continuation.as_mut() {
+            install(&mut continuation.checkpoint)?;
+            continuation.speculative_progress = None;
+        }
+        if let Some(checkpoint) = self.pending_action_checkpoint.as_mut() { install(checkpoint)?; }
+        if let Some(checkpoint) = self.priority_epoch_checkpoint.as_mut() { install(checkpoint)?; }
+        Ok(())
+    }
+
     fn apply_validated_hidden_position_reveal(
         &mut self,
         reveal: &ValidatedHiddenPositionReveal,
@@ -1838,6 +2054,7 @@ impl WasmGame {
             .ok_or_else(|| JsValue::from_str("opened object identity does not match reveal"))?;
         self.game
             .set_hidden_card_info(reveal.object_id, reveal.updated_info.clone());
+        self.preserve_verified_position_reveal_in_replay_checkpoints(reveal)?;
         self.reveal_hidden_position_in_live_continuation_checkpoint(
             reveal.owner,
             reveal.input.position,
@@ -2083,6 +2300,16 @@ impl WasmGame {
 
         let mut requirements = requirements?;
         prepare_preview_public_move_openings(&mut requirements, &crypto_before);
+        for requirement in &mut requirements {
+            if requirement.requirement_type == "public_open" && requirement.from.is_some()
+                && requirement.public_commitment.as_deref().or(requirement.commitment.as_deref())
+                    .is_some_and(|commitment| self.game.pending_verified_hidden_library_position(
+                        PlayerId::from_index(requirement.owner), commitment,
+                    ).is_some())
+            {
+                requirement.timing = Some("pre".into());
+            }
+        }
         serde_wasm_bindgen::to_value(&requirements).map_err(|e| {
             JsValue::from_str(&format!("failed to serialize crypto requirements: {e}"))
         })
@@ -2126,6 +2353,110 @@ impl WasmGame {
             );
         }
         Ok(())
+    }
+
+    fn queue_verified_hidden_library_epoch_input(
+        &mut self,
+        input: VerifiedHiddenLibraryEpochInput,
+    ) -> Result<(), String> {
+        let random_count_before = input.random_count_before
+            .unwrap_or_else(|| self.game.irreversible_random_count());
+        let install = |game: &GameState| game.queue_verified_hidden_library_epoch(
+            PlayerId::from_index(input.owner), input.deck_hash.clone(), input.count,
+            random_count_before, input.expected_inputs.clone(),
+        );
+        install(&self.game)?;
+        // Nested decisions restore their pre-instruction game before replay.
+        // Put the same counter-indexed schedule into those roots as well, so
+        // shuffle-then-draw and interrupted resolution use the verified epoch.
+        if let Some(replay) = self.pending_replay_action.as_ref() {
+            install(&replay.checkpoint.game)?;
+        }
+        if let Some(continuation) = self.pending_live_continuation.as_mut() {
+            install(&continuation.checkpoint.game)?;
+            // A cached "no" branch may already contain the preview shuffle.
+            // Re-execute it with the verified anonymous identities installed.
+            continuation.speculative_progress = None;
+        }
+        if let Some(checkpoint) = self.pending_action_checkpoint.as_ref() {
+            install(&checkpoint.game)?;
+        }
+        if let Some(checkpoint) = self.priority_epoch_checkpoint.as_ref() {
+            install(&checkpoint.game)?;
+        }
+        Ok(())
+    }
+
+    /// Install the public identity of a cryptographically verified shuffled
+    /// deck before replaying its command. No old-to-new permutation is accepted.
+    #[wasm_bindgen(js_name = queueVerifiedHiddenLibraryEpoch)]
+    pub fn queue_verified_hidden_library_epoch(&mut self, input: JsValue) -> Result<(), JsValue> {
+        let input: VerifiedHiddenLibraryEpochInput = serde_wasm_bindgen::from_value(input)
+            .map_err(|e| JsValue::from_str(&format!("invalid verified library epoch: {e}")))?;
+        self.queue_verified_hidden_library_epoch_input(input)
+            .map_err(|error| JsValue::from_str(&error))
+    }
+
+    fn pending_verified_hidden_library_position_metadata(
+        &self, input: &VerifiedHiddenLibraryPositionInput,
+    ) -> Option<PendingVerifiedHiddenLibraryPositionMetadata> {
+        let commitment = format!("ziffle:{}:{}", input.deck_hash, input.position);
+        self.game.pending_verified_hidden_library_position(PlayerId::from_index(input.owner), &commitment)?;
+        Some(PendingVerifiedHiddenLibraryPositionMetadata {
+            owner: input.owner, zone: "library", slot: input.position, commitment: commitment.clone(),
+            public_slot: input.position, public_commitment: commitment.clone(),
+            origin_slot: input.position, origin_commitment: commitment,
+        })
+    }
+
+    #[wasm_bindgen(js_name = pendingVerifiedHiddenLibraryPosition)]
+    pub fn pending_verified_hidden_library_position(&self, input: JsValue) -> Result<JsValue, JsValue> {
+        let input: VerifiedHiddenLibraryPositionInput = serde_wasm_bindgen::from_value(input)
+            .map_err(|e| JsValue::from_str(&format!("invalid pending library position: {e}")))?;
+        match self.pending_verified_hidden_library_position_metadata(&input) {
+            Some(metadata) => serde_wasm_bindgen::to_value(&metadata)
+                .map_err(|e| JsValue::from_str(&format!("failed to serialize pending library position: {e}"))),
+            None => Ok(JsValue::NULL),
+        }
+    }
+
+    fn queue_verified_hidden_library_opening_input(
+        &mut self, input: VerifiedHiddenLibraryOpeningInput,
+    ) -> Result<(), String> {
+        self.ensure_card_definitions_loaded([input.card_name.as_str()]);
+        let definition = self.find_card_definition(&input.card_name).cloned()
+            .ok_or_else(|| format!("unknown verified library opening card: {}", input.card_name))?;
+        self.game.register_linked_face_family_from_catalog(&definition, &self.registry);
+        let registry = &self.registry;
+        let install = |game: &GameState| game.queue_verified_hidden_library_public_opening(
+            PlayerId::from_index(input.owner), &input.deck_hash, input.position, &definition,
+            input.original_slot, input.commitment.as_deref(),
+        );
+        install(&self.game)?;
+        let counters = snapshot_id_counters();
+        let install_checkpoint = |checkpoint: &mut ReplayCheckpoint| -> Result<(), String> {
+            checkpoint.id_counters.card = counters.card;
+            checkpoint.game.register_linked_face_family_from_catalog(&definition, registry);
+            install(&checkpoint.game)
+        };
+        if let Some(replay) = self.pending_replay_action.as_mut() { install_checkpoint(&mut replay.checkpoint)?; }
+        if let Some(continuation) = self.pending_live_continuation.as_mut() {
+            install_checkpoint(&mut continuation.checkpoint)?;
+            continuation.speculative_progress = None;
+        }
+        if let Some(checkpoint) = self.pending_action_checkpoint.as_mut() { install_checkpoint(checkpoint)?; }
+        if let Some(checkpoint) = self.priority_epoch_checkpoint.as_mut() { install_checkpoint(checkpoint)?; }
+        Ok(())
+    }
+
+    /// Queue a proof-verified public opening of a position created later in
+    /// this command. Private openings must continue through the ordinary API.
+    #[wasm_bindgen(js_name = queueVerifiedHiddenLibraryOpening)]
+    pub fn queue_verified_hidden_library_opening(&mut self, input: JsValue) -> Result<(), JsValue> {
+        let input: VerifiedHiddenLibraryOpeningInput = serde_wasm_bindgen::from_value(input)
+            .map_err(|e| JsValue::from_str(&format!("invalid verified library opening: {e}")))?;
+        self.queue_verified_hidden_library_opening_input(input)
+            .map_err(|error| JsValue::from_str(&error))
     }
 
     fn reseal_verified_hidden_library_shuffle(
@@ -2352,6 +2683,9 @@ impl WasmGame {
     /// Return a JS object snapshot of public game state.
     #[wasm_bindgen]
     pub fn snapshot(&mut self) -> Result<JsValue, JsValue> {
+        if let Some(error) = self.game.verified_hidden_library_epoch_error() {
+            return Err(JsValue::from_str(&error));
+        }
         let snapshot_started_at = PerfTimer::start();
         let pending_cast_stack_id = self
             .priority_state
@@ -2570,6 +2904,9 @@ impl WasmGame {
     /// Return game snapshot as pretty JSON.
     #[wasm_bindgen(js_name = snapshotJson)]
     pub fn snapshot_json(&mut self) -> Result<String, JsValue> {
+        if let Some(error) = self.game.verified_hidden_library_epoch_error() {
+            return Err(JsValue::from_str(&error));
+        }
         self.cached_snapshot = None;
         let pending_cast_stack_id = self
             .priority_state

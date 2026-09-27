@@ -4914,6 +4914,154 @@ mod sync_checkpoint_tests {
     }
 
     #[test]
+    fn verified_library_epoch_hydrates_nexus_of_fate_before_its_mill_destination_replacement() {
+        use ironsmith::effects::EffectExecutor;
+        let _id_counter_guard = crate::test_id_counter_guard();
+        for mill_count in [1, 2] {
+            let mut wasm = WasmGame::new();
+            wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+            let owner = PlayerId::from_index(0);
+            for slot in 0..3 {
+                wasm.game.create_hidden_card_placeholder(owner, Zone::Library, slot, format!("ziffle:original:{slot}"));
+            }
+            wasm.queue_verified_hidden_library_epoch_input(VerifiedHiddenLibraryEpochInput {
+                owner: 0, deck_hash: "nexus-first".into(), count: 3, random_count_before: Some(0),
+                expected_inputs: Some((0..3).map(|slot| format!("ziffle:original:{slot}")).collect()),
+            }).unwrap();
+            for (position, name) in [(2, "Nexus of Fate"), (1, "Mountain")] {
+                wasm.queue_verified_hidden_library_opening_input(VerifiedHiddenLibraryOpeningInput {
+                    owner: 0, deck_hash: "nexus-first".into(), position, card_name: name.into(),
+                    original_slot: Some(position + 10), commitment: Some(format!("manifest:{}", position + 10)),
+                }).unwrap();
+            }
+            wasm.game.shuffle_player_library(owner);
+            let top = *wasm.game.player(owner).unwrap().library.last().unwrap();
+            assert_eq!(wasm.game.object(top).unwrap().name, "Nexus of Fate");
+            let source = ObjectId::from_raw(900_000);
+            let mut context = ironsmith::effects::EffectContext::new_default(source, owner);
+            ironsmith::effects::MillEffect::you(mill_count).execute(&mut wasm.game, &mut context).unwrap();
+            assert!(wasm.game.verified_hidden_library_epoch_error().is_none());
+            assert_eq!(wasm.game.player(owner).unwrap().graveyard.len(), (mill_count - 1) as usize,
+                "the simultaneous mill must still move every non-replaced selected card (mill {mill_count})");
+            assert_eq!(wasm.game.player(owner).unwrap().library.len(), (4 - mill_count) as usize);
+            assert!(wasm.game.player(owner).unwrap().library.iter().any(|id|
+                wasm.game.object(*id).unwrap().name == "Nexus of Fate"),
+                "the verified identity must participate in intrinsic replacement processing");
+            // This regression checks hydration and destination replacement.
+            // The existing static ability currently omits the subsequent shuffle
+            // outside spell resolution; that separate engine gap is not a proof failure.
+        }
+    }
+
+    #[test]
+    fn verified_library_epoch_shuffle_then_draw_or_mill_keeps_crypto_opening_requirements() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        for destination in [Zone::Hand, Zone::Graveyard] {
+            let mut wasm = WasmGame::new();
+            wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+            let owner = PlayerId::from_index(0);
+            for slot in 0..3 {
+                wasm.game.create_hidden_card_placeholder(owner, Zone::Library, slot, format!("ziffle:before:{slot}"));
+            }
+            wasm.queue_verified_hidden_library_epoch_input(VerifiedHiddenLibraryEpochInput {
+                owner: 0, deck_hash: "after".into(), count: 3, random_count_before: Some(0),
+                expected_inputs: Some((0..3).map(|slot| format!("ziffle:before:{slot}")).collect()),
+            }).unwrap();
+            let before = wasm.capture_crypto_audit_state();
+            wasm.game.shuffle_player_library(owner);
+            let shuffled = wasm.game.player(owner).unwrap().library.to_vec();
+            let moved = wasm.game.move_object_by_game_rule(shuffled[2], destination).unwrap();
+            wasm.update_crypto_requirements_from(before);
+            let shuffle = wasm.last_crypto_requirements.iter()
+                .find(|requirement| requirement.requirement_type == "verifiable_shuffle").unwrap();
+            assert_eq!(shuffle.input_commitments.as_ref().unwrap(), &vec![
+                "ziffle:before:0".to_string(), "ziffle:before:1".to_string(), "ziffle:before:2".to_string(),
+            ]);
+            let expected_type = if destination == Zone::Hand { "private_open" } else { "public_open" };
+            let opening = wasm.last_crypto_requirements.iter().find(|requirement| requirement.requirement_type == expected_type)
+                .expect("a post-shuffle move must retain its authenticated opening requirement");
+            assert_eq!(opening.object_id, Some(moved.0));
+            assert_eq!(opening.public_commitment.as_deref(), Some("ziffle:after:2"));
+            assert_eq!(opening.origin_commitment.as_deref(), Some("ziffle:after:2"));
+        }
+    }
+
+    #[test]
+    fn verified_library_epoch_checkpoint_contains_only_fresh_anonymous_objects() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let owner = PlayerId::from_index(0);
+        host.ensure_card_definitions_loaded(["Mountain"]);
+        let mountain = host.find_card_definition("Mountain").unwrap().clone();
+        let old = (0..3).map(|slot| host.game.create_hidden_card_placeholder(
+            owner, Zone::Library, slot, format!("ziffle:retired:{slot}"),
+        )).collect::<Vec<_>>();
+        host.game.reveal_hidden_card_with_definition(old[0], &mountain).unwrap();
+        host.queue_verified_hidden_library_epoch_input(VerifiedHiddenLibraryEpochInput {
+            owner: 0, deck_hash: "anonymous".into(), count: 3, random_count_before: Some(0),
+            expected_inputs: Some((0..3).map(|slot| format!("ziffle:retired:{slot}")).collect()),
+        }).unwrap();
+        host.game.shuffle_player_library(owner);
+        assert!(host.game.verified_hidden_library_epoch_error().is_none());
+        let checkpoint = host.build_redacted_sync_checkpoint(PlayerId::from_index(1)).unwrap();
+        assert_eq!(checkpoint.objects.len(), 3);
+        for object in &checkpoint.objects {
+            assert!(!old.iter().any(|id| id.0 == object.id));
+            assert_eq!(object.name, "Hidden Card");
+            assert!(object.original_card_name.is_none());
+            let hidden = object.hidden_card.as_ref().unwrap();
+            assert!(hidden.commitment.starts_with("ziffle:anonymous:"));
+            assert_eq!(hidden.origin_commitment.as_deref(), Some(hidden.commitment.as_str()));
+            assert_eq!(hidden.public_commitment.as_deref(), Some(hidden.commitment.as_str()));
+        }
+        let encoded = serde_json::to_string(&checkpoint.objects).unwrap();
+        assert!(!encoded.contains("retired"));
+        assert!(!encoded.contains("Mountain"));
+        let mut guest = WasmGame::new();
+        guest.apply_sync_checkpoint(checkpoint).unwrap();
+        assert_eq!(guest.game.player(owner).unwrap().library, host.game.player(owner).unwrap().library);
+        for id in old {
+            assert!(guest.game.object(id).is_none());
+            assert!(guest.game.current_object_id_after_zone_change(id).is_none());
+        }
+        let drawn = guest.game.draw_cards(owner, 1)[0];
+        assert_eq!(guest.game.hidden_card_info(drawn).unwrap().origin_commitment.as_deref(), Some("ziffle:anonymous:2"));
+        guest.game.reveal_hidden_card_with_definition(drawn, &mountain).unwrap();
+        assert_eq!(guest.game.object(drawn).unwrap().name, "Mountain");
+    }
+
+    #[test]
+    fn verified_library_epoch_preserves_anchored_claim_without_linking_new_positions() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let (mut host, id, _) = hidden_foretell_fixture(false);
+        let owner = PlayerId::from_index(0);
+        let exiled = perform_hidden_foretell(&mut host, id);
+        let returned = host.game.move_object_by_game_rule(exiled, Zone::Library).unwrap();
+        host.queue_verified_hidden_library_epoch_input(VerifiedHiddenLibraryEpochInput {
+            owner: 0, deck_hash: "unlinked".into(), count: 1, random_count_before: Some(0),
+            expected_inputs: Some(vec!["ziffle:foretell:4".into()]),
+        }).unwrap();
+        host.game.shuffle_player_library(owner);
+        assert!(host.game.verified_hidden_library_epoch_error().is_none());
+        let anonymous = host.game.player(owner).unwrap().library[0];
+        assert_ne!(anonymous, returned);
+        assert!(!host.game.has_hidden_identity_obligation(anonymous));
+        let checkpoint = host.build_redacted_sync_checkpoint(PlayerId::from_index(1)).unwrap();
+        let mut guest = WasmGame::new();
+        guest.apply_sync_checkpoint(checkpoint).unwrap();
+        guest.ensure_card_definitions_loaded(["Lightning Bolt"]);
+        let wrong = guest.find_card_definition("Lightning Bolt").unwrap().clone();
+        let disclosure = guest.game.end_of_match_disclosure_cards(owner);
+        let claim = disclosure.iter().find(|card| card.library_anchor.is_some()).unwrap();
+        assert!(claim.anchor_only);
+        assert_eq!(claim.object_id, returned);
+        assert_eq!(claim.info.commitment, "ziffle:foretell:4");
+        assert!(guest.game.end_of_match_disclosure_card_violation(claim, &wrong).is_some());
+        assert_eq!(guest.game.hidden_card_info(anonymous).unwrap().commitment, "ziffle:unlinked:0");
+    }
+
+    #[test]
     fn hidden_card_origin_survives_hydration_zone_changes_reseal_and_checkpoint() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = WasmGame::new();

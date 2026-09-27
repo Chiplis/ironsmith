@@ -164,7 +164,7 @@ for (const scenario of [
       const fieldCard = afterCheckpoint.objects.find(o => o.zone === 'battlefield' && o.name === copyName && o.hiddenCard?.slot === 4);
       if (!fieldCard) throw new Error(`Copy did not enter battlefield: ${JSON.stringify({decisions, objects:afterCheckpoint.objects})}`);
       const postRequirements = state.crypto_requirements || state.cryptoRequirements || [];
-      const openings = await services.current.buildLocalRequirementOpeningsForRequirements([...requirements, ...postRequirements], { forceZiffleOpeningProof: true });
+      const openings = await services.current.buildLocalRequirementOpeningsForRequirements([...requirements, ...postRequirements], { forceZiffleOpeningProof: true, timing: 'post' });
       await services.current.verifyAuditOpeningsAgainstManifests(openings);
       const peerState = await peer.call('uiState');
       const beforeApply = await peer.call('exportSyncCheckpoint');

@@ -118,7 +118,8 @@ test("fully cached signers require no build or request", async () => {
 test("keeps action authorization and protocol wait metadata on partial requests", async () => {
   const { collect, requests, waits, ceremony } = harness({ cached: [token(1, 2)] });
   const options = { command: { type: "select_objects", object_ids: [12] }, seq: 9, actorIndex: 0,
-    requirements: [{ type: "private_view_window", count: 2 }], prevStateHash: "signed-head",
+    requirements: [{ type: "private_open", card: "private-card-name", slot: 55,
+      commitment: "private-manifest-entry", id: "private_open:0:library:55:194" }], prevStateHash: "signed-head",
     preActionPublicCheckpointHash: "public-hash", actionIntent: { signature: "intent-signature" },
     actionAudit: { signature: "audit-signature" }, cryptoMaterialRequestId: "material-id" };
   await collect([2, 9], options);
@@ -127,8 +128,9 @@ test("keeps action authorization and protocol wait metadata on partial requests"
   assert.equal(requests[0].cryptoMaterialRequestId, "material-id");
   assert.deepEqual(requests[0].actionAuthorization, { matchId: "match-id", seq: 9, requesterIndex: 0,
     actorIndex: 0, prevStateHash: "signed-head", preActionPublicCheckpointHash: "public-hash",
-    command: options.command, requirements: options.requirements, actionIntent: options.actionIntent,
+    command: options.command, actionIntent: options.actionIntent,
     actionAudit: options.actionAudit });
+  assert.doesNotMatch(JSON.stringify(requests[0]), /private-card-name|private-manifest-entry|private_open:0:library:55/);
   assert.equal(waits[0].requestPayload, requests[0]);
   assert.equal(waits[0].basisSequence, 8);
 });

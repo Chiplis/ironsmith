@@ -198,6 +198,7 @@ async function actionHashForTranscript(match, action) {
     owner: 0,
     deckHash: "deck-hash-1",
     afterOrder: requirements[0].afterOrder,
+    enforceLibraryOrder: true,
   });
   return publicCheckpointHash(await game.exportPublicAuditCheckpoint(), webcrypto);
 }

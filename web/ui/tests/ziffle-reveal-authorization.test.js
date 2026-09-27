@@ -68,7 +68,7 @@ test('shuffle-dependent openings use the verified seeded preview and never the p
   h.message.actionAuthorization.shuffleProofs = [proof];
   assert.equal(await h.authorize(h.message, 0, 0, [9], ceremony), true);
   assert.equal(await h.authorize(h.message, 0, 0, [2], ceremony), false);
-  assert.deepEqual(h.materialCalls[0].material, { seeds: ['shuffled'], libraryShuffles: [{ owner: 0,
+  assert.deepEqual(h.materialCalls[0].material, { seeds: ['shuffled'], libraryEpochs: [], libraryEpochOpenings: [], libraryShuffles: [{ owner: 0,
     beforeOrder: before, afterOrder: requirement.afterOrder }] });
   for (const mutate of [
     p => { p.context = p.context.replace('action:8', 'action:9'); },

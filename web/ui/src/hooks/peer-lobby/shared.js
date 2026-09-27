@@ -1630,7 +1630,7 @@ export function localizeShuffleOrder(order, idMap) {
 }
 
 export function shuffleProofWithRequirementOrder(proof, requirement) {
-  if (!proof || !requirement) return proof;
+  if (!proof || !requirement || proof.inputDeck) return proof;
   const beforeOrder = normalizeShuffleOrder(requirement.beforeOrder ?? requirement.before_order);
   const afterOrder = normalizeShuffleOrder(requirement.afterOrder ?? requirement.after_order);
   return {
@@ -3018,6 +3018,18 @@ export function exportedOpeningHasZifflePosition(exported) {
 }
 
 export function ziffleCeremonyForOpeningProof(proof, fallbackCeremony = null) {
+  if (proof?.inputDeck || fallbackCeremony?.inputDeck) {
+    if (!fallbackCeremony?.inputDeck) throw new Error("Private opening references an unknown ciphertext epoch");
+    for (const key of ["inputDeck", "keys", "steps"]) {
+      if (proof?.[key] != null && canonicalJson(proof[key]) !== canonicalJson(fallbackCeremony[key])) {
+        throw new Error("Private opening differs from its authenticated ciphertext epoch");
+      }
+    }
+    if (["beforeOrder", "afterOrder", "before_order", "after_order", "authenticatedOrder"].some(key => Object.hasOwn(proof || {}, key))) {
+      throw new Error("Private opening contains an object-order mapping");
+    }
+    return cloneMultiplayerPayload(fallbackCeremony);
+  }
   const beforeOrder = normalizeShuffleOrder(proof?.beforeOrder ?? proof?.before_order);
   const afterOrder = normalizeShuffleOrder(proof?.afterOrder ?? proof?.after_order);
   const fallbackBefore = normalizeShuffleOrder(

@@ -1,8 +1,8 @@
+import { acceptedZiffleEpochs, assertZiffleEpochInputs, isPrivateZiffleEpoch, ziffleEpochMaterial, ziffleInputDeckFields } from "../../lib/ziffle-private-epochs.js";
 import { matchingActionPrefix } from '../../lib/relay/resync.js';
 import { relayMatchId, canPersistMatch } from '../../lib/relay/session.js';
 import { initializeRelayMatch, appendRelayAction } from '../../lib/relay/session.js';
 import { immutableAction, actionCursor, restoreActionCursor, actionPrefixHash, wireStablePayload, EMPTY_ACTION_PREFIX } from '../../lib/accepted-actions.js';
-import { isRelayId } from '../../lib/relay/formats.js';
 import { captureEngineRestorePoint, restoreEngineRestorePoint } from '../../lib/engine-restore-point.js';
 import {
   DISCONNECT_AUTO_FORFEIT_MS,
@@ -558,6 +558,13 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     if (!opening || opening.owner == null || opening.slot == null || !opening.card) {
       throw new Error("Private-view opening payload is incomplete");
     }
+    if (ziffleDeckHashFromCommitment(proof.positionCommitment)) {
+      if (Number(opening.owner) !== Number(proof.owner)
+        || String(opening.positionCommitment || "") !== String(proof.positionCommitment)
+        || Number(opening.position) !== Number(proof.position)) {
+        throw new Error("Private-view opening does not match its encrypted position header");
+      }
+    }
     if (options.persistDisclosure !== false) {
       rememberPrivateViewDisclosure({
         type: "private_view_opening_disclosure",
@@ -613,6 +620,8 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     for (const proof of audit.privateViewProofs || []) {
       if (String(proof?.type || "") !== "encrypted_private_opening") continue;
       if (Number(proof.viewer) !== Number(localSeat)) continue;
+      const deferredEpochs = options.deferPrivateEpochDeckHashes || [];
+      if (deferredEpochs.includes(ziffleDeckHashFromCommitment(proof.positionCommitment || proof.commitment))) continue;
       let opening = await privateOpeningFromEncryptedProof(proof, {
         owner: proof.owner,
         viewer: proof.viewer,
@@ -623,6 +632,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
         persistDisclosure: options.persistDisclosure,
       });
       if (!opening) continue;
+      if (deferredEpochs.includes(ziffleDeckHashFromCommitment(opening.positionCommitment || opening.commitment))) continue;
       opening = await sanitizeObjectBoundOpening(opening);
       opening = await ensureZiffleOpeningProof(opening, options);
       opening = await sanitizeObjectBoundOpening(opening);
@@ -777,6 +787,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
         keyContext: ziffleKeyContextForCeremony(ceremony),
         keys: cloneMultiplayerPayload(ceremony.keys || []),
         steps: cloneMultiplayerPayload(ceremony.steps || []),
+        ...ziffleInputDeckFields(ceremony),
         cardPositions: positions,
         tokens,
       });
@@ -918,10 +929,27 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 
   async function privateOpeningsForLocalViewer(requirements = [], audit = {}, options = {}) {
     const localSeat = resolveLocalCryptoPlayerIndex();
+    const currentGame = gameRef.current;
+    const immediateRequirements = [];
+    for (const requirement of requirements || []) {
+      if (String(requirement?.type || "") === "private_open"
+        && typeof currentGame?.pendingVerifiedHiddenLibraryPosition === "function") {
+        const commitment = String(requirement.publicCommitment || requirement.public_commitment
+          || requirement.positionCommitment || requirement.position_commitment || requirement.commitment || "");
+        const deckHash = ziffleDeckHashFromCommitment(commitment);
+        const position = zifflePositionFromCommitment(commitment);
+        if (deckHash && position != null && await currentGame.pendingVerifiedHiddenLibraryPosition({
+          owner: Number(requirement.owner), deckHash, position,
+        })) continue;
+      }
+      immediateRequirements.push(requirement);
+    }
+    // Future private positions do not exist yet. Hydrate them after dispatch;
+    // queueVerifiedHiddenLibraryOpening is reserved for public disclosures.
     const {
       openings,
       handledRequirements,
-    } = await batchedOwnerPrivateZiffleOpeningsForLocalViewer(requirements, options);
+    } = await batchedOwnerPrivateZiffleOpeningsForLocalViewer(immediateRequirements, options);
     const seen = new Set();
     for (const opening of openings) {
       seen.add([
@@ -930,7 +958,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
         Number(opening.objectId ?? -1),
       ].join(":"));
     }
-    for (const requirement of requirements || []) {
+    for (const requirement of immediateRequirements) {
       if (handledRequirements.has(requirement)) continue;
       if (String(requirement?.type || "") !== "private_open") continue;
       if (Number(requirement.viewer) !== Number(localSeat)) continue;
@@ -1047,6 +1075,18 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
         const proof = (audit.shuffleProofs || []).find((entry) =>
           shuffleProofMatchesRequirement(entry, requirement)
         );
+        if (isPrivateZiffleEpoch(proof)) {
+          if (!options.skipRandomness) {
+            const seq = Number(options.seq ?? proof.epoch);
+            const accepted = acceptedZiffleEpochs(matchStartPayloadRef.current,
+              (actionHistoryRef.current || []).filter(entry => Number(entry.seq) < seq), proof.owner,
+              (audit.shuffleProofs || []).slice(0, audit.shuffleProofs.indexOf(proof)));
+            const inputs = assertZiffleEpochInputs(proof, requirement, accepted);
+            if (typeof currentGame.queueVerifiedHiddenLibraryEpoch !== "function") throw new Error("Private shuffle engine is unavailable");
+            await currentGame.queueVerifiedHiddenLibraryEpoch(ziffleEpochMaterial(proof, requirement, inputs));
+          }
+          continue;
+        }
         if (proof?.deckHash) seeds.push(String(proof.deckHash));
         const beforeOrder = normalizeShuffleOrder(proof?.beforeOrder ?? proof?.before_order);
         const afterOrder = normalizeShuffleOrder(proof?.afterOrder ?? proof?.after_order);
@@ -1222,13 +1262,17 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 	      });
 	      const proof = {
 	        type: "encrypted_private_opening",
-	        requirementId: String(requirement.id || ""),
 	        owner,
 	        viewer,
 	        zone: String(requirement.zone || ""),
 	        objectId: Number(requirement.objectId),
-	        slot: Number(opening.slot),
-	        commitment: opening.commitment,
+          // Only the encrypted payload may identify the manifest entry. A
+          // private viewer must not reveal that entry to the deck's owner.
+          ...(!ziffleDeckHashFromCommitment(positionCommitment) ? {
+            requirementId: String(requirement.id || ""),
+            slot: Number(opening.slot),
+            commitment: opening.commitment,
+          } : {}),
 	        disclosurePolicy: "postgame_or_dispute",
 	        encryptedOpening,
 	      };
@@ -1400,8 +1444,18 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       "Cryptographic material request public checkpoint does not match local state"
     );
 
+    // Authenticate the command before a preview can reserve its shuffle locks.
+      const actionIntent = await verifySignedActionIntent(message.actionIntent, {
+        matchId: currentAuditMatchId(),
+        seq,
+        actorIndex,
+        prevStateHash: message.prevStateHash,
+        preActionPublicCheckpointHash: message.publicCheckpointHash,
+        command,
+      });
+
 	    const localSeat = resolveLocalCryptoPlayerIndex();
-	    const previewedRequirements = filterCryptoRequirementsForCommand(
+	    let previewedRequirements = filterCryptoRequirementsForCommand(
 	      command,
 	      liveState,
 	      freshCryptoRequirementsForSequence(
@@ -1409,6 +1463,14 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 	        await previewRequirementsForCommand(command)
 	      )
 	    );
+    if ((message.shuffleProofs || []).some(isPrivateZiffleEpoch)
+      || (message.rngReveals || []).length
+      || previewedRequirements.some(requirement => String(requirement.type || "") === "fair_random")) {
+      previewedRequirements = await servicesRef.current.previewZiffleActionRequirements({
+        command, seq, shuffleProofs: message.shuffleProofs || [], openings: message.openings || [],
+        rngReveals: message.rngReveals || [],
+      }, previewedRequirements);
+    }
 	    const locallyKnownRequestedPublicOpenRequirements = (
 	      Array.isArray(message.requirements) ? message.requirements : []
 	    ).filter((requirement) =>
@@ -1425,14 +1487,6 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 	          ...locallyKnownRequestedPublicOpenRequirements,
 	        ],
 	      });
-      const actionIntent = await verifySignedActionIntent(message.actionIntent, {
-        matchId: currentAuditMatchId(),
-        seq,
-        actorIndex,
-        prevStateHash: message.prevStateHash,
-        preActionPublicCheckpointHash: message.publicCheckpointHash,
-        command,
-      });
       return { requirements: authorizedRequirements, actionIntent };
     } catch (err) {
       const postApplyRequirements = await derivePostApplyCryptoRequirementsForRequest({
@@ -1453,14 +1507,6 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 	          ...locallyKnownRequestedPublicOpenRequirements,
 	        ],
 	      });
-      const actionIntent = await verifySignedActionIntent(message.actionIntent, {
-        matchId: currentAuditMatchId(),
-        seq,
-        actorIndex,
-        prevStateHash: message.prevStateHash,
-        preActionPublicCheckpointHash: message.publicCheckpointHash,
-        command,
-      });
       return { requirements: authorizedRequirements, actionIntent };
     }
 		  }, [
@@ -1516,6 +1562,10 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
           actorIndex: message.actorIndex,
           requesterIndex: message.requesterIndex,
           actionIntent,
+          shuffleProofs: message.shuffleProofs || [],
+          rngReveals: message.rngReveals || [],
+          openings: message.openings || [],
+          requirements,
         })
       );
       recordPeerSyncPerf("crypto_material_request:send_response", {
@@ -1656,6 +1706,9 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
           prevStateHash,
           publicCheckpointHash,
           requirements: ownerRequirements,
+          shuffleProofs: cloneMultiplayerPayload(options.shuffleProofs || []),
+          rngReveals: cloneMultiplayerPayload(options.rngReveals || []),
+          openings: cloneMultiplayerPayload(options.openings || []),
           ...(command ? { command: cloneMultiplayerPayload(command) } : {}),
           ...(actionIntent ? { actionIntent: cloneMultiplayerPayload(actionIntent) } : {}),
         };
@@ -3887,9 +3940,13 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 
   function cryptoRequirementReplayKey(requirement) {
     if (!requirement || typeof requirement !== "object") return "";
+    const type = requirement.type ?? requirement.requirement_type ?? null;
+    const rawInputs = requirement.inputCommitments ?? requirement.input_commitments;
+    const inputCommitments = type === "verifiable_shuffle" && Array.isArray(rawInputs) && rawInputs.length > 0
+      ? rawInputs.map(String) : null;
     return canonicalMultiplayerPayload({
       id: requirement.id ?? null,
-      type: requirement.type ?? requirement.requirement_type ?? null,
+      type,
       owner: requirement.owner ?? null,
       viewer: requirement.viewer ?? null,
       zone: requirement.zone ?? null,
@@ -3902,11 +3959,14 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       publicCommitment: requirement.publicCommitment ?? requirement.public_commitment ?? null,
       originSlot: requirement.originSlot ?? requirement.origin_slot ?? null,
       originCommitment: requirement.originCommitment ?? requirement.origin_commitment ?? null,
-      count: requirement.count ?? null,
+      count: inputCommitments ? inputCommitments.length : requirement.count ?? null,
       from: requirement.from ?? null,
       to: requirement.to ?? null,
-      beforeOrder: normalizeShuffleOrder(requirement.beforeOrder ?? requirement.before_order),
-      afterOrder: normalizeShuffleOrder(requirement.afterOrder ?? requirement.after_order),
+      // Opaque epochs retire engine IDs. A resumed decision can replay the
+      // same journal event with normalized IDs from its fresh library.
+      inputCommitments,
+      beforeOrder: inputCommitments ? [] : normalizeShuffleOrder(requirement.beforeOrder ?? requirement.before_order),
+      afterOrder: inputCommitments ? [] : normalizeShuffleOrder(requirement.afterOrder ?? requirement.after_order),
       randomCountBefore: requirement.randomCountBefore ?? requirement.random_count_before ?? null,
       randomCountAfter: requirement.randomCountAfter ?? requirement.random_count_after ?? null,
       visibility: requirement.visibility ?? null,

@@ -1,3 +1,4 @@
+import { isPrivateZiffleEpoch, ziffleInputDeckFields } from "../src/lib/ziffle-private-epochs.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -32,6 +33,7 @@ async function harness() {
     beforeOrder: Array.from({ length: 53 }, (_, i) => 70 + i), afterOrder: Array.from({ length: 53 }, (_, i) => 122 - i), authenticatedOrder: true };
   const calls = [];
   const ctx = {
+    isPrivateZiffleEpoch, ziffleInputDeckFields,
     useCallback: fn => fn,
     gameRef: { current: {
       exportSyncCheckpoint: async () => checkpoint,
