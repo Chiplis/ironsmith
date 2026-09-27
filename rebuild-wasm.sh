@@ -143,7 +143,7 @@ Notes:
   - Frontend cache file defaults to $DEFAULT_FRONTEND_SCORES_FILE and stores only compact threshold stats.
   - Frontend card assets default to $DEFAULT_FRONTEND_CARDS_DIR and are copied by Vite into dist/cards/.
   - Frontend JSON assets are skipped when their checksum manifest matches the registry DB and generator inputs.
-  - Default features are "wasm-lean" with crate default features disabled, so card source data is loaded from dist/cards/ instead of being embedded in engine_bg.wasm.
+  - Default features are "wasm-lean" with crate default features disabled. The full card catalogue is embedded as indexed Brotli chunks in engine_bg.wasm; card definitions, source text, and metadata load locally on demand.
   - The package contains separate engine, compiler, and verifier modules behind one JavaScript facade.
   - Custom-card compilation is always enabled in the engine, including lean builds with default features disabled.
   - IRONSMITH_WASM_OPT_LEVEL selects the shipped optimizer level (-O1, -O2, -Os, or -Oz; default -O1).
@@ -634,11 +634,16 @@ fi
 
 report_frontend_card_coverage
 
+EMBEDDED_CARD_CATALOG="$ROOT_DIR/target/embedded-card-catalog.bin"
+cargo run --release -p ironsmith-card-catalog --features build --bin build_card_catalog -- \
+  --cards-dir "$FRONTEND_CARDS_DIR" --output "$EMBEDDED_CARD_CATALOG"
+export IRONSMITH_EMBEDDED_CARD_CATALOG="$EMBEDDED_CARD_CATALOG"
+
 if feature_enabled "generated-registry"; then
   export IRONSMITH_REGISTRY_DB_PATH="$DB_PATH"
   echo "[INFO] registry DB source: $IRONSMITH_REGISTRY_DB_PATH"
 else
-  echo "[INFO] generated registry disabled; WASM will load card compilation assets from frontend cards/"
+  echo "[INFO] generated Rust registry disabled; WASM embeds the compressed card catalogue and loads definitions on demand"
 fi
 echo "[INFO] wasm build profile: $WASM_CARGO_PROFILE"
 if [[ "$NO_DEFAULT_FEATURES" -eq 1 ]]; then

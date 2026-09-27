@@ -3,6 +3,7 @@ import { cardMatchesFilters, generateRandomGamePayload, randomGameDefaults } fro
 import { baseAssetUrl } from "./asset-base.js";
 import { CARD_ASSETS_REUSABLE, CARD_ASSET_FETCH_OPTIONS, versionedCardAssetUrl } from "./card-asset-cache.js";
 import { cardRouteKey } from "./scryfall.js";
+import { readEmbeddedCardCatalogIndex } from "./embedded-card-catalog.js";
 
 const FIXED_BOARD_STORAGE_KEY = "ironsmith.fixedStartingBoard";
 
@@ -65,9 +66,8 @@ export async function buildRandomStartingBoard(playerNames, startingLife, semant
 }
 
 /**
- * Start the startup board before the engine exists: generating it needs only
- * the card pool, and the engine's own card-asset reads then hit the HTTP cache
- * this warms instead of waiting on the network after the WASM is ready.
+ * Start generating the startup board from the small classified pool while the
+ * engine loads. Legacy engines without an embedded catalogue warm HTTP assets.
  */
 export function prefetchRandomStartingBoard(playerNames, startingLife, semanticThreshold) {
   const key = startingBoardKey(playerNames, startingLife, semanticThreshold);
@@ -86,7 +86,8 @@ export function startingBoardKey(playerNames, startingLife, semanticThreshold) {
 // warm-up, yet wide enough to finish before an engine served from cache is up.
 const WARM_CONCURRENCY = 16;
 
-function warmCardAssets(payload, { fetchImpl = globalThis.fetch } = {}) {
+async function warmCardAssets(payload, { fetchImpl = globalThis.fetch } = {}) {
+  if (await readEmbeddedCardCatalogIndex() !== undefined) return;
   // Without cache reuse the worker revalidates each asset anyway.
   if (!CARD_ASSETS_REUSABLE || typeof fetchImpl !== "function") return Promise.resolve();
   const names = new Set((payload?.players || []).flatMap((player) => Object.values(player?.zones || {}).flat()));

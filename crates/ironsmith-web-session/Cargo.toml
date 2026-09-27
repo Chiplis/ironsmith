@@ -2,11 +2,13 @@
 name = "ironsmith-web-session"
 version = "0.1.2"
 edition = "2024"
+build = "build.rs"
 autotests = false
 
 [dependencies]
 ironsmith-core = { path = "../ironsmith-core", default-features = false }
 ironsmith-compiled-artifact = { path = "../ironsmith-compiled-artifact", default-features = false }
+ironsmith-card-catalog = { path = "../ironsmith-card-catalog" }
 ironsmith = { package = "ironsmith-engine", path = "../ironsmith-engine", default-features = false }
 ironsmith-runtime-catalog = { path = "../ironsmith-runtime-catalog", default-features = false }
 ironsmith-dynamic-compile = { path = "../ironsmith-dynamic-compile", default-features = false, optional = true }
@@ -38,5 +40,6 @@ shadow-continuous = ["ironsmith/shadow-continuous"]
 paranoid-invariants = ["ironsmith/paranoid-invariants"]
 
 [dev-dependencies]
+ironsmith-card-catalog = { path = "../ironsmith-card-catalog", features = ["build"] }
 ironsmith-registry-test = { package = "ironsmith-registry", path = "../ironsmith-registry", default-features = false, features = ["handwritten-parse-support"] }
 ironsmith-tools = { path = "../ironsmith-tools", default-features = false }

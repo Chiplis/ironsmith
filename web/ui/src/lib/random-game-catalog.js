@@ -3,6 +3,7 @@ import { baseAssetUrl } from "./asset-base.js";
 import { CARD_ASSET_FETCH_OPTIONS, versionedCardAssetUrl } from "./card-asset-cache.js";
 import { decodeRandomCardPool } from "./random-card-pool.js";
 import { resolveAssetUrl } from "./card-art-url.js";
+import { readEmbeddedCardCatalogIndex, readEmbeddedCardSource } from "./embedded-card-catalog.js";
 
 const CARD_FETCH_CONCURRENCY = 12;
 // A random table only needs a pool a little larger than the cards it places.
@@ -24,7 +25,11 @@ const indexPromises = new WeakMap();
  * score. It carries no card types, so a card's types are only known once its
  * own asset is read — which is why the pool is sampled rather than filtered.
  */
-export function loadRandomGameIndex({ fetchImpl = globalThis.fetch } = {}) {
+export async function loadRandomGameIndex({ fetchImpl = globalThis.fetch } = {}) {
+  const embedded = await readEmbeddedCardCatalogIndex();
+  if (embedded !== undefined) {
+    return (Array.isArray(embedded?.cards) ? embedded.cards : []).filter((card) => card?.route);
+  }
   if (!indexPromises.has(fetchImpl)) {
     const request = fetchImpl(cardAssetUrl("index.json"), CARD_ASSET_FETCH_OPTIONS)
       .then((response) => {
@@ -98,6 +103,8 @@ function sampleRoutes(index, config, rng) {
 
 async function fetchClassifiedCard(route, fetchImpl) {
   try {
+    const embedded = await readEmbeddedCardSource(route);
+    if (embedded !== undefined) return embedded ? classifyCard(embedded) : null;
     const response = await fetchImpl(cardAssetUrl(`${route}.json`), CARD_ASSET_FETCH_OPTIONS);
     if (!response.ok) return null;
     return classifyCard(await response.json());

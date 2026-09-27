@@ -41,6 +41,7 @@ let lastRegistryLoaded = -1;
 let lastRegistryTotal = -1;
 let cardAssetsBaseUrl = null;
 let cardIndexPromise = null;
+let embeddedCardIndex = null;
 const registeredCardRoutes = new Set();
 const previewCardSources = new Map();
 let latestTargetPreview;
@@ -55,8 +56,8 @@ let engineExports = null;
 const missingCardRoutes = new Set();
 const transientMissingCardRoutes = new Map();
 const TRANSIENT_CARD_SOURCE_MISS_MS = 15_000;
-// Card assets are a few KB each and share one HTTP/2 connection, so a table
-// that needs dozens of them is bounded by round trips, not bandwidth.
+// Bound legacy HTTP loading; embedded catalog reads use the same preparation
+// path and only decompress the chunks containing the requested cards.
 const fetchSource = createAsyncLimiter(24);
 const sourceRequests = new Map();
 const knownRuntimeCardNames = new Set();
@@ -419,14 +420,14 @@ function collectNamesForMethod(method, args) {
 }
 
 async function loadCardIndex() {
-  if (!cardAssetsBaseUrl) {
+  if (!embeddedCardIndex && !cardAssetsBaseUrl) {
     return null;
   }
   if (!cardIndexPromise) {
-    const indexPromise = fetchCardAssetJson(
+    const indexPromise = (embeddedCardIndex ? Promise.resolve(embeddedCardIndex) : fetchCardAssetJson(
       versionedCardAssetUrl(new URL("index.json", cardAssetsBaseUrl).href),
       { validate: (value) => Boolean(value && typeof value === "object") }
-    ).then((index) => {
+    )).then((index) => {
       if (index === CARD_ASSET_MISSING) {
         throw new Error("Card index fetch failed: HTTP 404");
       }
@@ -484,8 +485,8 @@ async function fetchCardSourceUncached(name) {
     return null;
   }
   if (previewCardSources.has(route)) return previewCardSources.get(route);
-  const url = cardAssetUrl(route);
-  if (!url) return null;
+  const url = embeddedCardIndex ? null : cardAssetUrl(route);
+  if (!embeddedCardIndex && !url) return null;
   const retryAt = transientMissingCardRoutes.get(route);
   if (retryAt != null) {
     if (Date.now() < retryAt) return null;
@@ -493,9 +494,17 @@ async function fetchCardSourceUncached(name) {
   }
   let payload;
   try {
-    payload = await fetchCardAssetJson(url, {
-      validate: (value) => Boolean(value && typeof value === "object" && value.group),
-    });
+    if (embeddedCardIndex) {
+      const raw = game.getEmbeddedCardSourceJson(route);
+      payload = raw == null ? CARD_ASSET_MISSING : JSON.parse(raw);
+      if (payload !== CARD_ASSET_MISSING && (!payload || typeof payload !== "object" || !payload.group)) {
+        throw new Error(`Embedded card source is invalid for "${name}"`);
+      }
+    } else {
+      payload = await fetchCardAssetJson(url, {
+        validate: (value) => Boolean(value && typeof value === "object" && value.group),
+      });
+    }
   } catch (error) {
     if (!error?.cardAssetInvalidBody) {
       throw new Error(`Card source fetch failed for "${name}": ${error?.message || error}`);
@@ -738,6 +747,7 @@ async function handleInit(msg = {}) {
     lastRegistryLoaded = -1;
     lastRegistryTotal = -1;
     cardIndexPromise = null;
+    embeddedCardIndex = null;
     knownRuntimeCardNames.clear();
     registeredCardRoutes.clear();
     previewCardSources.clear();
@@ -756,6 +766,15 @@ async function handleInit(msg = {}) {
     // has grown expensive", which a single slow call cannot tell apart.
     engineExports = await initWasm({ engine: engineModule, compiler: false, verifier: false });
     game = new WasmGame();
+    if (typeof game.getEmbeddedCardCatalogIndexJson === "function") {
+      const raw = game.getEmbeddedCardCatalogIndexJson();
+      if (raw != null) {
+        embeddedCardIndex = JSON.parse(raw);
+        if (!Array.isArray(embeddedCardIndex?.cards)) {
+          throw new Error("Embedded card catalog has no valid card index");
+        }
+      }
+    }
     game.setDeferredPriorityAnalysis(true);
     const status = readRegistryStatus();
     if (status) {
@@ -766,7 +785,8 @@ async function handleInit(msg = {}) {
       }
     }
 
-    self.postMessage({ type: "ready", runtimeSavepoints: typeof game.createRuntimeSavepoint === "function" });
+    self.postMessage({ type: "ready", runtimeSavepoints: typeof game.createRuntimeSavepoint === "function",
+      embeddedCardCatalog: embeddedCardIndex !== null });
   } catch (err) {
     self.postMessage({ type: "error", error: serializeError(err) });
   }

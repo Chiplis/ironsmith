@@ -1,6 +1,7 @@
 import { cardRouteKey } from "./scryfall.js";
 import { versionedCardAssetUrl } from "./card-asset-cache.js";
 import { resolveAssetUrl, resolveCardAssetUrl } from "./card-art-url.js";
+import { readEmbeddedCardSource } from "./embedded-card-catalog.js";
 
 function normalize(value) {
   return String(value || "")
@@ -142,14 +143,17 @@ export async function loadLocalCardArt(cardName, { fetchImpl = globalThis.fetch 
   if (!route) return "";
   if (cardArtCache.has(route)) return cardArtCache.get(route);
   if (cardArtRequests.has(route)) return cardArtRequests.get(route);
-  const request = fetchImpl(versionedCardAssetUrl(resolveCardAssetUrl(route)), { cache: "force-cache" })
-    .then(async (response) => {
+  const request = (async () => {
+    let payload = await readEmbeddedCardSource(route);
+    if (payload === undefined) {
+      const response = await fetchImpl(versionedCardAssetUrl(resolveCardAssetUrl(route)), { cache: "force-cache" });
       if (!response?.ok) return "";
-      const payload = await response.json();
-      return payload?.scryfall?.image_uris?.art_crop
-        || payload?.scryfall?.image_uris?.normal
-        || "";
-    })
+      payload = await response.json();
+    }
+    return payload?.scryfall?.image_uris?.art_crop
+      || payload?.scryfall?.image_uris?.normal
+      || "";
+  })()
     .catch(() => "");
   cardArtRequests.set(route, request);
   try {

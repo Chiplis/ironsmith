@@ -392,20 +392,25 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
       const boardBounds = board?.getBoundingClientRect();
       const pilesBounds = board ? piles.getBoundingClientRect() : null;
       const lookHeight = look?.offsetHeight || 0;
-      const lookCardHeight = look?.querySelector(".zone-pile")?.offsetHeight || 0;
+      const lookCard = look?.querySelector(".zone-pile");
+      const lookCardHeight = lookCard?.offsetHeight || 0;
       const pileWidth = Math.min(56, cardWidth * 0.7);
       piles.style.setProperty("--zone-pile-width", `${pileWidth}px`);
       if (board) {
         board.style.setProperty("--battlefield-objects-top", `${Math.max(0, top - boardBounds.top)}px`);
         const zoneTop = Math.max(0, top - boardBounds.top);
-        // Keep Graveyard aligned with the battlefield. On short boards, Look
-        // moves up, then shrinks if needed to leave a usable stack viewport.
-        const lookCardRoom = boardBounds.height - LOOK_STACK_GAP - STACK_MIN_VISIBLE_HEIGHT
-          - (lookHeight - lookCardHeight);
+        // Look starts directly below the player header. Selectable piles grow
+        // upward from their bottom edge, so reserve only that extra height.
+        // Graveyard keeps following the battlefield independently.
+        const lookChromeHeight = lookHeight - lookCardHeight;
+        const canEnlargeLook = boardBounds.height >= (lookChromeHeight + pileWidth * 88 / 63) * 1.5
+          + LOOK_STACK_GAP + STACK_MIN_VISIBLE_HEIGHT;
+        const lookScale = lookCard?.dataset.hasTargets === "true" && canEnlargeLook ? 1.5 : 1;
+        look?.style.setProperty("--zone-pile-target-scale", canEnlargeLook ? "1.5" : "1");
+        const lookCardRoom = (boardBounds.height - LOOK_STACK_GAP - STACK_MIN_VISIBLE_HEIGHT) / lookScale
+          - lookChromeHeight;
         look?.style.setProperty("--zone-pile-width", `${Math.min(pileWidth, Math.max(1, lookCardRoom * 63 / 88))}px`);
-        const lookTop = lookHeight
-          ? Math.min(zoneTop, Math.max(0, boardBounds.height - lookHeight - LOOK_STACK_GAP - STACK_MIN_VISIBLE_HEIGHT))
-          : zoneTop;
+        const lookTop = lookHeight * (lookScale - 1);
         const pilesTop = Math.max(0, boardBounds.top + zoneTop - bounds.top - container.clientTop);
         const nextPilesTop = bounds.top + container.clientTop + pilesTop;
         piles.style.setProperty("--zone-piles-top", `${pilesTop}px`);
@@ -432,6 +437,7 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
       const layoutClasses = (value) => (value || "").split(/\s+/)
         .filter(name => name.startsWith("battlefield-row-card--") || name === "tapped").join(" ");
       if (records.some(({ target, type, attributeName, oldValue }) => {
+        if (look?.contains(target)) return true;
         if (target === row) return true;
         if (!(target instanceof Element) || !target.matches(".battlefield-row-card")) return false;
         if (type !== "attributes") return false;
@@ -440,6 +446,7 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
       })) schedule();
     });
     if (row) mutations.observe(row, { attributes: true, attributeOldValue: true, childList: true, subtree: true, attributeFilter: ["style", "class"] });
+    if (look) mutations.observe(look, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-has-targets"] });
     window.addEventListener("resize", schedule);
     return () => { cancelAnimationFrame(frame); observer.disconnect(); mutations.disconnect(); window.removeEventListener("resize", schedule); };
   }, [player]);

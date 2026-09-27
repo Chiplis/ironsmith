@@ -2,6 +2,7 @@ import { localizedPrintingFlavor } from './printing-flavor.js';
 import { printingForImageFace } from './card-printing-face.js';
 import { CARD_ASSET_FETCH_OPTIONS, versionedCardAssetUrl } from './card-asset-cache.js';
 import { resolveCardAssetUrl } from './card-art-url.js';
+import { readEmbeddedCardSource } from './embedded-card-catalog.js';
 const BASIC_LAND_NAMES = new Set([
   "Plains",
   "Island",
@@ -456,6 +457,11 @@ async function fetchLocalCardPayload(cardName) {
   if (localCardPayloadCache.has(route)) return localCardPayloadCache.get(route);
 
   const request = (async () => {
+    const embedded = await readEmbeddedCardSource(route);
+    if (embedded !== undefined) {
+      cacheLocalScryfallPayload(query, embedded);
+      return embedded;
+    }
     const url = versionedCardAssetUrl(resolveCardAssetUrl(route));
     const response = await fetch(url, STABLE_CARD_ASSET_FETCH_OPTIONS);
     if (response.status === 404) return null;

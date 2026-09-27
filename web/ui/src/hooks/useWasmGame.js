@@ -1,8 +1,9 @@
 import { createSnapshotDecoder } from "../lib/snapshot-channel.js";
 import { beginEngineRequest, endEngineRequest } from '../lib/action-diagnostics.js';
 import { beginJournalEntry, completeJournalEntry, failJournalEntry, recordWorkerInit } from '../lib/engine-journal.js';
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { isGameRead } from '../lib/game-methods.js';
+import { installEmbeddedCardCatalog } from '../lib/embedded-card-catalog.js';
 
 const WORKER_METHODS = [
   "addCardToHand",
@@ -41,6 +42,8 @@ const WORKER_METHODS = [
   "forfeitPlayer",
   "getCardSemanticScore",
   "getExternalCardRoutes",
+  "getEmbeddedCardCatalogIndexJson",
+  "getEmbeddedCardSourceJson",
   "importSyncCheckpoint",
   "isKnownCardName",
   "lastAdvanceUntilDecisionPerf",
@@ -160,12 +163,9 @@ export function useWasmGame() {
   const [phase, setPhase] = useState("module");
   const [registryCount, setRegistryCount] = useState(0);
   const [registryTotal, setRegistryTotal] = useState(0);
-  const initialized = useRef(false);
-
-  useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
-
+  // Register the catalogue before child passive effects begin startup-board or
+  // card-art requests. Those reads wait for readiness instead of fetching JSON.
+  useLayoutEffect(() => {
     let disposed = false;
     let nextRequestId = 1;
     const pending = new Map();
@@ -329,6 +329,22 @@ export function useWasmGame() {
     };
 
     const gameProxy = createGameProxy(callWorker, callZiffleWorker);
+    let embeddedCatalogAvailable = false;
+    let resolveEngineReady;
+    let rejectEngineReady;
+    const engineReady = new Promise((resolve, reject) => {
+      resolveEngineReady = resolve;
+      rejectEngineReady = reject;
+    });
+    const releaseCatalog = installEmbeddedCardCatalog({
+      ready: engineReady,
+      getIndexJson: () => embeddedCatalogAvailable ? gameProxy.getEmbeddedCardCatalogIndexJson() : null,
+      getSourceJson: (route) => gameProxy.getEmbeddedCardSourceJson(route),
+    });
+    const failCatalog = (error) => {
+      rejectEngineReady(error);
+      releaseCatalog(error);
+    };
     gameProxy.supportsRuntimeSavepoints = false;
     gameProxy.isCurrentSnapshot = state => state != null && pendingMutations === 0
       && snapshotVersions.get(state) === viewVersion;
@@ -414,9 +430,12 @@ export function useWasmGame() {
       }
 
       if (msg.type === "ready") {
+        embeddedCatalogAvailable = msg.embeddedCardCatalog === true;
+        resolveEngineReady();
         gameProxy.supportsRuntimeSavepoints = msg.runtimeSavepoints === true;
         finishReady().catch((err) => {
           if (!disposed) {
+            failCatalog(toError(err));
             setError(toError(err));
             setLoading(false);
           }
@@ -426,6 +445,7 @@ export function useWasmGame() {
 
       if (msg.type === "error") {
         const err = toError(msg.error);
+        failCatalog(err);
         rejectPending(err);
         setError(err);
         setLoading(false);
@@ -435,6 +455,7 @@ export function useWasmGame() {
     const onWorkerError = (event) => {
       if (disposed) return;
       const err = new Error(event.message || "WASM worker crashed");
+      failCatalog(err);
       rejectPending(err);
       setError(err);
       setLoading(false);
@@ -459,6 +480,7 @@ export function useWasmGame() {
 
     return () => {
       disposed = true;
+      failCatalog(new Error("WASM worker terminated"));
       worker.removeEventListener("message", onMessage);
       worker.removeEventListener("error", onWorkerError);
       worker.terminate();

@@ -61,6 +61,7 @@ use stack_snapshots::{
 };
 
 mod bounded_cache;
+mod embedded_card_catalog;
 mod ui_snapshot;
 #[cfg(target_arch = "wasm32")]
 use ui_snapshot::SnapshotJsEncodingCache;
