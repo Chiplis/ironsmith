@@ -1813,7 +1813,6 @@
   clip-path: polygon(0 0, 84% 0, 100% 24%, 100% 100%, 0 100%);
 }
 
-.battlefield-counter-chip--shape-charge::before,
 .battlefield-counter-chip--shape-time::before {
   width: clamp(17px, calc(var(--bf-card-width, 124px) * 0.25), 38px);
   border-radius: 50%;
