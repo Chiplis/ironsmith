@@ -230,6 +230,7 @@ fn apply_combat_damage_step_with_dm_and_first_step_snapshot(
             combat,
             first_strike,
             first_step_strikers,
+            dm,
         ));
     }
     if is_unblocked_player_damage_batch(combat) {
@@ -760,21 +761,30 @@ fn execute_general_combat_damage_batch_path(
         let mut redirected = Vec::new();
         if !processed.replacement_prevented {
             for assignment in processed.assignments {
-                let applied = crate::rules::damage::apply_processed_damage_assignment(
+                let applied = crate::rules::damage::apply_processed_damage_assignment_with_dm(
                     game,
                     planned.source,
                     assignment.target,
                     assignment.amount,
                     keywords,
                     planned.cause.clone(),
+                    dm,
                 );
+                if dm.awaiting_choice() {
+                    game.turn_store.combat_damage_assignments = assignments_checkpoint;
+                    return Ok(Vec::new());
+                }
                 if !applied.applied {
                     continue;
                 }
                 total_damage_dealt = total_damage_dealt.saturating_add(assignment.amount);
                 if let EventDamageTarget::Player(player) = assignment.target {
                     game.record_commander_damage(player, planned.source, assignment.amount);
-                    apply_combat_toxic(game, planned.source, planned.controller, player);
+                    apply_combat_toxic(game, planned.source, planned.controller, player, dm);
+                    if dm.awaiting_choice() {
+                        game.turn_store.combat_damage_assignments = assignments_checkpoint;
+                        return Ok(Vec::new());
+                    }
                 }
                 if assignment.target == planned.target {
                     damage_to_original = damage_to_original.saturating_add(assignment.amount);
@@ -807,7 +817,11 @@ fn execute_general_combat_damage_batch_path(
         });
         push_redirected_combat_damage_events(&mut events, &planned.result, planned.source, redirected);
     }
-    lifelink_totals.apply(game, &mut events);
+    lifelink_totals.apply(game, &mut events, dm);
+    if dm.awaiting_choice() {
+        game.turn_store.combat_damage_assignments = assignments_checkpoint;
+        return Ok(Vec::new());
+    }
     excess_capacities.assign_excess(&mut events);
     Ok(events)
 }
@@ -1065,13 +1079,17 @@ fn execute_unblocked_player_damage_fast_path(
     combat: &CombatState,
     first_strike: bool,
     first_step_strikers: Option<&std::collections::HashSet<ObjectId>>,
+    dm: &mut dyn crate::decision::DecisionMaker,
 ) -> Vec<CombatDamageEvent> {
     let planned = plan_unblocked_player_damage(game, combat, first_strike, first_step_strikers);
 
-    let events = planned
-        .into_iter()
-        .map(|planned| apply_planned_unblocked_player_damage(game, planned))
-        .collect();
+    let mut events = Vec::with_capacity(planned.len());
+    for planned in planned {
+        let Some(event) = apply_planned_unblocked_player_damage(game, planned, dm) else {
+            return Vec::new();
+        };
+        events.push(event);
+    }
 
     // Damage/life/counter application dirties derived state. The caller checks
     // one trigger event per assignment immediately after this function returns;
@@ -1131,21 +1149,28 @@ fn execute_unblocked_player_damage_batch_path(
         let mut redirected = Vec::new();
         if !processed.replacement_prevented {
             for assignment in processed.assignments {
-                let applied = crate::rules::damage::apply_processed_damage_assignment(
+                let applied = crate::rules::damage::apply_processed_damage_assignment_with_dm(
                     game,
                     planned.source,
                     assignment.target,
                     assignment.amount,
                     keywords,
                     planned.cause.clone(),
+                    dm,
                 );
+                if dm.awaiting_choice() {
+                    return Vec::new();
+                }
                 if !applied.applied {
                     continue;
                 }
                 total_damage_dealt = total_damage_dealt.saturating_add(assignment.amount);
                 if let crate::events::DamageTarget::Player(player) = assignment.target {
                     game.record_commander_damage(player, planned.source, assignment.amount);
-                    apply_combat_toxic(game, planned.source, planned.controller, player);
+                    apply_combat_toxic(game, planned.source, planned.controller, player, dm);
+                    if dm.awaiting_choice() {
+                        return Vec::new();
+                    }
                 }
                 if assignment.target == crate::events::DamageTarget::Player(planned.target) {
                     damage_to_original = damage_to_original.saturating_add(assignment.amount);
@@ -1174,7 +1199,10 @@ fn execute_unblocked_player_damage_batch_path(
         });
         push_redirected_combat_damage_events(&mut events, &planned.result, planned.source, redirected);
     }
-    lifelink_totals.apply(game, &mut events);
+    lifelink_totals.apply(game, &mut events, dm);
+    if dm.awaiting_choice() {
+        return Vec::new();
+    }
 
     game.refresh_continuous_state();
     let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
@@ -1185,7 +1213,8 @@ fn execute_unblocked_player_damage_batch_path(
 fn apply_planned_unblocked_player_damage(
     game: &mut GameState,
     planned: PlannedUnblockedPlayerDamage,
-) -> CombatDamageEvent {
+    dm: &mut dyn crate::decision::DecisionMaker,
+) -> Option<CombatDamageEvent> {
     // The normal replacement pipeline allocates one provenance root before it
     // discovers that no effect applies. Preserve that deterministic graph
     // progression even though this guarded path can skip event processing.
@@ -1198,28 +1227,39 @@ fn apply_planned_unblocked_player_damage(
         has_wither: planned.result.has_wither,
         has_lifelink: planned.result.has_lifelink,
     };
-    let applied = crate::rules::damage::apply_processed_damage_assignment(
+    let applied = crate::rules::damage::apply_processed_damage_assignment_with_dm(
         game,
         planned.source,
         crate::events::DamageTarget::Player(planned.target),
         planned.amount,
         keywords,
         planned.cause,
+        dm,
     );
+    if dm.awaiting_choice() {
+        return None;
+    }
     let total_damage_dealt = if applied.applied { planned.amount } else { 0 };
     if applied.applied {
         game.record_commander_damage(planned.target, planned.source, planned.amount);
-        apply_combat_toxic(game, planned.source, planned.controller, planned.target);
+        apply_combat_toxic(game, planned.source, planned.controller, planned.target, dm);
+        if dm.awaiting_choice() {
+            return None;
+        }
     }
-    let lifelink_gain = apply_combat_lifelink(
+    let lifelink_gain = apply_combat_lifelink_with_dm(
         game,
         planned.controller,
         &planned.result,
         total_damage_dealt,
+        dm,
     )
     .map(|gained| (planned.controller, gained));
+    if dm.awaiting_choice() {
+        return None;
+    }
 
-    CombatDamageEvent {
+    Some(CombatDamageEvent {
         source_snapshot: None,
         target_snapshot: None,
         source: planned.source,
@@ -1228,7 +1268,7 @@ fn apply_planned_unblocked_player_damage(
         life_lost: applied.life_lost,
         result: planned.result,
         lifelink_gain,
-    }
+    })
 }
 
 pub(super) fn static_abilities_for_object(
@@ -1300,16 +1340,30 @@ pub(super) fn apply_combat_lifelink(
     damage_result: &DamageResult,
     total_damage_dealt: u32,
 ) -> Option<u32> {
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    apply_combat_lifelink_with_dm(game, controller, damage_result, total_damage_dealt, &mut dm)
+}
+
+/// Lifelink can itself require replacement choices. Keep those choices on the
+/// same decision maker as the damage so the complete step is replayed together.
+fn apply_combat_lifelink_with_dm(
+    game: &mut GameState,
+    controller: PlayerId,
+    damage_result: &DamageResult,
+    total_damage_dealt: u32,
+    dm: &mut dyn crate::decision::DecisionMaker,
+) -> Option<u32> {
     if !damage_result.has_lifelink || total_damage_dealt == 0 {
         return None;
     }
 
-    let life_to_gain = crate::events::processing::process_life_gain_with_event(
+    let life_to_gain = crate::events::processing::process_life_gain_with_event_with_dm(
         game,
         controller,
         total_damage_dealt,
+        dm,
     );
-    if life_to_gain == 0 {
+    if dm.awaiting_choice() || life_to_gain == 0 {
         return None;
     }
     let gained = game.gain_life(controller, life_to_gain);
@@ -1324,6 +1378,7 @@ fn apply_combat_toxic(
     source: ObjectId,
     controller: PlayerId,
     player: PlayerId,
+    dm: &mut dyn crate::decision::DecisionMaker,
 ) {
     let Some(source_object) = game.object(source) else {
         return;
@@ -1335,12 +1390,13 @@ fn apply_combat_toxic(
     if toxic == 0 {
         return;
     }
-    if let Some(event) = game.add_player_counters_with_source(
+    if let Some(event) = game.add_player_counters_with_source_with_dm(
         player,
         crate::object::CounterType::Poison,
         toxic,
         Some(source),
         Some(controller),
+        dm,
     ) {
         game.queue_trigger_event(event.provenance(), event);
     }
@@ -1407,7 +1463,12 @@ impl CombatLifelinkTotals {
         }
     }
 
-    fn apply(self, game: &mut GameState, events: &mut [CombatDamageEvent]) {
+    fn apply(
+        self,
+        game: &mut GameState,
+        events: &mut [CombatDamageEvent],
+        dm: &mut dyn crate::decision::DecisionMaker,
+    ) {
         for (_source, controller, total, event_index) in self.sources {
             let Some(event) = events.get_mut(event_index) else {
                 continue;
@@ -1416,8 +1477,11 @@ impl CombatLifelinkTotals {
                 has_lifelink: true,
                 ..DamageResult::default()
             };
-            event.lifelink_gain = apply_combat_lifelink(game, controller, &result, total)
+            event.lifelink_gain = apply_combat_lifelink_with_dm(game, controller, &result, total, dm)
                 .map(|gained| (controller, gained));
+            if dm.awaiting_choice() {
+                return;
+            }
         }
     }
 }

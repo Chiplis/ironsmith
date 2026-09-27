@@ -61,6 +61,7 @@ pub enum TurnState {
 
     // === First Main Phase ===
     FirstMain,
+    FirstMainSagas,
     FirstMainAttractions,
     FirstMainPriority,
 
@@ -116,6 +117,7 @@ impl TurnState {
             Self::Draw => "draw",
             Self::DrawPriority => "draw_priority",
             Self::FirstMain => "first_main",
+            Self::FirstMainSagas => "first_main_sagas",
             Self::FirstMainAttractions => "first_main_attractions",
             Self::FirstMainPriority => "first_main_priority",
             Self::BeginCombat => "begin_combat",
@@ -161,6 +163,7 @@ impl TurnState {
             "draw" => Self::Draw,
             "draw_priority" => Self::DrawPriority,
             "first_main" => Self::FirstMain,
+            "first_main_sagas" => Self::FirstMainSagas,
             "first_main_attractions" => Self::FirstMainAttractions,
             "first_main_priority" => Self::FirstMainPriority,
             "begin_combat" => Self::BeginCombat,
@@ -255,6 +258,14 @@ struct PendingTurnActionChoices {
 struct PendingCleanupDiscard {
     cards: Vec<ObjectId>,
     choices: PendingTurnActionChoices,
+}
+
+#[derive(Debug, Clone)]
+struct PendingTurnDraw {
+    player: PlayerId,
+    count: usize,
+    previous_draws: u32,
+    choices: PendingUntapChoices,
 }
 
 /// A draw-step draw replaced by effects that ask for choices (CR 616.1,
@@ -776,9 +787,11 @@ pub struct TurnRunner {
     pending_draw_reveal: Option<PendingDrawRevealChoice>,
     /// Draw-step replacement effects waiting on their controller's choices.
     pending_draw_replacement_effects: Option<PendingDrawReplacementEffects>,
+    pending_turn_draw: Option<PendingTurnDraw>,
     /// Choices of an SBA check the runner is applying.
     pending_sba_choices: Option<PendingSbaChoices>,
     pending_combat_damage_choices: Option<PendingTurnActionChoices>,
+    pending_saga_lore_choices: Option<PendingTurnActionChoices>,
     pending_cleanup_discard: Option<PendingCleanupDiscard>,
     /// Active teammates whose turn-based draw is still pending this draw step.
     remaining_draw_players: Vec<PlayerId>,
@@ -831,8 +844,10 @@ impl TurnRunner {
             pending_draw_replacement: None,
             pending_draw_reveal: None,
             pending_draw_replacement_effects: None,
+            pending_turn_draw: None,
             pending_sba_choices: None,
             pending_combat_damage_choices: None,
+            pending_saga_lore_choices: None,
             pending_cleanup_discard: None,
             remaining_draw_players: Vec::new(),
             shared_draw_events: Vec::new(),
@@ -1151,12 +1166,11 @@ impl TurnRunner {
                     game.set_scheme_in_motion(game.turn.active_player)
                         .map_err(GameLoopError::InvalidState)?;
                 }
-                crate::game_loop::add_saga_lore_counters(game, tq);
-                // CR 505.5: after the Saga turn-based action, roll to visit
-                // Attractions if the active player controls one.
-                self.state = TurnState::FirstMainAttractions;
-                self.advance_attraction_roll(game, tq)
+                self.state = TurnState::FirstMainSagas;
+                self.advance_saga_lore(game, tq)
             }
+
+            TurnState::FirstMainSagas => self.advance_saga_lore(game, tq),
 
             TurnState::FirstMainAttractions => self.advance_attraction_roll(game, tq),
 
@@ -1514,7 +1528,7 @@ impl TurnRunner {
                         GameLoopError::InvalidState("blocking-cost transaction has no defending player".to_string())
                     })?;
                     if let Some(action) = self.finish_block_payment_with_choices(
-                        pending.transaction, pending.answers, game,
+                        pending.transaction, pending.answers, game, tq,
                     )? {
                         return Ok(action);
                     }
@@ -1543,7 +1557,7 @@ impl TurnRunner {
                         GameLoopError::InvalidState("blocking-cost transaction has no defending player".to_string())
                     })?;
                     if let Some(action) = self.finish_block_payment_with_choices(
-                        pending.transaction, Vec::new(), game,
+                        pending.transaction, Vec::new(), game, tq,
                     )? {
                         return Ok(action);
                     }
@@ -1589,12 +1603,12 @@ impl TurnRunner {
                             return Ok(TurnAction::Decision(DecisionContext::SelectOptions(context)));
                         }
                         if let Some(action) = self.finish_block_payment_with_choices(
-                            pending.transaction, Vec::new(), game,
+                            pending.transaction, Vec::new(), game, tq,
                         )? {
                             return Ok(action);
                         }
                     } else if let Some(action) = self.finish_block_payment_with_choices(
-                        transaction, Vec::new(), game,
+                        transaction, Vec::new(), game, tq,
                     )? {
                         return Ok(action);
                     }
@@ -1980,8 +1994,10 @@ impl TurnRunner {
             || self.pending_attraction_choices.is_some()
             || self.pending_restart_entry_choices.is_some()
             || self.pending_draw_replacement_effects.is_some()
+            || self.pending_turn_draw.is_some()
             || self.pending_attacker_payment_choices.is_some()
             || self.pending_combat_damage_choices.is_some()
+            || self.pending_saga_lore_choices.is_some()
             || self.pending_cleanup_discard.is_some()
             || self.pending_combat_mana_choices.is_some()
             || self.pending_blocker_preparation_choices.is_some()
@@ -1993,6 +2009,9 @@ impl TurnRunner {
             return self.combat_cost_response_slot();
         }
         if let Some(pending) = self.pending_combat_damage_choices.as_mut() {
+            return Some(&mut pending.response);
+        }
+        if let Some(pending) = self.pending_saga_lore_choices.as_mut() {
             return Some(&mut pending.response);
         }
         if let Some(pending) = self.pending_cleanup_discard.as_mut() {
@@ -2012,6 +2031,9 @@ impl TurnRunner {
         }
         if let Some(pending) = self.pending_draw_replacement_effects.as_mut() {
             return Some(&mut pending.response);
+        }
+        if let Some(pending) = self.pending_turn_draw.as_mut() {
+            return Some(&mut pending.choices.response);
         }
         if let Some(pending) = self.pending_attacker_payment_choices.as_mut() {
             return Some(&mut pending.response);
@@ -2296,12 +2318,15 @@ impl TurnRunner {
         transaction: BlockDeclarationTransaction,
         answers: Vec<AttackCostAnswer>,
         game: &mut GameState,
+        tq: &mut TriggerQueue,
     ) -> Result<Option<TurnAction>, GameLoopError> {
         let mut payment_game = game.clone();
         let mut payment_combat = self.combat.clone();
+        let mut payment_triggers = tq.clone();
         let mut dm = QueuedAttackCostDecisionMaker::new(answers.clone());
         let result = finish_blocker_declaration_transaction_deferring_triggers(
-            transaction.clone(), &mut payment_game, &mut payment_combat, &mut dm,
+            transaction.clone(), &mut payment_game, &mut payment_combat,
+            &mut payment_triggers, &mut dm,
         );
         if let Some(prompt) = dm.pending_prompt {
             self.pending_blocker_payment_choices = Some(PendingBlockerPaymentChoices {
@@ -2311,6 +2336,7 @@ impl TurnRunner {
         }
         *game = payment_game;
         self.combat = payment_combat;
+        *tq = payment_triggers;
         match result {
             Ok(pairs) => self.declared_block_pairs.extend(pairs),
             Err(error) => {
@@ -2400,6 +2426,40 @@ impl TurnRunner {
         *game = hypothetical;
         queue_combat_damage_triggers(game, &events, tq);
         Ok(None)
+    }
+
+    fn advance_saga_lore(
+        &mut self,
+        game: &mut GameState,
+        tq: &mut TriggerQueue,
+    ) -> Result<TurnAction, GameLoopError> {
+        let mut answers = Vec::new();
+        if let Some(mut pending) = self.pending_saga_lore_choices.take() {
+            let Some(answer) = pending.response.take() else {
+                let prompt = pending.prompt.clone();
+                self.pending_saga_lore_choices = Some(pending);
+                return Ok(TurnAction::Decision(prompt));
+            };
+            answers = pending.answers;
+            answers.push(answer);
+        }
+        let mut hypothetical = game.clone();
+        let mut hypothetical_triggers = tq.clone();
+        let mut dm = QueuedAttackCostDecisionMaker::new(answers.clone());
+        crate::game_loop::add_saga_lore_counters_with_dm(
+            &mut hypothetical, &mut hypothetical_triggers, &mut dm,
+        );
+        if let Some(prompt) = dm.pending_prompt {
+            self.pending_saga_lore_choices = Some(PendingTurnActionChoices {
+                answers, prompt: prompt.clone(), response: None,
+            });
+            return Ok(TurnAction::Decision(prompt));
+        }
+        *game = hypothetical;
+        *tq = hypothetical_triggers;
+        // CR 505.5: Attractions follow the completed Saga turn-based action.
+        self.state = TurnState::FirstMainAttractions;
+        self.advance_attraction_roll(game, tq)
     }
 
     fn advance_cleanup_discard(&mut self, game: &mut GameState) -> Result<TurnAction, GameLoopError> {
@@ -2502,6 +2562,9 @@ impl TurnRunner {
         game.sync_draw_step_tracking();
         if let Some(pending) = self.pending_draw_reveal.take() {
             return self.finish_pending_draw_reveal_choices(game, pending);
+        }
+        if let Some(pending) = self.pending_turn_draw.take() {
+            return self.run_turn_draw_with_choices(game, pending);
         }
         if let Some(mut pending) = self.pending_draw_replacement_effects.take() {
             if pending.player == active_player {
@@ -2654,12 +2717,14 @@ impl TurnRunner {
             }
 
             if final_draw_count != 1 {
-                let mut dm = AutoPassDecisionMaker;
-                drawn.extend(game.draw_cards_with_dm(
-                    active_player,
-                    final_draw_count as usize,
-                    &mut dm,
-                ));
+                return self.run_turn_draw_with_choices(game, PendingTurnDraw {
+                    player: active_player,
+                    count: final_draw_count as usize,
+                    previous_draws: current_draws,
+                    choices: PendingUntapChoices {
+                        answers: Vec::new(), prompt: None, response: None,
+                    },
+                });
             } else {
                 match self.pending_commander_choice.take() {
                     Some(PendingCommanderChoice::DrawToHand { object_id }) => {
@@ -2712,6 +2777,39 @@ impl TurnRunner {
             }
         }
 
+        self.finish_turn_draw(game, active_player, drawn, current_draws)
+    }
+
+    fn run_turn_draw_with_choices(
+        &mut self,
+        game: &mut GameState,
+        mut pending: PendingTurnDraw,
+    ) -> RunnerProgress<Vec<crate::triggers::TriggerEvent>> {
+        if let Some(answer) = pending.choices.response.take() {
+            pending.choices.answers.push(answer);
+        } else if let Some(prompt) = pending.choices.prompt.clone() {
+            self.pending_turn_draw = Some(pending);
+            return RunnerProgress::NeedsDecision(prompt);
+        }
+        let mut hypothetical = game.clone();
+        let mut dm = QueuedAttackCostDecisionMaker::new(pending.choices.answers.clone());
+        let drawn = hypothetical.draw_cards_with_dm(pending.player, pending.count, &mut dm);
+        if let Some(prompt) = dm.pending_prompt {
+            pending.choices.prompt = Some(prompt.clone());
+            self.pending_turn_draw = Some(pending);
+            return RunnerProgress::NeedsDecision(prompt);
+        }
+        *game = hypothetical;
+        self.finish_turn_draw(game, pending.player, drawn, pending.previous_draws)
+    }
+
+    fn finish_turn_draw(
+        &mut self,
+        game: &mut GameState,
+        active_player: PlayerId,
+        drawn: Vec<ObjectId>,
+        current_draws: u32,
+    ) -> RunnerProgress<Vec<crate::triggers::TriggerEvent>> {
         if !drawn.is_empty() {
             let draw_event_provenance = game
                 .provenance_graph_mut()
@@ -2727,7 +2825,7 @@ impl TurnRunner {
                 PendingDrawRevealChoice {
                     active_player,
                     drawn,
-                    is_first_draw,
+                    is_first_draw: current_draws == 0,
                     draw_event_provenance,
                     candidates,
                     next_candidate_index: 0,
@@ -3129,15 +3227,9 @@ impl TurnRunner {
                 // these SBAs are performed belong to the affected players.
                 // Probe the check on a private copy with the answers so far;
                 // publish it only once no new prompt is raised.
-                let may_prompt = !game.effect_store.replacement_effects.effects().is_empty()
-                    || other_actions.iter().any(|action| {
-                        matches!(
-                            action,
-                            StateBasedAction::BattleProtectorChoice(_)
-                                | StateBasedAction::PlayerLoses { .. }
-                        )
-                    });
-                let applied = if may_prompt {
+                // Choices also arise without a replacement effect, such as
+                // ordering the front cards of a melded permanent in a graveyard.
+                let applied = {
                     let answers = match self.pending_sba_choices.take() {
                         Some(mut pending) => {
                             let Some(answer) = pending.response.take() else {
@@ -3171,16 +3263,6 @@ impl TurnRunner {
                     }
                     *game = hypothetical;
                     applied
-                } else {
-                    self.pending_sba_choices = None;
-                    let mut auto_dm = crate::decision::AutoPassDecisionMaker;
-                    apply_state_based_actions_with_legend_choices(
-                        game,
-                        other_actions,
-                        &legend_keeps,
-                        all_effects.as_slice(),
-                        &mut auto_dm,
-                    )
                 };
                 // CR 704.5h: this check consumed the deathtouch damage tracked
                 // since the previous one (regeneration / umbra armor survivors
@@ -3568,6 +3650,14 @@ mod combat_cost_choice_tests;
 #[cfg(test)]
 #[path = "turn_runner_choice_tests.rs"]
 mod choice_tests;
+
+#[cfg(test)]
+#[path = "turn_runner_lifelink_choice_tests.rs"]
+mod lifelink_choice_tests;
+
+#[cfg(test)]
+#[path = "turn_runner_saga_choice_tests.rs"]
+mod saga_choice_tests;
 
 #[cfg(test)]
 mod tests {
@@ -5764,3 +5854,7 @@ mod tests {
         assert_eq!(runner.combat.attacking_bands, vec![vec![companion]]);
     }
 }
+
+#[cfg(test)]
+#[path = "turn_runner_draw_choice_tests.rs"]
+mod draw_choice_tests;

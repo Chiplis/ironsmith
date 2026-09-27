@@ -49,14 +49,18 @@ impl EffectExecutor for DoubleCountersEffect {
                 for (counter_type, count) in
                     player_counter_counts(game, player_id, self.counter_type)?
                 {
-                    if let Some(event) = game.add_player_counters_with_source(
+                    if let Some(event) = game.add_player_counters_with_source_with_dm(
                         player_id,
                         counter_type,
                         count,
                         Some(ctx.source),
                         Some(ctx.controller),
+                        ctx.decision_maker,
                     ) {
                         outcomes.push(EffectOutcome::count(count as i32).with_event(event));
+                    }
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::aggregate_summing_counts(outcomes));
                     }
                 }
             }
@@ -104,6 +108,9 @@ impl EffectExecutor for DoubleCountersEffect {
                     ctx.cause.clone(),
                     &mut *ctx.decision_maker,
                 );
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::aggregate_summing_counts(outcomes));
+                }
                 if final_count == 0 {
                     outcomes.push(EffectOutcome::prevented());
                     continue;

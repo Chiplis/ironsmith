@@ -3453,6 +3453,23 @@ impl GameState {
         source: Option<ObjectId>,
         source_controller: Option<PlayerId>,
     ) -> Option<crate::triggers::TriggerEvent> {
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        self.add_player_counters_with_source_with_dm(
+            player_id, counter_type, amount, source, source_controller, &mut dm,
+        )
+    }
+
+    /// Add player counters after the supplied decision maker has answered any
+    /// replacement choices. A pending choice does not place counters or emit an event.
+    pub fn add_player_counters_with_source_with_dm(
+        &mut self,
+        player_id: PlayerId,
+        counter_type: crate::object::CounterType,
+        amount: u32,
+        source: Option<ObjectId>,
+        source_controller: Option<PlayerId>,
+        dm: &mut dyn crate::decision::DecisionMaker,
+    ) -> Option<crate::triggers::TriggerEvent> {
         if amount == 0 {
             return None;
         }
@@ -3469,14 +3486,15 @@ impl GameState {
             }
             _ => crate::events::cause::EventCause::effect(),
         };
-        let amount = crate::events::processing::process_player_counters_with_event(
+        let amount = crate::events::processing::process_player_counters_with_event_with_dm(
             self,
             player_id,
             counter_type,
             amount,
             cause,
+            dm,
         );
-        if amount == 0 {
+        if dm.awaiting_choice() || amount == 0 {
             return None;
         }
 

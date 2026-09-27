@@ -95,6 +95,9 @@ pub(crate) fn apply_processed_damage_outcome_opts(
             source_snapshot,
             dm,
         );
+        if dm.awaiting_choice() {
+            return EffectOutcome::count(0);
+        }
 
         apply_processed_damage_results(
             game,
@@ -105,6 +108,7 @@ pub(crate) fn apply_processed_damage_outcome_opts(
             source_is_combat,
             provenance,
             cause,
+            dm,
         )
     })
 }
@@ -167,6 +171,9 @@ fn apply_simultaneous_damage_assignments_opts(
             .collect::<Vec<_>>();
         let processed =
             process_simultaneous_damage_assignments_with_event_with_dm(game, &events, dm);
+        if dm.awaiting_choice() {
+            return EffectOutcome::count(0);
+        }
         // Several sources dealing damage at once ("each creature you control
         // deals damage ...") share the enclosing simultaneous action.
         let simultaneous_batch = game.simultaneous_action_batch().unwrap_or_else(|| {
@@ -182,6 +189,7 @@ fn apply_simultaneous_damage_assignments_opts(
             source_is_combat,
             provenance,
             cause,
+            dm,
         )
     })
 }
@@ -196,6 +204,7 @@ fn apply_processed_damage_results(
     source_is_combat: bool,
     provenance: crate::provenance::ProvNodeId,
     cause: crate::events::cause::EventCause,
+    dm: &mut dyn crate::decision::DecisionMaker,
 ) -> EffectOutcome {
     let source_controller = game.object(source)
         .filter(|_| !game.is_phased_out(source))
@@ -225,14 +234,18 @@ fn apply_processed_damage_results(
                 }
                 DamageTarget::Player(_) => 0,
             };
-            let applied = crate::rules::damage::apply_processed_damage_assignment(
+            let applied = crate::rules::damage::apply_processed_damage_assignment_with_dm(
                 game,
                 source,
                 assignment.target,
                 assignment.amount,
                 keywords,
                 cause.clone(),
+                dm,
             );
+            if dm.awaiting_choice() {
+                return EffectOutcome::count(0);
+            }
             if !applied.applied {
                 continue;
             }
@@ -292,11 +305,15 @@ fn apply_processed_damage_results(
         && total_damage_dealt > 0
         && let Some(controller) = source_controller
     {
-        let life_to_gain = crate::events::processing::process_life_gain_with_event(
+        let life_to_gain = crate::events::processing::process_life_gain_with_event_with_dm(
             game,
             controller,
             total_damage_dealt,
+            dm,
         );
+        if dm.awaiting_choice() {
+            return EffectOutcome::count(0);
+        }
         if life_to_gain > 0 {
             game.gain_life(controller, life_to_gain);
             let mut event = TriggerEvent::new_with_provenance(
@@ -945,6 +962,10 @@ impl EffectExecutor for DealDamageEffect {
         "target for damage"
     }
 }
+
+#[cfg(test)]
+#[path = "deal_damage_choice_tests.rs"]
+mod choice_tests;
 
 #[cfg(test)]
 mod tests {

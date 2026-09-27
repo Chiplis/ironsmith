@@ -616,6 +616,15 @@ impl EffectExecutor for ForPlayersEffect {
                             return Err(error);
                         }
                     }
+                    if ctx.decision_maker.awaiting_choice() {
+                        game.close_simultaneous_action(opened_batch);
+                        crate::effects::helpers::end_simultaneous_zone_change_lookback(
+                            game,
+                            pinned_lookback,
+                        );
+                        ctx.tagged_objects = pre_unit_tagged_objects;
+                        return Ok(EffectOutcome::count(0));
+                    }
                 }
                 game.close_simultaneous_action(opened_batch);
                 crate::effects::helpers::end_simultaneous_zone_change_lookback(

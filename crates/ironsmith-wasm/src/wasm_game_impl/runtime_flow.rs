@@ -185,7 +185,10 @@ impl WasmGame {
         self.game.turn.step == Some(ironsmith::game_state::Step::Cleanup)
             && obj.min > 0
             && self.game.controlling_player_for(obj.player) != self.perspective
-            && !self.runner.as_ref().is_some_and(|runner| runner.has_pending_replay_choice())
+            && !self
+                .runner
+                .as_ref()
+                .is_some_and(|runner| runner.has_pending_replay_choice())
     }
 
     /// Publish one `advance_until_decision` pass: to the single "last" slot the
@@ -1573,11 +1576,9 @@ impl WasmGame {
             }
             (DecisionContext::Modes(modes), UiCommand::SelectOptions { option_indices }) => {
                 use ironsmith::decisions::DecisionSpec;
-                let DecisionContext::SelectOptions(options) = modes.spec.build_context(
-                    modes.player,
-                    modes.source,
-                    &self.game,
-                ) else {
+                let DecisionContext::SelectOptions(options) =
+                    modes.spec.build_context(modes.player, modes.source, &self.game)
+                else {
                     unreachable!("mode specifications build option choices");
                 };
                 validate_replay_option_selection(&options, &option_indices)

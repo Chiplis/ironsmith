@@ -75,6 +75,10 @@ impl GameEventType for LifeGainEvent {
         self.player
     }
 
+    fn player(&self) -> Option<PlayerId> {
+        Some(self.player)
+    }
+
     fn redirectable_targets(&self) -> Vec<RedirectableTarget> {
         vec![RedirectableTarget {
             target: Target::Player(self.player),

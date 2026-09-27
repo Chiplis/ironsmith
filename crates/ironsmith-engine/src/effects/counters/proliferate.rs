@@ -55,6 +55,9 @@ fn execute_keyword_action_replacement_effects(
         let mut outcomes = Vec::new();
         for effect in effects {
             outcomes.push(crate::effects::execute_effect(game, &effect, ctx)?);
+            if ctx.decision_maker.awaiting_choice() {
+                break;
+            }
         }
         Ok(EffectOutcome::aggregate_summing_counts(outcomes))
     })();
@@ -142,6 +145,9 @@ impl EffectExecutor for ProliferateEffect {
                         game, ctx, effects, effect_id, snapshot,
                     )?;
                     outcome = outcome.with_events(replacement_outcome.events);
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(outcome);
+                    }
                     continue;
                 }
                 TraitEventResult::Prevented => continue,
@@ -275,6 +281,9 @@ impl EffectExecutor for ProliferateEffect {
                         ctx.cause.clone(),
                         &mut *ctx.decision_maker,
                     );
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(outcome);
+                    }
                     if final_count == 0 {
                         continue;
                     }
@@ -328,15 +337,19 @@ impl EffectExecutor for ProliferateEffect {
                     // replacement/prevention pipeline inside this centralized
                     // helper. Do not pre-process it here or replacements such
                     // as counter doubling would be applied twice.
-                    if let Some(event) = game.add_player_counters_with_source(
+                    if let Some(event) = game.add_player_counters_with_source_with_dm(
                         player_id,
                         counter_type,
                         1,
                         Some(ctx.source),
                         Some(ctx.controller),
+                        ctx.decision_maker,
                     ) {
                         received_counter = true;
                         outcome = outcome.with_event(event);
+                    }
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(outcome);
                     }
                 }
                 if received_counter {

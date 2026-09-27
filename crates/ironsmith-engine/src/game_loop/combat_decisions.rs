@@ -1731,12 +1731,13 @@ pub fn finish_blocker_declaration_transaction_deferring_triggers(
     transaction: BlockDeclarationTransaction,
     game: &mut GameState,
     combat: &mut CombatState,
+    trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<Vec<(ObjectId, ObjectId)>, GameLoopError> {
     let BlockDeclarationTransaction {
         game_checkpoint,
         combat_checkpoint,
-        trigger_queue_checkpoint: _,
+        trigger_queue_checkpoint,
         prepared,
     } = transaction;
     let pairs = prepared.pairs.clone();
@@ -1744,6 +1745,7 @@ pub fn finish_blocker_declaration_transaction_deferring_triggers(
     if result.is_err() {
         *game = game_checkpoint;
         *combat = combat_checkpoint;
+        *trigger_queue = trigger_queue_checkpoint;
     }
     result.map(|()| pairs)
 }

@@ -82,6 +82,9 @@ pub mod other;
 pub mod phase;
 pub mod spells;
 
+#[cfg(test)]
+mod trigger_player_contract_tests;
+
 // Re-export core types
 pub use cause::{CauseFilter, CauseType, CauseTypeFilter, ControllerFilter, EventCause};
 pub use context::EventContext;

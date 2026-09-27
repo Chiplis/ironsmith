@@ -82,6 +82,10 @@ impl GameEventType for LifeLossEvent {
         self.player
     }
 
+    fn player(&self) -> Option<PlayerId> {
+        Some(self.player)
+    }
+
     fn redirectable_targets(&self) -> Vec<RedirectableTarget> {
         vec![RedirectableTarget {
             target: Target::Player(self.player),
@@ -114,6 +118,10 @@ impl GameEventType for LifeLossEvent {
         self
     }
 }
+
+#[cfg(test)]
+#[path = "life_loss_player_binding_tests.rs"]
+mod player_binding_tests;
 
 #[cfg(test)]
 mod tests {

@@ -54,14 +54,18 @@ impl EffectExecutor for ExperienceCountersEffect {
         let count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
 
         let mut outcome = EffectOutcome::count(count as i32);
-        if let Some(event) = game.add_player_counters_with_source(
+        if let Some(event) = game.add_player_counters_with_source_with_dm(
             player_id,
             CounterType::Experience,
             count,
             Some(ctx.source),
             Some(ctx.controller),
+            ctx.decision_maker,
         ) {
             outcome = outcome.with_event(event);
+        }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
         }
 
         Ok(outcome)

@@ -5,7 +5,7 @@ use crate::effect::{Effect, EffectOutcome, Until, Value};
 use crate::effects::helpers::{resolve_player_filter, resolve_single_object_for_effect};
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
-use crate::events::processing::process_life_gain_with_event;
+use crate::events::processing::process_life_gain_with_event_with_dm;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::TriggerEvent;
@@ -145,11 +145,7 @@ impl ExchangeValuesEffect {
             ResolvedExchangeValue::LifeTotal { player, value } => {
                 Self::apply_life_total_change(game, ctx, player, value, next_value)
             }
-            ResolvedExchangeValue::Stat {
-                object,
-                kind,
-                ..
-            } => {
+            ResolvedExchangeValue::Stat { object, kind, .. } => {
                 // CR 701.12g creates the setting effect even when the
                 // current values are equal; later P/T layers still apply.
                 let modification = match kind {
@@ -185,7 +181,15 @@ impl ExchangeValuesEffect {
 
         let mut outcome = EffectOutcome::resolved();
         if next_value > current {
-            let gained = process_life_gain_with_event(game, player, (next_value - current) as u32);
+            let gained = process_life_gain_with_event_with_dm(
+                game,
+                player,
+                (next_value - current) as u32,
+                ctx.decision_maker,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             if gained > 0 {
                 game.gain_life(player, gained);
             }
@@ -196,12 +200,16 @@ impl ExchangeValuesEffect {
                 ));
             }
         } else {
-            let lost = crate::events::processing::process_life_loss_with_event(
+            let lost = crate::events::processing::process_life_loss_with_event_with_dm(
                 game,
                 player,
                 (current - next_value) as u32,
                 false,
+                ctx.decision_maker,
             );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             let lost = game.lose_life(player, lost);
             if lost > 0 {
                 outcome = outcome.with_event(TriggerEvent::new_with_provenance(
@@ -243,10 +251,15 @@ impl EffectExecutor for ExchangeValuesEffect {
             return Ok(EffectOutcome::prevented());
         }
 
-        let outcomes = vec![
-            self.apply_resolved_value(game, ctx, left, right_value)?,
-            self.apply_resolved_value(game, ctx, right, left_value)?,
-        ];
+        let left_outcome = self.apply_resolved_value(game, ctx, left, right_value)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        let right_outcome = self.apply_resolved_value(game, ctx, right, left_value)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        let outcomes = vec![left_outcome, right_outcome];
         Ok(EffectOutcome::aggregate(outcomes))
     }
 }

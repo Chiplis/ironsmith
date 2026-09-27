@@ -3905,7 +3905,9 @@ fn collect_simultaneous_prevention_allocations(
 /// Process damage events that would happen simultaneously as one CR 615.7 batch.
 ///
 /// Limited prevention shields are allocated before any event consumes them. The
-/// returned results remain aligned with the input events.
+/// returned results remain aligned with the input events when complete. If the
+/// decision maker is awaiting a choice, callers must discard the partial result
+/// and replay the batch after receiving an answer.
 pub fn process_simultaneous_damage_assignments_with_event_with_dm(
     game: &mut GameState,
     events: &[SimultaneousDamageEvent],
@@ -4442,15 +4444,31 @@ pub fn process_life_loss_with_event(
     amount: u32,
     from_damage: bool,
 ) -> u32 {
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    process_life_loss_with_event_with_dm(game, player, amount, from_damage, &mut dm)
+}
+
+/// Process life-loss replacements using the same decision maker as the event
+/// causing the loss. Returns zero while a replacement choice is pending.
+pub fn process_life_loss_with_event_with_dm(
+    game: &mut GameState,
+    player: PlayerId,
+    amount: u32,
+    from_damage: bool,
+    dm: &mut dyn DecisionMaker,
+) -> u32 {
     use crate::events::{LifeLossEvent, downcast_event};
 
     if amount == 0 || !game.can_lose_life(player) {
         return 0;
     }
 
-    let mut dm = crate::decision::SelectFirstDecisionMaker;
     let event = Event::life_loss(player, amount, from_damage);
-    match process_with_dm(game, event, &mut dm) {
+    let result = process_with_dm(game, event, dm);
+    if dm.awaiting_choice() {
+        return 0;
+    }
+    match result {
         TraitEventResult::Prevented => 0,
         TraitEventResult::Proceed(e) | TraitEventResult::Modified(e) => {
             if let Some(life_loss) = downcast_event::<LifeLossEvent>(e.inner()) {

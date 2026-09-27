@@ -35,6 +35,9 @@ impl EffectExecutor for RadiationEffect {
 
         let mut outcome =
             MillEffect::new(rad_count as i32, PlayerFilter::Specific(player)).execute(game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         let nonland_cards_milled = outcome.affected_object_memory().map_or(0, |memory| {
             memory
                 .iter()
@@ -44,8 +47,16 @@ impl EffectExecutor for RadiationEffect {
 
         for _ in 0..nonland_cards_milled {
             // CR 614.1a: the radiation life loss is a life-loss event.
-            let amount =
-                crate::events::processing::process_life_loss_with_event(game, player, 1, false);
+            let amount = crate::events::processing::process_life_loss_with_event_with_dm(
+                game,
+                player,
+                1,
+                false,
+                ctx.decision_maker,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             let lost = game.lose_life(player, amount);
             if lost > 0 {
                 outcome.events.push(TriggerEvent::new_with_provenance(

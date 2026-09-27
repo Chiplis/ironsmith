@@ -33,6 +33,10 @@ impl GameEventType for CoinFlippedEvent {
         self.player
     }
 
+    fn player(&self) -> Option<PlayerId> {
+        Some(self.player)
+    }
+
     fn display(&self) -> String {
         let face = match self.face {
             ironsmith_core::CoinFace::Heads => "heads",

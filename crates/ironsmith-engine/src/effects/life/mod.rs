@@ -20,3 +20,6 @@ pub use lose_life::LoseLifeEffect;
 pub use note_life_total::NoteLifeTotalEffect;
 pub use pay_life::PayLifeEffect;
 pub use set_life_total::SetLifeTotalEffect;
+
+#[cfg(test)]
+mod replacement_choice_tests;

@@ -4,7 +4,7 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::processing::process_life_gain_with_event;
+use crate::events::processing::process_life_gain_with_event_with_dm;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::TriggerEvent;
@@ -136,7 +136,15 @@ impl EffectExecutor for ExchangeLifeTotalsEffect {
         let mut outcome = EffectOutcome::resolved();
 
         if life2 > life1 {
-            let gained = process_life_gain_with_event(game, player1_id, (life2 - life1) as u32);
+            let gained = process_life_gain_with_event_with_dm(
+                game,
+                player1_id,
+                (life2 - life1) as u32,
+                ctx.decision_maker,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             if gained > 0 {
                 game.gain_life(player1_id, gained);
             }
@@ -147,12 +155,16 @@ impl EffectExecutor for ExchangeLifeTotalsEffect {
                 ));
             }
         } else if life1 > life2 {
-            let lost = crate::events::processing::process_life_loss_with_event(
+            let lost = crate::events::processing::process_life_loss_with_event_with_dm(
                 game,
                 player1_id,
                 (life1 - life2) as u32,
                 false,
+                ctx.decision_maker,
             );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             let lost = game.lose_life(player1_id, lost);
             if lost > 0 {
                 outcome = outcome.with_event(TriggerEvent::new_with_provenance(
@@ -163,7 +175,15 @@ impl EffectExecutor for ExchangeLifeTotalsEffect {
         }
 
         if life1 > life2 {
-            let gained = process_life_gain_with_event(game, player2_id, (life1 - life2) as u32);
+            let gained = process_life_gain_with_event_with_dm(
+                game,
+                player2_id,
+                (life1 - life2) as u32,
+                ctx.decision_maker,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             if gained > 0 {
                 game.gain_life(player2_id, gained);
             }
@@ -174,12 +194,16 @@ impl EffectExecutor for ExchangeLifeTotalsEffect {
                 ));
             }
         } else if life2 > life1 {
-            let lost = crate::events::processing::process_life_loss_with_event(
+            let lost = crate::events::processing::process_life_loss_with_event_with_dm(
                 game,
                 player2_id,
                 (life2 - life1) as u32,
                 false,
+                ctx.decision_maker,
             );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             let lost = game.lose_life(player2_id, lost);
             if lost > 0 {
                 outcome = outcome.with_event(TriggerEvent::new_with_provenance(

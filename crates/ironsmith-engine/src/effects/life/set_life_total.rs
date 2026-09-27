@@ -4,7 +4,7 @@ use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError, SimultaneousEffectProposal};
-use crate::events::processing::process_life_gain_with_event;
+use crate::events::processing::process_life_gain_with_event_with_dm;
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
 use crate::triggers::TriggerEvent;
@@ -51,7 +51,7 @@ impl SimultaneousEffectProposal for SetLifeTotalProposal {
     fn commit(
         self: Box<Self>,
         game: &mut GameState,
-        _ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         apply_set_life_total(
             game,
@@ -60,6 +60,7 @@ impl SimultaneousEffectProposal for SetLifeTotalProposal {
             self.current,
             self.can_change,
             self.provenance,
+            ctx.decision_maker,
         )
     }
 }
@@ -71,13 +72,22 @@ fn apply_set_life_total(
     current: i32,
     can_change: bool,
     provenance: crate::provenance::ProvNodeId,
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<EffectOutcome, ExecutionError> {
     if amount == current {
         return Ok(EffectOutcome::resolved());
     }
 
     if amount > current {
-        let gained = process_life_gain_with_event(game, player_id, (amount - current) as u32);
+        let gained = process_life_gain_with_event_with_dm(
+            game,
+            player_id,
+            (amount - current) as u32,
+            decision_maker,
+        );
+        if decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         if gained > 0 {
             game.gain_life(player_id, gained);
             return Ok(EffectOutcome::count(gained as i32).with_event(
@@ -95,12 +105,16 @@ fn apply_set_life_total(
             crate::effect::OutcomeStatus::Prevented,
         ));
     }
-    let lost = crate::events::processing::process_life_loss_with_event(
+    let lost = crate::events::processing::process_life_loss_with_event_with_dm(
         game,
         player_id,
         (current - amount) as u32,
         false,
+        decision_maker,
     );
+    if decision_maker.awaiting_choice() {
+        return Ok(EffectOutcome::count(0));
+    }
     let lost = game.lose_life(player_id, lost);
     if lost == 0 {
         return Ok(EffectOutcome::from_status(
@@ -146,7 +160,15 @@ impl EffectExecutor for SetLifeTotalEffect {
 
         let current = game.player(player_id).map(|p| p.life).unwrap_or(amount);
         let can_change = game.can_change_life_total(player_id);
-        apply_set_life_total(game, player_id, amount, current, can_change, ctx.provenance)
+        apply_set_life_total(
+            game,
+            player_id,
+            amount,
+            current,
+            can_change,
+            ctx.provenance,
+            ctx.decision_maker,
+        )
     }
 
     fn supports_simultaneous_player_action(&self) -> bool {

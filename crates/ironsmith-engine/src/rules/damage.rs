@@ -104,6 +104,21 @@ pub(crate) fn apply_processed_damage_assignment(
     keywords: SourceDamageKeywords,
     cause: crate::events::cause::EventCause,
 ) -> AppliedDamageAssignment {
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    apply_processed_damage_assignment_with_dm(game, source, target, amount, keywords, cause, &mut dm)
+}
+
+/// Apply the consequences of damage with the caller's decision maker. Life
+/// loss and counters can have replacement choices of their own.
+pub(crate) fn apply_processed_damage_assignment_with_dm(
+    game: &mut GameState,
+    source: ObjectId,
+    target: crate::events::DamageTarget,
+    amount: u32,
+    keywords: SourceDamageKeywords,
+    cause: crate::events::cause::EventCause,
+    dm: &mut dyn crate::decision::DecisionMaker,
+) -> AppliedDamageAssignment {
     let record_damage_ui_event = |game: &mut GameState| {
         if amount == 0 {
             return;
@@ -140,14 +155,18 @@ pub(crate) fn apply_processed_damage_assignment(
                 })
                 .or(cause.source_controller);
             if keywords.has_infect {
-                if let Some(event) = game.add_player_counters_with_source(
+                if let Some(event) = game.add_player_counters_with_source_with_dm(
                     player_id,
                     crate::object::CounterType::Poison,
                     amount,
                     Some(source),
                     source_controller,
+                    dm,
                 ) {
                     game.queue_trigger_event(event.provenance(), event);
+                }
+                if dm.awaiting_choice() {
+                    return AppliedDamageAssignment::default();
                 }
                 record_damage_ui_event(game);
                 return AppliedDamageAssignment {
@@ -163,9 +182,12 @@ pub(crate) fn apply_processed_damage_assignment(
             let life_lost = if game.can_damage_cause_life_loss(player_id) {
                 // CR 120.3a / 614.1a: the life loss from damage is a life-loss
                 // event, so "would lose life" replacements modify it.
-                let amount = crate::events::processing::process_life_loss_with_event(
-                    game, player_id, amount, true,
+                let amount = crate::events::processing::process_life_loss_with_event_with_dm(
+                    game, player_id, amount, true, dm,
                 );
+                if dm.awaiting_choice() {
+                    return AppliedDamageAssignment::default();
+                }
                 // "Damage that would reduce your life total to less than 1
                 // reduces it to 1 instead": the full damage is still dealt.
                 let amount = if game.damage_cant_reduce_life_below_one(player_id)
@@ -239,13 +261,17 @@ pub(crate) fn apply_processed_damage_assignment(
             }
 
             if is_creature && (keywords.has_infect || keywords.has_wither) {
-                let final_count = crate::events::processing::process_put_counters_with_event(
+                let final_count = crate::events::processing::process_put_counters_with_event_with_dm(
                     game,
                     object_id,
                     crate::CounterType::MinusOneMinusOne,
                     amount,
                     cause.clone(),
+                    dm,
                 );
+                if dm.awaiting_choice() {
+                    return AppliedDamageAssignment::default();
+                }
                 let source_controller = game
                     .object(source)
                     .map(|obj| {

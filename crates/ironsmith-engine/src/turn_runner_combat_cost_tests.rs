@@ -278,3 +278,103 @@ fn blocking_cost_keeps_payment_tentative_until_second_helper_is_chosen() {
     assert!(game.is_tapped(second));
     assert!(!game.is_tapped(blocker));
 }
+
+#[test]
+fn failed_block_payment_rolls_back_mana_activation_and_its_trigger_queue() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let attacker = permanent(&mut game, alice, "Attacker", true);
+    let blocker = permanent(&mut game, bob, "Blocker", true);
+    let lotus = lotus(&mut game, bob);
+    let watcher = permanent(&mut game, bob, "Activation watcher", false);
+    game.object_mut(watcher)
+        .unwrap()
+        .abilities_mut()
+        .push(Ability::triggered(
+            crate::triggers::Trigger::ability_activated(ObjectFilter::artifact()),
+            vec![Effect::gain_life(1)],
+        ));
+    game.object_mut(attacker)
+        .unwrap()
+        .abilities_mut()
+        .push(Ability::static_ability(StaticAbility::block_cost(
+            ObjectFilter::creature(),
+            ObjectFilter::source(),
+            TotalCost::from_costs(vec![
+                Cost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]])),
+                Cost::life(1),
+            ]),
+            "Pay {2} and 1 life to block",
+        )));
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(Step::DeclareBlockers);
+    let mut runner = TurnRunner::from_state_for_sync(TurnState::DeclareBlockersCheck);
+    runner.combat_mut().attackers.push(AttackerInfo {
+        creature: attacker,
+        target: AttackTarget::Player(bob),
+    });
+    let mut tq = TriggerQueue::new();
+    assert!(matches!(
+        runner.advance(&mut game, &mut tq).unwrap(),
+        TurnAction::Continue
+    ));
+    assert!(matches!(
+        runner.advance(&mut game, &mut tq).unwrap(),
+        TurnAction::Decision(DecisionContext::Blockers(_))
+    ));
+    runner.respond_blockers(
+        vec![BlockerDeclaration {
+            blocker,
+            blocking: attacker,
+        }],
+        bob,
+    );
+    let window = runner.advance(&mut game, &mut tq).unwrap();
+    choose_source(&mut runner, window, lotus);
+    assert!(matches!(
+        runner.advance(&mut game, &mut tq).unwrap(),
+        TurnAction::Decision(DecisionContext::Colors(_))
+    ));
+    runner.respond_colors(vec![Color::Blue; 3]);
+    let TurnAction::Decision(DecisionContext::SelectOptions(window)) =
+        runner.advance(&mut game, &mut tq).unwrap()
+    else {
+        panic!("expected resumed mana window");
+    };
+    assert!(game.is_tapped(lotus));
+    assert_eq!(game.player(bob).unwrap().mana_pool.blue, 3);
+    assert_eq!(
+        tq.entries.len(),
+        1,
+        "mana activation must queue the watcher's trigger"
+    );
+    assert_eq!(tq.entries[0].source, watcher);
+    let finish = window
+        .options
+        .iter()
+        .find(|option| option.description == "Finish activating mana abilities")
+        .unwrap()
+        .index;
+    runner.respond_options(vec![finish]);
+    let order = runner.advance(&mut game, &mut tq).unwrap();
+    assert!(
+        matches!(&order, TurnAction::Decision(DecisionContext::SelectOptions(context)) if context.description.contains("order")),
+        "{order:?}"
+    );
+    runner.respond_options(vec![0, 0]);
+    assert!(runner.advance(&mut game, &mut tq).is_err());
+    assert!(!game.is_tapped(lotus));
+    assert_eq!(game.player(bob).unwrap().mana_pool.total(), 0);
+    assert_eq!(game.player(bob).unwrap().life, 20);
+    assert!(runner.combat().blockers.is_empty());
+    assert!(
+        tq.is_empty(),
+        "rolled-back activation must not leave its triggered ability pending"
+    );
+    assert!(
+        !tq.has_ability_triggered_events(),
+        "rolled-back activation must not leave secondary trigger events pending"
+    );
+}

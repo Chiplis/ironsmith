@@ -35,7 +35,7 @@ impl EffectExecutor for PlayerCountersEffect {
         _game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        // Player counters involve no choices.
+        // Replacement choices are deferred until the counter event is applied.
         Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
             effect: crate::effect::Effect::new(self.clone()),
             iterated_player: ctx.iteration.iterated_player,
@@ -49,15 +49,20 @@ impl EffectExecutor for PlayerCountersEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let player = resolve_player_filter(game, &self.player, ctx)?;
         let count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
-        let Some(event) = game.add_player_counters_with_source(
+        let Some(event) = game.add_player_counters_with_source_with_dm(
             player,
             self.counter_type,
             count,
             Some(ctx.source),
             Some(ctx.controller),
+            ctx.decision_maker,
         ) else {
             return Ok(EffectOutcome::count(0));
         };
         Ok(EffectOutcome::count(count as i32).with_event(event))
     }
 }
+
+#[cfg(test)]
+#[path = "player_counter_choice_tests.rs"]
+mod choice_tests;

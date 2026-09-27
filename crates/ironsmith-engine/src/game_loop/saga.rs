@@ -83,6 +83,16 @@ pub(crate) fn source_entered_battlefield_this_turn(game: &GameState, source_id: 
 /// Per CR 714.3c, this applies only to Sagas the active player controls that
 /// currently have one or more chapter abilities.
 pub fn add_saga_lore_counters(game: &mut GameState, trigger_queue: &mut TriggerQueue) {
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    add_saga_lore_counters_with_dm(game, trigger_queue, &mut dm);
+}
+
+/// The caller must replay the turn-based action if a replacement choice is pending.
+pub fn add_saga_lore_counters_with_dm(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    decision_maker: &mut dyn DecisionMaker,
+) {
     let active_player = game.turn.active_player;
     let sagas: Vec<ObjectId> = {
         let view = crate::derived_view::DerivedGameView::new(game);
@@ -97,7 +107,17 @@ pub fn add_saga_lore_counters(game: &mut GameState, trigger_queue: &mut TriggerQ
     };
 
     for saga_id in sagas {
-        add_lore_counter_and_check_chapters(game, saga_id, trigger_queue);
+        add_lore_counters_and_check_chapters_with_cause(
+            game,
+            saga_id,
+            1,
+            crate::events::cause::EventCause::from_game_rule(),
+            trigger_queue,
+            decision_maker,
+        );
+        if decision_maker.awaiting_choice() {
+            return;
+        }
     }
 }
 
@@ -159,7 +179,7 @@ pub(crate) fn add_entry_lore_counters(
         saga_entry_lore_cause(game, saga_id),
         decision_maker,
     );
-    if amount == 0 {
+    if decision_maker.awaiting_choice() || amount == 0 {
         return;
     }
     if let Some(event) = game.add_counters(saga_id, CounterType::Lore, amount) {
@@ -223,7 +243,9 @@ pub fn handle_saga_enters_battlefield(
     };
 
     let cause = saga_entry_lore_cause(game, saga_id);
-    add_lore_counters_and_check_chapters_with_cause(game, saga_id, amount, cause, trigger_queue);
+    add_lore_counters_and_check_chapters_with_cause(
+        game, saga_id, amount, cause, trigger_queue, decision_maker,
+    );
 }
 
 fn choose_read_ahead_chapter(
@@ -302,12 +324,14 @@ pub fn add_lore_counters_and_check_chapters(
 ) {
     // CR 714.3b: the precombat-main lore counter is a turn-based action, not
     // an effect ("if an effect would put counters" replacements don't apply).
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
     add_lore_counters_and_check_chapters_with_cause(
         game,
         saga_id,
         amount,
         crate::events::cause::EventCause::from_game_rule(),
         trigger_queue,
+        &mut dm,
     );
 }
 
@@ -319,18 +343,20 @@ fn add_lore_counters_and_check_chapters_with_cause(
     amount: u32,
     cause: crate::events::cause::EventCause,
     trigger_queue: &mut TriggerQueue,
+    decision_maker: &mut dyn DecisionMaker,
 ) {
     if amount == 0 {
         return;
     }
-    let amount = crate::events::processing::process_put_counters_with_event(
+    let amount = crate::events::processing::process_put_counters_with_event_with_dm(
         game,
         saga_id,
         CounterType::Lore,
         amount,
         cause,
+        decision_maker,
     );
-    if amount == 0 {
+    if decision_maker.awaiting_choice() || amount == 0 {
         return;
     }
     let Some(event) = game.add_counters(saga_id, CounterType::Lore, amount) else {

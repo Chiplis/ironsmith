@@ -7333,6 +7333,9 @@ impl GameState {
 
             let final_zone =
                 self.resolve_commander_move_destination(id, Zone::Hand, decision_maker);
+            if decision_maker.awaiting_choice() {
+                break;
+            }
             if let Some(new_id) = self.move_object_by_game_rule(id, final_zone)
                 && final_zone == Zone::Hand
             {

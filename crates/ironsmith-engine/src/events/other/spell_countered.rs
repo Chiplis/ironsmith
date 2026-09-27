@@ -33,6 +33,10 @@ impl GameEventType for SpellCounteredEvent {
         self.controller
     }
 
+    fn player(&self) -> Option<PlayerId> {
+        Some(self.controller)
+    }
+
     fn with_target_replaced(&self, _old: &Target, _new: &Target) -> Option<Box<dyn GameEventType>> {
         None
     }
