@@ -11,7 +11,7 @@ function declaration(name) {
 }
 const helpers = ['ziffleDeckHashFromCommitment', 'zifflePositionFromCommitment', 'zifflePublicPositionFromSources',
   'normalizeShuffleOrder', 'hiddenCardMetadataForObjectFromCheckpoint', 'hiddenMetadataMatchesZifflePosition',
-  'hiddenObjectIdForOpeningFromCheckpoint'];
+  'hiddenObjectIdForOpeningFromCheckpoint', 'checkpointObjectOpeningCardName'];
 const visibleStart = source.indexOf('  async function authorizedZiffleRevealPositionsForOwner(');
 const visibleEnd = source.indexOf('  async function waitForAuthorizedZiffleRevealPositions(', visibleStart);
 const start = source.indexOf('  async function ziffleRevealAuthorizedByOutboundCryptoRequest(');

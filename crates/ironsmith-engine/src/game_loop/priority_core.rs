@@ -336,6 +336,14 @@ pub(super) fn priority_actor_for_action(
         return game.turn.priority_player;
     }
     game.priority_team_players().into_iter().find(|player| {
+        // Foretell's identity stays private, so ordinary action enumeration
+        // cannot offer it for a placeholder. The explicit public claim still
+        // goes through every timing/ownership/payment check before replay.
+        if let LegalAction::SpecialAction(action @ crate::special_actions::SpecialAction::Foretell { card_id }) = action
+            && game.is_hidden_card_placeholder(*card_id)
+        {
+            return crate::special_actions::can_perform_check(action, game, *player).is_ok();
+        }
         crate::decision::compute_actions_for_source(
             game,
             *player,

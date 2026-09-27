@@ -1115,8 +1115,9 @@ export function collectCommandObjectIds(command, output = new Set(), uiState = n
   // A face-down cast (morph, megamorph, disguise) keeps the card hidden: the
   // command carries only its public cast kind, so its card is never opened
   // before the command is replayed (CR 708.2; opened later when the rules
-  // reveal it, see isFaceDownCastCommand).
-  if (isFaceDownCastCommand(command)) return output;
+  // reveal it, see isFaceDownCastCommand). Foretell likewise exiles a
+  // hand card face down without disclosing its identity.
+  if (isFaceDownCastCommand(command) || isForetellCommand(command)) return output;
   if (command.type === "priority_action" && command.action_ref) {
     const objectId = actionRefObjectId(command.action_ref);
     const numeric = Number(objectId);
@@ -1709,6 +1710,13 @@ export function isFaceDownCastCommand(command) {
 }
 
 
+// Foretell makes a public claim about a still-private card. The receiver
+// validates that claim when the card is opened later or at match disclosure.
+export function isForetellCommand(command) {
+  if (command?.type !== "priority_action") return false;
+  const actionRef = command.action_ref || command.actionRef || null;
+  return actionRef?.kind === "special_action" && actionRef.action?.kind === "foretell";
+}
 
 export function hiddenOpeningMatchesExport(opening, exported) {
   if (!opening || !exported) return false;
@@ -1790,7 +1798,7 @@ export function hiddenObjectIdForOpeningFromCheckpoint(checkpoint, opening) {
   for (const object of checkpoint?.objects || []) {
     const hidden = object?.hiddenCard || object?.hidden_card || null;
     if (!hidden || Number(hidden.owner) !== owner) continue;
-    const objectName = checkpointObjectName(object);
+    const objectName = checkpointObjectOpeningCardName(object);
     const objectIsRedactedHidden = checkpointObjectIsRedactedHidden(object);
     if (
       !objectIsRedactedHidden
@@ -1883,6 +1891,12 @@ export function checkpointObjectHiddenCard(object) {
 
 export function checkpointObjectName(object) {
   return String(object?.name || object?.identity?.name || "").trim();
+}
+
+export function checkpointObjectOpeningCardName(object) {
+  // Openings identify the physical card, whose face or copied name may differ.
+  return String(object?.originalCardName || object?.original_card_name || "").trim()
+    || checkpointObjectName(object);
 }
 
 export function checkpointObjectIsRedactedHidden(object) {

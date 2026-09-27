@@ -35,10 +35,10 @@ use crate::zone::Zone;
 /// (cast, discarded, revealed, moved to a public zone, or disclosed at the end
 /// of the match) against the opened card's printed characteristics.
 ///
-/// The ledger is local: only peers that held a placeholder when the claim was
-/// made record it. Every entry is a public fact (the claim was made in the
-/// public decision stream about a card every peer tracks), so exporting it in
-/// a sync checkpoint leaks no hidden identity.
+/// Most entries are local to peers that held a placeholder when the claim was
+/// made. Foretell also records its public claim on known peers so checkpoint
+/// export preserves the receiver's verification obligation. Every entry is a
+/// public fact about a tracked card; exporting it leaks no hidden identity.
 #[derive(Debug, Clone)]
 pub struct HiddenIdentityObligation {
     pub stable_id: StableId,
@@ -145,6 +145,9 @@ pub enum HiddenIdentityCheck {
     /// The card was cast face down with this public kind, so its printed
     /// abilities must include that keyword (CR 702.37a, 702.168a).
     CastFaceDown(FaceDownCastKind),
+    /// The card was foretold face down, so its printed alternative costs must
+    /// contain foretell. Kept on every peer until the card is opened.
+    Foretell,
 }
 
 /// The public kind of a face-down cast (CR 702.37, 702.37b, 702.168).
@@ -612,6 +615,39 @@ impl GameState {
             .push(obligation);
     }
 
+    /// A foretell action remains a public identity claim while the card stays
+    /// hidden. Keep it on known peers too, so their redacted checkpoints and
+    /// library anchors cannot discard the receiver's later verification.
+    pub(crate) fn record_hidden_foretell_obligation(&mut self, id: ObjectId) {
+        if self.hidden_card_info(id).is_none() {
+            return;
+        }
+        self.mark_hidden_claim_subjects([id]);
+        let Some(object) = self.object(id) else {
+            return;
+        };
+        let obligation = HiddenIdentityObligation {
+            stable_id: object.stable_id,
+            owner: object.owner,
+            zone: Zone::Hand,
+            filter: ObjectFilter::default(),
+            filter_ctx: FilterContext::default(),
+            description: "foretold a card".to_string(),
+            check: HiddenIdentityCheck::Foretell,
+            library_anchor: None,
+        };
+        if !self
+            .auxiliary_tracking
+            .hidden_identity_obligations
+            .iter()
+            .any(|held| held.same_claim(&obligation))
+        {
+            self.auxiliary_tracking_mut()
+                .hidden_identity_obligations
+                .push(obligation);
+        }
+    }
+
     /// Whether this peer still holds an unchecked obligation for `id`.
     pub fn has_hidden_identity_obligation(&self, id: ObjectId) -> bool {
         let Some(stable_id) = self.object(id).map(|object| object.stable_id) else {
@@ -785,8 +821,8 @@ impl GameState {
 
     /// Replace the obligation ledger (checkpoint sync). Entries whose card is
     /// no longer a hidden placeholder here (known to this peer, or gone) are
-    /// dropped unless they are anchored to a library ciphertext or belong to
-    /// a card snapshotted as its owner left the game.
+    /// dropped unless they are public foretell claims, anchored to a library
+    /// ciphertext, or belong to a card snapshotted as its owner left the game.
     pub fn restore_hidden_identity_obligations(
         &mut self,
         obligations: impl IntoIterator<Item = HiddenIdentityObligation>,
@@ -808,14 +844,19 @@ impl GameState {
                 None => {
                     let live_placeholder = self
                         .find_object_by_stable_id(obligation.stable_id)
-                        .is_some_and(|id| self.is_hidden_card_placeholder(id));
+                        .is_some_and(|id| {
+                            self.is_hidden_card_placeholder(id)
+                                || (obligation.check == HiddenIdentityCheck::Foretell
+                                    && self.hidden_card_info(id).is_some())
+                        });
                     let departed =
                         self.auxiliary_tracking
                             .departed_hidden_cards
                             .iter()
                             .any(|departed| {
                                 departed.object.stable_id == obligation.stable_id
-                                    && departed.object.card.is_none()
+                                    && (departed.object.card.is_none()
+                                        || obligation.check == HiddenIdentityCheck::Foretell)
                             });
                     live_placeholder || departed
                 }
@@ -1078,6 +1119,12 @@ impl GameState {
                     HiddenIdentityCheck::CastFaceDown(kind) => {
                         kind.is_allowed_by(&candidate.abilities)
                     }
+                    HiddenIdentityCheck::Foretell => candidate.alternative_casts.iter().any(|method| {
+                        matches!(
+                            method,
+                            crate::alternative_cast::AlternativeCastingMethod::Foretell { .. }
+                        )
+                    }),
                 };
                 (!satisfied).then(|| {
                     format!(
@@ -1150,9 +1197,11 @@ pub struct EndOfMatchDisclosureCard {
 }
 
 impl GameState {
-    fn must_disclose_at_match_end(object: &crate::object::Object, face_down: bool) -> bool {
+    fn must_disclose_at_match_end(&self, object: &crate::object::Object, face_down: bool) -> bool {
         object.zone == Zone::Hand
-            || (face_down && matches!(object.zone, Zone::Battlefield | Zone::Stack))
+            || (face_down
+                && (matches!(object.zone, Zone::Battlefield | Zone::Stack)
+                    || (object.zone == Zone::Exile && self.is_foretold(object.id))))
     }
 
     /// Snapshot the cards `player` must disclose at the end of the match
@@ -1167,7 +1216,7 @@ impl GameState {
             .filter_map(|(id, info)| {
                 let object = self.object(*id)?;
                 let face_down = self.is_face_down(*id);
-                Self::must_disclose_at_match_end(object, face_down).then(|| DepartedHiddenCard {
+                self.must_disclose_at_match_end(object, face_down).then(|| DepartedHiddenCard {
                     object: object.clone(),
                     info: info.clone(),
                     face_down,
@@ -1184,8 +1233,8 @@ impl GameState {
     }
 
     /// The hidden cards `player` must open at the end of the match, in object
-    /// order: its live hand and face-down spells and permanents, plus those
-    /// snapshotted when it left the game, then its library anchors in the
+    /// order: its live hand, face-down spells/permanents and foretold exile
+    /// cards, plus those snapshotted when it left the game, then its library anchors in the
     /// order they were recorded. Symmetric across peers.
     pub fn end_of_match_disclosure_cards(&self, player: PlayerId) -> Vec<EndOfMatchDisclosureCard> {
         let known_name = |object: &crate::object::Object| {
@@ -1202,7 +1251,7 @@ impl GameState {
             .filter_map(|(id, info)| {
                 let object = self.object(*id)?;
                 let face_down = self.is_face_down(*id);
-                Self::must_disclose_at_match_end(object, face_down).then(|| {
+                self.must_disclose_at_match_end(object, face_down).then(|| {
                     EndOfMatchDisclosureCard {
                         object_id: *id,
                         info: info.clone(),

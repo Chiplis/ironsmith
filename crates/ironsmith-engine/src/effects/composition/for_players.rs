@@ -242,6 +242,17 @@ fn flatten_sequences_for_simultaneous_units(effects: &[Effect]) -> Vec<Effect> {
     flattened
 }
 
+fn collect_result_ids(effect: &Effect, ids: &mut Vec<crate::effect::EffectId>) {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>()
+        && !ids.contains(&with_id.id)
+    {
+        ids.push(with_id.id);
+    }
+    effect
+        .0
+        .visit_child_effects(&mut |child| collect_result_ids(child, ids));
+}
+
 fn merge_tagged_object_sets(
     aggregate: &mut std::collections::HashMap<
         crate::tag::TagKey,
@@ -613,6 +624,30 @@ impl EffectExecutor for ForPlayersEffect {
                 );
                 merge_tagged_object_sets(&mut accumulated_unit_tags, &ctx.tagged_objects);
                 ctx.tagged_objects = accumulated_unit_tags;
+                // Keep each player's scalar result local ("that many"), while
+                // attaching the completed action's per-player counts for
+                // collective metrics such as the greatest count. No following
+                // action may read a partial result before every player commits.
+                let mut result_ids = Vec::new();
+                for &effect_index in &unit {
+                    collect_result_ids(&simultaneous_effects[effect_index], &mut result_ids);
+                }
+                for id in result_ids {
+                    let counts = players
+                        .iter()
+                        .zip(&effect_outcomes_by_player)
+                        .filter_map(|(&player, results)| {
+                            results
+                                .get(&id)
+                                .map(|outcome| (player, outcome.count_or_zero()))
+                        })
+                        .collect::<Vec<_>>();
+                    for results in &mut effect_outcomes_by_player {
+                        if let Some(outcome) = results.get_mut(&id) {
+                            *outcome = outcome.clone().with_player_counts(counts.clone());
+                        }
+                    }
+                }
                 for (player_index, outcome) in batch_outcomes {
                     outcomes_by_player[player_index].push(outcome.clone());
                     outcomes.push(outcome);

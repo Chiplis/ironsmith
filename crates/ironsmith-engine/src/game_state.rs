@@ -7219,9 +7219,19 @@ impl GameState {
         id: ObjectId,
         def: &crate::cards::CardDefinition,
     ) -> Option<HiddenCardInfo> {
-        self.prime_linked_face_definitions(def);
         let info = self.auxiliary_tracking.hidden_cards.get(&id)?.clone();
-        let zone = self.object(id)?.zone;
+        let object = self.object(id)?;
+        let zone = object.zone;
+        if let Some(physical_card) = object.card {
+            if physical_card != def.card.id {
+                return None;
+            }
+            // Reopening a known physical card authenticates its identity; it
+            // must not reset a copied/alternate face or add loyalty counters.
+            self.clear_hidden_identity_obligations(id);
+            return Some(info);
+        }
+        self.prime_linked_face_definitions(def);
         let handles = self.object_store.shared_handles_for_definition(def);
         let object = self.object_mut(id)?;
         // Learning a face-down object's identity (privately or publicly) does

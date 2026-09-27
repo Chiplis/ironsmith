@@ -76,6 +76,8 @@ pub(super) fn queue_triggers_for_event(
 }
 
 /// Ingest an event into trigger system with optional delayed-trigger checks.
+/// Spell casts always notify delayed triggers, including casts made during
+/// another effect's resolution and casts made through the priority loop.
 pub(crate) fn queue_triggers_from_event(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
@@ -85,7 +87,7 @@ pub(crate) fn queue_triggers_from_event(
     game.record_turn_history_event(&event);
     queue_triggers_for_event(game, trigger_queue, event.clone());
 
-    if include_delayed {
+    if include_delayed || event.kind() == crate::events::EventKind::SpellCast {
         let delayed = crate::triggers::check_delayed_triggers(game, &event);
         for trigger in delayed {
             trigger_queue.add(trigger);

@@ -13,6 +13,7 @@ import {
   checkpointObjectHiddenCard,
   checkpointObjectIsRedactedHidden,
   checkpointObjectName,
+  checkpointObjectOpeningCardName,
   chunkList,
   cloneMultiplayerPayload,
   collectCommandObjectIds,
@@ -2339,7 +2340,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 	          : exported?.object_id != null || exported?.objectId != null
 	            ? { objectId: Number(exported.object_id ?? exported.objectId) }
 	            : {}),
-	        timing: "post",
+	        timing: options.timing || requirement?.timing || "post",
 	        ...(remappedFromSlot != null ? { reportedSlot: Number(remappedFromSlot) } : {}),
 	      };
 	      finalOpening = await sanitizeObjectBoundOpening(finalOpening);
@@ -2713,7 +2714,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 	        _debugShuffleOriginalSlot: Number(shuffleOriginalSlot),
 	        _debugResolvedSlot: Number(resolvedRevealSlot?.slot),
 	        _debugResolvedObjectId: resolvedRevealSlot?.objectId == null ? null : Number(resolvedRevealSlot.objectId),
-	        timing: "post",
+	        timing: options.timing || entry.requirement?.timing || "post",
 	        position: Number(entry.position),
 		        positionCommitment: entry.positionCommitment,
 		        ziffleContext: ziffleContextFromCeremony(ceremony),
@@ -3285,6 +3286,9 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
             })
           );
         }
+        if (requirement.timing === "pre" && String(match.timing || "pre") !== "pre") {
+          throw new Error("Public opening must be applied before the command");
+        }
         if (ziffleOriginAnchorFromMetadata(requirement)) {
           assertZiffleOpeningOriginMatchesMetadata(match, requirement);
           const requiredPositionCommitment = String(
@@ -3638,8 +3642,8 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 		          if (
 		            explicitObject
 		            && !checkpointObjectIsRedactedHidden(explicitObject)
-		            && checkpointObjectName(explicitObject)
-		            && checkpointObjectName(explicitObject) !== String(opening.card || "").trim()
+		            && checkpointObjectOpeningCardName(explicitObject)
+		            && checkpointObjectOpeningCardName(explicitObject) !== String(opening.card || "").trim()
 		          ) {
 		            ignoredExplicitObjectIdentity = true;
 		            localRevealObjectId = null;

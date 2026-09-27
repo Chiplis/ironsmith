@@ -155,6 +155,10 @@ struct SyncObject {
     controller: u8,
     zone: String,
     name: String,
+    /// Physical card definition, independent of the face or copied name now shown.
+    /// Omitted for unrevealed placeholders and removed by perspective redaction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    original_card_name: Option<String>,
     token: bool,
     card_types: Vec<String>,
     subtypes: Vec<String>,
@@ -675,7 +679,7 @@ struct SyncHiddenIdentityObligation {
     #[serde(default)]
     filter_context: SyncObligationFilterContext,
     description: String,
-    /// "matches", "does_not_match", or "cast_face_down".
+    /// "matches", "does_not_match", "cast_face_down", or "foretell".
     check: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     face_down_kind: Option<String>,
@@ -790,6 +794,7 @@ fn sync_hidden_identity_obligation(
     let (check, face_down_kind, permission_source) = match obligation.check {
         HiddenIdentityCheck::Matches => ("matches".to_string(), None, None),
         HiddenIdentityCheck::DoesNotMatch => ("does_not_match".to_string(), None, None),
+        HiddenIdentityCheck::Foretell => ("foretell".to_string(), None, None),
         HiddenIdentityCheck::CastFaceDown(kind) => {
             let (kind, source) = sync_face_down_kind_fields(kind);
             ("cast_face_down".to_string(), Some(kind), source)
@@ -819,6 +824,7 @@ fn hidden_identity_obligation_from_sync(
     let check = match sync.check.as_str() {
         "matches" => HiddenIdentityCheck::Matches,
         "does_not_match" => HiddenIdentityCheck::DoesNotMatch,
+        "foretell" => HiddenIdentityCheck::Foretell,
         "cast_face_down" => HiddenIdentityCheck::CastFaceDown(face_down_kind_from_sync(
             sync.face_down_kind.as_deref()?,
             sync.permission_source,
@@ -2203,11 +2209,16 @@ impl WasmGame {
         ids.extend(self.game.command_zone.iter().copied());
         ids.extend(self.game.ante.iter().copied());
         ids.extend(self.game.stack.iter().map(|entry| entry.object_id));
-        // Proposed spells have changed zones but join game.stack only once
-        // costs are paid. Keep their trusted identity available while casting.
-        if let Some(pending) = &self.priority_state.pending_cast {
-            ids.push(pending.stack_id);
-        }
+        // Proposed spells join game.stack only after costs are paid, and
+        // resolving spells leave it before interactive effects finish. Both
+        // still exist in Zone::Stack and must retain their trusted identity.
+        ids.extend(
+            self.game
+                .objects_in_deterministic_order()
+                .into_iter()
+                .filter(|object| object.zone == Zone::Stack)
+                .map(|object| object.id),
+        );
         ids.sort_unstable();
         ids.dedup();
         ids
@@ -2259,6 +2270,9 @@ impl WasmGame {
                     controller: self.game.controller_of(object).0,
                     zone: sync_zone_name(object.zone).to_string(),
                     name: object.name.to_string(),
+                    original_card_name: object.card
+                        .and_then(|card_id| self.registry.get_by_id(card_id))
+                        .map(|definition| definition.card.name.clone()),
                     token: matches!(object.kind, ironsmith::object::ObjectKind::Token),
                     card_types: object
                         .card_types
@@ -3355,6 +3369,7 @@ impl WasmGame {
             )));
         };
         object.name = "Hidden Card".to_string();
+        object.original_card_name = None;
         object.token = false;
         object.card_types.clear();
         object.subtypes.clear();
@@ -3526,6 +3541,19 @@ impl WasmGame {
                 .register_linked_face_family_from_catalog(&definition, &self.registry);
             Object::from_card_definition(id, &definition, owner, zone)
         };
+
+        // Reconstruct current characteristics above, then restore the original
+        // physical identity used to authenticate openings. A copied permanent
+        // or alternate face must not become a different physical card on import.
+        if !is_redacted_hidden_card && !object.token
+            && let Some(original_name) = object.original_card_name.as_deref()
+        {
+            self.ensure_card_definitions_loaded([original_name]);
+            let definition = self.load_compilable_card_definition(original_name)?;
+            self.game
+                .register_linked_face_family_from_catalog(&definition, &self.registry);
+            restored.card = Some(definition.card.id);
+        }
 
         restored.zone = zone;
         restored.stable_id = StableId::from_raw(object.stable_id);
@@ -4074,6 +4102,162 @@ impl WasmGame {
 mod sync_checkpoint_tests {
     use super::*;
 
+
+    fn hidden_foretell_fixture(known: bool) -> (WasmGame, ObjectId, CardDefinition) {
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        let owner = PlayerId::from_index(0);
+        wasm.game.turn.active_player = owner;
+        wasm.game.turn.priority_player = Some(owner);
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+        wasm.game.player_mut(owner).unwrap().mana_pool.add(ManaSymbol::Blue, 4);
+        wasm.ensure_card_definitions_loaded(["Behold the Multiverse", "Lightning Bolt"]);
+        let definition = wasm.find_card_definition("Behold the Multiverse").unwrap().clone();
+        let id = wasm.game.create_hidden_card_placeholder(
+            owner, Zone::Hand, 4, "ziffle:foretell:4".to_string(),
+        );
+        if known {
+            wasm.game.reveal_hidden_card_with_definition(id, &definition).unwrap();
+        }
+        (wasm, id, definition)
+    }
+
+    fn perform_hidden_foretell(wasm: &mut WasmGame, id: ObjectId) -> ObjectId {
+        let action = ironsmith::special_actions::SpecialAction::Foretell { card_id: id };
+        ironsmith::special_actions::perform(action, &mut wasm.game, PlayerId::from_index(0),
+            &mut ironsmith::decision::SelectFirstDecisionMaker).unwrap();
+        *wasm.game.exile.last().unwrap()
+    }
+
+    #[test]
+    fn foretell_placeholder_replay_checks_public_legality_and_defers_keyword_validation() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let (mut wasm, id, definition) = hidden_foretell_fixture(false);
+        let owner = PlayerId::from_index(0);
+        let priority = ironsmith::decisions::context::PriorityContext::new(owner, vec![LegalAction::PassPriority]);
+        let action_ref = PriorityActionRef::SpecialAction { action: SpecialActionRef::Foretell { card_id: id.0 } };
+        assert!(resolve_priority_action(&wasm.game, &priority, None, Some(&action_ref)).is_some());
+        wasm.game.turn.active_player = PlayerId::from_index(1);
+        assert!(resolve_priority_action(&wasm.game, &priority, None, Some(&action_ref)).is_none());
+        wasm.game.turn.active_player = owner;
+        let exiled = perform_hidden_foretell(&mut wasm, id);
+        assert!(wasm.game.is_hidden_card_placeholder(exiled));
+        assert!(wasm.game.is_face_down(exiled));
+        assert!(wasm.game.is_foretold(exiled));
+        assert!(wasm.game.has_hidden_identity_obligation(exiled));
+        assert_eq!(wasm.game.player(owner).unwrap().mana_pool.total(), 2);
+        let wrong = wasm.find_card_definition("Lightning Bolt").unwrap().clone();
+        assert!(wasm.validate_hidden_normal_reveal(owner, exiled, &wrong).unwrap_err()
+            .contains("Hidden identity obligation violated"));
+        assert!(wasm.game.is_hidden_card_placeholder(exiled), "a rejected claim must not learn the false identity");
+        assert!(wasm.game.end_of_match_disclosure_violation(exiled, &wrong).is_some());
+        assert!(wasm.game.end_of_match_disclosure_cards(owner).iter().any(|card| card.object_id == exiled));
+        wasm.validate_hidden_normal_reveal(owner, exiled, &definition).unwrap();
+        wasm.game.reveal_hidden_card_with_definition(exiled, &definition).unwrap();
+        assert!(!wasm.game.has_hidden_identity_obligation(exiled));
+        assert!(!wasm.game.foretold_card_is_castable(exiled));
+        wasm.game.turn.turn_number += 1;
+        assert!(ironsmith::decision::compute_legal_actions(&wasm.game, owner).iter().any(|action| matches!(action,
+            LegalAction::CastSpell { spell_id, from_zone: Zone::Exile, .. } if *spell_id == exiled)));
+
+        let (mut known, id, _) = hidden_foretell_fixture(false);
+        known.game.reveal_hidden_card_with_definition(id, &wrong).unwrap();
+        let action_ref = PriorityActionRef::SpecialAction { action: SpecialActionRef::Foretell { card_id: id.0 } };
+        assert!(resolve_priority_action(&known.game, &priority, None, Some(&action_ref)).is_none(),
+            "the placeholder path must never authorize a known non-foretell card");
+    }
+
+    #[test]
+    fn foretell_live_dispatch_matches_known_and_placeholder_payment_boundaries() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        for known in [false, true] {
+            let (mut wasm, id, _) = hidden_foretell_fixture(known);
+            let owner = PlayerId::from_index(0);
+            wasm.game.player_mut(owner).unwrap().mana_pool = Default::default();
+            wasm.ensure_card_definitions_loaded(["Island"]);
+            let island = wasm.find_card_definition("Island").unwrap().clone();
+            for _ in 0..2 {
+                wasm.game.create_object_from_definition(&island, owner, Zone::Battlefield);
+            }
+            wasm.runner = Some(ironsmith::turn_runner::TurnRunner::from_state_for_sync(
+                ironsmith::turn_runner::TurnState::FirstMainPriority,
+            ));
+            wasm.runner_awaiting_priority = true;
+            wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
+            let context = DecisionContext::Priority(ironsmith::decisions::context::PriorityContext::new(
+                owner, ironsmith::decision::compute_legal_actions(&wasm.game, owner),
+            ));
+            wasm.dispatch_live_priority_response(context, UiCommand::PriorityAction {
+                action_index: None,
+                action_ref: Some(PriorityActionRef::SpecialAction {
+                    action: SpecialActionRef::Foretell { card_id: id.0 },
+                }),
+            }).unwrap();
+            let Some(DecisionContext::ManaPayment(payment)) = wasm.pending_decision.as_ref() else {
+                panic!("known={known}: foretell must request payment, got {:?}", wasm.pending_decision);
+            };
+            let command = UiCommand::ManaPayment { response: ManaPaymentCommand::Confirm {
+                plan_id: payment.plan.id.to_string(), request_hash: payment.plan.request_hash.to_string(),
+            } };
+            let context = wasm.pending_decision.take().unwrap();
+            if wasm.pending_live_continuation.is_some() {
+                wasm.dispatch_live_priority_continuation(context, command).unwrap();
+            } else {
+                wasm.dispatch_live_priority_response(context, command).unwrap();
+            }
+            assert!(matches!(wasm.pending_decision, Some(DecisionContext::Priority(_))));
+            let exiled = *wasm.game.exile.last().expect("paid foretell must exile the card");
+            assert!(wasm.game.is_foretold(exiled));
+            assert!(wasm.game.has_hidden_identity_obligation(exiled));
+            assert_eq!(wasm.game.is_hidden_card_placeholder(exiled), !known);
+        }
+    }
+
+    #[test]
+    fn foretell_checkpoint_preserves_public_claim_and_reconstructs_legacy_foretold_cards() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let (mut host, id, _) = hidden_foretell_fixture(true);
+        let exiled = perform_hidden_foretell(&mut host, id);
+        for legacy in [false, true] {
+            let mut checkpoint = host.build_redacted_sync_checkpoint(PlayerId::from_index(1)).unwrap();
+            assert!(checkpoint.rules.hidden_identity_obligations.iter().any(|claim| claim.check == "foretell"));
+            assert!(checkpoint.objects.iter().find(|object| object.id == exiled.0).unwrap().original_card_name.is_none());
+            if legacy {
+                checkpoint.rules.hidden_identity_obligations.clear();
+                checkpoint.rules.hidden_claim_subjects.clear();
+            }
+            let mut guest = WasmGame::new();
+            guest.apply_sync_checkpoint(checkpoint).unwrap();
+            assert!(guest.game.is_hidden_card_placeholder(exiled));
+            assert!(guest.game.has_hidden_identity_obligation(exiled));
+            assert_eq!(guest.game.hidden_identity_obligations().len(), 1);
+            guest.ensure_card_definitions_loaded(["Lightning Bolt"]);
+            let wrong = guest.find_card_definition("Lightning Bolt").unwrap().clone();
+            assert!(guest.validate_hidden_normal_reveal(PlayerId::from_index(0), exiled, &wrong).is_err());
+            let cards = guest.game.end_of_match_disclosure_cards(PlayerId::from_index(0));
+            assert!(cards.iter().any(|card| card.object_id == exiled));
+            let second_checkpoint = guest.build_sync_checkpoint();
+            guest.apply_sync_checkpoint(second_checkpoint).unwrap();
+            assert_eq!(guest.game.hidden_identity_obligations().len(), 1, "restore must not duplicate the claim");
+        }
+    }
+
+    #[test]
+    fn foretell_claim_follows_a_return_to_library_for_end_match_disclosure() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let (mut wasm, id, _) = hidden_foretell_fixture(false);
+        let owner = PlayerId::from_index(0);
+        let exiled = perform_hidden_foretell(&mut wasm, id);
+        let library_id = wasm.game.move_object(exiled, Zone::Library,
+            ironsmith::events::cause::EventCause::from_special_action(Some(exiled), owner)).unwrap();
+        let disclosure = wasm.game.end_of_match_disclosure_cards(owner);
+        let anchored = disclosure.iter().find(|card| card.object_id == library_id).unwrap();
+        assert!(anchored.library_anchor.is_some());
+        let wrong = wasm.find_card_definition("Lightning Bolt").unwrap().clone();
+        assert!(wasm.game.end_of_match_disclosure_card_violation(anchored, &wrong).is_some());
+    }
+
     #[test]
     fn combat_checkpoint_preserves_blocked_status_after_the_last_blocker_leaves() {
         let attacker = ObjectId::from_raw(71);
@@ -4443,6 +4627,90 @@ mod sync_checkpoint_tests {
     }
 
     #[test]
+    fn sync_checkpoint_retains_physical_card_identity_across_faces_and_copies() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        for (original_name, current_name, is_copy) in [
+            ("Sink into Stupor", "Soporific Springs", false),
+            ("Bonecrusher Giant", "Stomp", false),
+            ("Phantasmal Image", "Grizzly Bears", true),
+        ] {
+            let mut host = WasmGame::new();
+            host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+            host.ensure_card_definitions_loaded([original_name, current_name]);
+            let original = host.find_card_definition(original_name).unwrap().clone();
+            let current = host.find_card_definition(current_name).unwrap().clone();
+            let owner = PlayerId::from_index(1);
+            let id = host.game.create_hidden_card_placeholder(
+                owner, Zone::Battlefield, 4, "ziffle:identity:4".to_string(),
+            );
+            host.game.reveal_hidden_card_with_definition(id, &original).unwrap();
+            let object = host.game.object_mut(id).unwrap();
+            if is_copy {
+                let source = Object::from_card_definition(
+                    ObjectId::from_raw(999_999), &current, owner, Zone::Battlefield,
+                );
+                object.capture_enters_as_copy_restore_state();
+                object.copy_copiable_values_from(&source);
+            } else {
+                object.apply_definition_face(&current);
+            }
+            assert_eq!(object.card, Some(original.card.id));
+
+            let checkpoint = host.build_sync_checkpoint();
+            let exported = checkpoint.objects.iter().find(|object| object.id == id.0).unwrap();
+            assert_eq!(exported.name, current_name);
+            assert_eq!(exported.original_card_name.as_deref(), Some(original_name));
+            let audit = host.capture_crypto_audit_state();
+            assert_eq!(audit.hidden_by_id.get(&id).unwrap().card.as_deref(), Some(original_name));
+
+            let mut guest = WasmGame::new();
+            guest.apply_sync_checkpoint(checkpoint).unwrap();
+            let original = guest.find_card_definition(original_name).unwrap().clone();
+            assert_eq!(guest.game.object(id).unwrap().card, Some(original.card.id));
+            assert_eq!(guest.game.object(id).unwrap().name, current_name);
+            let before = guest.game.hidden_card_info(id).unwrap().clone();
+            guest.game.reveal_hidden_card_with_definition(id, &original).unwrap();
+            assert_eq!(guest.game.object(id).unwrap().name, current_name);
+            assert_eq!(guest.game.hidden_card_info(id).unwrap(), &before);
+        }
+    }
+
+    #[test]
+    fn sync_checkpoint_redacts_physical_card_identity_and_accepts_legacy_objects() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        host.ensure_card_definitions_loaded(["Lightning Bolt"]);
+        let definition = host.find_card_definition("Lightning Bolt").unwrap().clone();
+        let owner = PlayerId::from_index(1);
+        for (slot, zone) in [(0, Zone::Hand), (1, Zone::Library)] {
+            let id = host.game.create_hidden_card_placeholder(
+                owner, zone, slot, format!("private:{slot}"),
+            );
+            host.game.reveal_hidden_card_with_definition(id, &definition).unwrap();
+        }
+        let own = host.build_sync_checkpoint();
+        assert!(own.objects.iter().all(|object| {
+            object.original_card_name.as_deref() == Some("Lightning Bolt")
+        }));
+        let redacted = host.build_redacted_sync_checkpoint(PlayerId::from_index(0)).unwrap();
+        assert!(redacted.objects.iter().all(|object| {
+            object.name == "Hidden Card" && object.original_card_name.is_none()
+        }));
+        let mut guest = WasmGame::new();
+        guest.apply_sync_checkpoint(redacted).unwrap();
+        assert!(guest.game.objects_in_deterministic_order().iter().all(|object| object.card.is_none()));
+
+        let mut legacy = serde_json::to_value(&own.objects[0]).unwrap();
+        legacy.as_object_mut().unwrap().remove("originalCardName");
+        let legacy: SyncObject = serde_json::from_value(legacy).unwrap();
+        assert!(legacy.original_card_name.is_none());
+        let restored = guest.sync_object_from_checkpoint(&legacy).unwrap();
+        assert_eq!(restored.name, "Lightning Bolt");
+        assert!(restored.card.is_some());
+    }
+
+    #[test]
     fn sync_checkpoint_includes_proposed_spell_origin_before_cast_costs_are_paid() {
         use ironsmith::alternative_cast::CastingMethod;
         use ironsmith::cost::OptionalCostsPaid;
@@ -4482,6 +4750,75 @@ mod sync_checkpoint_tests {
         assert_eq!(hidden.public_slot, Some(60));
         assert!(!checkpoint.objects.iter().any(|object| object.id == hand_id.0));
         assert_eq!(game.sync_checkpoint_object_ids().iter().filter(|id| **id == stack_id).count(), 1);
+    }
+
+    #[test]
+    fn sync_checkpoint_keeps_resolving_spell_origin_while_a_choice_is_pending() {
+        use ironsmith::decisions::context::{SelectOptionsContext, SelectableOption};
+
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = WasmGame::new();
+        game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        let owner = PlayerId::from_index(1);
+        let hand_id = game.game.create_hidden_card_placeholder(
+            owner,
+            Zone::Hand,
+            53,
+            "ziffle:initial:53".to_string(),
+        );
+        let mut info = game.game.hidden_card_info(hand_id).unwrap().clone();
+        info.slot = 57;
+        info.commitment = "private-original-slot-57".to_string();
+        info.public_slot = Some(12);
+        info.public_commitment = Some("ziffle:current:12".to_string());
+        game.game.set_hidden_card_info(hand_id, info);
+        game.ensure_card_definitions_loaded(["Wrath of the Skies"]);
+        let definition = game.find_card_definition("Wrath of the Skies").unwrap().clone();
+        game.game.reveal_hidden_card_with_definition(hand_id, &definition).unwrap();
+        let stack_id = game.game.move_object_by_game_rule(hand_id, Zone::Stack).unwrap();
+        game.game.push_to_stack(StackEntry::new(stack_id, owner));
+        assert_eq!(
+            game.sync_checkpoint_object_ids().iter().filter(|id| **id == stack_id).count(),
+            1,
+            "a spell with a stack entry must be included exactly once",
+        );
+
+        // Resolution pops the entry before executing effects. An interactive
+        // choice suspends those effects while the physical spell stays in Stack.
+        assert_eq!(game.game.pop_from_stack().unwrap().object_id, stack_id);
+        game.pending_decision = Some(DecisionContext::SelectOptions(
+            SelectOptionsContext::new(
+                PlayerId::from_index(0),
+                Some(stack_id),
+                "Order cards put into your graveyard simultaneously",
+                vec![
+                    SelectableOption::new(0, "First card"),
+                    SelectableOption::new(1, "Second card"),
+                ],
+                2,
+                2,
+            ),
+        ));
+        assert!(game.game.stack.is_empty());
+        assert!(game.priority_state.pending_cast.is_none());
+        assert!(game.active_resolving_stack_object.is_none(), "the export must not depend on a UI snapshot");
+        assert_eq!(game.game.object(stack_id).unwrap().zone, Zone::Stack);
+
+        let checkpoint = game.build_sync_checkpoint();
+        let resolving = checkpoint.objects.iter().find(|object| object.id == stack_id.0)
+            .expect("a resolving spell must remain available to authenticate its opening");
+        assert_eq!(resolving.name, "Wrath of the Skies");
+        assert_eq!(resolving.zone, "stack");
+        let hidden = resolving.hidden_card.as_ref().unwrap();
+        assert_eq!(hidden.owner, 1);
+        assert_eq!(hidden.slot, 57);
+        assert_eq!(hidden.commitment, "private-original-slot-57");
+        assert_eq!(hidden.origin_slot, Some(53));
+        assert_eq!(hidden.origin_commitment.as_deref(), Some("ziffle:initial:53"));
+        assert_eq!(hidden.public_slot, Some(12));
+        assert_eq!(hidden.public_commitment.as_deref(), Some("ziffle:current:12"));
+        assert_eq!(checkpoint.objects.iter().filter(|object| object.id == stack_id.0).count(), 1);
+        assert!(!checkpoint.objects.iter().any(|object| object.id == hand_id.0));
     }
 
     #[test]

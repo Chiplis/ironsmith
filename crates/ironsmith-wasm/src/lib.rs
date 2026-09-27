@@ -537,6 +537,8 @@ pub(crate) struct CryptoRequirementView {
     id: String,
     #[serde(rename = "type")]
     requirement_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    timing: Option<String>,
     owner: u8,
     #[serde(skip_serializing_if = "Option::is_none")]
     viewer: Option<u8>,
@@ -586,6 +588,7 @@ impl CryptoRequirementView {
         reason: &str,
     ) -> Self {
         Self {
+            timing: None,
             id: format!(
                 "{}:{}:{}:{}:{}",
                 requirement_type,
@@ -1367,6 +1370,7 @@ fn push_hidden_move_requirements(
     reason: &str,
 ) {
     let moved = CryptoRequirementView {
+        timing: None,
         id: format!(
             "hidden_move:{}:{}:{}:{}:{}",
             before_card.owner.index(),
@@ -1429,34 +1433,63 @@ fn push_hidden_move_requirements(
     let reveals_face_down_card = (face_down_left_stack_or_battlefield || face_down_became_public)
         && !after_card.face_down
         && !after_card.foretold;
-    if reveals_face_down_card {
-        push_requirement_unique(
-            requirements,
-            seen,
-            CryptoRequirementView::hidden_open(
-                "public_open",
-                after_card,
-                None,
-                "public",
-                "face-down card revealed as it left the stack or battlefield",
-            ),
+    let public_reason = if reveals_face_down_card {
+        Some("face-down card revealed as it left the stack or battlefield")
+    } else if after_card.zone.is_public() && !after_card.face_down && !after_card.foretold {
+        // Disclosure follows the public move even when neither peer knows the
+        // identity yet (for example, milling a concealed library card).
+        Some("hidden card moved to a public zone")
+    } else {
+        None
+    };
+    if let Some(reason) = public_reason {
+        let mut opening = CryptoRequirementView::hidden_open(
+            "public_open", after_card, None, "public", reason,
         );
-    } else if after_card.card.is_some()
-        && !matches!(after_card.zone, Zone::Library | Zone::Hand)
-        && !after_card.face_down
-        && !after_card.foretold
-    {
-        push_requirement_unique(
-            requirements,
-            seen,
-            CryptoRequirementView::hidden_open(
-                "public_open",
-                after_card,
-                None,
-                "public",
-                "hidden card moved to a public zone",
-            ),
-        );
+        opening.from = Some(zone_crypto_kind(before_card.zone).to_string());
+        opening.to = Some(zone_crypto_kind(after_card.zone).to_string());
+        push_requirement_unique(requirements, seen, opening);
+    }
+
+}
+
+fn prepare_preview_public_move_openings(
+    requirements: &mut [CryptoRequirementView],
+    before: &CryptoAuditState,
+) {
+    for requirement in requirements {
+        if requirement.requirement_type != "public_open" || requirement.from.is_none() {
+            continue;
+        }
+        let Some(card) = before.hidden_by_id.values().find(|card| {
+            card.owner.index() as u8 == requirement.owner
+                && ((Some(card.slot) == requirement.slot
+                    && Some(card.commitment.as_str()) == requirement.commitment.as_deref())
+                    || (card.public_slot.is_some()
+                        && card.public_slot == requirement.public_slot
+                        && card.public_commitment == requirement.public_commitment))
+        }) else {
+            // A card produced only during this command has no pre-command
+            // object to hydrate; it must keep the ordinary post timing.
+            continue;
+        };
+        requirement.timing = Some("pre".to_string());
+        requirement.object_id = Some(card.object_id.0);
+        // Authorization must use the same public ciphertext on every peer.
+        // A private look may have replaced this peer's slot with a manifest
+        // slot, while other peers still hold the shuffled position.
+        let (slot, commitment) = match (card.public_slot, card.public_commitment.as_ref()) {
+            (Some(slot), Some(commitment)) if !commitment.is_empty() => (slot, commitment),
+            _ => (card.slot, &card.commitment),
+        };
+        requirement.id = format!("public_open:{}:{}:{}:{}",
+            requirement.owner, requirement.zone, slot, card.object_id.0);
+        requirement.slot = Some(slot);
+        requirement.commitment = Some(commitment.clone());
+        requirement.public_slot = card.public_slot;
+        requirement.public_commitment = card.public_commitment.clone();
+        requirement.origin_slot = card.origin_slot;
+        requirement.origin_commitment = card.origin_commitment.clone();
     }
 }
 
@@ -1491,6 +1524,7 @@ fn push_hidden_order_update_requirement(
         requirements,
         seen,
         CryptoRequirementView {
+            timing: None,
             id,
             requirement_type: "hidden_order_update".to_string(),
             owner: player.index() as u8,
@@ -1700,7 +1734,9 @@ impl WasmGame {
                 origin_commitment: info.origin_commitment.clone(),
                 public_slot: info.public_slot,
                 public_commitment: info.public_commitment.clone(),
-                card: object.card.as_ref().map(|_| object.name.to_string()),
+                card: object.card
+                    .and_then(|card_id| self.registry.get_by_id(card_id))
+                    .map(|definition| definition.card.name.clone()),
                 face_down: self.game.is_face_down(object_id),
                 foretold: self.game.is_foretold(object_id),
             };
@@ -1803,6 +1839,7 @@ impl WasmGame {
                         &mut requirements,
                         &mut seen,
                         CryptoRequirementView {
+                            timing: None,
                             id: format!(
                                 "verifiable_shuffle:{}:library:{}:{}",
                                 player.index(),
@@ -1869,6 +1906,7 @@ impl WasmGame {
                         &mut requirements,
                         &mut seen,
                         CryptoRequirementView {
+                            timing: None,
                             id: format!(
                                 "fair_random:{}:{}:{}",
                                 owner.index(),
@@ -1956,6 +1994,7 @@ impl WasmGame {
         for view in audit_views {
             let count = view.cards.len().min(u16::MAX as usize) as u16;
             let view_requirement = CryptoRequirementView {
+                timing: None,
                 id: format!(
                     "{}_view:{}:{}:{}:{}",
                     if view.public { "public" } else { "private" },
@@ -2043,6 +2082,7 @@ impl WasmGame {
                 &mut requirements,
                 &mut seen,
                 CryptoRequirementView {
+                    timing: None,
                     id: format!("verifiable_shuffle:{}:library", player.index()),
                     requirement_type: "verifiable_shuffle".to_string(),
                     owner: player.index() as u8,
@@ -2083,6 +2123,7 @@ impl WasmGame {
                 &mut requirements,
                 &mut seen,
                 CryptoRequirementView {
+                    timing: None,
                     id: format!("fair_random:{}:{}", owner.index(), after.random_count),
                     requirement_type: "fair_random".to_string(),
                     owner: owner.index() as u8,
@@ -5430,6 +5471,107 @@ mod native_tests {
     }
 
     #[test]
+    fn crypto_requirements_open_unknown_public_moves_before_execution() {
+        for destination in [Zone::Graveyard, Zone::Exile, Zone::Battlefield,
+            Zone::Stack, Zone::Command, Zone::Ante] {
+            let mut wasm = WasmGame::new();
+            wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+            let alice = PlayerId::from_index(0);
+            let original = wasm.game.create_hidden_card_placeholder(
+                alice, Zone::Library, 9, "ziffle:initial:9".to_string(),
+            );
+            let before = wasm.capture_crypto_audit_state();
+            let moved = wasm.game.move_object_by_effect(original, destination).unwrap();
+            wasm.update_crypto_requirements_from(before.clone());
+            let opening = wasm.last_crypto_requirements.iter().find(|requirement| {
+                requirement.requirement_type == "public_open"
+            }).expect("unknown cards still require public disclosure");
+            assert_eq!(opening.object_id, Some(moved.0));
+            assert_eq!(opening.card, None);
+            assert_eq!(opening.timing, None, "applied requirements keep post timing");
+            assert_eq!(opening.from.as_deref(), Some("library"));
+            let mut preview = wasm.last_crypto_requirements.clone();
+            prepare_preview_public_move_openings(&mut preview, &before);
+            let preview_opening = preview.iter().find(|requirement| {
+                requirement.requirement_type == "public_open"
+            }).unwrap();
+            assert_eq!(preview_opening.timing.as_deref(), Some("pre"));
+            assert_eq!(preview_opening.object_id, Some(original.0));
+            assert_eq!(preview_opening.commitment.as_deref(), Some("ziffle:initial:9"));
+            assert_eq!(preview_opening.origin_slot, opening.origin_slot);
+            assert_eq!(preview_opening.origin_commitment, opening.origin_commitment);
+        }
+    }
+
+    #[test]
+    fn crypto_requirements_keep_private_moves_out_of_public_openings() {
+        let before = HiddenAuditCard {
+            object_id: ObjectId::from_raw(1), owner: PlayerId::from_index(0),
+            zone: Zone::Library, slot: 4, commitment: "ziffle:initial:4".to_string(),
+            origin_slot: Some(4), origin_commitment: Some("ziffle:initial:4".to_string()),
+            public_slot: Some(4), public_commitment: Some("ziffle:initial:4".to_string()),
+            card: None, face_down: false, foretold: false,
+        };
+        for (zone, face_down, foretold) in [
+            (Zone::Hand, false, false), (Zone::Library, false, false),
+            (Zone::OutsideGame, false, false), (Zone::Exile, true, true),
+            (Zone::Exile, true, false), (Zone::Battlefield, true, false),
+            (Zone::Stack, true, false),
+        ] {
+            for known in [false, true] {
+                let after = HiddenAuditCard {
+                    object_id: ObjectId::from_raw(2), zone, face_down, foretold,
+                    card: known.then(|| "Mountain".to_string()), ..before.clone()
+                };
+                let mut requirements = Vec::new();
+                push_hidden_move_requirements(&mut requirements, &mut HashSet::new(),
+                    &before, &after, "private movement");
+                assert!(!requirements.iter().any(|requirement| {
+                    requirement.requirement_type == "public_open"
+                }), "private {zone:?} move must not reveal a known={known} card");
+                assert_eq!(requirements.iter().any(|requirement| {
+                    requirement.requirement_type == "private_open"
+                }), zone == Zone::Hand);
+            }
+        }
+    }
+
+    #[test]
+    fn crypto_requirements_public_move_authorization_is_independent_of_private_knowledge() {
+        let hidden = HiddenAuditCard {
+            object_id: ObjectId::from_raw(12), owner: PlayerId::from_index(0),
+            zone: Zone::Library, slot: 9, commitment: "ziffle:initial:9".to_string(),
+            origin_slot: Some(9), origin_commitment: Some("ziffle:initial:9".to_string()),
+            public_slot: Some(9), public_commitment: Some("ziffle:initial:9".to_string()),
+            card: None, face_down: false, foretold: false,
+        };
+        let known = HiddenAuditCard {
+            slot: 2, commitment: "salted-manifest-slot-2".to_string(),
+            card: Some("Mountain".to_string()), ..hidden.clone()
+        };
+        let mut previews = Vec::new();
+        for card in [hidden, known] {
+            let mut before = CryptoAuditState::default();
+            before.hidden_by_id.insert(card.object_id, card.clone());
+            let moved = HiddenAuditCard {
+                object_id: ObjectId::from_raw(42), zone: Zone::Graveyard, ..card.clone()
+            };
+            let mut requirements = Vec::new();
+            push_hidden_move_requirements(&mut requirements, &mut HashSet::new(),
+                &card, &moved, "mill");
+            prepare_preview_public_move_openings(&mut requirements, &before);
+            previews.push(requirements.into_iter().find(|req| req.requirement_type == "public_open").unwrap());
+        }
+        assert_eq!(previews[0].id, previews[1].id);
+        assert_eq!(previews[0].slot, previews[1].slot);
+        assert_eq!(previews[0].commitment, previews[1].commitment);
+        assert_eq!(previews[0].object_id, previews[1].object_id);
+        assert_eq!(previews[0].timing, previews[1].timing);
+        assert_eq!(previews[1].slot, Some(9));
+        assert_eq!(previews[1].commitment.as_deref(), Some("ziffle:initial:9"));
+    }
+
+    #[test]
     fn crypto_requirements_include_static_public_top_library_opening() {
         let mut wasm = WasmGame::new();
         let alice = PlayerId::from_index(0);
@@ -5568,6 +5710,7 @@ mod native_tests {
             "alice-hidden-hand-commitment".to_string(),
         );
         let definition = ironsmith_registry_test::cards::definitions::ornithopter();
+        wasm.registry.register(definition.clone());
         wasm.game
             .reveal_hidden_card_with_definition(hidden_hand_card, &definition)
             .expect("hidden hand card should reveal locally");

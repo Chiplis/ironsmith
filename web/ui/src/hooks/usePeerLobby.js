@@ -1266,15 +1266,33 @@ export function usePeerLobby({
             ...submitPerf,
             requirements: summarizeCryptoRequirementsForPerf(cryptoRequirements),
           },
-          () => buildLocalOpeningsForCommand(command, cryptoRequirements, {
-            ...actionCryptoOptions,
-            onOpeningBuilt: previewBuiltLocalOpening,
-          })
+          async () => mergeAuditOpenings(
+            await buildLocalOpeningsForCommand(command, cryptoRequirements, {
+              ...actionCryptoOptions,
+              onOpeningBuilt: previewBuiltLocalOpening,
+            }),
+            await buildLocalRequirementOpeningsForRequirements(
+              cryptoRequirements.filter((requirement) => requirement.timing === "pre"),
+              {
+                ...actionCryptoOptions,
+                timing: "pre",
+                onOpeningBuilt: previewBuiltLocalOpening,
+              }
+            )
+          )
         );
         recordPeerSyncPerf("submit_action:build_local_openings_pre:summary", {
           ...submitPerf,
           openings: Array.isArray(preOpenings) ? preOpenings.length : 0,
           bytes: payloadSizeBytes(preOpenings),
+        });
+        // Previewed public moves must open their source identities before
+        // execution, so replacement effects and triggers see real cards.
+        await revealAuditOpenings(preOpenings, {
+          timing: "pre",
+          command,
+          shuffleProofs,
+          updateState: false,
         });
         const publishAppliedStateImmediately = false;
         const expectedPreviousSequence = nextSequence - 1;
@@ -1577,7 +1595,8 @@ export function usePeerLobby({
 	            {
 	              ...actionCryptoOptions,
 	              requirements: openingRequirements,
-	              forceZiffleOpeningProof: true,
+	              timing: "post",
+              forceZiffleOpeningProof: true,
 	              onOpeningBuilt: previewBuiltLocalOpening,
 	            }
 	          )

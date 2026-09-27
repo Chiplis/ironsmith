@@ -1208,6 +1208,23 @@ pub(super) fn resolve_priority_action(
         if let Some(action) = priority.actions.iter().find(|action| priority_action_ref(action) == *action_ref) {
             return Some(action.clone());
         }
+        // Foretell never opens the hand card. An explicit reference may be
+        // replayed on a committed placeholder after all public timing, owner,
+        // zone, and payment checks; the keyword claim is checked on opening.
+        if let PriorityActionRef::SpecialAction {
+            action: SpecialActionRef::Foretell { card_id },
+        } = action_ref
+        {
+            let card_id = ObjectId::from_raw(*card_id);
+            if game.is_hidden_card_placeholder(card_id) {
+                let action = ironsmith::special_actions::SpecialAction::Foretell { card_id };
+                if game.priority_team_players().into_iter().any(|player| {
+                    ironsmith::special_actions::can_perform_check(&action, game, player).is_ok()
+                }) {
+                    return Some(LegalAction::SpecialAction(action));
+                }
+            }
+        }
         // A face-down cast of a hidden hand card: peers holding a placeholder
         // computed the priority actions before the command's public cast kind
         // was recorded, so recompute the source's actions now.

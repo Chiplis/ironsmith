@@ -123,12 +123,122 @@ struct ValidatedHiddenPositionReveal {
     object_id: ObjectId,
     updated_info: ironsmith::game_state::HiddenCardInfo,
     definition: CardDefinition,
-    object_already_revealed: bool,
 }
 
 #[cfg(test)]
 mod dispatch_tests {
     use super::*;
+
+    #[test]
+    fn known_hidden_reveal_preserves_physical_identity_and_current_characteristics() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        for (printed_name, current_name, copies) in [
+            ("Clone", "Grizzly Bears", true),
+            ("Bala Ged Recovery", "Bala Ged Sanctuary", false),
+            ("Bonecrusher Giant", "Stomp", false),
+            ("Delver of Secrets", "Insectile Aberration", false),
+        ] {
+            let mut wasm = WasmGame::new();
+            wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+            wasm.ensure_card_definitions_loaded([printed_name, current_name]);
+            let printed = wasm.find_card_definition(printed_name).unwrap().clone();
+            let current = wasm.find_card_definition(current_name).unwrap().clone();
+            let owner = PlayerId::from_index(0);
+            let id = wasm.game.create_hidden_card_placeholder(
+                owner, Zone::Battlefield, 3, "ziffle:identity:3".to_string(),
+            );
+            wasm.game.reveal_hidden_card_with_definition(id, &printed).unwrap();
+            if copies {
+                let source = Object::from_card_definition(
+                    ObjectId::from_raw(900_000), &current, owner, Zone::Battlefield,
+                );
+                wasm.game.object_mut(id).unwrap().capture_enters_as_copy_restore_state();
+                wasm.game.object_mut(id).unwrap().copy_copiable_values_from(&source);
+            } else {
+                wasm.game.object_mut(id).unwrap().apply_definition_face(&current);
+            }
+            assert_eq!(wasm.game.object(id).unwrap().card, Some(printed.card.id));
+            let exported = wasm.hidden_card_opening_export(id).unwrap();
+            assert_eq!(exported.card, printed_name, "opening must identify the physical {printed_name}");
+
+            wasm.pending_live_continuation = Some(LivePriorityContinuation {
+                checkpoint: wasm.capture_replay_checkpoint(),
+                root: PendingPriorityContinuation::ApplyDecisionContext(DecisionContext::SelectOptions(
+                    ironsmith::decisions::context::SelectOptionsContext::new(
+                        owner, Some(id), "Pending effect choice", Vec::new(), 0, 0,
+                    ),
+                )),
+                answers: Vec::new(),
+                speculative_progress: None,
+            });
+            let input = RevealHiddenPositionInput {
+                owner: 0,
+                object_id: Some(id.0),
+                position: 3,
+                original_slot: 7,
+                card_name: printed_name.to_string(),
+                position_commitment: Some("ziffle:identity:3".to_string()),
+                commitment: Some("private-slot-7".to_string()),
+                recompute_decision: false,
+            };
+            let reveal = wasm.validate_hidden_position_reveal(&input).unwrap();
+            wasm.apply_validated_hidden_position_reveal(&reveal).unwrap();
+            wasm.reveal_hidden_card_in_live_continuation_checkpoint(
+                owner, &[7], &["private-slot-7".to_string()], &printed,
+            );
+            for game in [&wasm.game, &wasm.pending_live_continuation.as_ref().unwrap().checkpoint.game] {
+                let object = game.object(id).unwrap();
+                assert_eq!(object.name, current_name, "repeat opening must preserve {current_name}");
+                assert_eq!(object.card, Some(printed.card.id));
+                assert_eq!(game.hidden_card_info(id).unwrap().origin_slot, Some(3));
+                assert_eq!(game.hidden_card_info(id).unwrap().public_slot, Some(3));
+            }
+        }
+    }
+
+    #[test]
+    fn known_hidden_reveal_does_not_replenish_loyalty_or_accept_another_card() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        wasm.ensure_card_definitions_loaded(["Jace, the Mind Sculptor", "Lightning Bolt"]);
+        let jace = wasm.find_card_definition("Jace, the Mind Sculptor").unwrap().clone();
+        let bolt = wasm.find_card_definition("Lightning Bolt").unwrap().clone();
+        let id = wasm.game.create_hidden_card_placeholder(
+            PlayerId::from_index(0), Zone::Battlefield, 3, "ziffle:identity:3".to_string(),
+        );
+        wasm.game.reveal_hidden_card_with_definition(id, &jace).unwrap();
+        wasm.game.object_mut(id).unwrap().remove_counters(ironsmith::object::CounterType::Loyalty, 1);
+        let loyalty = wasm.game.object(id).unwrap().loyalty();
+        assert!(loyalty.is_some());
+        wasm.game.reveal_hidden_card_with_definition(id, &jace).unwrap();
+        assert_eq!(wasm.game.object(id).unwrap().loyalty(), loyalty);
+        assert!(wasm.game.reveal_hidden_card_with_definition(id, &bolt).is_none());
+        assert_eq!(wasm.game.object(id).unwrap().card, Some(jace.card.id));
+        assert_eq!(wasm.game.object(id).unwrap().name, "Jace, the Mind Sculptor");
+    }
+
+    #[test]
+    fn known_hidden_reveal_keeps_face_down_characteristics_after_initial_hydration() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        wasm.ensure_card_definitions_loaded(["Grizzly Bears"]);
+        let definition = wasm.find_card_definition("Grizzly Bears").unwrap().clone();
+        let id = wasm.game.create_hidden_card_placeholder(
+            PlayerId::from_index(0), Zone::Battlefield, 3, "ziffle:identity:3".to_string(),
+        );
+        wasm.game.object_mut(id).unwrap().apply_face_down_cast_overlay();
+        let face_down_name = wasm.game.object(id).unwrap().name.clone();
+        for _ in 0..2 {
+            wasm.game.reveal_hidden_card_with_definition(id, &definition).unwrap();
+            let object = wasm.game.object(id).unwrap();
+            assert_eq!(object.name, face_down_name);
+            assert!(object.face_down_cast_state.is_some());
+            assert_eq!(object.identity_name().as_str(), "Grizzly Bears");
+            assert_eq!(wasm.hidden_card_opening_export(id).unwrap().card, "Grizzly Bears");
+        }
+    }
 
     #[test]
     fn position_reveal_preserves_existing_public_hidden_identity() {
@@ -1692,34 +1802,24 @@ impl WasmGame {
             .find_card_definition(&input.card_name)
             .cloned()
             .ok_or_else(|| JsValue::from_str(&format!("unknown card name: {}", input.card_name)))?;
-        // A face-down placeholder shows the face-down overlay name; its
-        // identity name is the restore state's ("Hidden Card" until opened).
-        let Some(existing_name) = self
-            .game
-            .object(object_id)
-            .map(|object| object.identity_name().clone())
-        else {
+        let Some(object) = self.game.object(object_id) else {
             return Err(JsValue::from_str(
                 "hidden ziffle object is not present in this engine",
             ));
         };
-        let object_already_revealed = if existing_name != "Hidden Card" {
-            if existing_name != input.card_name {
-                return Err(JsValue::from_str(
-                    "opened object identity does not match reveal",
-                ));
-            }
-            true
-        } else {
-            false
-        };
+        // The physical card stays the same while its displayed name can be
+        // an alternate face, a face-down overlay, or copied characteristics.
+        if object.card.is_some_and(|card| card != definition.card.id) {
+            return Err(JsValue::from_str(
+                "opened object identity does not match reveal",
+            ));
+        }
         Ok(ValidatedHiddenPositionReveal {
             input: input.clone(),
             owner,
             object_id,
             updated_info,
             definition,
-            object_already_revealed,
         })
     }
 
@@ -1732,25 +1832,12 @@ impl WasmGame {
         self.validate_hidden_normal_reveal(reveal.owner, reveal.object_id, &reveal.definition)
             .map_err(|error| JsValue::from_str(&error))?;
         self.game
+            .register_linked_face_family_from_catalog(&reveal.definition, &self.registry);
+        self.game
+            .reveal_hidden_card_with_definition(reveal.object_id, &reveal.definition)
+            .ok_or_else(|| JsValue::from_str("opened object identity does not match reveal"))?;
+        self.game
             .set_hidden_card_info(reveal.object_id, reveal.updated_info.clone());
-        if let Some(existing_name) = self
-            .game
-            .object(reveal.object_id)
-            .map(|object| object.identity_name().clone())
-            && existing_name != "Hidden Card"
-        {
-            if existing_name != reveal.input.card_name {
-                return Err(JsValue::from_str(
-                    "opened object identity does not match reveal",
-                ));
-            }
-        } else if !reveal.object_already_revealed {
-            self.game
-                .register_linked_face_family_from_catalog(&reveal.definition, &self.registry);
-            self.game
-                .reveal_hidden_card_with_definition(reveal.object_id, &reveal.definition)
-                .ok_or_else(|| JsValue::from_str("failed to reveal hidden card"))?;
-        }
         self.reveal_hidden_position_in_live_continuation_checkpoint(
             reveal.owner,
             reveal.input.position,
@@ -1943,6 +2030,7 @@ impl WasmGame {
 
     #[wasm_bindgen(js_name = previewCryptoRequirements)]
     pub fn preview_crypto_requirements(&mut self, command: JsValue) -> Result<JsValue, JsValue> {
+        let crypto_before = self.capture_crypto_audit_state();
         let checkpoint = self.capture_replay_checkpoint();
         let pregame = self.pregame.clone();
         let pending_decision = self.pending_decision.clone();
@@ -1993,7 +2081,8 @@ impl WasmGame {
         self.last_advance_until_decision_perf = last_advance_until_decision_perf;
         self.last_dispatch_perf = last_dispatch_perf;
 
-        let requirements = requirements?;
+        let mut requirements = requirements?;
+        prepare_preview_public_move_openings(&mut requirements, &crypto_before);
         serde_wasm_bindgen::to_value(&requirements).map_err(|e| {
             JsValue::from_str(&format!("failed to serialize crypto requirements: {e}"))
         })
@@ -2228,15 +2317,16 @@ impl WasmGame {
             .game
             .object(object_id)
             .ok_or_else(|| JsValue::from_str("hidden card object is not present"))?;
-        let Some(_card) = object.card.as_ref() else {
+        let Some(card_id) = object.card else {
             return Err(JsValue::from_str("hidden card is not open in this engine"));
         };
+        let definition = self.registry.get_by_id(card_id)
+            .ok_or_else(|| JsValue::from_str("opened physical card definition is not present"))?;
         Ok(HiddenCardOpeningExport {
             object_id: object_id.0,
             owner: info.owner.index() as u8,
             slot: info.slot,
-            // A face-down object's printed name, not the face-down overlay's.
-            card: object.identity_name().to_string(),
+            card: definition.name().to_string(),
             commitment: info.commitment.clone(),
             origin_slot: info.origin_slot,
             origin_commitment: info.origin_commitment.clone(),

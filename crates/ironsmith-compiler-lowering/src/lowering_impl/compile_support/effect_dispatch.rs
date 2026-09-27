@@ -229,6 +229,9 @@ fn nested_effect_is_discard(effect: &Effect) -> bool {
     if effect
         .downcast_ref::<crate::effects::DiscardEffect>()
         .is_some()
+        || effect
+            .downcast_ref::<crate::effects::DiscardHandEffect>()
+            .is_some()
     {
         return true;
     }

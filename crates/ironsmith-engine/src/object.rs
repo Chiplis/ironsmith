@@ -1847,8 +1847,9 @@ impl Object {
         true
     }
 
-    /// The object's real (printed) name: the face-down restore name when the
-    /// face-down overlay is active, otherwise the current name.
+    /// The current face's name beneath a face-down overlay, otherwise the
+    /// current copiable name. Physical-card authentication must use `card`:
+    /// this name can belong to an alternate face or a copied card.
     pub fn identity_name(&self) -> &SharedStr {
         self.face_down_cast_state
             .as_ref()

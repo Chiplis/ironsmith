@@ -1731,7 +1731,9 @@ fn can_foretell(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result
         return Err(ActionError::InvalidTarget);
     }
 
-    if foretell_cost(object).is_none() {
+    // The explicit action is a public foretell claim. Peers holding only a
+    // committed placeholder validate its keyword when the card is opened.
+    if foretell_cost(object).is_none() && !game.is_hidden_card_placeholder(card_id) {
         return Err(ActionError::NoSuchAbility);
     }
 
